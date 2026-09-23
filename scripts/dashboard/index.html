@@ -718,7 +718,7 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
   .nbtabs button:hover,.nbtabs button.on:hover{background:none}
   .modal .danger:hover{background:color-mix(in srgb, var(--bad) 35%, var(--panel))}
   .nb .caution:hover{background:color-mix(in srgb, var(--warn) 30%, var(--panel))}
-  button:disabled:hover{background:var(--btn)}
+  button:disabled:hover,button[aria-disabled="true"]:hover{background:var(--btn)}
   .cmd button:hover{background:var(--btn-hi)}
   .cmd .tack:hover{color:var(--ink)}
   button.eye:hover{color:var(--ink)}
@@ -757,6 +757,10 @@ button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
   button,.pane .bar .x,.tab .ic{transition:none}
 }
 button:disabled{opacity:.5;cursor:default}
+/* A control that is dead but still answers a press with why (the roadmap's
+   arrows, B213): the same fade, and the pointer stays, because pressing it
+   does something. */
+button[aria-disabled="true"]{opacity:.5}
 /* Every box and radio the page has, not just the one tab that remembered to
    ask. The toolchains list set accent-color and nothing else did, so a checkbox
    in a dialog stayed the browser's own blue under every scheme.
@@ -11600,7 +11604,15 @@ function sectAttr(key, dflt = false){
 // is how a desktop's open-by-default followed the page down to phone width.
 document.addEventListener("click", e => {
   const d = e.target.closest?.("summary")?.parentElement;
-  if (d?.dataset?.sect) d.dataset.pressed = "1";
+  if (!d?.dataset?.sect) return;
+  d.dataset.pressed = "1";
+  // Recorded at the press, not only at `toggle`: a section slides shut over
+  // a third of a second, and a tab that repaints on a heartbeat (Nodes, on
+  // every one) replaced the fold mid-slide, so the toggle fired on a
+  // detached element nobody heard and the new fold drew open again. The
+  // press is the choice; `toggle` below confirms it for the other ways a
+  // fold can move.
+  sectOpen[d.dataset.sect] = !d.open;
 }, true);
 document.addEventListener("toggle", e => {
   const d = e.target;

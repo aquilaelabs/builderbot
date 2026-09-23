@@ -60,6 +60,8 @@
 - A toolchain install that fails on a node says why under its row, as one on the controller does, instead of going back to unticked in silence (de029de)
 - The companion app keeps its own dark palette whatever the phone's system theme: on a light-themed device the headings, placeholders and Sign in button were drawn black on the dark background (67bfa8f)
 - bb tool diagrams render refuses two sources that share a stem, naming both, instead of the second silently overwriting the first's PNG and SVG (b2e3f0d)
+- The Roadmap view's arrows agree with the project row about whether a Claude session is running, and a dead arrow says why when pressed instead of swallowing the press (6e2466a)
+- A section closed by hand stays closed even when the tab repaints during its slide, as the Nodes tab does on every heartbeat (6e2466a)
 
 ### Security
 

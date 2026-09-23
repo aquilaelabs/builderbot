@@ -42,7 +42,7 @@ const post = body => page.evaluate(async b => {
 const open = () => page.$$eval('#roadmapList .roadmap', ts => ts.map(t => ({
   id: t.dataset.id, step: t.dataset.step, text: t.querySelector('.txt').textContent,
   sent: t.classList.contains('sent'),
-  can: !t.querySelector('.go').disabled,
+  can: t.querySelector('.go').getAttribute('aria-disabled') !== 'true',
   sel: t.querySelector('.go').classList.contains('sel'),
   claude: !!t.querySelector('.who:not(.fin)') })));
 
@@ -261,7 +261,7 @@ await page.fill('#roadmapText', 'staged, deliberately not saved');
 await page.click('#roadmapAdd');
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .txt')]
   .some(t => t.textContent.includes('staged, deliberately')));
-ok(await page.$$eval('#roadmapList .roadmap .go', gs => gs.every(g => g.disabled)),
+ok(await page.$$eval('#roadmapList .roadmap .go', gs => gs.every(g => g.getAttribute('aria-disabled') === 'true')),
    'an unsaved change puts every arrow down');
 ok(/not saved/.test(await page.$eval('#roadmapHint', h => h.textContent)),
    '...and the line above the list says which, and what to do about it');
@@ -1357,13 +1357,20 @@ ok((await open()).some(i => i.can), 'with the session up, something can be sent'
 tmuxKill('claude-alpha');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap .go')]
-  .every(g => g.disabled), null, { timeout: 15000 });
+  .every(g => g.getAttribute('aria-disabled') === 'true'), null, { timeout: 15000 });
 ok(/no session/.test(await page.$eval('#roadmapHint', h => h.textContent)),
    'the session going away puts the arrows down, without touching the tab');
+// ...and a dead arrow says why when pressed (B213). It used to be a disabled
+// button, which swallows the press: the reason lived in a hover title a
+// finger never sees and in the line under the whole list.
+// Through the DOM: Playwright itself refuses to click what is aria-disabled.
+await page.$eval('#roadmapList .roadmap .go', b => b.click());
+ok(/no Claude session is running here/.test(await page.$eval('#toast', t => t.textContent)),
+   `pressing a dead arrow says why in the band (${await page.$eval('#toast', t => t.textContent.slice(0, 60))})`);
 tmuxNew('claude-alpha');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap .go')]
-  .some(g => !g.disabled), null, { timeout: 15000 });
+  .some(g => g.getAttribute('aria-disabled') !== 'true'), null, { timeout: 15000 });
 ok(/is running, so the arrows are live/.test(
      await page.$eval('#roadmapHint', h => h.textContent)),
    '...and starting one brings them back, with the notebook left open the whole time');
@@ -1503,7 +1510,7 @@ await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="1"]`)?.classList.contains('done'), widget.id);
 const drawn = await page.$$eval(`#roadmapList .roadmap[data-id="${widget.id}"]`, ts => ts.map(t => ({
   step: t.dataset.step, done: t.classList.contains('done'), sent: t.classList.contains('sent'),
-  n: t.querySelector('.n')?.textContent, can: !t.querySelector('.go').disabled,
+  n: t.querySelector('.n')?.textContent, can: t.querySelector('.go').getAttribute('aria-disabled') !== 'true',
   why: t.querySelector('.go').title })));
 ok(drawn.find(d => d.step === '1').done && !drawn.find(d => d.step === '1').sent
    && drawn.find(d => d.step === '1').n === '✓',

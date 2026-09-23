@@ -161,7 +161,7 @@ function nbRoadmapView({$, nb}){
     return `<div class="roadmap${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
          idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
        data-id="${r.id}" data-step="${idx}">
-    ${nb.roadmapOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
+    ${nb.roadmapOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : ` aria-disabled="true"`}
       title="${esc(why)}" aria-label="send"
       aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
     ${idx >= 0 ? (st.done
@@ -231,7 +231,18 @@ function nbRoadmapView({$, nb}){
     // whatever inline box was open (a send box, a drop confirmation) under
     // the finger that opened it.
     if (j.rev !== undefined) nb.roadmapRev = j.rev;
-    const rows = j.items || [], live = !!j.session;
+    // Whether there is a session to send into, from the answer OR from the
+    // page's own session list, which is what lights the Claude button on
+    // the project row. The two are the same fact read from the same place
+    // on the server, and reading it here from one source only is what let
+    // the row say running while every arrow here said no session (B214):
+    // an answer drawn before the list caught up stood until something else
+    // redrew, and nothing said which of the two to believe.
+    const sess = j.session || (typeof liveSessions === "function" && nb.memProj
+                               && liveSessions().has(myClaude(nb.memProj))
+                               ? myClaude(nb.memProj) : null);
+    j = Object.assign({}, j, {session: sess});
+    const rows = j.items || [], live = !!sess;
     // Whatever was armed may have been crossed off, dropped, or overtaken by a
     // step in front of it since the last draw.
     if (nb.roadmapSel){
@@ -281,6 +292,11 @@ function nbRoadmapView({$, nb}){
       // A group's title arrow stands for its next step, so both resolve to the
       // same choice and light up together.
       if (go) go.onclick = () => {
+        // A dead arrow says why when pressed (B213). It is aria-disabled
+        // rather than disabled because a disabled button swallows the press
+        // and the reason was only in its hover title, which a finger never
+        // sees, and in the line under the whole list.
+        if (go.getAttribute("aria-disabled") === "true") return notify(go.title, true);
         const r = (nb.roadmapItems || []).find(x2 => String(x2.id) === String(id));
         const steps = r?.steps || [];
         pickRoadmap(id, step >= 0 ? step : (steps.length ? nextStep(r) : null));
