@@ -2110,7 +2110,11 @@ empty. Reaping on absence would wipe the strip at every boot.
 The page starts with one tab (**workspace**, a shell at `/workspace`) and
 everything you open gets its own tab above the terminal. Every tab, the
 workspace one included, can be minimized or closed; an empty strip just shows
-a placeholder, and **+** starts over.
+a placeholder, and **+** starts over. On a desktop a terminal tab can also be
+popped out into its own window (the ⧉ on the tab): the tab stays in the strip
+as a blank pane with **Reattach**, in a split view as in a single one, and
+closing the window brings it back on its own. The window is the terminal's
+own address, so closing the dashboard leaves it working.
 
 - **Claude** on a project opens *one* session per project. If it is already
   running the button is green and takes you to its tab. If it is not but the

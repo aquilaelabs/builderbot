@@ -551,7 +551,10 @@ def load_layout(uid):
             continue
         ids.add(tid)
         tabs.append({"id": tid, "kind": t["kind"], "arg": arg, "label": label,
-                     "fixed": bool(t.get("fixed"))})
+                     "fixed": bool(t.get("fixed")),
+                     # Popped out into its own window (R8): kept so the page
+                     # that popped it reconciles; another page drops it.
+                     "popped": bool(t.get("popped"))})
     stored = v.get("panes") if isinstance(v.get("panes"), list) else []
     panes = [p if isinstance(p, str) and p in ids else None for p in stored[:2]]
     while len(panes) < 2:

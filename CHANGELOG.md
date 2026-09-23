@@ -28,6 +28,7 @@
 - The new-project dialog asks what a session may enter into the notebook (roadmap, bugs, rules, build and test), auto by default, and writes it with the project (98cd719)
 - The Roadmap tab shows finished items behind a Finished toggle at the top, below the shelved ones, with the plans they had; hidden until asked for (d9596e8)
 - A session can ask for a shelved roadmap item back with bb roadmap unshelve N WHY; the request is held on the notebook with its reason, whatever the gate says, and a user or administrator on the project approves or denies it (d9596e8)
+- A terminal tab pops out into its own window on a desktop: the tab stays in the strip as a blank pane with Reattach, in a split view too, and closing the window brings it back; the window is the terminal's own address, so it outlives the dashboard (f15d073)
 
 ### Changed
 
