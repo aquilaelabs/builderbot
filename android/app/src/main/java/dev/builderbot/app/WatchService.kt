@@ -1,98 +1,46 @@
-// The watch: what the dashboard's bell shows, as notifications. A foreground
-// service polls /api/status and /api/phone on a clock and posts what is
-// new: a session asking for the phone or for root, with Approve and Deny on
-// the notification itself; a notebook holding a session's changes; a node
-// whose agent is behind or out of window. No push service: the dashboard is
-// on somebody's own network, reached directly or over a tailnet, and a
-// persistent connection from the phone is what does not need anybody's
-// account or a key in the repository.
+// The watch: what the dashboard's bell shows, as notifications. The app
+// asks /api/status and /api/phone and posts what is new: a session asking
+// for the phone or for root, with Approve and Deny on the notification
+// itself; a notebook holding a session's changes; a node whose agent is
+// behind or out of window, or whose Claude Code is behind. No push service:
+// the dashboard is on somebody's own network, reached directly or over a
+// tailnet, and asking it from here is what needs nobody's account and no
+// key in the repository.
+//
+// Not a foreground service any more (23 Sep). Android hangs a persistent
+// notification on one, and that note put a dot on the app's icon that read
+// as something needing attention when nothing did. Instead the app asks on
+// its own clock while it is open, and an inexact alarm asks about once a
+// minute while it is not, delivered to WatchReceiver with no service and
+// nothing in the shade between questions. Doze can hold an alarm back for
+// some minutes on a phone left alone; a question that cannot wait is one
+// the dashboard's bell also carries.
 package dev.builderbot.app
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
-import android.os.Build
-import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 
-class WatchService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var loop: Job? = null
+object Watch {
+    const val ID_PENDING = 2
+    const val ID_ATTENTION = 3
+    const val ID_ASK_BASE = 1000
+    // In the background, no oftener than this: an inexact alarm is batched
+    // by the system anyway, and a phone in a pocket is not a dashboard tab.
+    const val BACKGROUND_MIN_S = 60L
 
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val note = NotificationCompat.Builder(this, App.CH_WATCH)
-            .setSmallIcon(R.drawable.ic_stat_bb)
-            .setContentTitle("Watching BuilderBot")
-            .setContentText("Questions for you arrive here")
-            .setOngoing(true)
-            .setContentIntent(openApp(this))
-            .build()
-        if (Build.VERSION.SDK_INT >= 29)
-            startForeground(ID_WATCH, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        else startForeground(ID_WATCH, note)
-        if (loop == null) loop = scope.launch { run() }
-        return START_STICKY
-    }
-
-    override fun onDestroy() {
-        scope.cancel()
-        super.onDestroy()
-    }
-
-    private suspend fun run() {
-        val store = Store(this)
-        var failures = 0
-        while (true) {
-            val api = store.api()
-            if (api == null || !store.watch) { stopSelf(); return }
-            try {
-                tick(api, store)
-                failures = 0
-            } catch (e: ApiError) {
-                // The password changed, or the account went: polling on would
-                // be a refused request every twenty seconds for good, and the
-                // person would never learn why the questions stopped arriving.
-                if (e.status == 401 || e.status == 403) { signedOut(); stopSelf(); return }
-                failures++
-            } catch (e: Exception) {
-                failures++
-            }
-            // Back off while the dashboard is unreachable; a phone that left
-            // the network should not spend its battery on connection refusals.
-            val wait = store.pollSeconds.toLong() * (if (failures > 3) 4 else 1)
-            delay(wait * 1000)
-        }
-    }
-
-    private fun signedOut() {
-        getSystemService(NotificationManager::class.java).notify(ID_ATTENTION,
-            NotificationCompat.Builder(this, App.CH_NOTE)
-                .setSmallIcon(R.drawable.ic_stat_bb)
-                .setContentTitle("BuilderBot no longer accepts this sign-in")
-                .setContentText("Open the app and sign in again; the watch has stopped until you do")
-                .setContentIntent(openApp(this, "more"))
-                .setAutoCancel(true)
-                .build())
-    }
-
-    private suspend fun tick(api: Api, store: Store) {
-        val nm = getSystemService(NotificationManager::class.java)
+    /** One round: ask, and post what is new. Called from the open app on
+     *  its own clock and from the alarm's receiver in the background. */
+    suspend fun tick(context: Context, api: Api, store: Store) {
+        val nm = context.getSystemService(NotificationManager::class.java)
         val ph = api.phone()
         val asks = ph.arr("asks")
         val seen = store.notifiedAsks.toMutableSet()
@@ -100,7 +48,7 @@ class WatchService : Service() {
         for (a in asks) {
             val id = a.int("id")
             if (id.toString() in seen) continue
-            nm.notify(ID_ASK_BASE + id, askNotification(a))
+            nm.notify(ID_ASK_BASE + id, askNotification(context, a))
             seen.add(id.toString())
         }
         // An ask that was answered elsewhere, or expired, leaves the shade.
@@ -115,28 +63,29 @@ class WatchService : Service() {
         val pendKey = waiting.joinToString(",") { "${it.str("name")}:${it.int("pending")}" }
         if (pendKey != store.lastPending) {
             if (waiting.isEmpty()) nm.cancel(ID_PENDING)
-            else nm.notify(ID_PENDING, NotificationCompat.Builder(this, App.CH_NOTE)
+            else nm.notify(ID_PENDING, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
                 .setContentTitle("Waiting for your approval")
                 .setContentText(waiting.joinToString("; ") { "${it.int("pending")} in ${it.str("name")}" })
-                .setContentIntent(openApp(this, "approvals"))
+                .setContentIntent(openApp(context, "approvals"))
                 .setAutoCancel(true)
                 .build())
             store.lastPending = pendKey
         }
-        // Nodes that need attention, and a CLAUDE.md block out of window.
+        // Nodes that need attention: an agent behind or out of window, or
+        // Claude Code behind what is out.
         val att = st.arr("attention")
         val attKey = att.joinToString(",") { "${it.str("kind")}:${it.str("id")}${it.str("project")}:${it.str("to")}" }
         if (attKey != store.lastAttention) {
             if (att.isEmpty()) nm.cancel(ID_ATTENTION)
             else {
                 val red = att.any { it.bool("window") }
-                nm.notify(ID_ATTENTION, NotificationCompat.Builder(this, App.CH_NOTE)
+                nm.notify(ID_ATTENTION, NotificationCompat.Builder(context, App.CH_NOTE)
                     .setSmallIcon(R.drawable.ic_stat_bb)
                     .setContentTitle(if (red) "Work is stopped on a node" else "A node needs attention")
                     .setContentText(att.joinToString("; ") { attentionLine(it) })
                     .setStyle(NotificationCompat.BigTextStyle().bigText(att.joinToString("\n") { attentionLine(it) }))
-                    .setContentIntent(openApp(this, "nodes"))
+                    .setContentIntent(openApp(context, "nodes"))
                     .setAutoCancel(true)
                     .build())
             }
@@ -144,12 +93,27 @@ class WatchService : Service() {
         }
     }
 
-    private fun askNotification(a: JSONObject): Notification {
+    /** The password changed, or the account went: asking on would be a
+     *  refused request every minute for good, and the person would never
+     *  learn why the questions stopped arriving. */
+    fun signedOut(context: Context) {
+        context.getSystemService(NotificationManager::class.java).notify(ID_ATTENTION,
+            NotificationCompat.Builder(context, App.CH_NOTE)
+                .setSmallIcon(R.drawable.ic_stat_bb)
+                .setContentTitle("BuilderBot no longer accepts this sign-in")
+                .setContentText("Open the app and sign in again; the watch has stopped until you do")
+                .setContentIntent(openApp(context, "more"))
+                .setAutoCancel(true)
+                .build())
+        stop(context)
+    }
+
+    private fun askNotification(context: Context, a: JSONObject): Notification {
         val id = a.int("id")
         val kind = a.str("kind")
         val who = a.str("asker").ifBlank { a.str("project").ifBlank { "a session" } }
         val text = "${a.str("why")}\n${askCommand(a)}\n$who's session in ${a.str("project")}"
-        return NotificationCompat.Builder(this, App.CH_ASK)
+        return NotificationCompat.Builder(context, App.CH_ASK)
             .setSmallIcon(R.drawable.ic_stat_bb)
             .setContentTitle(askTitle(a) + ": needs your answer")
             .setContentText(a.str("why"))
@@ -157,61 +121,91 @@ class WatchService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setColor(if (kind == "root") 0xFFE5534B.toInt() else 0xFFD29922.toInt())
-            .setContentIntent(openApp(this, "approvals"))
-            .addAction(0, "Deny", DecideReceiver.intent(this, id, false))
-            .addAction(0, "Approve", DecideReceiver.intent(this, id, true))
+            .setContentIntent(openApp(context, "approvals"))
+            .addAction(0, "Deny", DecideReceiver.intent(context, id, false))
+            .addAction(0, "Approve", DecideReceiver.intent(context, id, true))
             .setAutoCancel(true)
             .build()
     }
 
-    companion object {
-        const val ID_WATCH = 1
-        const val ID_PENDING = 2
-        const val ID_ATTENTION = 3
-        const val ID_ASK_BASE = 1000
+    /** The background half: the next alarm, from now. Idempotent, so the
+     *  app's start, a reboot and every receiver round all call it. */
+    fun startIfWanted(context: Context) {
+        val store = Store(context)
+        if (!store.signedIn || !store.watch) { stop(context); return }
+        val every = maxOf(store.pollSeconds.toLong(), BACKGROUND_MIN_S) * 1000
+        val am = context.getSystemService(AlarmManager::class.java)
+        // Inexact, and allowed while idle: no permission to ask for, and
+        // the system batches it with the phone's other work.
+        am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            SystemClock.elapsedRealtime() + every, alarm(context))
+    }
 
-        fun startIfWanted(context: Context) {
-            val store = Store(context)
-            if (!store.signedIn || !store.watch) return
-            val i = Intent(context, WatchService::class.java)
-            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(i) else context.startService(i)
+    fun stop(context: Context) {
+        context.getSystemService(AlarmManager::class.java).cancel(alarm(context))
+    }
+
+    private fun alarm(context: Context): PendingIntent =
+        PendingIntent.getBroadcast(context, 7, Intent(context, WatchReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+    fun openApp(context: Context, screen: String = ""): PendingIntent {
+        val i = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            if (screen.isNotEmpty()) putExtra("screen", screen)
         }
+        return PendingIntent.getActivity(context, screen.hashCode(), i,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    }
 
-        fun stop(context: Context) {
-            context.stopService(Intent(context, WatchService::class.java))
-        }
+    // The two kinds the server sends: a node whose agent is behind (red
+    // when out of window, where work is stopped), and one whose Claude Code
+    // is behind what is out (claudecode.py, 23 Sep). The bell says the same.
+    fun attentionLine(a: JSONObject): String = when (a.str("kind")) {
+        "claude" -> "${a.str("node")} runs Claude Code ${a.str("from")}; ${a.str("to")} is out"
+        else -> "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
+            (if (a.bool("window")) " (out of window, work there is stopped)" else "")
+    }
 
-        fun openApp(context: Context, screen: String = ""): PendingIntent {
-            val i = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                if (screen.isNotEmpty()) putExtra("screen", screen)
+    // What an ask is, in the words the dashboard's bell uses for the same
+    // four kinds: the phone, root on a node, a rebuild of a dev instance,
+    // and a container to be made. Shared with the Approvals screen so the
+    // notification and the row agree.
+    fun askTitle(a: JSONObject): String = when (a.str("kind")) {
+        "root" -> "Root on ${a.str("node_name")}"
+        "rebuild" -> "Rebuild in ${a.str("project").ifBlank { "a project" }}"
+        "container" -> "Container ${a.str("name")} on ${a.str("node_name").ifBlank { "the default node" }}"
+        else -> "The phone on ${a.str("node_name")}"
+    }
+    fun askCommand(a: JSONObject): String = when (a.str("kind")) {
+        "root" -> "# "
+        "rebuild", "container" -> "bb "
+        else -> "adb "
+    } + a.strs("cmd").joinToString(" ")
+}
+
+// The alarm's other end: one round, then the next alarm. goAsync keeps the
+// process alive for the two requests; a dashboard that does not answer is
+// one missed round, not a stopped watch.
+class WatchReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val store = Store(context)
+        val api = store.api()
+        if (api == null || !store.watch) { Watch.stop(context); return }
+        val pending = goAsync()
+        Thread {
+            try {
+                runBlocking { Watch.tick(context, api, store) }
+                Watch.startIfWanted(context)
+            } catch (e: ApiError) {
+                if (e.status == 401 || e.status == 403) Watch.signedOut(context)
+                else Watch.startIfWanted(context)
+            } catch (e: Exception) {
+                Watch.startIfWanted(context)
+            } finally {
+                pending.finish()
             }
-            return PendingIntent.getActivity(context, screen.hashCode(), i,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        }
-
-        // The one kind the server sends today: a node whose agent is behind.
-        // (A CLAUDE.md block out of window was a kind once; R63 retired the
-        // block, and a line for it here would name something that is gone.)
-        fun attentionLine(a: JSONObject): String =
-            "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
-                (if (a.bool("window")) " (out of window, work there is stopped)" else "")
-
-        // What an ask is, in the words the dashboard's bell uses for the same
-        // four kinds: the phone, root on a node, a rebuild of a dev instance,
-        // and a container to be made. Shared with the Approvals screen so the
-        // notification and the row agree.
-        fun askTitle(a: JSONObject): String = when (a.str("kind")) {
-            "root" -> "Root on ${a.str("node_name")}"
-            "rebuild" -> "Rebuild in ${a.str("project").ifBlank { "a project" }}"
-            "container" -> "Container ${a.str("name")} on ${a.str("node_name").ifBlank { "the default node" }}"
-            else -> "The phone on ${a.str("node_name")}"
-        }
-        fun askCommand(a: JSONObject): String = when (a.str("kind")) {
-            "root" -> "# "
-            "rebuild", "container" -> "bb "
-            else -> "adb "
-        } + a.strs("cmd").joinToString(" ")
+        }.start()
     }
 }
 
@@ -222,7 +216,7 @@ class DecideReceiver : BroadcastReceiver() {
         val id = intent.getIntExtra("id", 0)
         val allow = intent.getBooleanExtra("allow", false)
         val nm = context.getSystemService(NotificationManager::class.java)
-        nm.cancel(WatchService.ID_ASK_BASE + id)
+        nm.cancel(Watch.ID_ASK_BASE + id)
         val api = Store(context).api() ?: return
         val pending = goAsync()
         Thread {
@@ -232,10 +226,10 @@ class DecideReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 "Could not answer: ${e.message}"
             }
-            nm.notify(WatchService.ID_ASK_BASE + id, NotificationCompat.Builder(context, App.CH_NOTE)
+            nm.notify(Watch.ID_ASK_BASE + id, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
                 .setContentTitle(said)
-                .setContentIntent(WatchService.openApp(context, "approvals"))
+                .setContentIntent(Watch.openApp(context, "approvals"))
                 .setAutoCancel(true)
                 .setTimeoutAfter(20_000)
                 .build())

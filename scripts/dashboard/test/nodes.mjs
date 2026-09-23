@@ -2089,12 +2089,35 @@ print(m.mint_session('alpha'))
   await napi('/api/v1/jobs', { action: 'cancel', id: up.job });
   await sleep(300);
   ok(!(await napi('/api/status')).projects.find(p => p.name === 'beta')?.held, 'the hold lifts when the job ends');
-  // Up to date reads as such, and the auto-update setting is off by default.
+  // A refusal is said on the section, not only in a toast (23 Sep): the
+  // press that queued nothing read as "it said updating and nothing happened".
+  await page.evaluate(id => { nodesClaudeSaid[id] = 'the press was refused for a reason worth reading'; loadNodes(); }, en.id);
+  await page.waitForFunction(sel => /refused for a reason worth reading/.test(document.querySelector(sel)?.textContent || ''), ROWC, { timeout: 10000 });
+  ok(true, 'what the last press answered stays on the section until the next one');
+  await page.evaluate(id => { delete nodesClaudeSaid[id]; }, en.id);
+  // The switch is off by default: a node stays on its version until Update
+  // is pressed. On, a session asked for on a node that is behind updates it
+  // first: the terminal is refused with the reason, the job is queued, and
+  // no open conversation is ended for it.
+  ok((await napi('/api/status')).settings?.settings?.claude_autoupdate?.value === false
+     && await page.$eval(`${ROWC} [data-nd-auto]`, b => !b.checked),
+     'Update before a session starts is off by default, on the Settings tab and on the section');
+  await napi('/api/settings', { set: { claude_autoupdate: true } });
+  await fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [] }, running: [], wait: 0 }) });
+  const term = await fetch(base + '/term/ws?arg=' + encodeURIComponent('claude:beta'), { headers: H });
+  const termBody = await term.json().catch(() => ({}));
+  ok(term.status === 409 && /is being updated to 1\.2\.0 before this session starts/.test(termBody.error || ''),
+     `with the switch on, a session on a node behind waits for the update, and says so (${term.status}: ${(termBody.error || '').slice(0, 70)})`);
+  const started = (await napi('/api/v1/jobs?n=5&type=claude-update&active=1')).jobs?.find(j => j.node === en.id);
+  ok(!!started, '...and the update job is queued by that start');
+  if (started) await napi('/api/v1/jobs', { action: 'cancel', id: started.id });
+  await napi('/api/settings', { set: { claude_autoupdate: false } });
+  // Up to date reads as such.
   census.session.claude = '1.2.0 (Claude Code)';
   await hello();
   ok((await napi('/api/status')).claude_code?.nodes?.[en.id]?.behind === false, 'a node on the latest is not behind');
-  ok((await napi('/api/status')).settings?.settings?.claude_autoupdate?.value === false,
-     'Keep Claude Code current is off by default: a node stays on its version until Update is pressed');
   await napi('/api/prefs', { project: 'beta', node: '' });
   await napi('/api/v1/nodes', { action: 'retire', id: en.id });
 }

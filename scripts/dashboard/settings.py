@@ -68,10 +68,11 @@ KEYS = {
     "debug_mode": {"default": False, "kind": "bool", "applied": "now"},
     # Off, Claude Code on a node stays on the version it has until Update is
     # pressed on the Nodes tab: the bell says when a newer one is out. On,
-    # the controller updates a node on its own when its check finds one
-    # out, and only while no Claude session is open on that node: a
-    # conversation is never interrupted for it, and the sessions it would
-    # have ended are the reason the press exists (claudecode.py).
+    # a session asked for on a node that is behind updates it first: the
+    # start is held with the reason, the person presses again when the
+    # row comes back, and no open conversation is ever ended for it
+    # (claudecode.start_hold). The same switch is on each node's Claude
+    # Code section.
     "claude_autoupdate": {"default": False, "kind": "bool", "applied": "now"},
 }
 

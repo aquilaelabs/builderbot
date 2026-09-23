@@ -3527,6 +3527,12 @@ class Handler(BaseHTTPRequestHandler):
         t = session_target(project, claude=True)
         if t["where"] != "node":
             return ""
+        # Claude Code on that node first (claudecode.py): an update running
+        # there holds the start, and with Keep Claude Code current on, a
+        # node behind is updated now and this start waits for it.
+        held = claudecode.start_hold(project, t["id"])
+        if held:
+            return held
         mine = claude_auth(home=home_for(uid)).get("email") or ""
         if not mine:
             return ""                     # not signed in: bb-tty says so, better
@@ -4746,7 +4752,6 @@ class Handler(BaseHTTPRequestHandler):
             # hours, with the automatic update behind it where the setting
             # asks for one. Nothing else is changed by it.
             r = claudecode.check() | {"ok": True}
-            r["auto"] = claudecode.auto_update()
         elif act == "claude-update":
             # An administrator's, like every action here, and so never a
             # session's: it ends the Claude sessions on the node and queues

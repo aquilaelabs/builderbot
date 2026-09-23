@@ -336,12 +336,17 @@ function nodeSessionsSection(n){
 // way it is updated. The update ends every Claude session here first and
 // starts none again: the project rows do, when a person presses them.
 // A session cannot ask for this and cannot change the copy it runs.
+// What the last press here answered, when it was a refusal: on the row,
+// not only in a toast, or a press that was refused for the agent being
+// behind read as "it said updating and nothing happened" (23 Sep).
+let nodesClaudeSaid = {};
 function nodeClaudeSection(n){
   const cc = state?.claude_code || {};
   const me = cc.nodes?.[n.id] || {};
   const se = n.reported?.session;
   const inst = me.installed || "";
   const latest = cc.latest || "";
+  const stale = nodeStale(n);
   let status, cls;
   if (!se || typeof se !== "object" || !se.up) [status, cls] = ["no session account", "warn"];
   else if (me.updating) [status, cls] = ["updating", "warn"];
@@ -352,23 +357,32 @@ function nodeClaudeSection(n){
   const known = latest ? `latest ${latest}, ${checked}`
     : cc.error ? `could not check: ${cc.error}` : checked;
   const open = (state?.sessions || []).filter(s => s.node_id === n.id && tmuxBase(s.name).startsWith("claude-")).length;
+  const auto = !!state?.settings?.settings?.claude_autoupdate?.value;
+  const dead = !se?.up || me.updating || (inst && !me.behind) || stale;
   const body = `
     <div class="sub">${!se?.up ? "No session account here, so nothing runs Claude Code."
       : inst ? `The session account runs Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out.` : "."}`
       : "The session account has no Claude Code yet: Update installs it."}
       The controller asks what is out after it starts and every six hours.</div>
+    ${stale ? `<div class="sub bad">${esc(staleWhy(n))}</div>` : ""}
+    ${nodesClaudeSaid[n.id] ? `<div class="sub bad">${esc(nodesClaudeSaid[n.id])}</div>` : ""}
     <div class="actbar">
       <span class="state">${esc(known)}</span>
       <button type="button" data-nd="claude-check" ${cc.checking ? "disabled" : ""}
         title="ask now what the latest Claude Code is">Check for updates</button>
-      <button type="button" data-nd="claude-update" ${(!se?.up || me.updating || (inst && !me.behind)) ? "disabled" : ""}
+      <button type="button" data-nd="claude-update" ${dead ? "disabled" : ""}
         title="${me.updating ? "an update is queued or running here"
+               : stale ? "update the agent first: a job this controller sends could name something that agent does not know"
                : !se?.up ? "no session account to update it for"
                : inst && !me.behind ? "already on the latest known"
                : `install ${latest || "the current Claude Code"} here: ends the ${open} Claude session${open === 1 ? "" : "s"} open on this node first`}">Update</button>
     </div>
+    <label class="ndcap"><input type="checkbox" data-nd-auto="1" ${auto ? "checked" : ""}>
+      update before a session starts here when a newer one is out</label>
     <div class="sub dim">Update ends the Claude sessions here and starts none again: the project rows do.
-      A session cannot ask for this, and the copy it runs is pinned where its account cannot write it.</div>`;
+      A session cannot ask for this, and the copy it runs is pinned where its account cannot write it.
+      The box is the Settings tab's switch, one for every node: on, pressing Claude on a node that is
+      behind updates it first and asks you to press again.</div>`;
   return docSection("nodes", "claude", "Claude Code", status, body, {cls});
 }
 
@@ -1296,6 +1310,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                rename: "Renaming", turns: "Saving"}[act] || "Working");
       if (act === "claude-check"){
         const j = await nodeAct({action: "claude-check", id});
+        nodesClaudeSaid[id] = j.error || (j.version ? "" : `checked; the download service gave no version${j.error ? ": " + j.error : ""}`);
         if (j.error) notify(j.error, true);
         else notify(j.version ? `the latest Claude Code is ${j.version}` : "checked; the download service gave no version");
         refresh();
@@ -1303,9 +1318,10 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       }
       if (act === "claude-update"){
         const j = await nodeAct({action: "claude-update", id});
+        nodesClaudeSaid[id] = j.error || "";
         if (j.error) notify(j.error, true);
         else notify(`Claude Code update queued${j.ended?.length ? `; ${j.ended.length} session${j.ended.length === 1 ? "" : "s"} ended` : ""}: the row follows the job`);
-        refresh();
+        loadNodes(); refresh();
         return;
       }
       if (act === "update-agent"){
@@ -1390,6 +1406,18 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     }
     // The same for the limit on sessions working at once, in the Sessions
     // section: a number is typed across a heartbeat as easily as a path.
+    // The Claude Code section's switch: the Settings tab's own setting,
+    // written the same way, so one box changes it for every node.
+    const ca = box.querySelector("[data-nd-auto]");
+    if (ca) ca.onchange = async () => {
+      try{
+        const j = await (await postJSON("/api/settings", {set: {claude_autoupdate: ca.checked}})).json();
+        if (j.error){ notify(j.error, true); ca.checked = !ca.checked; return; }
+        notify(ca.checked ? "Claude Code is updated before a session starts on a node that is behind"
+                          : "a node stays on the Claude Code it has until Update is pressed");
+        refresh();
+      }catch(e){ notify("could not save the setting: " + e, true); ca.checked = !ca.checked; }
+    };
     const ti = box.querySelector('[data-k="turns"]');
     if (ti){
       ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };

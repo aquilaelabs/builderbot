@@ -3696,10 +3696,13 @@ a session changes nothing that runs (the auto-updater is off there too).
 Nothing starts again on its own: the project rows do, when you press
 them, and until the job ends those rows are held with the reason. The
 node action is an administrator's, so a session's token is refused, and
-no `bb` verb reaches it. **Keep Claude Code current on the nodes** on the
-Settings tab, off by default, lets the controller update a node itself
-when its check finds a newer version out and no Claude session is open
-there; off, a node stays on what it has until you press.
+no `bb` verb reaches it. **Update Claude Code before a session starts**,
+a switch on the Settings tab and on each node's section, is off by
+default: off, a node stays on what it has until you press Update; on,
+pressing Claude on a node that is behind updates it first, the start is
+held with the reason, and you press again when the row comes back. An
+open conversation is never ended for it. A press refused for any reason
+says so on the section, not only in a toast.
 
 **A token lasts twelve hours, and a conversation can last longer.** One is
 minted per connection, so opening the session's tab refreshes it, but the

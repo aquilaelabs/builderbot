@@ -59,6 +59,7 @@
 - The project job the sidebar shows is read from the status poll's own slot rather than a copy that could drift from it; the dev-instance verbs are answered by devapp.py, with server.py holding only the gate (3eb37f1)
 - A project that cannot start a Claude session says why under its name, in red: no node picked, or its node's agent out of window. The dead button's tooltip carried the reason alone, which is nothing on a phone (64bd3c5)
 - The tab limit counts terminal tabs only (shells and Claude sessions), per account: a Nodes or Docker tab beside twelve shells opens, and the toast says which limit it is (ca37ee7)
+- The Claude Code switch means update before a session starts: on, pressing Claude on a node that is behind updates it first and asks you to press again; it sits on each node's section as well as the Settings tab, off by default (3475fe7)
 
 ### Removed
 
@@ -99,6 +100,8 @@
 - A node whose agent is the same number as the controller's but a different file is told so by digest, instead of 'runs 0.6.92 and ships 0.6.92' (8d15eca)
 - bb map now indexes an arrow with an expression body as a function (606 on the page side were in no answer), and a build drops the index files older readers left behind (03f9c14)
 - bb map who-calls sees a Python function passed by name, the way it does for the brace languages (8cf7f00)
+- A Claude Code update press refused for any reason (the node's agent behind, no session account) says so on the node's section, and Update is dead with that reason while the agent is behind; the toast was the only word before (3475fe7)
+- The Claude Code update pins the version it asked for from the installer's own versions directory, not whatever the launcher points at; a lab node's stand-in launcher had it pin the old one (3475fe7)
 
 ### Security
 

@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.94"
+AGENT_VERSION = "0.6.95"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3351,9 +3351,9 @@ class Agent:
         # root-owned, so `claude update` typed in a session changes nothing
         # that runs here, and the auto-updater is off (bb-tty).
         pinned = [CLAUDE_DIR] if os.access(os.path.join(CLAUDE_DIR, "claude"), os.X_OK) else []
-        env["PATH"] = ":".join(pinned + [os.path.join(bbdir, "scripts"),
-                                os.path.join(home, ".local", "bin"),
-                                os.path.join(home, ".npm-global", "bin"), env["PATH"]])
+        env["PATH"] = ":".join([os.path.join(bbdir, "scripts")] + pinned
+                               + [os.path.join(home, ".local", "bin"),
+                                  os.path.join(home, ".npm-global", "bin"), env["PATH"]])
         # AVDs under the account's own ~/.android rather than the data store,
         # which the job account owns: a session's `bb emu create` has to be
         # able to write where its emulator keeps state.
@@ -3794,8 +3794,19 @@ class Agent:
         if code != 0:
             job.say(f"the installer exited {code}\n")
             return "failed", code
+        # The binary the installer just put down: the version it was asked
+        # for under ~/.local/share/claude/versions when that is there, else
+        # whatever the launcher resolves to. The launcher itself is not
+        # trusted: on a lab node it is a stand-in the installer leaves in
+        # place, and pinning that pinned the old version (23 Sep).
         exe = os.path.join(home, ".local", "bin", "claude")
-        out, dead = _probe([exe, "--version"], timeout=20) if os.access(exe, os.X_OK) else ("", "no claude in ~/.local/bin after the install")
+        want = str(spec.get("to") or "")
+        fresh = os.path.join(home, ".local", "share", "claude", "versions", want) if want else ""
+        src = fresh if fresh and os.access(fresh, os.X_OK) else (os.path.realpath(exe) if os.access(exe, os.X_OK) else "")
+        if not src:
+            job.say("installed, but no claude to run: nothing under ~/.local/bin or ~/.local/share/claude/versions\n")
+            return "failed", 70
+        out, dead = _probe([src, "--version"], timeout=20)
         if dead:
             job.say(f"installed, but it does not run: {dead}\n")
             return "failed", 70
@@ -3804,7 +3815,7 @@ class Agent:
             try:
                 os.makedirs(CLAUDE_DIR, mode=0o755, exist_ok=True)
                 tmp = os.path.join(CLAUDE_DIR, "claude.new")
-                shutil.copy2(os.path.realpath(exe), tmp)
+                shutil.copy2(src, tmp)
                 os.chown(tmp, 0, 0)
                 os.chmod(tmp, 0o755)
                 os.replace(tmp, os.path.join(CLAUDE_DIR, "claude"))

@@ -179,34 +179,47 @@ def update(principal, node_id):
     return r
 
 
-def auto_update():
-    """With the setting on: update every live node that is behind and has no
-    Claude session open, now. Never one with a session: a conversation is
-    not interrupted for a version. Returns the node names it queued for."""
-    if not auto or not auto() or nodes is None:
-        return []
-    busy = {s.get("node_id") for s in (node_sessions() if node_sessions else [])
-            if tmux_base(s["name"]).startswith("claude-")}
-    out = []
-    for n in nodes.node_list():
-        if n.get("kind") != "agent" or not n.get("live") or not behind(n) \
-                or updating(n["id"]) or n["id"] in busy:
-            continue
-        if not update("system", n["id"]).get("error"):
-            out.append(n["name"])
-    return out
+def start_hold(project, node_id):
+    """A sentence when a Claude session on this node has to wait for Claude
+    Code, or "". Two cases. An update already running there holds every
+    start until it ends. And with the setting on (claude_autoupdate), a
+    node behind what is out is updated first, right here, at the moment a
+    session is asked for: the sessions it would end are none, since this
+    one has not started and the check below refuses if any other is open,
+    and the person pressing is told to press again when the row comes
+    back. The setting is off by default, so a node stays on what it has
+    until Update is pressed."""
+    n = nodes.node(node_id) if nodes else None
+    if not n or n.get("kind") != "agent":
+        return ""
+    if updating(node_id):
+        return (f"Claude Code is updating on {n['name']}: press Claude on {project} again when its "
+                "row comes back")
+    if not auto or not auto() or not behind(n) or not n.get("live"):
+        return ""
+    if nodes.agent_stale(n):
+        return ""                     # the job would be refused; the row already says why
+    if any(s.get("node_id") == node_id and tmux_base(s["name"]).startswith("claude-")
+           for s in (node_sessions() if node_sessions else [])):
+        return ""                     # somebody's conversation is open there: not now
+    r = update("system", node_id)
+    if r.get("error"):
+        return ""
+    return (f"Claude Code {installed(n)} on {n['name']} is being updated to {latest()['version']} before "
+            f"this session starts (Keep Claude Code current is on): press Claude on {project} "
+            "again when its row comes back")
 
 
 def start():
     """The check on a schedule: once soon after the controller starts, then
-    every six hours, each followed by the automatic update where the
-    setting asks for it. A daemon thread, so it dies with the server."""
+    every six hours. A daemon thread, so it dies with the server. The
+    update itself is never on this clock: a press, or a session's start
+    with the setting on (start_hold)."""
     def loop():
         time.sleep(CHECK_DELAY)
         while True:
             try:
                 check()
-                auto_update()
             except Exception as e:                                  # noqa: BLE001 (a loop must not die)
                 print(f"dashboard: claude code check: {e}", flush=True)
             time.sleep(CHECK_EVERY)

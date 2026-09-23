@@ -2409,7 +2409,7 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     }, 60000);
     ok(/Installing Claude Code \(stub\)/.test(cfin?.log || '') && existsSync(`${DIR}/claude-installer.log`),
        `the agent runs the installer as the session account and streams its words (${cfin?.state})`);
-    ok(cfin?.state === 'failed' ? /does not run|no claude in/.test(cfin.log || '') : /is what a session here runs now/.test(cfin?.log || ''),
+    ok(cfin?.state === 'failed' ? /does not run|no claude in|no claude to run/.test(cfin.log || '') : /is what a session here runs now/.test(cfin?.log || ''),
        `...and says what runs afterwards, or why nothing does (${(cfin?.log || '').trim().split('\n').slice(-1)[0]?.slice(0, 90)})`);
   }
 
