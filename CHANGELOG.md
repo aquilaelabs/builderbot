@@ -31,6 +31,7 @@
 - Offer dev features lives in the Settings tab's Debugging dialog now (Debug mode on, then Debug settings), where the refusals that name it point. (929095b)
 - What a toolchain adds to a session lives under bb tool NAME (bb tool graphics, bb tool diagrams), so two toolchains may both have a render and none can shadow a verb of bb's own; bb img, bb favicon and bb diagram are gone (8670fff)
 - The Nostromo scheme wears the ship: hull plating behind the page, ribbing down the left gutter, a stencilled plate mark on each open card and a glyph strip across the header, all hand-drawn SVG, faint, and never under text (7abef33)
+- The Nostromo decals are louder and reach the phone: plating at a fifth and on the document panes, ribbing in the gutter at any width, the card plate mark on every open card (509b23b)
 
 ### Removed
 

@@ -220,12 +220,11 @@ html[data-theme="ash"],.sw[data-theme="ash"]{
    shipped in the layer that gets rebuilt weekly, for something a few paths
    say.
 
-   The restraint is deliberate and worth writing down, because the temptation
-   here is to keep going. Everything below is either at the edge of a surface
-   or faint: each decal's opacity is baked into its file, the plating at 7%,
-   nothing under text above a third. This is a page somebody reads a stack
-   trace on, and a texture you notice twice is a texture that is in the way
-   the third time. */
+   Loud enough to be seen on a phone, which the first cut was not: each
+   decal's opacity is baked into its file, the plating at a fifth, the marks
+   and glyphs about a half, and the plating is the only thing that goes
+   under text, on the document panes. A card's own face stays clean: that
+   is where a stack trace is read. */
 
 /* Hazard striping, at the one place a ship would actually put a decal: the
    bottom edge of the header, where the chrome ends and the work begins. */
@@ -288,12 +287,30 @@ html[data-theme="nostromo"] body::before{
     radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 60%),
     url(/static/nostromo/plate.svg) repeat}
 
-/* The hull's ribbing, down the page's left gutter: main's own 10px padding,
-   so it occupies space the layout already leaves empty and moves nothing.
-   Not on a phone, where the gutter is 8px and the eye has less room. */
+/* The hull's ribbing, down the page's left gutter: main's own padding, 10px
+   on a desktop and 8 on a phone, so it occupies space the layout already
+   leaves empty and moves nothing. */
+html[data-theme="nostromo"] main{
+  background:url(/static/nostromo/ribs.svg) repeat-y left top}
+/* The plating again on the document panes, which cover the body's: a tab's
+   page is the surface the eye rests on, and with it bare the hull showed
+   only in the gaps. Plain documents only: the notebook and the flush tabs
+   are panel-coloured and dense, and keep their scanlines. */
+html[data-theme="nostromo"] .pane .doc:not(.nbhost):not(.flush){
+  background-image:url(/static/nostromo/plate.svg)}
+/* A stencilled plate mark in an open card's bottom-right corner, the way
+   a ship numbers its panels. Absolute in the card's own box (already
+   position:relative for the resume chooser), pointer-events off, and
+   BEHIND the card's content: the card isolates so z-index:-1 lands above
+   its own background and under its buttons, where the first cut painted
+   the mark over Sign out. Open cards only: on a closed card it sat in the
+   title row beside the fold mark. */
+html[data-theme="nostromo"] .card{isolation:isolate}
+html[data-theme="nostromo"] .card:not(.closed)::after{
+  content:"";position:absolute;right:6px;bottom:4px;width:64px;height:26px;
+  z-index:-1;pointer-events:none;
+  background:url(/static/nostromo/corner.svg) no-repeat}
 @media(min-width:901px){
-  html[data-theme="nostromo"] main{
-    background:url(/static/nostromo/ribs.svg) repeat-y left top}
   /* The ship's glyphs across the header's empty middle. The two flat bands
      of panel colour keep them out from under the title on the left and the
      controls on the right, so nothing is ever read through them. */
@@ -302,19 +319,6 @@ html[data-theme="nostromo"] body::before{
         rgba(0,0,0,0) 300px calc(100% - 480px), var(--panel) calc(100% - 480px)),
       url(/static/nostromo/glyphs.svg);
     background-repeat:no-repeat,repeat-x;background-position:0 0,0 center}
-  /* A stencilled plate mark in an open card's bottom-right corner, the way
-     a ship numbers its panels. Absolute in the card's own box (already
-     position:relative for the resume chooser), pointer-events off, and
-     BEHIND the card's content: the card isolates so z-index:-1 lands above
-     its own background and under its buttons, where the first cut painted
-     the mark over Sign out. Open cards only, and desktop only: on a closed
-     card it sat in the title row beside the fold mark, and on a phone
-     every card is closed. */
-  html[data-theme="nostromo"] .card{isolation:isolate}
-  html[data-theme="nostromo"] .card:not(.closed)::after{
-    content:"";position:absolute;right:6px;bottom:4px;width:64px;height:26px;
-    z-index:-1;pointer-events:none;
-    background:url(/static/nostromo/corner.svg) no-repeat}
 }
 
 /* The buttons read as machined rather than drawn: a hairline highlight along
