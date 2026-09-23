@@ -4033,12 +4033,16 @@ a bottom bar, not the tabs a browser page needs. Sign in with the
 dashboard's address and your account; the credential is kept in the
 device's encrypted preferences.
 
-**Notifications.** A foreground service polls the dashboard on the interval
-you set and posts what the bell would show: a session asking for your phone
-or for root on a node arrives as a notification with **Approve** and
-**Deny** on it, answered without opening the app; changes a session has
-waiting, and a node whose agent is behind or out of window, arrive as notes
-that open the right screen. There is no push service: the phone reaches
+**Notifications.** The app asks the dashboard what the bell would show and
+posts it: on the interval you set while the app is open, and about once a
+minute in the background through an inexact alarm, so nothing stays in the
+shade between questions and the icon carries no dot of its own. A session
+asking for your phone or for root on a node arrives as a notification with
+**Approve** and **Deny** on it, answered without opening the app; changes a
+session has waiting, and a node whose agent is behind or out of window or
+whose Claude Code is behind, arrive as notes that open the right screen. A
+phone left alone can hold the alarm back for some minutes, which is why the
+dashboard's bell carries the same questions. There is no push service: the phone reaches
 your BuilderBot directly, on your network or over your tailnet, so nothing
 needs an account with anybody, and nothing is kept in the repository.
 

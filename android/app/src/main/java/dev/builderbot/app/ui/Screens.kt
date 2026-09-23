@@ -50,7 +50,7 @@ import androidx.navigation.NavHostController
 import dev.builderbot.app.Api
 import dev.builderbot.app.BuildConfig
 import dev.builderbot.app.Store
-import dev.builderbot.app.WatchService
+import dev.builderbot.app.Watch
 import dev.builderbot.app.arr
 import dev.builderbot.app.bool
 import dev.builderbot.app.int
@@ -199,7 +199,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
                 // as a bar down the side rather than coloured words.
                 Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = if (att.any { it.bool("window") }) Bad else Warn) {
                     if (asks > 0) Text("$asks question${if (asks == 1) "" else "s"} waiting for your answer; see Approvals", color = Ink)
-                    for (a in att) Text(WatchService.attentionLine(a), color = if (a.bool("window")) Bad else Warn)
+                    for (a in att) Text(Watch.attentionLine(a), color = if (a.bool("window")) Bad else Warn)
                 }
             }
             item { SectionHead("Projects") }
@@ -255,9 +255,9 @@ fun ApprovalsScreen(store: Store) {
             val kind = a.str("kind")
             Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = if (kind == "root") Bad else Warn) {
                 Column {
-                    Text(WatchService.askTitle(a), color = Ink, fontWeight = FontWeight.SemiBold)
+                    Text(Watch.askTitle(a), color = Ink, fontWeight = FontWeight.SemiBold)
                     Text(a.str("why"), style = MaterialTheme.typography.bodyLarge)
-                    Mono(WatchService.askCommand(a))
+                    Mono(Watch.askCommand(a))
                     // A container is approved by reading its compose file: that
                     // is the request. The env file is never shown, since that
                     // is where a token would be; its keys are, so the reader
@@ -659,11 +659,11 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
             }
         }
         SectionHead("The watch", inset = false)
-        Dim("A foreground service polls the dashboard and posts what the bell would show, with Approve and Deny on the notification. No push service: the phone reaches your BuilderBot directly.")
+        Dim("The app asks the dashboard what the bell would show and posts it, with Approve and Deny on the notification: on the interval below while the app is open, and about once a minute in the background. Nothing stays in the shade between questions. No push service: the phone reaches your BuilderBot directly.")
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Watch for questions", modifier = Modifier.weight(1f))
             Switch(checked = watch, onCheckedChange = { watch = it; store.watch = it
-                if (it) WatchService.startIfWanted(context) else WatchService.stop(context) })
+                if (it) Watch.startIfWanted(context) else Watch.stop(context) })
         }
         OutlinedTextField(poll, { poll = it; it.toIntOrNull()?.let { n -> store.pollSeconds = n } },
             label = { Text("Poll every (seconds, 10 to 300)") }, singleLine = true,

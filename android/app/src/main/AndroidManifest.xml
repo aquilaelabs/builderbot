@@ -3,8 +3,6 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Installing the newer build of this app, which the More screen offers
          when the dashboard serves an API this build is behind. Android still
@@ -41,13 +39,15 @@
             </intent-filter>
         </activity>
 
-        <!-- The watch: a foreground service that polls the dashboard and
-             posts what the bell would show: a session asking for the phone
-             or for root, with Approve and Deny on the notification itself. -->
-        <service
-            android:name=".WatchService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
+        <!-- The watch in the background: an inexact alarm's receiver that
+             asks the dashboard once and posts what the bell would show, a
+             session asking for the phone or for root with Approve and Deny
+             on the notification itself. Not a foreground service (23 Sep):
+             its persistent note put a dot on the icon that read as
+             something needing attention when nothing did. -->
+        <receiver
+            android:name=".WatchReceiver"
+            android:exported="false" />
 
         <!-- Approve or Deny pressed on a notification, answered without
              opening the app. -->

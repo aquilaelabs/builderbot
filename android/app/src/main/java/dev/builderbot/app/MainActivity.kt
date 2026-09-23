@@ -42,6 +42,8 @@ import dev.builderbot.app.ui.Panel
 import dev.builderbot.app.ui.Sunk
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.repeatOnLifecycle
 import dev.builderbot.app.ui.Warn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -121,8 +123,25 @@ fun BuilderBotApp(openOn: String) {
     var waiting by remember { mutableStateOf(0) }
     BuilderBotTheme {
         if (!signedIn) {
-            LoginScreen(store) { admin -> isAdmin = admin; signedIn = true; WatchService.startIfWanted(context) }
+            LoginScreen(store) { admin -> isAdmin = admin; signedIn = true; Watch.startIfWanted(context) }
             return@BuilderBotTheme
+        }
+        // The watch while the app is open: its own clock, on the interval
+        // set under More, and nothing in the shade for it. The alarm takes
+        // over when the app is not on screen (Watch.startIfWanted).
+        val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+        LaunchedEffect(signedIn) {
+            lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                while (true) {
+                    val api = store.api()
+                    if (api != null && store.watch) {
+                        try { Watch.tick(context, api, store) }
+                        catch (e: ApiError) { if (e.status == 401 || e.status == 403) { Watch.signedOut(context); store.signOut(); signedIn = false; return@repeatOnLifecycle } }
+                        catch (e: Exception) { /* a missed round; the next one asks again */ }
+                    }
+                    kotlinx.coroutines.delay(store.pollSeconds * 1000L)
+                }
+            }
         }
         val nav = rememberNavController()
         val tabs = listOf(
@@ -159,7 +178,7 @@ fun BuilderBotApp(openOn: String) {
                 composable("project/{name}") { e -> ProjectScreen(store, e.arguments?.getString("name") ?: "") }
                 composable("approvals") { ApprovalsScreen(store) }
                 composable("nodes") { NodesScreen(store) }
-                composable("more") { MoreScreen(store, isAdmin, nav, onSignOut = { WatchService.stop(context); store.signOut(); signedIn = false }) }
+                composable("more") { MoreScreen(store, isAdmin, nav, onSignOut = { Watch.stop(context); store.signOut(); signedIn = false }) }
                 composable("users") { UsersScreen(store) }
                 composable("tools") { ToolsScreen(store, isAdmin) }
                 composable("profile") { ProfileScreen(store) }

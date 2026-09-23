@@ -1,5 +1,5 @@
-// The application: the notification channels, made once, and the watch
-// started when the account is known.
+// The application: the notification channels, made once, and the watch's
+// alarm set when the account is known.
 package dev.builderbot.app
 
 import android.app.Application
@@ -13,17 +13,17 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)
-        // Two channels, so a person can silence the watch's own persistent
-        // note without silencing the questions that wait on them.
-        nm.createNotificationChannel(NotificationChannel(CH_WATCH, "Watching the dashboard",
-            NotificationManager.IMPORTANCE_MIN).apply { description = "The connection to your BuilderBot" })
+        // The watch's own persistent note is gone (23 Sep: it put a dot on
+        // the icon that read as something needing attention); its channel
+        // goes with it on a phone that had the older app.
+        nm.deleteNotificationChannel(CH_WATCH)
         nm.createNotificationChannel(NotificationChannel(CH_ASK, "Needs your answer",
             NotificationManager.IMPORTANCE_HIGH).apply {
             description = "A session asking for your phone, or for a root command on a node" })
         nm.createNotificationChannel(NotificationChannel(CH_NOTE, "Attention",
             NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Changes waiting for approval, and nodes that need an update" })
-        WatchService.startIfWanted(this)
+        Watch.startIfWanted(this)
     }
 
     companion object {
@@ -37,6 +37,6 @@ class App : Application() {
 // there after a page load.
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) WatchService.startIfWanted(context)
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) Watch.startIfWanted(context)
     }
 }

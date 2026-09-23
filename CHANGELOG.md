@@ -32,6 +32,7 @@
 - Keep Claude Code current on the nodes, a Settings switch off by default: on, a node behind is updated when no Claude session is open there; a session can never ask for an update (6fe8d3f)
 - Each node's row has a Claude Code section: the version it runs against the latest, Check for updates, and Update, which ends the Claude sessions there first and pins the new copy where a session cannot change it; the bell says when a node is behind (6fe8d3f)
 - bb map find and who-calls print what a function says about itself, the comment directly above it or its docstring's first sentence, so an address comes with its reason (3331a36)
+- The companion app notes a node whose Claude Code is behind, the way it notes an agent behind (7e7a0cd)
 
 ### Changed
 
@@ -60,6 +61,7 @@
 - A project that cannot start a Claude session says why under its name, in red: no node picked, or its node's agent out of window. The dead button's tooltip carried the reason alone, which is nothing on a phone (64bd3c5)
 - The tab limit counts terminal tabs only (shells and Claude sessions), per account: a Nodes or Docker tab beside twelve shells opens, and the toast says which limit it is (ca37ee7)
 - The Claude Code switch means update before a session starts: on, pressing Claude on a node that is behind updates it first and asks you to press again; it sits on each node's section as well as the Settings tab, off by default (3475fe7)
+- The companion app keeps no persistent notification: it asks the dashboard on its own clock while open and by an inexact alarm about once a minute in the background, so nothing sits in the shade between questions and the icon carries no dot of its own (7e7a0cd)
 
 ### Removed
 
