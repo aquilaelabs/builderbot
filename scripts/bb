@@ -233,6 +233,14 @@ cmd_status() {
         printf '  %-8s %s\n' means \
             "builds go to this project's node; bb nodes says which"
     fi
+    # Which credential bb is reaching the controller with and how long it
+    # lasts. A session token renews itself on every call and the agent keeps
+    # an idle session's fresh, so the copy in the environment is usually the
+    # OLDER one and reads as expired to anything that looks only there: a
+    # session reported exactly that as a fault once. Said here so renewal is
+    # something to see rather than to trust.
+    local tl; tl="$(bb_token_line)"
+    [ -z "$tl" ] || printf '  %-8s %s\n' token "$tl"
     echo
     echo "== versions =="
     # First, because it is the identity of everything under it: every version
@@ -4368,6 +4376,37 @@ bb_token_dead() {
     local e; e="$(bb_token_exp "${1:-}")"
     [ -n "$e" ] || return 1                  # not a session token: not ours to judge
     [ "$e" -le "$(date +%s)" ]
+}
+
+# One line for bb status: which copy of the session token is in use, where
+# it came from and when it runs out, so a person can see renewal working.
+bb_token_line() {
+    local t="${BB_TOKEN:-}" now; now="$(bb_token_now)"
+    local when=""
+    if [ -z "$now" ]; then
+        [ -n "${DASHBOARD_AUTH:-}" ] && printf 'none; the operator credential (DASHBOARD_AUTH) reaches the controller'
+        return 0
+    fi
+    bb_token_dead "$now" && {
+        printf 'expired%s; open this session'"'"'s tab from the dashboard and the next command works' \
+            "$(bb_token_when "$now")"; return 0; }
+    if [ "$now" = "$t" ]; then
+        printf 'the environment'"'"'s, expires%s (renews on every call past half its life)' "$(bb_token_when "$now")"
+    else
+        when="$(bb_token_when "$now")"
+        if [ -n "$t" ] && bb_token_dead "$t"; then
+            printf 'the kept copy, expires%s; the environment'"'"'s ran out%s and is not what bb sends' \
+                "$when" "$(bb_token_when "$t")"
+        else
+            printf 'the kept copy (renewed by calls and the agent), expires%s' "$when"
+        fi
+    fi
+}
+
+# " 23 Sep at 21:12" for a token, or "" when it carries no expiry.
+bb_token_when() {
+    local e; e="$(bb_token_exp "${1:-}")"
+    [ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null || true
 }
 
 # The session token to use now: the one in the environment unless it has

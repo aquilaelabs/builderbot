@@ -3687,6 +3687,10 @@ An expired token is never renewed, which is what keeps twelve hours meaning
 something for one that leaked. This came from a session driven from the
 remote view overnight: the token from the tab it was started in ran out at
 one in the morning, every `bb` verb stopped, and there was no tab to open.
+`bb status` says which copy is in use and when it runs out (the
+environment's, or the kept one once that has been renewed past it), so
+renewal is something to see: a session reading only its environment once
+reported a token that had been replaced hours earlier as expired.
 
 #### Accounts
 

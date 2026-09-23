@@ -21,6 +21,7 @@
 - bb tests coverage runs the suite with a counter in every function, and bb map covered, uncovered and unused answer which suites reach a function, what none reaches, and what nothing calls or passes by name (a8d258e)
 - The node agent is under measured test: its self-update runs for real in the suite, the wicked and dhcpcd network writers are driven, and bb map covered reports the agent at 197 of 206 functions reached (7f621e0)
 - bb lint and the lint workflow fail when the node agent's file changes without AGENT_VERSION moving: a node compares the file and the Nodes tab names the number, and the two had disagreed (9505eee)
+- bb status names the session token in use, where it came from and when it expires, so a renewed token is visible instead of an environment copy reading as expired (4649cfd)
 
 ### Changed
 
