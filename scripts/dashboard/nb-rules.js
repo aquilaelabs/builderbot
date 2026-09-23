@@ -3,7 +3,16 @@
 // script beside index.html (docs/nodes.md §13): one file per notebook view
 // (R60). A factory makeNotebook calls per notebook.
 function nbRulesView({$, nb, project}){
-  async function loadRules(again = false){
+  // One answer for the several askers of a first show (B218): the view
+  // switch, the view shown again before the first answer landed, and the
+  // poll's watch all asked while nothing was loaded yet, and a notebook's
+  // first open fetched the rules and the code base three times over.
+  function loadRules(again = false){
+    if (nb.rulesInFlight && !again) return nb.rulesInFlight;
+    nb.rulesInFlight = loadRulesNow(again).finally(() => { nb.rulesInFlight = null; });
+    return nb.rulesInFlight;
+  }
+  async function loadRulesNow(again){
     nb.loadCodebase().then(() => drawRules());
     try{
       const r = await fetch("/api/rules?project=" + encodeURIComponent(project));
@@ -18,7 +27,7 @@ function nbRulesView({$, nb, project}){
     // Already behind (see nb-tests.js): read once more now, unless somebody
     // is typing, which is the case the poll's own guard keeps.
     if (!again && nb.ruleData.rev !== undefined && revs[`rules:${project}`] !== undefined
-        && revs[`rules:${project}`] !== nb.ruleData.rev && !ruleDirty()) return loadRules(true);
+        && revs[`rules:${project}`] !== nb.ruleData.rev && !ruleDirty()) return loadRulesNow(true);
   }
 
   // The global rules, read-only, under the project's own. The server has always

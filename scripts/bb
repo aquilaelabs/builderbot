@@ -2974,9 +2974,12 @@ cmd_tests() {
         printf '  suites:  %s\n' "${suites[*]:-none}"
         printf '  checks:  %s\n' "${checks[*]}"
         [ -z "$dry" ] || return 0
-        local rc=0
-        if [ "${suites[*]:-}" = ALL ]; then cmd_dashboard test || rc=1
-        elif [ "${#suites[@]}" -gt 0 ]; then cmd_dashboard test "${suites[@]}" || rc=1; fi
+        # Not cmd_dashboard test, which execs the harness and would end this
+        # verb before its checks: the harness is run as a child here.
+        local rc=0 here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh"
+        [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
+        if [ "${suites[*]:-}" = ALL ]; then bash "$here" || rc=1
+        elif [ "${#suites[@]}" -gt 0 ]; then bash "$here" "${suites[@]}" || rc=1; fi
         local c
         for c in "${checks[@]}"; do
             # design is uniform.mjs, already in the run when it is listed

@@ -11430,8 +11430,8 @@ onRev("emulator", () => {
 // (docs/nodes.md §13).
 onRev("nodes", () => {
   if (tabs.some(t => t.kind === "nodes")) loadNodes();
-  // A node's census carries its images.
-  if (tabs.some(t => t.kind === "emulator")) loadEmulator();
+  // A node's census carries its images: refetched only when they moved.
+  if (tabs.some(t => t.kind === "emulator")) emuOnNodes();
   // ...and the Runner card, which is drawn off the status poll: a job on a
   // node moves this rev, so the card says "installing now" and then the
   // result inside a second or two instead of at the next fifteen-second poll.

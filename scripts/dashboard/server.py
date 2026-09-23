@@ -17,6 +17,7 @@ import gzip
 import hashlib
 import hmac
 import ipaddress
+import collections
 import json
 import os
 import sys
@@ -2028,6 +2029,51 @@ def _versioned_page(raw, tag):
     return out, 'W/"' + hashlib.sha256("|".join(parts).encode()).hexdigest()[:24] + '"'
 
 
+# ---- the request trace (R75 step 4) -----------------------------------------
+# Every request this server answered, lately: when, the method, the path with
+# its query keys, and who (a person, a session, an agent, the companion app)
+# by the user agent and the principal the handler proved. A ring, in memory,
+# because the question it answers is "what is the page asking for right
+# now": the adb probe that put a row a minute on the Jobs tab and the tab
+# that asked for its listing three times were both visible in one such
+# window and invisible everywhere else. /api/trace reads it; `bb dashboard
+# trace` prints it. Nothing here is persisted.
+_TRACE = collections.deque(maxlen=6000)
+_trace_lock = threading.Lock()
+
+
+def trace_note(handler):
+    # A note beside the request, never a fault in it: whatever goes wrong
+    # here is swallowed, since the answer has already been sent.
+    with contextlib.suppress(Exception):
+        path, _, query = handler.path.partition("?")
+        keys = "&".join(sorted(k for k in urllib.parse.parse_qs(query, keep_blank_values=True)))
+        ua = (handler.headers.get("User-Agent") or "")[:40]
+        who = getattr(_writing, "who", None) or {}
+        by = ("session" if who.get("session") else "agent" if path.startswith("/api/v1/agent")
+              else "user" if who.get("name") else "anon")
+        with _trace_lock:
+            _TRACE.append((time.time(), handler.command, path, keys, by, ua))
+
+
+def trace_since(since):
+    now = time.time()
+    with _trace_lock:
+        rows = [r for r in _TRACE if r[0] >= since]
+    groups = {}
+    for t, method, path, keys, by, ua in rows:
+        agent = ("app" if "BuilderBot" in ua else "curl" if ua.startswith("curl")
+                 else "browser" if "Mozilla" in ua else (ua.split("/")[0] or "?"))
+        key = (method, path + ("?" + keys if keys else ""), by, agent)
+        g = groups.setdefault(key, {"n": 0, "first": t, "last": t})
+        g["n"] += 1
+        g["first"] = min(g["first"], t)
+        g["last"] = max(g["last"], t)
+    out = [{"method": k[0], "path": k[1], "by": k[2], "agent": k[3], **v} for k, v in groups.items()]
+    out.sort(key=lambda r: -r["n"])
+    return {"since": since, "now": now, "total": len(rows), "rows": out}
+
+
 def image_stamp():
     """Which build of the image this container is running.
 
@@ -2346,7 +2392,20 @@ roadmap.configure(write_json=write_json, state=STATE, tell=notify.tell,
 # join them itself in shell; it asks for this now, and the Briefing tab draws
 # the same string rather than its own idea of it.
 import preamble                                                  # noqa: E402
-preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs)
+def live_block():
+    """The build this controller is running, for the briefing every session
+    starts with (R75 step 5): the fact a session otherwise assumes. Short,
+    and pointing at the verbs that answer the rest."""
+    st = image_stamp()
+    what = st.get("version") or (st.get("rev") or "")[:12] or "an unstamped image"
+    when = f", built {st['built']}" if st.get("built") else ""
+    return ("## What is live\n\n"
+            f"The controller is BuilderBot {what}{when}. A fix pushed since is not "
+            "running until the operator rebuilds; `bb status` says what is, `bb catchup` "
+            "what changed since, and this line is from the moment this session started.")
+
+
+preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, live=live_block)
 
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card; see the module docstring
@@ -2733,7 +2792,7 @@ def revisions(who=None, projects=None):
         revs[f"roadmap:{n}"] = (nb_revs.get(n) or {}).get("roadmap", 0)
         revs[f"bug:{n}"] = bug_revs.get(n, 0)
         revs[f"tests:{n}"] = test_revs.get(n, 0)
-        revs[f"rules:{n}"] = rule_revs.get(n, 0)
+        revs[f"rules:{n}"] = rule_revs.get(n, rules.EMPTY_REV)
         revs[f"pending:{n}"] = pend_revs.get(n, 0)
         if who is not None:
             revs[f"mem:{n}"] = memory.census(
@@ -2945,6 +3004,7 @@ def snapshot(who):
 # its scripts) stay in _get, in front of the credential check (R60).
 GET_ROUTES = (
     ("prefix", "/api/revs", "_get_revs"),
+    ("prefix", "/api/trace", "_get_trace"),
     ("prefix", "/api/status", "_get_status"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
@@ -3723,7 +3783,10 @@ class Handler(BaseHTTPRequestHandler):
         the one failure mode that looks identical to the container being gone.
         """
         try:
-            return fn()
+            try:
+                return fn()
+            finally:
+                trace_note(self)
         except Exception as e:                          # noqa: BLE001 (last resort)
             try:
                 self._json({"error": f"{type(e).__name__}: {e}"}, 500)
@@ -3820,6 +3883,23 @@ class Handler(BaseHTTPRequestHandler):
             if (self.path == route) if how == "exact" else self.path.startswith(route):
                 return getattr(self, name)()
         self._json({"error": "not found"}, 404)
+
+    def _get_trace(self):
+        """GET /api/trace?since=T: what this server was asked since T,
+        grouped by endpoint (R75 step 4). For an admin or a session: the
+        page's own behaviour is what it describes, and a session diagnosing
+        a tab that asks too much is the reader it exists for. Paths and
+        query KEYS only, never values: a project's name in a query is the
+        one thing here that is somebody's."""
+        who = self._who()
+        if not who or not (users.is_admin(who) or who.get("session")):
+            return self._json({"error": "the trace is for an administrator or a session"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        try:
+            since = float((q.get("since") or ["0"])[0])
+        except ValueError:
+            since = 0.0
+        return self._json(trace_since(since))
 
     def _get_revs(self):
         """GET /api/revs."""

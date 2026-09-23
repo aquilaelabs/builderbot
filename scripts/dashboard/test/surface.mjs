@@ -45,7 +45,7 @@ const SURFACE = [
   'closeNewProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
   'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
-  'dmState', 'dmWireRows', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'menuHolds', 'dmNodesKey', 'busy', 'unbusy', 'dockerJob', 'drawAuth', 'drawBell', 'drawBuild',
+  'dmState', 'dmWireRows', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'menuHolds', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawAuth', 'drawBell', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
   'drawCard', 'drawPanes', 'drawProjects', 'drawRunner', 'drawSessions',
   'drawShellCard', 'drawTabs', 'drawTrash', 'drawUiMenu', 'dressFrame',

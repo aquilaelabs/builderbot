@@ -15,8 +15,8 @@ let usersErr = "";
 let usersMeta = {owner: "", me: "", roles: [], projects: []};
 
 function openUsersTab(){
+  // The kind's open hook loads; a second load here asked twice for one press.
   openTab({kind: "users", arg: "__users", label: "Users"});
-  loadUsers();
 }
 
 async function loadUsers(){

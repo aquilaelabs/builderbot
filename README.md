@@ -619,6 +619,15 @@ kept world is not put back between runs, and a change to the dashboard's
 python needs a fresh keep; `bb tests keep stop` ends it. Both are R75's
 second step.
 
+`bb dashboard trace [SECONDS]` prints what the dashboard was asked over
+that window, by endpoint and by who asked, from a ring the server keeps in
+memory: the command that shows a poll that should not be there or a tab
+that asks twice, which nothing counted before. The design suite holds the
+matching invariant: an idle page issues only its two polls, and opening a
+tab asks each endpoint once. R75's fourth step; the fifth puts the
+running build into every session's briefing, so no session argues from a
+build it assumed.
+
 `bb tests preflight` is what a session runs before a push: the files the
 branch changed, the suites the code map says reach them (a page function
 they call bare, an id or class they name, an API path a changed python

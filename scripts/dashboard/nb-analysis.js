@@ -59,11 +59,18 @@ function nbAnalysisView({$, nb, project}){
   // section, above the rules. Fetched beside them; a repository's count is
   // cached by commit on the server, so this is cheap after the first time.
   let codeData = null;
-  async function loadCodebase(){
-    try{
-      const r = await fetch("/api/codebase?project=" + encodeURIComponent(project));
-      codeData = await r.json();
-    }catch(e){ codeData = {error: String(e)}; }
+  // Asked on every show of the briefing, and by the rules load beside it:
+  // one fetch answers everyone who asks while it is in flight (B218).
+  let codeInFlight = null;
+  function loadCodebase(){
+    if (codeInFlight) return codeInFlight;
+    codeInFlight = (async () => {
+      try{
+        const r = await fetch("/api/codebase?project=" + encodeURIComponent(project));
+        codeData = await r.json();
+      }catch(e){ codeData = {error: String(e)}; }
+    })().finally(() => { codeInFlight = null; });
+    return codeInFlight;
   }
   // GitHub's colours for the languages people recognise; a hue from the
   // name for the rest, so two rare ones do not come out the same.

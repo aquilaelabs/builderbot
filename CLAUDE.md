@@ -93,6 +93,13 @@ by hand cost four commands and still could not see the failed builds.
   between runs, and its server is the kept copy's, so a change to the
   dashboard's python needs `bb tests keep stop` and a new keep; its `.js`
   and `.html` are copied over before every attached run.
+- **What the page is asking for:** `bb dashboard trace [SECONDS]` prints
+  what the server was asked over that window, by endpoint and by who
+  asked (browser, session, agent, the companion app), from a ring the
+  server keeps in memory. It is the one command that shows a poll that
+  should not be there or a tab that asks twice; `uniform.mjs` holds the
+  invariant (an idle page issues only its polls; opening a tab asks each
+  endpoint once).
 - **Before a push:** `bb tests preflight` lists the files the branch
   changed (against `origin/main`, plus the working tree), asks the map
   which suites reach them, and runs those with the lint, voice and design

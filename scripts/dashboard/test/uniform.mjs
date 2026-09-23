@@ -1100,6 +1100,49 @@ for (const kind of kinds){
      `...and names the classes the page is measured on${undocumented.length ? `; not: ${undocumented.join(', ')}` : ''}`);
 }
 
+// ---- a quiet page is quiet, and a tab opens once (R75 step 4) -------------
+// What the page asks the server for is measured, not assumed: the phone's
+// device probe filled the Jobs tab for weeks, and the Docker tab asked for
+// its listing three times per press, and nothing counted either. With
+// nothing happening the page issues its two polls and nothing else, and
+// opening a tab asks each endpoint at most once, whichever kind it is. The
+// polls, the layout save an open makes, and the node list a picker fills
+// are the allowed noise.
+{
+  const POLLS = new Set(['/api/status', '/api/revs', '/api/presence', '/api/layout', '/api/v1/nodes']);
+  await page.evaluate(() => { for (const t of [...tabs]) if (t.kind !== 'term') dropTab(t.id); });
+  await page.evaluate(() => { window.__f = {}; const f = window.fetch;
+    window.fetch = (...a) => { const u = String(a[0]).split('?')[0]; window.__f[u] = (window.__f[u] || 0) + 1; return f(...a); }; });
+  await sleep(8000);
+  const idle = await page.evaluate(() => window.__f);
+  const noise = Object.keys(idle).filter(u => !POLLS.has(u));
+  ok(noise.length === 0, `an idle page asks only its polls (${noise.length ? 'also ' + noise.join(', ') : Object.keys(idle).join(', ')})`);
+  for (const kind of Object.keys(DRIVERS)){
+    if (kind.startsWith('notebook:')) continue;
+    await page.evaluate(() => { window.__f = {}; });
+    // Attached, not visible: the count is about requests, and a tab that
+    // opens behind a switch on a narrow page has still asked for its data.
+    // The driver's own way in first; a tab whose button is ghosted right now
+    // (Analysis with nothing to analyse) is opened the way a restored layout
+    // opens it, since the count is about the open path and not the button.
+    let came = true;
+    try {
+      await DRIVERS[kind].open();
+      if (!await page.evaluate(k => tabs.some(t => t.kind === k), kind))
+        await page.evaluate(k => openTab({ kind: k, arg: '__' + k, label: k }), kind);
+      await page.waitForFunction(k => tabs.some(t => t.kind === k), kind, { timeout: 10000 });
+    } catch (e) { came = false; }
+    await sleep(1200);
+    const f = await page.evaluate(() => window.__f);
+    if (!came){ ok(false, `[${kind}] opened for the request count (did not come up: ${Object.keys(f).join(', ') || 'no fetch at all'})`); }
+    const twice = Object.entries(f).filter(([u, n]) => !POLLS.has(u) && n > 1);
+    ok(twice.length === 0, `[${kind}] opening asks each endpoint once (${twice.length ? twice.map(([u, n]) => `${u} x${n}`).join(', ') : Object.keys(f).filter(u => !POLLS.has(u)).join(', ') || 'nothing'})`);
+    // ...and closed again, so the tab cap never refuses the next one.
+    await page.evaluate(k => { for (const t of [...tabs]) if (t.kind === k) dropTab(t.id); }, kind);
+  }
+  await page.evaluate(() => { for (const t of [...tabs]) if (t.kind !== 'term') dropTab(t.id); });
+}
+
 // ---- a fold lasts for the page, and a reload starts it from the default ---
 // Open state is kept while the page lives and never stored (the design
 // language, Sections): closed by hand on a desktop, where the default is

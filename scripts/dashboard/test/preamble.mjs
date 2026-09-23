@@ -42,7 +42,7 @@ put('rules.json', { projects: {} });
 put('roadmap.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 let p = await pre();
-ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules'
+ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules'
    && /The toolchain is the store, not the machine/.test(p.text)
    && /\(global\)/.test(p.text) && p.capped === false,
    `a project with nothing set still gets the briefing and the shipped global rules (${
@@ -71,7 +71,7 @@ ok(!/\n\n\n/.test(p.text),
    '...joined by one blank line, so a store with nothing leaves no gap where it would have been');
 ok(p.bytes === Buffer.byteLength(p.text, 'utf8') && p.capped === false,
    `...and the size is the block's own (${p.bytes} bytes)`);
-ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap,bugs',
+ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules,roadmap,bugs',
    `...with each named and measured separately, the briefing first (${
      (p.parts || []).map(x => `${x.name} ${x.bytes}`).join(' · ')})`);
 
@@ -79,7 +79,7 @@ ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap,bugs',
 put('bugs.json', { projects: {} });
 p = await pre();
 ok(at('RULESMARK') >= 0 && !/BUGMARK/.test(p.text) && !/\n\n\n/.test(p.text)
-   && (p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap',
+   && (p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules,roadmap',
    'a tracker with nothing open drops out of the block entirely, gap included');
 
 // ---- the cap ---------------------------------------------------------------

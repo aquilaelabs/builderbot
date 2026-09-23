@@ -88,8 +88,9 @@ ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from 
 
 // Nested definitions are shown under their parent.
 const defs = map('defs', 'scripts/dashboard/nb-roadmap.js');
-ok(/^\d+-\d+  function drawRoadmap$/m.test(defs) && /^  \d+-\d+  arrow onclick  \(in drawRoadmap\)/m.test(defs),
-   'defs lists a file top down, a callback under the function it lives in');
+ok(/^\d+-\d+  function nbRoadmapView$/m.test(defs) && /^  \d+-\d+  function drawRoadmap  \(in nbRoadmapView\)$/m.test(defs)
+   && /^  \d+-\d+  arrow onclick  \(in drawRoadmap\)/m.test(defs),
+   'defs lists a file top down, a function under the closure it lives in and a callback under its function');
 
 // It rebuilds itself when a source is newer, and not otherwise.
 const stamp = () => readFileSync(`${REPO}/.bb-map/index.json`, 'utf8').match(/"built": ([\d.]+)/)[1];

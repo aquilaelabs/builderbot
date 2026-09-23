@@ -37,6 +37,20 @@ function emuPick(){
   return emuNode;
 }
 
+// The node registry moved (a heartbeat, every few seconds): the tab used to
+// fetch its whole listing for each one, though what it draws from a node
+// is the images the census reports. It reads the list the poll already
+// refetched and asks for the listing only when that slice changed (B216).
+let emuCensus = null;
+async function emuOnNodes(){
+  await loadNodes();
+  const n = (nodesList || []).find(x => x.id === emuNode) || null;
+  const key = JSON.stringify([(n?.reported || {}).images || [], !!n?.live, n?.state || ""]);
+  if (key === emuCensus) return;
+  emuCensus = key;
+  loadEmulator();
+}
+
 async function loadEmulator(){
   const asked = ++emuLoadSeq;
   if (nodesList === null) await loadNodes();

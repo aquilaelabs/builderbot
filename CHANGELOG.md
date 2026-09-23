@@ -16,6 +16,8 @@
 - bb map: a code map over the tree a session asks instead of grepping: find, who-calls, calls, defs, draws and suites, built from the files themselves with nothing installed and rebuilt when a source is newer (3c0fa26)
 - bb tests probe FILE runs a scratch Playwright script against the dashboard fixture like a suite, and bb tests keep holds the fixture up so a suite or a probe attaches to it and the world a suite left is there to look at (739eebb)
 - bb tests preflight: the files a branch changed, the suites the code map says reach them (a python change through the server's route table), and the lint, voice and design checks, run before a push; --dry prints the plan (77da0b7)
+- bb dashboard trace SECONDS prints what the dashboard was asked over that window, by endpoint and by who asked, and the design suite holds the matching invariant: an idle page issues only its polls, and opening a tab asks each endpoint once (e30f41e)
+- Every session's briefing now says which build the controller is running and when it was built, so no session argues from a build it assumed (e30f41e)
 
 ### Changed
 
@@ -67,6 +69,8 @@
 - bb tool diagrams render refuses two sources that share a stem, naming both, instead of the second silently overwriting the first's PNG and SVG (b2e3f0d)
 - The Roadmap view's arrows agree with the project row about whether a Claude session is running, and a dead arrow says why when pressed instead of swallowing the press (6e2466a)
 - A section closed by hand stays closed even when the tab repaints during its slide, as the Nodes tab does on every heartbeat (6e2466a)
+- The Emulator tab no longer refetches its listing on every node heartbeat, and the Jobs and Users tabs ask for their list once per press instead of twice (e30f41e)
+- A notebook's first open asks for its rules and its code base once, not three times: the poll's revision for a project with no rules now matches the answer's, and askers in flight share one fetch (e30f41e)
 
 ### Security
 

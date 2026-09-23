@@ -294,6 +294,13 @@ def _rev_of(rows):
     return sum(ord(c) * (i + 1) for i, c in enumerate(raw)) % 1000000007
 
 
+# What a project with no rules hashes to. The poll used to say 0 for a
+# project absent from the file while the payload said this, so the panel
+# read itself as behind and fetched its rules (and the code base beside
+# them) twice more on every first open (B218).
+EMPTY_REV = _rev_of([])
+
+
 def rev(project):
     """The number a save of this project's rules is checked against."""
     with _lock:
