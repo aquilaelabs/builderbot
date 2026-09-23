@@ -531,12 +531,11 @@ async function dmAction(project, instance, act, btn){
     if (act === "rebuild" && !confirm(
         (st.built_rev ? `Rebuild ${project}/${instance}?\n\nBuilds the image, then down and up. `
                       : `Build ${project}/${instance}?\n\nBuilds the first image and brings it up. `)
-        + "If the build finds new env settings it stops before up, and the Env "
-        + "editor will hold your old values in comments.")) return;
+        + "New env settings stop it before up; the Env editor keeps your old values in comments.")) return;
     if (!st.risks_ack){
       if (!confirm("This compose file asks for more than its own directory:"
           + "\n\n" + (st.risks || []).map(x => "\u2022 " + x).join("\n")
-          + "\n\nA container it starts can reach those. Start it anyway?")) return;
+          + "\n\nStart it anyway?")) return;
       ack = st.risks_digest || "";
     }
   }
@@ -783,8 +782,7 @@ async function cSubmit(){
     dockerList = null; dockerRev++; loadDocker();
     if (row?.built_rev && confirm(
           `${editing} is saved. Rebuild it now so the change takes effect?\n\n`
-          + `That takes it down and brings it back up. Cancel keeps the change `
-          + `on disk: the row will offer Rebuild whenever you want it.`)){
+          + `Cancel keeps the change on disk for a later Rebuild.`)){
       dmAction(editing, "main", "rebuild", null);
       return;
     }
@@ -948,8 +946,7 @@ function dmRowsHtml(ins, job, blind){
         `}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}
-            title="stop this build. What is already built is kept: an abort is
-for the rest of the work"
+            title="stop this build; what is already built is kept"
             >${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
         <button type="button" data-dm="rebuild" ${
           // A button that refuses is not information. This slept whenever the
@@ -970,8 +967,7 @@ for the rest of the work"
           d.built_rev ? "Rebuild" : "Build"}</button>
         ${!mayDocker() ? "" : `<button type="button" class="danger" data-dm="remove" ${
             busy ? "disabled" : ""}
-            title="take it down and drop it from this list. Its env and its data
-directory stay, so remaking it under the same name finds them">Remove</button>`}
+            title="take it down and drop it from this list; its env and data stay for a remake">Remove</button>`}
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
                    "Ports and mounts", "",
@@ -1098,9 +1094,7 @@ function dmWireRows(el, list = dockerList){
     const mode = sel?.value || "lan";
     const port = row.querySelector('[data-route="port"]')?.value || "";
     if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
-        `Open ${project}/${instance} to the internet?\n\nTailscale Funnel gives it a public `
-        + `https URL on the node: anyone with the link can reach the port. Turning the `
-        + `route back to lan closes it.`)){
+        `Open ${project}/${instance} to the internet?\n\nAnyone with the link can reach the port until the route goes back to lan.`)){
           row.querySelectorAll("[data-route]").forEach(x => { x.value = x.dataset.was; });
           btn.disabled = true; delete dmRouteDraft[row.dataset.inst]; return; }
     delete dmRouteDraft[row.dataset.inst];
@@ -1165,7 +1159,7 @@ function renderDockerInto(i){
         : "") + cs.map(c => `
     <div class="row stack2 off">
       <div class="grow">
-        <div class="name">${esc(c.name || c.id)} <span class="pill" title="BuilderBot did not start this one, so it lists it and leaves it alone">not ours</span></div>
+        <div class="name">${esc(c.name || c.id)} <span class="pill" title="not started by BuilderBot; listed and left alone">not ours</span></div>
         <div class="sub">${esc(c.image)}</div>
         <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
           c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
@@ -1228,9 +1222,7 @@ function renderDockerInto(i){
         // configuration that does nothing should not look like it does.
         (src.strays || []).length
           ? `<br><span class="dim">${esc((src.strays || []).join(", "))} ${
-              src.strays.length > 1 ? "are" : "is"} mapped but not mounted here:
-              the daemon's own, and nothing on this side checks ${
-              src.strays.length > 1 ? "them" : "it"}</span>` : ""}</div>`
+              src.strays.length > 1 ? "are" : "is"} mapped but not mounted here</span>` : ""}</div>`
     : "";
   // The picker: every node, online or not: an offline node's view is its
   // last-known list in the ghosted state the blind path draws.

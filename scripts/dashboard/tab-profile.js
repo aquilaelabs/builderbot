@@ -95,7 +95,7 @@ function renderProfileInto(i){
         <h4>On this browser</h4>
         <div class="logset">
           <div class="logdays setrow col">
-            ${lbl("pfTZ", "Time zone", "kept on this browser rather than your account, so each device shows times where it is")}
+            ${lbl("pfTZ", "Time zone", "this browser's, so each device shows its own")}
             <select id="pfTZ">${tzOptions(tzDraft ?? userTZ())}</select>
           </div>
           <div class="actbar">
@@ -120,7 +120,7 @@ function renderProfileInto(i){
             <input id="pfCur" type="password" autocomplete="current-password">
           </div>
           <div class="logdays setrow col">
-            ${lbl("pfNew", "New password", "at least 8 characters, and every browser signed in as you signs out when it changes")}
+            ${lbl("pfNew", "New password", "at least 8 characters; every browser signed in as you signs out")}
             <input id="pfNew" type="password" autocomplete="new-password">
           </div>
           <div class="logdays setrow col">
@@ -134,7 +134,7 @@ function renderProfileInto(i){
         </div>
       </div>
     </div>`;
-  d.setFoot(`Your commits carry the git name and email above in every session and shell you open, whichever project: the account name stays what you sign in with.`);
+  d.setFoot(`Your commits carry the git name and email above in every session and shell.`);
   wireProfile(d.el);
 }
 

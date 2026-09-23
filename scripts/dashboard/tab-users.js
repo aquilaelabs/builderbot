@@ -57,8 +57,7 @@ function userRow(u){
     ? (u.projects.length
         ? `<span class="sub">sees</span> ` + u.projects.map(
             p => `<span class="pill">${esc(p)}</span>`).join(" ")
-        : `<span class="sub dim">sees nothing yet; it can sign in, and every
-             project is hidden until one is given</span>`)
+        : `<span class="sub dim">sees no project yet</span>`)
     : u.role === "admin"
     ? `<span class="sub">sees every project${u.projects.length
         ? `, works on</span> ` + u.projects.map(p => `<span class="pill">${esc(p)}</span>`).join(" ")
@@ -75,9 +74,7 @@ function userRow(u){
             ? `: the same Claude account as ${u.claude_shared_with.map(esc).join(", ")}: fine while one person is behind both, since Anthropic's terms allow one person per Claude account`
             : ""}`
         : "no Claude login yet: its sessions sign in on first use"}</div>
-      ${isOwner ? `<div class="sub dim">The owner cannot be deleted or given a
-        different role; it is the account every other rule here is a guard rail
-        around. Its name can be changed.</div>` : ""}
+      ${isOwner ? `<div class="sub dim">The owner cannot be deleted or given another role.</div>` : ""}
     </div>
     <div class="actbar">
       <span class="state">${esc(seen)}</span>
@@ -97,9 +94,7 @@ function userRow(u){
 function renderUsersInto(i){
   const d = docSurface(i, "users");
   if (!d) return;
-  d.setBar(`<span class="dim">who may sign in here, and which projects they
-    see. A project somebody was not given does not appear for them at all,
-    not greyed out, absent.</span>`);
+  d.setBar(`<span class="dim">who may sign in here, and which projects they see</span>`);
   if (usersList === null){
     d.list.innerHTML = `<div class="row"><div class="sub">loading<span class="dots"></span></div></div>`;
     loadUsers();
@@ -109,21 +104,11 @@ function renderUsersInto(i){
     ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
     ${usersList.map(userRow).join("")}
     ${docSection("users", "roles", "What an account gets", "", `
-        <div class="sub">Each account has its own home: terminals, shell history,
-          Claude login and memories. The owner keeps this container's original one.</div>
-        <div class="sub">Two people on one project each get a worktree on a branch of
-          their own. The notebook stays shared; memories do not.</div>
-        <div class="sub">A <b>user</b> has no shell: their Claude session is a console,
-          and Docker and toolchains are read-only apart from Rebuild and Abort on their
-          own projects.</div>
-        <div class="sub warn">An <b>admin</b> has a shell, which reaches every account's
-          files. Give that role to people you would give the server to.</div>`)}
+        <div class="sub">Each account has its own home, Claude login and memories; two people on one project each work in a worktree of their own, sharing the notebook.</div>
+        <div class="sub">A <b>user</b> has no shell and sees only the projects given to them.</div>
+        <div class="sub warn">An <b>admin</b> has a shell that reaches every account's files: give that role to people you would give the server to.</div>`)}
     ${docSection("users", "add", "Add somebody", "", `
-        <div class="sub">An <b>admin</b> can do anything except act on the owner. A
-          <b>user</b> gets only the projects you give them, and cannot delete, rename
-          or move one to another node.</div>
-        <div class="sub">An admin sees every project and works on the ones on their
-          list; a user sees only their list.</div>
+
         <div class="uadd">
           <div class="setrow col">${lbl("uNewName", "Account name")}
             <input id="uNewName" autocomplete="off"></div>
@@ -149,8 +134,7 @@ function renderUsersInto(i){
 function wireUsers(el){
   el.querySelectorAll("[data-uremove]").forEach(b => b.onclick = () => {
     const n = b.dataset.uremove;
-    if (confirm(`Remove ${n}? They lose access immediately: any session they `
-                + `have signed in with stops working on the next request.`))
+    if (confirm(`Remove ${n}? They lose access immediately.`))
       usersAct({action: "remove", name: n});
   });
   // A role is saved on Save, not on the change: the select is a question
@@ -205,8 +189,8 @@ function usersEditOpen(name){
     ${f("uePw", "New password", "", "password", 'autocomplete="new-password"', "blank keeps the current one. Set without the old one, which is the way back in for somebody locked out")}
     <div class="field" id="ueProjField"${u.role === "owner" ? " hidden" : ""}>
       ${u.role === "admin"
-        ? lbl("", "Projects this account works on", "an admin sees every project and works on the ones ticked here; the rest are read-only for them")
-        : lbl("", "Projects this account sees", "a project not on the list does not appear for them at all")}
+        ? lbl("", "Projects this account works on", "the rest are read-only for them")
+        : lbl("", "Projects this account sees", "the rest do not appear for them")}
       <div class="upick">${usersMeta.projects.length
         ? usersMeta.projects.map(p => `<label class="tc"><input type="checkbox"
             data-ueproj="${esc(p)}"${(u.projects || []).includes(p) ? " checked" : ""}>

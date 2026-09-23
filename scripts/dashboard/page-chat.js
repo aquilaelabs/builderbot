@@ -85,8 +85,7 @@ function drawChat(){
       <button class="link" id="chatBack">‹ all</button>
       <b class="grow">${esc(title)}</b>
     </div>
-    ${chatWith.project ? `<div class="sub chatnote">everyone with this project
-       sees this, including what each of you asks Claude here</div>` : ""}
+    ${chatWith.project ? `<div class="sub chatnote">everyone on this project sees this</div>` : ""}
     <div class="chatlog" id="chatlog">${chatMsgs.map(m => `
       <div class="chatmsg${m.kind === "did" || m.kind === "asked" ? " ev" : ""}">
         <span class="dim">${esc(m.who || "?")} · ${ago(m.at)}</span>

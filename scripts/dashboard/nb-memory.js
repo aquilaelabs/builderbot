@@ -194,8 +194,7 @@ function nbMemoryView({$, nb}){
     const c = nb.memClash;
     box.innerHTML = `
     <div class="hint bad">${esc(c.what)} changed on disk while you had it
-      open${c.at ? " " + esc(ago(c.at)) : ""}: most likely a session writing
-      it. Nothing has been written. Your version is still in the editor.</div>
+      open${c.at ? " " + esc(ago(c.at)) : ""}. Nothing has been written; your version is still in the editor.</div>
     <div class="clashwho">What is on disk now</div>
     <div class="clashtext big">${esc(c.current) || "<em>empty</em>"}</div>
     <div class="actbar">

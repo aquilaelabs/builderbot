@@ -123,7 +123,7 @@ function renderProjectsInto(i){
   // long scroll is the worst place for it.
   if (paint(el, `<div class="projtab"><div class="actbar macros"><button
       id="bNewProjTab"
-      title="create a project under /workspace: a fresh local repo, or a clone of a repo the container can reach"
+      title="a fresh local repo, or a clone"
       >New project</button></div>${
     ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`)){
     wireProjectRows(el);
@@ -215,46 +215,23 @@ function pDraw(){
   const fg = pMode === "clone"
     ? (pForgeOf(pUrlHost($("pUrl").value)) || pForge()) : pForge();
   $("pUrlHint").textContent = pMode === "link"
-    ? `An empty repository to push ${pLink} to: linking never `
-      + `touches a repo that already has commits.`
-      + (fg.creates && pLinkAuth === "token"
-         ? " One that does not exist yet is created for you, private."
-         : pPat && fg.id === "github" && pLinkAuth === "key"
-           ? " One that does not exist yet is created for you, private." : "")
-    : "Fetched with the container's own access: a deploy key or PAT that can "
-      + "already reach it; private repos need that set up first. A CLAUDE.md it "
-      + "carries is kept as it is; none is written for it.";
+    ? `An empty repository to push ${pLink} to.`
+      + ((fg.creates && pLinkAuth === "token") || (pPat && fg.id === "github" && pLinkAuth === "key")
+         ? " One that does not exist yet is created, private." : "")
+    : "A private repository needs a deploy key or token that already reaches it.";
   $("pNameHint").textContent = pMode === "clone"
-    ? "The directory to clone into. Fills itself in from the address: change "
-      + "it to keep more than one checkout of the same repository."
-    : "Named the way a git host names a repository: anything it cannot use "
-      + "becomes a dash, so you are shown the directory you are about to get "
-      + "rather than being sent back to retype it.";
+    ? "The directory to clone into; change it to keep two checkouts of one repository."
+    : "Anything a git host cannot use in a name becomes a dash.";
   $("pPushHint").textContent =
-    "Off means read-only: a pre-push hook refuses, so nobody pushes from here "
-    + "by accident. It cannot be turned on later: delete the project and "
-    + "clone it again, and only one project at a time may push to a given "
-    + "repository. Needs a token or a deploy key.";
+    "Off is read-only. It cannot be turned on later, and only one project may push to a repository.";
   $("pTokenHint").textContent = pMode === "link"
-    ? `Used for ${pLink} and no other project, even if it opens more. `
-      + (fg.creates ? `Checked with ${fg.name} before anything is written.`
-                    : `${fg.name} cannot be asked whether it is good, so the `
-                      + "first fetch is the test.")
-    : "Leave empty for a public repository. A token is kept for this project "
-      + "alone, in /config, and a shell in this container can read it.";
+    ? `Used for ${pLink} only.` + (fg.creates ? ` Checked with ${fg.name} first.` : "")
+    : "Leave empty for a public repository. Kept for this project alone.";
   $("pToken").placeholder = fg.hint;
   $("pKeyHint").textContent =
-    (pMode === "link"
-      ? "The key the push (and every later one) will offer. "
-      : "For a private repo with its own deploy key. Pick the key and the "
-        + "container side is handled for you: the clone (and every later "
-        + "push) offers exactly this key. ")
-    + "The host still needs the public key below, on the repository's own "
-    + "deploy-key page. "
-    + (pPat && (pMode !== "link" || fg.id === "github")
-        ? "A PAT is configured, so leaving this on none works too."
-        : pMode === "link" ? "No PAT is configured for this host, so a key is required here."
-        : "");
+    "The key every push offers. The host needs the public key below on the repository's deploy-key page."
+    + (pPat && (pMode !== "link" || fg.id === "github") ? " With a PAT configured, none works too."
+       : pMode === "link" ? " No PAT is configured for this host, so a key is required." : "");
 }
 
 // The source picker moves like the Dashboard | Terminal switch: the incoming

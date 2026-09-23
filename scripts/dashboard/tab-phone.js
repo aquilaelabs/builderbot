@@ -78,8 +78,7 @@ function renderPhoneInto(i){
   if (!nodes.length){
     d.setBar(`<span class="sp"></span>
       <button type="button" id="phRefresh" title="ask again now">Refresh</button>`);
-    d.list.innerHTML = `<div class="hint">No node carries adb. A phone is driven from
-      a node: install android-tools on one from the Tools tab, and it appears here.</div>`;
+    d.list.innerHTML = `<div class="hint">No node has adb yet: install android-tools on one from the Tools tab.</div>`;
     wirePhoneTab(d.el);
     return;
   }
@@ -184,9 +183,7 @@ function renderPhoneInto(i){
         <button type="button" class="primary" data-allow="${a.id}">Allow</button>
       </span></div>`);
   d.list.innerHTML = rows.join("");
-  d.setFoot(`A session reaches this phone only through its project's node, and only
-    by asking: bb phone run --why "…" puts the reason and the command here, in
-    front of whoever connected it.`);
+  d.setFoot(`A session reaches this phone only by asking; the request lands here, with its reason.`);
   if (!tcDotsTimer && d.list.querySelector(".dots"))
     tcDotsTimer = setInterval(tcTickDots, 400);
   wirePhoneTab(d.el);

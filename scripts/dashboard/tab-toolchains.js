@@ -204,8 +204,8 @@ function tcRow(p, busy, job, managed){
     <input type="checkbox" value="${esc(p.name)}"${
       busy || p.wrong_platform || noUpgrade ? " disabled" : ""}${
       p.wrong_platform ? ` title="this recipe is packaged for ${esc(p.wrong_platform)}: installing it here would fetch binaries that cannot run"`
-      : noUpgrade ? ` checked disabled title="installed. This one is fetched and unpacked whole, so there is no update in place: remove it first to get a newer version"`
-      : upToDate ? ` checked disabled title="installed and up to date; nothing to do until a check finds an update"`
+      : noUpgrade ? ` checked disabled title="installed; no update in place: remove it first for a newer version"`
+      : upToDate ? ` checked disabled title="installed and up to date"`
                : tcTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
       <span class="nm">${esc(p.label)}${p.size
@@ -356,9 +356,9 @@ function renderToolchainsInto(i){
           <span class="sst">${no.length}</span></summary>
         <div class="tcs">${no.map(i => tcRow(i, true, job)).join("")}</div></details>`;
     })()}
-    <div class="hint tcterms">Installing an android package or tool accepts
+    <div class="hint tcterms">Installing an Android package accepts
       <a href="https://developer.android.com/studio/terms" target="_blank" rel="noreferrer">Google's
-      Android SDK terms</a> for this store: pressing Install is that acceptance, made by you.</div>
+      Android SDK terms</a>.</div>
     <div class="actbar macros">
       ${d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
       ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
@@ -368,8 +368,7 @@ function renderToolchainsInto(i){
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
       ${busy ? tcWorking(job) : ""}
       <button data-tc="check"${busy || pstale || !mayToolchains() ? " disabled" : ""}
-        title="ask each upstream what it has now: a job on this node, one round trip
-          per recipe, and the answer lands on the rows">${
+        title="ask each upstream what it has now">${
         busy && job.action === "check"
           ? `Checking for updates<span class="dots">${".".repeat(tcDots)}</span>`
         : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>

@@ -179,7 +179,7 @@ function renderEmulatorInto(i){
           : `No image yet: ${esc(d.name)}'s emulator has nothing to boot.`}</div>`}
     <div class="hint tcterms">Adding an image accepts
       <a href="https://developer.android.com/studio/terms" target="_blank" rel="noreferrer">Google's
-      Android SDK terms</a> for this store: pressing Add is that acceptance, made by you.</div>
+      Android SDK terms</a>.</div>
     ${job.running && mayToolchains() ? `<div class="actbar macros">
       <button data-emu="abort"${job.aborting ? " disabled" : ""}>${job.aborting ? "Stopping…" : "Abort"}</button>
     </div>` : ""}`;
@@ -201,7 +201,7 @@ function renderEmulatorInto(i){
     const id = b.dataset.rmimg;
     const users = (emu?.images || []).find(im => im.id === id)?.avds || [];
     if (confirm(`Remove ${id}?\n\n${users.length
-      ? `${users.join(", ")} ${users.length === 1 ? "is" : "are"} built on it and will not boot until it is added again.`
+      ? `${users.join(", ")} ${users.length === 1 ? "is" : "are"} built on it and will not boot without it.`
       : "No AVD is built on it."}`))
       emuAct("remove", id, b);
   });

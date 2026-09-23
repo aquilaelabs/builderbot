@@ -8,64 +8,44 @@
 // under the section's header, since it needs the page and its helpers.
 const GUIDE_USER = `
   <h4>What this is</h4>
-  <p>BuilderBot is a Claude Code workstation in a browser. Each project on the
-  left is a repository; a Claude session on it edits that tree, and the
-  notebook beside it is where you and Claude keep the plan.</p>
+  <p>A Claude Code workstation in a browser. Each project on the left is a
+  repository; a Claude session edits it, and the notebook beside it is where
+  you and Claude keep the plan.</p>
   <h4>Start here</h4>
   <ul>
-    <li><b>Your profile</b> (the gear, top right): set your name and email and
-      the git identity your commits carry. No session starts until they are
-      set, so the first thing to do is this.</li>
-    <li><b>Sign in to Claude</b> (the card under Doctor, which says so in red
-      until you have): your own Anthropic account, once. The sign-in runs on a
-      node and you paste the code back here; the login stays on that machine
-      and is yours, not anybody else's. Sessions will not start without
-      it.</li>
-    <li><b>A project</b>: press its name to open the notebook, <b>Claude</b> to
-      start a session on it, and the terminal button for a shell.</li>
-    <li><b>The notebook</b>: Briefing (rules and memories), Roadmap (what to
-      do next, sent to Claude one step at a time), Bugs, Git (the repository
-      read out, with Send to Claude), Artifacts (what it built, the version),
-      Tests, Analysis.</li>
-    <li><b>The bell</b>: what needs your answer, whether a session asking to reach
-      your phone, or a change waiting for approval, and what the page said.</li>
-    <li><b>Your phone</b>: Tools → Phone connects a handset on wireless
-      debugging to a node; a session then asks you before it touches it.</li>
+    <li><b>Your profile</b> (the gear): your name, and the git name and email
+      your commits carry. No session starts until they are set.</li>
+    <li><b>Sign in to Claude</b> (the card under Doctor): your own Anthropic
+      account, once. Sessions do not start without it.</li>
+    <li><b>A project</b>: its name opens the notebook, <b>Claude</b> starts a
+      session, the terminal button opens a shell.</li>
+    <li><b>The notebook</b>: Briefing, Roadmap (sent to Claude a step at a
+      time), Bugs, Git, Artifacts, Tests, Analysis.</li>
+    <li><b>The bell</b>: what needs your answer.</li>
+    <li><b>Your phone</b>: Tools, then Phone, connects a handset to a node; a
+      session asks before it touches it.</li>
   </ul>
   <h4>When something says no</h4>
-  <p>A refusal here is meant to name the way out, so it is worth reading
-  rather than retrying. The usual four: you are not signed in to Claude yet;
-  the node a project builds on is away, so nothing runs there until it is
-  back; the tool a build wants is not on that node, which is an
-  administrator's to install; or this project does not let a session push, so
-  the commit is yours to push from the Git view.</p>
-  <h4>Telling us something is wrong</h4>
-  <p>The Bugs tab of the project's notebook files it where we look, and a
-  report that says what you pressed and what it said back is worth ten that
-  say it broke. It is the same tracker the sessions read, so what you file is
-  what gets picked up.</p>
+  <p>A refusal names the way out, so read it rather than retry.</p>
+  <h4>Something is wrong</h4>
+  <p>File it on the project's Bugs tab: what you pressed and what it said
+  back. Sessions read the same tracker.</p>
   <h4>On a phone</h4>
-  <p>The same page: the bar at the bottom switches between the sidebar and the
-  terminal, and the keys panel stands in for the ones a soft keyboard hides.</p>`;
+  <p>The bar at the bottom switches between the sidebar and the terminal; the
+  keys panel stands in for the ones a soft keyboard hides.</p>`;
 const GUIDE_ADMIN = GUIDE_USER + `
   <h4>As an administrator</h4>
   <ul>
     <li><b>Nodes</b>: the machines where builds, tests, CI, the emulator and
-      sessions run. Enroll one with <b>Enroll node</b> and
-      <code>nodes/provision-linux.sh</code> on the machine (any common distribution;
-      <code>--check</code> first says whether it can). Each node's row has its
-      storage, network, runner and a lock that keeps system changes at its
-      own console.</li>
-    <li><b>Tools</b>: the toolchains a node carries, the JDK, the Android
-      SDK and its system images, Playwright, installed per node from the
-      catalog. A project builds with what its node has.</li>
-    <li><b>Users</b> (Administration): accounts, roles and which projects each
-      may see. A user works on projects; an administrator also runs the
-      machinery and answers a session asking for root on a node.</li>
-    <li><b>Controller settings</b>: the things that used to be environment
-      variables. Everything here waits for Save.</li>
-    <li><b>Approvals</b>: a session's roadmap items, bugs and rules can land on
-      their own, be held for you, or be refused, per project, per tab.</li>
+      sessions run. <b>Enroll node</b> gives you the command to run on the
+      machine.</li>
+    <li><b>Tools</b>: what each node can build with, installed from the
+      catalog.</li>
+    <li><b>Users</b>: accounts, roles and which projects each sees.</li>
+    <li><b>Controller settings</b>: what this controller does; everything
+      waits for Save.</li>
+    <li><b>Approvals</b>: per project, what a session adds lands, waits for
+      you, or is refused.</li>
   </ul>`;
 let abPage = "guide", abLogLoaded = false;
 function abShow(which){

@@ -139,8 +139,7 @@ function nbTestsView({$, nb, project}){
     if (!all.length){
       $("tstHint").textContent = "";
       $("tstStats").hidden = false;
-      $("tstStats").innerHTML = `<div class="hint">No test run recorded yet. A session
-        runs the tests and records what each cost with
+      $("tstStats").innerHTML = `<div class="hint">No test run recorded yet. A session records one with
         <pre class="ndcmd">bb tests run</pre></div>`;
       $("tstList").innerHTML = ""; $("tstBar").hidden = true;
       $("tstFolds").innerHTML = "";
@@ -195,8 +194,7 @@ function nbTestsView({$, nb, project}){
            nDrift ? driftRows.join("")
                     + (nDrift > driftRows.length
                        ? `<div class="sub dim">…and ${nDrift - driftRows.length} more</div>` : "")
-                  : `<div class="sub">every test the runner reported is on this
-                     list, and every entry on this list ran.</div>`,
+                  : `<div class="sub">the list and the last run agree.</div>`,
            {cls: nDrift ? "warn" : "", open: false}) : "");
     wireSections($("tstFolds"));
     // ---- the filter --------------------------------------------------------

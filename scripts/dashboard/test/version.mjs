@@ -1106,7 +1106,7 @@ for (let t = 0; t < 50 * SLOW; t++){
   if (/no CHANGELOG\.md here yet/.test(paneText)) break;
   await sleep(200);
 }
-ok(/no CHANGELOG\.md here yet/.test(paneText),
+ok(/no CHANGELOG\.md yet/.test(paneText),
    'the changelog pane says how to opt in when there is no file');
 // The flake this suite carried for weeks, as a rule instead. The pane used to
 // live in #verBox and be MOVED into the sheet, so a repaint of that box while

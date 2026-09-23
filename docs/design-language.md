@@ -463,7 +463,11 @@ has neither.
 ## Words on the screen
 
 One sentence that tells the person what they need to know to act, in their
-words. A hint, a state line or an empty state is a line, about 25 words. The
-why goes in a code comment, the README or Help, never inline. A stacked row
+words: what the control does, and the one consequence they could not guess.
+Not what they can intuit, not how it came to be, not the reasoning; a
+paragraph on a control is one nobody reads, and a page of them turns the
+reader off (the operator, 23 Sep, after R28 swept them). A hint, a state
+line or an empty state is a line, about 25 words. The why goes in a code
+comment, the README or Help, never inline. A stacked row
 is `flex-wrap: nowrap`; a long token in it wraps or scrolls inside its own
 box, and nothing scrolls the page or the pane sideways on a phone.

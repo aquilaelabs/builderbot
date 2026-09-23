@@ -109,9 +109,9 @@ function nbGitView({$, nb, project}){
         <div class="body gdiff"><div class="loading">loading…</div></div>
         ${locked ? "" : `<div class="body"><div class="actbar">
           <button type="button" data-gitaskfile="${esc(f.path)}"
-            title="hand this change to the project's Claude session to look at before it is committed">Send to Claude</button>
+            title="hand this change to the project's Claude session">Send to Claude</button>
           <button type="button" class="danger" data-gitdiscard="${esc(f.path)}"
-            title="put this file back as the last commit has it; nothing keeps the change">Discard</button>
+            title="put the file back as the last commit has it; the change is lost">Discard</button>
         </div></div>`}
       </details>`).join("");
     // Adding goes at the top: the commit's form is the section's first
@@ -200,7 +200,7 @@ function nbGitView({$, nb, project}){
     const finished = local.filter(b => !b.head && b.name !== main && b.merged);
     const remoteOnly = remote.filter(r => !local.some(l => r.name.endsWith("/" + l.name)));
     const group = (label, rows) => rows.length ? `<div class="sub dim ggroup">${label}</div>` + rows.map(branchRow).join("") : "";
-    const branchRows = `<div class="sub dim">A branch keeps work apart from ${esc(main)} until it is merged; ${esc(host)} holds a copy that only Push and Pull touch.</div>`
+    const branchRows = `<div class="sub dim">${esc(host)} holds a copy that only Push and Pull touch.</div>`
       + [...here, ...mainRow].map(branchRow).join("")
       + group(`not yet in ${esc(main)}`, waiting)
       + (finished.length ? group(`already in ${esc(main)}`, finished) + (locked ? "" : `<div class="actbar gmerged">
@@ -216,7 +216,7 @@ function nbGitView({$, nb, project}){
     const conflictBar = conflicts.length && !locked ? `<div class="actbar gconflict">
         <span class="state bad">${conflicts.length} file${conflicts.length === 1 ? "" : "s"} in conflict: the merge is not finished</span>
         <button type="button" class="primary" data-gitask="conflicts"
-          title="hand the merge in progress to the project's Claude session, to resolve and finish">Resolve with Claude</button>
+          title="hand the merge to the project's Claude session to finish">Resolve with Claude</button>
       </div>` : "";
     // What a session may do with the remote (roadmap R36): the two answers,
     // staged until Apply like every setting on the page. Enforced on the
@@ -285,7 +285,7 @@ function nbGitView({$, nb, project}){
     };
     body.querySelectorAll("[data-gitdiscard]").forEach(b => b.onclick = () => {
       const path = b.dataset.gitdiscard;
-      if (confirm(`Discard the changes to ${path}?\n\nIt goes back to what the last commit has, and nothing keeps what was changed.`))
+      if (confirm(`Discard the changes to ${path}?\n\nIt goes back to the last commit; the change is lost.`))
         gitAct("discard", {path}, gitBusy(b), "Discarding");
     });
     body.querySelectorAll("[data-gitswitch]").forEach(b => b.onclick = () =>
@@ -386,7 +386,7 @@ function nbGitView({$, nb, project}){
         <div class="sub">${c.files.length} file${c.files.length === 1 ? "" : "s"}: ${c.files.map(f =>
           `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
         ${(state?.projects || []).find(p => p.name === project)?.locked ? "" : `<div class="actbar">
-          <span class="state">a revert is a new commit undoing this one; a branch here starts from it</span>
+          <span class="state">revert makes a new commit undoing this one; a branch starts from it</span>
           <select data-gitaskkind aria-label="what to ask"><option value="review">review</option>
             <option value="explain">explain</option><option value="revert">revert</option></select>
           <button type="button" data-gitaskcommit="${esc(c.sha)}"
