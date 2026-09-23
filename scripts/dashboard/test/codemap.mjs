@@ -6,7 +6,7 @@
 // beside the copy and never in the checkout.
 import { ok, done } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const map = (...args) => execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, '--root', REPO, ...args],
@@ -85,6 +85,48 @@ ok(/^\d+-\d+  function Pill$/m.test(kt) && /function Panel/.test(kt), 'Kotlin fu
 const pill = map('who-calls', 'Pill');
 ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from HomeScreen\b/.test(pill) && !/from Row\b/.test(pill),
    'a Compose call is attributed to the composable it sits in, not to the Row whose lambda holds it');
+
+// Dead code by measurement (R76 step 1): a function nothing calls AND
+// nothing passes by name. A handler handed to onclick without a call is a
+// use; only a function no token anywhere names is unused. Proved on a file
+// written into this copy, since the tree's own page has none.
+{
+  const dead = `${REPO}/scripts/dashboard/zz-probe-dead.js`;
+  writeFileSync(dead, 'function neverUsedAnywhere(){ return 1; }\nfunction handedOver(){ return 2; }\nconst pick = handedOver;\n');
+  const un = map('unused', 'scripts/dashboard/zz-probe-dead.js');
+  ok(/neverUsedAnywhere/.test(un) && !/handedOver/.test(un),
+     'unused lists the function no token names, and not the one passed by name');
+  execFileSync('rm', ['-f', dead]);
+}
+
+// Coverage (R76 steps 2 to 4): the instrumenter puts a counter at the head
+// of every function body it knows the position of, and a merged count file
+// answers which suites reached a function.
+{
+  const dir = `${REPO}/.bb-map/probe-dash`;
+  execFileSync('rm', ['-rf', dir]); execFileSync('mkdir', ['-p', dir]);
+  for (const f of ['tab-docker.js', 'index.html', 'nb-roadmap.js'])
+    execFileSync('cp', [`${REPO}/scripts/dashboard/${f}`, `${dir}/${f}`]);
+  const said = execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, 'instrument', dir], { encoding: 'utf8' });
+  const inst = readFileSync(`${dir}/tab-docker.js`, 'utf8');
+  ok(/instrumented \d+ functions in 3 files/.test(said) && /async function loadDocker\(\)\{__bbcov\("scripts\/dashboard\/tab-docker\.js:\d+:loadDocker"\);/.test(inst),
+     `the instrumenter counts a function body at its opening brace (${said.trim()})`);
+  ok(/<script>var __bbcovc/.test(readFileSync(`${dir}/index.html`, 'utf8')), '...and defines the counter at the head of the page');
+  execFileSync('node', ['--check', `${dir}/tab-docker.js`]); execFileSync('node', ['--check', `${dir}/nb-roadmap.js`]);
+  ok(true, '...and the instrumented scripts still parse');
+  const line = inst.match(/tab-docker\.js:(\d+):loadDocker/)[1];
+  const counts = `${dir}/probe-suite.json`;
+  writeFileSync(counts, JSON.stringify({ suite: 'probe-suite', counts: { [`scripts/dashboard/tab-docker.js:${line}:loadDocker`]: 3 } }));
+  const covFile = `${REPO}/.bb-map/coverage.json`;
+  const before = existsSync(covFile) ? readFileSync(covFile, 'utf8') : null;
+  map('coverage-ingest', counts);
+  ok(/loadDocker: reached by \d+ suites?: .*probe-suite \(3\)/.test(map('covered', 'loadDocker')),
+     'covered NAME names the suite that ran it and how often');
+  ok(/tab-docker\.js:\d+  openDocker|every function here was reached/.test(map('uncovered', 'scripts/dashboard/tab-docker.js')),
+     'uncovered FILE lists what no suite reached');
+  execFileSync('rm', ['-rf', dir]);
+  if (before === null) execFileSync('rm', ['-f', `${REPO}/.bb-map/coverage.json`]); else writeFileSync(`${REPO}/.bb-map/coverage.json`, before);
+}
 
 // Nested definitions are shown under their parent.
 const defs = map('defs', 'scripts/dashboard/nb-roadmap.js');

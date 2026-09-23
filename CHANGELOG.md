@@ -18,6 +18,7 @@
 - bb tests preflight: the files a branch changed, the suites the code map says reach them (a python change through the server's route table), and the lint, voice and design checks, run before a push; --dry prints the plan (77da0b7)
 - bb dashboard trace SECONDS prints what the dashboard was asked over that window, by endpoint and by who asked, and the design suite holds the matching invariant: an idle page issues only its polls, and opening a tab asks each endpoint once (e30f41e)
 - Every session's briefing now says which build the controller is running and when it was built, so no session argues from a build it assumed (e30f41e)
+- bb tests coverage runs the suite with a counter in every function, and bb map covered, uncovered and unused answer which suites reach a function, what none reaches, and what nothing calls or passes by name (a8d258e)
 
 ### Changed
 

@@ -628,6 +628,14 @@ tab asks each endpoint once. R75's fourth step; the fifth puts the
 running build into every session's briefing, so no session argues from a
 build it assumed.
 
+`bb tests coverage [SUITE...]` is a covered run: the copy the harness runs
+from gets a counter at the head of every function the map knows, the
+server counts the functions it enters, and the counts are merged into
+`.bb-map/coverage.json`. `bb map covered NAME` then names the suites that
+ran a function, `bb map uncovered [FILE]` what no suite reaches, and `bb
+map unused` what nothing calls or passes by name. R76: a refactor knows
+its regression net before it starts.
+
 `bb tests preflight` is what a session runs before a push: the files the
 branch changed, the suites the code map says reach them (a page function
 they call bare, an id or class they name, an API path a changed python

@@ -100,6 +100,15 @@ by hand cost four commands and still could not see the failed builds.
   should not be there or a tab that asks twice; `uniform.mjs` holds the
   invariant (an idle page issues only its polls; opening a tab asks each
   endpoint once).
+- **What the suite covers:** `bb tests coverage [SUITE...]` runs the
+  harness with a counter in every function of the copy it runs from (the
+  page's, and the server's under a profile hook) and merges what they
+  reached into `.bb-map/coverage.json`; then `bb map covered NAME` says
+  which suites ran a function and how often, which is the regression net
+  for touching it, and `bb map uncovered [FILE]` lists what no suite
+  reaches, which is where a probe is written before a refactor. `bb map
+  unused` is dead code by measurement: no call and nothing passing the
+  name anywhere. R76.
 - **Before a push:** `bb tests preflight` lists the files the branch
   changed (against `origin/main`, plus the working tree), asks the map
   which suites reach them, and runs those with the lint, voice and design

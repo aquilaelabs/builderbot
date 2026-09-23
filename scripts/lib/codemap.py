@@ -16,6 +16,10 @@ script, tab-*.js, nb-*.js, test/*.mjs) and a line pass for shell.
     bb map draws ID|.class       which functions draw it, which suites name it
     bb map suites FILE...        the suites that reach what these files define, draw or name
                                  (--names: one suite name per line, for a script)
+    bb map unused [FILE]         page functions nothing calls and nothing passes by name: dead by measurement
+    bb map coverage              what the last covered run reached, per file (bb tests coverage runs one)
+    bb map covered NAME          which suites ran NAME, and how often: the regression net for touching it
+    bb map uncovered [FILE]      the functions no suite reached
     bb map build                 rescan everything now (a changed file is rescanned by itself on any question)
 
 The scanner is deliberately rough: it knows nothing of scope beyond braces
@@ -51,6 +55,14 @@ EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx
 # braces to count, so Ruby is not indexed (the one common language that
 # is not).
 FN_WORDS = {"function", "fun", "func", "fn"}
+# ...per language, because `fn` is an ordinary parameter name in JavaScript
+# and `func` a variable in Kotlin: a word opens a function only where its
+# language says so.
+FN_BY_SUFFIX = {".rs": {"fn"}, ".go": {"func"}, ".kt": {"fun"}, ".kts": {"fun"},
+                ".swift": {"func"}, ".scala": {"def"}, ".php": {"function"},
+                ".js": {"function"}, ".mjs": {"function"}, ".cjs": {"function"},
+                ".ts": {"function"}, ".tsx": {"function"}, ".jsx": {"function"},
+                ".html": {"function"}}
 # Where `name(...) {` with no keyword IS a definition: a JS object method, a
 # Java, C#, Dart or C function after its type. In Kotlin, Swift, Go and
 # Rust it is a call with a trailing lambda (Row(...) { ... }), and reading
@@ -87,6 +99,7 @@ class Sink:
         self.calls = []     # {name, qual, line, caller}
         self.draws = []     # {what, kind: id|class|path|file, line, fn}
         self.routes = []    # {path, handler}
+        self.refs = {}      # name -> how often it is used without being called
 
     def add_def(self, name, line, kind, parent):
         self.defs.append({"name": name, "file": self.path, "line": line, "end": line,
@@ -96,6 +109,9 @@ class Sink:
     def add_call(self, name, qual, line, caller):
         self.calls.append({"name": name, "qual": qual, "file": self.path, "line": line,
                            "caller": caller})
+
+    def add_ref(self, name):
+        self.refs[name] = self.refs.get(name, 0) + 1
 
     def add_draw(self, what, kind, line, fn):
         self.draws.append({"what": what, "kind": kind, "file": self.path, "line": line,
@@ -133,6 +149,8 @@ def scan_python(text, sink):
                 elif isinstance(f, ast.Attribute):
                     qual = f.value.id if isinstance(f.value, ast.Name) else ""
                     sink.add_call(f.attr, qual, child.lineno, enclosing())
+            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+                sink.add_ref(child.id)
             if isinstance(child, ast.Constant) and isinstance(child.value, str):
                 for what, kind in strings_draw(child.value):
                     sink.add_draw(what, kind, child.lineno, enclosing())
@@ -192,9 +210,12 @@ class JSScanner:
     IDENT = re.compile(r"[A-Za-z_$][\w$]*")
     REGEX_BEFORE = set("(,=:[!&|?{};+-*%<>~^")
 
-    def __init__(self, text, sink, line0=1, top="(top level)", shape_methods=True):
+    def __init__(self, text, sink, line0=1, top="(top level)", shape_methods=True, base=0,
+                 fn_words=None):
         self.s = text
         self.shape_methods = shape_methods
+        self.base = base            # where this text starts in its file
+        self.fn_words = FN_WORDS if fn_words is None else fn_words
         self.sink = sink
         self.line = line0
         self.top = top
@@ -248,7 +269,10 @@ class JSScanner:
                 continue
             m = self.IDENT.match(s, self.i)
             if m:
-                self.ident(m.group(0))
+                j = m.end()
+                while j < n and s[j] in " \t":
+                    j += 1
+                self.ident(m.group(0), s[j:j + 1], self.last_sig == ".")
                 self.i = m.end()
                 continue
             self.punct(c)
@@ -323,7 +347,8 @@ class JSScanner:
                         k = n if k2 < 0 else k2
                     k += 1
                 inner = s[j + 2:k - 1]
-                sub = JSScanner(inner, self.sink, self.line, self.enclosing(), self.shape_methods)
+                sub = JSScanner(inner, self.sink, self.line, self.enclosing(), self.shape_methods,
+                                self.base + j + 2, self.fn_words)
                 sub.stack = [(n, dp, None) for n, dp, _ in self.stack]
                 sub.run()
                 self.line += inner.count("\n")
@@ -345,9 +370,15 @@ class JSScanner:
         for m in HANDLER.finditer(body):
             self.sink.add_call(m.group(1), "", line, fn)
 
-    def ident(self, word):
+    def ident(self, word, nxt="", after_dot=False):
         self.prev_ident, self.last_ident = self.last_ident, word
-        if word in FN_WORDS:
+        # A use by name that is not a call and not a property: passed,
+        # assigned, listed. What tells dead code from a handler somebody
+        # hands to onclick without calling it.
+        if nxt != "(" and not after_dot and word not in JS_KEYWORDS \
+                and self.last_kw not in ("function", "class") and not word[0].isdigit():
+            self.sink.add_ref(word)
+        if word in self.fn_words:
             self.last_kw = "function"
         elif word in TYPE_WORDS:
             self.last_kw = "class"
@@ -412,7 +443,7 @@ class JSScanner:
                 # Go: `func (` is a receiver, and the name comes after it
                 self.receiver = True
                 self.maybe_method = None
-            elif prev in FN_WORDS or prev == "async":
+            elif prev in self.fn_words or prev == "async":
                 # an anonymous function: `function(` or `async (`; body follows
                 self.pending = self.sink.add_def("(anonymous)", self.line, "function", "")
                 self.pending_depth = self.depth
@@ -430,6 +461,7 @@ class JSScanner:
             if self.pending is not None and self.parens <= self.paren_at_pending:
                 # the body: not a brace inside the parameter list, which a
                 # Kotlin default lambda (`onClick: () -> Unit = {}`) puts there
+                self.pending["at"] = self.base + self.i + 1
                 self.stack.append((self.pending["name"], self.depth, self.pending))
                 self.pending = None
             elif self.last_sig == "=>":
@@ -438,12 +470,14 @@ class JSScanner:
                 name = self.arrow_name()
                 if name:
                     d = self.sink.add_def(name, self.line, "arrow", self.enclosing_or_blank())
+                    d["at"] = self.base + self.i + 1
                     self.stack.append((name, self.depth, d))
                 else:
                     self.stack.append((self.enclosing(), self.depth, None))
             elif self.last_sig == ")" and getattr(self, "maybe_method", None):
                 name, line = self.maybe_method
                 d = self.sink.add_def(name, line, "method", self.enclosing_or_blank())
+                d["at"] = self.base + self.i + 1
                 self.stack.append((name, self.depth, d))
                 # the call recorded for `name(` was the header, not a call
                 for cl in reversed(self.sink.calls):
@@ -497,8 +531,10 @@ class JSScanner:
         return ""
 
 
-def scan_js(text, sink, line0=1):
-    JSScanner(text, sink, line0, shape_methods=Path(sink.path).suffix in SHAPE_METHODS).run()
+def scan_js(text, sink, line0=1, base=0):
+    suffix = Path(sink.path).suffix
+    JSScanner(text, sink, line0, shape_methods=suffix in SHAPE_METHODS, base=base,
+              fn_words=FN_BY_SUFFIX.get(suffix, set())).run()
 
 
 SCRIPT = re.compile(r"<script\b[^>]*>(.*?)</script>", re.S | re.I)
@@ -510,7 +546,7 @@ def scan_html(text, sink):
         markup = text[pos:m.start()]
         markup_draws(markup, sink, text.count("\n", 0, pos) + 1)
         line0 = text.count("\n", 0, m.start(1)) + 1
-        scan_js(m.group(1), sink, line0)
+        scan_js(m.group(1), sink, line0, m.start(1))
         pos = m.end()
     markup_draws(text[pos:], sink, text.count("\n", 0, pos) + 1)
 
@@ -605,7 +641,7 @@ def build(root, prior=None):
         except Exception as e:      # a scanner must never take the map down
             sink.add_def(f"(scan failed: {e})", 1, "error", "")
         files[rel] = {"mtime": mtime, "lang": lang, "defs": sink.defs, "calls": sink.calls,
-                      "draws": sink.draws, "routes": sink.routes}
+                      "draws": sink.draws, "routes": sink.routes, "refs": sink.refs}
         scanned += 1
     idx = {"built": time.time(), "root": str(root), "scanned": scanned,
            "dropped": len(set(kept) - set(files)), "files": files}
@@ -833,6 +869,212 @@ def q_suites(idx, paths, names_only=False):
     return out
 
 
+INSTRUMENTED = ("function", "arrow", "method")
+
+
+def page_functions(idx):
+    """The dashboard's own functions on the page side: what a cleanup and a
+    coverage run are about. Not the suites, not the anonymous."""
+    return [d for f, entry in idx["files"].items() for d in entry["defs"]
+            if Path(f).suffix in (".js", ".mjs", ".html") and not is_test(f)
+            and d["kind"] in INSTRUMENTED and not d["name"].startswith("(")
+            and "/test/" not in "/" + f]
+
+
+def q_unused(idx, path=None):
+    called = {}
+    for c in idx["calls"]:
+        called[c["name"]] = called.get(c["name"], 0) + 1
+    refs = {}
+    for entry in idx["files"].values():
+        for n, k in entry.get("refs", {}).items():
+            refs[n] = refs.get(n, 0) + k
+    own = {}
+    for d in idx["defs"]:
+        if d["kind"] == "arrow":
+            own[d["name"]] = own.get(d["name"], 0) + 1   # `const NAME =` reads as one use
+    rows = []
+    for d in page_functions(idx):
+        if path and not (d["file"] == path or d["file"].endswith("/" + path)):
+            continue
+        n = d["name"]
+        # A handler assigned to an element (el.onclick = ...) is used by the
+        # browser, which the map cannot see; its name says what it is.
+        if n.startswith("on") and n[2:3].islower():
+            continue
+        if called.get(n, 0) == 0 and refs.get(n, 0) - own.get(n, 0) <= 0:
+            rows.append(d)
+    if not rows:
+        return ["nothing on the page is unused by this measure" + (f" in {path}" if path else "")]
+    out = [f"{len(rows)} page function{'s' if len(rows) != 1 else ''} nothing calls and nothing passes by name:"]
+    for d in sorted(rows, key=lambda d: (d["file"], d["line"])):
+        out.append(f"  {d['file']}:{d['line']}  {d['name']}" + (f"  (in {d['parent']})" if d["parent"] else ""))
+    return out
+
+
+def fid(d):
+    return f"{d['file']}:{d['line']}:{d['name']}"
+
+
+def coverage_load(root):
+    f = Path(root) / INDEX_DIR / "coverage.json"
+    try:
+        return json.loads(f.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def coverage_ingest(root, idx, files, strip=""):
+    """Merge per-suite counts into .bb-map/coverage.json. A page file holds
+    {"suite", "counts": {"file:line:name": n}} with the file relative to
+    the copy the run made; the server's holds {"suite": "server",
+    "counts": {"abs/path:firstline:name": n}}, matched to the map's own
+    definitions by file and name, nearest line."""
+    cov = coverage_load(root) or {"suites": {}}
+    py_by = {}
+    for d in idx["defs"]:
+        if idx["files"][d["file"]]["lang"] == "py" and d["kind"] == "def":
+            py_by.setdefault((d["file"], d["name"]), []).append(d)
+    for f in files:
+        try:
+            got = json.loads(Path(f).read_text())
+        except (OSError, ValueError):
+            continue
+        suite = got.get("suite") or Path(f).stem
+        counts = cov["suites"].setdefault(suite, {})
+        for key, n in (got.get("counts") or {}).items():
+            file, _, rest = key.partition(":")
+            if strip and file.startswith(strip):
+                file = file[len(strip):]
+            line, _, name = rest.partition(":")
+            try:
+                line = int(line)
+            except ValueError:
+                continue
+            cands = py_by.get((file, name))
+            if cands:
+                d = min(cands, key=lambda d: abs(d["line"] - line))
+                key = fid(d)
+            else:
+                key = f"{file}:{line}:{name}"
+            counts[key] = counts.get(key, 0) + int(n)
+    cov["at"] = time.time()
+    out = Path(root) / INDEX_DIR
+    out.mkdir(exist_ok=True)
+    (out / "coverage.json").write_text(json.dumps(cov))
+    return cov
+
+
+def covered_ids(cov):
+    out = {}
+    for suite, counts in (cov or {}).get("suites", {}).items():
+        for k, n in counts.items():
+            out.setdefault(k, {})[suite] = n
+    return out
+
+
+def targets(idx):
+    """Everything coverage can speak about: the page's functions and the
+    python's, outside the suites."""
+    rows = list(page_functions(idx))
+    rows += [d for f, entry in idx["files"].items() for d in entry["defs"]
+             if entry["lang"] == "py" and d["kind"] == "def" and not is_test(f)
+             and "/test/" not in "/" + f and not d["name"].startswith("(")]
+    return rows
+
+
+def q_coverage(idx, cov):
+    if not cov:
+        return ["no covered run yet: bb tests coverage runs the suite with the counters in"]
+    hit = covered_ids(cov)
+    per = {}
+    for d in targets(idx):
+        t = per.setdefault(d["file"], [0, 0])
+        t[1] += 1
+        if fid(d) in hit:
+            t[0] += 1
+    tot_c = sum(v[0] for v in per.values())
+    tot = sum(v[1] for v in per.values())
+    out = [f"{tot_c} of {tot} functions reached by {len(cov['suites'])} suites "
+           f"(last run {time.strftime('%d %b %H:%M', time.localtime(cov.get('at', 0)))})"]
+    for f, (c, n) in sorted(per.items(), key=lambda kv: (kv[1][1] - kv[1][0]) * -1)[:25]:
+        if n - c:
+            out.append(f"  {n - c:4d} unreached of {n:4d}  {f}")
+    out.append("bb map uncovered FILE lists them; bb map covered NAME says which suites ran one")
+    return out
+
+
+def q_covered(idx, cov, name):
+    if not cov:
+        return ["no covered run yet: bb tests coverage runs the suite with the counters in"]
+    hit = covered_ids(cov)
+    rows = [d for d in targets(idx) if d["name"] == name]
+    if not rows:
+        return [f"nothing defines {name} on the page or the server"]
+    out = []
+    for d in rows:
+        by = hit.get(fid(d))
+        if not by:
+            out.append(f"{d['file']}:{d['line']}  {name}: reached by no suite")
+            continue
+        top = sorted(by.items(), key=lambda kv: -kv[1])
+        out.append(f"{d['file']}:{d['line']}  {name}: reached by {len(by)} suite{'s' if len(by) != 1 else ''}: "
+                   + ", ".join(f"{s} ({n})" for s, n in top[:8]) + (", ..." if len(top) > 8 else ""))
+    return out
+
+
+def q_uncovered(idx, cov, path=None):
+    if not cov:
+        return ["no covered run yet: bb tests coverage runs the suite with the counters in"]
+    hit = covered_ids(cov)
+    rows = [d for d in targets(idx) if fid(d) not in hit
+            and (not path or d["file"] == path or d["file"].endswith("/" + path))]
+    if not rows:
+        return ["every function here was reached" + (f" in {path}" if path else "")]
+    out = [f"{len(rows)} function{'s' if len(rows) != 1 else ''} no suite reached" + (f" in {path}" if path else "") + ":"]
+    for d in sorted(rows, key=lambda d: (d["file"], d["line"])):
+        out.append(f"  {d['file']}:{d['line']}  {d['name']}" + (f"  (in {d['parent']})" if d["parent"] else ""))
+    return out
+
+
+# ---- the instrumenter -------------------------------------------------------
+
+COV_RUNTIME = ("var __bbcovc = Object.create(null);"
+               "function __bbcov(k){ __bbcovc[k] = (__bbcovc[k] || 0) + 1; }")
+
+
+def instrument(dash):
+    """Rewrite the dashboard's page files in DIR (the copy a run is made
+    from, never the tree) so every function body the map knows the position
+    of counts itself: `__bbcov("file:line:name");` after its opening brace,
+    and the counter itself at the head of index.html's first script. Class
+    bodies are not statements and are left alone."""
+    dash = Path(dash)
+    root_rel = "scripts/dashboard"
+    n_files = n_fns = 0
+    for p in sorted(dash.glob("*.js")) + [dash / "index.html"]:
+        if not p.is_file():
+            continue
+        text = p.read_text(errors="replace")
+        rel = f"{root_rel}/{p.name}"
+        sink = Sink(rel)
+        if p.suffix == ".html":
+            scan_html(text, sink)
+        else:
+            scan_js(text, sink)
+        marks = sorted(((d["at"], d) for d in sink.defs
+                        if d.get("at") is not None and d["kind"] in INSTRUMENTED
+                        and not d["name"].startswith("(")), key=lambda x: -x[0])
+        for at, d in marks:
+            text = text[:at] + f'__bbcov("{rel}:{d["line"]}:{d["name"]}");' + text[at:]
+            n_fns += 1
+        if p.suffix == ".html":
+            text = text.replace("<script>", "<script>" + COV_RUNTIME, 1)
+        p.write_text(text)
+        n_files += 1
+    return n_files, n_fns
+
+
 def summary(idx):
     langs = {}
     for f in idx["files"].values():
@@ -863,9 +1105,38 @@ def main(argv):
         idx = build(root)
         print("\n".join(summary(idx)))
         return 0
+    if verb == "instrument":
+        if not rest:
+            print("bb map instrument DIR: the dashboard directory of a run's copy", file=sys.stderr)
+            return 2
+        nf, nn = instrument(rest[0])
+        print(f"instrumented {nn} functions in {nf} files under {rest[0]}")
+        return 0
     idx = load(root)
     if not verb:
         print("\n".join(summary(idx)))
+        return 0
+    if verb == "coverage-ingest":
+        strip = ""
+        if rest[:1] == ["--strip"]:
+            strip, rest = rest[1], rest[2:]
+        cov = coverage_ingest(root, idx, rest, strip)
+        print(f"coverage: {len(cov['suites'])} suites on record")
+        return 0
+    if verb == "unused":
+        print("\n".join(q_unused(idx, rest[0] if rest else None)))
+        return 0
+    if verb == "coverage":
+        print("\n".join(q_coverage(idx, coverage_load(root))))
+        return 0
+    if verb == "covered":
+        if not rest:
+            print("bb map covered NAME", file=sys.stderr)
+            return 2
+        print("\n".join(q_covered(idx, coverage_load(root), rest[0])))
+        return 0
+    if verb == "uncovered":
+        print("\n".join(q_uncovered(idx, coverage_load(root), rest[0] if rest else None)))
         return 0
     need = {"find": 1, "who-calls": 1, "calls": 1, "defs": 1, "draws": 1, "suites": 1}
     if verb not in need:

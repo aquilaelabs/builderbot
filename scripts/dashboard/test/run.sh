@@ -94,9 +94,18 @@ if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
         --exclude=./android/app/build --exclude=./android/build . \
         | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
     printf '[dashboard-test] running from %s: this tree is on NFS, which fails the suite own waits (B124)\n' "$_dst" >&2
-    BB_TEST_COPY="$_dst" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
+    BB_TEST_COPY="$_dst" BB_TEST_ORIGIN="$_src" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
 fi
 DASH="$(dirname "$HERE")"
+# Function coverage (roadmap R76), under `bb tests coverage`: the page files
+# of THIS copy are rewritten to count every function body they enter (never
+# the tree: with no copy, BB_TEST_INPLACE, it is refused), the server
+# records the functions it enters, and the counts are merged into the
+# tree's .bb-map/coverage.json when the run ends.
+if [ -n "${BB_COVERAGE:-}" ]; then
+    [ -n "${BB_TEST_COPY:-}" ] || { printf '[dashboard-test] ERROR: coverage instruments the run copy and there is none here (BB_TEST_INPLACE)\n' >&2; exit 1; }
+    python3 "$DASH/../lib/codemap.py" instrument "$DASH" >&2 || exit 1
+fi
 # shellcheck source=/dev/null
 . /opt/builderbot/scripts/lib/common.sh 2>/dev/null || {
     log()  { printf '[dashboard-test] %s\n' "$*"; }
@@ -202,6 +211,10 @@ rm -f "$LOCK" 2>/dev/null || true
 ( umask 000; printf '%s' "$$" > "$LOCK" ) 2>/dev/null \
     || die "cannot take $LOCK: $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
+if [ -n "${BB_COVERAGE:-}" ]; then
+    export BB_COVERAGE_DIR="$S/coverage"
+    mkdir -p "$BB_COVERAGE_DIR"
+fi
 # Every tmux call from here on (ours and the server's) talks to a private
 # server whose socket lives in the scratch dir. Nothing reaches the real one.
 #
@@ -282,8 +295,22 @@ probes=()
 pid=""
 agent_pid=""
 stub_pid=""
+coverage_merge() {
+    # Into the tree the copy was made from: the counts name the copy's
+    # paths, which the merge strips.
+    local origin="${BB_TEST_ORIGIN:-$(cd "$HERE/../../.." && pwd)}" n
+    n="$(ls "$BB_COVERAGE_DIR"/*.json 2>/dev/null | wc -l)"
+    [ "$n" -gt 0 ] || { warn "coverage: no counts were written"; return; }
+    python3 "$DASH/../lib/codemap.py" --root "$origin" coverage-ingest \
+        --strip "${BB_TEST_COPY:-$origin}/" "$BB_COVERAGE_DIR"/*.json >&2 || warn "coverage: the merge failed"
+    log "coverage from $n file(s) merged into $origin/.bb-map/coverage.json; bb map coverage reads it"
+}
 cleanup() {
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+    [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
+    # The server's counts are written on its way out, so the merge waits for
+    # it before reading the directory.
+    if [ -n "${BB_COVERAGE_DIR:-}" ]; then sleep 1; coverage_merge; fi
     [ -n "$agent_pid" ] && kill "$agent_pid" 2>/dev/null || true
     [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
     [ -n "${PIDF:-}" ] && rm -f "$PIDF"
@@ -951,6 +978,8 @@ start_server() {
     PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \
     BB_DOCKER_BIN="$S/bin/docker" DOCKER_STUB_STATE="$S/dockerstate" \
     BB_DEV_DATA_DIR="$S/devdata" \
+    BB_COVERAGE_OUT="${BB_COVERAGE_DIR:+$BB_COVERAGE_DIR/server-$RANDOM.json}" \
+    BB_COVERAGE_SUITE="${BB_COVERAGE_SUITE:-server}" \
     BB_ARCHIVE_SPOOL="$S/spool" \
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
@@ -1070,7 +1099,9 @@ stop_world() {
     done
     pid=""; stub_pid=""
 }
-WORLD_OUT=(tmux ssh-agent.sock server.log agent-stub.log .world.tar)
+# ...and the coverage counts, which every suite adds to and a restore must not
+# take back to the empty directory the snapshot holds (R76).
+WORLD_OUT=(tmux ssh-agent.sock server.log agent-stub.log .world.tar coverage)
 snapshot_world() {
     local ex=() n
     for n in "${WORLD_OUT[@]}"; do ex+=("--exclude=./$n"); done
@@ -1139,6 +1170,10 @@ else
     done
 fi
 run_file() {
+    # The suite's name, for the server's coverage counts to carry (R76):
+    # the server is started fresh for every file, so its counts are that
+    # file's and the map can say which suite reached a handler.
+    export BB_COVERAGE_SUITE="$(basename "${1%.mjs}")"
     fresh_world
     fresh
     log "== $(basename "$1")${2:+ $2} =="

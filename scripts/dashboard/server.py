@@ -17,6 +17,7 @@ import gzip
 import hashlib
 import hmac
 import ipaddress
+import atexit
 import collections
 import json
 import os
@@ -7683,7 +7684,54 @@ class Server(ThreadingHTTPServer):
     daemon_threads = True
 
 
+# ---- function coverage (roadmap R76) ----------------------------------------
+# Under `bb tests coverage` the harness names a file, and every function of
+# this dashboard's own python that any thread enters is counted and written
+# there, every few seconds and on the way out. A profile hook, not a trace
+# hook: call and return events only, which is what function coverage needs
+# and a tenth of the cost of line events. Nothing here runs otherwise.
+_COV_OUT = os.environ.get("BB_COVERAGE_OUT", "")
+_cov_counts = {}
+_cov_lock = threading.Lock()
+_COV_HERE = str(HERE)
+
+
+def _cov_profile(frame, event, arg):
+    if event != "call":
+        return
+    co = frame.f_code
+    if not co.co_filename.startswith(_COV_HERE):
+        return
+    key = f"{co.co_filename}:{co.co_firstlineno}:{co.co_name}"
+    with _cov_lock:
+        _cov_counts[key] = _cov_counts.get(key, 0) + 1
+
+
+def _cov_write():
+    with _cov_lock:
+        body = json.dumps({"suite": os.environ.get("BB_COVERAGE_SUITE") or "server",
+                           "counts": dict(_cov_counts)})
+    tmp = _COV_OUT + ".tmp"
+    with contextlib.suppress(OSError):
+        Path(tmp).write_text(body)
+        os.replace(tmp, _COV_OUT)
+
+
+def _cov_start():
+    sys.setprofile(_cov_profile)
+    threading.setprofile(_cov_profile)
+
+    def loop():
+        while True:
+            time.sleep(3)
+            _cov_write()
+    threading.Thread(target=loop, daemon=True, name="coverage").start()
+    atexit.register(_cov_write)
+
+
 def main():
+    if _COV_OUT:
+        _cov_start()
     # No accounts is a normal first boot, not a failure. It used to be one:
     # the owner came from DASHBOARD_AUTH and the dashboard refused to start
     # without it, which put a password in the container's environment, where

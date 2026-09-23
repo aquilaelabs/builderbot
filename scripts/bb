@@ -100,6 +100,7 @@ bb: BuilderBot helper
   bb tests probe FILE    a scratch Playwright script against the dashboard fixture, like a suite
   bb tests keep [stop|log]  keep the fixture up, so a suite or a probe attaches to it
   bb tests preflight [--dry] [--base REF] [--files F...]  the suites and checks a change touches, run
+  bb tests coverage [SUITE...]  a covered run: which functions the suites reach, into bb map coverage
   bb devapp test [ARGS]  the project's test command inside its running dev instance, log and exit code
                          (--instance NAME on any devapp verb for a project with several)
   bb rules               the house rules for this project: the operator's and yours
@@ -191,7 +192,8 @@ bb: BuilderBot helper
   bb drift [REPO]        which files this checkout changed that the running
                          container is not serving yet
   bb map [VERB ...]      the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
-                         draws ID|.class, suites FILE...; ask it before grepping
+                         draws ID|.class, suites FILE..., unused, coverage, covered NAME,
+                         uncovered [FILE]; ask it before grepping
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb tool                the tools toolchains add to a session, each under its own name
   bb tool graphics CMD   pictures a session can make and read back (the graphics toolchain):
@@ -2987,6 +2989,16 @@ cmd_tests() {
             bash "$0" rules check "$c" || rc=1
         done
         [ "$rc" = 0 ] && log "preflight: clean" || warn "preflight: something above failed"
+        return "$rc"
+    fi
+    # A covered run (roadmap R76): the suite, or the named suites, with the
+    # counters in, and the map's account of what they reached after.
+    if [ "${1:-}" = coverage ]; then
+        shift
+        local here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh" rc=0
+        [ -x "$here" ] || die "no dashboard test harness at $here: run this from the BuilderBot checkout"
+        BB_COVERAGE=1 bash "$here" "$@" || rc=$?
+        cmd_map coverage
         return "$rc"
     fi
     if [ "${1:-}" = lab ]; then
@@ -7342,7 +7354,7 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # to the real controller it would be a session planting findings in
         # somebody else's report directory.
         # `probe` and `keep` drive the dashboard fixture, which runs here.
-        "tests run"|"tests last"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"rules check"|"findings sample") : ;;
+        "tests run"|"tests last"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests coverage"|"rules check"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and

@@ -113,7 +113,7 @@ const live = await page.evaluate(() => {
   const base = new Set(Object.getOwnPropertyNames(f.contentWindow));
   f.remove();
   return Object.getOwnPropertyNames(window)
-    .filter(k => !base.has(k) && !/^\d+$/.test(k)).sort();
+    .filter(k => !base.has(k) && !/^\d+$/.test(k) && !k.startsWith('__bbcov')).sort();  // the coverage counters, under bb tests coverage
 });
 
 const declared = new Set(SURFACE);
