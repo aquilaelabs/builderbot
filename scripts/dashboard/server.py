@@ -3860,7 +3860,9 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
                     "/tab-users.js", "/tab-phone.js", "/tab-profile.js",
                     "/tab-toolchains.js", "/tab-emulator.js", "/tab-docker.js",
-                    "/page-welcome.js", "/page-chat.js", "/tab-findings.js", "/tab-projects.js",
+                    "/page-welcome.js", "/page-chat.js", "/page-motion.js", "/page-lists.js",
+                    "/page-cards.js", "/page-gear.js", "/page-doctor.js", "/page-commands.js",
+                    "/tab-findings.js", "/tab-projects.js",
                     "/nb-git.js", "/nb-artifacts.js", "/nb-analysis.js", "/nb-rules.js",
                     "/nb-tests.js", "/nb-bugs.js", "/nb-pending.js", "/nb-roadmap.js",
                     "/nb-memory.js", "/nb-history.js"):

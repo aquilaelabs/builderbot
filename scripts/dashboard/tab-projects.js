@@ -145,3 +145,296 @@ const devClaudeMode = name => {
   const v = (state?.projects || []).find(p => p.name === name)?.prefs?.devbuild;
   return DEVBUILD_MODES.some(([m]) => m === v) ? v : "deny";
 };
+
+// ---- the new-project dialog ------------------------------------------------
+// One dialog, three modes: a new local repo, a clone, and linking a project
+// to a git host. The host catalog and the agent's keys arrive per open from
+// /api/pubkeys. Moved here from index.html with bb map sections in hand: the
+// dialog is the Projects feature's. Its fields, its submit and the name
+// that follows the address are wired from index.html.
+
+const PMODES = {
+  init:  { title: () => "New project", btn: "Create", focus: "pName",
+           fields: ["pSrcField", "pNameField", "pNodeField", "pArchiveField", "pAboutField"] },
+  clone: { title: () => "New project", btn: "Create", focus: "pUrl",
+           fields: ["pSrcField", "pNameField", "pNodeField", "pUrlField", "pForgeField",
+                    "pPushField", "pTokenField", "pKeyField"] },
+  link:  { title: () => `Link ${pLink} to a git host`, btn: "Link", focus: "pUrl",
+           fields: ["pForgeField", "pUrlField", "pLinkAuthField", "pKeyField",
+                    "pTokenField"] },
+};
+
+let pMode = "init";
+
+let pLinkAuth = "key";                   // how a link authenticates: key or token
+
+let pLink = null;                        // the project being linked, if any
+
+let pKeys = [];                          // the agent's public keys, per open
+
+let pPat = false;                        // can https push authenticate (gh)?
+
+// The host catalog, from the same fetch as the keys. Empty until it lands,
+// which is why every reader goes through pForge() rather than indexing it.
+let pForges = [];
+
+let pForgeId = "github";
+
+// What the operator has already said their own servers run, by host. The
+// clone form asks which host only for an address on a server nobody has
+// answered for yet: the second project from the same Gitea is not asked.
+let pForgeHosts = {};
+
+// The host the current pick was made for, so a fresh address gets a fresh
+// question rather than the last one's answer.
+let pAskedHost = "";
+
+function pDraw(){
+  const m = PMODES[pMode];
+  $("pTitle").textContent = m.title();
+  $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
+  $("pLocal").classList.toggle("on", pMode === "init");
+  $("pClone").classList.toggle("on", pMode === "clone");
+  for (const f of ["pSrcField", "pNameField", "pArchiveField", "pForgeField",
+                   "pUrlField", "pLinkAuthField", "pPushField",
+                   "pTokenField", "pKeyField", "pAboutField"])
+    $(f).hidden = !m.fields.includes(f);
+  pDrawForge();
+  // The deploy-key picker only appears when the agent actually holds keys:
+  // an empty dropdown would be a question with no answers.
+  if (!pKeys.length) $("pKeyField").hidden = true;
+  // Linking: the switch decides which of the two fields is asked.
+  if (pMode === "link"){
+    $("pLinkKey").classList.toggle("on", pLinkAuth === "key");
+    $("pLinkToken").classList.toggle("on", pLinkAuth === "token");
+    $("pKeyField").hidden = pLinkAuth !== "key" || !pKeys.length;
+    $("pTokenField").hidden = pLinkAuth !== "token";
+  }
+  // What the token field is about: the picked entry when linking, and the
+  // address's own host when cloning, which is where the host comes from there.
+  const fg = pMode === "clone"
+    ? (pForgeOf(pUrlHost($("pUrl").value)) || pForge()) : pForge();
+  $("pUrlHint").textContent = pMode === "link"
+    ? `An empty repository to push ${pLink} to: linking never `
+      + `touches a repo that already has commits.`
+      + (fg.creates && pLinkAuth === "token"
+         ? " One that does not exist yet is created for you, private."
+         : pPat && fg.id === "github" && pLinkAuth === "key"
+           ? " One that does not exist yet is created for you, private." : "")
+    : "Fetched with the container's own access: a deploy key or PAT that can "
+      + "already reach it; private repos need that set up first. A CLAUDE.md is "
+      + "drafted from its README and build files (kept as-is if it already has "
+      + "one).";
+  $("pNameHint").textContent = pMode === "clone"
+    ? "The directory to clone into. Fills itself in from the address: change "
+      + "it to keep more than one checkout of the same repository."
+    : "Named the way a git host names a repository: anything it cannot use "
+      + "becomes a dash, so you are shown the directory you are about to get "
+      + "rather than being sent back to retype it.";
+  $("pPushHint").textContent =
+    "Off means read-only: a pre-push hook refuses, so nobody pushes from here "
+    + "by accident. It cannot be turned on later: delete the project and "
+    + "clone it again, and only one project at a time may push to a given "
+    + "repository. Needs a token or a deploy key.";
+  $("pTokenHint").textContent = pMode === "link"
+    ? `Used for ${pLink} and no other project, even if it opens more. `
+      + (fg.creates ? `Checked with ${fg.name} before anything is written.`
+                    : `${fg.name} cannot be asked whether it is good, so the `
+                      + "first fetch is the test.")
+    : "Leave empty for a public repository. A token is kept for this project "
+      + "alone, in /config, and a shell in this container can read it.";
+  $("pToken").placeholder = fg.hint;
+  $("pKeyHint").textContent =
+    (pMode === "link"
+      ? "The key the push (and every later one) will offer. "
+      : "For a private repo with its own deploy key. Pick the key and the "
+        + "container side is handled for you: the clone (and every later "
+        + "push) offers exactly this key. ")
+    + "The host still needs the public key below, on the repository's own "
+    + "deploy-key page. "
+    + (pPat && (pMode !== "link" || fg.id === "github")
+        ? "A PAT is configured, so leaving this on none works too."
+        : pMode === "link" ? "No PAT is configured for this host, so a key is required here."
+        : "");
+}
+
+// The source picker moves like the Dashboard | Terminal switch: the incoming
+// fields slide in from the chosen tab's side (local is the left tab, clone
+// the right), same 220ms ease, same reduced-motion gate: one vocabulary for
+// every two-tab switch on the page. Scaled to the dialog: a few pixels, not
+// a viewport, because the fields swap inside a box that is not moving.
+// The host row: the catalog as a select, and a box for the address when the
+// picked one is somebody's own server rather than a single public site.
+// The host in an address, as typed: enough to tell a server the catalog
+// names from one nobody has answered for. Not a validator: the server parses
+// it properly, and this only decides whether to ask a question.
+function pUrlHost(url){
+  const u = (url || "").trim();
+  let m = /^[a-z]+:\/\/(?:[^@/]+@)?([A-Za-z0-9][A-Za-z0-9.:-]*)/i.exec(u);
+  if (!m) m = /^(?:[^@:/]+@)?([A-Za-z0-9][A-Za-z0-9.-]*):/.exec(u);
+  return m ? m[1].toLowerCase() : "";
+}
+
+// Which catalog entry a host names itself as, or null when nobody has said.
+const pForgeOf = host => {
+  if (!host) return null;
+  const bare = host.split(":")[0];
+  return pForges.find(f => f.host && f.host.toLowerCase() === bare)
+      || pForges.find(f => f.id === pForgeHosts[host]) || null;
+};
+
+function pDrawForge(){
+  if ($("pForgeField").hidden) return;
+  const sel = $("pForge");
+  if (sel.dataset.built !== String(pForges.length)){
+    sel.innerHTML = pForges.map(f =>
+      `<option value="${esc(f.id)}">${esc(f.name)}${f.dev ? " (dev)" : ""}</option>`).join("");
+    sel.dataset.built = String(pForges.length);
+  }
+  // Cloning: the URL is the subject and the host is in it, so this is not a
+  // second place to type one. It is one question: what is running on that
+  // server, and it is asked only when the address is on a server that does
+  // not name itself and nobody has answered for. Which means a paste of a
+  // GitHub URL never sees it, and a Gitea is asked about once ever.
+  if (pMode === "clone"){
+    const host = pUrlHost($("pUrl").value);
+    const named = pForgeOf(host);
+    $("pForgeField").hidden = !host || !!named;
+    $("pForgeHost").hidden = true;
+    if (!$("pForgeField").hidden){
+      // A server nobody has answered for starts on the entry that promises
+      // nothing, not on GitHub: the question is what this one runs, and a
+      // default that names a different server is an answer nobody gave.
+      if (pAskedHost !== host){ pAskedHost = host; pForgeId = "git"; }
+      sel.value = pForgeId;
+      $("pForgeHint").textContent =
+        `Nothing here knows what ${host} runs, and it decides whether a token `
+        + `can be checked and a missing repository made. Asked once per server.`;
+    }
+    return;
+  }
+  sel.value = pForgeId;
+  const f = pForge();
+  $("pForgeHost").hidden = !!f.fixed;
+  if (f.fixed) $("pForgeHost").value = "";
+  $("pForgeHint").textContent = f.about;
+  // The address box follows the host, so the shape being asked for is the
+  // shape of the thing they are about to paste.
+  const h = pHost() || "your-host";
+  $("pUrl").placeholder = pLinkAuth === "key"
+    ? `git@${h}:owner/repo.git` : `https://${h}/owner/repo.git`;
+}
+
+function pSlide(){
+  if (noMotion()) return;
+  const dx = pMode === "clone" ? "18px" : "-18px";
+  for (const f of PMODES[pMode].fields){
+    const el = $(f);
+    if (f !== "pSrcField" && !el.hidden)
+      el.animate([{transform: `translateX(${dx})`, opacity: 0},
+                  {transform: "none", opacity: 1}],
+                 {duration: 220, easing: "ease"});
+  }
+}
+
+// The picked entry, or a safe stand-in while the catalog is still in flight:
+// the dialog draws before the fetch answers, and a placeholder that promises
+// nothing is better than a draw that throws.
+const PFORGE_NONE = {id: "", name: "the host", host: "", fixed: false,
+                     hint: "an access token", about: "", creates: false};
+
+const pForge = () => pForges.find(f => f.id === pForgeId) || pForges[0]
+                     || PFORGE_NONE;
+
+// What the operator typed for a self-hosted one, or the entry's own fixed
+// host. Trimmed of a pasted scheme and trailing slash, because people paste
+// the address bar.
+const pHost = () => {
+  const f = pForge();
+  if (f.fixed && f.host) return f.host;
+  return $("pForgeHost").value.trim()
+    .replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "");
+};
+
+function pShowKey(){
+  const k = pKeys.find(k => k.name === $("pKey").value);
+  $("pPubWrap").hidden = !k;
+  if (k) $("pPub").value = k.pub;
+}
+
+// Each open is a generation; closing bumps it too. Everything asynchronous:
+// the pubkeys response, a slow clone's outcome: checks the generation before
+// touching the dialog, so a request from a closed dialog can neither shut the
+// one the operator just reopened nor write its error where the wrong flow
+// will wear it. The outcome itself still surfaces, as a toast.
+let pGen = 0;
+
+let pFetch = null;                       // this open's /api/pubkeys, parsed
+
+function pOpen(mode){
+  const gen = ++pGen;
+  pMode = mode; pKeys = []; pPat = false; pDraw();
+  $("pName").value = $("pUrl").value = $("pAbout").value = "";
+  $("pToken").value = "";
+  pAskedHost = "";
+  // Every open starts on GitHub rather than on whatever the last one picked:
+  // the host is the first thing decided and a remembered pick would be a
+  // silent one.
+  pForgeId = "github";
+  $("pForgeHost").value = "";
+  $("pPush").checked = false;
+  pNameTyped = false;
+  $("pNamePreview").hidden = true;
+  $("pName").classList.remove("bad");
+  $("pNamePreview").classList.remove("bad");
+  // The select is emptied, not left as-is: a key picked during a previous
+  // open must not ride along invisibly into this one's submit.
+  $("pKey").innerHTML = "";
+  $("pErrWrap").hidden = $("pPubWrap").hidden = true;
+  $("pCreate").disabled = false; $("pCreate").textContent = PMODES[mode].btn;
+  $("pmodal").hidden = false;
+  pFillNode();
+  // Fetched per open, not cached: keys change when the container restarts
+  // with a new /secrets/ssh, and a stale list here would offer a key the
+  // agent no longer holds. The submit handler awaits pFetch directly, so an
+  // early Create still judges auth on the real answer, not the defaults.
+  pFetch = fetch("/api/pubkeys").then(r => r.json()).catch(() => null);
+  pFetch.then(j => {
+    if (gen !== pGen || !j) return;
+    pKeys = j.keys || []; pPat = !!j.pat;
+    pForges = j.forges || [];
+    pForgeHosts = j.hosts || {};
+    if (!pForges.some(f => f.id === pForgeId)) pForgeId = (pForges[0] || {}).id || "";
+    $("pKey").innerHTML = `<option value="">none: ${pPat
+        ? "authenticate with the configured PAT"
+        : "public repo, or the container's default access"}</option>`
+      + pKeys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join("");
+    pShowKey(); pDraw();
+  });
+}
+
+// The node picker on New project: the same list the settings dialog
+// offers, fetched the first time it is needed. One node is picked for
+// the person; several leave the choice open, with none as the last
+// option rather than the first.
+function pFillNode(){
+  const sel = $("pNode"), wrap = $("pNodeField");
+  if (!sel || !wrap) return;
+  if (nodesList === null){
+    const gen = pGen;
+    loadNodes().then(() => { if (gen === pGen && !$("pmodal").hidden) pFillNode(); });
+  }
+  const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
+  const shown = PMODES[pMode]?.fields.includes("pNodeField") && pick.length > 0;
+  wrap.hidden = !shown;
+  if (!shown){ sel.innerHTML = ""; return; }
+  const was = sel.value;
+  sel.innerHTML = pick.map(n => `<option value="${esc(n.id)}">${esc(n.name)}${
+      n.live === false ? " (quiet)" : ""}</option>`).join("")
+    + `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`;
+  sel.value = pick.some(n => n.id === was) ? was : (pick.length === 1 ? pick[0].id : "");
+}
+
+function openNewProject(){ pLink = null; pOpen("init"); }
+
+function openLinkProject(name){ pLink = name; pOpen("link"); }

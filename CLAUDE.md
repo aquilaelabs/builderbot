@@ -173,11 +173,13 @@ by hand cost four commands and still could not see the failed builds.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is vanilla JS and CSS with one classic `tab-*.js` script per
     document tab, one `nb-*.js` per notebook view, and one `page-*.js` per
-    part of the page that is neither (the welcome panel, chat), all loaded before
-    the page's own script and all pure declarations: wiring that must run
-    at load stays in `index.html` under the section's header. No framework,
-    no build step. `bb map sections index.html` says which section moves
-    next.
+    part of the page that is neither (the welcome panel, chat, motion, the
+    sidebar cards, the gear menu, doctor, the command cards, paged lists),
+    all loaded before the page's own script and all pure declarations:
+    wiring that must run at load stays in `index.html` under the section's
+    header, and the server serves a script only by name (the allow-list in
+    `server.py`). No framework, no build step. `bb map sections index.html`
+    says which section moves next, and R77 is the rest of that migration.
   - **The dashboard's design language is `docs/design-language.md`**, held
     by the house rule `design`, which names it and runs `test/uniform.mjs`
     as its check. A new tab kind declares `multi` (a notebook is per

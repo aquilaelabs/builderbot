@@ -504,7 +504,7 @@ for (const kind of kinds){
   // Not `new URL`: URL in this file is the dashboard's address, from lib.mjs.
   const here = (await import('node:path')).resolve(import.meta.dirname, '..') + '/';
   const off = [];
-  for (const f of readdirSync(here).filter(n => /^(nb-|tab-).*\.js$|^index\.html$/.test(n))){
+  for (const f of readdirSync(here).filter(n => /^(nb-|tab-|page-).*\.js$|^index\.html$/.test(n))){
     readFileSync(here + f, 'utf8').split('\n').forEach((line, i) => {
       if (/<[a-z]+ class="(?!loading)[^"]*">loading…/.test(line)) off.push(`${f}:${i + 1} a loading line not in .loading`);
       if (/class="none"/.test(line)) off.push(`${f}:${i + 1} an empty state in .none`);

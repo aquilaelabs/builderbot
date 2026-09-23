@@ -200,11 +200,13 @@ are actions, not settings, and act on the press.
 The page is `index.html` and classic scripts beside it, loaded before its
 own script: `tab-*.js` for a document tab, `nb-*.js` for a notebook view,
 `page-*.js` for a part of the page that is neither (the welcome panel,
-chat).
+chat, motion, the sidebar cards, the gear menu, doctor, the command
+cards, paged lists).
 Each is pure declarations, since it runs before the page and its helpers
 exist; wiring that must run at load stays in `index.html` under the
 section's `// ---- name ----` header, with a line saying where the
-functions went. `bb map sections index.html` reads the page by those
+functions went. The server serves a script only by name: a new file goes
+on the allow-list in `server.py` beside the others, or the page 404s on it. `bb map sections index.html` reads the page by those
 headers, with each section's outside callers, what runs at load and what
 the suite covers, and a section with few outside callers and nothing at
 load is the next to move.

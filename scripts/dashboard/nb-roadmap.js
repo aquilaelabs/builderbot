@@ -966,3 +966,21 @@ function nbRoadmapView({$, nb}){
 
   return {cancelSend, drawSendBox, flushPending, loadRoadmap, postRoadmap, redrawRoadmap, revertPending, sendBoxEl, shutSendBoxes};
 }
+
+// ---- a step that needs no sending -----------------------------------------
+// Handed over, or finished by a session. Two marks, one question: sent is
+// the dashboard's and says a line went; done is a session's and says the
+// work is finished, sent or not. Moved here from index.html: only this view
+// asks.
+
+// A step that needs no sending: handed over, or finished by a session.
+// Two marks, one question: sent is the dashboard's and says a line went;
+// done is a session's and says the work is finished, sent or not.
+const stepGone = s => !!(s.sent || s.done);
+
+function nextStep(r){
+  const steps = r.steps || [];
+  if (!steps.length) return stepGone(r) ? null : -1;
+  const i = steps.findIndex(s => !stepGone(s));
+  return i < 0 ? null : i;
+}

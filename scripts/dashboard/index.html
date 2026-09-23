@@ -4194,6 +4194,12 @@ body.booting .pane>.loading{margin:auto}
 <script src="tab-docker.js"></script>
 <script src="page-welcome.js"></script>  <!-- a part of the page that is no tab: same rule -->
 <script src="page-chat.js"></script>
+<script src="page-motion.js"></script>
+<script src="page-lists.js"></script>
+<script src="page-cards.js"></script>
+<script src="page-gear.js"></script>
+<script src="page-doctor.js"></script>
+<script src="page-commands.js"></script>
 <script src="tab-findings.js"></script>
 <script src="tab-projects.js"></script>
 <script src="nb-git.js"></script>
@@ -4221,7 +4227,8 @@ body.booting .pane>.loading{margin:auto}
 let tabs = [{id:"ws", kind:"term", arg:"shell", label:"sh: workspace"}];
 let panes = ["ws", null];
 let active = 0;
-let state = null;
+let state = null;   // the status poll's answer, and the one source: a `let` that
+                    // mirrors part of it drifts (B213, B215), so read it here
 let findings = null;
 let pinFor = null;
 // Shut, on every device. A touch device is where the on-screen keys are most
@@ -5060,65 +5067,13 @@ function placePinMenu(){
 // FLIP, for both reorder surfaces: measure where the keyed elements sit,
 // let the caller do the (instant) DOM reorder, then play each element from
 // its old spot to its new one. The transform tween is what the eye follows.
-const noMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Its functions are page-motion.js now, with every height tween on the page; what runs at load stays here.
 
-// Every modal leaves the way it arrived. Closing one is `hidden = true` at a
-// dozen sites, and any dialog added later closes the same way, so the leaving
-// lives on the property itself: `hidden` on a modal is its own accessor, and
-// setting it plays the tween first and puts the attribute on when the tween
-// ends. Nothing at a call site to remember, and nothing for a watcher to
-// misread: a hide of a modal already hidden is a hide, a show mid-leave
-// drops the tween and shows. (An observer on the attribute did this first,
-// and re-showing the element to play the tween was what every other test
-// on the page tripped over.)
-function armModal(el){
-  if (!el || el.__modalArmed) return;
-  el.__modalArmed = true;
-  Object.defineProperty(el, "hidden", {
-    configurable: true,
-    // Hidden the moment it is told to, to everything that asks: the poll
-    // and the cards read a dialog's state to decide what to repaint, and a
-    // dialog that read as open for the length of its tween had them draw
-    // the page as if it were. Only the pixels linger.
-    get(){ return this.hasAttribute("hidden") || this.classList.contains("leaving"); },
-    set(v){
-      if (!v){
-        this.getAnimations().forEach(a => a.cancel());
-        this.querySelector(":scope > .box")?.getAnimations().forEach(a => a.cancel());
-        this.classList.remove("leaving");
-        this.removeAttribute("hidden");
-        return;
-      }
-      if (this.hasAttribute("hidden") || this.classList.contains("leaving")) return;
-      if (noMotion()){ this.setAttribute("hidden", ""); return; }
-      this.classList.add("leaving");
-      this.querySelector(":scope > .box")?.animate(
-        [{opacity: 1, transform: "none"}, {opacity: 0, transform: "translateY(6px) scale(.985)"}],
-        {duration: 150, easing: "ease"});
-      this.animate([{opacity: 1}, {opacity: 0}], {duration: 150, easing: "ease"}).finished.then(
-        () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); } },
-        () => {});                        // cancelled: it was shown again, and stays
-    }});
-}
 document.querySelectorAll(".modal").forEach(armModal);
 // The Tools card carries the tab icons on its buttons; the markup is static,
 // so they are put on once here rather than kept in two places.
 for (const [id, kind] of Object.entries(TOOL_BUTTONS))
   $(id)?.insertAdjacentHTML("afterbegin", TOOL_ICONS[kind]);
-
-function flip(els, key){
-  if (noMotion()) return () => {};
-  const before = new Map([...els()].map(el => [key(el), el.getBoundingClientRect()]));
-  return () => [...els()].forEach(el => {
-    const a = before.get(key(el));
-    if (!a) return;
-    const b = el.getBoundingClientRect();
-    const dx = a.left - b.left, dy = a.top - b.top;
-    if (dx || dy)
-      el.animate([{transform: `translate(${dx}px,${dy}px)`}, {transform: "none"}],
-                 {duration: 140, easing: "ease"});
-  });
-}
 
 // ---- drag to reorder -------------------------------------------------
 // Pointer events rather than HTML5 drag-and-drop, which does not exist on
@@ -6425,7 +6380,6 @@ function findingsRulesHtml(rows){
 // kept a copy, and when the default moved the copy did not, so Reset put the
 // cards back where the old copy said. Until the first poll answers, the
 // markup's order stands; it is written in the same order.
-let cards = {order: [], closed: []};   // filled from the markup once it exists, below
 // Which cards a phone has been told to open. A phone's first screen was 470
 // of its 844 pixels of Tools, Administration and Runner before the first
 // project appeared, and those are desk things: on a phone every card but
@@ -6434,373 +6388,17 @@ let cards = {order: [], closed: []};   // filled from the markup once it exists,
 // the server holds, so a card opened on the phone stays open across a
 // reload here and never reaches the desk the arrangement was made on. A
 // browser that keeps nothing starts folded, as before.
+// Its functions are page-cards.js now, the card drag with them; the markup's order is read and the headers wired here.
 const phoneOpen = new Set((() => {
   try{ return JSON.parse(localStorage.getItem("bb.phoneOpen") || "[]"); }catch{ return []; }
 })());
 const keepPhoneOpen = () => { try{ localStorage.setItem("bb.phoneOpen", JSON.stringify([...phoneOpen])); }catch{} };
-const cardShut = key => cards.closed.includes(key)
-  || (isPhone() && key !== "projects" && !phoneOpen.has(key));
 
-let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
-                                           // the arrangement here: a poll
-                                           // issued before that carries a
-                                           // stale copy and must not win
-
-const cardEls = () => [...document.querySelectorAll(".side .card[data-card]")];
 // Never empty: a drag before the first poll answered used to save the one
 // card it moved, which the server healed into the default and the drag was
 // lost. The markup is written in the default order, so it is the default
 // until the server's own arrangement arrives.
 cards.order = cardEls().map(el => el.dataset.card);
-
-function applyCards(animate){
-  const side = document.querySelector(".col.side");
-  const play = animate ? flip(cardEls, el => el.dataset.card) : null;
-  // Only when the order is actually wrong. appendChild moves a node: remove
-  // then insert, and a node leaving the document takes the focus inside it
-  // with it. Once every fifteen seconds that is a shrug; during a sign-in the
-  // card polls every 1.2s, and it knocked the phone's keyboard down under the
-  // thumb of whoever was pasting the code in.
-  const here = cardEls().map(el => el.dataset.card);
-  const want = cards.order.filter(k => here.includes(k));
-  if (want.join() !== here.filter(k => cards.order.includes(k)).join())
-    for (const key of cards.order){
-      const el = side.querySelector(`.card[data-card="${key}"]`);
-      if (el) side.appendChild(el);   // appendChild moves, so this re-sorts in place
-    }
-  // A card mid-fold is left to its animation's own finish handler: snapping
-  // the class on under it would cut the tween short.
-  cardEls().forEach(el => {
-    if (!el.getAnimations().length)
-      el.classList.toggle("closed", cardShut(el.dataset.card));
-  });
-  play?.();
-}
-
-// Take on the arrangement another browser saved: a card it folded folds
-// here with the same tween, one it moved slides to its place. The very first
-// poll is the page finding out how things are, not a change, and lands
-// instantly: a fold-up of every closed card on load would be theatre.
-let cardsSynced = false;
-function adoptCards(next){
-  const prev = cards;
-  cards = next;
-  const reorder = prev.order.join() !== cards.order.join();
-  if (cardsSynced && !noMotion())
-    cardEls().forEach(el => {
-      const k = el.dataset.card, shut = cardShut(k);
-      if (shut !== el.classList.contains("closed") && rendered(el)
-          && !el.getAnimations().length)
-        slideCard(el, shut);
-    });
-  applyCards(cardsSynced && reorder);
-  cardsSynced = true;
-}
-
-async function saveCards(){
-  cardsChangedAt = performance.now();
-  try{
-    const r = await postJSON("/api/cards", cards);
-    const j = await r.json();
-    if (j.error) notify(j.error, true);
-    else { cards = j.cards; if (state) state.cards = j.cards; applyCards(); }
-  }catch(e){ notify("could not save the card layout: " + e, true); }
-}
-
-function toggleCard(key){
-  const el = document.querySelector(`.card[data-card="${key}"]`);
-  // On a PHONE the fold is a view, not an arrangement: it is kept for the
-  // page's life and never written, so opening Tools on a phone to press one
-  // button does not reach across to the desktop the arrangement was made on.
-  if (isPhone()){
-    const shut = !el.classList.contains("closed");
-    if (shut) phoneOpen.delete(key); else phoneOpen.add(key);
-    keepPhoneOpen();
-    slideCard(el, shut);
-    return;
-  }
-  const closing = !cards.closed.includes(key);
-  cards.closed = closing ? [...cards.closed, key] : cards.closed.filter(k => k !== key);
-  slideCard(el, closing);
-  saveCards();
-}
-
-// The fold is a height tween between the card's two real sizes, with the
-// class flipped at whichever end keeps the body visible while it moves,
-// on open before the tween, on close after it. Height is real layout, so
-// the cards below ride along frame by frame instead of jumping.
-function slideCard(el, closing){
-  if (noMotion()){ el.classList.toggle("closed", closing); return; }
-  // Any entrance animation inside this card ends here. contentIn starts at
-  // opacity 0 and runs 180ms (the same as the fold), so a body repainted in
-  // the moment before a click spent the whole collapse invisible, and the card
-  // looked like it blanked before it shut. Runner and Projects are the two
-  // whose bodies redraw from the poll, which is why they were the two that
-  // flickered. Removing the class ends the animation outright; the content is
-  // already there and the fold is the motion that matters now.
-  el.querySelectorAll(".justpainted").forEach(n => n.classList.remove("justpainted"));
-  const from = el.offsetHeight;         // current frame, if one is mid-tween
-  // A second click mid-tween reverses from wherever the card is now; the old
-  // animation is canceled un-finished so its class write never lands.
-  el.getAnimations().forEach(a => a.cancel());
-  el.classList.toggle("closed", closing);
-  const to = el.offsetHeight;
-  if (closing) el.classList.remove("closed");
-  el.style.overflow = "hidden";
-  const anim = el.animate([{height: from + "px"}, {height: to + "px"}],
-                          {duration: 180, easing: "ease"});
-  anim.onfinish = () => {
-    if (closing) el.classList.add("closed");
-    el.style.overflow = "";
-  };
-}
-
-// The same fold, on a <details> and on a plain hidden block: the memories,
-// the bug reports, and a roadmap row's details. A <details> snaps open by
-// construction and a [hidden] block appears with no in-between, so both are
-// driven here instead: measure, flip the state, measure again, and tween
-// between the two real heights. Height is real layout, so everything below
-// rides along frame by frame rather than jumping, which is the whole reason
-// the cards do it this way.
-function foldHeight(el, from, to, done){
-  // Only its own kind, so a fold inside a card cannot swallow the class write
-  // the card-level fold's finish handler is going to make.
-  el.getAnimations().forEach(a => { if (a.id === "fold") a.cancel(); });
-  el.style.overflow = "hidden";
-  const anim = el.animate([{height: from + "px"}, {height: to + "px"}],
-                          {duration: 180, easing: "ease"});
-  anim.id = "fold";
-  const settle = () => { el.style.overflow = ""; el.style.height = ""; };
-  anim.onfinish = () => { done(); settle(); };
-  // Canceled by a newer fold: that one owns the element now, and it measured
-  // its own starting height from wherever this one had got to.
-  anim.oncancel = settle;
-}
-
-// A <details>, which has to be open while it shrinks or there is nothing to
-// see moving, so the flag is set true for the tween and written for real at
-// the end, whichever direction it went.
-function slideDetails(el, willOpen){
-  const sum = el.querySelector("summary");
-  if (!sum || noMotion()){ el.open = willOpen; return; }
-  const from = el.offsetHeight;
-  el.open = true;
-  const to = willOpen ? el.offsetHeight : sum.offsetHeight;
-  if (from === to){ el.open = willOpen; return; }
-  foldHeight(el, from, to, () => { el.open = willOpen; });
-}
-
-// ---- long lists, shown a page at a time ---------------------------------
-// Not numbered pages. These lists are read in an order that means something:
-// bugs by severity, findings by rule, the roadmap by the order the work has
-// to happen in, so "page 4" names nothing, and paging away from the top
-// hides the rows that matter most. A page of rows and a control that adds
-// another keeps the order intact, keeps the browser's own find working over
-// everything already shown, and is one tap rather than a bar of them.
-//
-// Applied to the DOM after a list draws rather than woven into each renderer:
-// five lists render five different ways, and one function that hides
-// overflow rows is the only shape that cannot drift between them.
-const PAGE = 25;
-const pageState = {};      // list id -> how many rows are currently shown
-
-function paginate(host, rowSel, opts = {}){
-  if (!host) return;
-  // The notebook this list is in, folded into the key. A notebook is a CLONE
-  // of one template, so every id inside it is shared by every open notebook,
-  // and a key of "artList" was one bucket for all of them. The visible effect
-  // was Show more appearing not to work: a SHORT list in another notebook
-  // takes the `rows.length <= size + 5` branch, which deletes the key, and
-  // the long list snapped back to its first page on the next poll: within a
-  // second or two of the click, which reads as the button doing nothing.
-  // A list outside a notebook has one instance and keeps its plain key.
-  const nb = host.closest?.(".nb")?.dataset.project;
-  const key = (nb ? nb + ":" : "") + (opts.key || host.id);
-  const rows = [...host.querySelectorAll(rowSel)];
-  host.querySelector(":scope > .pagemore")?.remove();
-  const size = opts.size || PAGE;
-  // A list that only just crosses the line is worse paginated than whole:
-  // one hidden row behind a button is a click to see nothing much.
-  if (rows.length <= size + 5){
-    rows.forEach(r => r.hidden = false);
-    delete pageState[key];
-    return;
-  }
-  const shown = Math.min(pageState[key] || size, rows.length);
-  rows.forEach((r, i) => { r.hidden = i >= shown; });
-  const left = rows.length - shown;
-  const bar = document.createElement("div");
-  bar.className = "pagemore";
-  // With nothing left there is no "more" to offer: a "Show 0 more" button is
-  // a control that does nothing, and the count alone is the honest footer.
-  bar.innerHTML = `<span>${left ? `${shown} of ${rows.length}` : `all ${rows.length}`}${
-      opts.noun ? " " + esc(opts.noun) : ""}</span>
-    ${left ? `<button type="button" class="more">Show ${
-      Math.min(size, left)} more</button>` : ""}
-    ${left > size ? `<button type="button" class="all">Show all</button>` : ""}
-    ${shown > size ? `<button type="button" class="fewer">Fewer</button>` : ""}`;
-  bar.querySelector(".more")?.addEventListener("click", () => {
-    pageState[key] = shown + size; paginate(host, rowSel, opts);
-  });
-  bar.querySelector(".all")?.addEventListener("click", () => {
-    pageState[key] = rows.length; paginate(host, rowSel, opts);
-  });
-  bar.querySelector(".fewer")?.addEventListener("click", () => {
-    pageState[key] = size; paginate(host, rowSel, opts);
-    host.scrollIntoView({block: "nearest"});
-  });
-  host.appendChild(bar);
-}
-
-// A plain block that is shown and hidden. Same tween, collapsed height zero.
-// One arrival for every box that opens under a row: the send box, a reword,
-// a delete confirm, the bug tracker's two. They unroll from nothing on the
-// same height tween the folds use, so the lines below ride down instead of
-// jumping out of the way. Height rather than opacity, because those lines
-// have to move either way and moving them smoothly is the whole point.
-function arriveBox(el){
-  proselines(el);
-  if (noMotion() || !el) return;
-  foldHeight(el, 0, el.offsetHeight, () => {});
-}
-
-// A box whose CONTENTS are replaced: the memory writer and the bug reporter,
-// each a one-line link that becomes a form and goes back to a link. Not
-// arriveBox: that unrolls from nothing, and these start at the height of the
-// link they are replacing, so the tween runs between the two real sizes the
-// same way every other fold here does. Paint first, measure after: the form
-// has no height until it is in the document.
-function swapBox(el, paint){
-  if (!el){ paint(); return; }
-  if (noMotion()){ paint(); return; }
-  // Where it is NOW, which mid-tween is a pinned px height rather than the
-  // natural one: measured before the cancel below, exactly as the card fold
-  // does it. Reopening a box while it was still rolling up otherwise measured
-  // that pinned height twice, read from === to, and swapped with no motion at
-  // all: the second click in a row was the one that looked broken.
-  const from = el.offsetHeight;
-  el.getAnimations().forEach(a => { if (a.id === "fold") a.cancel(); });
-  paint();
-  const to = el.offsetHeight;
-  if (from === to) return;
-  foldHeight(el, from, to, () => {});
-}
-
-function slideHidden(el, willShow, after){
-  const done = () => { el.hidden = !willShow; after?.(); };
-  if (noMotion()){ done(); return; }
-  el.hidden = false;
-  const full = el.offsetHeight;
-  foldHeight(el, willShow ? 0 : full, willShow ? full : 0,
-             () => { el.hidden = !willShow; after?.(); });
-}
-
-// Grow or shrink a card around what a control just changed inside it: the
-// projects error toggle, the commands cut-off, doctor's detail, with the
-// same height tween as the card-level fold. `mutate` does the actual redraw.
-function slideBody(el, mutate){
-  // The card or panel hosting it, whose height is what moves; a row in a
-  // tab has no card and slides over its own height.
-  const card = el.closest(".card, .mpanel") || el;
-  if (noMotion()){ mutate(); return; }
-  const from = card.offsetHeight;
-  // Only its own kind: canceling a card-level fold here would swallow the
-  // class write that fold's finish handler was going to make.
-  card.getAnimations().forEach(a => { if (a.id === "body") a.cancel(); });
-  mutate();
-  const to = card.offsetHeight;
-  if (from === to) return;
-  card.style.overflow = "hidden";
-  const anim = card.animate([{height: from + "px"}, {height: to + "px"}],
-                            {duration: 180, easing: "ease"});
-  anim.id = "body";
-  anim.onfinish = () => card.style.overflow = "";
-}
-
-// The same pointer-based drag as the tab strip, turned vertical: the number
-// of *other* visible cards whose midline is above the pointer is exactly the
-// insertion index. A hidden card (findings without /reports) offers nothing
-// to aim at, so it is re-appended after the visible order: the bottom is
-// where it surfaces if it ever appears.
-// Rendered, as opposed to merely present: a hidden card (findings without
-// /reports) and one a phone hides by stylesheet both offer nothing to aim at.
-const rendered = el => el && !el.hidden && el.getClientRects().length > 0;
-
-function cardDropIndex(y, fromKey){
-  let idx = 0;
-  cardEls().forEach(el => {
-    if (el.dataset.card === fromKey || !rendered(el)) return;
-    const r = el.getBoundingClientRect();
-    if (y > r.top + r.height / 2) idx++;
-  });
-  return idx;
-}
-
-function startCardDrag(ev, key){
-  if (ev.pointerType === "mouse" && ev.button !== 0) return;
-  // Same touch rule as the tab strip: hold half a second to pick the card up
-  // (it dims), and a finger that moves sooner was swiping, not dragging.
-  cardDrag = {key, x0: ev.clientX, y0: ev.clientY, y: ev.clientY, moved: false,
-              armed: ev.pointerType !== "touch"};
-  if (!cardDrag.armed)
-    cardDrag.timer = setTimeout(() => {
-      if (!cardDrag) return;
-      cardDrag.armed = cardDrag.moved = true;
-      document.body.classList.add("dragging");
-      document.querySelector(`.card[data-card="${key}"]`)?.classList.add("held");
-      edgeScroll();
-    }, HOLD_MS);
-  window.addEventListener("pointermove", onCardDrag);
-  window.addEventListener("pointerup", endCardDrag);
-  window.addEventListener("pointercancel", endCardDrag);
-}
-
-function onCardDrag(ev){
-  if (!cardDrag) return;
-  cardDrag.y = ev.clientY;
-  const far = Math.hypot(ev.clientX - cardDrag.x0, ev.clientY - cardDrag.y0) >= 6;
-  if (!cardDrag.armed){
-    if (far) endCardDrag();
-    return;
-  }
-  if (!cardDrag.moved){
-    // The same few pixels of slop as a tab drag: a click is not a drag.
-    if (!far) return;
-    cardDrag.moved = true;
-    document.body.classList.add("dragging");
-    edgeScroll();
-  }
-  ev.preventDefault();
-  placeCard();
-}
-
-// The drop step for cards, per move, and per frame while the sidebar creeps
-// under a pointer held at its edge (edgeScroll).
-function placeCard(){
-  const vis = cards.order.filter(k => k !== cardDrag.key
-    && rendered(document.querySelector(`.card[data-card="${k}"]`)));
-  vis.splice(cardDropIndex(cardDrag.y, cardDrag.key), 0, cardDrag.key);
-  const next = [...vis, ...cards.order.filter(k => !vis.includes(k))];
-  if (next.join() !== cards.order.join()){
-    cards.order = next;
-    applyCards(true);                   // the displaced cards slide, not jump
-  }
-}
-
-function endCardDrag(){
-  clearTimeout(cardDrag?.timer);
-  window.removeEventListener("pointermove", onCardDrag);
-  window.removeEventListener("pointerup", endCardDrag);
-  window.removeEventListener("pointercancel", endCardDrag);
-  document.body.classList.remove("dragging");
-  document.querySelectorAll(".card.held").forEach(el => el.classList.remove("held"));
-  const moved = cardDrag?.moved;
-  cardDrag = null;
-  if (!moved) return;
-  swallowClick = true;                  // ...and the click ending a drag is not
-  setTimeout(() => swallowClick = false, 0);   //    a request to collapse
-  saveCards();
-}
 
 // Wire every header once. Unlike the tab strip, the cards are static elements
 // that are moved rather than re-created, so nothing here needs re-binding.
@@ -6814,6 +6412,20 @@ cardEls().forEach(el => {
 // The header's undo-everything: back to the default order, everything open.
 // Confirmed because an arrangement is minutes of fiddling and one stray tap.
 $("bOut").onclick = () => { location.href = "/logout"; };
+
+// ---- long lists, shown a page at a time ---------------------------------
+// Not numbered pages. These lists are read in an order that means something:
+// bugs by severity, findings by rule, the roadmap by the order the work has
+// to happen in, so "page 4" names nothing, and paging away from the top
+// hides the rows that matter most. A page of rows and a control that adds
+// another keeps the order intact, keeps the browser's own find working over
+// everything already shown, and is one tap rather than a bar of them.
+//
+// Applied to the DOM after a list draws rather than woven into each renderer:
+// five lists render five different ways, and one function that hides
+// overflow rows is the only shape that cannot drift between them.
+// paginate is page-lists.js now; the fold tweens that sat under it are page-motion.js.
+
 // ---- the appearance menu ------------------------------------------------
 // Twelve schemes, and the one control that was already here. A table, not a
 // dozen branches: the label is the only thing JS knows about a scheme: the
@@ -6821,125 +6433,7 @@ $("bOut").onclick = () => { location.href = "/logout"; };
 // keeps a swatch and the page it previews from ever disagreeing.
 // Alphabetical, with Default first because it is the one that is not a
 // choice among the others; it is what you get having made none.
-const THEMES = [
-  ["default",  "Default"],
-  ["abyss",    "Abyss"],    ["carbon",   "Carbon"],   ["ember", "Ember"],
-  ["ice",      "Ice"],      ["moss",     "Moss"],     ["nocturne", "Nocturne"],
-  ["nostromo", "Nostromo"], ["plum",     "Plum"],     ["rust",  "Rust"],
-  ["sepia",    "Sepia"],    ["slate",    "Slate"],
-];
-const THEME_IDS = new Set(THEMES.map(t => t[0]));
-
-// The browser holds it and the ACCOUNT remembers it, and the order matters
-// (roadmap #25). localStorage is the only way to have no flash: applied from
-// the inline block in <head>, before the first paint, where a value fetched
-// from the server cannot be. So it stays the paint path and is written on
-// every pick.
-//
-// The account record is what a browser that has never seen this account reads
-// instead of starting on the default: the scheme follows the person rather
-// than the machine. But only then: a value already in localStorage WINS,
-// because which colours are comfortable is partly about the room you are
-// sitting in, and a phone in the dark that picked Nocturne must not have it
-// undone by the desktop at noon. adoptTheme is the whole of that rule.
-let themingTimer = null;
-function applyTheme(id){
-  const use = THEME_IDS.has(id) ? id : "default";
-  // Default carries no attribute at all, so its palette is the :root one and
-  // there is nothing to strip if every scheme is ever removed.
-  const root = document.documentElement;
-  // Crossfade, by giving the page a colour transition for as long as the swap
-  // takes and no longer. A standing transition on every element would be the
-  // easy version and the wrong one: it would also slow every hover, every row
-  // turning green and every state light on the page, all to make one rare
-  // action look nicer. So it is switched on for the swap and off again.
-  //
-  // The custom properties themselves do not animate, since a var flips at once,
-  // but the computed background, text and border colours that read them do,
-  // which is the whole picture except the terminal, whose iframe is another
-  // document with its own styling and cannot be reached from here.
-  if (!noMotion() && root.dataset.theme !== (use === "default" ? undefined : use)){
-    root.classList.add("theming");
-    clearTimeout(themingTimer);
-    themingTimer = setTimeout(() => root.classList.remove("theming"), 320);
-  }
-  if (use === "default") delete root.dataset.theme;
-  else root.dataset.theme = use;
-  try{ localStorage.setItem("bb.theme", use); }catch(e){ /* private mode */ }
-  themeSaved = use;
-  // ...and onto the account, which is the truth behind it (roadmap #25).
-  // localStorage stays the PAINT path: the scheme is applied at the top of
-  // this file before the stylesheet parses, and a value fetched over the
-  // network would be a flash of the default followed by a jump, so this is
-  // not a replacement for it. What it buys is a browser that has never seen
-  // this account: it adopts the scheme after first paint instead of never.
-  // Fire and forget: a failed save is a scheme that did not follow you, not
-  // something to interrupt the person picking colours about.
-  fetch("/api/users", { method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "prefs", prefs: { theme: use } }) })
-    .catch(() => {});
-  markUiMenu();
-}
-
-// The account's scheme, taken up only by a browser that has none of its own.
-// Runs on every poll and does nothing on almost all of them; the guard is the
-// stored value, not a flag, so a second tab that picked a scheme is honoured
-// here too rather than being fought over.
-let themeSaved = null;
-function adoptTheme(t){
-  try{
-    if (localStorage.getItem("bb.theme")) return;
-  }catch(e){ return; }              // no storage: leave the default alone
-  if (!t || t === themeSaved || !/^[a-z]{2,12}$/.test(t)) return;
-  themeSaved = t;
-  applyTheme(t);
-}
-
-// Only the marks, never a rebuild. Replacing the grid's innerHTML from inside
-// a swatch's own click handler detaches the node the click is still travelling
-// through, and the document listener that closes the menu on an outside click
-// then sees a target #uiMenu no longer contains, and shuts it. Picking a scheme
-// closed the menu, which is exactly wrong for a control somebody tries twice.
-function markUiMenu(){
-  const cur = currentTheme();
-  document.querySelectorAll("#uiMenu .sw").forEach(b => {
-    const on = b.dataset.theme === cur;
-    b.classList.toggle("on", on);
-    b.setAttribute("aria-checked", on ? "true" : "false");
-  });
-}
-
-function currentTheme(){
-  return document.documentElement.dataset.theme || "default";
-}
-
-function drawUiMenu(){
-  const el = $("uiMenu");
-  if (!el || el.hidden) return;
-  const cur = currentTheme();
-  el.innerHTML = `<h4>Layout</h4>
-    <button type="button" id="uiReset">Reset the sidebar cards</button>
-    <h4>Colour scheme</h4>
-    <div class="swgrid">${THEMES.map(([id, label]) => `
-      <button type="button" class="sw${id === cur ? " on" : ""}" data-theme="${id}"
-        role="menuitemradio" aria-checked="${id === cur}"
-        aria-label="${esc(label)}" title="${esc(label)}">
-        <span class="swa"></span><span class="swi"></span>
-        <span class="swp"></span><span class="swn">${esc(label)}</span>
-      </button>`).join("")}</div>
-    <h4>Account</h4>
-    <button type="button" id="uiProfile">Profile</button>`;
-  el.querySelector("#uiReset").onclick = resetCards;
-  el.querySelectorAll(".sw").forEach(b =>
-    b.onclick = () => applyTheme(b.dataset.theme));
-  // The graduation (docs/nodes.md §13): the gear keeps what is this
-  // BROWSER's (theme, layout) and everything the controller owns lives on
-  // the Settings tab, where it has room to say what it costs. The log
-  // section that used to render here moved with that rule.
-  el.querySelector("#uiProfile").onclick = () => { toggleUiMenu(false);
-    openProfileTab(); };
-}
+// Its functions are page-gear.js now, with the rest of the gear menu.
 
 // ---- logs --------------------------------------------------------------
 // In this menu rather than on a card: it is a setting about the container,
@@ -6950,6 +6444,7 @@ function drawUiMenu(){
 // phone abroad and the desk at home each keep their own. "" is the device's
 // own zone, which is what the browser does unasked. A zone the browser does
 // not know is ignored rather than trusted.
+// The menu's functions are page-gear.js now; the time-zone helpers every time on the page goes through stay here, and the gear is wired below.
 const TZ_COOKIE = "bb_tz";
 function userTZ(){
   const m = document.cookie.match(/(?:^|;\s*)bb_tz=([^;]*)/);
@@ -6970,128 +6465,6 @@ function fmtTime(t, opts = {}){
 const humanBytes = n =>
   n >= 1048576 ? (n / 1048576).toFixed(1) + "MB"
   : n >= 1024 ? Math.round(n / 1024) + "kB" : (n || 0) + "B";
-
-function logSection(){
-  const L = state?.logs;
-  if (!L) return "";
-  // How far back the files actually reach, not the policy repeated back: on a
-  // box that has been up a week the honest answer is a week, whatever the
-  // setting says.
-  const back = L.oldest
-    ? Math.max(0, Math.round((Date.now() / 1000 - L.oldest) / 86400)) : 0;
-  return `<h4>Logs</h4>
-    <div class="logset">
-      <div class="dim">${!L.files ? "no logs yet"
-        : `${L.files} file${L.files === 1 ? "" : "s"}, ${humanBytes(L.bytes)}`}${
-        L.ci ? ` · ${L.ci} CI run${L.ci === 1 ? "" : "s"}` : ""}${
-        L.oldest ? ` · reaching back ${back} day${back === 1 ? "" : "s"}` : ""}</div>
-      <div class="logdays setrow col">
-        ${lbl("logDays", "Days of logs kept", "older files are deleted when this is applied")}
-        <input id="logDays" type="number" min="1" max="3650" step="1"
-               value="${typeof sdVal === "function" ? sdVal("logDays", L.days) : L.days}" inputmode="numeric">
-      </div>
-      <div class="actbar">
-        <span class="state">takes now, and anything already past it is cropped</span>
-        <button type="button" id="logApply"
-          title="save it, and crop anything already past it">Apply</button>
-      </div>
-      <div class="logacts">
-        <a class="btnish" href="/logs/download?what=session" download
-           title="this container start: the boot, the dashboard and docker"
-           >This session</a>
-        <a class="btnish" href="/logs/download?what=archive" download
-           title="every log kept, plus the archived CI runs, as a .tar.gz"
-           >All logs</a>
-        <button type="button" id="logClear" class="danger"
-           title="delete every kept log except this session's">Clear</button>
-      </div>
-    </div>`;
-}
-
-function wireLogSection(el){
-  const inp = el.querySelector("#logDays");
-  if (!inp) return;
-  // Applied on a press, not on change. Lowering the number CROPS: the files
-  // past it are deleted then and there, and a number field fires `change` on
-  // its way through every value the arrows and the keyboard pass, so typing 30
-  // over 300 would have pruned at 3 before reaching 30. A button is also the
-  // only way to say "crop now" without changing the number at all.
-  const apply = async () => {
-    const days = parseInt(inp.value, 10);
-    if (!(days >= 1)) return notify("days has to be 1 or more", true);
-    const btn = el.querySelector("#logApply");
-    if (btn){ btn.disabled = true; btn.textContent = "Applying…"; }
-    try{
-      const r = await postJSON("/api/logs", {action: "days", days});
-      const j = await r.json();
-      if (j.error) return notify(j.error, true);
-      if (typeof settingsDraft === "object") delete settingsDraft.logDays;
-      notify(j.removed
-        ? `keeping ${j.days} days: ${j.removed} file${j.removed === 1 ? "" : "s"} removed`
-        : `keeping ${j.days} days; nothing was past it`);
-      refresh(); drawUiMenu();
-    }catch(e){ notify("logs: " + e, true); }
-    finally{ if (btn && btn.isConnected){ btn.disabled = false;
-                                          btn.textContent = "Apply"; } }
-  };
-  el.querySelector("#logApply").onclick = apply;
-  // Enter in the field does what the button does, because a number typed into
-  // a box and then pressed at is what everybody tries first.
-  inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
-  el.querySelector("#logClear").onclick = async () => {
-    if (!confirm("Delete every kept log except this session's?\n\n"
-                 + "This session keeps writing to its own.")) return;
-    try{
-      const r = await postJSON("/api/logs", {action: "clear"});
-      const j = await r.json();
-      notify(j.error || `${j.removed} file${j.removed === 1 ? "" : "s"} removed`, !!j.error);
-      refresh(); drawUiMenu();
-    }catch(e){ notify("logs: " + e, true); }
-  };
-}
-
-let uiMenuOpen = false;
-function toggleUiMenu(open){
-  const el = $("uiMenu"), btn = $("bCards");
-  uiMenuOpen = open === undefined ? !uiMenuOpen : open;
-  btn.setAttribute("aria-expanded", uiMenuOpen ? "true" : "false");
-  if (uiMenuOpen){
-    el.hidden = false;
-    drawUiMenu();
-    if (!noMotion())
-      el.animate([{opacity: 0, transform: "translateY(-10px)"},
-                  {opacity: 1, transform: "none"}], {duration: 160, easing: "ease"});
-  } else if (!el.hidden){
-    const hide = () => { el.hidden = true; };
-    if (noMotion()) hide();
-    else el.animate([{opacity: 1, transform: "none"},
-                     {opacity: 0, transform: "translateY(-10px)"}],
-                    {duration: 120, easing: "ease"}).onfinish = hide;
-  }
-}
-
-// The gear's oldest job, now one item in the menu it opens.
-async function resetCards(){
-  if (!confirm("Reset the sidebar cards to their default order, all expanded?")) return;
-  toggleUiMenu(false);
-  const shut = cards.closed.slice();
-  // An empty order, which the server heals into its default and answers
-  // with, so what comes back is the default as this image defines it.
-  cardsChangedAt = performance.now();
-  try{
-    const r = await postJSON("/api/cards", {order: [], closed: []});
-    const j = await r.json();
-    if (j.error){ notify(j.error, true); return; }
-    cards = j.cards; if (state) state.cards = j.cards;
-  }catch(e){ notify("could not reset the cards: " + e, true); return; }
-  // Reset means every card open, on a phone as at a desk: the phone's own
-  // folds are opened and kept open here, since the default there is folded.
-  cardEls().forEach(el => phoneOpen.add(el.dataset.card));
-  keepPhoneOpen();
-  // Folded cards unfold with the same tween as a click; the rest slide home.
-  cardEls().forEach(el => { if (el.classList.contains("closed")) slideCard(el, false); });
-  applyCards(true);
-}
 
 $("bCards").onclick = e => { e.stopPropagation(); toggleUiMenu(); };
 document.addEventListener("click", e => {
@@ -7400,6 +6773,9 @@ function drawProjects(all){
   // rather than a percentage: git's progress is a carriage-return animation
   // on stderr, and parsing one to redraw it is the thing the toolchains tab
   // gave up on. What it *is* doing is a phrase from the server.
+  // The job is the poll's (state.project_job), read here per draw and kept
+  // nowhere else: the page-level copy it used to be drifted from the poll.
+  const pJob = state?.project_job || null;
   const jobHtml = pJob?.running
     ? `<div class="row job">
          <div class="grow">
@@ -7493,7 +6869,7 @@ function pJobWire(){
   // While a job runs the two things that would start another are dead, the
   // same rule the toolchain buttons follow: the server answers 409 anyway,
   // and a button that earns an error is worse than one that waits.
-  const busy = !!pJob?.running;
+  const busy = !!state?.project_job?.running;
   const nb = $("bNewProj"); if (nb) nb.disabled = busy;
   document.querySelectorAll("#projects [data-l]").forEach(b => b.disabled = busy);
 }
@@ -7688,54 +7064,7 @@ async function signOut(){
 // checks collapse into chips: what a healthy status row says is "all n ok",
 // with the detail folded below it. This inner fold is the verdict's to drive;
 // the card-level collapse is the operator's, and neither touches the other.
-let docOpen  = null;   // the operator's toggle; null = follow the verdict
-let docLevel = null;   // last verdict, so a change can override that toggle
-
-function drawDoctor(){
-  const el = $("doctor"), d = state?.doctor;
-  const dot = $("docDot"), tog = $("bDocTog");
-  $("docWhen").textContent = d?.running ? "running…" : d?.when ? ago(d.when) : "";
-  if (!d || !d.when){
-    dot.hidden = tog.hidden = true;             // no verdict yet, nothing to fold
-    el.hidden = false;
-    paint(el, `<div class="empty">${d?.running ? "running…" : "first run pending…"}</div>`);
-    return;
-  }
-  const tip = c => c.text + (c.detail ? "\n\n" + c.detail : "");
-  // A plain user sees the lines that are theirs to act on: whether a node
-  // can run their session. Runner tokens, ssh keys and the docker daemon
-  // are the controller's, and on their card they read as things to fix.
-  const checks = state?.admin === false
-    ? d.checks.filter(c => /can run a session/.test(c.text)) : d.checks;
-  const probs = checks.filter(c => c.level === "FAIL" || c.level === "warn");
-  const fine = checks.filter(c => c.level === "ok");
-  const skip = checks.filter(c => c.level === "skip");
-
-  // A changed verdict beats the operator's inner toggle: detail that turns
-  // red must open even if it was folded away green an hour ago, and detail
-  // that heals folds itself back up rather than squatting on space it no
-  // longer earns. Only the detail: a collapsed *card* stays collapsed.
-  const level = probs.some(c => c.level === "FAIL") ? "bad"
-              : probs.length ? "warn" : "ok";
-  if (level !== docLevel){ docLevel = level; docOpen = null; }
-  const open = docOpen ?? (level !== "ok");
-  dot.hidden = false;
-  dot.className = "st " + level;
-  tog.hidden = false;
-  tog.textContent = open ? "Hide"
-                  : level === "ok" ? `all ${fine.length} ok`
-                  : `Show (${probs.length})`;
-  el.hidden = !open;
-  paint(el,
-    `<div class="probs">${probs.map(c =>
-       `<div class="sub ${c.level === "FAIL" ? "bad" : "warn"}" title="${esc(tip(c))}">${esc(c.text)}${
-          c.detail ? `<span class="why">${esc(c.detail)}</span>` : ""}</div>`
-     ).join("")}</div>` +
-    `<div class="chips">${
-       fine.map(c => `<span class="pill ok" title="${esc(tip(c))}">${esc(c.text)}</span>`).join("") +
-       skip.map(c => `<span class="pill" title="${esc(tip(c))}">${esc(c.text)}</span>`).join("")
-     }</div>`);
-}
+// drawDoctor is page-doctor.js now; its two buttons are wired here.
 
 $("bDocTog").onclick = () => { docOpen = $("doctor").hidden;
                                slideBody($("doctor"), drawDoctor); };
@@ -7761,73 +7090,7 @@ $("bDoctor").onclick = async () => {
 // list is cut off and the ones an operator actually uses are pinned above the
 // cut. Pins live on the server with the rest of the state: the phone and the
 // desktop are looking at one machine and should agree about it.
-const COMMANDS_SHOWN = 8;
-let showAllCommands = false;
-
-// Side-view thumbtack: cap, body, needle. Filled when pinned, so the state
-// reads at a glance without a second icon to learn.
-const TACK = `<svg viewBox="0 0 16 16" aria-hidden="true">
-  <path d="M5 1.6h6"/>
-  <path d="M6.4 1.6v4.1c0 .9-.5 1.4-1.3 1.9-.7.5-1.2 1-1.2 1.6h8.2c0-.6-.5-1.1-1.2-1.6
-           -.8-.5-1.3-1-1.3-1.9V1.6"/>
-  <path d="M8 9.2v5.2"/></svg>`;
-
-// Pinned first, then the rest: both in the order `bb help` lists them, which
-// is the order the server sends. Pinning moves a command up; it does not
-// re-sort it into an order the CLI never uses.
-function commandOrder(){
-  const all = state?.macros || [];
-  const pins = new Set(state?.pinned || []);
-  return [...all.filter(m => pins.has(m.name)), ...all.filter(m => !pins.has(m.name))];
-}
-
-function drawCommands(){
-  const el = $("commands");
-  const order = commandOrder(), pins = new Set(state?.pinned || []);
-  if (!order.length){ paint(el, `<div class="empty">no commands</div>`); return; }
-
-  const shown = showAllCommands ? order : order.slice(0, COMMANDS_SHOWN);
-  const fresh = paint(el, shown.map(m => {
-    const on = pins.has(m.name);
-    return `<span class="cmd">
-      <button data-m="${esc(m.name)}" title="bb ${esc(m.label)}: runs in the terminal"
-        >${esc(m.label)}</button>
-      <button class="tack${on ? " on" : ""}" data-tack="${esc(m.name)}"
-        data-on="${on ? "1" : "0"}" aria-label="${on ? "unpin" : "pin"}"${state?.admin === false ? " disabled" : ""}
-        title="${on ? "unpin: let it fall back into the list"
-                    : "pin: keep it at the top of this card"}">${TACK}</button>
-    </span>`;
-  }).join("")
-  // The cut-off toggle sits with the list it cuts, since the header is
-  // reserved for collapsing the whole card.
-  + (order.length > COMMANDS_SHOWN
-     ? `<button id="bCmds">${showAllCommands ? "Show fewer" : `Show all (${order.length})`}</button>`
-     : ""));
-  wireMacros(el);                       // live-or-grayed depends on the active
-                                        // tab, not the markup: always re-done
-  if (!fresh) return;
-  if (order.length > COMMANDS_SHOWN)
-    $("bCmds").onclick = () => { showAllCommands = !showAllCommands;
-                                 slideBody(el, drawCommands); };
-  el.querySelectorAll("[data-tack]").forEach(b => b.onclick = () =>
-    setPinned(b.dataset.tack, b.dataset.on === "0"));
-}
-
-// The Linux and git/GitHub cards. Same idea as the bb card, minus pins and
-// the cut-off: the lists are short and fixed. The label IS the command:
-// these are buttons for things an operator would type, and hiding the text
-// behind a friendly name would only add mystery. `need` rides along as
-// data-need for wireMacros to ghost against the active shell's directory.
-function drawShellCard(id, list){
-  const el = $(id);
-  if (!list.length){ paint(el, `<div class="loading">loading…</div>`); return; }
-  paint(el, list.map(m => `<button data-m="${esc(m.name)}"${
-      m.need ? ` data-need="${esc(m.need)}"` : ""
-    } title="${esc(m.label)}: runs in the terminal">${esc(m.label)}</button>`).join(""));
-  wireMacros(el);
-}
-const drawLinux = () => drawShellCard("linux", state?.linux || []);
-const drawGit   = () => drawShellCard("git", state?.gitcmds || []);
+// Its functions are page-commands.js now.
 
 // Create or refresh one project's CLAUDE.md. The link says what it is doing
 // while it does it: neither is instant, and a line that looks unchanged invites
@@ -7836,9 +7099,7 @@ const drawGit   = () => drawShellCard("git", state?.gitcmds || []);
 // The operator's own lists, typed into the terminal like the bb ones. Kept in
 // their own card because they are theirs: the bb card is what the image can do
 // and changes with it, this one is what they added and does not.
-const PENCIL = `<svg viewBox="0 0 16 16" aria-hidden="true">
-  <path d="M11.3 2.2 13.8 4.7 5.6 12.9 2.4 13.6 3.1 10.4z"/>
-  <path d="M9.9 3.6 12.4 6.1"/></svg>`;
+// Its functions are page-commands.js now; the row icons the Projects card draws with stay here.
 
 // The project row's own button. It stopped being a pencil when the dialog
 // stopped being only a rename: it holds the credential switch and what Claude
@@ -7857,42 +7118,6 @@ const DOTS = `<svg viewBox="0 0 16 16" aria-hidden="true">
 const GEAR = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.6 1.9h2.8l.35 1.72 1.2.7 1.66-.57 1.4 2.42-1.3 1.16v1.4l1.3 1.16-1.4 2.42-1.66-.57-1.2.7-.35 1.72H6.6l-.35-1.72-1.2-.7-1.66.57-1.4-2.42 1.3-1.16v-1.4L1.99 6.17l1.4-2.42 1.66.57 1.2-.7z"/>
   <circle cx="8" cy="8" r="2.1"/></svg>`;
-
-function drawCustom(){
-  const el = $("custom"), list = state?.custom || [];
-  const fresh = paint(el, (list.length ? "" : `<div class="empty">none yet: add one with +</div>`)
-    + list.map(m => {
-    // The full title and what it will run, for the hover: a one-word title is
-    // no help six months later when you have forgotten what it does.
-    const tip = `${m.title}\n\n${m.lines.join("\n")}`;
-    return `<span class="cmd">
-      <button class="run" data-run="${esc(m.id)}" title="${esc(tip)}">${esc(m.title)}</button>
-      <button class="tack" data-edit="${esc(m.id)}" aria-label="edit"
-        title="edit or delete">${PENCIL}</button>
-    </span>`;
-  }).join("")
-  // "+" is redrawn with the list it adds to: a static button would be wiped
-  // by this very innerHTML, and lives here because the header holds nothing.
-  + `<button id="bAdd" title="new custom command">+</button>`);
-  wireMacros(el);
-  if (!fresh) return;
-  el.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => editCustom(b.dataset.edit));
-  $("bAdd").onclick = () => editCustom(null);
-}
-
-let editing = null;
-
-function editCustom(id){
-  const m = (state?.custom || []).find(x => x.id === id) || null;
-  editing = m?.id || null;
-  $("mTitle").textContent = m ? "Edit custom command" : "New custom command";
-  $("mName").value = m?.title || "";
-  $("mBody").value = (m?.lines || []).join("\n");
-  $("mDelete").hidden = !m;
-  $("modal").hidden = false;
-}
-
-function closeEditor(){ $("modal").hidden = true; editing = null; }
 
 // A trash can, for the one control that is per-row: uninstalling is about
 // a particular toolchain, never a selection, and a bulk Remove button beside a
@@ -7920,183 +7145,10 @@ function closeEditor(){ $("modal").hidden = true; editing = null; }
 // the one state a list must not have, since the row is the only control over
 // the thing it names. It stays live, the server takes the record either way,
 // and the confirmation says which of the two halves will happen.
+// The new-project dialog that followed this list is tab-projects.js now; its fields and its submit are wired further down.
 const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],'
                   + '[data-dm="rebuild"],'
                   + '#devSend,#bDockerNew';
-
-const PMODES = {
-  init:  { title: () => "New project", btn: "Create", focus: "pName",
-           fields: ["pSrcField", "pNameField", "pNodeField", "pArchiveField", "pAboutField"] },
-  clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pNameField", "pNodeField", "pUrlField", "pForgeField",
-                    "pPushField", "pTokenField", "pKeyField"] },
-  link:  { title: () => `Link ${pLink} to a git host`, btn: "Link", focus: "pUrl",
-           fields: ["pForgeField", "pUrlField", "pLinkAuthField", "pKeyField",
-                    "pTokenField"] },
-};
-let pMode = "init";
-let pLinkAuth = "key";                   // how a link authenticates: key or token
-let pLink = null;                        // the project being linked, if any
-let pKeys = [];                          // the agent's public keys, per open
-let pPat = false;                        // can https push authenticate (gh)?
-// The host catalog, from the same fetch as the keys. Empty until it lands,
-// which is why every reader goes through pForge() rather than indexing it.
-let pForges = [];
-let pForgeId = "github";
-// What the operator has already said their own servers run, by host. The
-// clone form asks which host only for an address on a server nobody has
-// answered for yet: the second project from the same Gitea is not asked.
-let pForgeHosts = {};
-// The host the current pick was made for, so a fresh address gets a fresh
-// question rather than the last one's answer.
-let pAskedHost = "";
-
-function pDraw(){
-  const m = PMODES[pMode];
-  $("pTitle").textContent = m.title();
-  $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
-  $("pLocal").classList.toggle("on", pMode === "init");
-  $("pClone").classList.toggle("on", pMode === "clone");
-  for (const f of ["pSrcField", "pNameField", "pArchiveField", "pForgeField",
-                   "pUrlField", "pLinkAuthField", "pPushField",
-                   "pTokenField", "pKeyField", "pAboutField"])
-    $(f).hidden = !m.fields.includes(f);
-  pDrawForge();
-  // The deploy-key picker only appears when the agent actually holds keys:
-  // an empty dropdown would be a question with no answers.
-  if (!pKeys.length) $("pKeyField").hidden = true;
-  // Linking: the switch decides which of the two fields is asked.
-  if (pMode === "link"){
-    $("pLinkKey").classList.toggle("on", pLinkAuth === "key");
-    $("pLinkToken").classList.toggle("on", pLinkAuth === "token");
-    $("pKeyField").hidden = pLinkAuth !== "key" || !pKeys.length;
-    $("pTokenField").hidden = pLinkAuth !== "token";
-  }
-  // What the token field is about: the picked entry when linking, and the
-  // address's own host when cloning, which is where the host comes from there.
-  const fg = pMode === "clone"
-    ? (pForgeOf(pUrlHost($("pUrl").value)) || pForge()) : pForge();
-  $("pUrlHint").textContent = pMode === "link"
-    ? `An empty repository to push ${pLink} to: linking never `
-      + `touches a repo that already has commits.`
-      + (fg.creates && pLinkAuth === "token"
-         ? " One that does not exist yet is created for you, private."
-         : pPat && fg.id === "github" && pLinkAuth === "key"
-           ? " One that does not exist yet is created for you, private." : "")
-    : "Fetched with the container's own access: a deploy key or PAT that can "
-      + "already reach it; private repos need that set up first. A CLAUDE.md is "
-      + "drafted from its README and build files (kept as-is if it already has "
-      + "one).";
-  $("pNameHint").textContent = pMode === "clone"
-    ? "The directory to clone into. Fills itself in from the address: change "
-      + "it to keep more than one checkout of the same repository."
-    : "Named the way a git host names a repository: anything it cannot use "
-      + "becomes a dash, so you are shown the directory you are about to get "
-      + "rather than being sent back to retype it.";
-  $("pPushHint").textContent =
-    "Off means read-only: a pre-push hook refuses, so nobody pushes from here "
-    + "by accident. It cannot be turned on later: delete the project and "
-    + "clone it again, and only one project at a time may push to a given "
-    + "repository. Needs a token or a deploy key.";
-  $("pTokenHint").textContent = pMode === "link"
-    ? `Used for ${pLink} and no other project, even if it opens more. `
-      + (fg.creates ? `Checked with ${fg.name} before anything is written.`
-                    : `${fg.name} cannot be asked whether it is good, so the `
-                      + "first fetch is the test.")
-    : "Leave empty for a public repository. A token is kept for this project "
-      + "alone, in /config, and a shell in this container can read it.";
-  $("pToken").placeholder = fg.hint;
-  $("pKeyHint").textContent =
-    (pMode === "link"
-      ? "The key the push (and every later one) will offer. "
-      : "For a private repo with its own deploy key. Pick the key and the "
-        + "container side is handled for you: the clone (and every later "
-        + "push) offers exactly this key. ")
-    + "The host still needs the public key below, on the repository's own "
-    + "deploy-key page. "
-    + (pPat && (pMode !== "link" || fg.id === "github")
-        ? "A PAT is configured, so leaving this on none works too."
-        : pMode === "link" ? "No PAT is configured for this host, so a key is required here."
-        : "");
-}
-
-// The source picker moves like the Dashboard | Terminal switch: the incoming
-// fields slide in from the chosen tab's side (local is the left tab, clone
-// the right), same 220ms ease, same reduced-motion gate: one vocabulary for
-// every two-tab switch on the page. Scaled to the dialog: a few pixels, not
-// a viewport, because the fields swap inside a box that is not moving.
-// The host row: the catalog as a select, and a box for the address when the
-// picked one is somebody's own server rather than a single public site.
-// The host in an address, as typed: enough to tell a server the catalog
-// names from one nobody has answered for. Not a validator: the server parses
-// it properly, and this only decides whether to ask a question.
-function pUrlHost(url){
-  const u = (url || "").trim();
-  let m = /^[a-z]+:\/\/(?:[^@/]+@)?([A-Za-z0-9][A-Za-z0-9.:-]*)/i.exec(u);
-  if (!m) m = /^(?:[^@:/]+@)?([A-Za-z0-9][A-Za-z0-9.-]*):/.exec(u);
-  return m ? m[1].toLowerCase() : "";
-}
-// Which catalog entry a host names itself as, or null when nobody has said.
-const pForgeOf = host => {
-  if (!host) return null;
-  const bare = host.split(":")[0];
-  return pForges.find(f => f.host && f.host.toLowerCase() === bare)
-      || pForges.find(f => f.id === pForgeHosts[host]) || null;
-};
-
-function pDrawForge(){
-  if ($("pForgeField").hidden) return;
-  const sel = $("pForge");
-  if (sel.dataset.built !== String(pForges.length)){
-    sel.innerHTML = pForges.map(f =>
-      `<option value="${esc(f.id)}">${esc(f.name)}${f.dev ? " (dev)" : ""}</option>`).join("");
-    sel.dataset.built = String(pForges.length);
-  }
-  // Cloning: the URL is the subject and the host is in it, so this is not a
-  // second place to type one. It is one question: what is running on that
-  // server, and it is asked only when the address is on a server that does
-  // not name itself and nobody has answered for. Which means a paste of a
-  // GitHub URL never sees it, and a Gitea is asked about once ever.
-  if (pMode === "clone"){
-    const host = pUrlHost($("pUrl").value);
-    const named = pForgeOf(host);
-    $("pForgeField").hidden = !host || !!named;
-    $("pForgeHost").hidden = true;
-    if (!$("pForgeField").hidden){
-      // A server nobody has answered for starts on the entry that promises
-      // nothing, not on GitHub: the question is what this one runs, and a
-      // default that names a different server is an answer nobody gave.
-      if (pAskedHost !== host){ pAskedHost = host; pForgeId = "git"; }
-      sel.value = pForgeId;
-      $("pForgeHint").textContent =
-        `Nothing here knows what ${host} runs, and it decides whether a token `
-        + `can be checked and a missing repository made. Asked once per server.`;
-    }
-    return;
-  }
-  sel.value = pForgeId;
-  const f = pForge();
-  $("pForgeHost").hidden = !!f.fixed;
-  if (f.fixed) $("pForgeHost").value = "";
-  $("pForgeHint").textContent = f.about;
-  // The address box follows the host, so the shape being asked for is the
-  // shape of the thing they are about to paste.
-  const h = pHost() || "your-host";
-  $("pUrl").placeholder = pLinkAuth === "key"
-    ? `git@${h}:owner/repo.git` : `https://${h}/owner/repo.git`;
-}
-
-function pSlide(){
-  if (noMotion()) return;
-  const dx = pMode === "clone" ? "18px" : "-18px";
-  for (const f of PMODES[pMode].fields){
-    const el = $(f);
-    if (f !== "pSrcField" && !el.hidden)
-      el.animate([{transform: `translateX(${dx})`, opacity: 0},
-                  {transform: "none", opacity: 1}],
-                 {duration: 220, easing: "ease"});
-  }
-}
 
 // No cursor is put in a field here, on open or on a tab switch. A dialog that
 // focuses something raises the on-screen keyboard with it, which covers half
@@ -8104,123 +7156,12 @@ function pSlide(){
 // type in it. `focus` stays in PMODES because it is also the name of the
 // field that mode leads with, which pDraw uses.
 
-// The picked entry, or a safe stand-in while the catalog is still in flight:
-// the dialog draws before the fetch answers, and a placeholder that promises
-// nothing is better than a draw that throws.
-const PFORGE_NONE = {id: "", name: "the host", host: "", fixed: false,
-                     hint: "an access token", about: "", creates: false};
-const pForge = () => pForges.find(f => f.id === pForgeId) || pForges[0]
-                     || PFORGE_NONE;
-// What the operator typed for a self-hosted one, or the entry's own fixed
-// host. Trimmed of a pasted scheme and trailing slash, because people paste
-// the address bar.
-const pHost = () => {
-  const f = pForge();
-  if (f.fixed && f.host) return f.host;
-  return $("pForgeHost").value.trim()
-    .replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "");
-};
-
-function pShowKey(){
-  const k = pKeys.find(k => k.name === $("pKey").value);
-  $("pPubWrap").hidden = !k;
-  if (k) $("pPub").value = k.pub;
-}
-
-// Each open is a generation; closing bumps it too. Everything asynchronous:
-// the pubkeys response, a slow clone's outcome: checks the generation before
-// touching the dialog, so a request from a closed dialog can neither shut the
-// one the operator just reopened nor write its error where the wrong flow
-// will wear it. The outcome itself still surfaces, as a toast.
-let pGen = 0;
-let pFetch = null;                       // this open's /api/pubkeys, parsed
-
-function pOpen(mode){
-  const gen = ++pGen;
-  pMode = mode; pKeys = []; pPat = false; pDraw();
-  $("pName").value = $("pUrl").value = $("pAbout").value = "";
-  $("pToken").value = "";
-  pAskedHost = "";
-  // Every open starts on GitHub rather than on whatever the last one picked:
-  // the host is the first thing decided and a remembered pick would be a
-  // silent one.
-  pForgeId = "github";
-  $("pForgeHost").value = "";
-  $("pPush").checked = false;
-  pNameTyped = false;
-  $("pNamePreview").hidden = true;
-  $("pName").classList.remove("bad");
-  $("pNamePreview").classList.remove("bad");
-  // The select is emptied, not left as-is: a key picked during a previous
-  // open must not ride along invisibly into this one's submit.
-  $("pKey").innerHTML = "";
-  $("pErrWrap").hidden = $("pPubWrap").hidden = true;
-  $("pCreate").disabled = false; $("pCreate").textContent = PMODES[mode].btn;
-  $("pmodal").hidden = false;
-  pFillNode();
-  // Fetched per open, not cached: keys change when the container restarts
-  // with a new /secrets/ssh, and a stale list here would offer a key the
-  // agent no longer holds. The submit handler awaits pFetch directly, so an
-  // early Create still judges auth on the real answer, not the defaults.
-  pFetch = fetch("/api/pubkeys").then(r => r.json()).catch(() => null);
-  pFetch.then(j => {
-    if (gen !== pGen || !j) return;
-    pKeys = j.keys || []; pPat = !!j.pat;
-    pForges = j.forges || [];
-    pForgeHosts = j.hosts || {};
-    if (!pForges.some(f => f.id === pForgeId)) pForgeId = (pForges[0] || {}).id || "";
-    $("pKey").innerHTML = `<option value="">none: ${pPat
-        ? "authenticate with the configured PAT"
-        : "public repo, or the container's default access"}</option>`
-      + pKeys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join("");
-    pShowKey(); pDraw();
-  });
-}
-
-// The node picker on New project: the same list the settings dialog
-// offers, fetched the first time it is needed. One node is picked for
-// the person; several leave the choice open, with none as the last
-// option rather than the first.
-function pFillNode(){
-  const sel = $("pNode"), wrap = $("pNodeField");
-  if (!sel || !wrap) return;
-  if (nodesList === null){
-    const gen = pGen;
-    loadNodes().then(() => { if (gen === pGen && !$("pmodal").hidden) pFillNode(); });
-  }
-  const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
-  const shown = PMODES[pMode]?.fields.includes("pNodeField") && pick.length > 0;
-  wrap.hidden = !shown;
-  if (!shown){ sel.innerHTML = ""; return; }
-  const was = sel.value;
-  sel.innerHTML = pick.map(n => `<option value="${esc(n.id)}">${esc(n.name)}${
-      n.live === false ? " (quiet)" : ""}</option>`).join("")
-    + `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`;
-  sel.value = pick.some(n => n.id === was) ? was : (pick.length === 1 ? pick[0].id : "");
-}
-
-function openNewProject(){ pLink = null; pOpen("init"); }
-function openLinkProject(name){ pLink = name; pOpen("link"); }
-
 // ---- the memory book ---------------------------------------------------
 // The project's memory directory, read and written through /api/memory. The
 // server owns every path decision; this only ever names a project and a file
 // it was told about, which is what keeps the one free-text file write in the
 // dashboard from being a way to write anywhere.
-
-
-// A step that needs no sending: handed over, or finished by a session.
-// Two marks, one question: sent is the dashboard's and says a line went;
-// done is a session's and says the work is finished, sent or not.
-const stepGone = s => !!(s.sent || s.done);
-
-function nextStep(r){
-  const steps = r.steps || [];
-  if (!steps.length) return stepGone(r) ? null : -1;
-  const i = steps.findIndex(s => !stepGone(s));
-  return i < 0 ? null : i;
-}
-
+// The step helpers that sat here are nb-roadmap.js now, the only view that asks.
 
 
 // ---- notebooks -----------------------------------------------------------
@@ -8274,113 +7215,7 @@ function openNotebook(name, view){
 // Top-level rather than the notebook's, because the bell reaches it too. It
 // draws from one fetch and redraws from the answer to its own action, so a
 // row is never ticked twice: what was approved is gone from the reply.
-let pendFor = null;
-async function openPending(project){
-  pendFor = project;
-  $("pendTitle").textContent = `Waiting for your approval: ${project}`;
-  $("pendModal").hidden = false;
-  $("pendList").innerHTML = "";
-  $("pendEmpty").hidden = true;
-  $("pendHint").textContent = "Loading…";
-  try{
-    const r = await fetch(`/api/pending?project=${encodeURIComponent(project)}`);
-    drawPendingModal(await r.json());
-  }catch(e){ $("pendHint").textContent = "Could not read what is waiting."; }
-}
-
-function drawPendingModal(j){
-  if (pendFor === null) return;
-  const rows = j?.pending || [];
-  const gate = j?.gate || {};
-  const held = ["roadmap", "bugs", "rules"].filter(k => gate[k] === "ask");
-  $("pendHint").textContent = rows.length
-    ? `A session added these while ${pendFor} is set to ask for ${held.join(", ") || "nothing"}. `
-      + `Nothing lands until you approve it; denying drops it and anything that rode behind it.`
-    : "";
-  $("pendEmpty").hidden = !!rows.length;
-  // With nothing waiting, the empty list's border, a Select all over nothing
-  // and a blank hint were three bands of chrome around one sentence.
-  $("pendAllF").hidden = $("pendListF").hidden = !rows.length;
-  $("pendHintF").hidden = !rows.length && !$("pendHint").textContent;
-  $("pendApprove").disabled = $("pendDeny").disabled = !rows.length;
-  $("pendApprove").hidden = $("pendDeny").hidden = !rows.length;
-  const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules", settings: "Build and test"};
-  const tag = r => r.kind === "roadmap" && r.number != null ? `R${r.number}`
-             : r.kind === "bugs" && r.number != null ? `B${r.number}`
-             : r.kind === "rules" && r.number ? String(r.number) : "";
-  const detail = r => {
-    const a = r.args || {};
-    const bits = [];
-    if (r.kind === "roadmap" && r.verb === "add"){
-      (a.steps || []).forEach((st, i) => bits.push(`${i + 1}. ${st}`));
-    } else if (r.kind === "roadmap"){ bits.push(a.text || ""); }
-    else if (r.kind === "bugs" && r.verb === "add"){
-      for (const k of ["area", "repro", "expected", "actual", "notes"]) if (a[k]) bits.push(`${k}: ${a[k]}`);
-    } else if (r.kind === "bugs"){ for (const k of Object.keys(a)) if (!["bug_id", "act"].includes(k)) bits.push(`${k}: ${a[k]}`); }
-    else if (r.kind === "rules"){
-      bits.push(a.text || "");
-      if (a.paths) bits.push(`files: ${Array.isArray(a.paths) ? a.paths.join(", ") : a.paths}`);
-      if (a.words) bits.push(`words: ${Array.isArray(a.words) ? a.words.join(", ") : a.words}`);
-    } else if (r.kind === "settings"){
-      for (const k of ["build", "test", "outputs"]) if (a[k]) bits.push(`${k}: ${Array.isArray(a[k]) ? a[k].join(", ") : a[k]}`);
-    }
-    return bits.filter(Boolean).join("\n");
-  };
-  const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
-  let html = "", last = null;
-  for (const r of rows){
-    if (r.kind !== last){ html += `<div class="pkind">${NAMES[r.kind] || esc(r.kind)}</div>`; last = r.kind; }
-    const d = detail(r);
-    html += `<label class="prow${r.after != null ? " dep" : ""}" data-id="${r.id}">
-      <input type="checkbox" checked data-pend="${r.id}" data-after="${r.after ?? ""}">
-      <span><span class="psum">${tag(r) ? `<b>${esc(tag(r))}</b> · ` : ""}${esc(r.summary || "")}</span>
-        <div class="pwhen">${esc(when(r.at))}${r.after != null ? " · rides behind the change above" : ""}</div>
-        ${d && d !== r.summary ? `<details${sectAttr("pending:full:" + r.id)}><summary>full text</summary><pre>${esc(d)}</pre></details>` : ""}
-      </span></label>`;
-  }
-  $("pendList").innerHTML = html;
-  $("pendAllBox").checked = !!rows.length;
-  $("pendAllBox").indeterminate = false;
-  const boxes = () => [...$("pendList").querySelectorAll("input[data-pend]")];
-  const sync = () => {
-    const on = boxes().filter(b => b.checked).length;
-    $("pendAllBox").checked = on > 0 && on === boxes().length;
-    $("pendAllBox").indeterminate = on > 0 && on < boxes().length;
-    $("pendApprove").disabled = $("pendDeny").disabled = !on;
-  };
-  $("pendAllBox").onchange = () => { boxes().forEach(b => { b.checked = $("pendAllBox").checked; }); sync(); };
-  boxes().forEach(b => b.onchange = () => {
-    // Unticking a parent unticks what rides behind it: those cannot land
-    // without it, and approving them alone is only a skip.
-    if (!b.checked) boxes().filter(x => x.dataset.after === b.dataset.pend).forEach(x => { x.checked = false; });
-    sync();
-  });
-}
-
-async function pendAct(action){
-  const project = pendFor;
-  const ids = [...$("pendList").querySelectorAll("input[data-pend]:checked")].map(b => Number(b.dataset.pend));
-  if (!project || !ids.length) return;
-  const btn = action === "approve" ? $("pendApprove") : $("pendDeny");
-  busy(btn, action === "approve" ? "Approving" : "Denying");
-  try{
-    const r = await postJSON("/api/pending", {project, action, ids});
-    const j = await r.json();
-    if (j.error){ notify(j.error, true); return; }
-    const said = [];
-    if (j.approved?.length) said.push(`${j.approved.length} approved`);
-    if (j.denied?.length) said.push(`${j.denied.length} denied`);
-    if (j.skipped?.length) said.push(`${j.skipped.length} skipped: ${j.skipped[0].why}`);
-    if (j.failed?.length) said.push(`${j.failed.length} could not be applied: ${j.failed[0].why}`);
-    notify(`${project}: ${said.join(", ") || "nothing changed"}`, !!j.failed?.length);
-    drawPendingModal(j);
-    // The lists moved under the notebook: re-read whichever views exist.
-    const nb = notebooks.get(project);
-    if (nb){ nb.reload?.(); nb.reloadBugs?.(); nb.reloadMemory?.(); nb.reloadPending?.(); }
-    refresh();
-  }catch(e){ notify("could not reach the dashboard", true); }
-  finally{ unbusy(btn, action === "approve" ? "Approve" : "Deny"); }
-}
+// Its functions are nb-pending.js now: the modal is the pending feature's.
 
 function makeNotebook(project){
   const root = document.getElementById("nbTpl").content.firstElementChild.cloneNode(true);
@@ -9415,13 +8250,14 @@ const BOOK = `<svg viewBox="0 0 16 16" aria-hidden="true">
 
 // The one project job (a clone or a first push) and the poll that watches
 // it. It lives on the server, so a page opened halfway through picks it up
-// from /api/status and a page closed halfway through changes nothing.
-let pJob = null;
+// from /api/status and a page closed halfway through changes nothing. On the
+// page it lives in state.project_job and nowhere else: this poll writes the
+// same slot the status poll fills, and the card reads it from there.
 let pJobTimer = null;
 
 function pJobSeen(j){
-  const was = pJob?.running;
-  pJob = j;
+  const was = state?.project_job?.running;
+  if (state) state.project_job = j;
   if (j?.running){
     if (!pJobTimer) pJobTimer = setTimeout(pJobPoll, 1000);
   } else {
@@ -10726,12 +9562,11 @@ async function refresh(){
     // draw had tripped over the answer and the page kept the fact to itself.
     // Now the card that failed says so in its own body and the rest draw.
     drawCard("runner", drawRunner);
-    // Adopted before the draw, so a page opened (or reloaded) while a clone
-    // is running picks it up and starts watching. pJobSeen redraws the card
-    // itself, and would recurse into refresh() on a finish: hence the plain
-    // assignment here and the poll started beside it.
-    pJob = state.project_job || null;
-    if (pJob?.running && !pJobTimer) pJobTimer = setTimeout(pJobPoll, 1000);
+    // A page opened (or reloaded) while a clone is running starts watching
+    // it here. Not through pJobSeen: that redraws the card itself and would
+    // recurse into refresh() on a finish, so only the poll is started; the
+    // job itself is already in state, where the card reads it.
+    if (state.project_job?.running && !pJobTimer) pJobTimer = setTimeout(pJobPoll, 1000);
     drawCard("projects", () => drawProjects(state.projects));
     // An open notebook learns from the poll that a session has started or
     // finished a batch, without the operator having to touch anything.
