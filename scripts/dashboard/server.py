@@ -3744,6 +3744,13 @@ class Handler(BaseHTTPRequestHandler):
         "/favicon.ico": ("favicon.ico", "image/x-icon"),
         "/favicon.svg": ("favicon.svg", "image/svg+xml"),
         "/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"),
+        # The Nostromo scheme's decals: hand-written SVG, text in the tree
+        # like the favicon's source, drawn by the page's CSS and by nothing
+        # else. Same allow-list, same rule.
+        "/static/nostromo/plate.svg": ("nostromo/plate.svg", "image/svg+xml"),
+        "/static/nostromo/ribs.svg": ("nostromo/ribs.svg", "image/svg+xml"),
+        "/static/nostromo/corner.svg": ("nostromo/corner.svg", "image/svg+xml"),
+        "/static/nostromo/glyphs.svg": ("nostromo/glyphs.svg", "image/svg+xml"),
     }
 
     def _get(self):

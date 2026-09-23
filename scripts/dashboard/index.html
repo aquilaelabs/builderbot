@@ -212,16 +212,20 @@ html[data-theme="ash"],.sw[data-theme="ash"]{
 
 /* ---- Nostromo -----------------------------------------------------------
    The one scheme that is more than a recolour. Amber phosphor on a green-black
-   hull, after the ship's own screens, and the flare is drawn rather than
-   fetched: gradients and one inline SVG, no image files. That is not an
-   aesthetic choice, it is the persistence rule. An image would be a binary in
-   the repository, shipped in the layer that gets rebuilt weekly, for something
-   two gradients say.
+   hull, after the ship's own screens. The flare is gradients; the hull's
+   plating, the ribbing down the gutter, the plate mark on a card and the
+   glyph strip in the header are four hand-written SVG files under
+   static/nostromo, text in the tree like the favicon's source, served by
+   the same allow-list. No raster: a PNG would be a binary in the repository,
+   shipped in the layer that gets rebuilt weekly, for something a few paths
+   say.
 
    The restraint is deliberate and worth writing down, because the temptation
    here is to keep going. Everything below is either at the edge of a surface
-   or under 6% opacity: this is a page somebody reads a stack trace on, and a
-   texture you notice twice is a texture that is in the way the third time. */
+   or faint: each decal's opacity is baked into its file, the plating at 7%,
+   nothing under text above a third. This is a page somebody reads a stack
+   trace on, and a texture you notice twice is a texture that is in the way
+   the third time. */
 
 /* Hazard striping, at the one place a ship would actually put a decal: the
    bottom edge of the header, where the chrome ends and the work begins. */
@@ -281,7 +285,37 @@ html[data-theme="nostromo"] body::before{
   content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
   background:radial-gradient(120% 100% at 50% 0%,
     rgba(255,176,0,.05) 0%, rgba(0,0,0,0) 45%),
-    radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 60%)}
+    radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 60%),
+    url(/static/nostromo/plate.svg) repeat}
+
+/* The hull's ribbing, down the page's left gutter: main's own 10px padding,
+   so it occupies space the layout already leaves empty and moves nothing.
+   Not on a phone, where the gutter is 8px and the eye has less room. */
+@media(min-width:901px){
+  html[data-theme="nostromo"] main{
+    background:url(/static/nostromo/ribs.svg) repeat-y left top}
+  /* The ship's glyphs across the header's empty middle. The two flat bands
+     of panel colour keep them out from under the title on the left and the
+     controls on the right, so nothing is ever read through them. */
+  html[data-theme="nostromo"] header{
+    background-image:linear-gradient(90deg, var(--panel) 0 300px,
+        rgba(0,0,0,0) 300px calc(100% - 480px), var(--panel) calc(100% - 480px)),
+      url(/static/nostromo/glyphs.svg);
+    background-repeat:no-repeat,repeat-x;background-position:0 0,0 center}
+  /* A stencilled plate mark in an open card's bottom-right corner, the way
+     a ship numbers its panels. Absolute in the card's own box (already
+     position:relative for the resume chooser), pointer-events off, and
+     BEHIND the card's content: the card isolates so z-index:-1 lands above
+     its own background and under its buttons, where the first cut painted
+     the mark over Sign out. Open cards only, and desktop only: on a closed
+     card it sat in the title row beside the fold mark, and on a phone
+     every card is closed. */
+  html[data-theme="nostromo"] .card{isolation:isolate}
+  html[data-theme="nostromo"] .card:not(.closed)::after{
+    content:"";position:absolute;right:6px;bottom:4px;width:64px;height:26px;
+    z-index:-1;pointer-events:none;
+    background:url(/static/nostromo/corner.svg) no-repeat}
+}
 
 /* The buttons read as machined rather than drawn: a hairline highlight along
    the top edge, which is what makes a flat rectangle look like a keycap. */

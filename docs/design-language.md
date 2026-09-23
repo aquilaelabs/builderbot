@@ -23,6 +23,12 @@ exactly this reason: the accents range from `#2fb8c6` to `#ffb000`, and
 forty percent of black is not enough darkening under the bright ones. Five
 schemes had text on that fill under AA before the cap, nostromo worst at
 3.56:1. `test/uniform.mjs` measures the rendered pixels on every scheme.
+Nostromo alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
+served by the page's allow-list): hull plating behind the page, ribbing in
+the left gutter, a plate mark in a card's corner and a glyph strip in the
+header. Each bakes its own opacity, none sits under text above a third, and
+none moves the layout: a texture lives in space the page already leaves
+empty. The same suite measures the contrast with them in place.
 
 Watch the class the words wear. A tab's name is a `.lbl`, which is also the
 field-label helper, so it arrived wearing the quiet colour meant for "Your
