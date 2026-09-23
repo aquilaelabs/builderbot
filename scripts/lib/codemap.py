@@ -324,7 +324,7 @@ class JSScanner:
                     k += 1
                 inner = s[j + 2:k - 1]
                 sub = JSScanner(inner, self.sink, self.line, self.enclosing(), self.shape_methods)
-                sub.stack = list(self.stack)
+                sub.stack = [(n, dp, None) for n, dp, _ in self.stack]
                 sub.run()
                 self.line += inner.count("\n")
                 j = k
@@ -430,8 +430,7 @@ class JSScanner:
             if self.pending is not None and self.parens <= self.paren_at_pending:
                 # the body: not a brace inside the parameter list, which a
                 # Kotlin default lambda (`onClick: () -> Unit = {}`) puts there
-                self.stack.append((self.pending["name"], self.depth))
-                self.pending["body"] = self.depth
+                self.stack.append((self.pending["name"], self.depth, self.pending))
                 self.pending = None
             elif self.last_sig == "=>":
                 # an arrow body: attributed to what it was assigned to, if
@@ -439,15 +438,13 @@ class JSScanner:
                 name = self.arrow_name()
                 if name:
                     d = self.sink.add_def(name, self.line, "arrow", self.enclosing_or_blank())
-                    self.stack.append((name, self.depth))
-                    d["body"] = self.depth
+                    self.stack.append((name, self.depth, d))
                 else:
-                    self.stack.append((self.enclosing(), self.depth))
+                    self.stack.append((self.enclosing(), self.depth, None))
             elif self.last_sig == ")" and getattr(self, "maybe_method", None):
                 name, line = self.maybe_method
-                self.stack.append((name, self.depth))
-                d = self.sink.add_def(name, line, "method", self.enclosing_or_blank(1))
-                d["body"] = self.depth
+                d = self.sink.add_def(name, line, "method", self.enclosing_or_blank())
+                self.stack.append((name, self.depth, d))
                 # the call recorded for `name(` was the header, not a call
                 for cl in reversed(self.sink.calls):
                     if cl["name"] == name and cl["line"] == line:
@@ -460,11 +457,9 @@ class JSScanner:
         if c == "}":
             self.depth -= 1
             while self.stack and self.stack[-1][1] >= self.depth:
-                name, _ = self.stack.pop()
-                for d in reversed(self.sink.defs):
-                    if d["name"] == name and d.get("body") == self.depth and d["end"] == d["line"]:
-                        d["end"] = self.line
-                        break
+                _, _, d = self.stack.pop()
+                if d is not None:
+                    d["end"] = self.line
             self.last_sig = "}"
             return
         if c == "=" and s[self.i:self.i + 2] == "=>":
@@ -609,8 +604,6 @@ def build(root, prior=None):
             {"py": scan_python, "js": scan_js, "html": scan_html, "sh": scan_sh}[lang](text, sink)
         except Exception as e:      # a scanner must never take the map down
             sink.add_def(f"(scan failed: {e})", 1, "error", "")
-        for d in sink.defs:
-            d.pop("body", None)
         files[rel] = {"mtime": mtime, "lang": lang, "defs": sink.defs, "calls": sink.calls,
                       "draws": sink.draws, "routes": sink.routes}
         scanned += 1
