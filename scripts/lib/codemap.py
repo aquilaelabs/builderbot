@@ -10,13 +10,17 @@ script, tab-*.js, nb-*.js, test/*.mjs) and a line pass for shell.
 
     bb map                       what is indexed, and the verbs
     bb map find NAME             where NAME is defined
-    bb map who-calls NAME        every call of NAME, with the caller
+    bb map who-calls NAME        every call of NAME, with the caller, and every place NAME is
+                                 passed by name without a call (handed to a draw, assigned, listed)
     bb map calls NAME            what NAME calls
     bb map defs FILE             the definitions in one file, nested shown
     bb map draws ID|.class       which functions draw it, which suites name it
     bb map suites FILE...        the suites that reach what these files define, draw or name
                                  (--names: one suite name per line, for a script)
     bb map unused [FILE]         page functions nothing calls and nothing passes by name: dead by measurement
+    bb map state [FILE]          the page-level `let`s of a page script (all of them with no FILE), each
+                                 with where it is assigned and from what: one assigned from `state`
+                                 mirrors the poll and drifts from it, which is what to read instead
     bb map sections FILE         the file by its `// ---- name ----` sections: functions, who reaches in
                                  from outside, what runs at load, what the suite covers. The unit a
                                  cleanup moves.
@@ -48,7 +52,7 @@ INDEX_DIR = ".bb-map"
 # bb a session runs while the controller's build lagged the tree. The file
 # is named for the format too, so two bb builds on one tree keep to their
 # own files during the window when both exist.
-FORMAT = 2
+FORMAT = 3
 INDEX_FILE = f"map{FORMAT}.json"
 SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchpad",
              "_work", "build", ".gradle", ".idea", "venv", ".venv"}
@@ -111,6 +115,8 @@ class Sink:
         self.draws = []     # {what, kind: id|class|path|file, line, fn}
         self.routes = []    # {path, handler}
         self.refs = {}      # name -> how often it is used without being called
+        self.passed = []    # {name, line, fn}: those uses, located; kept for the
+                            # names the tree defines as functions (build filters)
         self.sections = []  # {name, line}: the `// ---- name ----` headers
 
     def add_def(self, name, line, kind, parent):
@@ -122,8 +128,9 @@ class Sink:
         self.calls.append({"name": name, "qual": qual, "file": self.path, "line": line,
                            "caller": caller})
 
-    def add_ref(self, name):
+    def add_ref(self, name, line=0, fn=""):
         self.refs[name] = self.refs.get(name, 0) + 1
+        self.passed.append({"name": name, "line": line, "fn": fn})
 
     def add_draw(self, what, kind, line, fn):
         self.draws.append({"what": what, "kind": kind, "file": self.path, "line": line,
@@ -257,6 +264,8 @@ class JSScanner:
         self.paren_at_pending = 0
         self.maybe_method = None
         self.receiver = False
+        self.blank = None        # a list to collect (start, end) of every string,
+                                 # template, regex and comment, for code_only()
 
     def enclosing(self):
         return self.stack[-1][0] if self.stack else self.top
@@ -275,22 +284,31 @@ class JSScanner:
             two = s[self.i:self.i + 2]
             if two == "//":
                 j = s.find("\n", self.i)
-                self.i = n if j < 0 else j
+                j = n if j < 0 else j
+                self.span(self.i, j)
+                self.i = j
                 continue
             if two == "/*":
                 j = s.find("*/", self.i + 2)
                 j = n if j < 0 else j + 2
                 self.line += s.count("\n", self.i, j)
+                self.span(self.i, j)
                 self.i = j
                 continue
             if c in "'\"":
+                at = self.i
                 self.string(c)
+                self.span(at, self.i)
                 continue
             if c == "`":
+                at = self.i
                 self.template()
+                self.span(at, self.i)
                 continue
             if c == "/" and self.regex_allowed():
+                at = self.i
                 self.regex()
+                self.span(at, self.i)
                 continue
             m = self.IDENT.match(s, self.i)
             if m:
@@ -304,6 +322,10 @@ class JSScanner:
             self.i += 1
 
     # -- pieces --------------------------------------------------------------
+    def span(self, a, b):
+        if self.blank is not None:
+            self.blank.append((a, b))
+
     def regex_allowed(self):
         if not self.last_sig:
             return True
@@ -402,7 +424,7 @@ class JSScanner:
         # hands to onclick without calling it.
         if nxt != "(" and not after_dot and word not in JS_KEYWORDS \
                 and self.last_kw not in ("function", "class") and not word[0].isdigit():
-            self.sink.add_ref(word)
+            self.sink.add_ref(word, self.line, self.enclosing())
         if word in self.fn_words:
             self.last_kw = "function"
         elif word in TYPE_WORDS:
@@ -522,6 +544,19 @@ class JSScanner:
             self.last_sig = "}"
             return
         if c == "=" and s[self.i:self.i + 2] == "=>":
+            # `const NAME = x => expr`: a definition with no brace to hang a
+            # body on, so it has no `at` for the instrumenter and its end is
+            # its line; but it is a function, found, called, passed and
+            # counted like one (B224: drawLinux was nowhere in the map).
+            j, n = self.i + 2, len(s)
+            while j < n and s[j] in " \t":
+                j += 1
+            if j < n and s[j] != "{":
+                m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*$",
+                              s[max(0, self.i - 200):self.i])
+                if m and m.group(1) not in JS_KEYWORDS and self.last_kw != "function":
+                    d = self.sink.add_def(m.group(1), self.line, "arrow", self.enclosing_or_blank())
+                    d["expr"] = True
             self.i += 1
             self.last_sig = "=>"
             return
@@ -554,6 +589,26 @@ class JSScanner:
         if m:
             return m.group(1)
         return ""
+
+
+def code_only(text, suffix=".js"):
+    """The text with every string, template literal, regex and comment
+    blanked to spaces, newlines kept, so a regex over it reads code and
+    only code: `data-state="..."` inside a template is not an assignment
+    to state."""
+    sc = JSScanner(text, Sink("(code_only)"), shape_methods=suffix in SHAPE_METHODS,
+                   fn_words=FN_BY_SUFFIX.get(suffix, set()))
+    sc.blank = []
+    try:
+        sc.run()
+    except Exception:
+        return text
+    out = list(text)
+    for a, b in sc.blank:
+        for i in range(a, min(b, len(out))):
+            if out[i] != "\n":
+                out[i] = " "
+    return "".join(out)
 
 
 def scan_js(text, sink, line0=1, base=0):
@@ -649,7 +704,7 @@ def build(root, prior=None):
     The flat lists the questions read are joined at load and not written."""
     root = Path(root)
     kept = (prior or {}).get("files", {})
-    files, scanned = {}, 0
+    files, scanned, fresh = {}, 0, {}
     for p, lang in sources(root):
         rel = str(p.relative_to(root))
         try:
@@ -671,8 +726,20 @@ def build(root, prior=None):
             sink.add_def(f"(scan failed: {e})", 1, "error", "")
         files[rel] = {"mtime": mtime, "lang": lang, "defs": sink.defs, "calls": sink.calls,
                       "draws": sink.draws, "routes": sink.routes, "refs": sink.refs,
-                      "sections": sink.sections}
+                      "sections": sink.sections, "passed": []}
+        fresh[rel] = sink
         scanned += 1
+    # A use by name is worth a line only for a name the tree defines as a
+    # function: every other identifier is a local, and locating those would
+    # be most of the tree again. Filtered against every definition the index
+    # holds at this build, so a function added later is seen passed in a
+    # file only once that file is rescanned; `bb map build` rescans them all.
+    names = {d["name"] for e in files.values() for d in e.get("defs", [])
+             if d["kind"] in PASSABLE}
+    for rel, sink in fresh.items():
+        own = {(d["name"], d["line"]) for d in sink.defs}
+        files[rel]["passed"] = [p | {"file": rel} for p in sink.passed
+                                if p["name"] in names and (p["name"], p["line"]) not in own]
     idx = {"format": FORMAT, "built": time.time(), "root": str(root), "scanned": scanned,
            "dropped": len(set(kept) - set(files)), "files": files}
     out = root / INDEX_DIR
@@ -680,6 +747,11 @@ def build(root, prior=None):
     tmp = out / (INDEX_FILE + ".tmp")
     tmp.write_text(json.dumps(idx))
     tmp.replace(out / INDEX_FILE)
+    # The index an older reader wrote stays behind otherwise, and two of
+    # them were sitting beside this one at seven megabytes each.
+    for old in out.glob("*.json"):
+        if old.name != INDEX_FILE and (old.name == "index.json" or re.fullmatch(r"map\d+\.json", old.name)):
+            old.unlink(missing_ok=True)
     return flat(idx)
 
 
@@ -689,7 +761,7 @@ def flat(idx):
     which is what coverage is keyed on: a line number moves with every edit
     above it, and after one section left the page every count read as
     unreached."""
-    for k in ("defs", "calls", "draws", "routes"):
+    for k in ("defs", "calls", "draws", "routes", "passed"):
         idx[k] = [x for f in idx["files"].values() for x in f.get(k, [])]
     for entry in idx["files"].values():
         seen = {}
@@ -776,12 +848,21 @@ def q_who_calls(idx, name, root):
     if "." in name:
         qual, name = name.rsplit(".", 1)
     rows = [c for c in idx["calls"] if c["name"] == name and (not qual or c["qual"] == qual)]
-    if not rows:
-        return [f"nothing calls {name}" + (f" on {qual}" if qual else "")]
+    # ...and the places it is handed over without a call: to a draw, an
+    # onclick, a list. Not a call, and the reason a function nothing calls
+    # is not dead; who-calls used to say "nothing calls" and leave it there.
+    passed = [] if qual else [p for p in idx.get("passed", []) if p["name"] == name]
+    if not rows and not passed:
+        return [f"nothing calls {name}" + (f" on {qual}" if qual else "") + ", and nothing passes it by name"]
     out = []
+    if not rows:
+        out.append(f"nothing calls {name} directly; it is passed by name:")
     for c in sorted(rows, key=lambda c: (is_test(c["file"]), c["file"], c["line"])):
         tag = "test " if is_test(c["file"]) else ""
         out.append(f"{tag}{c['file']}:{c['line']}  from {c['caller']}  | {line_of(root, c['file'], c['line'])}")
+    for p in sorted(passed, key=lambda p: (is_test(p["file"]), p["file"], p["line"])):
+        tag = "test " if is_test(p["file"]) else ""
+        out.append(f"{tag}{p['file']}:{p['line']}  passed by name in {p['fn']}  | {line_of(root, p['file'], p['line'])}")
     return out
 
 
@@ -917,6 +998,7 @@ def q_suites(idx, paths, names_only=False):
 
 
 INSTRUMENTED = ("function", "arrow", "method")
+PASSABLE = ("function", "arrow", "method", "class")
 
 
 def page_functions(idx):
@@ -1039,7 +1121,7 @@ def covered_ids(cov):
 def targets(idx):
     """Everything coverage can speak about: the page's functions and the
     python's, outside the suites."""
-    rows = list(page_functions(idx))
+    rows = [d for d in page_functions(idx) if not d.get("expr")]   # no body to count in
     rows += [d for f, entry in idx["files"].items() for d in entry["defs"]
              if entry["lang"] == "py" and d["kind"] == "def" and not is_test(f)
              and "/test/" not in "/" + f and not d["name"].startswith("(")]
@@ -1142,6 +1224,162 @@ def instrument(dash):
     return n_files, n_fns
 
 
+DECL = re.compile(r"^(?:let|var)\s+(.*)$")
+ASSIGN = r"(?:=(?!=)|\+=|-=|\*=|/=|\|\|=|&&=|\?\?=|\+\+|--)"
+
+
+def page_scripts(idx):
+    """The page and the scripts beside it: not the suites, and not the other
+    languages the JS scanner reads (Kotlin, Go) which have no page-level let."""
+    return [f for f, e in idx["files"].items()
+            if Path(f).suffix in (".js", ".mjs", ".html") and e.get("lang") in ("js", "html") and not is_test(f)]
+
+
+def script_bodies(root, f):
+    """(lines, first line number) for each script body in a file: the file
+    itself for a script, the inline blocks for a page."""
+    try:
+        text = (Path(root) / f).read_text(errors="replace")
+    except OSError:
+        return []
+    if f.endswith(".html"):
+        return [(code_only(m.group(1)).split("\n"), text.count("\n", 0, m.start(1)) + 1)
+                for m in SCRIPT.finditer(text)]
+    return [(code_only(text).split("\n"), 1)]
+
+
+def declarators(rest):
+    """The names on one `let` line: `a = 1, b = null, c;` is three."""
+    names, depth, cur, q = [], 0, "", ""
+    for ch in rest:
+        if q:
+            if ch == q:
+                q = ""
+            continue
+        if ch in "\"'`":
+            q = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            names.append(cur)
+            cur = ""
+            continue
+        elif ch == ";" and depth == 0:
+            break
+        cur += ch
+    names.append(cur)
+    out = []
+    for n in names:
+        m = re.match(r"\s*([A-Za-z_$][\w$]*)", n)
+        if m:
+            out.append(m.group(1))
+    return out
+
+
+def q_state(idx, root, path=None):
+    """The page-level mutable bindings and what feeds each one. A `let` at
+    column 0 of a page script is one; every assignment to it across every
+    page script is found, with the function it sits in and whether the right
+    side reads `state` (the poll) or a fetch. One fed from `state` is a copy
+    of the poll kept by hand, which is how B213 and B215 happened; one fed
+    from a fetch is that fetch's cache. Timers, drags and open menus are the
+    page's own and read as local."""
+    files = page_scripts(idx)
+    if path:
+        files = [f for f in files if f == path or f.endswith("/" + path)]
+        if not files:
+            return [f"{path} is not a page script the map knows"]
+    bodies = {f: script_bodies(root, f) for f in page_scripts(idx)}
+    decls = []
+    for f in files:
+        for lines, l0 in bodies[f]:
+            for i, l in enumerate(lines):
+                m = DECL.match(l)
+                if m:
+                    decls.extend((f, l0 + i, n) for n in declarators(m.group(1)))
+    if not decls:
+        return [f"no page-level let or var in {', '.join(files)}"]
+
+    def fn_at(f, ln):
+        best = None
+        for d in idx["files"][f]["defs"]:
+            if d["kind"] in INSTRUMENTED and d["line"] <= ln <= d["end"] \
+                    and (best is None or d["line"] >= best["line"]):
+                best = d
+        return best["name"] if best else "(top level)"
+
+    # One pass over every line for every binding, not one per binding: the
+    # page has 150 and thirty thousand lines, and the per-binding version
+    # took eight seconds to say what this says in one.
+    wanted = {}
+    for f, ln, n in decls:
+        wanted.setdefault(n, []).append((f, ln))
+    names = "|".join(sorted(map(re.escape, wanted), key=len, reverse=True))
+    pat = re.compile(r"(?<![\w.$])(" + names + r")\s*" + ASSIGN
+                     + r"|(?<![\w.$])(?:\+\+|--)(" + names + r")(?![\w$])")
+    local = re.compile(r"\b(?:let|const|var)\s+(.*)$")
+    sites = {}
+    for g, blocks in bodies.items():
+        # Another script may write a binding (index.html's wiring writes
+        # docOpen, which page-doctor.js declares), but one that declares the
+        # name itself has its own: a `timer` local to a function there is not
+        # the page's timer. Every declarator on the line counts, since
+        # `let on = false, timer = null` is two.
+        own = set()
+        for lines, _ in blocks:
+            for l in lines:
+                if (m := local.search(l)):
+                    own.update(declarators(m.group(1)))
+        for lines, l0 in blocks:
+            for i, code in enumerate(lines):     # strings and comments already blank
+                for m in pat.finditer(code):
+                    n = m.group(1) or m.group(2)
+                    # `const state = ` inside a function is that function's
+                    # own, not a write to the page's; a for-of the same.
+                    if re.search(r"\b(?:const|let|var)\s*$", code[:m.start()]):
+                        continue
+                    # What is assigned: to the end of the statement, not of
+                    # the line, or `x = null; if (state) ...` reads as state.
+                    rhs = code[m.end():].split(";")[0]
+                    feed = ("state" if re.search(r"\bstate\b", rhs)
+                            else "fetch" if re.search(r"\bawait\b|\.json\(|\bfetch\(", rhs)
+                            else "local")
+                    for f, ln in wanted[n]:
+                        if g == f and l0 + i == ln:
+                            continue               # the declaration itself
+                        if g != f and n in own:
+                            continue               # that file's own local
+                        sites.setdefault((f, ln, n), []).append((g, l0 + i, fn_at(g, l0 + i), feed))
+    rows = [(f, ln, n, sites.get((f, ln, n), [])) for f, ln, n in decls]
+    rank = lambda r: (0 if any(s[3] == "state" for s in r[3])   # noqa: E731
+                      else 1 if any(s[3] == "fetch" for s in r[3]) else 2, r[0], r[1])
+    rows.sort(key=rank)
+    n_state = sum(1 for r in rows if rank(r)[0] == 0)
+    n_fetch = sum(1 for r in rows if rank(r)[0] == 1)
+    out = [f"{len(rows)} page-level binding{'s' if len(rows) != 1 else ''} in "
+           f"{', '.join(Path(f).name for f in files) if len(files) < 4 else f'{len(files)} page scripts'}: "
+           f"{n_state} assigned from state, {n_fetch} from a fetch, {len(rows) - n_state - n_fetch} local"]
+    for f, ln, n, sites in rows:
+        k = rank((f, ln, n, sites))[0]
+        head = f"  {f}:{ln}  {n}: {len(sites)} assignment{'s' if len(sites) != 1 else ''}"
+        if k == 2:
+            out.append(head + (", local" if sites else " (never assigned: a const in all but name)"))
+            continue
+        out.append(head)
+        shown = [s for s in sites if s[3] != "local"]
+        for g, gl, fn, feed in shown[:6]:
+            out.append(f"      {g}:{gl}  in {fn}  from {'state' if feed == 'state' else 'a fetch'}")
+        rest = len(sites) - min(len(shown), 6)
+        if rest:
+            out.append(f"      and {rest} more, local")
+    out.append("assigned from state: a copy of the poll, kept in step by hand and drifting from it (B213, B215): "
+               "read state where it is used instead. From a fetch: that fetch's own cache, which is fine until "
+               "something else holds the same answer. Only a `let` at column 0 is seen, and only the names on its first line.")
+    return out
+
+
 def q_sections(idx, path, cov=None):
     files = [f for f in idx["files"] if f == path or f.endswith("/" + path)]
     if not files:
@@ -1200,7 +1438,8 @@ def summary(idx):
             f"{len(idx['defs'])} definitions, {len(idx['calls'])} calls, {len(idx['draws'])} ids and classes drawn",
             f"last built {when} ({what}) into {INDEX_DIR}/{INDEX_FILE}; a changed file is rescanned by itself, the rest kept",
             "",
-            "bb map find NAME | who-calls NAME | calls NAME | defs FILE | draws ID|.class | suites FILE... | build"]
+            "bb map find NAME | who-calls NAME | calls NAME | defs FILE | draws ID|.class | suites FILE... | "
+            "state [FILE] | sections FILE | unused | build"]
 
 
 def main(argv):
@@ -1247,6 +1486,9 @@ def main(argv):
             print("bb map covered NAME", file=sys.stderr)
             return 2
         print("\n".join(q_covered(idx, coverage_load(root), rest[0])))
+        return 0
+    if verb == "state":
+        print("\n".join(q_state(idx, root, rest[0] if rest else None)))
         return 0
     if verb == "sections":
         if not rest:

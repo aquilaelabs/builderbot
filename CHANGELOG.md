@@ -22,6 +22,7 @@
 - The node agent is under measured test: its self-update runs for real in the suite, the wicked and dhcpcd network writers are driven, and bb map covered reports the agent at 197 of 206 functions reached (7f621e0)
 - bb lint and the lint workflow fail when the node agent's file changes without AGENT_VERSION moving: a node compares the file and the Nodes tab names the number, and the two had disagreed (9505eee)
 - bb status names the session token in use, where it came from and when it expires, so a renewed token is visible instead of an environment copy reading as expired (4649cfd)
+- bb map who-calls lists where a function is passed by name as well as where it is called, and bb map state lists a page script's page-level lets with where each is assigned and whether from the status poll (03f9c14)
 
 ### Changed
 
@@ -84,6 +85,7 @@
 - bb map's index carries its format and a reader that meets another rebuilds instead of crashing, which the controller's build did against an index a newer map had written (52ff276)
 - Coverage counts are keyed by a function's name and place in its file, so an edit above a function no longer reads as it being unreached (76240c4)
 - A node whose agent is the same number as the controller's but a different file is told so by digest, instead of 'runs 0.6.92 and ships 0.6.92' (8d15eca)
+- bb map now indexes an arrow with an expression body as a function (606 on the page side were in no answer), and a build drops the index files older readers left behind (03f9c14)
 
 ### Security
 

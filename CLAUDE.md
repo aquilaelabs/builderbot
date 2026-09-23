@@ -114,8 +114,9 @@ by hand cost four commands and still could not see the failed builds.
   changed (against `origin/main`, plus the working tree), asks the map
   which suites reach them, and runs those with the lint, voice and design
   checks the house rules name; `--dry` prints the plan, `--files F...`
-  names the files instead. A change to `server.py` is the whole suite,
-  said as such. This exists because the one suite skipped by hand before
+  names the files instead, and `--base HEAD` measures the working tree
+  alone when the branch is long and the default would be everything. A
+  change to `server.py` is the whole suite, said as such. This exists because the one suite skipped by hand before
   a push was the one that would have caught it.
 - **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
   `bb map draws ID` and `bb map suites FILE` answer "where would I look"
@@ -125,7 +126,12 @@ by hand cost four commands and still could not see the failed builds.
   each section's functions, how many callers reach in from outside, what
   runs at load, what the suite covers. A section with few outside
   callers and nothing at load moves to its own file whole, which is how
-  the inline script leaves `index.html`.
+  the inline script leaves `index.html`. `bb map state [FILE]` lists a
+  page script's page-level `let`s with where each is assigned and from
+  what: one fed from `state` is a copy of the poll kept by hand (B213,
+  B215), and the sweep for those starts there. `who-calls` lists where a
+  function is passed by name as well as where it is called, so a handler
+  handed to a draw never reads as dead.
 - **Seeing a change without a rebuild:** `bb drift` lists what this checkout
   has changed that the running container is not serving. For the dashboard
   specifically, `bb dashboard dev` restarts the live dashboard from

@@ -96,7 +96,47 @@ ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from 
   const un = map('unused', 'scripts/dashboard/zz-probe-dead.js');
   ok(/neverUsedAnywhere/.test(un) && !/handedOver/.test(un),
      'unused lists the function no token names, and not the one passed by name');
+  // ...and who-calls says where it was passed, rather than "nothing calls"
+  // and silence (B222): the answer that read a live handler as dead.
+  const wc = map('who-calls', 'handedOver');
+  ok(/^nothing calls handedOver directly; it is passed by name:/m.test(wc)
+     && /zz-probe-dead\.js:3  passed by name in \(top level\)  \| const pick = handedOver;/.test(wc),
+     'who-calls lists the places a function is passed by name, with the function each sits in');
+  ok(/nothing calls neverUsedAnywhere, and nothing passes it by name/.test(map('who-calls', 'neverUsedAnywhere')),
+     '...and says both halves when neither happens');
   execFileSync('rm', ['-f', dead]);
+}
+
+// An arrow with an expression body is a function too (B224): `const
+// drawLinux = () => drawShellCard(...)` was in no answer at all, so a
+// refactor read it as nothing. Found, and seen passed by name.
+ok(/^scripts\/dashboard\/page-commands\.js:\d+  arrow$/m.test(map('find', 'drawLinux')),
+   'an expression-bodied arrow is a definition');
+ok(/index\.html:\d+  passed by name in refresh  \| .*drawCard\("linux", drawLinux\)/.test(map('who-calls', 'drawLinux')),
+   '...and who-calls sees it handed to the card draw');
+
+// The page's mutable state (B223): every page-level `let`, where it is
+// assigned and from what. A binding fed from `state` is a copy of the poll
+// kept by hand, which is how B213 and B215 happened; the view puts those
+// first so a sweep starts there. Proved on a file written into this copy.
+{
+  const st = `${REPO}/scripts/dashboard/zz-probe-state.js`;
+  writeFileSync(st, ['let mirror = null, timer = null;', 'let cache = null;', 'let count = 0;',
+                     'function refresh(){ mirror = state.thing; }',
+                     'async function load(){ cache = await (await fetch("/x")).json(); }',
+                     'function tick(){ timer = setTimeout(tick, 1000); count++; }', ''].join('\n'));
+  const view = map('state', 'scripts/dashboard/zz-probe-state.js');
+  const at = n => view.split('\n').findIndex(l => new RegExp(`  ${n}: `).test(l));
+  ok(/^4 page-level bindings in zz-probe-state\.js: 1 assigned from state, 1 from a fetch, 2 local/m.test(view),
+     `state counts the bindings and sorts them by what feeds them (${view.split('\n')[0]})`);
+  ok(/zz-probe-state\.js:1  mirror: 1 assignment\n      scripts\/dashboard\/zz-probe-state\.js:4  in refresh  from state/.test(view),
+     'a binding assigned from state names the site, the function and the source');
+  ok(/zz-probe-state\.js:2  cache: 1 assignment\n      scripts\/dashboard\/zz-probe-state\.js:5  in load  from a fetch/.test(view),
+     '...one assigned from a fetch says so');
+  ok(/zz-probe-state\.js:1  timer: 1 assignment, local/.test(view) && /count: 1 assignment, local/.test(view),
+     '...a timer and a counter read as local, the second on its first line and ++ counted as an assignment');
+  ok(at('mirror') < at('cache') && at('cache') < at('timer'), 'state first, then fetches, then the local ones');
+  execFileSync('rm', ['-f', st]);
 }
 
 // Coverage (R76 steps 2 to 4): the instrumenter puts a counter at the head
@@ -145,7 +185,7 @@ ok(/^\d+-\d+  function nbRoadmapView$/m.test(defs) && /^  \d+-\d+  function draw
    'defs lists a file top down, a function under the closure it lives in and a callback under its function');
 
 // It rebuilds itself when a source is newer, and not otherwise.
-const stamp = () => readFileSync(`${REPO}/.bb-map/map2.json`, 'utf8').match(/"built": ([\d.]+)/)[1];
+const stamp = () => readFileSync(`${REPO}/.bb-map/map3.json`, 'utf8').match(/"built": ([\d.]+)/)[1];
 const before = stamp();
 map('find', 'openDocker');
 ok(stamp() === before, 'a query on an unchanged tree does not rebuild');
@@ -157,7 +197,7 @@ ok(/\(1 file scanned\)/.test(map()), '...rescanning that file alone and keeping 
 // An index of another format is rebuilt, never read: the first map crashed
 // with a KeyError on every question when it met a newer index on the tree.
 {
-  const f = `${REPO}/.bb-map/map2.json`;
+  const f = `${REPO}/.bb-map/map3.json`;
   const good = readFileSync(f, 'utf8');
   writeFileSync(f, JSON.stringify({ built: 1, files: { 'scripts/bb': { mtime: 1, lang: 'sh' } }, defs: [], calls: [], draws: [] }));
   ok(/^scripts\/dashboard\/tab-docker\.js:\d+ to \d+  function$/m.test(map('find', 'openDocker')),

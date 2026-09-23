@@ -192,8 +192,8 @@ bb: BuilderBot helper
   bb drift [REPO]        which files this checkout changed that the running
                          container is not serving yet
   bb map [VERB ...]      the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
-                         draws ID|.class, suites FILE..., unused, coverage, covered NAME,
-                         uncovered [FILE]; ask it before grepping
+                         draws ID|.class, suites FILE..., state [FILE], sections FILE, unused,
+                         coverage, covered NAME, uncovered [FILE]; ask it before grepping
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb tool                the tools toolchains add to a session, each under its own name
   bb tool graphics CMD   pictures a session can make and read back (the graphics toolchain):
@@ -2955,13 +2955,20 @@ cmd_tests() {
         done
         if [ "${#files[@]}" -eq 0 ]; then
             git rev-parse --git-dir >/dev/null 2>&1 || die "not in a git tree: bb tests preflight --files F... names the files instead"
+            local defaulted=""
             if [ -z "$base" ]; then
                 base="$(git rev-parse --verify -q origin/main >/dev/null 2>&1 && echo origin/main || echo main)"
+                defaulted=1
             fi
             local mb; mb="$(git merge-base "$base" HEAD 2>/dev/null || echo "$base")"
             while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(
                 { git diff --name-only "$mb" HEAD; git status --porcelain | sed -E 's/^.{3}//; s/.* -> //'; } | sort -u)
-            log "preflight: $(printf '%s' "${#files[@]}") file(s) changed since $base ($(git rev-parse --short "$mb"))"
+            # The base is the branch's by default, which on a long branch is
+            # every file it ever touched and the whole suite every time
+            # (B225): said here, with the narrower measure beside it, so
+            # a session proving one change knows the flag exists.
+            log "preflight: $(printf '%s' "${#files[@]}") file(s) changed since $base ($(git rev-parse --short "$mb"))$(
+                [ -n "$defaulted" ] && [ "${#files[@]}" -gt 20 ] && printf '%s' "; --base HEAD measures the working tree alone, --base HEAD~1 the last commit with it")"
         fi
         [ "${#files[@]}" -gt 0 ] || { log "nothing changed: nothing to run"; return 0; }
         # The suites, from the map. Python under the dashboard reaches its
