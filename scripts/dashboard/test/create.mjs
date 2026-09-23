@@ -57,6 +57,12 @@ ok(await page.$eval('#projects #bNewProj', b => b.textContent.includes('New proj
    'New project sits at the foot of the Projects card');
 await page.click('#bNewProj');
 ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
+// The four gates are on the dialog (R78): what a session may enter into
+// the notebook, auto on every open, so it is a choice made rather than a
+// default found later in the settings dialog.
+ok(await page.$$eval('#pGateField select', s => s.length === 4 && s.every(x => x.value === 'auto' && x.options.length === 3))
+   && await page.$eval('#pGateField', el => !el.hidden),
+   'the four Claude gates are offered on a new local repo, auto by default');
 const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    '...with the cursor in none of its fields');
@@ -405,6 +411,20 @@ for (const name of ['', '   ', '---', '...', '/'])
 const made = await postJson({ name: 'My New App!', mode: 'init' });
 ok(made.status === 200 && made.body.name === 'My-New-App',
    'a name with spaces and punctuation is created as GitHub would spell it');
+// ...and a gate picked on the dialog is written with the project, the same
+// write the settings dialog makes.
+{
+  const gated = await postJson({ name: 'Gated App', mode: 'init', gate: { roadmap: 'ask', bugs: 'deny' } });
+  ok(gated.status === 200 && gated.body.name === 'Gated-App', 'a project is created with gates named');
+  await refreshUntil(page, () => state?.projects?.some(p => p.name === 'Gated-App' && p.prefs?.gate?.roadmap === 'ask'), { timeout: 15000 });
+  const g = await page.evaluate(() => state.projects.find(p => p.name === 'Gated-App').prefs.gate);
+  ok(g.roadmap === 'ask' && g.bugs === 'deny' && g.rules === 'auto' && g.settings === 'auto',
+     `...and the project carries them, the unnamed ones auto (${JSON.stringify(g)})`);
+  const bad = await postJson({ name: 'Gated Bad', mode: 'init', gate: { roadmap: 'maybe' } });
+  ok(bad.status === 200 && /gates not set/.test(bad.body.note || ''),
+     `a gate value that is not auto, ask or deny is refused in the note, and the project still exists (${bad.body.note})`);
+}
+
 // The code map is built for the new project in the background (mapping.py)
 // and the row says so, then says how many files; .bb-map/ goes into the
 // repository's own exclude file, never its .gitignore.

@@ -3889,6 +3889,25 @@ body.booting .pane>.loading{margin:auto}
       <select id="pNode"></select>
       <div class="hint">Builds, tests, CI and Claude sessions run there; the settings dialog changes it later.</div>
     </div>
+    <!-- What a session may enter into the notebook (roadmap #27), asked
+         here as well as in the settings dialog so the choice is in front of
+         whoever makes the project rather than found later. Auto by default;
+         the settings dialog changes it afterwards. -->
+    <div class="field" id="pGateField" hidden>
+      <label id="pGateLabel">Claude may</label>
+      <div class="prefrow" role="group" aria-labelledby="pGateLabel">
+        <label class="pick">Add to roadmap <select id="pGateRoadmap"
+          aria-label="new roadmap items from a session"></select></label>
+        <label class="pick">File bugs <select id="pGateBugs"
+          aria-label="new bug reports from a session"></select></label>
+        <label class="pick">Add rules <select id="pGateRules"
+          aria-label="new house rules from a session"></select></label>
+        <label class="pick">Fill in build and test <select id="pGateSettings"
+          aria-label="the build, test and outputs fields from a session"></select></label>
+      </div>
+      <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
+        it for your approval. Deny refuses it with a reason.</div>
+    </div>
     <!-- A code base somebody already has, for a fresh local repo: unpacked
          into the new directory before git init. Uploaded on Create rather
          than on choosing, so a change of mind costs nothing. -->
@@ -8176,6 +8195,7 @@ $("pCreate").onclick = async () => {
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
                                 node: $("pNodeField").hidden ? "" : $("pNode").value,
+                                gate: $("pGateField").hidden ? null : pGateNow(),
                                 key: mode === "clone" ? key : "",
                                 // Only ever consulted for a host that does not
                                 // name itself: the server prefers the host.

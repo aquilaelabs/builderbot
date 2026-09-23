@@ -155,9 +155,9 @@ const devClaudeMode = name => {
 
 const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
-           fields: ["pSrcField", "pNameField", "pNodeField", "pArchiveField", "pAboutField"] },
+           fields: ["pSrcField", "pNameField", "pNodeField", "pGateField", "pArchiveField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pNameField", "pNodeField", "pUrlField", "pForgeField",
+           fields: ["pSrcField", "pNameField", "pNodeField", "pGateField", "pUrlField", "pForgeField",
                     "pPushField", "pTokenField", "pKeyField"] },
   link:  { title: () => `Link ${pLink} to a git host`, btn: "Link", focus: "pUrl",
            fields: ["pForgeField", "pUrlField", "pLinkAuthField", "pKeyField",
@@ -197,7 +197,7 @@ function pDraw(){
   $("pClone").classList.toggle("on", pMode === "clone");
   for (const f of ["pSrcField", "pNameField", "pArchiveField", "pForgeField",
                    "pUrlField", "pLinkAuthField", "pPushField",
-                   "pTokenField", "pKeyField", "pAboutField"])
+                   "pTokenField", "pKeyField", "pAboutField", "pGateField"])
     $(f).hidden = !m.fields.includes(f);
   pDrawForge();
   // The deploy-key picker only appears when the agent actually holds keys:
@@ -371,9 +371,26 @@ let pGen = 0;
 
 let pFetch = null;                       // this open's /api/pubkeys, parsed
 
+// The four gates on the dialog (roadmap #27), the same table the settings
+// dialog draws from, and auto on every open: what a session may enter is
+// asked once here so it is a choice made rather than a default found later.
+const P_GATE_IDS = {roadmap: "pGateRoadmap", bugs: "pGateBugs", rules: "pGateRules", settings: "pGateSettings"};
+const pGateNow = () => Object.fromEntries(
+  Object.entries(P_GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
+function pFillGates(){
+  for (const id of Object.values(P_GATE_IDS)){
+    const el = $(id);
+    if (el.dataset.built !== "1"){
+      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = "auto";
+  }
+}
+
 function pOpen(mode){
   const gen = ++pGen;
-  pMode = mode; pKeys = []; pPat = false; pDraw();
+  pMode = mode; pKeys = []; pPat = false; pFillGates(); pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
   $("pToken").value = "";
   pAskedHost = "";

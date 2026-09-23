@@ -6673,6 +6673,14 @@ class Handler(BaseHTTPRequestHandler):
             r = prefs.set_prefs(body["name"], node=nid, workspace=WORKSPACE)
             if r.get("error"):
                 body["note"] = f"{body.get('note') or 'ready'}; node not set: {r['error']}"
+        # ...and the four gates (roadmap #27), when the dialog offered them:
+        # the same write the settings dialog makes, so what a session may
+        # enter into the notebook is decided where the project is made.
+        gate = req.get("gate")
+        if code == 200 and body.get("name") and isinstance(gate, dict) and gate:
+            r = prefs.set_prefs(body["name"], gate=gate, workspace=WORKSPACE)
+            if r.get("error"):
+                body["note"] = f"{body.get('note') or 'ready'}; gates not set: {r['error']}"
         # Pinned on arrival, once anything has ever been pinned. Without this a
         # project made while a pins file exists is absent from it, so it lands
         # on disk and never reaches the sidebar: created, and apparently gone.

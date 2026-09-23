@@ -1305,7 +1305,10 @@ lives in its body. The cards:
   enrolled it also asks which node the project runs on (the only one is
   picked for you; *none* is an option), the same setting the project's
   settings dialog changes later, so a new project can build and start a
-  session without a second dialog. It can
+  session without a second dialog. It asks the same way what a session
+  may enter into the notebook (add to the roadmap, file bugs, add rules,
+  fill in build and test), auto unless you say otherwise, so that is a
+  choice made rather than a default found later. It can
   also start from an archive you already have: zip, or tar with gzip, bzip2
   or xz, unpacked into the new directory before `git init`. However it
   arrived, the code map a session asks before grepping (`bb map`) is built
