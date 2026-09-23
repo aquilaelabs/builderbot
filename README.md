@@ -1307,7 +1307,12 @@ lives in its body. The cards:
   settings dialog changes later, so a new project can build and start a
   session without a second dialog. It can
   also start from an archive you already have: zip, or tar with gzip, bzip2
-  or xz, unpacked into the new directory before `git init`. A single
+  or xz, unpacked into the new directory before `git init`. However it
+  arrived, the code map a session asks before grepping (`bb map`) is built
+  for it in the background the moment the tree is there: the dialog closes
+  as usual, the row says *mapping the code* for the seconds it takes, and
+  a Claude session on that project waits for it, so its first question
+  about the tree is answered from an index rather than by building one. A single
   top-level folder inside is dropped (the project directory *is* that
   folder), desktop junk like `__MACOSX` is skipped, and with no notes typed
   the `CLAUDE.md` is drafted from the unpacked files the way a clone's is.

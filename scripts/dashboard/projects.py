@@ -199,6 +199,7 @@ PROJECT_NAME = None
 STATE = None
 HOME = None
 write_json = None
+after_create = None
 # Moving the dev-instance data is devapp's, whole: the layout is a directory
 # per instance under a derived name, and where it lives depends on the daemon:
 # a mounted /devdata is this box's, a sandbox's is on that machine's disk.
@@ -210,14 +211,16 @@ rename_project_data = None
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
               project_name,
-              state, home, write_json, rename_project_data=None):
-    """Hand over the server's helpers."""
+              state, home, write_json, rename_project_data=None, after_create=None):
+    """Hand over the server's helpers. `after_create(name)` is called once
+    a project's tree is in place (a fresh repo, a clone, an unpacked
+    archive): the map build that mapping.py starts in the background."""
     globals().update(
         run=run, WORKSPACE=Path(workspace), agent_keys=agent_keys,
         gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
         PROJECT_NAME=project_name,
         STATE=Path(state), HOME=Path(home), write_json=write_json,
-        rename_project_data=rename_project_data)
+        rename_project_data=rename_project_data, after_create=after_create)
     # The peer library takes the same runner: it shells out to `ssh -G` to
     # resolve a deploy-key alias, and to nothing else.
     forges.configure(run=run, state=state, write_json=write_json)
@@ -1337,7 +1340,10 @@ def _init(dest, name, about, cloned=False):
     if r["code"] != 0:
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
         return {"error": r["out"].strip()[-2000:] or "git init failed"}, 500
-    return {"ok": True, "name": name, "note": _write_md(dest, about, cloned)}, 200
+    note = _write_md(dest, about, cloned)
+    if after_create:
+        after_create(name)          # the map, in the background, from here on
+    return {"ok": True, "name": name, "note": note}, 200
 
 
 # ---- starting from an archive ---------------------------------------------
@@ -1605,7 +1611,10 @@ def _clone(dest, url, helper="", may_push_=False):
         _scope_to_token(dest, helper)
     set_push_hook(dest, may_push_)
     _step("reading the repository")
-    return "", _write_md(dest, "", True)
+    note = _write_md(dest, "", True)
+    if after_create:
+        after_create(dest.name)     # the map, in the background, from here on
+    return "", note
 
 
 def _write_md(dest, about, cloned):

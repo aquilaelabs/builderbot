@@ -405,6 +405,55 @@ for (const name of ['', '   ', '---', '...', '/'])
 const made = await postJson({ name: 'My New App!', mode: 'init' });
 ok(made.status === 200 && made.body.name === 'My-New-App',
    'a name with spaces and punctuation is created as GitHub would spell it');
+// The code map is built for the new project in the background (mapping.py)
+// and the row says so, then says how many files; .bb-map/ goes into the
+// repository's own exclude file, never its .gitignore.
+{
+  await refreshUntil(page, () => state?.mapping?.['My-New-App'] && !state.mapping['My-New-App'].running, { timeout: 15000 });
+  const m = await page.evaluate(() => state.mapping['My-New-App']);
+  // Zero files is the true count: a fresh repo holds its CLAUDE.md and nothing
+  // the map indexes. What is proved is that the build ran and wrote the index.
+  ok(!m.error && m.files === 0 && existsSync(`${DIR}/ws/My-New-App/.bb-map/map3.json`),
+     `a new project is mapped as it is created, in the background (${m.files} files in ${m.took}s${m.error ? '; ' + m.error : ''})`);
+  ok(/^\.bb-map\/$/m.test(readFileSync(`${DIR}/ws/My-New-App/.git/info/exclude`, 'utf8')),
+     '...and .bb-map/ is excluded through .git/info/exclude, not the project\'s .gitignore');
+  await page.evaluate(() => drawProjects(state.projects));
+  ok(await page.$eval('#projects', el => /mapped \d+ files? in [\d.]+s/.test(el.textContent)),
+     '...and the row says how many files it mapped');
+}
+
+// The gate (mapping.py): while a project's map builds, a Claude session on
+// it is held with the reason, and the hold lifts when the build ends, error
+// or not. Driven in python with the build made slow, since a fixture
+// project maps in a tenth of a second.
+{
+  const py = `
+import importlib.util, json, os, sys, tempfile, time
+spec = importlib.util.spec_from_file_location('mp', ${JSON.stringify(new globalThis.URL('../mapping.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+ws = tempfile.mkdtemp()
+os.makedirs(os.path.join(ws, 'proj', '.git'))
+open(os.path.join(ws, 'proj', 'a.js'), 'w').write('function f(){ return 1; }\\n')
+m.configure(workspace=ws, codemap=${JSON.stringify(new globalThis.URL('../../lib/codemap.py', import.meta.url).pathname)})
+os.environ['BB_MAP_SLOW'] = '1.5'
+out = {'started': m.start('proj'), 'again': m.start('proj')}
+time.sleep(0.3)
+out['held'] = m.held('proj')
+out['running'] = m.payload()['proj']['running']
+for _ in range(60):
+    if not m.payload().get('proj', {}).get('running'): break
+    time.sleep(0.2)
+out['after'] = m.held('proj')
+out['done'] = m.payload()['proj']
+out['excluded'] = open(os.path.join(ws, 'proj', '.git', 'info', 'exclude')).read()
+print(json.dumps(out))
+`;
+  const r = JSON.parse(execFileSync('python3', ['-c', py], { encoding: 'utf8' }));
+  ok(r.started && !r.again && /proj is being mapped for its first session/.test(r.held) && r.running,
+     `while the map builds, a session on the project is held with the reason (${r.held.slice(0, 50)}…)`);
+  ok(r.after === '' && r.done.running === false && r.done.files === 1 && !r.done.error && /\.bb-map\//.test(r.excluded),
+     `...and the hold lifts when it ends, with the count (${r.done.files} file in ${r.done.took}s)`);
+}
 ok(existsSync(`${DIR}/ws/My-New-App/.git`),
    '...and that is the directory on disk');
 ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused');

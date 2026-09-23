@@ -24,6 +24,7 @@
 - bb status names the session token in use, where it came from and when it expires, so a renewed token is visible instead of an environment copy reading as expired (4649cfd)
 - bb map who-calls lists where a function is passed by name as well as where it is called, and bb map state lists a page script's page-level lets with where each is assigned and whether from the status poll (03f9c14)
 - bb map addresses reads the roadmap's file-and-line details (or any text) and says which addresses moved away from the name beside them and which names are gone, so a plan's addresses are corrected rather than trusted (13f8015)
+- A new project is mapped in the background the moment its tree exists, from a fresh repo, a clone or an archive; the row says so, and a Claude session on it waits the seconds it takes so its first question about the tree is answered from the index (9b50432)
 
 ### Changed
 

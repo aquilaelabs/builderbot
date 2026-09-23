@@ -1356,7 +1356,10 @@ def project_list(who):
                     # project: another project's node being out of window is
                     # not this row's hold.
                     "held": held_nodes.get(
-                        project_prefs.get(d.name, {}).get("node") or "", ""),
+                        project_prefs.get(d.name, {}).get("node") or "", "")
+                    # ...or its map is still building (mapping.py): the
+                    # same ghosting, for the seconds it takes.
+                    or mapping.held(d.name),
                     "issues": issues})
     # Two projects whose names slug alike are one dev instance: `My.App` and
     # `my-app` both slug to my-app, which is one compose project name, one env
@@ -2266,6 +2269,7 @@ import forges                                                    # noqa: E402
 forges.configure(run=run, state=STATE, write_json=write_json)
 
 import projects                                                  # noqa: E402
+import mapping                                                   # noqa: E402
 
 # ---- the operator's house rules ---------------------------------------------
 # The one thing in the notebook a session reads and cannot write. It rides in
@@ -2523,12 +2527,18 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 
 
 
+# The code map, built for a project the moment it exists (mapping.py): the
+# same command a session runs by hand, started in the background by the
+# create paths, and the one thing a Claude session on a new project waits for.
+mapping.configure(workspace=WORKSPACE,
+                  codemap=Path(__file__).resolve().parent.parent / "lib" / "codemap.py")
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
                    project_name=PROJECT_NAME,
                    state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
                    write_json=write_json,
-                   rename_project_data=devapp.rename_project_data)
+                   rename_project_data=devapp.rename_project_data,
+                   after_create=mapping.start)
 
 # ---- a node's git, relayed --------------------------------------------------
 # Push, fetch, pull and ls-remote from a session on a node, done in a
@@ -2913,6 +2923,9 @@ def snapshot(who):
         # names a project the account may not have been given, and its
         # buttons are that account's.
         "project_job": {} if users.may(who, "create") else projects.job(),
+        # The code maps being built for new projects, and the ones that just
+        # finished: the row says "mapping the code" and then how many files.
+        "mapping": mapping.payload(),
         "max_tabs": max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
         "settings": settings.payload(),
@@ -3471,6 +3484,12 @@ class Handler(BaseHTTPRequestHandler):
         if not arg.startswith("claude:"):
             return ""
         project = arg[len("claude:"):].split(":")[0]
+        # A project whose map is still building (mapping.py): its first
+        # session waits the few seconds, so its first question about the
+        # tree is answered from an index rather than by building one. The
+        # button carries the same sentence, and this is the check behind it.
+        if mapping.held(project):
+            return mapping.held(project)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
         # Every Claude session is on a node now (R47), so this container has

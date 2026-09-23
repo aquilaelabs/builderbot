@@ -122,6 +122,9 @@ by hand cost four commands and still could not see the failed builds.
   `bb map draws ID` and `bb map suites FILE` answer "where would I look"
   from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).
   Ask it before grepping; `test/codemap.mjs` holds it to the tree.
+  A new project is mapped in the background as it is created
+  (`mapping.py`), and its first Claude session waits for that, so the
+  index is there before the first question.
   `bb map sections FILE` reads a file by its `// ---- name ----` headers:
   each section's functions, how many callers reach in from outside, what
   runs at load, what the suite covers. A section with few outside

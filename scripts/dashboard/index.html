@@ -6630,6 +6630,11 @@ function projectRow(p, live, cls, inTab){
           // project to themselves, this is a project you have not taken on.
           ? ` <span class="lockmark" aria-label="read-only" data-tip="${esc(NOT_MINE_WHY)}">${LOCK}</span>`
           : ""}</div><span class="dim pnode">(node: ${esc(p.node_name || "none")})</span></div>
+        ${state?.mapping?.[p.name] ? (m => m.running
+            ? `<div class="sub">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
+            : m.error ? `<div class="sub warn">the code map did not build: ${esc(m.error)}</div>`
+            : `<div class="sub dim">mapped ${m.files} file${m.files === 1 ? "" : "s"} in ${m.took}s</div>`
+          )(state.mapping[p.name]) : ""}
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
           p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
 
