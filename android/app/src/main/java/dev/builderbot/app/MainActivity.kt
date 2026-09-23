@@ -43,8 +43,6 @@ import dev.builderbot.app.ui.Sunk
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import dev.builderbot.app.ui.Warn
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -95,15 +93,17 @@ class MainActivity : ComponentActivity() {
 // a second design.
 @Composable
 fun BuilderBotTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
-    val scheme = if (dark) darkColorScheme(
+    // One palette, the dashboard's, whatever the system theme: the screens
+    // paint their panels and text from Parts.kt's tokens directly, so a
+    // light Material scheme underneath them put black headings on the dark
+    // background (seen on an emulator whose system theme was light).
+    val scheme = darkColorScheme(
         primary = AccentDeep, onPrimary = Ink, primaryContainer = AccentDeep, onPrimaryContainer = Ink,
         secondary = Note, secondaryContainer = AccentDeep, onSecondaryContainer = Ink,
         tertiary = Note, background = Bg, onBackground = Ink, surface = Panel, onSurface = Ink,
         surfaceVariant = Sunk, onSurfaceVariant = Dim, surfaceContainer = Panel,
         surfaceContainerHigh = Panel, surfaceContainerHighest = Panel, surfaceContainerLow = Bg, outline = Line, outlineVariant = Line,
         error = Bad, onError = Ink)
-    else lightColorScheme(primary = AccentDeep, onPrimary = Color.White, secondaryContainer = Color(0xFFD7F0DC), error = Bad)
     MaterialTheme(colorScheme = scheme,
         shapes = Shapes(extraSmall = RoundedCornerShape(4.dp), small = RoundedCornerShape(6.dp),
                         medium = RoundedCornerShape(8.dp), large = RoundedCornerShape(8.dp)),

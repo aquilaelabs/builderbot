@@ -138,7 +138,7 @@ fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-        Text("BuilderBot", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("BuilderBot", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Ink)
         Dim("Sign in with your dashboard account. The address is the one you open in a browser: on your network, or over your tailnet.")
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(server, { server = it }, label = { Text("Dashboard address") }, singleLine = true,
@@ -182,7 +182,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
                 Mark(26.dp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("BuilderBot", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("BuilderBot", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
                     if (s != null) Text("${s.str("me")} · ${s.obj("image").str("version").ifBlank { "unstamped" }} on ${s.str("host")}",
                         color = Dim, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
