@@ -30,8 +30,20 @@ ok(/^test scripts\/dashboard\/test\/devapp\.mjs/m.test(callers),
 ok(!/from \(top level\)  \| async function loadDocker/.test(callers),
    "...without counting a definition's own header as a call of itself");
 
+// What a definition says about itself rides with its address: the comment
+// directly above it, or a docstring's first sentence, and nothing where
+// nothing sits there. The notes live in the code; the map reads them out.
+ok(/^    says: What the panel needs after any change: the list, whether there is anywhere to send, and whether a session has been told about it yet\.$/m.test(map('find', '_roadmap_state')),
+   "find hands over a python method's docstring, its first sentence whole");
+ok(/^    says: gfx_tool RECIPE NAME: /m.test(map('find', 'gfx_tool')), "...and a shell function's comment");
+ok(/^    says: Each terminal tab is an iframe running a full xterm\.js over its own websocket\.$/m.test(map('find', 'roomForTab')),
+   "...and a page function's comment block, cut at its first sentence");
+ok(!/says:/.test(map('find', 'pinTo')), '...and says nothing for a function with nothing directly above it');
+
 // Python: a method's callers carry the class.
 const py = map('who-calls', '_roadmap_state');
+ok(/^_roadmap_state: What the panel needs after any change/m.test(py) && /from Handler\._get_todo \(GET \/api\/roadmap\.\)/.test(py),
+   "who-calls opens with the callee's sentence and gives each caller its first clause");
 ok(/server\.py:\d+  from Handler\._roadmap\b/.test(py), 'a python method is attributed to its class and method');
 
 // Shell: bb's own functions.

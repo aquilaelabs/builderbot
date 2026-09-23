@@ -54,7 +54,7 @@ const SURFACE = [
   'findingsRulesHtml', 'finishTabs', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab',
   'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
-  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'nodeDraft', 'mountState', 'nodeStale', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'dmRowsHtml', 'dmLogs', 'dmRefLine', 'dmGrantLine', 'dmTestLine', 'dmBuilt', 'jobWhy', 'shortWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
+  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'nodeDraft', 'mountState', 'nodeStale', 'nodeClaudeSection', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'dmRowsHtml', 'dmLogs', 'dmRefLine', 'dmGrantLine', 'dmTestLine', 'dmBuilt', 'jobWhy', 'shortWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
   'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'sessionWord',

@@ -121,7 +121,10 @@ by hand cost four commands and still could not see the failed builds.
 - **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
   `bb map draws ID` and `bb map suites FILE` answer "where would I look"
   from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).
-  Ask it before grepping; `test/codemap.mjs` holds it to the tree.
+  Ask it before grepping; `test/codemap.mjs` holds it to the tree. `find`
+  and `who-calls` also hand over what a function says about itself, the
+  comment directly above it or its docstring's first sentence: the notes
+  live in the code, never in the map, and the map reads them out.
   A new project is mapped in the background as it is created
   (`mapping.py`), and its first Claude session waits for that, so the
   index is there before the first question.

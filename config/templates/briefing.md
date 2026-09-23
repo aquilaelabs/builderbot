@@ -37,6 +37,12 @@ refuses too: `bb settings set build|test|outputs "..."` fills the field in
 for the operator, and the project's gate decides whether that lands, waits
 for their approval, or is refused.
 
+A test run never holds a reply. Start it in the background and leave it
+there; while it runs, answer any question at once, and when a change is
+asked for, say it is queued behind the run and make it the moment the run
+ends. Never a foreground wait that sits until the suite finishes: the
+person on the other end is waiting on you, not on it.
+
 ## Finding your way
 
     bb map who-calls NAME      every call of NAME, with the function it is made from

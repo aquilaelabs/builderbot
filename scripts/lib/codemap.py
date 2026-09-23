@@ -839,7 +839,74 @@ def line_of(root, path, n):
     return lines[n - 1].strip()[:110] if 0 < n <= len(lines) else ""
 
 
-def q_find(idx, name):
+def said_by(root, d, limit=160):
+    """What a definition says about itself: the comment block directly above
+    it (`//`, `#`, or a `/* */`), or a python docstring's first line. The
+    notes this tree keeps beside every function are what a session reads
+    first, so the map hands them over rather than a bare line number; the
+    map itself carries none, since it is rebuilt from the tree and lives
+    in an ignored directory on whichever machine built it."""
+    if not root or not d:
+        return ""
+    if d["file"] not in _LINES:
+        line_of(root, d["file"], 1)
+    lines = _LINES.get(d["file"]) or []
+    n = d["line"]
+    if not (0 < n <= len(lines)):
+        return ""
+    words = []
+    if d["file"].endswith(".py"):
+        for k in range(n, min(n + 4, len(lines))):
+            t = lines[k].strip()
+            if t.startswith(TRIPLES):
+                # The docstring to its close or its first blank line: a
+                # sentence wraps, and the first line alone stopped mid-way.
+                t = t[3:]
+                got = []
+                for j in range(k, min(k + 12, len(lines))):
+                    u = lines[j].strip() if j > k else t
+                    done = u.endswith(TRIPLES)
+                    u = u[:-3] if done else u
+                    if not u.strip() and got:
+                        break
+                    if u.strip():
+                        got.append(u.strip())
+                    if done:
+                        break
+                words = got
+                break
+            if t and not t.startswith("def ") and not t.startswith(")") and not t.endswith(":"):
+                break
+    else:
+        k = n - 2
+        block = []
+        while k >= 0:
+            t = lines[k].strip()
+            if t.startswith("//"):
+                block.insert(0, t[2:].strip())
+            elif t.startswith("#") and not t.startswith("#!"):
+                block.insert(0, t[1:].strip())
+            elif t.endswith("*/") or t.startswith("/*") or t.startswith("*"):
+                block.insert(0, t.strip("/* ").strip())
+                if t.startswith("/*"):
+                    break
+            else:
+                break
+            k -= 1
+        # A section header is the section's, not this definition's.
+        words = [b for b in block if not b.startswith("----")]
+    text = " ".join(w for w in words if w).strip()
+    if not text:
+        return ""
+    # The first sentence or two, and never past the limit mid-word.
+    m = re.match(r"(.{0,%d}?[.!?])(\s|$)" % limit, text)
+    text = m.group(1) if m else text
+    if len(text) > limit:
+        text = text[:limit].rsplit(" ", 1)[0] + "…"
+    return text
+
+
+def q_find(idx, name, root=None):
     rows = [d for d in idx["defs"] if d["name"] == name]
     if not rows:
         return [f"nothing defines {name}"]
@@ -849,6 +916,9 @@ def q_find(idx, name):
         span = f" to {d['end']}" if d["end"] > d["line"] else ""
         parent = f"  in {d['parent']}" if d["parent"] else ""
         out.append(f"{where}{span}  {d['kind']}{parent}")
+        said = said_by(root, d)
+        if said:
+            out.append(f"    says: {said}")
     return out
 
 
@@ -864,11 +934,26 @@ def q_who_calls(idx, name, root):
     if not rows and not passed:
         return [f"nothing calls {name}" + (f" on {qual}" if qual else "") + ", and nothing passes it by name"]
     out = []
+    # What the callee says about itself, first: the reason it exists is the
+    # frame every caller below is read in.
+    for d in idx["defs"]:
+        if d["name"] == name and not qual:
+            said = said_by(root, d, 200)
+            if said:
+                out.append(f"{name}: {said}")
+            break
     if not rows:
         out.append(f"nothing calls {name} directly; it is passed by name:")
+    by_name = {}
+    for d in idx["defs"]:
+        by_name.setdefault((d["file"], d["name"]), d)
     for c in sorted(rows, key=lambda c: (is_test(c["file"]), c["file"], c["line"])):
         tag = "test " if is_test(c["file"]) else ""
-        out.append(f"{tag}{c['file']}:{c['line']}  from {c['caller']}  | {line_of(root, c['file'], c['line'])}")
+        # ...and each caller's own first clause, so a list of twenty names
+        # reads as twenty reasons rather than twenty addresses.
+        cd = by_name.get((c["file"], c["caller"].split(".")[-1]))
+        says = said_by(root, cd, 70) if cd and not tag else ""
+        out.append(f"{tag}{c['file']}:{c['line']}  from {c['caller']}{f' ({says})' if says else ''}  | {line_of(root, c['file'], c['line'])}")
     for p in sorted(passed, key=lambda p: (is_test(p["file"]), p["file"], p["line"])):
         tag = "test " if is_test(p["file"]) else ""
         out.append(f"{tag}{p['file']}:{p['line']}  passed by name in {p['fn']}  | {line_of(root, p['file'], p['line'])}")
@@ -1393,6 +1478,7 @@ FILE_WORD = re.compile(r"(?<![\w/])([A-Za-z0-9_][\w./-]*\.(?:py|js|mjs|html|sh|k
 CLAUSE_END = re.compile(r";|\. |\), ")   # where one address's sentence stops and another's starts
 ADDR = re.compile(r"~(\d{2,6})")
 IDENT_BEFORE = re.compile(r"([A-Za-z_][\w]*)(?:\(\))?")
+TRIPLES = ('"""', "'''")
 ITEM = re.compile(r"^\s*~?\s*([RB]\d+)\b")     # `~ R18` is a shelved item in the listing
 
 
@@ -1654,7 +1740,7 @@ def main(argv):
         print(f"bb map {verb} needs an argument; bb map -h", file=sys.stderr)
         return 2
     if verb == "find":
-        lines = q_find(idx, rest[0])
+        lines = q_find(idx, rest[0], root)
     elif verb == "who-calls":
         lines = q_who_calls(idx, rest[0], root)
     elif verb == "calls":
