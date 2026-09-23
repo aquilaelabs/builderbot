@@ -212,7 +212,7 @@ function tcRow(p, busy, job, managed){
         ? ` <span class="pill" title="${esc(p.size_from)}">${esc(p.size)}</span>` : ""
       }${ver}${next}</span>
       <span class="sub">${esc(p.about)}${
-        p.verbs?.length ? ` Adds ${p.verbs.map(v => `<code>bb ${esc(v)}</code>`).join(", ")} to a session.` : ""}${
+        p.tool ? ` Adds <code>bb tool ${esc(p.tool)}</code> to a session.` : ""}${
         p.needs?.length ? ` Needs ${esc(p.needs.join(", "))}, installed with it.` : ""}${
         p.needed_by?.length ? ` Needed by ${esc(p.needed_by.join(", "))}.` : ""}</span>
       ${tcSystemLine(p, managed)}

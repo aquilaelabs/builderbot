@@ -96,11 +96,11 @@ def load_toolchains():
         reqs = [x for x in (r.get("requires") or []) if isinstance(x, str) and x]
         if reqs:
             row["requires"] = reqs[:4]
-        # The bb verbs it enables, projected like the rest: plain words only,
-        # since they are drawn on the row and matched against bb's dispatch.
-        verbs = [x for x in (r.get("verbs") or []) if isinstance(x, str) and x.replace("-", "").isalnum()]
-        if verbs:
-            row["verbs"] = verbs[:4]
+        # The tool it adds under `bb tool`, projected like the rest: one plain
+        # word, since it is drawn on the row and matched against bb's case.
+        tool = r.get("tool")
+        if isinstance(tool, str) and tool and tool.replace("-", "").isalnum():
+            row["tool"] = tool
         lay = r.get("layout")
         if isinstance(lay, dict):
             row["layout"] = {
@@ -434,10 +434,10 @@ def payload():
         else:
             origin = ""
         items.append({**{k: p[k] for k in ("name", "label", "about")},
-                      # The bb verbs this recipe enables, one root per recipe,
-                      # so a row says what installing it adds to a session
-                      # and the suite holds two recipes from claiming one.
-                      "verbs": list(p.get("verbs") or []),
+                      # The tool this recipe adds under `bb tool`, one name
+                      # per recipe, so a row says what installing it adds to
+                      # a session and the suite holds two from claiming one.
+                      "tool": p.get("tool") or "",
                       # Whether a newer version can be fetched in place, or
                       # whether getting one means removing this first.
                       "updatable": bool(p.get("updatable")),
@@ -797,10 +797,10 @@ def payload_for_node(nid):
             {"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
         kb = _tc_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
-                      # The bb verbs this recipe enables, one root per recipe,
-                      # so a row says what installing it adds to a session
-                      # and the suite holds two recipes from claiming one.
-                      "verbs": list(p.get("verbs") or []),
+                      # The tool this recipe adds under `bb tool`, one name
+                      # per recipe, so a row says what installing it adds to
+                      # a session and the suite holds two from claiming one.
+                      "tool": p.get("tool") or "",
                       # Whether a newer version can be fetched in place, or
                       # whether getting one means removing this first.
                       "updatable": bool(p.get("updatable")),

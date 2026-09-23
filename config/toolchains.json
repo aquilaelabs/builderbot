@@ -316,10 +316,7 @@
           ]
         }
       },
-      "updatable": true,
-      "verbs": [
-        "emu"
-      ]
+      "updatable": true
     },
     {
       "name": "android:platform-tools",
@@ -788,10 +785,7 @@
           "match": "Download url:\\s+(\\S+)"
         }
       },
-      "updatable": true,
-      "verbs": [
-        "shot"
-      ]
+      "updatable": true
     },
     {
       "name": "lint-tools",
@@ -830,10 +824,7 @@
           "bytes": 70000000
         }
       },
-      "updatable": true,
-      "verbs": [
-        "lint"
-      ]
+      "updatable": true
     },
     {
       "name": "ffmpeg",
@@ -882,7 +873,7 @@
         "linux/amd64"
       ],
       "updatable": true,
-      "about": "What bb img runs, and bb favicon: ImageMagick's magick for resizing, cropping, composing, annotating and comparing rasters; resvg for SVG to PNG without a browser; oxipng, pngquant and cwebp for what an app ships. A session cannot see a picture it has not rendered, so this is how it makes one it can then read back. Static builds from each project's release; ImageMagick's AppImage is unpacked at install, so nothing here needs FUSE.",
+      "about": "What bb tool graphics runs: ImageMagick's magick for resizing, cropping, composing, annotating and comparing rasters; resvg for SVG to PNG without a browser; oxipng, pngquant and cwebp for what an app ships. A session cannot see a picture it has not rendered, so this is how it makes one it can then read back. Static builds from each project's release; ImageMagick's AppImage is unpacked at install, so nothing here needs FUSE.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -927,10 +918,7 @@
           "media-fonts/dejavu"
         ]
       },
-      "verbs": [
-        "img",
-        "favicon"
-      ]
+      "tool": "graphics"
     },
     {
       "name": "diagrams",
@@ -948,7 +936,7 @@
         "linux/amd64"
       ],
       "updatable": true,
-      "about": "What bb diagram runs: PlantUML for UML, sequence and architecture diagrams from text, and Mermaid's command line for the flowcharts and sequence diagrams written in Markdown. A session draws from text and reads the PNG back. PlantUML is one jar and runs on this store's JDK; Mermaid renders through the Chromium the playwright toolchain puts here, so both of those are needed beside this.",
+      "about": "What bb tool diagrams runs: PlantUML for UML, sequence and architecture diagrams from text, and Mermaid's command line for the flowcharts and sequence diagrams written in Markdown. A session draws from text and reads the PNG back. PlantUML is one jar and runs on this store's JDK; Mermaid renders through the Chromium the playwright toolchain puts here, so both of those are needed beside this.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -976,9 +964,7 @@
         "node",
         "playwright"
       ],
-      "verbs": [
-        "diagram"
-      ]
+      "tool": "diagrams"
     },
     {
       "name": "language-servers",

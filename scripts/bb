@@ -188,12 +188,13 @@ bb: BuilderBot helper
   bb drift [REPO]        which files this checkout changed that the running
                          container is not serving yet
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
-  bb favicon SVG [DIR]   favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
-  bb img VERB ...        pictures a session can make and read back (the graphics toolchain):
+  bb tool                the tools toolchains add to a session, each under its own name
+  bb tool graphics CMD   pictures a session can make and read back (the graphics toolchain):
                          info F | resize F WxH [OUT] | crop F WxH+X+Y [OUT] | compose BASE OVER [+X+Y] [OUT]
                          annotate F TEXT [OUT] [--at +X+Y] [--size N] [--color C] | diff A B [OUT]
                          svg2png F [WIDTH] [OUT] | optimize F... [--lossy] [--webp]; into dist/img/
-  bb diagram FILE...     PlantUML (.puml) and Mermaid (.mmd) to PNG and SVG in dist/diagrams/
+                         favicon SVG [DIR]: favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
+  bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) to PNG and SVG in dist/diagrams/
   bb toolchains            the toolchains kept outside the image: status, install X, remove X
 EOF
 }
@@ -6140,7 +6141,7 @@ EOF
     printf '%s\n' "$files"
 }
 
-# bb favicon: one SVG mark in, the favicon set a web app actually needs out:
+# bb tool graphics favicon: one SVG mark in, the favicon set a web app actually needs out:
 # favicon.ico carrying every small size in one file (the bare /favicon.ico
 # request browsers make on their own has no way to ask for a particular one),
 # apple-touch-icon.png at 180 for iOS home screens, and the SVG copied
@@ -6153,7 +6154,33 @@ EOF
 # project would otherwise re-learn. (Generalized from the private tool
 # MediaReducer grew for this, minus its PIL dependency, which the container
 # python does not carry.)
-# ---- graphics: bb img and bb diagram --------------------------------------------
+# ---- bb tool: what a toolchain adds to a session, under its own name -----------
+# `bb tool TOOL COMMAND...`: a toolchain's commands live under the toolchain's
+# name, so two toolchains may both have a `render` or a `shot` and none can
+# shadow one of bb's own verbs. The catalogue names each recipe's tool
+# (`tool` in config/toolchains.json), the Toolchains tab says so on the row,
+# and the suite holds the catalogue to the case below.
+cmd_tool() {
+    local tool="${1:-}"; [ $# -gt 0 ] && shift
+    case "$tool" in
+        graphics)  tool_graphics "$@" ;;
+        diagrams)  tool_diagrams "$@" ;;
+        "")
+            local t d
+            for t in graphics diagrams; do
+                if d="$(sdk_find "$t" 2>/dev/null)" && [ -n "$d" ]; then
+                    printf '  %-10s installed here\n' "$t"
+                else
+                    printf '  %-10s not on this node: the Toolchains tab installs it\n' "$t"
+                fi
+            done
+            printf '\n  bb tool graphics info|resize|crop|compose|annotate|diff|svg2png|optimize|favicon ...\n'
+            printf '  bb tool diagrams render FILE... [--out DIR]\n' ;;
+        *) die "no tool called ${tool}: bb tool lists them" ;;
+    esac
+}
+
+# ---- graphics ------------------------------------------------------------------
 # A session cannot see a picture it has not rendered, and these are how it
 # renders one it can then read back. Every verb is an argv built here from
 # checked arguments and handed to a tool on the store: the graphics toolchain
@@ -6197,7 +6224,7 @@ img_font() {
     printf '%s' "$f"
 }
 
-cmd_img() {
+tool_graphics() {
     local verb="${1:-}"; [ $# -gt 0 ] && shift
     local magick f out
     case "$verb" in
@@ -6207,14 +6234,14 @@ cmd_img() {
             ;;
         resize)
             f="${1:-}"; img_file "$f"; local geom="${2:-}"
-            case "$geom" in ''|*[!0-9x%]*) die "bb img resize FILE WxH|W|N% [OUT]" ;; esac
+            case "$geom" in ''|*[!0-9x%]*) die "bb tool graphics resize FILE WxH|W|N% [OUT]" ;; esac
             out="$(img_out "$f" resize "${3:-}")"; magick="$(gfx_tool graphics magick)"
             "$magick" "$f" -resize "$geom" "$out" || die "resize failed"
             log "wrote ${out}"
             ;;
         crop)
             f="${1:-}"; img_file "$f"; local geom="${2:-}"
-            case "$geom" in ''|*[!0-9x+-]*) die "bb img crop FILE WxH+X+Y [OUT]" ;; esac
+            case "$geom" in ''|*[!0-9x+-]*) die "bb tool graphics crop FILE WxH+X+Y [OUT]" ;; esac
             out="$(img_out "$f" crop "${3:-}")"; magick="$(gfx_tool graphics magick)"
             "$magick" "$f" -crop "$geom" +repage "$out" || die "crop failed"
             log "wrote ${out}"
@@ -6231,7 +6258,7 @@ cmd_img() {
             ;;
         annotate)
             f="${1:-}"; img_file "$f"; local text="${2:-}" at="+12+28" size=22 color="white" font=""
-            [ -n "$text" ] || die "bb img annotate FILE TEXT [OUT] [--at +X+Y] [--size N] [--color C] [--font FILE]"
+            [ -n "$text" ] || die "bb tool graphics annotate FILE TEXT [OUT] [--at +X+Y] [--size N] [--color C] [--font FILE]"
             shift 2; out=""
             while [ $# -gt 0 ]; do
                 case "$1" in
@@ -6279,7 +6306,7 @@ cmd_img() {
             while [ $# -gt 0 ]; do
                 case "$1" in --lossy) lossy=1 ;; --webp) webp=1 ;; -*) die "unknown option: $1" ;; *) img_file "$1"; files+=("$1") ;; esac; shift
             done
-            [ "${#files[@]}" -gt 0 ] || die "bb img optimize FILE... [--lossy] [--webp]"
+            [ "${#files[@]}" -gt 0 ] || die "bb tool graphics optimize FILE... [--lossy] [--webp]"
             for f in "${files[@]}"; do
                 case "$f" in
                     *.png|*.PNG)
@@ -6293,11 +6320,20 @@ cmd_img() {
                 log "optimized ${f} ($(du -h "$f" | cut -f1))"
             done
             ;;
-        *) die "bb img info|resize|crop|compose|annotate|diff|svg2png|optimize ...; bb help has the shapes" ;;
+        favicon) tool_graphics_favicon "$@" ;;
+        *) die "bb tool graphics info|resize|crop|compose|annotate|diff|svg2png|optimize|favicon ...; bb help has the shapes" ;;
     esac
 }
 
-cmd_diagram() {
+tool_diagrams() {
+    local cmd="${1:-}"; [ $# -gt 0 ] && shift
+    case "$cmd" in
+        render) tool_diagrams_render "$@" ;;
+        *) die "bb tool diagrams render FILE... [--out DIR]" ;;
+    esac
+}
+
+tool_diagrams_render() {
     local out="dist/diagrams" files=() f name plantuml mmdc java
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -6306,7 +6342,7 @@ cmd_diagram() {
             *) img_file "$1"; files+=("$1"); shift ;;
         esac
     done
-    [ "${#files[@]}" -gt 0 ] || die "bb diagram FILE... [--out DIR]: .puml or .plantuml (PlantUML), .mmd or .mermaid (Mermaid)"
+    [ "${#files[@]}" -gt 0 ] || die "bb tool diagrams render FILE... [--out DIR]: .puml or .plantuml (PlantUML), .mmd or .mermaid (Mermaid)"
     mkdir -p "$out"; out="$(cd "$out" && pwd)"
     # A result is named by its source's stem, so two sources with one stem
     # (flow.puml and flow.mmd) would write one flow.png, the second over
@@ -6349,7 +6385,7 @@ cmd_diagram() {
     done
 }
 
-cmd_favicon() {
+tool_graphics_favicon() {
     local svg="" out="" bg=""
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -6358,7 +6394,7 @@ cmd_favicon() {
             *) if [ -z "$svg" ]; then svg="$1"; else out="$1"; fi; shift ;;
         esac
     done
-    [ -n "$svg" ] || die "usage: bb favicon LOGO.svg [OUTDIR] [--bg COLOR]"
+    [ -n "$svg" ] || die "usage: bb tool graphics favicon LOGO.svg [OUTDIR] [--bg COLOR]"
     [ -f "$svg" ] || die "no such file: $svg"
     # Only ever an argv to convert, but a color is a name or #hex, and saying
     # so beats handing ImageMagick something to be confused by.
@@ -7231,9 +7267,7 @@ case "${1:-help}" in
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;
     shot)     shift; cmd_shot "$@" ;;
-    favicon)  shift; cmd_favicon "$@" ;;
-    img)      shift; cmd_img "$@" ;;
-    diagram)  shift; cmd_diagram "$@" ;;
+    tool)     shift; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;

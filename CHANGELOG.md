@@ -10,9 +10,9 @@
 - The Docker tab is a manager rather than a list: start, stop and restart work on any container on the node, and any container's log opens from its row. (fa5e83f)
 - A session can ask for a container: bb container ask hands over a compose file and a reason, an administrator reads the file on the bell and allows or denies it, and Allow registers it like New container and starts the build. (9b9032b)
 - A project's Rules list the global rules too, read-only, and a rule that shares a trigger with a global one says so; a session is told the project's rule wins where the two disagree. (ba22503)
-- Two toolchains a session can draw with: graphics (ImageMagick, resvg, oxipng, pngquant, cwebp) behind bb img, and diagrams (PlantUML, Mermaid) behind bb diagram, both writing into dist/. bb favicon runs on a node again. (81dd077)
+- Two toolchains a session can draw with: graphics (ImageMagick, resvg, oxipng, pngquant, cwebp) behind bb tool graphics, and diagrams (PlantUML, Mermaid) behind bb tool diagrams, both writing into dist/; bb tool graphics favicon makes a favicon set from one mark (81dd077)
 - A toolchain row that lacks system packages carries Install them now, which puts them on that node without reinstalling the toolchain; a row whose needed toolchain is missing on the node says which and offers that row's install. (205863a)
-- A toolchain's row says which bb verbs installing it adds (bb emu, bb img, bb diagram...), one root verb per recipe, and the suite holds the catalogue to the script so no two recipes can claim one name. (076a324)
+- A toolchain's row says which tool installing it adds (bb tool graphics, bb tool diagrams), one name per recipe, and the suite holds the catalogue to the script so no two recipes can claim one (076a324)
 
 ### Changed
 
@@ -29,6 +29,7 @@
 - The companion app wears the dashboard's look: its colours, corners and robot mark, project rows as panels in the project's colour, numbers as tags and states as pills, a view strip that scrolls, and a count on Approvals. A project with no branch no longer reads null. (dce0dc2)
 - The Docker and Artifacts rows no longer carry a tail of a job's output, and the Docker tab no longer redraws for every line of one: a job's phase and how it ended stay on the row, and the Tests view's Open the run's output sends bb tests log -f into the project's shell. (40341e5)
 - Offer dev features lives in the Settings tab's Debugging dialog now (Debug mode on, then Debug settings), where the refusals that name it point. (929095b)
+- What a toolchain adds to a session lives under bb tool NAME (bb tool graphics, bb tool diagrams), so two toolchains may both have a render and none can shadow a verb of bb's own; bb img, bb favicon and bb diagram are gone (8670fff)
 
 ### Removed
 
@@ -57,6 +58,8 @@
 - Opening the Docker tab asks for its listing once instead of three times, and every tab's open hook runs once; a node heartbeat no longer repaints the Docker tab (3dce874)
 - Graphics tools install again: the recipe fetched ImageMagick from an address that never existed, since its release asset carries the version in its name (de029de)
 - A toolchain install that fails on a node says why under its row, as one on the controller does, instead of going back to unticked in silence (de029de)
+- The companion app keeps its own dark palette whatever the phone's system theme: on a light-themed device the headings, placeholders and Sign in button were drawn black on the dark background (67bfa8f)
+- bb tool diagrams render refuses two sources that share a stem, naming both, instead of the second silently overwriting the first's PNG and SVG (b2e3f0d)
 
 ### Security
 

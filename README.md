@@ -595,12 +595,13 @@ bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reve
 bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
-bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
-bb img VERB ...    pictures a session can make and then read back, with the
+bb tool            the tools toolchains add to a session, each under its own name
+bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,
-                   annotate, diff, svg2png and optimize, into dist/img/
-bb diagram FILE... PlantUML (.puml) and Mermaid (.mmd) rendered to PNG and SVG
-                   in dist/diagrams/, with the diagrams toolchain
+                   annotate, diff, svg2png and optimize, into dist/img/, and
+                   favicon SVG [DIR], a favicon set (ico + touch icon) from one mark
+bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) rendered to
+                   PNG and SVG in dist/diagrams/, with the diagrams toolchain
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
@@ -618,7 +619,7 @@ screenshots: the project keeps a script that boots its app into a
 photogenic state (staged data, ready-wait) and ends with one `bb shot`
 line; the Playwright plumbing lives here, once.
 
-`bb favicon LOGO.svg [DIR]` is the same idea for a web app's icon: the
+`bb tool graphics favicon LOGO.svg [DIR]` is the same idea for a web app's icon: the
 project supplies its mark as one SVG, and out come `favicon.ico` holding
 every small size in one file (the bare `/favicon.ico` request browsers make
 cannot ask for a particular one), `apple-touch-icon.png` at 180 for iOS
@@ -1331,10 +1332,11 @@ lives in its body. The cards:
   every toolchain on the [toolchain store](#the-toolchain-store-lives-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
-  is a bin on the row. A recipe that gives a session a `bb` verb says which,
-  one root verb per recipe (`bb emu`, `bb img`), so the row says what
-  installing it adds and no two recipes can claim one name; the suite holds
-  the catalogue to the script. Each row also names the system packages its tool puts
+  is a bin on the row. A recipe that gives a session commands says under
+  which name: they live under `bb tool NAME` (`bb tool graphics`, `bb tool
+  diagrams`), one name per recipe, so the row says what installing it adds,
+  two toolchains may both have a `render`, and none can shadow a verb of
+  bb's own; the suite holds the catalogue to the script. Each row also names the system packages its tool puts
   on the picked machine, in that machine's package manager's names, and for
   one already installed which of them are missing there. They install with
   the tool and only then; uninstalling a tool leaves them, since another may
