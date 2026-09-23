@@ -47,6 +47,11 @@ ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules'
    && /\(global\)/.test(p.text) && p.capped === false,
    `a project with nothing set still gets the briefing and the shipped global rules (${
      (p.parts || []).map(x => x.name).join(',') || 'none'}, ${p.bytes} bytes)`);
+// The line between the two: the briefing states what is true of the machine,
+// a shipped rule is an obligation, and nothing is said in both. An obligation
+// that was in the briefing too could not be turned off by its switch.
+ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length === 2,
+   'an obligation reaches a session once, as a rule, and not again from the briefing');
 
 // ---- the order, which is the operator's rules first -------------------------
 // How they want this worked on comes before what there is to work on. Asserted

@@ -37,12 +37,6 @@ refuses too: `bb settings set build|test|outputs "..."` fills the field in
 for the operator, and the project's gate decides whether that lands, waits
 for their approval, or is refused.
 
-A test run never holds a reply. Start it in the background and leave it
-there; while it runs, answer any question at once, and when a change is
-asked for, say it is queued behind the run and make it the moment the run
-ends. Never a foreground wait that sits until the suite finishes: the
-person on the other end is waiting on you, not on it.
-
 ## Finding your way
 
     bb map who-calls NAME      every call of NAME, with the function it is made from
@@ -78,14 +72,7 @@ question, so ask for the smallest command that does the job.
 `bb roadmap`, `bb bug`, `bb rules`, `bb tests`. What is open is named below in
 this prompt: the titles, so nothing has to be fetched to know what exists, and
 the detail behind one item is `bb roadmap show R4` or `bb bug show B7` when you
-pick it up. Tick items off as you finish them, and file what you find rather
-than only saying it in a reply. `bb <verb> -h` is the rest of any of them.
-
-A shelved item is the operator's decision, whatever a request sounds like.
-Do not start on one, and do not read, measure or draft for it either:
-`bb roadmap unshelve N WHY` asks for it back, a person on the project
-approves or denies that on the notebook, and until it is approved the item
-costs nothing. Carry on with something else meanwhile.
+pick it up. `bb <verb> -h` is the rest of any of them.
 
 ## Versions
 

@@ -243,6 +243,37 @@ ok(elsewhere.git_name === 'T. Person',
      'and a project\'s sessions are handed it, marked global, with nothing pushed to the project');
 }
 
+// A fixed shipped rule (rules.py BUILTIN, `fixed`) is the part of the record
+// that is not a preference: a report that is true, a repository with no
+// secret in it. It has no switch on the dialog and a save that names it as
+// off is ignored, so neither a press nor a session's request turns it off.
+{
+  const auth = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  const api = async (body) => (await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
+    body ? { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+         : { headers: auth })).json();
+  const rs = (await api()).rules || [];
+  const fixed = rs.filter(r => r.builtin && r.fixed).map(r => r.name);
+  const switchable = rs.filter(r => r.builtin && !r.fixed).map(r => r.name);
+  await page.click('#setGlobalRules');
+  await page.waitForSelector('#grmodal:not([hidden]) #grAdd', { timeout: 15000 });
+  const rows = await page.$$eval('#grBody .rulerow[data-builtin]', es => es.map(e => e.dataset.builtin));
+  ok(fixed.length >= 2 && rows.length === switchable.length && switchable.every(n => rows.includes(n))
+     && !fixed.some(n => rows.includes(n)),
+     `the dialog lists a switch for every shipped rule that has one and none for a fixed one (${rows.join(', ')}; fixed: ${fixed.join(', ')})`);
+  await page.click('#grClose');
+  await api({ action: 'save', rules: rs.filter(r => !r.builtin), disabled: [fixed[0], switchable[0]] });
+  const after = (await api()).rules || [];
+  ok(after.find(r => r.name === switchable[0])?.disabled === true
+     && after.find(r => r.name === fixed[0])?.disabled === false,
+     `a save that turns a fixed rule off turns off only the one beside it (${fixed[0]} still on, ${switchable[0]} off)`);
+  const pre = await (await fetch(URL.replace(/\/$/, '') + '/api/preamble?project=alpha', { headers: auth })).json();
+  const said = n => (pre.text || '').includes(after.find(r => r.name === n).text.slice(0, 40));
+  ok(said(fixed[0]) && !said(switchable[0]),
+     '...and a session is handed the fixed one and not the one turned off');
+  await api({ action: 'save', rules: rs.filter(r => !r.builtin), disabled: [] });
+}
+
 // ---- the time zone is this browser's (Profile, On this browser) ----------
 // A cookie, not the account: a phone abroad and the desk at home each keep
 // their own. Every time the page shows goes through fmtTime, so picking a

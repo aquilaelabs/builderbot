@@ -36,9 +36,7 @@ function openSettingsTab(){
 function renderSettingsInto(i){
   const d = docSurface(i, "settings");
   if (!d) return;
-  d.setBar(`<span class="dim">controller settings: what this container does,
-    changeable while it runs. Appearance stays in the gear: it is this
-    browser's, not the controller's.</span>`);
+  d.setBar(`<span class="dim">what this controller does; appearance is in the gear</span>`);
   d.list.innerHTML = `
     <div class="row stack2">
       <div class="grow">${logSection()
@@ -51,7 +49,7 @@ function renderSettingsInto(i){
     <div class="row stack2" data-group="Reset">
       <div class="grow">
         <div class="name">Reset BuilderBot</div>
-        <div class="sub">Start over at Create the owner: accounts, node enrolments, project settings, git tokens, the notebook, memories and logs are moved aside; project files are not touched.</div>
+        <div class="sub">Start over at Create the owner. Everything but project files is moved aside, not deleted.</div>
         <div class="actbar"><button type="button" class="danger" id="setReset">Reset BuilderBot</button></div>
         <div id="setResetBox"></div>
       </div>
@@ -121,10 +119,8 @@ const SETTING_GROUPS = [
 function askReset(el){
   const box = el.querySelector("#setResetBox");
   if (!box || box.querySelector(".dropbox")) return;
-  box.innerHTML = `<div class="dropbox"><div class="hint bad">This moves every account, node
-      enrolment, project setting, git token, the notebook, memories and logs into a dated
-      directory under the controller's config and starts the dashboard over at Create the
-      owner. Project files stay where they are. Type <b>reset</b> to confirm.</div>
+  box.innerHTML = `<div class="dropbox"><div class="hint bad">Accounts, nodes, project settings, tokens, the notebook, memories and logs move into a dated
+      directory under the controller's config. Project files stay. Type <b>reset</b> to confirm.</div>
     <input autocomplete="off" placeholder="reset" aria-label="type reset to confirm">
     <div class="foot"><span class="sp"></span>
       <button type="button" class="stop">Keep it</button>
@@ -161,8 +157,7 @@ function openDebugSettings(){
   const s = state?.settings;
   const shut = () => { modal.hidden = true; };
   body.innerHTML = `<div class="field">
-      <div class="hint">What a developer of BuilderBot reaches for. Debug mode shows
-        this button and nothing else: what is here is granted by saving it.</div>
+      <div class="hint">For developing BuilderBot itself. Nothing here is on until saved.</div>
       <div class="logset">${g.debug.map(f => `
         <div class="logdays setrow"><label class="ndcap">
           <input type="checkbox" data-dbgset="${esc(f.key)}"${
@@ -273,8 +268,7 @@ function idleSection(){
   if (m === undefined) return `<div class="sub">the idle rule arrives with the first poll…</div>`;
   return `<h4>Claude sessions</h4>
     <div class="logset">
-      <div class="dim">A session with nothing typed and nothing written for
-        this long is ended, here and on every node.</div>
+      <div class="dim">A session idle this long is ended, on every node.</div>
       <div class="logdays setrow col">
         ${lbl("idleMin", "Minutes idle before a session ends", "0 never ends one. Shells are left alone")}
         <input id="idleMin" type="number" min="0" max="100000" step="1"
@@ -331,7 +325,7 @@ function globalRulesSection(){
   return `<div class="row stack2">
       <div class="grow">
         <div class="name">Global rules</div>
-        <div class="sub">House rules every project's sessions are handed, kept here rather than copied into each project.</div>
+        <div class="sub">House rules every project's sessions are handed.</div>
         <div class="actbar">
           <span class="state">${n === null ? "" : `${n} rule${n === 1 ? "" : "s"}`}</span>
           <button type="button" id="setGlobalRules">Global rules</button>
@@ -380,7 +374,9 @@ function drawGlobalRules(){
   const body = document.getElementById("grBody");
   if (!body) return;
   const rs = globalRules || [];
-  const shipped = rs.filter(r => r.builtin);
+  // A fixed shipped rule (rules.py BUILTIN) has no switch and is not listed:
+  // there is nothing here to decide about it.
+  const shipped = rs.filter(r => r.builtin && !r.fixed);
   const own = rs.filter(r => !r.builtin);
   // Each part in a .field, where every other dialog's inset lives, and the
   // buttons in the dialog's .foot: this one drew flush against the box.

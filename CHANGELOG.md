@@ -62,6 +62,8 @@
 - The tab limit counts terminal tabs only (shells and Claude sessions), per account: a Nodes or Docker tab beside twelve shells opens, and the toast says which limit it is (ca37ee7)
 - The Claude Code switch means update before a session starts: on, pressing Claude on a node that is behind updates it first and asks you to press again; it sits on each node's section as well as the Settings tab, off by default (3475fe7)
 - The companion app keeps no persistent notification: it asks the dashboard on its own clock while open and by an inexact alarm about once a minute in the background, so nothing sits in the shade between questions and the icon carries no dot of its own (7e7a0cd)
+- The site's text says what a person needs and stops: every tab, dialog, notebook view and the welcome guide were rewritten to a line where a paragraph explained what the screen already showed (d6a2b1e)
+- The shipped global rules are now nine: what a session must do is a rule with a switch on Controller settings, while a true report and no credential in the repository are fixed with no switch, and the briefing states only what is true of the machine (d6a2b1e)
 
 ### Removed
 
