@@ -80,6 +80,19 @@ by hand cost four commands and still could not see the failed builds.
   resolves `bb` as the copy beside it, so `bb dashboard dev` exercises the
   checkout's subcommands too.
 
+- **Iterating on one suite or one question:** `bb tests keep` runs the
+  harness's whole set-up once and holds the fixture up; after that
+  `bb dashboard test SUITE` and `bb tests probe FILE.mjs` attach to it:
+  half the time of a fresh run (4s against 8s for a small suite here, the
+  set-up being a copy of the tree and the fixtures), and, what matters
+  more, the world a suite just left is still there for a probe to look
+  at. A probe is a scratch Playwright script that imports `./lib.mjs` and
+  asks the page a question (count fetches, read a variable, screenshot):
+  the fastest route to the truth about the dashboard, and the front door
+  for what used to need a path hack. The kept world is not put back
+  between runs, and its server is the kept copy's, so a change to the
+  dashboard's python needs `bb tests keep stop` and a new keep; its `.js`
+  and `.html` are copied over before every attached run.
 - **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
   `bb map draws ID` and `bb map suites FILE` answer "where would I look"
   from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).

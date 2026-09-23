@@ -14,6 +14,7 @@
 - A toolchain row that lacks system packages carries Install them now, which puts them on that node without reinstalling the toolchain; a row whose needed toolchain is missing on the node says which and offers that row's install. (205863a)
 - A toolchain's row says which tool installing it adds (bb tool graphics, bb tool diagrams), one name per recipe, and the suite holds the catalogue to the script so no two recipes can claim one (076a324)
 - bb map: a code map over the tree a session asks instead of grepping: find, who-calls, calls, defs, draws and suites, built from the files themselves with nothing installed and rebuilt when a source is newer (3c0fa26)
+- bb tests probe FILE runs a scratch Playwright script against the dashboard fixture like a suite, and bb tests keep holds the fixture up so a suite or a probe attaches to it and the world a suite left is there to look at (739eebb)
 
 ### Changed
 

@@ -609,6 +609,16 @@ bb toolchains             SDKs kept outside the image: status, check, install X,
 
 The dashboard's Commands flyout carries this same list in this same order.
 
+`bb tests keep` holds the dashboard's test fixture up after the harness's
+set-up, so `bb dashboard test SUITE` and `bb tests probe FILE.mjs` attach
+to it: half the time of a fresh run, and the world a suite just left is
+still there for a probe to look at. A probe is a scratch Playwright script
+(importing `./lib.mjs`) that asks the page a question, which is how a
+session finds out what a tab really fetches or what a variable holds. The
+kept world is not put back between runs, and a change to the dashboard's
+python needs a fresh keep; `bb tests keep stop` ends it. Both are R75's
+second step.
+
 `bb map` is the code map a session asks instead of grepping (roadmap R75):
 one index over the tree it is in, python, the dashboard's scripts (the
 inline script in `index.html` included), `bb`'s own shell and the test
