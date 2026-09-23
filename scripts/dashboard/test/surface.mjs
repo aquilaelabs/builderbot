@@ -64,7 +64,9 @@ const SURFACE = [
   'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
   'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',
-  'pFillNode', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
+  'pFillGates', 'pFillNode', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
+  // A terminal in its own window (R8).
+  'popOut', 'reattachTab',
   'pShowKey', 'pSlide', 'paginate', 'paint', 'paintBar', 'paneStack',
   'phFetch', 'pinTo', 'tcAct', 'tcPick',
   // The Emulator tab (tab-emulator.js).
