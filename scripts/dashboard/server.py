@@ -2497,7 +2497,7 @@ if not NODES_OK:
 phone.rebuilder = devapp.rebuild
 phone.container_maker = devapp.create_container
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
-                 log_dir=logs.log_dir,
+                 log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
                  node_addr=nodes.ssh_addr_of if not NODES_OK else None,
                  queue=nodes if not NODES_OK else None,
@@ -6038,88 +6038,19 @@ class Handler(BaseHTTPRequestHandler):
                        f"{self._principal()[len('user:'):]} ran {act} on "
                        f"{name}" + (f" ({inst})" if inst != devapp.MAIN else ""))
         # `new` is the one action whose instance does not exist yet, which is
-        # what it is for. Everything else names one that must exist, because
-        # the string decides a compose project and a data directory and is not
-        # somewhere an arbitrary one should reach.
-        if act == "abort":
-            # Before the instance check below: a job can be running against an
-            # instance that has since been removed, and stopping it must not
-            # depend on the thing it is building still existing.
-            return self._json({"ok": True, "stopped": devapp.abort_job(name, inst)})
-        if act == "starter":
-            # The project's .env.example, for a container that does not exist
-            # yet: the send dialog opens on it so the env is filled in before
-            # the first build rather than after it stops at the gate. Reads
-            # nothing of the instance, which is the point: there is none.
-            return self._json({"text": devapp.starter(name)})
+        # what it is for; the project it is made for is checked here, where
+        # the account is known, and everything else is the module's: which
+        # verb means what is devapp.py's to say (the one-file rule), and
+        # this handler holds the gate.
         if act == "new":
             under = field(req, "for")
             if under and self._not_project(under):
                 return
-            r = devapp.create_instance(name, inst, field(req, "node"),
-                                       "" if under == name else under)
-            if not r.get("error") and field(req, "ref"):
-                # Pinned before the build the dialog starts, or the first one
-                # comes from the project's checkout and the row says otherwise.
-                p = devapp.set_ref(name, r["instance"], field(req, "ref"))
-                if p.get("error"):
-                    return self._json(p, 400)
-            if not r.get("error") and isinstance(req.get("text"), str) \
-                    and req["text"].strip():
-                # Written before the build that follows, so the first one has
-                # the env it needs instead of stopping at the gate and asking
-                # for it afterwards.
-                devapp.write_env(name, req["text"], r["instance"])
-            return self._result(r)
-        if inst not in devapp.instances(name):
-            return self._json({"error": f"no instance {inst} of {name}"}, 400)
-        if act == "remove":
-            r = devapp.remove_instance(name, inst)
-            return self._result(r)
-        if act == "ref":
-            # Which branch this instance builds from. `docker-write` above
-            # has already had its say, so this is an administrator's like
-            # every other thing that changes what a container IS.
-            r = devapp.set_ref(name, inst, field(req, "ref"))
-            return self._result(r)
-        if act == "state":
-            # The full picture for one instance (risks, problems, the parsed
-            # compose), which overview() deliberately does not compute for
-            # every instance at once. Asked when somebody is about to act.
-            return self._json({"state": devapp.state(name, inst)})
-        # `ack` is the digest of the risk list the operator was actually
-        # shown, not a bare yes. A compose file that gains a mount between
-        # the row rendering and the button being pressed does not inherit the
-        # acknowledgement of the one before it.
-        if act == "up":
-            r = devapp.up(name, inst, field(req, "ack"))
-        elif act == "down":
-            r = devapp.down(name, inst)
-        elif act == "test":
+        payload, status = devapp.act(
+            name, inst, act, req,
             # The command is the project's own, from its settings.
-            cmd = prefs.get(name)["test"]
-            r = devapp.test(name, inst, cmd, [str(a) for a in (req.get("args") or [])][:32])
-        elif act == "rebuild":
-            r = devapp.rebuild(name, inst, field(req, "ack"))
-        elif act == "env-get":
-            # An empty env opens on the example rather than on nothing. The
-            # `missing` list still answers about what is STORED, so the hint
-            # under the box stays true while the box is only a draft.
-            stored = devapp.read_env(name, inst)
-            return self._json({"text": stored or devapp.starter(name, inst),
-                               "seeded": not stored,
-                               "missing": devapp.missing_env(name, inst)})
-        elif act == "env-set":
-            r = devapp.write_env(name, req.get("text") or "", inst)
-        elif act == "route":
-            # How the instance is reached (docs/nodes.md §7): lan or funnel,
-            # on which published port.
-            r = devapp.route_set(name, inst, field(req, "mode"), req.get("port"))
-        else:
-            return self._json({"error": f"unknown action: {act}"}, 400)
-        if r.get("error"):
-            return self._json(r, 400)
-        return self._json(r | {"state": devapp.state(name, inst)})
+            test_cmd=prefs.get(name)["test"] if act == "test" else "")
+        return self._json(payload, status)
 
     def _version(self, req):
         """Move a project's version, or change who is allowed to.

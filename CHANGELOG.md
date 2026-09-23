@@ -45,6 +45,8 @@
 - bb map sections FILE reads a file by its section headers with each section's outside callers, load-time callers and coverage; the welcome panel is the first section to leave index.html whole, into page-welcome.js (5464a9d)
 - Chat, the Analysis tab and the Projects tab leave index.html for files of their own, picked by bb map sections; the page's script is 500 lines shorter (76240c4)
 - The coverage map's file carries a format, and a reader that meets another says no covered run yet instead of reading it (9505eee)
+- Six more parts of the dashboard's page script live in their own files (motion, lists, the sidebar cards, the gear menu, doctor, the command cards), the review modal with the pending view, the new-project dialog with the Projects tab (3eb37f1)
+- The project job the sidebar shows is read from the status poll's own slot rather than a copy that could drift from it; the dev-instance verbs are answered by devapp.py, with server.py holding only the gate (3eb37f1)
 
 ### Removed
 

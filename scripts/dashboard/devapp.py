@@ -65,6 +65,7 @@ node_for = None
 node_addr = None
 ENVDIR = None
 write_json = None
+field = None                     # server.py's one-string-field reader, for act()
 
 DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
 
@@ -836,9 +837,9 @@ def abort_job(project, instance):
 
 def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
               node_addr=None, queue=None, runner=None, project_node=None,
-              node_paths=None):
+              node_paths=None, field=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json, log_dir=log_dir,
+                     write_json=write_json, log_dir=log_dir, field=field,
                      node_for=node_for, node_addr=node_addr, project_node=project_node,
                      node_paths=node_paths,
                      queue=queue, runner=runner)
@@ -4028,3 +4029,97 @@ def _job_rebuild(project, instance, run):
         # which is exactly what it is for.
         _clear_marker(project, instance)
         _bump()
+
+
+def act(project, instance, action, req, *, test_cmd=""):
+    """One dev-instance verb, as the dashboard and `bb devapp` name them,
+    once server.py has decided who may ask (docker-write, the per-project
+    dial, a session's own node) and which instance is meant.
+
+    The answer is (payload, status): a module's {ok} or {error} with 400 on
+    the error, the way Handler._result reads one, and the instance's fresh
+    state riding on every change so nothing on screen is stale. Here rather
+    than in the handler because what a verb means is this module's to say
+    (the one-file rule); the handler holds the gate and nothing else.
+    """
+    f = field
+    if action == "abort":
+        # Before the instance check below: a job can be running against an
+        # instance that has since been removed, and stopping it must not
+        # depend on the thing it is building still existing.
+        return {"ok": True, "stopped": abort_job(project, instance)}, 200
+    if action == "starter":
+        # The project's .env.example, for a container that does not exist
+        # yet: the send dialog opens on it so the env is filled in before
+        # the first build rather than after it stops at the gate. Reads
+        # nothing of the instance, which is the point: there is none.
+        return {"text": starter(project)}, 200
+    if action == "new":
+        # The one action whose instance does not exist yet, which is what it
+        # is for. Everything below names one that must exist, because the
+        # string decides a compose project and a data directory and is not
+        # somewhere an arbitrary one should reach.
+        under = f(req, "for")
+        r = create_instance(project, instance, f(req, "node"),
+                            "" if under == project else under)
+        if not r.get("error") and f(req, "ref"):
+            # Pinned before the build the dialog starts, or the first one
+            # comes from the project's checkout and the row says otherwise.
+            p = set_ref(project, r["instance"], f(req, "ref"))
+            if p.get("error"):
+                return p, 400
+        if not r.get("error") and isinstance(req.get("text"), str) \
+                and req["text"].strip():
+            # Written before the build that follows, so the first one has
+            # the env it needs instead of stopping at the gate and asking
+            # for it afterwards.
+            write_env(project, req["text"], r["instance"])
+        return r, (400 if r.get("error") else 200)
+    if instance not in instances(project):
+        return {"error": f"no instance {instance} of {project}"}, 400
+    if action == "remove":
+        r = remove_instance(project, instance)
+        return r, (400 if r.get("error") else 200)
+    if action == "ref":
+        # Which branch this instance builds from. `docker-write` has already
+        # had its say in the handler, so this is an administrator's like
+        # every other thing that changes what a container IS.
+        r = set_ref(project, instance, f(req, "ref"))
+        return r, (400 if r.get("error") else 200)
+    if action == "state":
+        # The full picture for one instance (risks, problems, the parsed
+        # compose), which overview() deliberately does not compute for
+        # every instance at once. Asked when somebody is about to act.
+        return {"state": state(project, instance)}, 200
+    # `ack` is the digest of the risk list the operator was actually
+    # shown, not a bare yes. A compose file that gains a mount between
+    # the row rendering and the button being pressed does not inherit the
+    # acknowledgement of the one before it.
+    if action == "up":
+        r = up(project, instance, f(req, "ack"))
+    elif action == "down":
+        r = down(project, instance)
+    elif action == "test":
+        r = test(project, instance, test_cmd,
+                 [str(a) for a in (req.get("args") or [])][:32])
+    elif action == "rebuild":
+        r = rebuild(project, instance, f(req, "ack"))
+    elif action == "env-get":
+        # An empty env opens on the example rather than on nothing. The
+        # `missing` list still answers about what is STORED, so the hint
+        # under the box stays true while the box is only a draft.
+        stored = read_env(project, instance)
+        return {"text": stored or starter(project, instance),
+                "seeded": not stored,
+                "missing": missing_env(project, instance)}, 200
+    elif action == "env-set":
+        r = write_env(project, req.get("text") or "", instance)
+    elif action == "route":
+        # How the instance is reached (docs/nodes.md §7): lan or funnel,
+        # on which published port.
+        r = route_set(project, instance, f(req, "mode"), req.get("port"))
+    else:
+        return {"error": f"unknown action: {action}"}, 400
+    if r.get("error"):
+        return r, 400
+    return r | {"state": state(project, instance)}, 200
