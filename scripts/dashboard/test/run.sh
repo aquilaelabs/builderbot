@@ -1173,7 +1173,8 @@ run_file() {
     # The suite's name, for the server's coverage counts to carry (R76):
     # the server is started fresh for every file, so its counts are that
     # file's and the map can say which suite reached a handler.
-    export BB_COVERAGE_SUITE="$(basename "${1%.mjs}")"
+    BB_COVERAGE_SUITE="$(basename "${1%.mjs}")"
+    export BB_COVERAGE_SUITE
     fresh_world
     fresh
     log "== $(basename "$1")${2:+ $2} =="
