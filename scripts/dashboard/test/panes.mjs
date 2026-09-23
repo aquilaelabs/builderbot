@@ -150,4 +150,20 @@ const inServer = (py.match(/^TAB_KINDS = \{([^}]*)\}/m) || [, ''])[1]
 ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
    `every tab kind the page has is one the server keeps (page: ${inPage}, server: ${inServer})`);
 
-await done(browser);
+await done(browser);// The limit is on terminals, per account (R78): a shell past it is refused
+// with a toast that says so, and a document tab opens past it, because it
+// costs no terminal. The strip counted is this account's own layout.
+{
+  await page.evaluate(() => { state.max_tabs = tabs.filter(t => t.kind === 'term').length; });
+  const before = await page.evaluate(() => tabs.length);
+  await page.evaluate(() => openTab({kind: 'term', arg: 'sh:99:alpha', label: 'sh 99'}));
+  ok(await page.evaluate(() => tabs.length) === before
+     && await page.evaluate(() => /Terminal tab limit reached/.test(document.body.textContent)),
+     'a shell past the terminal limit is refused, and the toast names the terminal limit');
+  await page.evaluate(() => openNodesTab());
+  ok(await page.evaluate(() => tabs.length) === before + 1 && await page.evaluate(() => tabs.some(t => t.kind === 'nodes')),
+     '...while a document tab opens past it: it costs no terminal');
+  await page.evaluate(() => { state.max_tabs = 12; });
+}
+
+

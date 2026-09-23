@@ -51,6 +51,7 @@
 - Six more parts of the dashboard's page script live in their own files (motion, lists, the sidebar cards, the gear menu, doctor, the command cards), the review modal with the pending view, the new-project dialog with the Projects tab (3eb37f1)
 - The project job the sidebar shows is read from the status poll's own slot rather than a copy that could drift from it; the dev-instance verbs are answered by devapp.py, with server.py holding only the gate (3eb37f1)
 - A project that cannot start a Claude session says why under its name, in red: no node picked, or its node's agent out of window. The dead button's tooltip carried the reason alone, which is nothing on a phone (64bd3c5)
+- The tab limit counts terminal tabs only (shells and Claude sessions), per account: a Nodes or Docker tab beside twelve shells opens, and the toast says which limit it is (ca37ee7)
 
 ### Removed
 

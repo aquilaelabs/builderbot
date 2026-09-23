@@ -345,7 +345,8 @@ TMUX_LITERALS = {
 # The tab cap: a constant, because each terminal tab is a live terminal over
 # its own socket and twelve is what a browser on this box takes without
 # falling over. It was a setting for one afternoon (R29) and nobody needed to
-# move it.
+# move it. It counts TERMINAL tabs, per account (the layout is kept per
+# account): a document tab is a draw from state and costs nothing to keep.
 MAX_TABS = 12
 
 
@@ -530,11 +531,15 @@ def load_layout(uid):
     # whole dashboard down with a 500 per poll and a crash at the next boot.
     if not isinstance(v, dict):
         v = {}
-    tabs, ids = [], set()
+    tabs, ids, terms = [], set(), 0
     stored = v.get("tabs") if isinstance(v.get("tabs"), list) else []
-    for t in stored[:max_tabs()]:
+    for t in stored[:64]:
         if not isinstance(t, dict) or t.get("kind") not in TAB_KINDS:
             continue
+        if t.get("kind") == "term":
+            if terms >= max_tabs():
+                continue              # the cap, on terminals alone
+            terms += 1
         tid, arg, label = t.get("id"), t.get("arg"), t.get("label")
         if not all(isinstance(x, str) for x in (tid, arg, label)):
             continue

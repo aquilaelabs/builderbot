@@ -4920,7 +4920,7 @@ function openTab(spec){
 
   let t = tabs.find(x => identity(x) === identity(spec));
   if (!t){
-    if (!roomForTab()) return;
+    if (!roomForTab(spec.kind)) return;
     t = Object.assign({id:"t" + (++seq)}, spec);
     tabs.push(t);
   } else if (t.kind === "term" && t.arg !== spec.arg
@@ -4949,11 +4949,16 @@ function openTab(spec){
 // Each terminal tab is an iframe running a full xterm.js over its own
 // websocket. Past a point the page stops being usable and the container is
 // carrying sessions nobody is reading, so refuse rather than degrade.
-function roomForTab(){
+// Only terminals count (R78): a document tab is a draw from state and costs
+// nothing to keep, so a Nodes tab beside twelve shells was never the load
+// the cap is about. The count is this account's own strip, which is what
+// `tabs` is: the layout is kept per account on the server.
+function roomForTab(kind){
+  if (kind !== "term") return true;
   const cap = state?.max_tabs || 12;
-  if (tabs.length < cap) return true;
-  notify(`Tab limit reached (${cap}). Close or minimize one first; a minimized `
-       + `tab keeps running.`, true);
+  if (tabs.filter(t => t.kind === "term").length < cap) return true;
+  notify(`Terminal tab limit reached (${cap} shells and Claude sessions). Close or minimize `
+       + `one first; a minimized tab keeps running.`, true);
   return false;
 }
 
