@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.93"
+AGENT_VERSION = "0.6.94"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -282,6 +282,8 @@ SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandb
 # account's only way to it. Installed and kept by this agent from the bundle,
 # on a node set up as a sandbox; the seams are for the suite.
 SESSION_BIN = os.environ.get("BUILDERBOT_SESSION_BIN", "/usr/local/sbin/bb-session")
+# Where an updated Claude Code is pinned, root-owned, for the sessions (claude_update).
+CLAUDE_DIR = "/usr/local/lib/builderbot/claude"
 SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
 SESSION_SUDOERS = os.environ.get("BUILDERBOT_SESSION_SUDOERS", "/etc/sudoers.d/builderbot-session")
 # Where the projects share is mounted, which is what a session works in. The
@@ -1416,7 +1418,8 @@ def session_now(state):
     out.pop("bind", None)
     # Claude Code as the session account has it: its own ~/.local/bin (the
     # native installer's home) or ~/.npm-global/bin first, the system after.
-    dirs = [os.path.join(home, ".local", "bin"), os.path.join(home, ".npm-global", "bin")] if home else []
+    # The pinned copy first (claude_update): it is what a session runs.
+    dirs = [CLAUDE_DIR] + ([os.path.join(home, ".local", "bin"), os.path.join(home, ".npm-global", "bin")] if home else [])
     claude = ""
     for d in dirs + ["/usr/local/bin", "/usr/bin"]:
         exe = os.path.join(d, "claude")
@@ -2414,6 +2417,8 @@ class Job(threading.Thread):
                 state, code = self.agent.cache_clear(self, spec)
             elif self.job.get("type") == "claude-login":
                 state, code = self.claude_login(spec)
+            elif self.job.get("type") == "claude-update":
+                state, code = self.agent.claude_update(self, spec)
             elif self.job.get("type") == "tell":
                 state, code = self.agent.tell(self, spec)
             else:
@@ -3342,7 +3347,11 @@ class Agent:
         store = tc_root(self.state)
         link = os.path.join(store, ".bb", "current") if store else ""
         bbdir = link if link and os.path.isdir(link) else into
-        env["PATH"] = ":".join([os.path.join(bbdir, "scripts"),
+        # The pinned Claude Code ahead of the account's own bin (claude_update):
+        # root-owned, so `claude update` typed in a session changes nothing
+        # that runs here, and the auto-updater is off (bb-tty).
+        pinned = [CLAUDE_DIR] if os.access(os.path.join(CLAUDE_DIR, "claude"), os.X_OK) else []
+        env["PATH"] = ":".join(pinned + [os.path.join(bbdir, "scripts"),
                                 os.path.join(home, ".local", "bin"),
                                 os.path.join(home, ".npm-global", "bin"), env["PATH"]])
         # AVDs under the account's own ~/.android rather than the data store,
@@ -3730,6 +3739,85 @@ class Agent:
             # The target is this op's session, whatever the argv says.
             argv[argv.index("-t") + 1] = sess
             self._tmux(argv)
+
+    def claude_update(self, job, spec):
+        """Install the current Claude Code for the SESSION account, and pin it
+        (claudecode.py on the controller). Queued by an administrator's press
+        and by nothing else; the controller ended the Claude sessions here
+        before queueing it, since the binary is swapped under nothing.
+
+        The installer runs as the session account, into its home, the way the
+        provisioner first installed it. Then, where this agent is root, the
+        binary is copied into CLAUDE_DIR, root-owned, which the session's
+        PATH reads first: that copy is what a session runs and what the
+        account cannot write, so `claude update` typed in a session changes
+        nothing that runs. A guest node, where the agent is not root, keeps
+        the account's own copy and says so.
+        """
+        who_name = self.session_account()
+        env = dict(sdk_env(self.state))
+        try:
+            who = self.as_user(env, who_name)
+        except RuntimeError as e:
+            job.say(f"refused: {e}\n")
+            return "failed", 78
+        if not who_name:
+            job.say("refused: this node reports no session account, so there is no Claude Code here to update\n")
+            return "failed", 78
+        if not who:
+            env.update({"HOME": os.path.expanduser("~"), "USER": who_name, "LOGNAME": who_name})
+        home = env.get("HOME") or os.path.expanduser("~")
+        env["PATH"] = ":".join([os.path.join(home, ".local", "bin"), env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"])
+        env.setdefault("LANG", "C.UTF-8")
+        # A test's stand-in for the installer; the real one is the script the
+        # provisioner ran, fetched fresh each time.
+        stub = os.environ.get("BUILDERBOT_CLAUDE_INSTALLER")
+        argv = ["bash", stub] if stub else ["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]
+        job.say(f"installing Claude Code for {who_name}"
+                + (f" ({spec.get('to')} is out)" if spec.get("to") else "") + "\n")
+        try:
+            job.proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        cwd=home if os.path.isdir(home) else "/tmp", env=env,
+                                        start_new_session=True, close_fds=True, **who)
+        except (OSError, ValueError) as e:
+            job.say(f"could not start the installer: {e}\n")
+            return "failed", 70
+        deadline = time.time() + int(spec.get("timeout") or 900)
+        for line in iter(job.proc.stdout.readline, b""):
+            job.say(line.decode("utf-8", "replace"))
+            if time.time() > deadline:
+                job.say("the installer did not finish in time\n")
+                job.cancel()
+                return "failed", 75
+        code = job.proc.wait()
+        job.proc = None
+        if code != 0:
+            job.say(f"the installer exited {code}\n")
+            return "failed", code
+        exe = os.path.join(home, ".local", "bin", "claude")
+        out, dead = _probe([exe, "--version"], timeout=20) if os.access(exe, os.X_OK) else ("", "no claude in ~/.local/bin after the install")
+        if dead:
+            job.say(f"installed, but it does not run: {dead}\n")
+            return "failed", 70
+        ver = out.split("\n")[0].strip()[:40]
+        if os.geteuid() == 0:
+            try:
+                os.makedirs(CLAUDE_DIR, mode=0o755, exist_ok=True)
+                tmp = os.path.join(CLAUDE_DIR, "claude.new")
+                shutil.copy2(os.path.realpath(exe), tmp)
+                os.chown(tmp, 0, 0)
+                os.chmod(tmp, 0o755)
+                os.replace(tmp, os.path.join(CLAUDE_DIR, "claude"))
+                job.say(f"pinned {ver} at {CLAUDE_DIR}/claude, root-owned: a session runs this copy and cannot change it\n")
+            except OSError as e:
+                job.say(f"installed {ver} for {who_name}, but could not pin it: {e}\n")
+        else:
+            job.say(f"installed {ver} for {who_name} (the agent is not root here, so the account's own copy is what runs)\n")
+        # New sessions get the PATH with the pinned copy on it; the ttyds
+        # are restarted onto it, tmux sessions untouched (there are none).
+        self.session_renew()
+        job.say(f"Claude Code {ver} is what a session here runs now\n")
+        return "succeeded", 0
 
     def session_renew(self):
         """Ask the loop to restart the ttyds onto the current bundle with a

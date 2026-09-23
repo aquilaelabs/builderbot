@@ -1920,6 +1920,11 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # prompt with no newline after it, and the grant has to land in
              # the home a session will read it from.
              "claude-login",
+             # Claude Code itself, for the session account: the installer run
+             # there, then the binary pinned where the account cannot write it
+             # (claudecode.py). Queued by an administrator's press and nothing
+             # else; the Claude sessions on the node are ended first.
+             "claude-update",
              # A line typed into a Claude session on the node, Enter pressed
              # only once the pane echoes it (notify.py's rule, run where the
              # pane is): the roadmap's and the tracker's Send to Claude.

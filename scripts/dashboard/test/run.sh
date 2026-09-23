@@ -984,6 +984,7 @@ start_server() {
     BB_COVERAGE_OUT="${BB_COVERAGE_DIR:+$BB_COVERAGE_DIR/server-$RANDOM.json}" \
     BB_COVERAGE_SUITE="${BB_COVERAGE_SUITE:-server}" \
     BB_ARCHIVE_SPOOL="$S/spool" \
+    BB_CLAUDE_LATEST_URL="file://$S/claude-latest" BB_CLAUDE_CHECK_DELAY=3600 \
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
     python3 "$DASH/server.py" >> "$S/server.log" 2>&1 &

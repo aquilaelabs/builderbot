@@ -66,6 +66,13 @@ KEYS = {
     # implicitly granted ITSELF, because its own journal is as much system
     # level as any other machine's.
     "debug_mode": {"default": False, "kind": "bool", "applied": "now"},
+    # Off, Claude Code on a node stays on the version it has until Update is
+    # pressed on the Nodes tab: the bell says when a newer one is out. On,
+    # the controller updates a node on its own when its check finds one
+    # out, and only while no Claude session is open on that node: a
+    # conversation is never interrupted for it, and the sessions it would
+    # have ended are the reason the press exists (claudecode.py).
+    "claude_autoupdate": {"default": False, "kind": "bool", "applied": "now"},
 }
 
 

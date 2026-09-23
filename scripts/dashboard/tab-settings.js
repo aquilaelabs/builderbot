@@ -107,7 +107,11 @@ const SETTING_GROUPS = [
          + "and node OS families nobody has tried yet. Off, only alpha is offered; on, "
          + "dev appears in the pickers tagged dev, and the header says dev."},
     {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
-     hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."}]},
+     hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."},
+    {key: "claude_autoupdate", label: "Keep Claude Code current on the nodes", type: "bool",
+     hint: "Off, a node stays on the Claude Code it has until Update is pressed on the Nodes tab; the bell "
+         + "says when a newer one is out. On, a node is updated when the check finds one out and no Claude "
+         + "session is open there. A session is never interrupted for it, and cannot ask for it."}]},
 ];
 
 // The reset's confirmation, the way a project's purge asks: the word typed

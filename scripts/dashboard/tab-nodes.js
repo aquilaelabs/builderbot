@@ -331,6 +331,47 @@ function nodeSessionsSection(n){
   return docSection("nodes", "sessions", "Sessions", status, body, {cls});
 }
 
+// Claude Code on this node (claudecode.py): what the session account runs
+// against the latest the controller knows, a check on demand, and the one
+// way it is updated. The update ends every Claude session here first and
+// starts none again: the project rows do, when a person presses them.
+// A session cannot ask for this and cannot change the copy it runs.
+function nodeClaudeSection(n){
+  const cc = state?.claude_code || {};
+  const me = cc.nodes?.[n.id] || {};
+  const se = n.reported?.session;
+  const inst = me.installed || "";
+  const latest = cc.latest || "";
+  let status, cls;
+  if (!se || typeof se !== "object" || !se.up) [status, cls] = ["no session account", "warn"];
+  else if (me.updating) [status, cls] = ["updating", "warn"];
+  else if (!inst) [status, cls] = ["not installed", "bad"];
+  else if (me.behind) [status, cls] = [`${inst}, ${latest} is out`, "warn"];
+  else [status, cls] = [latest ? `${inst}, up to date` : inst, "ok"];
+  const checked = cc.checked ? `checked ${ago(cc.checked)}` : "not checked yet";
+  const known = latest ? `latest ${latest}, ${checked}`
+    : cc.error ? `could not check: ${cc.error}` : checked;
+  const open = (state?.sessions || []).filter(s => s.node_id === n.id && tmuxBase(s.name).startsWith("claude-")).length;
+  const body = `
+    <div class="sub">${!se?.up ? "No session account here, so nothing runs Claude Code."
+      : inst ? `The session account runs Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out.` : "."}`
+      : "The session account has no Claude Code yet: Update installs it."}
+      The controller asks what is out after it starts and every six hours.</div>
+    <div class="actbar">
+      <span class="state">${esc(known)}</span>
+      <button type="button" data-nd="claude-check" ${cc.checking ? "disabled" : ""}
+        title="ask now what the latest Claude Code is">Check for updates</button>
+      <button type="button" data-nd="claude-update" ${(!se?.up || me.updating || (inst && !me.behind)) ? "disabled" : ""}
+        title="${me.updating ? "an update is queued or running here"
+               : !se?.up ? "no session account to update it for"
+               : inst && !me.behind ? "already on the latest known"
+               : `install ${latest || "the current Claude Code"} here: ends the ${open} Claude session${open === 1 ? "" : "s"} open on this node first`}">Update</button>
+    </div>
+    <div class="sub dim">Update ends the Claude sessions here and starts none again: the project rows do.
+      A session cannot ask for this, and the copy it runs is pinned where its account cannot write it.</div>`;
+  return docSection("nodes", "claude", "Claude Code", status, body, {cls});
+}
+
 // How many Claude sessions here may work on a prompt at once (turns.py on
 // the controller). What is working and waiting now is on the status line,
 // so the number is set against what the machine is actually doing. The
@@ -900,6 +941,7 @@ function renderNodesInto(i){
       <div class="ndsections">
         ${health}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
       </div>
@@ -1235,16 +1277,37 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
               + `. Their transcripts are kept and the tabs reopen, but whatever `
               + `they were running stops.`)) return;
       }
+      if (act === "claude-update"){
+        const here = (state?.sessions || []).filter(x => x.node_id === id && tmuxBase(x.name).startsWith("claude-"));
+        if (!confirm(`Update Claude Code on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
+              + (here.length ? `It ends the ${here.length} Claude session${here.length === 1 ? "" : "s"} open there first; `
+                             : "No Claude session is open there; ")
+              + "nothing starts again on its own: press Claude on a project's row afterwards.")) return;
+      }
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
                       + "each re-downloads what it needs.")) return;
       // The verb, said on the button for the round trip and, for the
       // actions whose effect the row cannot see at once: beyond it.
-      busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
+      busy(b, {"update-agent": "Updating", "claude-check": "Checking", "claude-update": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
                retire: "Removing", uninstall: "Uninstalling", paths: "Saving", "check-paths": "Checking",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
+      if (act === "claude-check"){
+        const j = await nodeAct({action: "claude-check", id});
+        if (j.error) notify(j.error, true);
+        else notify(j.version ? `the latest Claude Code is ${j.version}` : "checked; the download service gave no version");
+        refresh();
+        return;
+      }
+      if (act === "claude-update"){
+        const j = await nodeAct({action: "claude-update", id});
+        if (j.error) notify(j.error, true);
+        else notify(`Claude Code update queued${j.ended?.length ? `; ${j.ended.length} session${j.ended.length === 1 ? "" : "s"} ended` : ""}: the row follows the job`);
+        refresh();
+        return;
+      }
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});

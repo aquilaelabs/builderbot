@@ -3684,6 +3684,23 @@ session token a Claude session is given, for proving a node by hand, where
 account named it is the token a node-bound terminal carries, which also
 fetches that account's Claude login onto the node.
 
+**Claude Code on a node is updated from the Nodes tab, and by nothing a
+session can do.** Each node's row has a Claude Code section: the version
+its session account runs against the latest the controller knows, which
+it asks the installer's own `latest` for after it starts and every six
+hours, or on **Check for updates**. A node behind is a row in the bell.
+**Update** ends every Claude session on that node first, then the agent
+runs the installer as the session account and, on a managed node, pins
+the binary where the account cannot write it, so `claude update` typed in
+a session changes nothing that runs (the auto-updater is off there too).
+Nothing starts again on its own: the project rows do, when you press
+them, and until the job ends those rows are held with the reason. The
+node action is an administrator's, so a session's token is refused, and
+no `bb` verb reaches it. **Keep Claude Code current on the nodes** on the
+Settings tab, off by default, lets the controller update a node itself
+when its check finds a newer version out and no Claude session is open
+there; off, a node stays on what it has until you press.
+
 **A token lasts twelve hours, and a conversation can last longer.** One is
 minted per connection, so opening the session's tab refreshes it, but the
 `claude` already running keeps the environment it started in, and nothing

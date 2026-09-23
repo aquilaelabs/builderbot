@@ -9248,7 +9248,16 @@ function drawBell(){
     // A window move holds every project at once, so several of these is the
     // normal case after a minor bump and one row per project was six rows
     // saying one thing. Collapsed into one, with one press behind it (B93).
-    ...att.map(a => `<div class="bnote ask${a.window ? " bad" : ""}">
+    ...att.map(a => a.kind === "claude"
+      // Claude Code behind on a node (claudecode.py): amber, one press on
+      // the Nodes tab behind it, which ends the sessions there first.
+      ? `<div class="bnote ask">
+        <div class="btag">Claude Code update available</div>
+        <div class="bwhy">${esc(a.node)} runs Claude Code ${esc(a.from)} and ${esc(a.to)} is out${
+          a.projects.length ? `; ${a.projects.map(esc).join(", ")} run${a.projects.length === 1 ? "s" : ""} sessions there` : ""}</div>
+        <div class="bfoot"><span>on the Nodes tab: Update ends the Claude sessions there first</span>
+          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`
+      : `<div class="bnote ask${a.window ? " bad" : ""}">
         <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
         <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
           a.window

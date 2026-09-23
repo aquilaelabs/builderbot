@@ -855,17 +855,20 @@ def window_cost(name):
 
 
 def node_holds():
-    """{node id: why} for every agent node whose agent is from another
-    compatibility window than this controller ships: the half of a
-    project's hold that is its node's. Being merely behind is not here:
-    inside a window an older agent takes a job and a session, and the Nodes
-    tab's Update is a courtesy rather than a gate."""
+    """{node id: why} for every agent node no Claude session may start on
+    right now: its agent is from another compatibility window than this
+    controller ships, or its Claude Code is being updated (claudecode.py),
+    which ends the sessions there first. The half of a project's hold that
+    is its node's. Being merely behind is not here: inside a window an
+    older agent takes a job and a session, and the Nodes tab's Update is a
+    courtesy rather than a gate."""
     out = {}
     if NODES_OK:
         return out
     for n in nodes.node_list():
         if n["kind"] == "agent" and nodes.agent_gap(n):
             out[n["id"]] = nodes.agent_stale(n)
+    out.update(claudecode.holds())
     return out
 
 
@@ -2449,6 +2452,7 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
 import devapp                                                    # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
+import claudecode                                                # noqa: E402
 import turns                                                     # noqa: E402
 
 # The node data plane first, because devapp's job claim asks it which node
@@ -2534,6 +2538,13 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   )
 
 
+
+# Claude Code on the nodes (claudecode.py): what each runs against what is
+# out, and the one way it is updated, which is an administrator's press.
+if not NODES_OK:
+    claudecode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
+                         tmux_base=tmux_base, audit=nodes.audit,
+                         auto=lambda: settings.get("claude_autoupdate"))
 
 # The code map, built for a project the moment it exists (mapping.py): the
 # same command a session runs by hand, started in the background by the
@@ -2883,7 +2894,14 @@ def snapshot(who):
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
         "attention": ([] if NODES_OK or users.may(who, "node") else nodes.attention(
+            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})
+            # ...and a node whose Claude Code is behind what is out
+            # (claudecode.py): amber, with Update on the Nodes tab.
+            + claudecode.attention(
             {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})),
+        # Claude Code per node against the latest known, for the Nodes
+        # tab's section: whoever may manage nodes reads it.
+        "claude_code": ({} if NODES_OK or users.may(who, "node") else claudecode.payload()),
 
         # Whether there is a daemon behind any of the Docker controls, and if
         # not, the sentence saying why. Memoised in devapp, because answering
@@ -4722,6 +4740,18 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.node_funnel(self._principal(), nid, req.get("port"), bool(req.get("on", True)))
         elif act == "update-agent":
             r = nodes.node_update_agent(self._principal(), nid)
+        elif act == "claude-check":
+            # What the latest Claude Code is, asked now: the same question
+            # the controller asks on its own after a start and every six
+            # hours, with the automatic update behind it where the setting
+            # asks for one. Nothing else is changed by it.
+            r = claudecode.check() | {"ok": True}
+            r["auto"] = claudecode.auto_update()
+        elif act == "claude-update":
+            # An administrator's, like every action here, and so never a
+            # session's: it ends the Claude sessions on the node and queues
+            # the installer as a job the agent runs (claudecode.py).
+            r = claudecode.update(self._principal(), nid)
         elif act == "cache-clear":
             # Drop a node's build caches, one project's or all (docs/nodes.md
             # §6): a job the agent runs, so it is logged and audited like
@@ -7726,6 +7756,8 @@ def main():
     # Daemons: these loops must die with the server, not hold it open.
     doctor.start()
     idle.start()
+    if not NODES_OK:
+        claudecode.start()        # the first check soon after the start, then every six hours
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()

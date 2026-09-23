@@ -2004,4 +2004,99 @@ ok(page.errors.length === 0,
   await napi('/api/v1/nodes', { action: 'retire', id: plain.id });
 }
 
+// ---- Claude Code on a node: version, check, update (claudecode.py) ------
+// The node reports what its session account runs; the controller asks the
+// installer's `latest` (a file here) after it starts and on Check. Behind
+// is a bell row and a sentence on the section; Update ends the Claude
+// sessions there, queues the job, and holds the node's projects until it
+// ends. A session's token cannot ask for it, and nothing in bb can.
+{
+  const base = URL.replace(/\/$/, '');
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const napi = async (path, body, hdrs) => (await fetch(base + path, {
+    method: body ? 'POST' : 'GET', headers: { ...H, ...(hdrs || {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}) })).json();
+  const mint = await napi('/api/v1/nodes', { action: 'enroll', name: 'clbox' });
+  const shipped = (await napi('/api/v1/nodes')).agent || {};
+  const census = { cpu: 2, mem_mb: 4096, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64', sandbox: true,
+                   stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 } },
+                   session: { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true,
+                              boot: '77.1', up_s: 900, claude: '1.0.0 (Claude Code)' } };
+  // The enrollment token enrolls and nothing else: the exchange hands the
+  // agent its own, which every hello and heartbeat carries.
+  const en = await napi('/api/v1/agent/enroll', { census, version: shipped.version, digest: shipped.digest, user: 'bb' },
+                        { Authorization: 'Bearer ' + mint.token });
+  en.id = en.node_id || mint.id;
+  const hello = async () => (await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest }) })).json();
+  const hi = await hello();
+  writeFileSync(`${DIR}/claude-latest`, '1.2.0\n');
+  const me = (await napi('/api/v1/nodes')).nodes.find(n => n.id === en.id);
+  ok(!!me?.live && me.reported?.session?.claude === '1.0.0 (Claude Code)',
+     `the node dials in reporting its Claude Code (hello: ${JSON.stringify(hi).slice(0, 80)}; row: live=${me?.live} session=${JSON.stringify(me?.reported?.session || null).slice(0, 120)})`);
+  const chk = await napi('/api/v1/nodes', { action: 'claude-check', id: en.id });
+  ok(chk.ok && chk.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${chk.version || chk.error})`);
+  const st = await napi('/api/status');
+  const row = (st.attention || []).find(a => a.kind === 'claude' && a.id === en.id);
+  ok(!!row && row.from === '1.0.0' && row.to === '1.2.0',
+     `a node behind is a bell row naming both versions (${JSON.stringify(row || st.attention)})`);
+  ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
+     '...and the status payload says which node is behind');
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await pickNode(page, en.id);
+  const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
+  await page.waitForFunction(sel => /1\.0\.0, 1\.2\.0 is out/.test(document.querySelector(sel)?.textContent || ''), ROWC, { timeout: 15000 });
+  ok(await page.$eval(`${ROWC} [data-nd="claude-update"]`, b => !b.disabled) && await page.$eval(`${ROWC} [data-nd="claude-check"]`, b => !b.disabled),
+     'the Claude Code section shows the version against the latest, with Check and Update live');
+  // A session's token gets nowhere near it.
+  const tok = execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys
+sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
+spec = importlib.util.spec_from_file_location('u', ${JSON.stringify(new globalThis.URL('../users.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+def wj(path, d):
+    tmp = str(path) + '.new'
+    with open(tmp, 'w') as f: json.dump(d, f, indent=2)
+    os.replace(tmp, path)
+m.configure(state=${JSON.stringify(`${DIR}/state`)}, write_json=wj)
+print(m.mint_session('alpha'))
+`], { encoding: 'utf8' }).trim();
+  const asSession = await fetch(base + '/api/v1/nodes', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+    body: JSON.stringify({ action: 'claude-update', id: en.id }) });
+  ok(asSession.status === 403, `a session's token cannot ask for the update (${asSession.status})`);
+  // The update: the node's project is bound, a Claude session is reported
+  // there, and the press ends it, queues the job and holds the row.
+  await napi('/api/prefs', { project: 'beta', node: en.id });
+  await fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    // Named the way bb-tty names it on a node: every account is prefixed
+    // there, the owner included; an unprefixed name is nobody's and dropped.
+    body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
+      sessions: [{ name: `${JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid}~claude-beta` }] }, running: [], wait: 0 }) });
+  const up = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });
+  const job = up.job ? await napi(`/api/v1/jobs?id=${up.job}`) : null;
+  ok(up.ok && job?.type === 'claude-update' && job.node === en.id && job.spec?.to === '1.2.0' && (up.ended || []).length === 1,
+     `Update ends the Claude session there and queues the job naming the version (${up.job || up.error}; ended ${JSON.stringify(up.ended)})`);
+  const held = (await napi('/api/status')).projects.find(p => p.name === 'beta')?.held || '';
+  ok(/Claude Code is updating on clbox/.test(held), `...and the node's project is held with the reason while it runs (${held.slice(0, 60)})`);
+  ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
+     '...and the bell row is gone while the update is queued');
+  const again = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });
+  ok(/already queued/.test(again.error || ''), '...and a second press is refused while one is queued');
+  await napi('/api/v1/jobs', { action: 'cancel', id: up.job });
+  await sleep(300);
+  ok(!(await napi('/api/status')).projects.find(p => p.name === 'beta')?.held, 'the hold lifts when the job ends');
+  // Up to date reads as such, and the auto-update setting is off by default.
+  census.session.claude = '1.2.0 (Claude Code)';
+  await hello();
+  ok((await napi('/api/status')).claude_code?.nodes?.[en.id]?.behind === false, 'a node on the latest is not behind');
+  ok((await napi('/api/status')).settings?.settings?.claude_autoupdate?.value === false,
+     'Keep Claude Code current is off by default: a node stays on its version until Update is pressed');
+  await napi('/api/prefs', { project: 'beta', node: '' });
+  await napi('/api/v1/nodes', { action: 'retire', id: en.id });
+}
+
 await done(browser);

@@ -29,6 +29,8 @@
 - The Roadmap tab shows finished items behind a Finished toggle at the top, below the shelved ones, with the plans they had; hidden until asked for (d9596e8)
 - A session can ask for a shelved roadmap item back with bb roadmap unshelve N WHY; the request is held on the notebook with its reason, whatever the gate says, and a user or administrator on the project approves or denies it (d9596e8)
 - A terminal tab pops out into its own window on a desktop: the tab stays in the strip as a blank pane with Reattach, in a split view too, and closing the window brings it back; the window is the terminal's own address, so it outlives the dashboard (f15d073)
+- Keep Claude Code current on the nodes, a Settings switch off by default: on, a node behind is updated when no Claude session is open there; a session can never ask for an update (6fe8d3f)
+- Each node's row has a Claude Code section: the version it runs against the latest, Check for updates, and Update, which ends the Claude sessions there first and pins the new copy where a session cannot change it; the bell says when a node is behind (6fe8d3f)
 
 ### Changed
 

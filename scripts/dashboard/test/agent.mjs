@@ -260,6 +260,8 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   PATH: `${DIR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
   BUILDERBOT_DPKG_BIN: `${DIR}/bin/dpkg`, BUILDERBOT_APT_BIN: `${DIR}/bin/apt-get-never`,
   BUILDERBOT_IDLE_UNIT: '1',
+  // The Claude Code installer, stood in for: the real one fetches a binary.
+  BUILDERBOT_CLAUDE_INSTALLER: `${DIR}/bin/claude-installer`,
   BUILDERBOT_SESSION_RETRY_S: '2',   // the restart cooldown, which a test waits out
   BUILDERBOT_SYSTEMD: '1',      // this agent takes the service path whichever box runs the suite
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
@@ -2388,6 +2390,27 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
        `the agent runs it once and the log opens with the reason and who allowed it (${rfin?.state}: ${(rfin?.out || '').trim().split('\n')[0]?.slice(0, 90)})`);
     const sysjob = ((await api('/api/v1/jobs?n=10')).jobs || []).find(j => j.type === 'system' && j.node === minted.id);
     ok(sysjob && sysjob.state === 'succeeded', `...as a system job on this node, finished (${sysjob?.state || 'no system job found'})`);
+  }
+
+  // ---- Claude Code updated by the real agent (claudecode.py) ---------------
+  // The job runs the installer as the session account (the stub here writes
+  // nothing real), reads the version back and, not being root in this
+  // fixture, keeps the account's own copy; the log says each step.
+  {
+    writeFileSync(`${DIR}/bin/claude-installer`, `#!/bin/sh
+echo "Installing Claude Code (stub) for $USER into $HOME"
+echo "stub-installed" >> "${DIR}/claude-installer.log"
+`, { mode: 0o755 });
+    const cu = await api('/api/v1/nodes', { action: 'claude-update', id: minted.id });
+    ok(cu.ok && /^j_/.test(cu.job), `Update queues the claude-update job on this node (${cu.job || cu.error})`);
+    const cfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${cu.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(/Installing Claude Code \(stub\)/.test(cfin?.log || '') && existsSync(`${DIR}/claude-installer.log`),
+       `the agent runs the installer as the session account and streams its words (${cfin?.state})`);
+    ok(cfin?.state === 'failed' ? /does not run|no claude in/.test(cfin.log || '') : /is what a session here runs now/.test(cfin?.log || ''),
+       `...and says what runs afterwards, or why nothing does (${(cfin?.log || '').trim().split('\n').slice(-1)[0]?.slice(0, 90)})`);
   }
 
   // ---- Send to Claude reaches a session on a node -------------------------
