@@ -1495,9 +1495,17 @@ def agent_stale(n):
                 f"a different compatibility window ({agent_window(mine)} against "
                 f"{agent_window(ours['version'])}), so nothing sent to it is promised to work. "
                 "Update it from the Nodes tab before relying on this node.")
+    if mine == ours["version"]:
+        # The same number and a different file: the agent moved without its
+        # version constant. Said as such, since "runs 0.6.92 and ships 0.6.92"
+        # read as nonsense on a walk (docs/journeys.md, 23 Sep).
+        return (f"{n['name']} runs agent {mine} ({theirs.split(':')[-1][:8]}) and this controller "
+                f"ships the same number as a newer file ({ours['digest'].split(':')[-1][:8]}): "
+                "press Update agent on its row first. A job this version sends could name "
+                "something that agent does not know")
     return (f"{n['name']} runs agent {mine} and this controller ships {ours['version']}: "
             "press Update agent on its row first. A job this version sends could name "
-            "something that agent does not know.")
+            "something that agent does not know")
 
 
 def agent_gap(n):

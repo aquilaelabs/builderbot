@@ -1444,6 +1444,22 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   const refusedTc = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
   ok(/runs agent 3/.test(refused.error || '') && /runs agent 3/.test(refusedTc.error || ''),
      `...and the server refuses the same jobs, not only the buttons (${(refused.error || 'no error').slice(0, 60)})`);
+  // The same number and a different file: the agent moved without its
+  // version constant, and the row said "runs 0.6.92 and ships 0.6.92" on a
+  // walk (docs/journeys.md, 23 Sep). It names the files now.
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: 'sha256:' + '0'.repeat(64) }) });
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => /same number as a newer file \(/.test(document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  const sameTc = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
+  ok(/runs agent \S+ \(00000000\) and this controller ships the same number as a newer file \([0-9a-f]{8}\)/.test(sameTc.error || ''),
+     `an agent on the same number but another file is told so, on the row and in the refusal (${(sameTc.error || 'no error').slice(0, 90)})`);
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: CENSUS, version: '3', digest: 'sha256:' + '0'.repeat(64) }) });
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => /runs agent 3 /.test(document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
   await page.evaluate(() => openToolchains());
   await page.waitForSelector('.tctab #tcNodeSel', { timeout: 15000 });
   await page.selectOption('.tctab #tcNodeSel', minted.id);

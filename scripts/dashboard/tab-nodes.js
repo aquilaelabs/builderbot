@@ -444,6 +444,7 @@ function nodeStale(n){
 // mismatch: an agent built before the window existed is behind for the
 // ordinary reason and does not need a louder claim invented about it.
 const agentWindow = v => (/^(\d+\.\d+)\./.exec(String(v || "")) || [])[1] || "";
+const short = d => String(d || "").split(":").pop().slice(0, 8) || "?";
 
 // A node whose agent is from ANOTHER window. Inside one, any agent works with
 // any controller and being behind is routine; across one, that promise was
@@ -460,6 +461,12 @@ function staleWhy(n){
       + `compatibility window (${agentWindow(mine)} against ${agentWindow(ship)}). `
       + `Inside one window any agent works with any controller; across one that was `
       + `never promised, so update it before relying on this node`
+    : mine === ship
+    // The same number and a different file: the agent moved without its
+    // version constant, and "runs 0.6.92 and ships 0.6.92" read as nonsense.
+    ? `${n.name} runs agent ${mine} (${short(n.agent?.digest)}) and this controller ships `
+      + `the same number as a newer file (${short(nodesAgent?.digest)}): press Update agent `
+      + `first, so nothing is sent that the agent may not know`
     : `${n.name} runs agent ${mine} and this controller ships ${ship}: press `
       + `Update agent first, so nothing is sent that the agent may not know`;
 }

@@ -1208,7 +1208,9 @@ function renderDockerInto(i){
   // Said, not switched off: a listing that failed is worth a line, and the
   // line has to say that the buttons under it still work.
   const note = off || (dockerList.error
-    ? `the daemon did not answer: ${dockerList.error}: the rows cannot say `
+    // The error's own full stop comes off before the clause is joined on:
+    // "...does not know.: the rows cannot say" was on a walk's screenshot.
+    ? `the daemon did not answer: ${String(dockerList.error).replace(/\.\s*$/, "")}: the rows cannot say `
       + `what is running, though the controls still work through the agent`
     : "");
   // Which daemon this is, stated rather than inferred: the node picked

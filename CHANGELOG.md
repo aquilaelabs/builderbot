@@ -77,6 +77,7 @@
 - A notebook's first open asks for its rules and its code base once, not three times: the poll's revision for a project with no rules now matches the answer's, and askers in flight share one fetch (e30f41e)
 - bb map's index carries its format and a reader that meets another rebuilds instead of crashing, which the controller's build did against an index a newer map had written (52ff276)
 - Coverage counts are keyed by a function's name and place in its file, so an edit above a function no longer reads as it being unreached (76240c4)
+- A node whose agent is the same number as the controller's but a different file is told so by digest, instead of 'runs 0.6.92 and ships 0.6.92' (8d15eca)
 
 ### Security
 
