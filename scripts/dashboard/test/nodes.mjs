@@ -745,7 +745,7 @@ print(json.dumps(out))
   const seeded = await page.$$eval(`${ROW} .ndmount [data-k="source"]`, es => es.map(e => e.value));
   ok(seeded.includes('nas:/mnt/user/old'),
      `the mount editor opens on what the node reports, not on an empty list (${seeded.join(', ')})`);
-  ok(await page.$eval(`${ROW} .ndconf`, e => /the ones the node reports/.test(e.textContent)),
+  ok(await page.$eval(`${ROW} .ndconf`, e => /As the node reports them/.test(e.textContent)),
      '...and says they came from the node rather than from anything saved here');
   // The new row lands after the seeded ones.
   const last = seeded.length;
@@ -1602,7 +1602,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.waitForFunction(id => /sees only its own project/.test(document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
                              minted.id, { timeout: 15000 }).catch(() => {});
   const isolated = await rowText();
-  ok(/Each session here sees only its own project/.test(isolated) && !/not isolated/.test(isolated),
+  ok(/Each session sees only its own project/.test(isolated) && !/not isolated/.test(isolated),
      '...and one whose sessions are says that instead');
   await napi('/api/prefs', { project: 'alpha', node: '' });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',

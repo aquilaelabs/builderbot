@@ -81,6 +81,12 @@ the detail behind one item is `bb roadmap show R4` or `bb bug show B7` when you
 pick it up. Tick items off as you finish them, and file what you find rather
 than only saying it in a reply. `bb <verb> -h` is the rest of any of them.
 
+A shelved item is the operator's decision, whatever a request sounds like.
+Do not start on one, and do not read, measure or draft for it either:
+`bb roadmap unshelve N WHY` asks for it back, a person on the project
+approves or denies that on the notebook, and until it is approved the item
+costs nothing. Carry on with something else meanwhile.
+
 ## Versions
 
 `bb version` is this project's identity; `bb version policy` says what you may

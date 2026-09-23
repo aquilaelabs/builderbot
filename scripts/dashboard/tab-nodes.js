@@ -102,8 +102,7 @@ function nodeGit(n){
   const old = m && (+m[1] < GIT_FLOOR[0]
                     || (+m[1] === GIT_FLOOR[0] && +m[2] < GIT_FLOOR[1]));
   return old
-    ? `<div class="sub ndgit warn">${esc(v)}: older than ${GIT_FLOOR.join(".")}, which the Git
-       view's merge needs. This machine's own package manager updates it, not the controller</div>`
+    ? `<div class="sub ndgit warn">${esc(v)}: older than ${GIT_FLOOR.join(".")}, which merging needs; update it on the machine</div>`
     : `<div class="sub ndgit dim">${esc(v)}</div>`;
 }
 
@@ -112,8 +111,7 @@ function nodeTools(n){
   const names = Object.keys(tc);
   if (n.kind !== "agent") return "";
   if (!names.length)
-    return `<div class="sub ndtools dim">no toolchains yet: the Tools tab installs them
-      onto this node, and what is here is what a project bound to it can build</div>`;
+    return `<div class="sub ndtools dim">no toolchains yet: install them from the Tools tab</div>`;
   // Held recipes whose system libraries this machine lacks (roadmap R51),
   // said here rather than left for a build to fail on: the store is shared,
   // the libraries are each machine's own, and the Tools tab installs them.
@@ -237,13 +235,13 @@ function nodeRunnerSection(n, c){
         <div class="actbar">
           <span class="state ndrunstate${rowCls ? " " + rowCls : ""}">${esc(state)}</span>
           <button type="button" data-nrunner="install" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
-            title="${why || (stored ? "download the host's runner onto the node, register it with a token the controller fetches, and keep it running"
-                                    : "add a token for it first: registering needs one")}">${
+            title="${why || (stored ? "install the runner here and register it with the stored token"
+                                    : "add a token first")}">${
             rep.installed ? "Reinstall runner" : "Install runner"}</button>
           ${stored ? `<button type="button" class="danger" data-nrunnerforget data-slot="${esc(slot)}" ${busyNow ? "disabled" : ""}
-            title="drop the stored token and this row; a runner already registered keeps running, and removing it later needs a token again">Forget token</button>` : ""}
+            title="drop the stored token and this row; a registered runner keeps running">Forget token</button>` : ""}
           ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
-            title="${why || (stored ? "deregister it from its host and take the runner off the node" : "add a token for it first: deregistering needs one")}">Remove runner</button>` : ""}
+            title="${why || (stored ? "deregister it and remove it from this node" : "add a token first")}">Remove runner</button>` : ""}
         </div></div></div>`;
   }).join("");
   // Adding is a button that unrolls the form in its own band, the shape
@@ -251,32 +249,31 @@ function nodeRunnerSection(n, c){
   // they have, one per line on a phone, and its own action bar.
   const addbar = c.addRunner ? `<div class="addbar ndrunadd" data-add="runner"><div class="grow">
         <div class="uadd">
-          <div class="setrow col">${lbl("", "Repository or organization", "the https address the runner registers with, or http for a forge on your own network; an organization serves every repository in it")}
+          <div class="setrow col">${lbl("", "Repository or organization", "a repository, or an organization for all of its repositories")}
           <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
             placeholder="https://github.com/your-org" aria-label="repository or organization URL"></div>
-          <div class="setrow col">${lbl("", "Host", "which runner registers there: github.com is GitHub; a Gitea, Forgejo or Codeberg address takes act_runner")}
+          <div class="setrow col">${lbl("", "Host", "GitHub, or act_runner for Gitea, Forgejo and Codeberg")}
           <select data-k="runner:forge" aria-label="host kind">${[["", "from the address"], ["github", "GitHub"], ["gitea", "Gitea or Forgejo"]].map(([v, t]) =>
             `<option value="${v}"${(d.runner.forge || "") === v ? " selected" : ""}>${t}</option>`).join("")}</select></div>
-          <div class="setrow col">${lbl("", "Token", "a token that may register runners there (GitHub: a fine-grained token with Self-hosted runners or Administration R/W; Gitea: an access token with write on the organization or repository). Kept root-only on the controller; no session or page can read it back")}
+          <div class="setrow col">${lbl("", "Token", "a token allowed to register runners there (GitHub: Self-hosted runners or Administration R/W; Gitea: write on the organization or repository). Kept root-only on the controller")}
           <input data-k="runner:token" type="password" value="${esc(d.runner.token || "")}" spellcheck="false" autocomplete="off"
             placeholder="paste a token" aria-label="runner token"></div>
           <div class="setrow col">${lbl("", "Extra labels", `comma-separated. builderbot, self-hosted, linux, the arch and ${n.name} are always on`)}
           <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
             placeholder="gpu, android" aria-label="labels"></div>
         </div>
-        <div class="actbar"><span class="state">the token is kept root-only on the controller; Install on the runner's row registers it</span>
+        <div class="actbar"><span class="state">Install on the runner's row registers it</span>
           <button type="button" class="stop" data-nrunnercancel>Cancel</button>
           <button type="button" class="primary" data-nrunneradd ${busyNow ? "disabled" : ""}
-            title="keep the token root-only on the controller and put the runner on this node's list">Add runner</button></div>
+            title="save the token and add the runner to this node">Add runner</button></div>
       </div></div>`
     : `<div class="addbar" data-add="runner"><button type="button" data-nrunnershow ${busyNow ? "disabled" : ""}
         title="a runner for another git host, or this one's under another address">Add runner</button></div>`;
   const body = `
-      <div class="sub">One runner per git host, GitHub's or Gitea's act_runner, each a service here; the labels decide which workflows land.</div>
+      <div class="sub">One runner per git host; its labels decide which workflows land here.</div>
       ${addbar}
       ${rows || `<div class="sub dim ndrunnone">no runner on this node</div>`}
-      ${slots.length ? `<div class="sub ndrunpin">Any BuilderBot runner answers
-        <code>self-hosted</code>; this node's name is the label that pins a job here, on every host:
+      ${slots.length ? `<div class="sub ndrunpin">This node's name pins a job here:
         <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div>` : ""}`;
   const status = !slots.length ? "none" : worst === "bad" ? "attention" : worst === "note" ? "working"
     : reps.some(r => r.busy) ? "busy" : reps.some(r => r.active) ? "listening" : "asked for";
@@ -293,12 +290,11 @@ function nodeSessionsSection(n){
   let status, cls, body;
   if (!se || typeof se !== "object"){
     [status, cls] = ["agent too old", "warn"];
-    body = `<div class="sub">This node's agent predates sessions on a node: Update agent, and
-      it reports the half that runs them.</div>`;
+    body = `<div class="sub">Update the agent: this one is too old to run sessions.</div>`;
   } else if (!se.up){
     [status, cls] = ["none", "warn"];
     body = `<div class="sub">${esc(se.why || "no session account: provision it with --session-user")}.
-      A project bound to this node keeps a dead Claude button until this half is up.</div>`;
+      No Claude session can start here until it is up.</div>`;
   } else {
     const gaps = [];
     const wsErr = (n.reported?.mounts || []).find(m => m.path === "/workspace")?.error || "";
@@ -316,16 +312,13 @@ function nodeSessionsSection(n){
     [status, cls] = gaps.length ? ["blocked", "bad"]
       : [`${list.length ? `${list.length} open` : "ready"}${shared ? ", not isolated" : ""}`, shared ? "warn" : "ok"];
     body = `
-      <div class="sub">Sessions run here as <code>${esc(se.user || "?")}</code>, on ports ${
-        se.port || "?"} and ${se.ro_port || "?"} (read-only), with ${
-        se.claude ? esc(se.claude) : "no Claude Code installed for that account yet"}.
-        A project bound to this node opens its Claude sessions on this machine.</div>
+      <div class="sub">Sessions run here as <code>${esc(se.user || "?")}</code> with ${
+        se.claude ? esc(se.claude) : "no Claude Code installed yet"}.</div>
       ${gaps.map(g => `<div class="sub bad">${esc(g)}</div>`).join("")}
-      ${!iso ? `<div class="sub dim">Whether a session here is kept to its own project is unknown: Update agent.</div>`
-        : iso.sessions ? `<div class="sub">Each session here sees only its own project: its tree, logs, cache and processes.</div>`
+      ${!iso ? `<div class="sub dim">Update the agent to know whether sessions here see only their own project.</div>`
+        : iso.sessions ? `<div class="sub">Each session sees only its own project.</div>`
         : `<div class="sub warn">Sessions here can read each other's projects: ${esc(iso.why || "this machine cannot build a session's view")}.</div>`}
-      ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}:
-        listed on the Sessions card, and ended from there</div>` : ""}
+      ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}</div>` : ""}
       ${nodeTurnsRow(n)}`;
   }
   return docSection("nodes", "sessions", "Sessions", status, body, {cls});
@@ -361,9 +354,8 @@ function nodeClaudeSection(n){
   const dead = !se?.up || me.updating || (inst && !me.behind) || stale;
   const body = `
     <div class="sub">${!se?.up ? "No session account here, so nothing runs Claude Code."
-      : inst ? `The session account runs Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out.` : "."}`
-      : "The session account has no Claude Code yet: Update installs it."}
-      The controller asks what is out after it starts and every six hours.</div>
+      : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out.` : "."}`
+      : "No Claude Code yet: Update installs it."} Checked every six hours.</div>
     ${stale ? `<div class="sub bad">${esc(staleWhy(n))}</div>` : ""}
     ${nodesClaudeSaid[n.id] ? `<div class="sub bad">${esc(nodesClaudeSaid[n.id])}</div>` : ""}
     <div class="actbar">
@@ -378,11 +370,8 @@ function nodeClaudeSection(n){
                : `install ${latest || "the current Claude Code"} here: ends the ${open} Claude session${open === 1 ? "" : "s"} open on this node first`}">Update</button>
     </div>
     <label class="ndcap"><input type="checkbox" data-nd-auto="1" ${auto ? "checked" : ""}>
-      update before a session starts here when a newer one is out</label>
-    <div class="sub dim">Update ends the Claude sessions here and starts none again: the project rows do.
-      A session cannot ask for this, and the copy it runs is pinned where its account cannot write it.
-      The box is the Settings tab's switch, one for every node: on, pressing Claude on a node that is
-      behind updates it first and asks you to press again.</div>`;
+      update before a session starts, if a newer one is out (every node)</label>
+    <div class="sub dim">Update ends the Claude sessions here; start them again from the project rows.</div>`;
   return docSection("nodes", "claude", "Claude Code", status, body, {cls});
 }
 
@@ -430,59 +419,56 @@ function nodeAdvancedSection(n, stale, inflight){
   }
   const body = `
     <div class="ndname actbar">
-      <div class="setrow col grow">${lbl("", "Name", "what this node is called everywhere here: the pickers, the project rows, and the label a runner installed from now on registers with")}
+      <div class="setrow col grow">${lbl("", "Name", "its name in the pickers, on the project rows and as a runner label")}
       <input data-k="name" value="${esc(c.draft.nameText)}" spellcheck="false" autocomplete="off"
         maxlength="60" aria-label="node name"></div>
-      <button type="button" data-nd="rename" title="rename this node; a runner already installed keeps the label it registered with until it is reinstalled">Rename</button>
+      <button type="button" data-nd="rename" title="a runner already installed keeps its old label until reinstalled">Rename</button>
     </div>
-    <div class="sub">What this container's paths are called on the node, for its daemon's
-      bind mounts. With the projects share at <code>/workspace</code> on both, leave it blank.</div>
+    <div class="sub">Only needed when the projects share is not at <code>/workspace</code> on the node.</div>
     <div class="ndpaths actbar">
-      <div class="setrow col grow">${lbl("", "Path mapping", "here:there pairs, comma-separated. Blank when the projects share is at /workspace on both")}
+      <div class="setrow col grow">${lbl("", "Path mapping", "here:there pairs, comma-separated")}
       <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
         placeholder="/workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
         aria-label="path mapping"></div>
       <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
       <button type="button" data-nd="check-paths"
-        title="check that both machines mean the same directory by the projects share">Check</button>
+        title="check both machines see the same projects directory">Check</button>
     </div>
     <div class="sub ndcheck" hidden></div>
     ${!n.reported?.sandbox ? "" : `<div class="actbar">
       <span class="state">${n.config?.lock
-        ? "System changes are locked to this node's own console: Apply storage, Apply network and a root command are refused until Unlock."
-        : "Lock keeps this node's mounts, address and root managed at the OS level: Apply storage, Apply network and a root command are refused while it is on."}</span>
+        ? "Locked: storage, network and root changes are refused from here."
+        : "Lock refuses storage, network and root changes from here."}</span>
       <button type="button" data-nd="${n.config?.lock ? "unlock" : "lock"}"
-        title="${n.config?.lock ? "let the dashboard apply storage, network and root commands here again"
-          : "refuse system changes from here: the machine's fstab, address and root stay its administrator's at the console"}">${
+        title="${n.config?.lock ? "allow them from here again"
+          : "keep them to the machine's own console"}">${
         n.config?.lock ? "Unlock" : "Lock system changes"}</button>
     </div>`}
     ${state?.settings?.settings?.debug_mode?.value ? `
     <div class="actbar nddebug">
-      <span class="state">A session here reads its own project's CI and test logs. Machine logs are
-        a grant, this node's alone, and its own counts.</span>
+      <span class="state">Which machines' logs a session here may read.</span>
       <button type="button" data-nd="debug"
         title="which nodes' agent, runner and terminal logs a session on this node may read">Debug settings${
         (n.config?.log_from || []).length ? ` (${(n.config.log_from || []).length})` : ""}</button>
     </div>` : ""}
     <div class="actbar">
-      <span class="state">Drain finishes what is running and takes nothing new: what makes the machine safe
-        to reboot. Revoke and Remove are the way out; the row and its history stay either way.</span>
+      <span class="state">Drain finishes what is running and takes nothing new.</span>
       <button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}"
         title="${n.state === "draining" ? "take new work again"
-          : "finish what is running, accept nothing new: what makes a node safe to reboot"}">${
+          : "finish what is running and take nothing new, so the machine can reboot"}">${
         n.state === "draining" ? "Undrain" : "Drain"}</button>
       ${!n.agent?.revoked ? `<button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}
         title="${stale ? esc(staleWhy(n))
           : inflight("cache-clear") ? "already clearing"
-          : "drop this node's build caches: every project's. A cold cache costs the next build time, never correctness"}">${
+          : "drop every project's build cache here; the next build refetches"}">${
         inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>` : ""}
       ${!n.agent?.revoked ? `<button type="button" class="danger" data-nd="revoke"
-        title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
+        title="cut its credential; it cannot dial in until enrolled again">Revoke</button>` : ""}
       <button type="button" class="danger" data-nd="retire"
-        title="take it off every list. Its row and its history stay: an id is never reused">Remove</button>
+        title="take it off every list; its history stays">Remove</button>
       ${n.reported?.sandbox && !n.agent?.revoked ? `<button type="button" class="danger" data-nd="uninstall"
         ${inflight("uninstall") ? "disabled" : ""}
-        title="take BuilderBot off the machine: its runners deregistered, the agent, its accounts, the mounts it used and its files gone; docker, the packages and the shares' contents stay. The row is retired when it is done">${
+        title="remove BuilderBot from the machine: the agent, its accounts, mounts and files; docker and the shares stay">${
         inflight("uninstall") ? "Uninstalling…" : "Uninstall"}</button>` : ""}
     </div>`;
   return docSection("nodes", "advanced", "Advanced",
@@ -687,13 +673,11 @@ function nodeConfSections(n){
   const saveBtn = `<button type="button" data-nsave ${c.dirty ? "" : "disabled"}
       title="keep this on the node's record: Apply is what makes the node match it">Save</button>`;
   const storage = `
-      <div class="sub">Mounts: what this node mounts at boot, applied through bb-sandbox on it${
-        d.fromNode ? `. <span class="dim">These are the ones the node reports; nothing has been
-        saved here yet, so editing and saving is what puts this page in charge of them.</span>` : ""}</div>
+      <div class="sub">Mounts at boot.${
+        d.fromNode ? ` <span class="dim">As the node reports them; save to manage them from here.</span>` : ""}</div>
       ${mounts}
       <div><button type="button" data-madd>+ mount</button></div>
-      <div class="sub">Where the agent keeps job data, toolchains, caches and built artifacts.
-        Each is its own directory; a system path is refused.</div>
+      <div class="sub">Where job data, toolchains, caches and artifacts live.</div>
       ${stores}
       <div class="actbar">
         <span class="state ndconfstate${(failedFor("storage") || [0, storStatusCls])[1] ? " " + (failedFor("storage") || [0, storStatusCls])[1] : ""}">${
@@ -778,10 +762,8 @@ function nodeConfSections(n){
     ${managed
       ? docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})
         + docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})
-      : `<div class="sub dim ndguest">Storage and Network are not offered: this node was not
-         provisioned as a sandbox (${rep.system === "darwin" ? "a Mac, enrolled as a guest" : "a container, or somebody's own machine"}), so its mounts
-         and its address are its own to change.${rep.system === "darwin"
-           ? " Its toolchains land in its own darwin scope of the store; Xcode is installed on the Mac itself." : ""}</div>`}
+      : `<div class="sub dim ndguest">Storage and Network are the machine's own: it was not
+         provisioned as a sandbox (${rep.system === "darwin" ? "a Mac, enrolled as a guest" : "a container, or somebody's own machine"}).</div>`}
   </div></div>`;
 }
 function meter(label, pct, right, title){
@@ -1013,9 +995,7 @@ function wireNodesTab(root){
     const rows = (nodesList || []).filter(x => x.kind === "agent" && x.state !== "retired");
     const have = new Set(n.config?.log_from || []);
     body.innerHTML = `<div class="field">
-        <div class="hint">A session on ${esc(n.name)} always reads its own project's CI and
-          test logs. These are the machines whose agent, runner and terminal logs it may
-          read as well, each of which is root's on that box.</div>
+        <div class="hint">Machine logs a session on ${esc(n.name)} may read, besides its own project's.</div>
         <div class="logset">${rows.map(x => `
           <div class="logdays setrow"><label class="ndcap">
             <input type="checkbox" data-grant="${esc(x.id)}"${have.has(x.id) ? " checked" : ""}>
@@ -1027,8 +1007,7 @@ function wireNodesTab(root){
         <div class="logdays setrow"><label class="ndcap">
           <input type="checkbox" id="ndDiag"${n.config?.diag ? " checked" : ""}>
           <span>The controller's diagnostics</span></label></div>
-        <div class="hint">Lets an administrator's session here run bb diag: the build, the
-          doctor, nodes, failed jobs and error lines. Never a tester's.</div>
+        <div class="hint">Lets an administrator's session here run bb diag.</div>
       </div>
       <div class="foot">
         <button type="button" class="primary" id="ndDbgSave">Save</button>
@@ -1062,8 +1041,7 @@ function wireNodesTab(root){
             <input id="ndEnUser" maxlength="32" autocomplete="off" spellcheck="false"
               value="bb"></div>
         </div>
-        <div class="hint">The node dials in with this token, which is good once and
-          for a day. What it can build is what the Tools tab installs on it afterwards.</div>
+        <div class="hint">The token is good once, for a day.</div>
       </div>
       <div class="foot">
         <button type="button" class="primary" id="ndEnGo">Mint a token</button>
@@ -1098,16 +1076,14 @@ function wireNodesTab(root){
     document.getElementById("ndTitle").textContent = `${m.name}: enroll it with one of these`;
     boxWidth(true);
     body.innerHTML = `<div class="field ndtoken">
-        <div class="hint">shown once; the controller keeps only a hash. On a
-          fresh machine, the provisioner installs docker and the agent
-          together: fetch it from here with the token, then run it.</div>
+        <div class="hint">Shown once. On a fresh Linux machine, as root:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' '${esc(m.url)}/api/v1/agent/download?what=provisioner' -o provision-linux.sh
 sudo bash provision-linux.sh --controller ${esc(m.url)} --token ${esc(m.token)}${
           m.user && m.user !== "bb" ? ` --user ${esc(m.user)}` : ""}</pre>
-        <div class="hint">on a Mac, as yourself: one directory and a launchd agent, no root:</div>
+        <div class="hint">On a Mac, as yourself:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' '${esc(m.url)}/api/v1/agent/download?what=provisioner-macos' -o provision-macos.sh
 bash provision-macos.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
-        <div class="hint">or on a machine that already has python3, the agent alone:</div>
+        <div class="hint">Or the agent alone, where python3 exists:</div>
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' ${esc(m.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
 chmod 755 /usr/local/sbin/builderbot-agent
 builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
@@ -1147,9 +1123,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const kind = kinds.find(k => k.id === vmDraft.hv) || kinds[0];
     const takes = k => (kind.wants || []).includes(k);
     body.innerHTML = `<div class="field vmform">
-        <div class="hint">A node is a machine the controller sends work to. Pick what runs
-          it and this writes the machine: sized the same everywhere, with an identity of
-          its own.</div>
+        <div class="hint">Pick where it runs; the machine is written the same everywhere.</div>
         <div class="setrow col">${lbl("vm_hv", "Runs on")}
           <select id="vm_hv" data-vk="hv">${kinds.map(k =>
             `<option value="${esc(k.id)}"${k.id === kind.id ? " selected" : ""}>${

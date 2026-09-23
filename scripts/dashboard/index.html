@@ -3118,8 +3118,7 @@ body.booting .pane>.loading{margin:auto}
       <label for="mBody">Commands</label>
       <textarea id="mBody" spellcheck="false" autocomplete="off"
                 placeholder="./gradlew clean&#10;./gradlew test"></textarea>
-      <div class="hint">One per line. They are typed into the terminal you are
-        looking at, in order, exactly as if you had typed them.</div>
+      <div class="hint">One per line, typed into the terminal in order.</div>
     </div>
     <div class="foot">
       <button id="mSave" class="primary">Save</button>
@@ -3182,7 +3181,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="field nbhead vbar"><span class="hint" id="roadmapHint">loading…</span>
       <span class="sp"></span>
       <button id="roadmapDone" type="button"
-        title="the items ticked off, with the plans they had: below the shelved ones, hidden until asked for"
+        title="the items ticked off, with their plans"
         >Finished</button>
       <button id="roadmapLog" type="button"
         title="every change to this list, by either of you, with when"
@@ -3197,7 +3196,7 @@ body.booting .pane>.loading{margin:auto}
                placeholder="something for the roadmap"></textarea>
         <button id="roadmapAdd" class="primary" type="button">Add</button>
         <button id="roadmapOrder" type="button" hidden
-          title="move things up and down: the send controls come back when you are done"
+          title="reorder; the send controls come back after"
           >Reorder</button>
       </div>
     </div>
@@ -3247,7 +3246,7 @@ body.booting .pane>.loading{margin:auto}
       <div class="field nbhead vbar"><span id="memWhere">what every session here starts with</span>
         <span class="sp"></span>
         <button type="button" id="memLog"
-          title="what the notebook changed here, with when: Claude's own memory writes are files, not events, so they are not in it">History</button>
+          title="every change to this notebook, with when">History</button>
       </div>
       <div id="rulesBox"></div>
       <div class="field histbar" id="memHistBar" hidden>
@@ -3347,7 +3346,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
     <div class="nbview" data-view="artifacts" hidden>
       <div class="field nbhead vbar"><span id="artHint">loading…</span><span class="sp"></span>
-        <button type="button" id="artSource" title="the code base as a zip: what git tracks and would track, never build output or dist/">Download source</button></div>
+        <button type="button" id="artSource" title="the code base as a zip, without build output">Download source</button></div>
       <!-- Where this project's compiling happens, or that it has nowhere.
            On this tab because it is the one somebody opens when a build did
            not appear; a project with no node is a legitimate state, so the
@@ -3392,7 +3391,7 @@ body.booting .pane>.loading{margin:auto}
       <div class="field nbhead vbar"><span id="anaHint">loading…</span>
         <span class="sp"></span>
         <button type="button" id="anaLog"
-          title="what the scanner has stopped and started saying here: the difference between one scan and the last">History</button>
+          title="what changed between the last two scans">History</button>
       </div>
       <div class="field histbar" id="anaHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the findings log">
@@ -3569,25 +3568,23 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="rnNodeField" hidden>
       <label for="rnNode">Node<span class="help" data-tip="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
       <select id="rnNode"></select>
-      <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator
-        run on this node; what it can build is what the Tools tab installed there.</div>
+      <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
     </div>
     <div class="field" id="rnBuildField">
-      <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run on that node, and the outputs a build leaves" tabindex="0">?</span></label>
+      <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves" tabindex="0">?</span></label>
       <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
              placeholder="build, e.g. ./gradlew assembleDebug">
       <input id="rnTestCmd" autocomplete="off" spellcheck="false"
              placeholder="test, e.g. ./gradlew test">
       <input id="rnOutputs" autocomplete="off" spellcheck="false"
              placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
-      <div class="hint">Run with sh -c in the snapshot's root on the node. Files
-        matching the outputs come back into dist/ with a note of what built them.</div>
+      <div class="hint">Run from the tree's root on the node; files matching the outputs land in dist/.</div>
       <!-- Where the tests run, which is this project's business and used to
            be set on the Docker tab, a machine surface it has no other reason
            to visit (R68 step 6). Only for a project that HAS a container to
            run in: rnFill hides it otherwise. -->
       <div id="rnTestWhere" hidden>
-        <label for="rnDevTest">Tests run<span class="help" data-tip="a project with a dev instance can run its tests inside it, which is the only honest place for a project that IS the container" tabindex="0">?</span></label>
+        <label for="rnDevTest">Tests run<span class="help" data-tip="tests can run inside the project's dev instance" tabindex="0">?</span></label>
         <select id="rnDevTest">
           <option value="either">in its dev instance when it is up, else on the node</option>
           <option value="only">only in its dev instance, never on the node</option>
@@ -3609,8 +3606,7 @@ body.booting .pane>.loading{margin:auto}
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
       </div>
-      <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
-        it on the notebook for your approval. Deny refuses it with a reason.</div>
+      <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
     <!-- YOURS, not the project's, and last so that is legible from the
          shape of the dialog rather than only from the words. Everything
@@ -3619,8 +3615,8 @@ body.booting .pane>.loading{margin:auto}
          uid in claude-prefs.json, applied as launch flags by bb-tty for the
          model and as git's environment for the author. -->
     <div class="field" id="rnMineField">
-      <label id="rnMineLabel">Yours on this project<span class="help" data-tip="these four are this account's alone: they change your sessions and your commits here, and nobody else's" tabindex="0">?</span></label>
-      <div class="hint">These are yours alone. Everything above is the project's, for everyone.</div>
+      <label id="rnMineLabel">Yours on this project<span class="help" data-tip="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
+      <div class="hint">Yours alone; everything above is the project's.</div>
       <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Model <select id="rnModel"
           aria-label="model your sessions here start on"></select></label>
@@ -3651,7 +3647,7 @@ body.booting .pane>.loading{margin:auto}
            not being found (the operator, 15 Sep). Same confirm, same
            /api/trash: every file kept under /workspace/.trash. -->
       <button id="rnDelete" class="danger" hidden
-        title="move this project to /workspace/.trash, every file kept; its roadmap, bugs and memories stay">Delete project…</button>
+        title="move it to .trash; everything is kept">Delete project…</button>
       <button id="rnUnlink" class="danger" hidden>Unlink</button>
     </div>
   </div>
@@ -3681,7 +3677,7 @@ body.booting .pane>.loading{margin:auto}
     <!-- Which project's notebook lists it as well: a dev radarr for a media
          project belongs under that project's Docker view, not only here. -->
     <div class="field">
-      <label for="cUnder">Show under project<span class="help" data-tip="the project whose notebook lists this container beside its own; the manager lists it either way" tabindex="0">?</span></label>
+      <label for="cUnder">Show under project<span class="help" data-tip="the project whose notebook lists this container" tabindex="0">?</span></label>
       <select id="cUnder"></select>
     </div>
     <div class="field">
@@ -3700,11 +3696,11 @@ body.booting .pane>.loading{margin:auto}
       <label for="cImage">Image</label>
       <input id="cImage" autocomplete="off" spellcheck="false"
              placeholder="lscr.io/linuxserver/radarr:latest">
-      <label for="cPorts">Ports<span class="help" data-tip="host:container, one per line. The host port is the node's, and two containers cannot hold the same one" tabindex="0">?</span></label>
+      <label for="cPorts">Ports<span class="help" data-tip="host:container, one per line" tabindex="0">?</span></label>
       <textarea id="cPorts" class="csmall" spellcheck="false" placeholder="7878:7878"></textarea>
-      <label for="cVols">Volumes<span class="help" data-tip="host:container, one per line. A relative host path is inside this container's own data directory on the node" tabindex="0">?</span></label>
+      <label for="cVols">Volumes<span class="help" data-tip="host:container, one per line; a relative host path is inside this container's data directory" tabindex="0">?</span></label>
       <textarea id="cVols" class="csmall" spellcheck="false" placeholder="./config:/config&#10;/mnt/user/media:/media"></textarea>
-      <label for="cEnvLines">Environment<span class="help" data-tip="KEY=VALUE, one per line. These go in the compose file; the Environment tab is the .env file it can read with ${VAR}" tabindex="0">?</span></label>
+      <label for="cEnvLines">Environment<span class="help" data-tip="KEY=VALUE, one per line, written into the compose file" tabindex="0">?</span></label>
       <textarea id="cEnvLines" class="csmall" spellcheck="false" placeholder="PUID=99&#10;PGID=100&#10;TZ=Etc/UTC"></textarea>
       <label for="cRestart">Restart</label>
       <select id="cRestart">
@@ -3713,24 +3709,19 @@ body.booting .pane>.loading{margin:auto}
         <option value="on-failure">on failure: only when it exits badly</option>
         <option value="no">no: never on its own</option>
       </select>
-      <div class="hint">This writes the Compose tab as you type. Edit that
-        directly for anything this form does not cover, and it stops being
-        rewritten.</div>
+      <div class="hint">Writes the Compose tab as you type; edit that directly for anything more.</div>
     </div>
     <div class="field" id="cYmlField">
       <label for="cYml">docker-compose.yml</label>
       <textarea id="cYml" spellcheck="false"
                 placeholder="services:&#10;  app:&#10;    image: lscr.io/linuxserver/radarr:latest&#10;    restart: unless-stopped&#10;    environment:&#10;      - PUID=${PUID}&#10;      - PGID=${PGID}&#10;      - TZ=${TZ}&#10;    ports:&#10;      - &quot;7878:7878&quot;&#10;    volumes:&#10;      - ./config:/config"></textarea>
-      <div class="hint">Checked by compose itself before it is saved. Relative
-        bind sources resolve against this container's own data directory, which
-        both this container and the daemon can see.</div>
+      <div class="hint">Checked by compose before it is saved; relative bind sources are inside this container's data directory.</div>
     </div>
     <div class="field" id="cEnvField" hidden>
       <label for="cEnv">.env</label>
       <textarea id="cEnv" spellcheck="false"
                 placeholder="PUID=99&#10;PGID=100&#10;TZ=America/New_York"></textarea>
-      <div class="hint">Read by the compose file above as ${VAR}. Kept beside
-        it in /config, never in a project.</div>
+      <div class="hint">The .env file the compose file reads as ${VAR}.</div>
     </div>
     <div class="field" id="cErrWrap" hidden><div class="hint bad" id="cErr"></div></div>
     <div class="foot">
@@ -3757,19 +3748,16 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="dnNodeField" hidden>
       <label for="dnNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
       <select id="dnNode"></select>
-      <div class="hint">Defaults to this project's node from its settings
-        dialog; an instance stays bound to the node it was created on.</div>
+      <div class="hint">The project's node unless picked; an instance stays where it was made.</div>
     </div>
     <!-- Which branch it builds from. Offered here as well as on the row
          because this is the gesture that makes a SECOND instance, and a
          second instance is usually a second branch: a pull request beside
          the one that is up. -->
     <div class="field" id="dnRefField" hidden>
-      <label for="dnRef">Build from<span class="help" data-tip="a worktree of that branch beside the project; the project's own checkout is not touched" tabindex="0">?</span></label>
+      <label for="dnRef">Build from<span class="help" data-tip="built from a worktree of that branch" tabindex="0">?</span></label>
       <select id="dnRef"></select>
-      <div class="hint">Its own worktree, so the project's checkout stays
-        where it is. Two instances of one project publish the same ports,
-        so the second needs its own in its env.</div>
+      <div class="hint">A second instance of one project needs its own ports in its env.</div>
     </div>
     <!-- The env, seeded from the project's .env.example. Here rather than
          after the first build: without it the build runs, stops at the gate
@@ -3821,9 +3809,7 @@ body.booting .pane>.loading{margin:auto}
     <!-- In a .field like every other line in every other modal here: that is
          where the band inset lives, and a bare .hint sat flush against the
          box while the list below it was indented. -->
-    <div class="field"><div class="hint">A deleted project moves to
-      <code>.trash</code> on the projects share with its notebook, so putting
-      it back brings everything.</div></div>
+    <div class="field"><div class="hint">Deleted projects sit in <code>.trash</code> with their notebooks; Put back restores everything.</div></div>
     <div id="tList" class="field"></div>
     <div class="foot"><span class="sp"></span>
       <button type="button" id="tClose">Close</button></div>
@@ -3900,7 +3886,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="pNodeField" hidden>
       <label for="pNode">Node</label>
       <select id="pNode"></select>
-      <div class="hint">Builds, tests, CI and Claude sessions run there; the settings dialog changes it later.</div>
+      <div class="hint">Builds, tests, CI and Claude sessions run there.</div>
     </div>
     <!-- What a session may enter into the notebook (roadmap #27), asked
          here as well as in the settings dialog so the choice is in front of
@@ -3918,14 +3904,13 @@ body.booting .pane>.loading{margin:auto}
         <label class="pick">Fill in build and test <select id="pGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
       </div>
-      <div class="hint">Auto lands what a session adds, marked as its own. Ask holds
-        it for your approval. Deny refuses it with a reason.</div>
+      <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
     <!-- A code base somebody already has, for a fresh local repo: unpacked
          into the new directory before git init. Uploaded on Create rather
          than on choosing, so a change of mind costs nothing. -->
     <div class="field" id="pArchiveField">
-      <label for="pArchive">Start from an archive<span class="help" data-tip="optional. zip or tar, unpacked into the new directory before git init; a single top-level folder inside is dropped" tabindex="0">?</span></label>
+      <label for="pArchive">Start from an archive<span class="help" data-tip="optional: zip or tar, unpacked into the new project; a single top-level folder is dropped" tabindex="0">?</span></label>
       <!-- The browser's own chooser is hidden: its button wears the browser's
            skin, not the page's. A button of ours opens it, and the name of
            what was picked stands beside the button. -->
@@ -3933,8 +3918,7 @@ body.booting .pane>.loading{margin:auto}
              accept=".zip,.tar,.tgz,.tar.gz,.tbz2,.tar.bz2,.txz,.tar.xz,application/zip,application/gzip,application/x-tar">
       <div class="filepick"><button type="button" id="pArchivePick">Choose an archive</button>
         <span class="dim" id="pArchiveName">none picked</span></div>
-      <div class="hint">zip or tar (gz, bz2, xz), unpacked into the new directory
-        before git init; a single top-level folder inside is dropped.</div>
+      <div class="hint">zip or tar; a single top-level folder is dropped.</div>
     </div>
     <!-- Which host, because a hostname does not say what is running on it: a
          Gitea at git.example.com looks exactly like a Forgejo or a bare git
@@ -3942,7 +3926,7 @@ body.booting .pane>.loading{margin:auto}
          knows. Picked once per host and remembered against the host, so the
          second project on the same server is not asked again. -->
     <div class="field" id="pForgeField" hidden>
-      <label for="pForge">Host<span class="help" data-tip="what is running on the server; it decides whether a token can be checked and a missing repository created" tabindex="0">?</span></label>
+      <label for="pForge">Host<span class="help" data-tip="what the server runs" tabindex="0">?</span></label>
       <!-- One question, so one label and one hint: which host, and where it
            is. Both controls take the row's width like every other field in
            this dialog, so the pair reads as one answer being given. -->
@@ -3994,7 +3978,7 @@ body.booting .pane>.loading{margin:auto}
       </div>
     </div>
     <div class="field" id="pTokenField" hidden>
-      <label for="pToken">Access token<span class="help" data-tip="optional. A token for this project only, kept in /config on the controller and named, never copied, in this repo's git config. A session can push with it and cannot read it, the same bargain as a shielded ssh key" tabindex="0">?</span></label>
+      <label for="pToken">Access token<span class="help" data-tip="optional: a token for this project only, kept on the controller; a session can push with it but not read it" tabindex="0">?</span></label>
       <input id="pToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
       <div class="hint" id="pTokenHint"></div>
@@ -4041,7 +4025,7 @@ body.booting .pane>.loading{margin:auto}
   </svg>
   <h1>BuilderBot</h1>
   <span class="meta host" id="host"></span>
-  <span class="pill" id="devtag" title="dev features, the ones not yet vetted, are offered on this dashboard (Debug settings)" hidden>dev</span>
+  <span class="pill" id="devtag" title="unvetted features are offered here" hidden>dev</span>
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
   <!-- The build stamp, as a control. It used to be a bare span whose detail
