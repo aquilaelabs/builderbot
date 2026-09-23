@@ -123,7 +123,7 @@ function drawPendingModal(j){
     const bits = [];
     if (r.kind === "roadmap" && r.verb === "add"){
       (a.steps || []).forEach((st, i) => bits.push(`${i + 1}. ${st}`));
-    } else if (r.kind === "roadmap"){ bits.push(a.text || ""); }
+    } else if (r.kind === "roadmap"){ bits.push(a.text || a.why || ""); }
     else if (r.kind === "bugs" && r.verb === "add"){
       for (const k of ["area", "repro", "expected", "actual", "notes"]) if (a[k]) bits.push(`${k}: ${a[k]}`);
     } else if (r.kind === "bugs"){ for (const k of Object.keys(a)) if (!["bug_id", "act"].includes(k)) bits.push(`${k}: ${a[k]}`); }

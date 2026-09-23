@@ -477,6 +477,7 @@ bb roadmap show N     one item in full: its details, its steps and theirs (N is 
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` abandoned
 bb roadmap restore N  put a dropped one back from the history, as it was
 bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
+bb roadmap unshelve N [WHY]   ask for one back: held for a person on the project to approve
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
 bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for one step
 bb roadmap info N [M] "..."           attach the technical details to one, or step M
@@ -2271,8 +2272,13 @@ it applies to an item, never to one step of a plan, because the thing you
 have decided not to do now is the whole plan. Shelved items do not count
 towards the number on the project row. A session can shelve (something turns
 out to be blocked, and saying so on the row beats saying it in a reply nobody
-re-reads), but cannot unshelve: taking one off reverses a decision it was not
-told the reason for.
+re-reads), and can ask for one back with `bb roadmap unshelve N WHY`: taking
+one off reverses a decision it was not told the reason for, so the request
+is held on the notebook with its reason, whatever the roadmap gate says, and
+a user or administrator on the project approves or denies it there.
+**Finished** at the top of the tab shows the items ticked off, with the
+plans they had, below the shelved ones; they are hidden until asked for,
+because a list is read to find out what is left.
 
 **A Claude tab does not come back on its own after a restart.** The
 conversation ended with the container; the transcript did not, so the

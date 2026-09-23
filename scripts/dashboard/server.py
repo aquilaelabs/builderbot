@@ -5770,13 +5770,18 @@ class Handler(BaseHTTPRequestHandler):
             # decision the operator made for reasons the session was not told,
             # so it is theirs. The CLI only ever passed on=True; this door
             # took whatever it was handed.
+            # A session asking for one back is held for a person on the
+            # project (R78): roadmap.shelve holds it with its reason.
             on = bool(req.get("on", True))
-            if me.get("session") and not on:
-                return self._json({"error": "taking an item off the shelf is the operator's: a "
-                                            "session can park one and say why, and one tap in "
-                                            "the roadmap panel is what brings it back"}, 403)
             r = roadmap.shelve(name, req.get("id"), on,
-                            by="claude" if me.get("session") else "you", who=who)
+                            by="claude" if me.get("session") else "you", who=who,
+                            why=field(req, "why"))
+            if r.get("held"):
+                return self._json(r | self._roadmap_state(name, live))
+        elif act == "finished":
+            # The ticked-off items, with their plans, for the Roadmap tab's
+            # toggle (R78): fetched when it is turned on, never in the poll.
+            return self._json({"finished": roadmap.finished(name, limit=req.get("limit"))})
         elif act == "history":
             # Fetched only when the panel is showing it. It rides in no poll:
             # a log nobody has opened is bytes on every status request for
@@ -5811,6 +5816,9 @@ class Handler(BaseHTTPRequestHandler):
         # running here" with their own session open in the next tab.
         session = users.tmux_prefix(self._who()) + roadmap.claude_session(name)
         return {"items": roadmap.items(name),
+                # How many are finished, for the toggle's label (R78): the
+                # items themselves come when it is pressed.
+                "finished_n": len(roadmap.finished(name)),
                 # What the poll compares against, handed back with every read
                 # AND every write, so this panel's own change never reads as
                 # somebody else's on the next poll, and a change that lands

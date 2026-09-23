@@ -271,4 +271,25 @@ ok(ap.status === 200 && ap.body.approved?.length === 2
 ok(/no rule is waiting/.test(bb('rules', 'pending')),
    'and bb rules pending says so');
 
-await done(browser);
+await done(browser);// A session asking for an item back off the shelf (R78) is held whatever the
+// gate says, with its reason, and a person's Approve replays it: a decision
+// with a notification behind it, not a gate on creation.
+{
+  const added = await post('/api/roadmap', { project: 'alpha', action: 'add', text: 'a parked plan' });
+  const id = added.body.item.id;
+  bb('roadmap', 'shelve', String(id));
+  const asked = bb('roadmap', 'unshelve', String(id), 'the blocker is gone');
+  ok(/asked to take R\d+ off the shelf: held for approval/.test(asked) && !!roadmapItems().find(r => r.id === id)?.shelved,
+     `a session asking to unshelve is held, and the item stays shelved meanwhile (${asked.trim().slice(0, 60)}…)`);
+  const rec = waiting().find(r => r.verb === 'unshelve');
+  ok(!!rec && rec.number === id && /take R\d+ off the shelf: the blocker is gone/.test(rec.summary),
+     `...as a pending record carrying the reason (${rec?.summary})`);
+  const ap = await post('/api/pending', { project: 'alpha', action: 'approve', ids: [rec.id] });
+  ok(ap.status === 200 && (ap.body.approved || []).length === 1 && !roadmapItems().find(r => r.id === id)?.shelved,
+     `the operator's Approve takes it off the shelf (${JSON.stringify(ap.body).slice(0, 80)})`);
+  bb('roadmap', 'done', String(id));
+  ok(!roadmapItems().some(r => r.id === id),
+     '...and the request never locked the item: a session ticks it off as usual afterwards');
+}
+
+

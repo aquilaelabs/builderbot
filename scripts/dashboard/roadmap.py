@@ -85,7 +85,10 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None,
 # What a held roadmap call replays as. Only what a session can ask for
 # through bb is here: add, and the three follow-ups that ride behind a held
 # add. Everything else on a held item is refused by bb with "still waiting".
-_REPLAY = {"add": "add", "info": "set_info", "step-add": "add_step", "edit": "edit"}
+_REPLAY = {"add": "add", "info": "set_info", "step-add": "add_step", "edit": "edit",
+           # A session asking for an item back off the shelf (R78): held as a
+           # request whatever the gate says, and a person's Approve replays it.
+           "unshelve": "shelve"}
 
 
 def replay(project, verb, args):
@@ -732,7 +735,7 @@ def _edit(project, item_id, change, by="you", who=""):
     return out
 
 
-def shelve(project, item_id, on=True, by="you", who=""):
+def shelve(project, item_id, on=True, by="you", who="", why=""):
     """Put an item aside without taking it off, or bring it back.
 
     The state between "do this" and "we are not doing this": a reason to keep
@@ -743,7 +746,27 @@ def shelve(project, item_id, on=True, by="you", who=""):
     Physically to the bottom, not sorted there on the way out: the stored
     order is the displayed order everywhere else here, and two orders is how
     a rearrangement lands somewhere nobody pointed at.
+
+    A session may shelve, and may ASK for one back (R78): taking an item off
+    the shelf reverses a decision it was not told the reason for, so its
+    request is held for a person on the project, with its reason, and lands
+    when they approve it, whatever the roadmap gate says. That is a
+    notification with a decision behind it, not a gate on creation, which
+    is why it is held here and not in the add path.
     """
+    why = _clean(why or "")
+    if by == "claude" and not on and not pending.replaying():
+        item = _find(items(project), _int(item_id))
+        if item is None:
+            return {"error": "no such item"}
+        if not item.get("shelved"):
+            return {"error": "it is already off the shelf"}
+        label = ids.label("roadmap", item["id"])
+        return pending.hold(project, "roadmap", "unshelve",
+                            {"item_id": item["id"], "on": False, "why": why},
+                            f"take {label} off the shelf" + (f": {why}" if why else ""),
+                            number=item["id"])
+
     def change(row, rows):
         if bool(on) == bool(row.get("shelved")):
             return {"error": "it is already " + ("shelved" if on else "off the shelf")}
@@ -758,7 +781,8 @@ def shelve(project, item_id, on=True, by="you", who=""):
             rows.insert(sum(1 for r in rows if not r.get("shelved")), row)
         return {"ok": True, "item": row,
                 "log": {"act": "shelved" if on else "unshelved",
-                        "id": row["id"], "text": row["text"]}}
+                        "id": row["id"], "text": row["text"],
+                        **({"why": why} if why else {})}}
     return _edit(project, item_id, change, by, who=who)
 
 
@@ -777,11 +801,36 @@ def tick(project, item_id, by="you", who=""):
     """
     def change(row, rows):
         rows.remove(row)
+        # The whole row rides in the log, as a dropped one's does: the Roadmap
+        # tab shows finished items behind a toggle (R78), with their steps and
+        # details, and the words alone would have been a line with no plan.
         return {"ok": True, "item": row,
                 "log": {"act": "done", "id": row["id"], "text": row["text"],
+                        "row": copy.deepcopy(row),
                         **({"steps": len(row.get("steps") or [])}
                            if row.get("steps") else {})}}
     return _edit(project, item_id, change, by, who=who)
+
+
+def finished(project, limit=None):
+    """The items ticked off, newest first, each as it was when it went:
+    the "done" events in the history that carry the row (a tick since 23
+    Sep) or the words alone (an older one). One entry per item, the newest
+    tick of it, and the Roadmap tab shows them below the shelved ones,
+    hidden until asked for."""
+    seen, out = set(), []
+    for e in history(project):
+        if e.get("act") != "done" or e.get("step") is not None:
+            continue
+        i = _int(e.get("id"))
+        if i is None or i in seen:
+            continue
+        seen.add(i)
+        row = copy.deepcopy(e["row"]) if isinstance(e.get("row"), dict) else {"id": i, "text": e.get("text", ""), "steps": []}
+        row.update(id=i, done_at=e.get("at", 0), done_by=e.get("by", ""))
+        out.append(row)
+    n = _int(limit)
+    return out[:n] if n else out
 
 
 def edit(project, item_id, text, step=None, by="you", was=None, who=""):

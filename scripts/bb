@@ -2066,7 +2066,23 @@ elif op == "shelve":
         print("usage: bb roadmap shelve <n>", file=sys.stderr); sys.exit(1)
     n = ident(rest[0]); behind(n, None, None, None)
     r = roadmap.shelve(proj, n, True, by="claude", who=_who); bail(r)
-    print(f"shelved {R(n)}; say in your reply why, the operator unshelves it")
+    print(f"shelved {R(n)}; say in your reply why. `bb roadmap unshelve {R(n)} WHY` asks for it back")
+elif op == "unshelve":
+    # The other direction is a request, not a change (R78): taking one off
+    # the shelf reverses a decision the operator made for reasons the session
+    # was not told, so it is held with the reason for a person on the
+    # project, whatever the gate says, and lands when they approve it.
+    if not rest:
+        print("usage: bb roadmap unshelve <n> [WHY]", file=sys.stderr); sys.exit(1)
+    n = ident(rest[0])
+    r = roadmap.shelve(proj, n, False, by="claude", who=_who,
+                       why=" ".join(rest[1:]).strip()); bail(r)
+    if r.get("held"):
+        print(f"asked to take {R(n)} off the shelf: held for approval on the notebook, "
+              "where a person on the project allows or denies it. Carry on with something "
+              "else meanwhile")
+    else:
+        print(f"{R(n)} is off the shelf")
 elif op == "edit":
     # A plan written last week can describe a design that has since moved.
     # Correcting it is better than working around it, and the history keeps
@@ -2241,7 +2257,7 @@ elif op in ("history", "log"):
 else:
     print("usage: bb roadmap [list|show N|add TEXT [--step ...]|edit N TEXT|"
           "info N [M] TEXT|step add|edit|rm|mv|done|info ...|mv N up|down|done N|"
-          "rm N [WHY]|restore N|shelve N|begin|commit|revert|pending|"
+          "rm N [WHY]|restore N|shelve N|unshelve N [WHY]|begin|commit|revert|pending|"
           "history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)
     sys.exit(1)

@@ -26,6 +26,8 @@
 - bb map addresses reads the roadmap's file-and-line details (or any text) and says which addresses moved away from the name beside them and which names are gone, so a plan's addresses are corrected rather than trusted (13f8015)
 - A new project is mapped in the background the moment its tree exists, from a fresh repo, a clone or an archive; the row says so, and a Claude session on it waits the seconds it takes so its first question about the tree is answered from the index (9b50432)
 - The new-project dialog asks what a session may enter into the notebook (roadmap, bugs, rules, build and test), auto by default, and writes it with the project (98cd719)
+- The Roadmap tab shows finished items behind a Finished toggle at the top, below the shelved ones, with the plans they had; hidden until asked for (d9596e8)
+- A session can ask for a shelved roadmap item back with bb roadmap unshelve N WHY; the request is held on the notebook with its reason, whatever the gate says, and a user or administrator on the project approves or denies it (d9596e8)
 
 ### Changed
 

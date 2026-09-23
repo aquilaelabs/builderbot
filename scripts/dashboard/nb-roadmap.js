@@ -269,7 +269,9 @@ function nbRoadmapView({$, nb}){
             esc(j.session)} is running, so the arrows are live`
         : `${left} still to send${parked ? `, ${parked} shelved` : ""}: no session `
           + `is running here, so nothing can be sent yet`;
-    $("roadmapField").hidden = !rows.length;
+    $("roadmapField").hidden = !rows.length && !j.finished_n;
+    $("roadmapDone").textContent = j.finished_n ? `Finished (${j.finished_n})` : "Finished";
+    $("roadmapDone").hidden = !j.finished_n && !nb.roadmapDoneOn;
     if (nb.roadmapLogOn) nb.drawHistory();
     {
     $("roadmapList").innerHTML = rows.map(r =>
@@ -963,6 +965,44 @@ function nbRoadmapView({$, nb}){
       e.preventDefault(); e.stopPropagation(); e.target.value = "";
     }
   };
+
+  // ---- the finished ones (R78) --------------------------------------------
+  // Ticked-off items leave the list (a list is read to find out what is
+  // left) and live in the history with their plans. The toggle at the top
+  // fetches them and draws them below the shelved ones, struck through,
+  // with no arrows: there is nothing left to send. Off by default, and off
+  // again when the notebook reopens.
+  async function loadFinished(){
+    let j;
+    try{
+      const r = await postJSON("/api/roadmap", {project: nb.memProj, action: "finished"});
+      j = await r.json();
+    }catch(e){ j = {error: String(e)}; }
+    nb.roadmapDone = j.finished || [];
+    drawFinished();
+  }
+  function drawFinished(){
+    const host = $("roadmapDoneList");
+    if (!host) return;
+    if (!nb.roadmapDoneOn){ host.innerHTML = ""; host.hidden = true; return; }
+    host.hidden = false;
+    const rows = nb.roadmapDone;
+    if (rows === null){ host.innerHTML = `<div class="loading">loading…</div>`; return; }
+    if (!rows.length){ host.innerHTML = `<div class="empty">nothing finished yet</div>`; return; }
+    const when = t => t ? fmtTime(t * 1000, {day: "2-digit", month: "short"}) : "";
+    host.innerHTML = rows.map(r => `<div class="grp done" data-done="${r.id}">
+      <div class="roadmap"><span class="rid">R${r.id}</span> <span class="txt">${esc(r.text || "")}</span>
+        <span class="dim"> · done${r.done_by ? " by " + esc(r.done_by) : ""}${r.done_at ? " " + esc(when(r.done_at)) : ""}</span></div>${
+      (r.steps || []).map((st, i) => `<div class="roadmap step"><span class="rid">${i + 1}.</span> <span class="txt">${esc(st.text || "")}</span></div>`).join("")}
+    </div>`).join("");
+  }
+  $("roadmapDone").onclick = () => {
+    nb.roadmapDoneOn = !nb.roadmapDoneOn;
+    $("roadmapDone").classList.toggle("on", nb.roadmapDoneOn);
+    if (nb.roadmapDoneOn && nb.roadmapDone === null) loadFinished();
+    else drawFinished();
+  };
+  nb.drawFinished = drawFinished;
 
   return {cancelSend, drawSendBox, flushPending, loadRoadmap, postRoadmap, redrawRoadmap, revertPending, sendBoxEl, shutSendBoxes};
 }

@@ -520,10 +520,12 @@ bbRoadmap('mv', c1.id, 'down');
 ok(JSON.stringify(orderNow()) === JSON.stringify(wasOrder), '...and back down');
 bbRoadmap('shelve', c1.id);
 ok(read().projects.alpha.at(-1).shelved, 'bb roadmap shelve parks one');
-ok(/no unshelve|usage: bb roadmap/.test(
-     (() => { try { return bbRoadmap('unshelve', c1.id); }
-              catch (e) { return String(e.stderr || e); } })()),
-   '...and there is no unshelve for a session; that tap is the operator\'s');
+// ...and asking for it back is a request (R78): held for a person on the
+// project with its reason, the item still shelved until they answer. The
+// pending suite walks the approval; here the ask and the hold.
+ok(/asked to take R\d+ off the shelf: held for approval on the notebook/.test(bbRoadmap('unshelve', c1.id, 'the blocker is gone'))
+   && read().projects.alpha.at(-1).shelved,
+   '...and a session asking to unshelve is held for approval, the item still shelved');
 await post({ action: 'shelve', project: 'alpha', id: Number(c1.id), on: false });
 
 // ---- batches -------------------------------------------------------------
@@ -874,6 +876,20 @@ const finId = String(fin.body.item.id);
 bbRoadmap('done', finId);
 ok(!read().projects.alpha.some(r => String(r.id) === finId),
    'bb roadmap done takes the item off the list rather than fading it in place');
+// ...and the Roadmap tab can still show it (R78): Finished at the top, off by
+// default, draws the ticked-off items with their plans below the list.
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(() => /Finished \(\d+\)/.test(document.querySelector('.nb #roadmapDone')?.textContent || ''),
+                           null, { timeout: 10000 });
+ok(await page.$eval('.nb #roadmapDoneList', e => e.hidden), 'the finished items are hidden until asked for');
+await page.click('.nb #roadmapDone');
+await page.waitForSelector(`.nb #roadmapDoneList .grp.done[data-done="${finId}"]`, { timeout: 10000 });
+ok(await page.$eval(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] .txt`, e => e.textContent) === 'a job to finish',
+   'Finished shows the ticked-off item, struck through, with no arrow');
+ok(await page.evaluate(() => !!(document.querySelector('.nb #roadmapList').compareDocumentPosition(document.querySelector('.nb #roadmapDoneList')) & Node.DOCUMENT_POSITION_FOLLOWING)),
+   '...below the live and shelved ones');
+await page.click('.nb #roadmapDone');
+ok(await page.$eval('.nb #roadmapDoneList', e => e.hidden), '...and the toggle folds them away again');
 const afterDone = bbRoadmap('history');
 ok(new RegExp(`done\\s+R${finId}\\s+a job to finish`).test(afterDone),
    '...and writes it into the history, under the word a session used');

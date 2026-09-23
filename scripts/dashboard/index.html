@@ -1758,6 +1758,10 @@ pre.diff .d-ctx{color:var(--dim)}
    opposite claim. The whole row dims, steps included, because a shelved plan
    is shelved entire. */
 .grp.shelved{opacity:.45}
+/* Finished items (R78): below the shelved ones, behind the Finished toggle,
+   struck through and quiet, with no arrows: there is nothing left to send. */
+.grp.done{opacity:.55}
+.grp.done .roadmap .txt{text-decoration:line-through}
 .grp.shelved .roadmap .txt{font-style:italic}
 .grp.shelved .who{opacity:.7}
 .roadmap .go,.roadmap .x,.roadmap .rm,.roadmap .ed{flex:0 0 auto;align-self:flex-start}
@@ -3174,6 +3178,9 @@ body.booting .pane>.loading{margin:auto}
          the eye should not have to look in a different place per tab. -->
     <div class="field nbhead vbar"><span class="hint" id="roadmapHint">loading…</span>
       <span class="sp"></span>
+      <button id="roadmapDone" type="button"
+        title="the items ticked off, with the plans they had: below the shelved ones, hidden until asked for"
+        >Finished</button>
       <button id="roadmapLog" type="button"
         title="every change to this list, by either of you, with when"
         >History</button>
@@ -3216,7 +3223,10 @@ body.booting .pane>.loading{margin:auto}
          #roadmapList, which is why reading it meant the list going away; both
          are on screen at once now, one of them in the sheet. -->
     <div class="field" id="roadmapHist" hidden></div>
-    <div class="field" id="roadmapField"><div id="roadmapList"></div></div>
+    <div class="field" id="roadmapField"><div id="roadmapList"></div>
+      <!-- The finished ones (R78), below the shelved: drawn only while the
+           Finished toggle above is on. -->
+      <div id="roadmapDoneList" hidden></div></div>
     </div>
     <!-- What Claude remembers, on its own tab: a handful of files nobody
          edits, on screen because they are the one input to a session nobody
@@ -7397,6 +7407,7 @@ function makeNotebook(project){
     nb.tstSuite = ""; nb.tstFlagged = nb.tstUndoc = false;
     nb.roadmapLogOn = false;
     nb.roadmapLog = null;
+    nb.roadmapDoneOn = false; nb.roadmapDone = null;
     $("histFind").value = "";
     cancelSend();
     $("roadmapText").value = "";
