@@ -91,6 +91,9 @@ function foldHeight(el, from, to, done){
 // the cards below ride along frame by frame instead of jumping.
 function slideCard(el, closing){
   if (noMotion()){ el.classList.toggle("closed", closing); return; }
+  if (getComputedStyle(el).getPropertyValue("--fold").trim() === "fade"){
+    fadeFoldCard(el, closing); return;
+  }
   // Any entrance animation inside this card ends here. contentIn starts at
   // opacity 0 and runs 180ms (the same as the fold), so a body repainted in
   // the moment before a click spent the whole collapse invisible, and the card
@@ -113,6 +116,53 @@ function slideCard(el, closing){
     if (closing) el.classList.add("closed");
     el.style.overflow = "";
   };
+}
+
+// The fold a scheme asks for with `--fold: fade` on the card (nostromo):
+// the body fades out where it stands and THEN the gap closes, and on open the
+// gap opens first and the body fades in. Two phases because the body never
+// slides: a decal drawn in the card's corner sliding up into the title bar
+// read as a glitch, and a fade leaves the mark where it was until it is gone.
+// The cards below still ride on the height tween, the same as the plain fold.
+// A second click mid-way cancels whatever phase is running, in the subtree
+// too. A cancelled fold's clean-up runs a microtask AFTER the newer fold has
+// set its own state, so it clears only while it still owns the card (the
+// token), or a re-open would run its gap phase with the body showing.
+// `fading` on the card is for the plate mark, a pseudo-element the script
+// cannot reach: the stylesheet fades it on the class.
+function fadeFoldCard(el, closing){
+  el.querySelectorAll(".justpainted").forEach(n => n.classList.remove("justpainted"));
+  const body = [...el.children].filter(n => n.tagName !== "H2");
+  const from = el.offsetHeight;
+  el.getAnimations({subtree: true}).forEach(a => a.cancel());
+  const token = el.fold = {};
+  // Before the measuring flip: the mark's fade is a transition, and a class
+  // that lands after a style flush is a second transition, back the way
+  // it came.
+  el.classList.add("fading");
+  el.classList.toggle("closed", closing);
+  const to = el.offsetHeight;
+  if (closing) el.classList.remove("closed");
+  const dim = v => body.forEach(n => { n.style.opacity = v; });
+  const clear = () => {
+    if (el.fold !== token) return;
+    el.style.overflow = ""; dim(""); el.classList.remove("fading");
+  };
+  const fade = (a, b) => {
+    const runs = body.map(n => n.animate([{opacity: a}, {opacity: b}], {duration: 120, easing: "ease"}));
+    return Promise.all(runs.map(r => r.finished));
+  };
+  const gap = () => {
+    el.style.overflow = "hidden";
+    const anim = el.animate([{height: from + "px"}, {height: to + "px"}], {duration: 180, easing: "ease"});
+    return anim.finished;
+  };
+  const run = closing
+    ? fade(1, 0).then(() => { dim(0); return gap(); }).then(() => { el.classList.add("closed"); clear(); })
+    : (dim(0), gap()).then(() => { dim(""); el.classList.remove("fading"); return fade(0, 1); }).then(clear);
+  // A cancel rejects `finished`: the newer fold owns the card now, and only
+  // the inline styles this one wrote are put back.
+  run.catch(clear);
 }
 
 // A <details>, which has to be open while it shrinks or there is nothing to

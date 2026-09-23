@@ -92,7 +92,7 @@ const SURFACE = [
   'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
   'setProjectPinned', 'setView', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',
-  'signIn', 'signOut', 'slideBody', 'slideCard', 'slideDetails',
+  'signIn', 'signOut', 'slideBody', 'slideCard', 'fadeFoldCard', 'slideDetails',
   'slideHidden', 'slidePanel', 'swapBox', 'startCardDrag', 'startClaude', 'startDrag',
   'tabLabel', 'tabLabels', 'tabTitle', 'tipOff', 'tipify', 'toggleBell',
   'toggleCard', 'togglePin', 'toggleUiMenu', 'unveil', 'updateArrows',

@@ -92,6 +92,42 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
        radii.open} in ${radii.card})`);
   ok(inside(radii.shut, radii.card),
      `...and the bottom too once the header IS the card, which is what closed means (${radii.shut})`);
+  // Nostromo's fold is two phases (--fold: fade): on open the gap opens
+  // first with the body held invisible, then the body fades in; on close
+  // the body fades where it stands and only then does the gap close. Each
+  // is read the instant after its click, which is deterministic: the first
+  // phase starts in the click's own task and runs 120ms or more. The card
+  // is closed here from the block above, so open comes first. Then the end
+  // state: the body's inline opacity and the fading class both gone, so a
+  // card is never left blank by its own fold.
+  const phaseOf = () => page.evaluate(() => {
+    const c = document.querySelector('.card[data-card="doctor"]');
+    const own = c.getAnimations().length;
+    return { own, body: [...c.children].filter(n => n.tagName !== 'H2')
+               .map(n => n.getAnimations().length).reduce((a, b) => a + b, 0),
+             fading: c.classList.contains('fading') };
+  });
+  const settle = shut => page.waitForFunction(s => {
+    const c = document.querySelector('.card[data-card="doctor"]');
+    return c.classList.contains('closed') === s && !c.getAnimations({ subtree: true }).length;
+  }, shut, { timeout: 8000 });
+  await page.click('.card[data-card="doctor"] h2');
+  const opening = await phaseOf();
+  ok(opening.own === 1 && opening.body === 0 && opening.fading,
+     `under nostromo a card opens its gap first, the body not yet fading (${JSON.stringify(opening)})`);
+  await settle(false);
+  await page.click('.card[data-card="doctor"] h2');
+  const closing = await phaseOf();
+  ok(closing.own === 0 && closing.body > 0 && closing.fading,
+     `...and closes by fading the body first, with no height tween yet (${JSON.stringify(closing)})`);
+  await settle(true);
+  const settled = await page.evaluate(() => {
+    const c = document.querySelector('.card[data-card="doctor"]');
+    return { fading: c.classList.contains('fading'), overflow: c.style.overflow,
+             opacity: [...c.children].filter(n => n.tagName !== 'H2').map(n => n.style.opacity).join('') };
+  });
+  ok(!settled.fading && settled.overflow === '' && settled.opacity === '',
+     `...and leaves nothing behind once it has settled (${JSON.stringify(settled)})`);
   await page.evaluate(() => {
     document.querySelector('.card[data-card="doctor"] h2').click();
     delete document.documentElement.dataset.theme;

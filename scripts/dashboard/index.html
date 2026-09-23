@@ -213,7 +213,7 @@ html[data-theme="ash"],.sw[data-theme="ash"]{
 /* ---- Nostromo -----------------------------------------------------------
    The one scheme that is more than a recolour. Amber phosphor on a green-black
    hull, after the ship's own screens. The flare is gradients; the hull's
-   plating, the ribbing down the gutter, the plate mark on a card and the
+   plating, the binding rings down the gutter, the plate mark on a card and the
    glyph strip in the header are four hand-written SVG files under
    static/nostromo, text in the tree like the favicon's source, served by
    the same allow-list. No raster: a PNG would be a binary in the repository,
@@ -287,11 +287,34 @@ html[data-theme="nostromo"] body::before{
     radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 60%),
     url(/static/nostromo/plate.svg) repeat}
 
-/* The hull's ribbing, down the page's left gutter: main's own padding, 10px
-   on a desktop and 8 on a phone, so it occupies space the layout already
-   leaves empty and moves nothing. */
-html[data-theme="nostromo"] main{
-  background:url(/static/nostromo/ribs.svg) repeat-y left top}
+/* Binding rings down the sidebar's left edge, going behind the cards, in
+   the page's own gutter: main's padding, 10px on a desktop and 8 on a
+   phone, so they occupy space the layout already leaves empty and move
+   nothing. The sidebar column is widened leftwards by the gutter and padded
+   back by the same amount, so its box spans the gutter and the cards stay
+   where they are: the rings are its background, attached to the content,
+   so they scroll with the cards they bind, which a background on main
+   could not. Each ring is centred on the cards' left edge: a card hides its
+   right half and the gap between two cards shows the rest. */
+html[data-theme="nostromo"] .col.side{
+  margin-left:-10px;padding-left:10px;
+  background:url(/static/nostromo/rings.svg) repeat-y 0 6px;
+  background-attachment:local}
+/* Folding a card here fades the body away and then closes the gap, rather
+   than sliding the body up under the header: the plate mark in the corner
+   is a decal, and a decal sliding into the title bar looks like a bug. Read
+   by slideCard (page-motion.js). */
+html[data-theme="nostromo"] .card{--fold:fade}
+/* The plate mark is a pseudo-element, which no script can animate, so it
+   fades on a class the fold puts on the card for the body's fade and takes
+   off with the body's return; while the gap closes the mark is already gone,
+   and nothing rides the bottom edge up. */
+html[data-theme="nostromo"] .card::after{transition:opacity .12s ease}
+html[data-theme="nostromo"] .card.fading::after{opacity:0}
+@media(max-width:900px){
+  html[data-theme="nostromo"] .col.side{
+    margin-left:-8px;padding-left:8px;background-position:-2px 6px}
+}
 /* The plating again on the document panes, which cover the body's: a tab's
    page is the surface the eye rests on, and with it bare the hull showed
    only in the gaps. Plain documents only: the notebook and the flush tabs
@@ -304,12 +327,15 @@ html[data-theme="nostromo"] .pane .doc:not(.nbhost):not(.flush){
    BEHIND the card's content: the card isolates so z-index:-1 lands above
    its own background and under its buttons, where the first cut painted
    the mark over Sign out. Open cards only: on a closed card it sat in the
-   title row beside the fold mark. */
+   title row beside the fold mark. Hidden there by opacity, not removed:
+   the fold measures the closed height by flipping the class for a frame,
+   and a mark that is removed and re-created across that cannot fade. */
 html[data-theme="nostromo"] .card{isolation:isolate}
-html[data-theme="nostromo"] .card:not(.closed)::after{
+html[data-theme="nostromo"] .card::after{
   content:"";position:absolute;right:6px;bottom:4px;width:64px;height:26px;
   z-index:-1;pointer-events:none;
   background:url(/static/nostromo/corner.svg) no-repeat}
+html[data-theme="nostromo"] .card.closed::after{opacity:0}
 @media(min-width:901px){
   /* The ship's glyphs across the header's empty middle. The two flat bands
      of panel colour keep them out from under the title on the left and the

@@ -3863,7 +3863,7 @@ class Handler(BaseHTTPRequestHandler):
         # like the favicon's source, drawn by the page's CSS and by nothing
         # else. Same allow-list, same rule.
         "/static/nostromo/plate.svg": ("nostromo/plate.svg", "image/svg+xml"),
-        "/static/nostromo/ribs.svg": ("nostromo/ribs.svg", "image/svg+xml"),
+        "/static/nostromo/rings.svg": ("nostromo/rings.svg", "image/svg+xml"),
         "/static/nostromo/corner.svg": ("nostromo/corner.svg", "image/svg+xml"),
         "/static/nostromo/glyphs.svg": ("nostromo/glyphs.svg", "image/svg+xml"),
     }

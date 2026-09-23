@@ -64,6 +64,7 @@
 - The companion app keeps no persistent notification: it asks the dashboard on its own clock while open and by an inexact alarm about once a minute in the background, so nothing sits in the shade between questions and the icon carries no dot of its own (7e7a0cd)
 - The site's text says what a person needs and stops: every tab, dialog, notebook view and the welcome guide were rewritten to a line where a paragraph explained what the screen already showed (d6a2b1e)
 - The shipped global rules are now nine: what a session must do is a rule with a switch on Controller settings, while a true report and no credential in the repository are fixed with no switch, and the briefing states only what is true of the machine (d6a2b1e)
+- Nostromo: binding rings down the sidebar's left edge that go behind the cards, in a gutter widened for them, and a card folds by fading its body out before the gap closes, so the plate mark no longer slides into the title bar (12b4f95)
 
 ### Removed
 

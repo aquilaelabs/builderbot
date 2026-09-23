@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="160" viewBox="0 0 20 160">
+  <!-- Binding rings down the sidebar's left edge, one every 40px repeating
+       at 160, in the page's own gutter (10px on a desktop, 8 on a phone,
+       where the file sits 2px further left). Each is centred on x=10, the
+       line where the cards begin, so a card hides the ring's right half and
+       the gap between two cards shows the rest: they read as going behind
+       the panels. A reticle rather than a plain ring: an outer ring, a
+       dashed inner one and a pip, the way a ship marks a port. -->
+  <g fill="none" stroke="#ffb000">
+    <g opacity="0.6" stroke-width="1.6">
+      <circle cx="10" cy="20" r="9"/><circle cx="10" cy="60" r="9"/>
+      <circle cx="10" cy="100" r="9"/><circle cx="10" cy="140" r="9"/>
+    </g>
+    <g opacity="0.45" stroke-width="1.2" stroke-dasharray="2.5 2">
+      <circle cx="10" cy="20" r="5"/><circle cx="10" cy="60" r="5"/>
+      <circle cx="10" cy="100" r="5"/><circle cx="10" cy="140" r="5"/>
+    </g>
+  </g>
+  <g opacity="0.6" fill="#ffb000">
+    <circle cx="10" cy="20" r="1.5"/><circle cx="10" cy="60" r="1.5"/>
+    <circle cx="10" cy="100" r="1.5"/><circle cx="10" cy="140" r="1.5"/>
+  </g>
+</svg>

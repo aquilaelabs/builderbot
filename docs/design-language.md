@@ -370,7 +370,10 @@ slides, a modal leaves the way it arrived (caught off the `hidden` attribute
 by one observer, so no close site has to remember), and a row folding its
 controls out on a phone slides over the height that takes. A change that
 snaps is a change the eye has to find. Every one of them is off under
-`prefers-reduced-motion`.
+`prefers-reduced-motion`. A scheme may ask for a different fold with
+`--fold: fade` on the card (nostromo does: its plate mark is a decal, and a
+decal sliding into the title bar reads as a bug): the body fades where it
+stands, then the gap closes, and the cards below still ride the height.
 
 **The page waits on its own ground.** Nothing can be drawn in a pane until
 the first snapshot lands, and an empty one used to be black and wearing the
