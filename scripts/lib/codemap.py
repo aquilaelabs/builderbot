@@ -159,6 +159,7 @@ def scan_python(text, sink):
         sink.add_def(f"(unparsable: {e.msg} at line {e.lineno})", e.lineno or 1, "error", "")
         return
     stack = []
+    call_funcs = set()      # the Name a call is made through: a call, not a use by name
 
     def enclosing():
         return stack[-1] if stack else "(module)"
@@ -178,11 +179,16 @@ def scan_python(text, sink):
                 f = child.func
                 if isinstance(f, ast.Name):
                     sink.add_call(f.id, "", child.lineno, enclosing())
+                    call_funcs.add(id(f))
                 elif isinstance(f, ast.Attribute):
                     qual = f.value.id if isinstance(f.value, ast.Name) else ""
                     sink.add_call(f.attr, qual, child.lineno, enclosing())
-            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
-                sink.add_ref(child.id)
+            # A name read and not called: passed (runner.register("compose",
+            # run_compose_job)), assigned, listed. Located, like the brace
+            # languages' (B227), so who-calls can say where.
+            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load) \
+                    and id(child) not in call_funcs:
+                sink.add_ref(child.id, child.lineno, enclosing())
             if isinstance(child, ast.Constant) and isinstance(child.value, str):
                 for what, kind in strings_draw(child.value):
                     sink.add_draw(what, kind, child.lineno, enclosing())
@@ -998,7 +1004,7 @@ def q_suites(idx, paths, names_only=False):
 
 
 INSTRUMENTED = ("function", "arrow", "method")
-PASSABLE = ("function", "arrow", "method", "class")
+PASSABLE = ("function", "arrow", "method", "class", "def")
 
 
 def page_functions(idx):

@@ -107,6 +107,11 @@ ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from 
   execFileSync('rm', ['-f', dead]);
 }
 
+// ...and in python (B227): devapp.py hands its compose job runner to the
+// jobs module by name, which read as nothing passing it.
+ok(/devapp\.py:\d+  passed by name in configure  \| .*runner\.register\("compose", run_compose_job\)/.test(map('who-calls', 'run_compose_job')),
+   'a python function passed by name is seen where it is passed, in the function that passes it');
+
 // An arrow with an expression body is a function too (B224): `const
 // drawLinux = () => drawShellCard(...)` was in no answer at all, so a
 // refactor read it as nothing. Found, and seen passed by name.

@@ -86,6 +86,7 @@
 - Coverage counts are keyed by a function's name and place in its file, so an edit above a function no longer reads as it being unreached (76240c4)
 - A node whose agent is the same number as the controller's but a different file is told so by digest, instead of 'runs 0.6.92 and ships 0.6.92' (8d15eca)
 - bb map now indexes an arrow with an expression body as a function (606 on the page side were in no answer), and a build drops the index files older readers left behind (03f9c14)
+- bb map who-calls sees a Python function passed by name, the way it does for the brace languages (8cf7f00)
 
 ### Security
 
