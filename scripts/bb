@@ -5840,6 +5840,17 @@ except xml.parsers.expat.ExpatError as e:
     # runs is the one that goes stale: `bb toolchains migrate` outlived its code in
     # the README because nothing compared them.
     if [ -f scripts/bb ] && [ -f README.md ] && grep -q '^bb status ' README.md; then
+        # The agent's version is the one number in this tree a person moves
+        # by hand, and a node compares the file while the row names the
+        # number (B221): tools/agent-version.sh holds the two together, here
+        # and in the lint workflow, so the two agree.
+        section "agent version (moves with its file)"
+        if [ -x tools/agent-version.sh ]; then
+            sh tools/agent-version.sh || rc=1
+        else
+            echo "  [skip] tools/agent-version.sh is not in this tree"
+        fi
+
         section "docs (bb help vs README)"
         local missing extra
         missing="$(comm -23 \

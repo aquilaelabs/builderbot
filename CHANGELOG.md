@@ -20,6 +20,7 @@
 - Every session's briefing now says which build the controller is running and when it was built, so no session argues from a build it assumed (e30f41e)
 - bb tests coverage runs the suite with a counter in every function, and bb map covered, uncovered and unused answer which suites reach a function, what none reaches, and what nothing calls or passes by name (a8d258e)
 - The node agent is under measured test: its self-update runs for real in the suite, the wicked and dhcpcd network writers are driven, and bb map covered reports the agent at 197 of 206 functions reached (7f621e0)
+- bb lint and the lint workflow fail when the node agent's file changes without AGENT_VERSION moving: a node compares the file and the Nodes tab names the number, and the two had disagreed (9505eee)
 
 ### Changed
 
@@ -42,6 +43,7 @@
 - bb map keeps its index per file: an edit rescans that file alone (a fifth of a second) instead of the whole tree (a second and a half), and says how many it rescanned (0ce1283)
 - bb map sections FILE reads a file by its section headers with each section's outside callers, load-time callers and coverage; the welcome panel is the first section to leave index.html whole, into page-welcome.js (5464a9d)
 - Chat, the Analysis tab and the Projects tab leave index.html for files of their own, picked by bb map sections; the page's script is 500 lines shorter (76240c4)
+- The coverage map's file carries a format, and a reader that meets another says no covered run yet instead of reading it (9505eee)
 
 ### Removed
 

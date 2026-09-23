@@ -151,6 +151,15 @@ jobs:
         # disagree about what a clean Dockerfile is.
         run: hadolint Dockerfile 2>&1 | tee -a "$CI_LOG"
 
+      - name: Agent version moves with its file
+        # A node compares the agent FILE and the Nodes tab names its NUMBER,
+        # so the file may not change against main without AGENT_VERSION's
+        # patch moving (B221). The same script `bb lint` runs; main is
+        # fetched shallowly because the checkout above is one commit deep.
+        run: |
+          git fetch --no-tags --depth=1 origin main 2>&1 | tee -a "$CI_LOG"
+          sh tools/agent-version.sh 2>&1 | tee -a "$CI_LOG"
+
       - name: Python
         # The dashboard, the agent, the library and the hook scripts: by
         # extension and by shebang, the same selection bb lint makes. The

@@ -162,6 +162,14 @@ by hand cost four commands and still could not see the failed builds.
   `bb-PY-7.py`, with its line numbers those of the script it sits in.
 - **Conventions** live in the house rules on the Briefing tab (`bb rules`);
   what follows is the layout they refer to.
+  - Two numbers move by machine and one by hand. `bb version` moves per
+    commit; a file two builds may read carries a format it checks
+    (`.bb-map/map2.json`, `.bb-map/coverage.json`) and a reader that meets
+    another rebuilds; and `AGENT_VERSION` in `scripts/agent/builderbot-agent.py`
+    moves by hand, so `bb lint` fails when that file changes against the
+    branch's base without its patch moving. A node compares the file and
+    the row names the number, and when they disagreed three tabs said
+    "runs 0.6.92 and ships 0.6.92" (B221).
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is vanilla JS and CSS with one classic `tab-*.js` script per
     document tab, one `nb-*.js` per notebook view, and one `page-*.js` per

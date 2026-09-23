@@ -963,12 +963,19 @@ def fid(d):
     return f"{d['file']}:{d['name']}#{d.get('k', 1)}"
 
 
+COVERAGE_FORMAT = 1
+
+
 def coverage_load(root):
+    """The merged counts, or None when there are none this reader can use:
+    a file of another format is not read (the rule every file two builds
+    can meet keeps), and the answer is then "no covered run yet"."""
     f = Path(root) / INDEX_DIR / "coverage.json"
     try:
-        return json.loads(f.read_text())
+        cov = json.loads(f.read_text())
     except (OSError, ValueError):
         return None
+    return cov if isinstance(cov, dict) and cov.get("format") == COVERAGE_FORMAT else None
 
 
 def coverage_ingest(root, idx, files, strip=""):
@@ -977,7 +984,7 @@ def coverage_ingest(root, idx, files, strip=""):
     the copy the run made; the server's holds {"suite": "server",
     "counts": {"abs/path:firstline:name": n}}, matched to the map's own
     definitions by file and name, nearest line."""
-    cov = coverage_load(root) or {"suites": {}}
+    cov = coverage_load(root) or {"format": COVERAGE_FORMAT, "suites": {}}
     py_by = {}
     for d in idx["defs"]:
         if idx["files"][d["file"]]["lang"] == "py" and d["kind"] == "def":
