@@ -100,6 +100,7 @@ ok(stamp() === before, 'a query on an unchanged tree does not rebuild');
 execFileSync('touch', [`${REPO}/scripts/dashboard/tab-docker.js`]);
 map('find', 'openDocker');
 ok(stamp() !== before, '...and a source newer than the index does');
+ok(/\(1 file scanned\)/.test(map()), '...rescanning that file alone and keeping the rest');
 
 // Refusals say what to type.
 let said = '';

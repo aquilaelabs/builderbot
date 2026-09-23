@@ -16,7 +16,7 @@ script, tab-*.js, nb-*.js, test/*.mjs) and a line pass for shell.
     bb map draws ID|.class       which functions draw it, which suites name it
     bb map suites FILE...        the suites that reach what these files define, draw or name
                                  (--names: one suite name per line, for a script)
-    bb map build                 rebuild now (it rebuilds itself when a source is newer)
+    bb map build                 rescan everything now (a changed file is rescanned by itself on any question)
 
 The scanner is deliberately rough: it knows nothing of scope beyond braces
 and nothing of types. It answers "where would I look" in one call, which
@@ -581,12 +581,25 @@ def sources(root):
             yield p, lang
 
 
-def build(root):
+def build(root, prior=None):
+    """The index, per file: a file whose mtime the prior index already has
+    keeps its entry, and only the changed, new and gone files are scanned
+    or dropped. Whole-tree rebuilds cost a second and a half on every edit,
+    which is every first question after an edit; this is a tenth of that.
+    The flat lists the questions read are joined at load and not written."""
     root = Path(root)
-    idx = {"built": time.time(), "root": str(root), "files": {}, "defs": [], "calls": [],
-           "draws": [], "routes": []}
+    kept = (prior or {}).get("files", {})
+    files, scanned = {}, 0
     for p, lang in sources(root):
         rel = str(p.relative_to(root))
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            continue
+        old = kept.get(rel)
+        if old and old.get("mtime") == mtime and old.get("lang") == lang and "defs" in old:
+            files[rel] = old
+            continue
         try:
             text = p.read_text(errors="replace")
         except OSError:
@@ -596,35 +609,49 @@ def build(root):
             {"py": scan_python, "js": scan_js, "html": scan_html, "sh": scan_sh}[lang](text, sink)
         except Exception as e:      # a scanner must never take the map down
             sink.add_def(f"(scan failed: {e})", 1, "error", "")
-        idx["files"][rel] = {"mtime": p.stat().st_mtime, "lang": lang}
         for d in sink.defs:
             d.pop("body", None)
-        idx["defs"] += sink.defs
-        idx["calls"] += sink.calls
-        idx["draws"] += sink.draws
-        idx["routes"] += sink.routes
+        files[rel] = {"mtime": mtime, "lang": lang, "defs": sink.defs, "calls": sink.calls,
+                      "draws": sink.draws, "routes": sink.routes}
+        scanned += 1
+    idx = {"built": time.time(), "root": str(root), "scanned": scanned,
+           "dropped": len(set(kept) - set(files)), "files": files}
     out = root / INDEX_DIR
     out.mkdir(exist_ok=True)
     tmp = out / "index.json.tmp"
     tmp.write_text(json.dumps(idx))
     tmp.replace(out / "index.json")
+    return flat(idx)
+
+
+def flat(idx):
+    """The per-file index with the lists the questions read joined on."""
+    for k in ("defs", "calls", "draws", "routes"):
+        idx[k] = [x for f in idx["files"].values() for x in f.get(k, [])]
     return idx
 
 
 def load(root, force=False):
     root = Path(root)
     f = root / INDEX_DIR / "index.json"
-    if force or not f.exists():
+    prior = None
+    if not force and f.exists():
+        try:
+            prior = json.loads(f.read_text())
+        except (OSError, ValueError):
+            prior = None
+    if prior is None:
         return build(root)
-    try:
-        idx = json.loads(f.read_text())
-    except (OSError, ValueError):
-        return build(root)
-    have = idx.get("files", {})
-    now = {str(p.relative_to(root)): p.stat().st_mtime for p, _ in sources(root)}
-    if set(now) != set(have) or any(now[k] > have[k]["mtime"] for k in now):
-        return build(root)
-    return idx
+    have = prior.get("files", {})
+    now = {}
+    for p, _ in sources(root):
+        try:
+            now[str(p.relative_to(root))] = p.stat().st_mtime
+        except OSError:
+            continue
+    if set(now) != set(have) or any(now[k] != have[k].get("mtime") or "defs" not in have[k] for k in now):
+        return build(root, prior)
+    return flat(prior)
 
 
 # ---- the questions ----------------------------------------------------------
@@ -818,9 +845,12 @@ def summary(idx):
     for f in idx["files"].values():
         langs[f["lang"]] = langs.get(f["lang"], 0) + 1
     n_test = sum(1 for f in idx["files"] if is_test(f))
+    when = time.strftime('%d %b %H:%M', time.localtime(idx['built']))
+    what = (f"{idx.get('scanned', 0)} file{'s' if idx.get('scanned', 0) != 1 else ''} scanned"
+            + (f", {idx['dropped']} dropped" if idx.get("dropped") else ""))
     return [f"{len(idx['files'])} files ({', '.join(f'{n} {k}' for k, n in sorted(langs.items()))}; {n_test} test suites), "
             f"{len(idx['defs'])} definitions, {len(idx['calls'])} calls, {len(idx['draws'])} ids and classes drawn",
-            f"built {time.strftime('%d %b %H:%M', time.localtime(idx['built']))} into {INDEX_DIR}/index.json; rebuilt by itself when a source is newer",
+            f"last built {when} ({what}) into {INDEX_DIR}/index.json; a changed file is rescanned by itself, the rest kept",
             "",
             "bb map find NAME | who-calls NAME | calls NAME | defs FILE | draws ID|.class | suites FILE... | build"]
 
