@@ -1155,9 +1155,13 @@ for (const kind of kinds){
 {
   const kind = 'nodes', key = 'nodes:health';
   const sel = `.doc.on details.sect[data-sect="${key}"]`;
+  // Opened if it is not there: the request-count block above closes every
+  // tab, and whether one came back before this ran depended on the layout
+  // poll, which is the whole of B219.
   const focus = async () => {
-    await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
-                               if (t) focusTab(t.id); }, kind);
+    const had = await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
+                                           if (t) focusTab(t.id); return !!t; }, kind);
+    if (!had) await DRIVERS[kind].open();
     await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
     await page.waitForSelector(sel, { timeout: 20000 });
   };

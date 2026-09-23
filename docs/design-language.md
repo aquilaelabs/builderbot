@@ -199,7 +199,8 @@ are actions, not settings, and act on the press.
 
 The page is `index.html` and classic scripts beside it, loaded before its
 own script: `tab-*.js` for a document tab, `nb-*.js` for a notebook view,
-`page-*.js` for a part of the page that is neither (the welcome panel).
+`page-*.js` for a part of the page that is neither (the welcome panel,
+chat).
 Each is pure declarations, since it runs before the page and its helpers
 exist; wiring that must run at load stays in `index.html` under the
 section's `// ---- name ----` header, with a line saying where the

@@ -164,7 +164,7 @@ by hand cost four commands and still could not see the failed builds.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is vanilla JS and CSS with one classic `tab-*.js` script per
     document tab, one `nb-*.js` per notebook view, and one `page-*.js` per
-    part of the page that is neither (the welcome panel), all loaded before
+    part of the page that is neither (the welcome panel, chat), all loaded before
     the page's own script and all pure declarations: wiring that must run
     at load stays in `index.html` under the section's header. No framework,
     no build step. `bb map sections index.html` says which section moves

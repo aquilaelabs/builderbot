@@ -684,9 +684,18 @@ def build(root, prior=None):
 
 
 def flat(idx):
-    """The per-file index with the lists the questions read joined on."""
+    """The per-file index with the lists the questions read joined on, and
+    each definition's ordinal among the definitions of its name in its file,
+    which is what coverage is keyed on: a line number moves with every edit
+    above it, and after one section left the page every count read as
+    unreached."""
     for k in ("defs", "calls", "draws", "routes"):
         idx[k] = [x for f in idx["files"].values() for x in f.get(k, [])]
+    for entry in idx["files"].values():
+        seen = {}
+        for d in entry.get("defs", []):
+            seen[d["name"]] = seen.get(d["name"], 0) + 1
+            d["k"] = seen[d["name"]]
     return idx
 
 
@@ -951,7 +960,7 @@ def q_unused(idx, path=None):
 
 
 def fid(d):
-    return f"{d['file']}:{d['line']}:{d['name']}"
+    return f"{d['file']}:{d['name']}#{d.get('k', 1)}"
 
 
 def coverage_load(root):
@@ -981,6 +990,12 @@ def coverage_ingest(root, idx, files, strip=""):
         suite = got.get("suite") or Path(f).stem
         counts = cov["suites"].setdefault(suite, {})
         for key, n in (got.get("counts") or {}).items():
+            if "#" in key:
+                # the page's own key: file:name#k, from the instrumenter
+                counts[key] = counts.get(key, 0) + int(n)
+                continue
+            # the server's: an absolute path, a first line and a name, matched
+            # to the map's definition of that name nearest that line
             file, _, rest = key.partition(":")
             if strip and file.startswith(strip):
                 file = file[len(strip):]
@@ -990,12 +1005,10 @@ def coverage_ingest(root, idx, files, strip=""):
             except ValueError:
                 continue
             cands = py_by.get((file, name))
-            if cands:
-                d = min(cands, key=lambda d: abs(d["line"] - line))
-                key = fid(d)
-            else:
-                key = f"{file}:{line}:{name}"
-            counts[key] = counts.get(key, 0) + int(n)
+            if not cands:
+                continue
+            d = min(cands, key=lambda d: abs(d["line"] - line))
+            counts[fid(d)] = counts.get(fid(d), 0) + int(n)
     cov["at"] = time.time()
     out = Path(root) / INDEX_DIR
     out.mkdir(exist_ok=True)
@@ -1100,11 +1113,15 @@ def instrument(dash):
             scan_html(text, sink)
         else:
             scan_js(text, sink)
+        seen = {}
+        for d in sink.defs:
+            seen[d["name"]] = seen.get(d["name"], 0) + 1
+            d["k"] = seen[d["name"]]
         marks = sorted(((d["at"], d) for d in sink.defs
                         if d.get("at") is not None and d["kind"] in INSTRUMENTED
                         and not d["name"].startswith("(")), key=lambda x: -x[0])
         for at, d in marks:
-            text = text[:at] + f'__bbcov("{rel}:{d["line"]}:{d["name"]}");' + text[at:]
+            text = text[:at] + f'__bbcov("{rel}:{d["name"]}#{d["k"]}");' + text[at:]
             n_fns += 1
         if p.suffix == ".html":
             text = text.replace("<script>", "<script>" + COV_RUNTIME, 1)
@@ -1133,7 +1150,6 @@ def q_sections(idx, path, cov=None):
               for i, h in enumerate(heads)]
     for start, end, name in bounds:
         mine = [d for d in top if start <= d["line"] < end]
-        names = {d["name"] for d in mine}
         outside, at_load = set(), set()
         for d in mine:
             for c in callers.get(d["name"], []):
@@ -1144,13 +1160,19 @@ def q_sections(idx, path, cov=None):
                 if c["caller"] == "(top level)":
                     at_load.add(f"{Path(c['file']).name}:{c['line']}")
                 outside.add(c["caller"] if c["file"] == f else f"{Path(c['file']).name}:{c['caller']}")
+        # The section's own statements that run at load: calls made from
+        # the top level inside it (wiring a button, adding a listener). A
+        # file loaded before the page cannot carry those, so they are what
+        # stays behind when the section's functions move.
+        own_load = [c for c in entry["calls"] if c["caller"] == "(top level)" and start <= c["line"] < end]
         covered = sum(1 for d in mine if fid(d) in hit) if hit else None
         cov_s = f", {covered}/{len(mine)} covered" if hit and mine else ""
         out.append(f"  {start:6d}  {name}: {len(mine)} function{'s' if len(mine) != 1 else ''}, "
                    f"{len(outside)} caller{'s' if len(outside) != 1 else ''} from outside"
-                   + (f", {len(at_load)} at load" if at_load else "") + cov_s)
-        _ = names
-    out.append("bb map defs FILE lists the functions; who-calls NAME each one's callers; a section with few callers from outside and none at load moves whole")
+                   + (f", {len(at_load)} at load" if at_load else "")
+                   + (f", runs {len(own_load)} call{'s' if len(own_load) != 1 else ''} at load itself" if own_load else "")
+                   + cov_s)
+    out.append("bb map defs FILE lists the functions; who-calls NAME each one's callers; a section with few callers from outside that runs nothing at load itself moves whole, and one that does leaves that wiring behind")
     return out
 
 

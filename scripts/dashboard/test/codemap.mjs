@@ -109,14 +109,13 @@ ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from 
     execFileSync('cp', [`${REPO}/scripts/dashboard/${f}`, `${dir}/${f}`]);
   const said = execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, 'instrument', dir], { encoding: 'utf8' });
   const inst = readFileSync(`${dir}/tab-docker.js`, 'utf8');
-  ok(/instrumented \d+ functions in 3 files/.test(said) && /async function loadDocker\(\)\{__bbcov\("scripts\/dashboard\/tab-docker\.js:\d+:loadDocker"\);/.test(inst),
-     `the instrumenter counts a function body at its opening brace (${said.trim()})`);
+  ok(/instrumented \d+ functions in 3 files/.test(said) && /async function loadDocker\(\)\{__bbcov\("scripts\/dashboard\/tab-docker\.js:loadDocker#1"\);/.test(inst),
+     `the instrumenter counts a function body at its opening brace, keyed by name and ordinal so a line shift keeps the count (${said.trim()})`);
   ok(/<script>var __bbcovc/.test(readFileSync(`${dir}/index.html`, 'utf8')), '...and defines the counter at the head of the page');
   execFileSync('node', ['--check', `${dir}/tab-docker.js`]); execFileSync('node', ['--check', `${dir}/nb-roadmap.js`]);
   ok(true, '...and the instrumented scripts still parse');
-  const line = inst.match(/tab-docker\.js:(\d+):loadDocker/)[1];
   const counts = `${dir}/probe-suite.json`;
-  writeFileSync(counts, JSON.stringify({ suite: 'probe-suite', counts: { [`scripts/dashboard/tab-docker.js:${line}:loadDocker`]: 3 } }));
+  writeFileSync(counts, JSON.stringify({ suite: 'probe-suite', counts: { 'scripts/dashboard/tab-docker.js:loadDocker#1': 3 } }));
   const covFile = `${REPO}/.bb-map/coverage.json`;
   const before = existsSync(covFile) ? readFileSync(covFile, 'utf8') : null;
   map('coverage-ingest', counts);

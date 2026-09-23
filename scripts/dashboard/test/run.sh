@@ -214,6 +214,9 @@ S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
 if [ -n "${BB_COVERAGE:-}" ]; then
     export BB_COVERAGE_DIR="$S/coverage"
     mkdir -p "$BB_COVERAGE_DIR"
+    # A counted page is a slower page, and the suites' waits are budgets
+    # for the real one (B219): every patience() gets twice the time here.
+    export BB_TEST_SLOW="${BB_TEST_SLOW:-2}"
 fi
 # Every tmux call from here on (ours and the server's) talks to a private
 # server whose socket lives in the scratch dir. Nothing reaches the real one.
