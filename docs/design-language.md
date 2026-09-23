@@ -182,6 +182,16 @@ whose whole point is the width: a terminal, a log. `test/uniform.mjs`
 measures every control and control row on every tab against the surface
 holding it.
 
+**A dead control says why on its row, not only in its tooltip.** A ghosted
+button carries the whole reason with the fix as its tip, which is a tap on
+a phone as well as a hover; the first clause of that reason is also
+written in red under the row, where the row's other facts sit (who has a
+session here), because a phone shows nothing until it is tapped and a
+dead button with no visible reason is what somebody stares at. Three
+projects with no node read as broken after an update (23 Sep) with the
+reason sitting in a tooltip the whole time. `shortWhy()` cuts the clause;
+`cards.mjs` holds the no-node and out-of-window rows to it.
+
 ## Settings
 
 Nothing on a tab takes effect until Save or Apply is pressed. A select that

@@ -993,7 +993,10 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    for. The row is a column, so it simply falls last, except on the Projects
    tab at desktop width, where the row turns back into a line and this has to
    wrap onto its own beneath it. */
-.row.stack2 .sessline{width:100%;flex-basis:100%;color:var(--accent)}
+.row.stack2 .sessline{width:100%;flex-basis:100%;min-width:0;overflow-wrap:anywhere;color:var(--accent)}
+/* A reason line can carry a token nothing breaks (a node's name, a digest
+   from the agent-window sentence), and at phone width that token was the
+   21px the Projects tab scrolled sideways by. */
 /* A command and its thumbtack are one control with two halves, so the tack
    cannot be mistaken for a command of its own. */
 .cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
@@ -1285,14 +1288,17 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
      tip pointing up from the issue line lands on the row's own name and git
      line, which is the one part of a row you need in order to know which
      project you are reading about. */
-  .side .row{position:relative}
-  .side .row [data-tip]{position:static}
+  .side .row,.projtab .row{position:relative}
+  .side .row [data-tip],.projtab .row [data-tip]{position:static}
   /* ...as wide as the row, and UNDER THE THING HOVERED, not under the row:
      with the row as the containing block every tip in it landed in one
      place, so the link's under the name read where the icons' do. The
      pointerover handler beside tipOff() writes --tipy from the element's
      own bottom edge. */
-  .side .row [data-tip]::after{left:10px;right:10px;
+  /* The Projects tab's rows are the same rows, one column over: the same
+     anchoring, or a tip on the rightmost icon at phone width hangs past the
+     tab's edge and the tab scrolls sideways by the overhang. */
+  .side .row [data-tip]::after,.projtab .row [data-tip]::after{left:10px;right:10px;
     transform:none;width:auto;max-width:none;
     bottom:auto;top:var(--tipy,calc(100% + 6px))}
   /* A DEAD button's tip is the one on this page somebody actually has to
@@ -4767,9 +4773,10 @@ function tipOff(){
 }
 tipOff();
 // A sidebar row's tip is positioned against the ROW (see the .side .row
-// rule): its vertical place is the hovered element's own bottom edge.
+// rule), and the Projects tab's rows the same: its vertical place is the
+// hovered element's own bottom edge.
 addEventListener("pointerover", e => {
-  const el = e.target.closest && e.target.closest(".side .row [data-tip]");
+  const el = e.target.closest && e.target.closest(".side .row [data-tip], .projtab .row [data-tip]");
   if (!el) return;
   const row = el.closest(".row");
   if (!row) return;
@@ -6747,11 +6754,14 @@ roadmap, bugs and memories stay where they are, so putting it back is a mv">${BI
         // it, because the fix runs to a paragraph on some of these and the
         // ghosted button's tooltip is where a paragraph is free (the rows
         // are tipified, so that is a tap on a phone as well as a hover). A
-        // project with no node says nothing here: "(node: none)" beside the
-        // name is the whole fact, and a sentence about sessions under every
-        // such row was noise (the operator's call, 15 Sep).
-        : p.session_why && p.session_at && !p.locked
-          ? `<div class="sub sessline bad">${esc(shortWhy(p.session_why))}</div>` : ""}
+        // project with no node said nothing here for a week ("(node: none)"
+        // beside the name was called the whole fact, 15 Sep); it says so
+        // now, because a dead button and a tooltip are not a reason on a
+        // phone, and the operator stared at three such rows after an update
+        // (23 Sep). The same line for a node whose agent is out of window
+        // (held), unless the row is already saying the map is building.
+        : (p.session_why || (p.held && !state?.mapping?.[p.name]?.running)) && !p.locked
+          ? `<div class="sub sessline bad">${esc(shortWhy(p.session_why || p.held))}</div>` : ""}
     </div>
 `;
 }

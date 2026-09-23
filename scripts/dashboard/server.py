@@ -1534,7 +1534,7 @@ def session_target(project, claude=False):
                # at the first sentence end to put the fact on the row and
                # leave the instruction to the tooltip, and the dash it used
                # to cut at is gone from the page's vocabulary.
-               "why": "no node: pick one in the project's settings, or enroll "
+               "why": "no node to run a Claude session on: pick one in the project's settings, or enroll "
                       "one on the Nodes tab"} if claude \
         else {"where": "local"}
     if not nid or NODES_OK:

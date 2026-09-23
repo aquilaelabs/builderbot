@@ -536,20 +536,27 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
        b => /nowhere else/.test(b.dataset.tip || b.title || '')),
      '...and the whole of it, fix included, is on the ghosted button, a tap on a phone, since these rows are tipified');
-  // A no-node project says nothing on the line: "(node: none)" beside the
-  // name is the whole fact, and a sentence about sessions under every such
-  // row was noise (the operator's call, 15 Sep). The ghosted button still
-  // carries the short reason.
+  // A no-node project says so on the line, in red, and "(node: none)" beside
+  // the name. It said nothing there for a week (15 Sep: the fact beside the
+  // name was called enough); the operator asked for the line back on 23 Sep
+  // after three such rows read as dead buttons, and a tooltip is nothing on
+  // a phone. The fix stays on the button, where a paragraph is free.
   await plant({ session_at: '', locked: false, node_name: '',
-                session_why: "no node: pick one in the project's settings, or enroll one on the Nodes tab" });
-  ok(await line() === ''
+                session_why: "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab" });
+  ok(await line() === 'no node to run a Claude session on'
      && await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: none)',
-     'a project with no node says "(node: none)" beside its name and nothing under it');
-  // The button itself is live here: the fixture has a session open on
-  // alpha and who is here wins. Its words are the short reason either way.
+     `a project with no node says so under its name, the first clause only (${await line()})`);
+  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline', e => e.classList.contains('bad')),
+     '...in red, since it is why the button is dead');
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
-       b => /^no node: pick one/.test(b.dataset.tip || b.title || '')),
-     '...while the button says where to pick one');
+       b => /^no node to run a Claude session on: pick one/.test(b.dataset.tip || b.title || '')),
+     '...while the button carries the fix');
+  // ...and a node whose agent is out of window (held) gets the same line.
+  await plant({ session_at: 'shed', node_name: 'shed', session_why: '',
+                held: 'shed runs agent 0.5.0 and this controller ships 0.6.93: a different compatibility window, so nothing sent to it is promised to work. Update it from the Nodes tab' });
+  ok(await line() === 'shed runs agent 0.5.0 and this controller ships 0.6.93',
+     `a node out of window says so under the name too (${await line()})`);
+  await plant({ held: '' });
   await plant({ node_name: 'shed' });
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: shed)',
      '...and a project with a node wears its name');
