@@ -61,6 +61,7 @@ from pathlib import Path
 WORKSPACE = None
 STATE = None
 FILE = None
+OWNERS = None
 node_for = None
 node_addr = None
 ENVDIR = None
@@ -853,6 +854,7 @@ def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
     if runner is not None:
         runner.register("compose", run_compose_job)
     globals()["FILE"] = Path(state) / "devapps.json"
+    globals()["OWNERS"] = Path(state) / "docker-owners.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
 
 
@@ -1610,6 +1612,21 @@ def container_ctl(name, what):
                                else f"{what}ed {c.get('name')}"}
 
 
+def owned_container(name):
+    """The container the daemon reports under `name` now, with the project
+    it belongs to: (None, "") when there is none. On the node the current
+    block addresses."""
+    c = _known_container(name)
+    return (c, listed_owner(c)) if c else (None, "")
+
+
+def ctl_on(node, name, what):
+    """container_ctl on a named node, for a caller that opened no block of
+    its own: Allow on a session's ask to start, stop or restart one."""
+    with on_node(node or None):
+        return container_ctl(name, what)
+
+
 def container_logs(name, lines=None):
     """The tail of one container's log, timestamped.
 
@@ -1644,7 +1661,8 @@ def containers():
     `ours` is the honest part: a container is this dashboard's when its compose
     project is one this dashboard has a record of. Asked of the store rather
     than read off the name, so a container you started by hand over there is
-    listed and marked as not ours, and nothing here offers to act on it.
+    listed and marked as not ours: started, stopped or restarted by name one
+    at a time, and nobody's project until its row names one.
     """
     r = _run([DOCKER, "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
              timeout=25)
@@ -1800,8 +1818,8 @@ def name_clash(project, instance=MAIN):
     started, which is the moment the clash becomes real rather than possible.
 
     Which project owns an instance is not this question and is never derived
-    from the name: it is the store's own key, which is what decides whose
-    session may touch it.
+    from the name: it is owner_of, which is what decides whose session may
+    touch it.
     """
     want = _pname(project, instance)
     for proj, insts in _load().items():
@@ -2376,8 +2394,13 @@ def rename_project_data(old, new):
     Order matters at the call site: the store's record has already moved to
     the new name by the time this runs, so the instance list is asked of the
     NEW key.
+
+    What BELONGS to the project moves with it here too: a container's project
+    is a value in two files, and the rename's table only moves keys.
     """
     moved, failed = [], []
+    if rename_owner(old, new):
+        moved.append("the containers that belong to it")
     for inst in instances(new):
         was, now = _pname(old, inst), _pname(new, inst)
         if was == now:
@@ -2661,10 +2684,9 @@ def _overview_here(picked):
             same_daemon = rec.get("daemon") == daemon_id()
             out.append({
                 "project": project, "instance": inst, "name": pn,
-                # The project whose notebook lists it, when it is not this
-                # one's own (a container written here, or a second project's
-                # helper): "" otherwise.
-                "for": str(rec.get("for") or ""),
+                # The project it belongs to, or "" for none: whose sessions
+                # may see it and work on it, and the group it is drawn in.
+                "owner": owner_of(project, inst, rec),
                 "running": any(c["state"] == "running" for c in mine),
                 "exists": bool(mine),
                 "containers": len(mine),
@@ -2757,8 +2779,11 @@ def _overview_here(picked):
             "job": latest_job(),
             # Only the ones that are not an instance of ours: the instances
             # above already account for those, and listing them twice would
-            # make the page look like the daemon is running double.
-            "containers": [c for c in cs["containers"] if not c["ours"]]}
+            # make the page look like the daemon is running double. Each with
+            # the project it was put under, read once for the node.
+            "containers": [c | {"owner": held.get(c["name"], "")}
+                           for held in [_owners().get(picked or _node_here()) or {}]
+                           for c in cs["containers"] if not c["ours"]]}
 
 
 COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
@@ -2805,10 +2830,9 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
         rec["source"] = "file"
         if node:
             rec["node"] = str(node)
-        # Which project's notebook lists this container (roadmap: the
-        # operator's ask, 15 Sep): a dev radarr for a media project shows
-        # under that project, not only in the manager. Kept only when
-        # given; the creator's own project needs no note.
+        # The project it belongs to (owner_of): a dev radarr for a media
+        # project is that project's, listed in its notebook and reachable
+        # by its sessions. None when not given, which is the default here.
         if for_project:
             rec["for"] = str(for_project)[:100]
         write_json(FILE, d2)
@@ -2910,8 +2934,11 @@ def forget_container(name):
     return gone
 
 
-def create_instance(project, name, node="", for_project=""):
+def create_instance(project, name, node="", owner=None):
     """Register a new instance of a project. Nothing is built or started.
+
+    `owner` is the project it belongs to when the caller said (another one,
+    or "" for none); None is the default, the project it is built from.
 
     `node` is which docker-host the instance is bound to: the daemon every
     action on it will address. Empty means the default node, resolved at USE
@@ -2943,12 +2970,9 @@ def create_instance(project, name, node="", for_project=""):
         rec = _rec(d, project, slug)
         if node:
             rec["node"] = str(node)
-        # Which project's notebook lists this container (roadmap: the
-        # operator's ask, 15 Sep): a dev radarr for a media project shows
-        # under that project, not only in the manager. Kept only when
-        # given; the creator's own project needs no note.
-        if for_project:
-            rec["for"] = str(for_project)[:100]
+        # Stored the way owner_of reads it: nothing for the default.
+        if owner is not None and owner != project:
+            rec["for"] = str(owner)[:100]
         write_json(FILE, d)
     _bump()
     return {"ok": True, "project": project, "instance": slug,
@@ -2987,6 +3011,142 @@ def set_ref(project, instance, ref):
         write_json(FILE, d)
     _bump()
     return {"ok": True, "ref": ref}
+
+
+def owner_of(project, instance=MAIN, rec=None):
+    """The project an instance or a written container belongs to, or "".
+
+    Which project's sessions may see it and work on it, which group the
+    Docker tab draws it in and which notebook lists it: one setting for the
+    three (the operator, 24 Sep). Stored as `for` and read by presence. No
+    `for` is the default: the project it was built from, or none for a
+    container written here, which has no project behind it. An empty `for`
+    is none, set on purpose.
+    """
+    rec = _read_rec(project, instance) if rec is None else rec
+    if "for" in rec:
+        return str(rec.get("for") or "")
+    return "" if rec.get("source") == "file" else project
+
+
+def set_owner(project, instance, owner):
+    """Which project an instance or a written container belongs to: a
+    project's name, or "" for none. server.py has checked that the name is a
+    project; this stores it the way owner_of reads it, with no `for` at all
+    when the answer is the default."""
+    owner = str(owner or "").strip()[:100]
+    with _lock:
+        d = _load()
+        if instance not in (d.get(project) or {}):
+            return {"error": f"{project} has no instance called {instance}"}
+        rec = _rec(d, project, instance)
+        if owner == ("" if rec.get("source") == "file" else project):
+            rec.pop("for", None)
+        else:
+            rec["for"] = owner
+        write_json(FILE, d)
+    _bump()
+    return {"ok": True, "owner": owner}
+
+
+def row_named(name):
+    """(project, instance) of the instance or written container the Docker
+    tab lists as `name`, or None. How a session names one that is not its
+    project's own (bb devapp --container)."""
+    for proj, insts in _load().items():
+        for inst in insts:
+            if _pname(proj, inst) == name:
+                return proj, inst
+    return None
+
+
+def _owners():
+    """Which project each container BuilderBot did not start belongs to:
+    {node: {container name: project}}. A file of its own, because the
+    instance store is {project: {instance: record}} and _load keeps nothing
+    else."""
+    try:
+        with open(OWNERS) as f:
+            d = json.load(f)
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    return {n: {c: p for c, p in v.items() if isinstance(p, str) and p}
+            for n, v in d.items() if isinstance(v, dict)}
+
+
+def _node_here():
+    """The node the current block addresses, or the default one: the key a
+    container's owner is kept under, since a name is only unique on its own
+    daemon."""
+    return getattr(_node_ctx, "node", None) or _default_node() or ""
+
+
+def listed_owner(c):
+    """The project a container from containers() belongs to, or "".
+
+    One of ours belongs where its instance does. Any other belongs where the
+    operator put it on its row, kept by name on its node, so the same
+    container recreated under its name keeps its project."""
+    if c.get("ours"):
+        row = row_named(c.get("project") or "")
+        return owner_of(*row) if row else ""
+    return (_owners().get(_node_here()) or {}).get(c.get("name") or "", "")
+
+
+def set_container_owner(name, owner):
+    """Which project a container BuilderBot did not start belongs to, on the
+    node the current block addresses; "" for none. Only a container the
+    daemon reports now, looked up again as every executing surface here is."""
+    c = _known_container(name)
+    if not c:
+        return {"error": f"no container called {name} on this daemon now"}
+    if c.get("ours"):
+        return {"error": f"{c.get('name')} is part of {c.get('project')}: its "
+                         "project is set on that row"}
+    owner = str(owner or "").strip()[:100]
+    node = _node_here()
+    with _lock:
+        d = _owners()
+        held = d.setdefault(node, {})
+        if owner:
+            held[c.get("name")] = owner
+        else:
+            held.pop(c.get("name"), None)
+            if not held:
+                d.pop(node, None)
+        write_json(OWNERS, d)
+    _bump()
+    return {"ok": True, "owner": owner}
+
+
+def rename_owner(old, new):
+    """Every container that belonged to the project `old` belongs to `new`.
+    True when any moved. The rename's table moves what is KEYED by a
+    project's name; these hold it as a value, which that table cannot see."""
+    moved = False
+    with _lock:
+        d = _load()
+        for insts in d.values():
+            for rec in insts.values():
+                if rec.get("for") == old:
+                    rec["for"] = new
+                    moved = True
+        if moved:
+            write_json(FILE, d)
+        o = _owners()
+        hit = False
+        for held in o.values():
+            for c, p in held.items():
+                if p == old:
+                    held[c] = new
+                    hit = True
+        if hit:
+            write_json(OWNERS, o)
+    if moved or hit:
+        _bump()
+    return moved or hit
 
 
 def refs_of(project):
@@ -4114,9 +4274,9 @@ def act(project, instance, action, req, *, test_cmd=""):
         # is for. Everything below names one that must exist, because the
         # string decides a compose project and a data directory and is not
         # somewhere an arbitrary one should reach.
-        under = f(req, "for")
+        # The project it belongs to when the request says, "" being none.
         r = create_instance(project, instance, f(req, "node"),
-                            "" if under == project else under)
+                            f(req, "owner") if "owner" in req else None)
         if not r.get("error") and f(req, "ref"):
             # Pinned before the build the dialog starts, or the first one
             # comes from the project's checkout and the row says otherwise.
@@ -4143,6 +4303,11 @@ def act(project, instance, action, req, *, test_cmd=""):
         # had its say in the handler, so this is an administrator's like
         # every other thing that changes what a container IS.
         r = set_ref(project, instance, f(req, "ref"))
+        return r, (400 if r.get("error") else 200)
+    if action == "owner":
+        # Which project it belongs to. An administrator's too, and the name
+        # was checked against the projects in the handler.
+        r = set_owner(project, instance, f(req, "owner"))
         return r, (400 if r.get("error") else 200)
     if action == "state":
         # The full picture for one instance (risks, problems, the parsed

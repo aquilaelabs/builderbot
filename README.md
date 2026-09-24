@@ -454,7 +454,14 @@ bb devapp new [--env FILE] [--why "..."]
                    has none, under the same setting; on ask, Allow creates, writes
                    the env and builds
 bb devapp env [set FILE|-] [--why "..."]
-                   print the container's env, or replace it, under the same setting
+                   print the container's env, or replace it, under the same setting.
+                   BuilderBot keeps it per container, never as a file in the project,
+                   and points a compose line `env_file: .env` at it when it runs
+bb devapp ls       every container that belongs to this project on its node
+bb devapp log NAME one of those containers' log
+bb devapp start|stop|restart NAME [--why "..."]
+                   one of those, under the same setting; --container NAME on the
+                   other verbs reaches one written for this project
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -2024,9 +2031,8 @@ stop. The row then says how the job ended rather than silently reverting to
 whatever state it was in.
 
 **New container** on that tab runs something with no project behind it, and
-takes a project to **show under**, so it is listed on that project's notebook
-Docker view as well as here (Send to Docker manager takes the same, with the
-project it is built from picked by default): a
+takes the **project** it belongs to (Send to Docker manager takes the same,
+with the project it is built from picked by default): a
 name, a compose file and an environment, which is the shape Portainer's stacks
 and Dockge use. Labels are not a fourth box, in compose they belong in the
 YAML. The compose file is checked by compose itself before it is saved, and
@@ -2046,9 +2052,21 @@ which is where it comes back from.
 The same tab lists every container on the picked node's daemon, not only the ones this
 dashboard started. A port taken by something else is exactly what you open a
 list like this to find out about, so the others are shown and marked *not ours*
-rather than hidden. It is a read: `docker ps` is one of two verbs the dev
-instance's guard allows outside compose, and nothing on the tab acts on a
-container.
+rather than hidden, and an administrator can start, stop and restart one by
+name and read its log.
+
+**Every row belongs to a project or to none**, and the tab is grouped that way:
+each project's containers together under its name, the projects in
+alphabetical order, and what belongs to none last. A container built from a
+project belongs to it until its row says otherwise, one written here belongs
+to the project picked when it was made, and one somebody else started belongs
+to none until an administrator picks a project on its row; that choice is kept
+by name on its node, so the same container recreated keeps it. The project it
+belongs to lists it in its notebook's Docker view, and that project's Claude
+sessions are the only ones that can see it: `bb devapp ls` lists them and `bb
+devapp log NAME` reads one, while rebuilding, changing the env, starting and
+stopping follow that project's *Claude may: Run its container*. An account
+that is not an administrator sees what belongs to its projects.
 
 - a rendered **findings report**: the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD.
@@ -2156,10 +2174,10 @@ each is its own instance, so what is half-typed in one survives working in
 another, and the button lights green while that project's is open. Its tab
 strip: **Briefing** (the rules, and what Claude remembers here), the
 **Roadmap** (the shared list of design work and ordered plans), **Bugs**,
-**Git**, **Artifacts**, **Docker** (this project's containers: its own dev
-instances and any container made with *show under* naming it, with the
-manager's rows and controls, so a dev radarr for a media project is found
-beside that project rather than among every project's on the Docker tab),
+**Git**, **Artifacts**, **Docker** (every container that belongs to this
+project, with the manager's rows and controls, so a dev radarr for a media
+project is found beside that project rather than among every project's on
+the Docker tab),
 **Tests**, and **Analysis** (the scanner's findings for this project alone).
 
 **Unsaved work does not cross those views.** Leaving a view asks, and answering

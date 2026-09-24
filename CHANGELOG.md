@@ -34,6 +34,8 @@
 - bb map find and who-calls print what a function says about itself, the comment directly above it or its docstring's first sentence, so an address comes with its reason (3331a36)
 - The companion app notes a node whose Claude Code is behind, the way it notes an agent behind (7e7a0cd)
 - An administrator sees every account's sessions on a project at the foot of its settings and can end one; keys and typing in another person's session stay theirs (42066ab)
+- Every container on the Docker tab has a Project setting, one project or none: only that project's Claude sessions can see it, and they work on it as the project's Run its container setting allows. The project's notebook lists it too (5a89323)
+- A session lists its project's containers with bb devapp ls, reads one's log with bb devapp log NAME, and starts, stops or restarts one with bb devapp start, stop or restart NAME (5a89323)
 
 ### Changed
 
@@ -71,6 +73,8 @@
 - A branch belongs to the session that works on it: a user merges only their own, and an administrator may merge anyone's, asked each time with the owner named and refused while that person's Claude session is working (42066ab)
 - Nostromo's rings are larger, dimmer and more detailed, and sit mostly behind the cards (830e90f)
 - Whether a session may run a project's container is set in the project's settings and the new-project dialog (Claude may: Run its container), and now also lets a session change its env and create its container when it has none; on ask, one request carries it all (6913631)
+- The Docker tab groups its rows by the project each container belongs to, in alphabetical order, with the ones that belong to no project last (5a89323)
+- A session told its container's env is missing is told how to set it, and that the env is kept by BuilderBot rather than as a .env file in the project (5a89323)
 
 ### Removed
 

@@ -148,7 +148,18 @@ bb: BuilderBot helper
                          create the project's container from its own compose
                          file when it has none, under the same setting
   bb devapp env [set FILE|-] [--why "..."]
-                         print its env, or replace it, under the same setting
+                         print its env, or replace it, under the same setting.
+                         The env is kept by BuilderBot, not as a file in the
+                         project: a compose line `env_file: .env` is pointed
+                         at it when the container runs
+  bb devapp ls           every container that belongs to this project on its
+                         node: its own, one written for it, one somebody else
+                         started that the operator put under it
+  bb devapp log NAME     one of those containers' log
+  bb devapp start|stop|restart NAME [--why "..."]
+                         one of those, under the same setting
+                         (--container NAME on status, rebuild, env and test,
+                         for one of them that is not the project's own)
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -4089,16 +4100,20 @@ cmd_devapp() {
     # --instance NAME before or after the verb, for a project with several;
     # with none named the controller answers for the project's only one.
     local -a rest=()
-    local inst="" a
+    local inst="" ctr="" a
     while [ $# -gt 0 ]; do
         case "$1" in
             --instance) [ $# -ge 2 ] || die "--instance needs the name after it"; inst="$2"; shift 2 ;;
             --instance=*) inst="${1#--instance=}"; shift ;;
+            # One that belongs to this project and is not its own instance: a
+            # container written for it, named as bb devapp ls lists it.
+            --container) [ $# -ge 2 ] || die "--container needs the name after it"; ctr="$2"; shift 2 ;;
+            --container=*) ctr="${1#--container=}"; shift ;;
             *) rest+=("$1"); shift ;;
         esac
     done
     set -- "${rest[@]}"
-    export BB_DEV_INSTANCE="$inst"
+    export BB_DEV_INSTANCE="$inst" BB_DEV_CONTAINER="$ctr"
     local sub="${1:-status}" auth proj
     auth="$(bb_auth_or_die)"
     proj="${BB_PROJECT:-}"
@@ -4115,6 +4130,7 @@ import bbapi                                                    # noqa: E402
 
 d = bbapi.call("/api/devapp", {"project": os.environ["BB_DEV_PROJECT"],
                                "instance": os.environ.get("BB_DEV_INSTANCE", ""),
+                               "container": os.environ.get("BB_DEV_CONTAINER", ""),
                                "action": "state"},
                auth=os.environ["BB_DEV_AUTH"])
 if d.get("error"):
@@ -4133,8 +4149,10 @@ elif st.get("needs_build"):
     print(f"  {'built from':<12} nothing here yet")
 miss = st.get("missing_env") or []
 if miss:
+    # Kept by BuilderBot for this container, never a file in the project.
     print(f"  {'env':<12} missing " + ", ".join(miss[:6])
-          + (" …" if len(miss) > 6 else "") + "; the operator fills these in (Env)")
+          + (" …" if len(miss) > 6 else "") + "; bb devapp env prints it and bb devapp env set "
+          "replaces it where the project's settings allow, else the operator's Env on the Docker tab")
 job = st.get("job") or {}
 if job.get("running"):
     print(f"  {'job':<12} {job.get('step') or 'working'}")
@@ -4159,7 +4177,8 @@ import bbapi                                                    # noqa: E402
 
 proj = os.environ["BB_DEV_PROJECT"]
 auth = os.environ["BB_DEV_AUTH"]
-post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", "")}, auth=auth)  # noqa: E731
+post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),  # noqa: E731
+                                                "container": os.environ.get("BB_DEV_CONTAINER", "")}, auth=auth)
 
 def look():
     d = post({"action": "state"})
@@ -4228,8 +4247,9 @@ while waited < 3600:
                  else "built and not running" if st.get("await_env")
                  else "not running"))
         if st.get("await_env"):
-            print("[builderbot] its env is not filled in, which is the operator's: "
-                  "Env on the docker row", file=sys.stderr)
+            print("[builderbot] its env is not filled in: bb devapp env set FILE writes it where "
+                  "the project's settings allow, else the operator's Env on the Docker tab",
+                  file=sys.stderr)
         raise SystemExit(0)
     if waited >= 21:
         sys.exit("[builderbot] ERROR: no build appeared within twenty seconds; "
@@ -4258,6 +4278,7 @@ auth = os.environ["BB_DEV_AUTH"]
 # caller was told nothing had been timed (B202, four sightings on 21 Sep).
 START_WAIT = 120
 r = bbapi.call("/api/devapp", {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),
+                               "container": os.environ.get("BB_DEV_CONTAINER", ""),
                                "action": "test", "args": sys.argv[1:]}, auth=auth, timeout=START_WAIT)
 if r.get("error"):
     # The one refusal that does not mean nothing happened.
@@ -4319,7 +4340,8 @@ import bbapi                                                    # noqa: E402
 
 proj, auth = os.environ["BB_DEV_PROJECT"], os.environ["BB_DEV_AUTH"]
 verb, setting = os.environ["BB_DEV_VERB"], os.environ.get("BB_DEV_SET") == "1"
-post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", "")}, auth=auth)  # noqa: E731
+post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),  # noqa: E731
+                                                "container": os.environ.get("BB_DEV_CONTAINER", "")}, auth=auth)
 path = os.environ.get("BB_DEV_FILE", "")
 text = open(path, encoding="utf-8").read() if path else None
 if verb == "env" and not setting:
@@ -4360,7 +4382,94 @@ PY
             [ -z "$tmp" ] || rm -f "$tmp"
             return "$rc"
             ;;
-        *) die "usage: bb devapp [--instance NAME] [status|rebuild [--why \"...\"]|new [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]]" ;;
+        ls|list)
+            # What belongs to this project on its node, as its group on the
+            # Docker tab lists it (the operator, 24 Sep).
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+proj = os.environ["BB_DEV_PROJECT"]
+d = bbapi.call("/api/docker", auth=os.environ["BB_DEV_AUTH"])
+if d.get("error") and not (d.get("instances") or d.get("containers")):
+    sys.exit(f"[builderbot] ERROR: {d['error']}")
+blind = bool(d.get("blind"))
+rows = []
+for i in d.get("instances") or []:
+    if i.get("owner") != proj:
+        continue
+    kind = ("written here" if i.get("source") == "file" else
+            "its own" if i.get("project") == proj else f"built from {i.get('project')}")
+    state = "?" if blind else "running" if i.get("running") else "stopped" if i.get("exists") else "down"
+    rows.append((i.get("name") or "", kind, state, " ".join(i.get("ports") or [])))
+for c in d.get("containers") or []:
+    if c.get("owner") != proj:
+        continue
+    rows.append((c.get("name") or c.get("id") or "", "not ours", c.get("state") or "?",
+                 " ".join(c.get("ports") or [])))
+if not rows:
+    print(f"nothing belongs to {proj} on its node: the operator puts a container under a "
+          "project on its row on the Docker tab")
+    raise SystemExit(0)
+w = max(len(r[0]) for r in rows)
+for name, kind, state, ports in sorted(rows):
+    print(f"  {name:<{w}}  {kind:<14} {state:<8} {ports}".rstrip())
+if blind:
+    print("[builderbot] the daemon did not answer, so what is running is not known", file=sys.stderr)
+print("[builderbot] bb devapp log NAME reads one; bb devapp start|stop|restart NAME, and "
+      "--container NAME on the other verbs, act on one where the project's settings allow",
+      file=sys.stderr)
+PY
+            ;;
+        log|logs|start|stop|restart)
+            # One container that belongs to this project, by the name bb
+            # devapp ls lists: its log, or start, stop and restart under the
+            # project's Run its container setting.
+            local verb="$sub" name="" why=""
+            shift || true
+            [ $# -ge 1 ] || die "usage: bb devapp $verb NAME [--why \"...\"]"
+            name="$1"; shift
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    *) die "usage: bb devapp $verb NAME [--why \"...\"]" ;;
+                esac
+            done
+            [ "$verb" = logs ] && verb=log
+            BB_DEV_AUTH="$auth" BB_DEV_VERB="$verb" BB_DEV_NAME="$name" BB_DEV_WHY="$why" python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+auth, verb, name = os.environ["BB_DEV_AUTH"], os.environ["BB_DEV_VERB"], os.environ["BB_DEV_NAME"]
+r = bbapi.call("/api/dockerctl", {"action": "logs" if verb == "log" else verb, "container": name,
+                                  "why": os.environ.get("BB_DEV_WHY", "")}, auth=auth)
+if r.get("error"):
+    sys.exit(f"[builderbot] ERROR: {r['error']}")
+if verb == "log":
+    sys.stdout.write(r.get("text") or "")
+    raise SystemExit(0)
+if r.get("id"):
+    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
+          "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
+    for _ in range(900):
+        time.sleep(1)
+        o = bbapi.call("/api/phone", {"action": "outcome", "id": r["id"]}, auth=auth)
+        if o.get("error"):
+            sys.exit(f"[builderbot] ERROR: {o['error']}")
+        if o["state"] == "denied":
+            sys.exit("[builderbot] it was not allowed")
+        if o["state"] == "done":
+            if o.get("code"):
+                sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it did not happen'}")
+            print(f"[builderbot] allowed: {o.get('out') or verb}")
+            raise SystemExit(0)
+    sys.exit("[builderbot] nobody answered within fifteen minutes")
+print(f"[builderbot] {r.get('out') or verb}")
+PY
+            ;;
+        *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
     esac
 }
 

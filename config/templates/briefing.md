@@ -111,19 +111,30 @@ hierarchy intact; a window that stops updating part way through a long session
 Use `dumpsys gfxinfo PKG framestats`.
 <!-- BUILDERBOT:END -->
 
-<!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
-## The dev instance
+## Containers
 
-This project has a compose file, so the Docker tab may carry a row for it.
-Removing a container, Up and Down are the operator's. Rebuilding the
-project's container, changing its env and creating it when it has none can be
-handed to you per project (Claude may: Run its container): `bb devapp` says
+A container on the Docker tab belongs to one project or to none, which the
+operator sets on its row, and a session sees and works on its own project's
+only. `bb devapp ls` lists them on this project's node and `bb devapp log
+NAME` reads one. Acting on one is handed over in the project's settings
+(Claude may: Run its container): `bb devapp start|stop|restart NAME`, and
+`--container NAME` on `bb devapp rebuild` or `bb devapp env` for one written
+for this project; on `deny` the refusal names the setting, on `ask` your
+reason goes to a person. You
+have no Docker socket of your own, because the daemon is the node's and its
+group is root there. A container that does not exist yet is asked for: write
+its compose file, then `bb container ask --why "..." --name NAME --compose
+FILE`, and an administrator reads the file and allows or denies it; it
+belongs to this project unless `--for` names another, and `--node` puts it
+on another machine.
+
+<!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
+This project has a compose file, so it can have a container built from it.
+Removing one, Up and Down are the operator's; under the same setting you may
+rebuild it, change its env and create it when it has none: `bb devapp` says
 what it was built from and whether it is running, then `bb devapp rebuild`,
-`bb devapp env set FILE` and `bb devapp new`; on `deny` the refusal names the
-setting, on `ask` your reason goes to a person. You have no Docker socket of
-your own, because the daemon is the node's and its group is root there. A
-container of any other shape is asked for: write its compose file, then
-`bb container ask --why "..." --name NAME --compose FILE`, and an
-administrator reads the file and allows or denies it; `--node` puts it on
-another machine.
+`bb devapp env set FILE` and `bb devapp new`. Its env is kept by BuilderBot,
+not as a file in the tree: `bb devapp env` prints it, and a compose line
+`env_file: .env` is pointed at it when the container runs, so a missing
+`.env` in the project is expected.
 <!-- BUILDERBOT:END -->

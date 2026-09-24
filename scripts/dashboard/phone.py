@@ -50,6 +50,7 @@ rebuilder = None
 # own container, write its env. devapp.create_instance and devapp.write_env.
 instance_maker = None
 env_writer = None
+ctl_runner = None
 # devapp.create_container, injected the same way: what Allow on a container
 # ask calls (R71). None where no docker path is wired up.
 container_maker = None
@@ -628,6 +629,7 @@ def _req_public(r):
     # with the env's keys for the same reason.
     if r.get("kind") == "rebuild":
         out["create"] = bool(r.get("create"))
+        out["ctl"] = r.get("ctl") or ""
         if r.get("env") is not None:
             out["env_keys"] = [ln.split("=", 1)[0].strip() for ln in (r.get("env") or "").splitlines()
                                if "=" in ln and not ln.lstrip().startswith("#")]
@@ -764,7 +766,8 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
 
 
 def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
-                asker_admin=False, env=None, create=False):
+                asker_admin=False, env=None, create=False, target="", ctl="",
+                node=""):
     """A session asking to rebuild its project's dev instance, for a project
     whose dial is on `ask` (Claude may: Run its container, in the project's
     settings).
@@ -776,21 +779,30 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
     first (`env`): the operator's widening of the dial, 24 Sep. What a
     container IS stays out of the session's hands: it is the project's own
     compose file on the project's node, never one the session names.
+
+    `project` is the asking session's, which is who the answer goes back to;
+    `target` is the container's own key when it is not that project's
+    instance (one written here that belongs to it). `ctl` asks instead to
+    start, stop or restart the container called `name` on `node`, one that
+    belongs to the project and that BuilderBot may not have started.
     """
     why = " ".join(str(why or "").split())[:300]
     if not why:
-        return {"error": "say what the rebuild is for: the operator is "
+        return {"error": f"say what the {ctl or 'rebuild'} is for: the operator is "
                          "answering a question about work they did not start"}
     if env is not None and len(str(env)) > 65536:
         return {"error": "that env file is over 64KB, and this holds settings, not data"}
     to, to_name = (("admins", "the administrators") if not (asker_admin and asker_uid)
                    else (asker_uid, f"{asker_name or 'you'} (your own account: it is "
                                     "on the Docker tab and your bell)"))
-    cmd = (["devapp", "new", name] if create else ["devapp", "env", "set", name]
-           if env is not None else ["devapp", "rebuild", name])
-    return _queue("rebuild", why, cmd, "", "", project, "claude", to, to_name, asker_name,
+    cmd = (["devapp", ctl, name] if ctl else ["devapp", "new", name] if create
+           else ["devapp", "env", "set", name] if env is not None
+           else ["devapp", "rebuild", name])
+    return _queue("rebuild", why, cmd, node, "", project, "claude", to, to_name, asker_name,
                   extra={"instance": str(instance or ""), "create": bool(create),
-                         "env": None if env is None else str(env)})
+                         "env": None if env is None else str(env),
+                         "target": str(target or ""), "ctl": str(ctl or ""),
+                         "name": str(name or "")})
 
 
 def ask_container(why, name, compose, env, nid, node_name, project, for_project="",
@@ -871,13 +883,22 @@ def decide(rid, allow, uid, name="", admin=False):
             return {"ok": True}
         # What the request carried beyond the build, in the order it needs:
         # the container made, then its env, then the build that uses both.
+        # Or a start, stop or restart of one container, and nothing else.
         res = {}
+        key = r.get("target") or r["project"]
+        if r.get("ctl"):
+            res = (ctl_runner(r.get("node") or "", r.get("name") or "", r["ctl"])
+                   if ctl_runner is not None else {"error": "nothing here starts a container"}) or {}
+            with _lock:
+                r.update(state="done", code=1 if res.get("error") else 0,
+                         out=str(res.get("error") or res.get("out") or r["ctl"]))
+            return {"error": res["error"]} if res.get("error") else {"ok": True}
         if r.get("create") and instance_maker is not None:
-            res = instance_maker(r["project"], r.get("instance") or "") or {}
+            res = instance_maker(key, r.get("instance") or "") or {}
         if not res.get("error") and r.get("env") is not None and env_writer is not None:
-            res = env_writer(r["project"], r["env"], r.get("instance") or "") or {}
+            res = env_writer(key, r["env"], r.get("instance") or "") or {}
         if not res.get("error"):
-            res = rebuilder(r["project"], r.get("instance") or "") or {}
+            res = rebuilder(key, r.get("instance") or "") or {}
         with _lock:
             r.update(state="done", code=1 if res.get("error") else 0,
                      out=str(res.get("error") or res.get("job") or "started"))

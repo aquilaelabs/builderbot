@@ -2360,8 +2360,14 @@ ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
 
 ok(/written here: this dashboard holds its compose file/.test(await page.$eval(
      '.dmtab .row[data-inst="radarr|main"]', r => r.textContent))
-   && /Written here/.test(await page.$eval('.dmtab', t => t.textContent)),
-   '...and the manager says which kind it is, on the row and over the group');
+   && await page.evaluate(() => {
+     // The heading a row sits under is the last one before it.
+     const row = document.querySelector('.dmtab .row[data-inst="radarr|main"]');
+     const heads = [...document.querySelectorAll('.dmtab .dmgroup')]
+       .filter(h => h.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING);
+     return /No project/.test(heads.pop()?.textContent || '');
+   }),
+   '...and the manager says which kind it is on the row, under No project, since none was picked');
 // Editing one: what it is changes far more often than it is created, and
 // without this the only way to move a port was to remove it and retype it.
 await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
@@ -2740,8 +2746,8 @@ ok(await page.$('#devSend'),
     const made = await asSession({ project: 'ep.silon', action: 'new', instance: 'fresh' });
     ok(made.status === 200 && made.instance === 'fresh',
        `...and creates its project's own container (${made.error || made.instance})`);
-    const under = await asSession({ project: 'ep.silon', action: 'new', instance: 'elsewhere', for: 'alpha' });
-    ok(under.status === 403, `...but not one shown under another project (${under.status})`);
+    const under = await asSession({ project: 'ep.silon', action: 'new', instance: 'elsewhere', owner: 'alpha' });
+    ok(under.status === 403, `...but not one belonging to another project (${under.status})`);
     await dial('ask');
     const asks = await asSession({ project: 'ep.silon', action: 'new', instance: 'asked',
                                    text: 'KEY=secret-value\n', why: 'a fresh one to try the branch' });
@@ -3053,44 +3059,164 @@ print(json.dumps(out))
      `...and a written pair still wins (${JSON.stringify(r.written)})`);
 }
 
-// ---- a container shown under a project -------------------------------------
-// A dev radarr for a media project belongs in that project's notebook, not
-// only in the manager: New container takes a project to show it under, the
-// record keeps it, the manager's row says so, and the project's Docker view
-// lists it beside the project's own instances with the same controls.
+// ---- the project a container belongs to (the operator, 24 Sep) -------------
+// Every row belongs to one project or to none. The manager is grouped that
+// way, alphabetically with none last; the project's notebook lists what
+// belongs to it; and that project's sessions are the only ones that can see
+// a row or work on it, under its Run its container setting.
 {
-  const made = await page.evaluate(async () => (await (await fetch('/api/container', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'create', name: 'helper-for-eps', for: 'ep.silon',
-                           compose: 'services:\n  app:\n    image: alpine\n', env: '' }) })).json()));
-  ok(made.ok && made.project === 'helper-for-eps', `a container written here can name the project it belongs with (${JSON.stringify(made).slice(0, 80)})`);
-  const bad = await page.evaluate(async () => (await (await fetch('/api/container', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'create', name: 'helper-for-nobody', for: 'no-such-project',
-                           compose: 'services:\n  app:\n    image: alpine\n', env: '' }) })).json()));
+  const api = (path, body) => page.evaluate(async ([p, b]) => {
+    const r = await fetch(p, b ? { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify(b) } : {});
+    return { status: r.status, ...(await r.json()) };
+  }, [path, body]);
+  const made = await api('/api/container', { action: 'create', name: 'helper-for-eps', owner: 'ep.silon',
+                                            compose: 'services:\n  app:\n    image: alpine\n', env: '' });
+  ok(made.ok && made.project === 'helper-for-eps',
+     `a container written here can be made for a project (${JSON.stringify(made).slice(0, 80)})`);
+  const bad = await api('/api/container', { action: 'create', name: 'helper-for-nobody', owner: 'no-such-project',
+                                           compose: 'services:\n  app:\n    image: alpine\n', env: '' });
   ok(/not a project: no-such-project/.test(bad.error || ''), 'a project nobody can see is refused');
-  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
-  await page.waitForFunction(() => (dockerList?.instances || []).some(d => d.project === 'helper-for-eps' && d.for === 'ep.silon'),
+  // Sent with "no project" picked, a project's own container belongs to none,
+  // which is not the same as sending it with nothing said.
+  const loose = await api('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'loose', owner: '' });
+  const listed = await api('/api/docker');
+  const row = (p, i) => (listed.instances || []).find(d => d.project === p && d.instance === i) || {};
+  ok(loose.ok && row('helper-for-eps', 'main').owner === 'ep.silon' && row('ep.silon', 'main').owner === 'ep.silon'
+     && row('ep.silon', 'loose').owner === ''
+     && (listed.containers || []).find(c => c.name === 'someone-elses')?.owner === '',
+     `the manager's answer says whose each row is: a written one its pick, a project's its own unless sent with no project, another's nobody's (${
+       JSON.stringify((listed.instances || []).map(d => [d.name, d.owner]))})`);
+
+  // ---- the manager, grouped by project ---------------------------------------
+  await openManager();
+  const groups = () => page.evaluate(() => {
+    const out = []; let cur = null;
+    for (const el of document.querySelectorAll('.dmtab .dmgroup, .dmtab .row[data-inst], .dmtab .row[data-ctr]')) {
+      if (el.classList.contains('dmgroup')) out.push(cur = { head: el.querySelector('b').textContent, rows: [] });
+      else if (cur) cur.rows.push(el.dataset.inst || el.dataset.ctr);
+    }
+    return out;
+  });
+  await page.waitForFunction(() => document.querySelector('.dmtab .row[data-inst="helper-for-eps|main"]')
+                                   && document.querySelector('.dmtab .row[data-inst="ep.silon|loose"]'),
                              null, { timeout: 20000 });
-  ok(true, 'the manager\'s answer carries which project it is shown under');
+  let g = await groups();
+  const heads = g.map(x => x.head);
+  const named = heads.filter(h => h !== 'No project');
+  ok(heads[heads.length - 1] === 'No project'
+     && JSON.stringify(named) === JSON.stringify([...named].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))),
+     `the manager groups rows by project, alphabetically, with no project last (${heads.join(' | ')})`);
+  const under = h => (g.find(x => x.head === h) || { rows: [] }).rows;
+  ok(under('ep.silon').includes('ep.silon|main') && under('ep.silon').includes('helper-for-eps|main')
+     && under('No project').includes('ep.silon|loose') && under('No project').includes('someone-elses'),
+     `...a project's own container and one written for it together, and the rest under No project (${
+       JSON.stringify(g)})`);
+  // ...and the project is a setting on the row, staged and applied.
+  const R = '.dmtab .row[data-ctr="someone-elses"]';
+  ok(await page.$eval(`${R} [data-dmownapply]`, b => b.disabled)
+     && await page.$eval(`${R} [data-dmown]`, e => e.value === '' && [...e.options].some(o => o.value === 'ep.silon')),
+     'a container somebody else started carries a Project setting, on no project, with Apply asleep');
+  await page.selectOption(`${R} [data-dmown]`, 'ep.silon');
+  ok(!await page.$eval(`${R} [data-dmownapply]`, b => b.disabled), '...which a pick wakes');
+  await page.click(`${R} [data-dmownapply]`);
+  await page.waitForFunction(() => {
+    const row = document.querySelector('.dmtab .row[data-ctr="someone-elses"]');
+    const heads = [...document.querySelectorAll('.dmtab .dmgroup')]
+      .filter(h => row && (h.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return heads.pop()?.querySelector('b')?.textContent === 'ep.silon';
+  }, null, { timeout: 20000 });
+  ok(/ep\.silon's Claude may/.test(await page.$eval(R, r => r.textContent)),
+     "...and Apply moves it under that project, saying what the project's sessions may do with it");
+  ok(JSON.parse(readFileSync(`${DIR}/state/docker-owners.json`, 'utf8'))
+       && Object.values(JSON.parse(readFileSync(`${DIR}/state/docker-owners.json`, 'utf8')))
+         .some(n => n['someone-elses'] === 'ep.silon'),
+     '...kept by its name on its node, so the same container recreated keeps it');
+
+  // ---- the project's notebook lists what belongs to it -------------------------
   await page.evaluate(() => openNotebook('ep.silon'));
   await nbShown(page);
   await nbTab(page, 'docker');
-  await page.waitForFunction(() => document.querySelector('.pane .nb #dkList .row[data-inst="helper-for-eps|main"]'),
+  await page.waitForFunction(() => document.querySelector('.pane .nb #dkList .row[data-inst="helper-for-eps|main"]')
+                                   && document.querySelector('.pane .nb #dkList .row[data-ctr="someone-elses"]'),
                              null, { timeout: 20000 });
   const view = await page.$eval('.pane .nb [data-view="docker"]', v => ({
     hint: v.querySelector('#dkHint').textContent,
-    rows: [...v.querySelectorAll('#dkList .row[data-inst]')].map(r => r.dataset.inst),
-    forLine: v.querySelector('#dkList .row[data-inst="helper-for-eps|main"] .sub')?.textContent || '',
+    rows: [...v.querySelectorAll('#dkList .row[data-inst], #dkList .row[data-ctr]')].map(r => r.dataset.inst || r.dataset.ctr),
     buttons: [...v.querySelectorAll('#dkList .row[data-inst="helper-for-eps|main"] [data-dm]')].map(b => b.dataset.dm) }));
-  ok(view.rows.includes('helper-for-eps|main') && view.rows.includes('ep.silon|main'),
-     `the project's Docker view lists its own instance and the container shown under it (${view.rows.join(' ')})`);
-  ok(/for ep\.silon/.test(view.forLine) && view.buttons.includes('up') && view.buttons.includes('rebuild'),
-     `...with the manager's own row, saying whose it is, and its controls (${view.buttons.join(' ')})`);
-  ok(/2 containers of ep\.silon's on/.test(view.hint), `...and a line counting them (${view.hint.slice(0, 80)})`);
-  await page.evaluate(async () => (await (await fetch('/api/devapp', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project: 'helper-for-eps', instance: 'main', action: 'remove' }) })).json()));
+  ok(view.rows.includes('helper-for-eps|main') && view.rows.includes('ep.silon|main')
+     && view.rows.includes('someone-elses') && !view.rows.includes('ep.silon|loose'),
+     `the project's Docker view lists what belongs to it, and not its own container sent to no project (${view.rows.join(' ')})`);
+  ok(view.buttons.includes('up') && view.buttons.includes('rebuild'),
+     `...with the manager's own rows and controls (${view.buttons.join(' ')})`);
+  ok(/3 containers of ep\.silon's on/.test(view.hint), `...and a line counting them (${view.hint.slice(0, 80)})`);
+
+  // ---- what its session can reach ------------------------------------------------
+  const tok = execFileSync('bash', [`${fileURLToPath(new globalThis.URL('../../../', import.meta.url))}scripts/bb`,
+                                    'users', 'token', 'ep.silon', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+  const as = async (path, body) => {
+    const r = await fetch(URL.replace(/\/$/, '') + path, body
+      ? { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+          body: JSON.stringify(body) }
+      : { headers: { Authorization: 'Bearer ' + tok } });
+    return { status: r.status, ...(await r.json().catch(() => ({}))) };
+  };
+  const dial = m => api('/api/prefs', { project: 'ep.silon', devbuild: m });
+  const seen = await as('/api/docker');
+  ok((seen.instances || []).length > 0 && (seen.instances || []).every(d => d.owner === 'ep.silon')
+     && (seen.instances || []).some(d => d.name === 'helper-for-eps')
+     && !(seen.instances || []).some(d => d.instance === 'loose')
+     && JSON.stringify((seen.containers || []).map(c => c.name)) === '["someone-elses"]'
+     && JSON.stringify(seen.refs) === '{}',
+     `a session lists only what belongs to its project, on its node (${JSON.stringify([
+       (seen.instances || []).map(d => d.name), (seen.containers || []).map(c => c.name)])})`);
+  const st = await as('/api/devapp', { container: 'helper-for-eps', action: 'state' });
+  const theirs = await as('/api/devapp', { project: 'ep.silon', instance: 'loose', action: 'state' });
+  ok(st.status === 200 && theirs.status === 403 && /does not belong to ep\.silon/.test(theirs.error || ''),
+     `...reads one written for it by name, and not its own project's container sent to no project (${st.status}, ${theirs.error})`);
+  const log = await as('/api/dockerctl', { action: 'logs', container: 'someone-elses' });
+  ok(/hello from someone-elses/.test(log.text || ''), `...reads the log of one somebody else started, put under it (${log.status})`);
+  await dial('deny');
+  const denied = await as('/api/dockerctl', { action: 'restart', container: 'someone-elses' });
+  ok(denied.status === 403 && /Claude may: Run its container/.test(denied.error || ''),
+     `...and on deny may not restart it, told where the setting is (${String(denied.error).slice(0, 60)})`);
+  await dial('auto');
+  const was = readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').length;
+  const restarted = await as('/api/dockerctl', { action: 'restart', container: 'someone-elses' });
+  ok(restarted.ok && readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').slice(was).includes('someone-elses'),
+     `...on auto restarts it (${JSON.stringify(restarted).slice(0, 60)})`);
+  await dial('ask');
+  const asked = await as('/api/dockerctl', { action: 'stop', container: 'someone-elses', why: 'it holds the port' });
+  const pending = ((await api('/api/phone')).asks || []).find(a => a.id === asked.id);
+  ok(asked.id && pending?.ctl === 'stop' && pending.cmd.join(' ') === 'devapp stop someone-elses',
+     `...and on ask puts the stop in front of a person (${JSON.stringify(pending?.cmd)})`);
+  const before = readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').length;
+  await api('/api/phone', { action: 'allow', id: asked.id });
+  const out = await as('/api/phone', { action: 'outcome', id: asked.id });
+  ok(out.state === 'done' && !out.code && readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').slice(before).includes('someone-elses'),
+     `...and Allow stops it, the outcome going back to the session (${JSON.stringify(out).slice(0, 70)})`);
+  // bb devapp ls, as a session runs it.
+  const cache = `${DIR}/cache-owners`;
+  const ls = execFileSync('bash', [`${fileURLToPath(new globalThis.URL('../../../', import.meta.url))}scripts/bb`, 'devapp', 'ls'],
+    { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                               BB_TOKEN: tok, BB_PROJECT: 'ep.silon', XDG_CACHE_HOME: cache },
+      stdio: ['ignore', 'pipe', 'pipe'] });
+  ok(/helper-for-eps\s+written here/.test(ls) && /someone-elses\s+not ours/.test(ls) && !/loose/.test(ls),
+     `bb devapp ls lists what belongs to the project and nothing else (${ls.trim().replace(/\s+/g, ' ').slice(0, 120)})`);
+  // Put back under nobody, and the session loses it at once.
+  await api('/api/dockerctl', { action: 'owner', container: 'someone-elses', owner: '' });
+  await api('/api/devapp', { project: 'helper-for-eps', instance: 'main', action: 'owner', owner: '' });
+  const gone = await as('/api/dockerctl', { action: 'logs', container: 'someone-elses' });
+  const gone2 = await as('/api/devapp', { container: 'helper-for-eps', action: 'state' });
+  ok(gone.status === 403 && gone2.status === 403 && !/someone-elses|helper-for-eps/.test(
+       JSON.stringify(await as('/api/docker'))),
+     `...and one put under no project is out of its reach and off its list (${gone.status}, ${gone2.status})`);
+  const nope = await api('/api/dockerctl', { action: 'owner', container: 'someone-elses', owner: 'no-such-project' });
+  ok(nope.status === 400 && /no project called/.test(nope.error || ''), `a project that does not exist is refused (${nope.error})`);
+  await dial('deny');
+  for (const [p, i] of [['helper-for-eps', 'main'], ['ep.silon', 'loose']])
+    await api('/api/devapp', { project: p, instance: i, action: 'remove' });
 }
 
 // The fixture goes back the way artifacts.mjs leaves alpha.
@@ -3127,6 +3253,37 @@ print(json.dumps({'gone': sorted(gone),
      `removing a written container takes its env (${FC.gone.join(', ')})`);
   ok(FC.left.includes('my-sonarr.env') && FC.left.includes('notsonarr.env'),
      `...and leaves a live instance that merely ends the same way, and a partial match (${FC.left.join(', ')})`);
+}
+
+// ---- what a container belongs to, read and renamed ---------------------------
+// owner_of reads `for` by presence: none means the default (the project it is
+// built from, or no project for a written one), and an empty one is none on
+// purpose. A project renamed takes what belongs to it along, in both files.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+def wj(p, o):
+    with open(p, 'w') as f:
+        json.dump(o, f)
+m.configure(workspace='/tmp', state=d, write_json=wj)
+wj(d + '/devapps.json', {'media': {'main': {}, 'loose': {'for': ''}},
+                         'radarr': {'main': {'source': 'file', 'for': 'media'}},
+                         'scratch': {'main': {'source': 'file'}}})
+wj(d + '/docker-owners.json', {'n1': {'plex': 'media', 'other': 'alpha'}})
+before = [m.owner_of('media'), m.owner_of('media', 'loose'), m.owner_of('radarr'), m.owner_of('scratch')]
+moved = m.rename_owner('media', 'media2')
+print(json.dumps({'before': before, 'moved': moved, 'after': m.owner_of('radarr'),
+                  'owners': json.load(open(d + '/docker-owners.json'))}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  ok(JSON.stringify(R.before) === JSON.stringify(['media', '', 'media', '']),
+     `a container belongs to its project by default, to none when sent to none, and to its pick when written here (${R.before})`);
+  ok(R.moved && R.after === 'media2' && R.owners.n1.plex === 'media2' && R.owners.n1.other === 'alpha',
+     `...and a project renamed takes what belongs to it, in both stores (${JSON.stringify(R.owners)})`);
 }
 
 // A one-shot service that ran and exited 0 is finished, not down: the row

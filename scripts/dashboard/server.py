@@ -363,6 +363,24 @@ CLAUDE_PROJECTS = Path(
 # a mistake or a probe, and reading it into memory unbounded helps neither.
 MAX_BODY = 64 * 1024
 
+# What a session is told when its project's Run its container setting is at
+# deny, wherever a container verb is refused by it: the sentence names the
+# setting, so a session that tries learns where the decision lives.
+RUN_DENIED = ("running this project's containers is the operator's: rebuilding, "
+              "starting and stopping them, changing their env and creating one are "
+              "handed over in the project's settings, Claude may: Run its container")
+
+
+def not_ours(what, sess=""):
+    """The refusal for a container that does not belong to the caller's
+    project. The owner is not named: to a session that would be another
+    project's name, which is the thing it may not read."""
+    return (f"{what} does not belong to {sess}: a session reaches its own project's "
+            "containers, and an administrator sets which project each belongs to on "
+            "the Docker tab" if sess else
+            f"{what} does not belong to one of your projects: an administrator sets "
+            "which project each container belongs to on the Docker tab")
+
 
 def field(req, key, default=""):
     """One string field out of a request body, or the default.
@@ -2557,6 +2575,7 @@ phone.rebuilder = devapp.rebuild
 phone.container_maker = devapp.create_container
 phone.instance_maker = lambda project, instance: devapp.create_instance(project, instance or devapp.MAIN)
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
+phone.ctl_runner = devapp.ctl_on
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -4375,28 +4394,35 @@ class Handler(BaseHTTPRequestHandler):
         # is not one of them. No node named means the default, which is
         # the arrangement that predates the picker.
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
-        nid, why = self._node_asked(q.get("node", [""])[0])
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        # A session reads its own project's node, which is where it works,
+        # whatever it asks for: bb devapp ls names none.
+        nid, why = ((devapp.project_daemon(sess), None) if sess
+                    else self._node_asked(q.get("node", [""])[0]))
         if why:
             return self._json({"error": why, "blind": True,
                                "instances": [], "containers": []})
         got = devapp.overview(nid or None)
+        # What an account that is not an administrator sees is what belongs
+        # to its projects, a session's to its own one (the operator, 24 Sep):
+        # a node is shared, and anything else on it is another project's
+        # work, or nobody's, and not this account's to read. The branches
+        # go with them: the Build from picker is an administrator's.
+        if sess or self._node_scope() is not None:
+            seen = {sess} if sess else {p["name"] for p in project_list(me)}
+            got["instances"] = [i for i in got.get("instances") or []
+                                if i.get("owner") in seen]
+            got["containers"] = [c for c in got.get("containers") or []
+                                 if c.get("owner") in seen]
+            got["refs"] = {}
+            return self._json(got)
         # The branches each listed project could be built from. Here
         # rather than per row: they come from one `for-each-ref` per
         # project, and the picker needs them before anybody presses.
         got["refs"] = {p: devapp.refs_of(p)
                        for p in {i["project"] for i in got.get("instances") or []}
                        if not devapp.is_file_source(p)}
-        # An instance of a project this account was not given is one of
-        # the projects hidden from it, wearing a different hat; and a
-        # node is shared, so a restricted account asking about its own
-        # node would otherwise read every other project's name off this
-        # answer. The unowned containers go with them: they are somebody's
-        # work too, and nothing here says whose.
-        if self._node_scope() is not None:
-            seen = {p["name"] for p in project_list(self._who())}
-            got["instances"] = [i for i in got.get("instances") or []
-                                if i.get("project") in seen]
-            got["containers"] = []
         return self._json(got)
 
     def _get_containers(self):
@@ -5987,16 +6013,54 @@ class Handler(BaseHTTPRequestHandler):
         An administrator's, like every other docker write here, and the log
         with them: a container's log is whatever it decided to print, which
         on somebody else's container is not a thing to hand out by role.
+
+        The one exception is a SESSION, on a container that belongs to its
+        project (the operator, 24 Sep): on its project's node, its log when it
+        asks, since that is reading it, and start, stop or restart as the
+        project's Run its container setting allows.
         """
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        act, name = field(req, "action"), field(req, "container")
+        if sess:
+            nid = devapp.project_daemon(sess)
+            with devapp.on_node(nid or None):
+                c, owner = devapp.owned_container(name)
+            # A stranger's container and a missing one answer alike.
+            if owner != sess:
+                return self._json({"error": not_ours(name, sess)}, 403)
+            if act == "logs":
+                with devapp.on_node(nid or None):
+                    return self._json(devapp.container_logs(name))
+            if act not in ("start", "stop", "restart"):
+                return self._json({"error": f"a session starts, stops or restarts a "
+                                            f"container, or reads its log, not {act!r}"}, 400)
+            mode = prefs.get(sess)["devbuild"]
+            if mode == "deny":
+                return self._json({"error": RUN_DENIED}, 403)
+            if mode == "ask":
+                acct = users.account_of(me) or {}
+                return self._result(phone.ask_rebuild(
+                    field(req, "why"), sess, "", c["name"],
+                    asker_uid=str(acct.get("uid") or ""),
+                    asker_name=str(acct.get("name") or ""),
+                    asker_admin=users.is_admin(acct), ctl=act, node=nid))
+            with devapp.on_node(nid or None):
+                return self._result(devapp.container_ctl(name, act))
         if self._refused("docker-write"):
             return
         nid, why = self._node_asked(field(req, "node"))
         if why:
             return self._json({"error": why}, 400)
-        act, name = field(req, "action"), field(req, "container")
+        # Which project it belongs to: one of them, or none.
+        under = field(req, "owner")
+        if act == "owner" and under and under not in {p["name"] for p in project_list(me)}:
+            return self._json({"error": f"no project called {under}"}, 400)
         # Every docker call in the block is addressed at that node's daemon,
         # the way the manager's own listing is.
         with devapp.on_node(nid or None):
+            if act == "owner":
+                return self._result(devapp.set_container_owner(name, under))
             if act == "logs":
                 return self._json(devapp.container_logs(name))
             return self._result(devapp.container_ctl(name, act))
@@ -6042,9 +6106,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"that is the project {clash}: a "
                                         f"container written here needs a name "
                                         f"of its own"}, 400)
-        # Shown under a project's notebook as well as here, when asked:
-        # only a project this account can see, or nothing.
-        under = field(req, "for")
+        # The project it belongs to, when one is picked: only a project this
+        # account can see, or none.
+        under = field(req, "owner")
         if under and self._not_project(under):
             return
         r = devapp.create_container(name, req.get("compose") or "",
@@ -6077,18 +6141,39 @@ class Handler(BaseHTTPRequestHandler):
         return self._result(r)
 
     def _devapp(self, req):
-        """The dev-instance controls. Operator-only by construction: these
-        buttons live on the panel, and a session's path to docker is the
-        proxy's allowlist, not this endpoint."""
+        """The dev-instance controls: the Docker tab's buttons, and `bb devapp`
+        from a session. Who may press which is decided below, by the verb, by
+        whose the container is and by its project's Run its container."""
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        # Named as the Docker tab lists it, for one that is not the caller's
+        # own project's: a container written here, or another project's
+        # instance that belongs to this one (bb devapp --container NAME).
+        ctr = field(req, "container")
+        if ctr:
+            row = devapp.row_named(ctr)
+            if not row:
+                return self._json({"error": f"no container called {ctr} on record here"}, 400)
+            req["project"], req["instance"] = row
         name = field(req, "project")
         # A project, OR a container written here, which is not a project and
         # never will be, but carries every one of these controls. Checked
         # against the store rather than waved through: this name reaches a
         # compose call and a data directory either way.
-        if name not in {p["name"] for p in project_list(self._who())} \
+        if name not in {p["name"] for p in project_list(me)} \
                 and name not in devapp.overview_names():
             return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
+        # WHOSE IT IS, before anything else is asked: an account that is not
+        # an administrator reaches what belongs to its projects, and a
+        # session what belongs to its own one (the operator, 24 Sep). The
+        # same answer a stranger's container gets, whatever the verb, so a
+        # session cannot learn by asking what another project runs.
+        if not users.is_admin(me):
+            want = field(req, "instance") or devapp.only_instance(name)
+            owner = devapp.owner_of(name, want)
+            if owner not in ({sess} if sess else {p["name"] for p in project_list(me)}):
+                return self._json({"error": not_ours(devapp.pname(name, want), sess)}, 403)
         # Reading is everybody's; changing what is running is not (roadmap
         # #27). Named, not derived from the verb: an action that should be
         # restricted and is not on this list is a decision somebody has to
@@ -6109,7 +6194,7 @@ class Handler(BaseHTTPRequestHandler):
         # SESSION, what its project's dial hands over below (its env, and
         # creating the project's own container), which the dial decides
         # rather than this gate, since a session never passes this one.
-        session = bool((self._who() or {}).get("session"))
+        session = bool(sess)
         dialed = ("env-get", "env-set", "new") if session else ()
         if act not in ("starter", "state", "rebuild", "abort", "test") + dialed \
                 and self._refused("docker-write"):
@@ -6122,13 +6207,12 @@ class Handler(BaseHTTPRequestHandler):
         # front of a person first; `deny`, the default, keeps the button the
         # operator's. The read verbs are nobody's secret.
         #
-        # It governs rebuild and abort and NOTHING else, because nothing else
-        # ever reaches here from a session: new, remove, env and route are
-        # docker-write above, which a session's principal never has. So the
-        # dial is about running the code, never about creating a container.
-        # A test run is not on the rebuild dial: it runs the project's own
-        # test command inside a container that is already up, which a
-        # session could run on the node anyway (roadmap R48).
+        # It governs rebuild, abort, the env and creating the project's own
+        # container, and NOTHING else: remove and route are docker-write
+        # above, which a session's principal never has. A test run is not on
+        # it: it runs the project's own test command inside a container that
+        # is already up, which a session could run on the node anyway
+        # (roadmap R48).
         # ...and before the dial, a session may only touch the instance on its
         # OWN node. A session runs on the project's node; an instance pinned
         # to another one is a container on a machine this session is not on,
@@ -6137,9 +6221,9 @@ class Handler(BaseHTTPRequestHandler):
         # row that happens to carry this project's name, and a rebuild would
         # bounce a service still being used. The operator keeps both, through
         # the Docker manager, which is where an instance is removed.
-        if act not in ("starter", "state") and (self._who() or {}).get("session"):
+        if act not in ("starter", "state") and session:
             on = devapp.instance_node(name, field(req, "instance"))
-            mine = devapp.project_daemon(name)
+            mine = devapp.project_daemon(sess)
             if on and mine and on != mine:
                 return self._json({"error": "this dev instance is on another node: it stayed "
                                             "where it was running when this project moved, "
@@ -6155,37 +6239,46 @@ class Handler(BaseHTTPRequestHandler):
             # a session is the project's own compose file on its own node,
             # never another project's and never a file it wrote, which is
             # `bb container ask` and an administrator's.
-            mode = prefs.get(name)["devbuild"]
+            # The dial of the project it belongs to, which is the session's
+            # own: the gate above let nothing else through.
+            mode = prefs.get(sess)["devbuild"]
             if mode == "deny":
-                return self._json({"error": "running this project's container is the "
-                                            "operator's: rebuilding it, changing its env and "
-                                            "creating one are handed over in the project's "
-                                            "settings, Claude may: Run its container"}, 403)
+                return self._json({"error": RUN_DENIED}, 403)
             if act == "new":
-                if field(req, "for") not in ("", name):
+                if "owner" in req and field(req, "owner") != name:
                     return self._json({"error": "a session creates its own project's container, "
-                                                "not one shown under another project"}, 403)
-                req["for"], req["node"] = "", ""
+                                                "belonging to its own project"}, 403)
+                req.pop("owner", None)
+                req["node"] = ""
             if mode == "ask" and act in ("rebuild", "env-set", "new"):
                 # Aborting is not asked about: it stops a build this session
                 # was already allowed to start, and a running build nobody
                 # can stop is worse than one nobody approved. Reading the env
                 # is not either: a session cannot propose a change to what it
                 # cannot see, and the change is what is asked about.
-                acct = users.account_of(self._who()) or {}
+                acct = users.account_of(me) or {}
                 want = field(req, "instance") or devapp.MAIN
                 text = req.get("text") if act in ("env-set", "new") else None
+                # Asked by, and answered to, the session's project; acting on
+                # the container named, which may be one written here.
                 r = phone.ask_rebuild(
-                    field(req, "why"), name, want, devapp.pname(name, want),
+                    field(req, "why"), sess, want, devapp.pname(name, want),
                     asker_uid=str(acct.get("uid") or ""),
                     asker_name=str(acct.get("name") or ""),
                     asker_admin=users.is_admin(acct),
                     env=text if isinstance(text, str) and (act == "env-set" or text.strip()) else None,
-                    create=act == "new")
+                    create=act == "new", target="" if name == sess else name)
                 return self._result(r)
         if act not in ("starter", "state") and name in {p["name"] for p
-                                                        in project_list(self._who())} \
+                                                        in project_list(me)} \
                 and self._readonly(name):
+            return None
+        # ...and for a container written here, the project it belongs to,
+        # for anybody but an administrator: a session of a locked project
+        # does not work on its containers either.
+        if act not in ("starter", "state") and not users.is_admin(me) \
+                and name not in {p["name"] for p in project_list(me)} \
+                and self._readonly(devapp.owner_of(name, field(req, "instance") or devapp.MAIN)):
             return None
         # Which instance of that project. Absent means the one every project
         # has always had, so a caller that predates instances still works and
@@ -6211,11 +6304,14 @@ class Handler(BaseHTTPRequestHandler):
         # what it is for; the project it is made for is checked here, where
         # the account is known, and everything else is the module's: which
         # verb means what is devapp.py's to say (the one-file rule), and
-        # this handler holds the gate.
+        # this handler holds the gate. `owner` names a project the same way.
         if act == "new":
-            under = field(req, "for")
+            under = field(req, "owner")
             if under and self._not_project(under):
                 return
+        if act == "owner" and field(req, "owner") \
+                and field(req, "owner") not in {p["name"] for p in project_list(me)}:
+            return self._json({"error": f"no project called {field(req, 'owner')}"}, 400)
         payload, status = devapp.act(
             name, inst, act, req,
             # The command is the project's own, from its settings.
@@ -6443,8 +6539,10 @@ class Handler(BaseHTTPRequestHandler):
                 elif pn:
                     target = pn
                 # The same check the New container form gets: a project
-                # that exists and this account may see, or nothing.
-                under = field(req, "for")
+                # that exists and this account may see. A session's ask
+                # belongs to its own project unless it names another, so the
+                # session that asked can see what it asked for.
+                under = field(req, "for") or (who.get("session") or "")
                 if under and self._not_project(under):
                     return
                 r = phone.ask_container(field(req, "why"), field(req, "name"),

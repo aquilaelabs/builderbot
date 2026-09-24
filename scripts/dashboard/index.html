@@ -3406,10 +3406,10 @@ body.booting .pane>.loading{margin:auto}
            listed apart from dist/, which is what the project ships. -->
       <div class="field" id="artBranches" hidden></div>
     </div>
-    <!-- This project's containers: its own dev instances and anything made
-         with "show under" naming it, with the manager's rows and controls,
-         so nobody has to find them among every project's on the Docker
-         tab. Read from the project's node, which is where its work runs. -->
+    <!-- This project's containers: every one that belongs to it, with the
+         manager's rows and controls, so nobody has to find them among every
+         project's on the Docker tab. Read from the project's node, which is
+         where its work runs. -->
     <div class="nbview" data-view="docker" hidden>
       <div class="field nbhead vbar"><span id="dkHint">loading…</span><span class="sp"></span>
         <button type="button" id="dkOpen" title="every node's containers, and New container">Docker tab</button></div>
@@ -3734,10 +3734,11 @@ body.booting .pane>.loading{margin:auto}
       <label for="cNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
       <select id="cNode"></select>
     </div>
-    <!-- Which project's notebook lists it as well: a dev radarr for a media
-         project belongs under that project's Docker view, not only here. -->
-    <div class="field">
-      <label for="cUnder">Show under project<span class="help" data-tip="the project whose notebook lists this container" tabindex="0">?</span></label>
+    <!-- Which project it belongs to: a dev radarr for a media project is
+         that project's, listed in its notebook and reachable by its
+         sessions. Changed later on the row, so not shown when editing. -->
+    <div class="field" id="cUnderField">
+      <label for="cUnder">Project<span class="help" data-tip="the project it belongs to: its Claude sessions can see it and work on it. No project keeps it from every session" tabindex="0">?</span></label>
       <select id="cUnder"></select>
     </div>
     <div class="field">
@@ -3802,7 +3803,7 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint" id="dnPreview" hidden></div>
     </div>
     <div class="field">
-      <label for="dnUnder">Show under project<span class="help" data-tip="the project whose notebook lists this container; its own by default" tabindex="0">?</span></label>
+      <label for="dnUnder">Project<span class="help" data-tip="the project it belongs to, its own by default: its Claude sessions can see it and work on it. No project keeps it from every session" tabindex="0">?</span></label>
       <select id="dnUnder"></select>
     </div>
     <div class="field" id="dnNodeField" hidden>
@@ -8041,18 +8042,21 @@ function makeNotebook(project){
       got = await (await fetch("/api/docker" + (node ? "?node=" + encodeURIComponent(node) : ""))).json();
     }catch(e){ $("dkHint").textContent = "could not read the manager: " + e; return; }
     dockerSeen[got.node || node || ""] = got;
-    const mine = (got.instances || []).filter(d => d.project === project || d.for === project);
+    // What belongs to the project, which is the Docker tab's group for it.
+    const mine = (got.instances || []).filter(d => d.owner === project);
+    const others = (got.containers || []).filter(c => c.owner === project);
     const job = got.job && (got.job.running || got.job.error) ? got.job : null;
     const blind = !!(got.blind || got.error || got.on === false);
     const where = (nodesList || []).find(n => n.id === (got.node || node))?.name || "its node";
-    $("dkHint").textContent = mine.length
-      ? `${mine.length} container${mine.length === 1 ? "" : "s"} of ${project}'s on ${where}${
+    const n = mine.length + others.length;
+    $("dkHint").textContent = n
+      ? `${n} container${n === 1 ? "" : "s"} of ${project}'s on ${where}${
           blind ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`
-      : `nothing of ${project}'s on ${where} yet: send it from the Artifacts tab, or New container on the Docker tab with this project picked under "show under"`;
-    const key = JSON.stringify([mine, job && job.step, job && job.running, job && (job.log || "").length]);
+      : `nothing belongs to ${project} on ${where} yet: send it from the Artifacts tab, or pick ${project} on a container's row on the Docker tab`;
+    const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length]);
     if (key === dkSeen) return;
     dkSeen = key;
-    $("dkList").innerHTML = dmRowsHtml(mine, job, blind);
+    $("dkList").innerHTML = dmRowsHtml(mine, job, blind) + dmOtherRowsHtml(others);
     tipify($("dkList"));
     dmWireRows($("dkList"), got);
   }
@@ -9288,7 +9292,7 @@ function drawBell(){
     ...asks.map(a => `<div class="bnote ask${a.kind === "root" ? " bad" : ""}">
         <div class="btag">${
           a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
-          : a.kind === "rebuild" ? `rebuild in ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "rebuild" ? `${esc(a.ctl || "rebuild")} in ${esc(a.project || "a project")}: needs your answer`
           : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
@@ -9299,7 +9303,7 @@ function drawBell(){
         // values, which is where a token would be.
         a.kind === "container" ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the compose file${
             a.env_keys?.length ? `, and an env file setting ${a.env_keys.map(esc).join(", ")}` : ""}${
-            a.for ? `, shown under ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}
+            a.for ? `, for ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}
         <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</span>
