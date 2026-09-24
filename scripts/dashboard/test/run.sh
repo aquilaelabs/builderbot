@@ -66,8 +66,16 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -f "$KEEPF" ]; then
                 *)  f="$KEEP_HERE/${t%.mjs}.mjs"; cp "$HERE/${t%.mjs}.mjs" "$f" ;;
             esac
             printf '[dashboard-test] == %s == (attached to the kept fixture at %s)\n' "$(basename "$f")" "$KEEP_URL"
-            DASHBOARD_TEST_URL="$KEEP_URL" DASHBOARD_TEST_CHROME="$KEEP_CHROME" \
-            DASHBOARD_TEST_DIR="$KEEP_S" node "$f" || rc=1
+            # The kept world's own environment, the same as a fresh run sets
+            # below: its private tmux server, its git config, and none of the
+            # node's or the session's own variables. Without it a suite that
+            # ends or makes a tmux session refused to run attached (B230).
+            env -u TMUX -u BUILDERBOT_ROLE -u BB_CONTROLLER -u BB_CONTROLLER_PIN -u BB_NODE \
+                -u BUILDERBOT_NODE -u BB_ACCOUNT_NAME -u BB_ACCOUNT_UID -u BB_PROJECT -u BB_TREE \
+                -u BB_TREE_OWNER -u BB_CI_LOG_DIR -u BB_NODE_TOOLCHAINS -u BB_EMU_LOCAL \
+                TMUX_TMPDIR="$KEEP_S/tmux" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$KEEP_S/gitconfig" \
+                DASHBOARD_TEST_URL="$KEEP_URL" DASHBOARD_TEST_CHROME="$KEEP_CHROME" \
+                DASHBOARD_TEST_DIR="$KEEP_S" node "$f" || rc=1
             case "$f" in */_probe-*) rm -f "$f" ;; esac
         done
         exit "$rc"
