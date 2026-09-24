@@ -99,7 +99,7 @@ function nbTestsView({$, nb, project}){
 
   // Durations read as seconds with one decimal up to a minute and as m:ss
   // past it, because "412.9s" is a number somebody has to divide.
-  const dur = ms => ms == null ? "—"
+  const dur = ms => ms == null ? "-"
     : ms < 60000 ? (ms / 1000).toFixed(1) + "s"
     : Math.floor(ms / 60000) + "m " + Math.round((ms % 60000) / 1000) + "s";
 
@@ -149,10 +149,10 @@ function nbTestsView({$, nb, project}){
     // measured duration: what the suite spends *in* its tests; the last run's
     // own wall time is shown beside it, and the difference is the harness.
     const proj = j.total_ms || 0, wall = j.last_wall_ms || 0;
-    $("tstHint").innerHTML = `${j.n} tests · <b>${esc(dur(proj))}</b> projected`
-      + (wall ? ` (last run ${esc(dur(wall))} of wall)` : "")
+    $("tstHint").innerHTML = `${j.n} tests · <b>${esc(dur(proj))}</b> in tests`
+      + (wall ? ` (last run ${esc(dur(wall))})` : "")
       + (j.suspect ? ` · <span class="bad">${j.suspect} flagged, ${esc(dur(j.recover_ms))}
-           of it waiting</span>` : "")
+           waiting</span>` : "")
       + (j.undocumented ? ` · ${j.undocumented} undescribed` : "");
     $("tstStats").hidden = true;
     // ---- the folds above the list ------------------------------------------
@@ -230,9 +230,8 @@ function nbTestsView({$, nb, project}){
           <span class="pill">${esc(t.suite)}</span>
           ${t.status && t.status !== "pass"
             ? `<span class="pill ${t.status === "fail" ? "bad" : "warn"}">${esc(t.status)}</span>` : ""}
-          ${t.suspect ? `<span class="pill warn" data-tip="this lands on a ${t.suspect}s
-             boundary: near certainly a fixed sleep or a polling timeout rather
-             than ${t.suspect}s of work">${t.suspect}s wait?</span>`
+          ${t.suspect ? `<span class="pill warn" data-tip="takes exactly ${t.suspect}s:
+             probably a fixed wait, not ${t.suspect}s of work">${t.suspect}s wait?</span>`
             : t.accepted ? `<span class="pill" data-tip="sits on ${t.sits_on}s, and that is the
              work: ${esc(t.accepted)}">${t.sits_on}s, accepted</span>` : ""}
           ${t.after ? `<span class="tstafter">follows: ${esc(
@@ -279,17 +278,17 @@ function nbTestsView({$, nb, project}){
             esc(draft ? draft.protects : t.protects)}</textarea>
         <label>What it exercises<span class="help" data-tip="fixtures, stubs, what is real and what is faked" tabindex="0">?</span></label>
         <textarea class="tstN" spellcheck="false"
-          placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${
+          placeholder="e.g. runs the real server; the database is faked">${
             esc(draft ? draft.notes : t.notes)}</textarea>
         ${t.sits_on ? `
         <label class="ndcap"><input type="checkbox" class="tstAccept"${(draft ? draft.accept : t.accepted) ? " checked" : ""}>
-          the wait is the work; it has to sit on ${t.sits_on}s, so stop flagging it</label>
+          this test needs ${t.sits_on}s; stop flagging it</label>
         <textarea class="tstWhy proseline" rows="1" maxlength="300" placeholder="why: a real boot, a timeout being proved"
           ${(draft ? draft.accept : t.accepted) ? "" : "hidden"
             }>${esc(draft ? draft.why : t.accepted)}</textarea>` : ""}
         <div class="actbar"><span class="sp"></span>
           <button type="button" class="stop tstCancel"
-            title="put the fields away: what was typed here is dropped">Cancel</button>
+            title="discard what was typed">Cancel</button>
           <button type="button" class="primary tstSave">Save</button></div>`;
       const acc = body.querySelector(".tstAccept");
       if (acc) acc.onchange = () => { body.querySelector(".tstWhy").hidden = !acc.checked; };

@@ -85,6 +85,7 @@
 - The Docker tab's project headings stand out: each is a band tinted and barred in the project's own colour, or the scheme's accent for one with none, with room above each group (20b0e23)
 - bb bug add on another project does not file a bug that names BuilderBot or a bb command: it says to use bb report, and --here files it anyway when it is the project's own (d46dfc9)
 - bb container new (bb container ask, as was) is under the project's Run its container setting: refused at deny, asked at ask, and at auto the project's own container on its own node is made and built at once; one for another project or another node is still asked (45c8a2f)
+- The dashboard's hints, tooltips, confirmations and empty states say what happens when you act, in one line: mechanics, history and internal names are gone from the screen (e50d054)
 
 ### Removed
 

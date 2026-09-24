@@ -188,10 +188,7 @@ function openSendToDocker(project){
   $("dnPreview").hidden = true;
   $("dnGo").disabled = false; $("dnGo").textContent = "Create";
   $("dnHint").textContent =
-    "It is built from " + project + "'s codebase, and rebuilding it takes "
-    + "whatever that codebase says then. A project can have several: give "
-    + "each one a name you will recognise in the manager; anything, including "
-    + "a project's name, as long as no other container has it.";
+    "Built from " + project + "'s codebase. Give it a name no other container has.";
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   fillUnderSelect($("dnUnder"), project);
@@ -215,9 +212,7 @@ function openSendToDocker(project){
       if (dnFor !== project || !(j.text || "").trim()) return;
       $("dnEnv").value = j.text;
       $("dnEnvHint").textContent =
-        "Seeded from " + project + "'s .env.example, comments and all. Saved "
-        + "for this container alone when you press Create, so the first build "
-        + "has it.";
+        "Copied from " + project + "'s .env.example. Saved for this container when you press Create.";
       $("dnEnvField").hidden = false;
     }).catch(() => {});
 }
@@ -361,8 +356,8 @@ function dmRouteLine(d){
     ? `<a href="${esc(r.url)}" target="_blank" rel="noreferrer"${r.ready ? "" : ' class="dim"'}>${esc(r.url)}</a>`
     : `<span class="dim">no address</span>`;
   const modes = [["lan", "lan: the node's address"],
-                 ["funnel", r.funnel_ok ? "funnel (a public https URL via Tailscale" : "funnel) needs tailscale on the node"],
-                 ["public", "public, not built"]];
+                 ["funnel", r.funnel_ok ? "public link (Tailscale Funnel)" : "public link: needs Tailscale on the node"],
+                 ["public", "public (not available yet)"]];
   return `<div class="sub dmroute">${link}${r.why ? ` <span class="dim">· ${esc(r.why)}</span>` : ""}
     <select data-route="mode" data-was="${esc(r.mode)}" aria-label="route" title="how this instance is reached">${
       modes.map(([v, l]) => `<option value="${v}"${v === mode ? " selected" : ""}${
@@ -403,10 +398,8 @@ function dmRefLine(d){
   // onto a line of its own, where it read as a stray mark belonging to
   // nothing.
   return `<div class="sub dmref"><label for="${esc("dmr-" + key)}">Build from${
-      helpIcon("The build comes from a worktree of that branch beside the project, "
-        + "so the project's own checkout is left where it is and nobody else's "
-        + "session moves. Its containers, env and data are unchanged; only what "
-        + "the next build is made of.")}</label>
+      helpIcon("The next build uses that branch. The project's checkout, env and data "
+        + "stay as they are.")}</label>
     <select id="${esc("dmr-" + key)}" data-dmref="${esc(key)}" aria-label="which branch to build">
       <option value=""${saved ? "" : " selected"}>whatever the project is on</option>${
       refs.map(b => `<option value="${esc(b)}"${b === pick ? " selected" : ""}>${
@@ -518,19 +511,15 @@ async function dmAction(project, instance, act, btn){
   }
   if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
   if (act === "remove" && !confirm(
-      `Remove ${project}/${instance} from the manager?\n\n`
+      `Remove ${project}/${instance}?\n\n`
       // Which of the two halves is actually going to happen. A row whose
       // daemon is not answering loses the down, and somebody removing one
       // should be told that before they press it rather than read it
       // afterwards.
       + (dmBlind()
-          ? `Its daemon does not answer, so nothing can be taken down: the row `
-            + `goes and anything running over there keeps running. `
+          ? `Docker is not answering, so it is not taken down; only the row goes. `
           : `It is taken down first. `)
-      + `Its env file and its data directory stay, so sending it again under `
-      + `the same name finds them.\n\n`
-      + `The project keeps its Artifacts tab either way; that is where it `
-      + `comes back from.`)) return;
+      + `Its env file and data stay for a remake.`)) return;
   let ack = "";
   if (act === "up" || act === "rebuild"){
     // The full state for this one instance, asked now rather than computed
@@ -670,8 +659,7 @@ async function openEditContainer(name){
   $("cName").value = name;
   $("cName").disabled = true;
   $("cNameHint").textContent =
-    "Its name is what the compose project is called, so it does not change "
-    + "here: remove it and write it again under another one.";
+    "The name cannot change: remove it and create it again under another.";
   $("cNodeField").hidden = true;   // where it runs is not an edit either
   $("cUnderField").hidden = true;  // its project is changed on its row
   $("cYml").value = $("cEnv").value = "";
@@ -719,8 +707,7 @@ function openNewContainer(){
   // compose file it writes is one tab away for everything else.
   cSeg("form");
   $("cNameHint").textContent =
-    "Its own name, not a project's. It becomes the compose project on the "
-    + "sandbox VM, which is what the manager lists it by.";
+    "A name no other container has.";
   $("cmodal").hidden = false;
 }
 
@@ -982,10 +969,10 @@ function dmRowsHtml(ins, job, blind){
           title="${(d.missing_env || []).length
             ? "the env is missing " + esc(d.missing_env.join(", "))
             : !d.built_rev
-              ? "docker compose up -d: builds the image first, as compose does"
-              : "docker compose up -d"}">Up</button>
+              ? "Start it: docker compose up -d, which builds the image first, as compose does"
+              : "Start it: docker compose up -d"}">Up</button>
         <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
-          title="docker compose down">Down</button>
+          title="Stop it and remove its containers: docker compose down">Down</button>
         ${d.source === "file"
           ? `<button type="button" data-dm="edit"
                title="edit this container's compose file and env">Edit</button>`
@@ -1205,11 +1192,11 @@ function dmOtherRowsHtml(cs){
       <div class="actbar dmacts">
         ${!mayDocker() ? "" : `<button type="button" data-ctl="${
           c.state === "running" ? "stop" : "start"}" data-ctr="${esc(c.name || c.id)}"
-          title="docker ${c.state === "running" ? "stop" : "start"} ${esc(c.name || c.id)}">${
+          title="${c.state === "running" ? "Stop" : "Start"} it: docker ${c.state === "running" ? "stop" : "start"} ${esc(c.name || c.id)}">${
           c.state === "running" ? "Stop" : "Start"}</button>
         <button type="button" data-ctl="restart" data-ctr="${esc(c.name || c.id)}"${
           c.state === "running" ? "" : " disabled"}
-          title="docker restart ${esc(c.name || c.id)}">Restart</button>`}
+          title="Restart it: docker restart ${esc(c.name || c.id)}">Restart</button>`}
         ${!mayDocker() ? "" : `<button type="button" data-logs="${esc(c.name || c.id)}"
           title="the last ${esc(String(400))} lines it printed">Log</button>`}
       </div>
@@ -1274,8 +1261,8 @@ function renderDockerInto(i){
   const note = off || (dockerList.error
     // The error's own full stop comes off before the clause is joined on:
     // "...does not know.: the rows cannot say" was on a walk's screenshot.
-    ? `the daemon did not answer: ${String(dockerList.error).replace(/\.\s*$/, "")}: the rows cannot say `
-      + `what is running, though the controls still work through the agent`
+    ? `Docker did not answer: ${String(dockerList.error).replace(/\.\s*$/, "")}. What is running `
+      + `is unknown; the controls still work`
     : "");
   // Which daemon this is, stated rather than inferred: the node picked
   // above names it, and saying which machine the buttons below act on is

@@ -149,8 +149,8 @@ function abDrawLog(j){
 function openAbout(which){
   // Host and uptime read at open, not at draw: the popup should say what is
   // true now, and uptime in particular moves while the page sits.
-  $("aHost").textContent = state?.host || "—";
-  $("aUp").textContent = state?.uptime || "—";
+  $("aHost").textContent = state?.host || "unknown";
+  $("aUp").textContent = state?.uptime || "unknown";
   abShow(which || abPage);
   $("aboutModal").hidden = false;
 }

@@ -74,10 +74,8 @@ function nbRulesView({$, nb, project}){
   function ruleWhen(r){
     const on = (r.paths || []).length || (r.words || []).length;
     return on
-      ? `Named in every session; its text arrives on the turn the work matches. `
-        + `A session reads it with <code>bb rules show ${esc(r.name || "…")}</code>.`
-      : `In front of every session started here, and paid for on every one. `
-        + `Give it a trigger and it arrives only when it applies.`;
+      ? `Sent to a session only when its work touches these files or words.`
+      : `Sent to every session. Add files or words to send it only when it applies.`;
   }
 
   function drawRules(){
@@ -110,7 +108,7 @@ function nbRulesView({$, nb, project}){
               (r.overlaps || []).length ? `<span class="pill warn">shares ground with a global rule</span>` : ""}
           </summary>
           <div class="body">${nb.ruleEditing.has(i) ? `
-            ${lbl("", "Name", "a short name; the listing and bb rules show NAME use it")}
+            ${lbl("", "Name", "a short name the rule is known by")}
             <input class="rlName" maxlength="40" autocomplete="off" spellcheck="false"
               placeholder="tests" value="${esc(r.name || "")}"
               aria-label="rule name">
@@ -138,7 +136,7 @@ function nbRulesView({$, nb, project}){
             </div>
             <div class="actbar macts">
               <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
-              <button type="button" class="stop rlCancel" title="put the fields away: what was typed here is dropped">Cancel</button>
+              <button type="button" class="stop rlCancel" title="discard what was typed">Cancel</button>
               <button type="button" class="danger rlRm">Remove</button>
             </div>` : `
             <div class="bfield"><label>rule</label><div class="bval rlBody">${esc(r.text || "")}</div></div>
@@ -157,12 +155,12 @@ function nbRulesView({$, nb, project}){
       ${globalRules(d.global || [])}
       <div class="fnote">${rows.length
           ? (chars === null
-             ? "unsaved: the size is measured on what is written"
-             : `${standing} standing, ${rows.length - standing} conditional · `
-               + `${chars} characters in front of every session here${
-                 d.loud ? "; that is a lot to pay on every conversation" : ""}`)
-          : "Nothing set. A session can leave rules of its own with bb rules "
-            + "add, marked as its; the ones you write here it cannot touch."}</div>`;
+             ? "unsaved: the size updates after Save"
+             : `${standing} for every session, ${rows.length - standing} on triggers · `
+               + `${chars} characters sent to every session here${
+                 d.loud ? "; that is a lot" : ""}`)
+          : "No rules yet. A session can add its own, marked as its; "
+            + "it cannot change yours."}</div>`;
     // The clash, where the rules are: their list as it stands now beside the
     // choice, in the two words the roadmap's band uses, so the same decision
     // reads the same way on both views.

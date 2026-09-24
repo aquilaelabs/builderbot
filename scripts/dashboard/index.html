@@ -3549,7 +3549,7 @@ body.booting .pane>.loading{margin:auto}
   <div class="box wide">
     <h3 id="devEnvTitle">Dev instance env</h3>
     <div class="field">
-      <label>Dev env<span class="help" data-tip="kept in /config/devenv/, never in the repo, and handed to compose as --env-file" tabindex="0">?</span></label>
+      <label>Dev env<span class="help" data-tip="kept outside the repository and handed to the dev instance when it starts" tabindex="0">?</span></label>
       <textarea rows="14" spellcheck="false"></textarea>
       <div class="hint"></div>
     </div>
@@ -3581,9 +3581,8 @@ body.booting .pane>.loading{margin:auto}
       <div class="aline"><span>built</span><code id="aBuilt"></code></div>
       <div class="aline"><span>host</span><code id="aHost"></code></div>
       <div class="aline"><span>up</span><code id="aUp"></code></div>
-      <p class="hint">This is what <code>/opt</code> is serving: an update
-        pulls whatever <code>:latest</code> is now, and <code>bb drift</code>
-        says what a checkout has changed since.</p>
+      <p class="hint">The build this BuilderBot is running. An update moves it
+        to the newest one.</p>
     </div>
     <div class="foot"><span class="sp"></span>
       <button type="button" id="aboutClose">Close</button>
@@ -4099,8 +4098,7 @@ body.booting .pane>.loading{margin:auto}
       <label for="pAbout">About this project</label>
       <textarea id="pAbout" spellcheck="false"
                 placeholder="What it is, how to build and test it; anything a new session should know."></textarea>
-      <div class="hint">Written into the new CLAUDE.md, below the environment
-        block.</div>
+      <div class="hint">Saved as the project's briefing, read by every session.</div>
     </div>
     <div class="field" id="pErrWrap" hidden><div class="hint bad" id="pErr"></div></div>
     <div class="foot">
@@ -5494,7 +5492,7 @@ function drawTabs(){
         // nothing is lost either way.
         t.kind === "term"
           ? `<button class="ic" data-min="${esc(t.id)}"
-               title="minimize: the terminal keeps running, reopen it from Sessions">—</button>`
+               title="minimize: the terminal keeps running, reopen it from Sessions">−</button>`
           : `<button class="ic" data-close="${esc(t.id)}" title="close">✕</button>`}
     </span>`;
   }).join("");
@@ -5948,9 +5946,8 @@ function nbReadOnly(root, project){
   }
   // Says what still works, not only what does not: the point of locking a
   // project is that everything you do yourself carries on.
-  note.textContent = "Locked: read-only. The roadmap, bugs and memories here "
-    + "cannot be changed while this project is locked. Its findings, artifacts "
-    + "and dev instance still work, and the padlock on its row unlocks it.";
+  note.textContent = "Locked: roadmap, bugs and memories are read-only. Findings, "
+    + "artifacts and the dev instance still work; the padlock on its row unlocks it.";
 }
 
 // Back to its holder when no tab is showing it, so a stale copy is never left
@@ -6281,15 +6278,15 @@ function rnDrawPrefs(){
                || $("rnEffort").value !== rnPrefWas.effort;
   const dflt = rnPrefWas.model === "" && rnModelNow
     ? ` ${(MODELS.find(([v]) => v === rnModelNow) || [])[1] || rnModelNow} is Claude's `
-      + `own default here, so leaving it is not a change.` : "";
+      + `own default here.` : "";
   $("rnPrefHint").textContent = shut
     ? "Locked; this project is yours to run, so no session starts here."
     : running
       ? (changed
           ? "A session is running here. Saving restarts it onto this: the "
             + "conversation is resumed, but anything mid-turn is lost."
-          : "Applied when a session starts. One is running here, so changing "
-            + "this restarts it onto the same conversation." + dflt)
+          : "Applies when a session starts; changing it restarts the one running "
+            + "here, on the same conversation." + dflt)
       : "Applied the next time Claude starts here, and kept until you change it." + dflt;
   $("rnPrefHint").classList.toggle("bad", !shut && running && changed);
 }
@@ -6305,7 +6302,7 @@ function drawBuild(img){
   $("aVer").textContent = ver || "(no version stamp)";
   $("aRev").textContent = rev
     || "unstamped: built outside CI, or older than the stamp itself";
-  $("aBuilt").textContent = img?.built || "—";
+  $("aBuilt").textContent = img?.built || "unknown";
 }
 // ---- the welcome panel: the guide, and the changelog ----------------------
 // Two guides, because an administrator and a user see different sidebars:
@@ -6570,7 +6567,7 @@ const opened = new Set();
 // first, each rule one block with its hits. What used to be the whole-report
 // tab, scoped to one project: the grouping by project became the notebook.
 function findingsRulesHtml(rows){
-  const by = (xs, k) => xs.reduce((m, x) => ((m[x[k] ?? "—"] ??= []).push(x), m), {});
+  const by = (xs, k) => xs.reduce((m, x) => ((m[x[k] ?? "none"] ??= []).push(x), m), {});
   const rules = by(rows, "rule");
   for (const k of Object.keys(rules))
     rules[k].sort((a, b) => (LEVEL_ORDER[a.level] ?? 9) - (LEVEL_ORDER[b.level] ?? 9));
@@ -6762,7 +6759,7 @@ const isBroken = p => p.issues.some(i => i.level === "error");
 // while the others are not.
 const gitReadyFor = p => (p.git_ready !== undefined ? p.git_ready : state?.git_ready) !== false;
 const heldWhy = p => p.held || (!gitReadyFor(p) && !liveSessions().has(myClaude(p.name))
-  ? "set your name and email for commits on your Profile (the gear), or for this project alone in its settings: every project here is a repository, and a commit needs an author"
+  ? "set your commit name and email on your Profile (the gear) or in this project's settings first"
   : "");
 
 let showAllProjects = false;
@@ -6903,7 +6900,7 @@ function projectRow(p, live, cls, inTab){
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own: start yours`
                  : !signedIn() && !live.has(myClaude(p.name))
-                   ? "no node reports a Claude login for you; it may still start, and the Doctor card has the way in"
+                   ? "not signed in to Claude on any node: sign in from the Doctor card"
                  : p.session_at
                    ? `Claude: a session on ${p.session_at}, this project's node; sign in there from a shell if it asks`
                  : live.has(myClaude(p.name)) ? "Claude: session running, go to its tab"
@@ -6913,14 +6910,14 @@ function projectRow(p, live, cls, inTab){
         ${notMine(p) || !gitReadyFor(p) ? "disabled" : ""}
         title="${notMine(p) ? NOT_MINE_WHY
                 : !gitReadyFor(p)
-                  ? "set your name and email for commits on your Profile (the gear), or for this project in its settings: a shell is where git is typed"
+                  ? "set your commit name and email on your Profile (the gear) or in this project's settings first"
                 : "shell: open another terminal here"}"
         >${TERM}</button>` : ""}
       ${p.git_ok && !isBroken(p)
         ? `<button class="eye" data-l="${esc(p.name)}"
              aria-label="${p.linked ? `${p.forge_name || "remote"} settings` : "link to a git host"}"
              title="${p.linked
-               ? `${esc(p.forge_host || p.forge_name || "its remote")}: the credential this project pushes with, which one git reaches for, and the way to unlink it`
+               ? `${esc(p.forge_host || p.forge_name || "its remote")}: the credential this project pushes with, and Unlink`
                : "no remote: link this repo to an empty repository on GitHub, Gitea, GitLab or another git host"}">${LINK}</button>`
         : ""}
       ${isBroken(p) ? "" : `<button class="eye${nb ? " on acc" : ""}"
@@ -6931,30 +6928,26 @@ function projectRow(p, live, cls, inTab){
                  : nb ? "notebook: open, go to its tab"
                  : "notebook: roadmap, memory and bugs for this project"}">${BOOK}</button>`}
       <button class="eye" data-rn="${esc(p.name)}" aria-label="settings"
-        title="settings: the name, its node, and what Claude runs on here.
-Renaming moves the directory and everything keyed to it">${GEAR}</button>
+        title="settings: name, node, and what Claude runs on here">${GEAR}</button>
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
         data-on="${p.locked ? "0" : "1"}"${state?.admin === false ? " disabled" : ""}
         aria-label="${p.locked ? "unlock" : "lock"}"
         title="${state?.admin === false ? "locking a project is an administrator's"
           : p.locked
           ? "unlock: let Claude start sessions here and write its notebook again"
-          : "lock: keep this project and run it yourself. No Claude session "
-            + "starts here and its notebook goes read-only. Everything you do "
-            + "yourself still works: the findings, the artifacts, a dev instance"}"
+          : "lock: run this project yourself. No Claude session starts here "
+            + "and its notebook goes read-only"}"
         >${p.locked ? LOCK : LOCK_OPEN}</button>
       ${inTab ? `<button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"${state?.admin === false ? " disabled" : ""}
         aria-label="${p.pinned ? "unpin" : "pin"}"
         title="${state?.admin === false ? "the pins are one set for everybody, so moving them is an administrator's"
           : p.pinned
-          ? "unpin: take it off the sidebar. It keeps every control here on "
-            + "the Projects tab; this is only about where you meet it"
+          ? "unpin: take it off the sidebar; it stays on the Projects tab"
           : "pin: show it on the sidebar's Projects card"}"
         >${TACK}</button>` : ""}
       ${inTab ? `<button class="eye rm bare" data-del="${esc(p.name)}" aria-label="delete"
-        title="delete: moves it to /workspace/.trash and keeps every file. Its
-roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
+        title="delete: moves it to the trash with everything it has; Put back restores it">${BIN}</button>` : ""}
       <button class="eye rowmore" data-more="${esc(p.name)}" aria-label="more"
         aria-expanded="false" title="the rest of this row's controls">${DOTS}</button>
       </span>
@@ -7045,7 +7038,7 @@ function drawProjects(all){
   // New project lives here too: present even when the list is empty, since
   // an empty workspace is exactly where it is needed most.
   const togHtml = `<div class="macros"><button id="bNewProj"
-       title="create a project under /workspace: a fresh local repo, or a clone of a repo the container can reach">New project</button><button id="bAllProj"
+       title="create a project: a new local repository, or a clone of one">New project</button><button id="bAllProj"
        title="every project under /workspace, pinned or not, with the same controls">All projects</button
        ><button id="bTrash" class="ic"
        title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>${
@@ -7056,7 +7049,7 @@ function drawProjects(all){
     // state.projects at click time, not the `ps` this draw was given: the
     // handler outlives the draw now that unchanged markup is kept.
     if (paint(el, jobHtml + `<div class="empty">${
-      !all.length ? (state.admin ? "nothing under /workspace yet: New project starts one"
+      !all.length ? (state.admin ? "no projects yet: New project starts one"
                      : "no projects are yours yet: an administrator grants them on the Users tab")
       : !ps.length ? "nothing pinned: open the Projects tab to pin what you want here"
                  : `nothing to show; everything here is folded away under Show ${hidden}`
@@ -7643,14 +7636,14 @@ function makeNotebook(project){
     const n = nb.roadmapBatch?.changes || 0;
     const mins = nb.roadmapBatch?.at ? Math.max(1, Math.round((Date.now() / 1000 - nb.roadmapBatch.at) / 60)) : 0;
     el.innerHTML = nb.roadmapBatch?.stale
-      ? `<div>A session opened a batch here ${mins} min ago and never closed it, which is
-         longer than a session takes, so it holds nothing: your saves go through.${
+      ? `<div>A session started changing this notebook ${mins} min ago and never closed it.
+         Nothing is held: your saves go through.${
          state?.can?.admin ? ` <button type="button" id="roadmapBatchClose">Close it</button>` : ""}</div>`
       : nb.roadmapBatch
-      ? `<div>${esc(nb.roadmapBatch.by || "a session")} is part-way through changing this
+      ? `<div>${esc(nb.roadmapBatch.by || "a session")} is changing this
          notebook${n ? `: ${n} change${n === 1 ? "" : "s"} so far` : ""}. Saving
-         and reporting are held until it commits; your own edits are safe where
-         they are. <button type="button" id="roadmapRecheck">Check now</button></div>`
+         waits until it finishes; your edits stay where they are.
+         <button type="button" id="roadmapRecheck">Check now</button></div>`
       : `<div>A session finished changing this notebook. What is on screen was
          read before that, so saving over it would undo the change.
          <button type="button" id="roadmapReread">Reload the list</button></div>`;
@@ -7743,8 +7736,8 @@ function makeNotebook(project){
     q.title = held
       ? (nb.roadmapBatch ? "a session is part-way through changing this list"
                    : "a session changed this list: reload it before saving over it")
-      : "write any memory edits and settle the panel: a session running here "
-        + "is told what moved on the next prompt it is given";
+      : "save every change here; a session running here hears about it on its "
+        + "next prompt";
   }
 
   // ---- who else is in here ---------------------------------------------------
@@ -8307,10 +8300,8 @@ async function unlinkProject(name){
   const p = (state?.projects || []).find(x => x.name === name);
   const where = p?.forge_host || p?.forge_name || "its remote";
   if (!confirm(`Unlink ${name} from ${where}?\n\n`
-      + `The remote goes, with its stored access token and its push rights: `
-      + `which frees the repository for another project. Nothing in the tree `
-      + `changes: every commit and branch stays exactly where it is, and you `
-      + `can link it somewhere else afterwards.`)) return;
+      + `The remote and its stored token go; every commit and branch stays. `
+      + `You can link it elsewhere afterwards.`)) return;
   const stop = m => { $("rnErr").textContent = m; $("rnErrWrap").hidden = false;
                       $("rnUnlink").disabled = false;
                       $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`; };
@@ -8373,7 +8364,7 @@ $("pCreate").onclick = async () => {
       if (!(auth && auth.pat && fg.id === "github"))
         return fail((auth && auth.keys || []).length
           ? `no credential is configured for ${fg.name}: pick a deploy key, or switch to an access token`
-          : `no credential is configured for ${fg.name} and the agent holds no deploy keys: switch to an access token, or add a key to /secrets/ssh and restart the container`);
+          : `no deploy key is available for ${fg.name}: switch to an access token, or add a deploy key and try again`);
     }
     // The archive goes first, on its own: the create request is a small
     // JSON body and the upload is not, so the server spools the bytes and
@@ -8637,11 +8628,9 @@ function placeResumeMenu(){
 // make clear it is not the other button.
 async function setLocked(name, on){
   if (on && !confirm(`Lock ${name}?\n\n`
-        + `No Claude session will start here, any running one ends now, and its `
-        + `notebook goes read-only: no roadmap, bugs or memories can be `
-        + `changed while it is locked, and no CLAUDE.md written into it.\n\n`
-        + `Everything you do yourself still works: a shell, the findings and `
-        + `their history, the artifacts, a dev instance. Unlock reverses it.`)) return;
+        + `No Claude session starts here, any running one ends, and its notebook `
+        + `goes read-only. Your shells, findings, artifacts and dev instance keep `
+        + `working. Unlock reverses it.`)) return;
   try{
     const r = await postJSON("/api/lock", {name, locked:on});
     const j = await r.json();
@@ -8710,10 +8699,8 @@ function renameProject(name, mode = "all"){
       : "This project pushes with a deploy key, so a token here does nothing "
         + "until the switch below says to use it."
     : p?.has_token
-      ? "Replaces the token this project uses, kept for it alone and not "
-        + "shielded: a shell here can read it."
-      : "Kept for this project alone, and not shielded: a shell here can "
-        + "read it.";
+      ? "Replaces this project's token. Kept for it alone; a shell here can read it."
+      : "Kept for this project alone; a shell here can read it.";
   // Nothing to set is an answer, not an empty box: a linked project with no
   // token and no push rights has a remote it can only read.
   $("rnGitNone").hidden = !(git && $("rnTokenField").hidden);
@@ -8822,24 +8809,20 @@ function rnDrawAuth(){
   const changed = rnAuthPick !== rnAuthNow;
   $("rnAuthHint").classList.toggle("bad", invalid);
   $("rnAuthHint").textContent = invalid
-    ? "Access token is picked and there will be no token to use. Type a "
-      + "replacement above, keep the stored one, or choose Deploy key or Disabled."
+    ? "Access token is picked but none will be stored: type one above, keep the "
+      + "stored one, or pick Deploy key or Disabled."
     : (rnAuthNow === "ssh"
-        ? "Pushes go out on the deploy key: origin is an ssh remote, so a "
-          + "stored token is never consulted. "
+        ? "Pushes use the deploy key. "
       : rnAuthNow === "https"
-        ? "Pushes authenticate with this project's access token over https. "
-        : "Nothing authenticates here: the remote is https with no token on "
-          + "it, so a push is refused. ")
+        ? "Pushes use this project's access token. "
+        : "Nothing is set, so a push is refused. ")
       + (changed
           ? (rnAuthPick === "https"
-              ? "Saving points origin at the host's https address and uses the "
-                + "token. The key and its alias stay where they are."
+              ? "Saving switches pushes to the token; the key stays."
             : rnAuthPick === "ssh"
-              ? "Saving points origin back at the deploy key. The token "
-                + (rnClearToken ? "is being cleared." : "stays stored and unused.")
-              : "Saving takes the credential off it: the remote stays, and "
-                + "pushing is refused until you pick one again.")
+              ? "Saving switches pushes back to the deploy key; the token "
+                + (rnClearToken ? "is cleared." : "stays stored.")
+              : "Saving removes the credential; pushing is refused until you pick one.")
         : !canToken && !canKey
           ? "Nothing is stored to switch to: set a token above, or clone it "
             + "again with a deploy key."
@@ -8852,10 +8835,8 @@ function rnDrawAuth(){
 
 const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAuth(); };
 
-const RN_MOVES = "The directory moves, and so does everything keyed to its name: the "
-  + "roadmap and bugs, the versions, the dev instance's data and env, the "
-  + "CI logs, and Claude's transcripts and memories. Close its terminals "
-  + "first, and bring its dev instance down.";
+const RN_MOVES = "Renaming moves the project and everything named after it. Close its "
+  + "terminals and bring its dev instance down first.";
 
 function rnShow(){
   const raw = $("rnName").value, clean = projName(raw);
@@ -8928,11 +8909,9 @@ async function rnSubmit(){
   const restartNow = !(launchChanged && running)
     ? false
     : confirm(`End the Claude session in ${name} now?\n\n`
-        + `What it runs on is read when a session starts, so this takes `
-        + `effect at the next one either way. OK ends it: press Claude to `
-        + `start it again and the conversation is resumed, but anything it `
-        + `is in the middle of doing is lost. Cancel saves the setting and `
-        + `leaves the session alone.`);
+        + `OK ends it; press Claude to start it again on the new setting, with `
+        + `the conversation resumed. Cancel saves the setting and leaves it `
+        + `running.`);
   // Only what actually changed goes to the server. A rename request is
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
@@ -9387,8 +9366,8 @@ function drawBell(){
         <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
         <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
           a.window
-            ? `. Nothing sent to it is promised to work${a.projects.length
-                ? `, so ${a.projects.map(esc).join(", ")} cannot build, test or reach the emulator there` : ""} until it is updated`
+            ? `.${a.projects.length
+                ? ` ${a.projects.map(esc).join(", ")} cannot build, test or use the emulator there` : " Nothing works there"} until it is updated`
             : ""}</div>
         <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
           <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`),
@@ -9899,7 +9878,7 @@ async function refresh(){
     if (pollFails > 1)
       document.querySelectorAll(".card .loading").forEach(el => {
         el.textContent = fetched
-          ? "not drawn: the container answers, but this page fails on its answer (the light says why)"
+          ? "not drawn: the page could not read the server's answer (the light says why)"
           : "not loaded: the page is not reaching the container";
         el.classList.add("warn");
       });
@@ -10371,9 +10350,9 @@ function renderFindingsInto(i){
     return;
   }
   if (findings.available === false){
-    d.list.innerHTML = `<div class="empty">no scanner reports:
-      /reports is not mounted. The scan runs on the host; see the README's
-      static-analysis section.</div>`;
+    d.list.innerHTML = `<div class="empty">no scanner reports: the reports
+      folder is not connected. Static analysis in the README says how to set
+      it up.</div>`;
     return;
   }
   const rows = fxRows();
@@ -10406,8 +10385,8 @@ function renderFindingsInto(i){
         + `<div class="fx">${findingsRulesHtml(fs)}</div>`).join("")
     : `<div class="empty">${all.length
         ? "nothing matches the filters"
-        : "no findings in the current reports, which is not the same as every "
-          + "project passing; SARIF records findings, not coverage"}</div>`;
+        : "no findings in the current reports. A report lists what it found, "
+          + "not what it checked."}</div>`;
   d.setBar(fxBarHtml(all.filter(f => !fxProject || fxProj(f) === fxProject),
                      fxState, projSelect));
   d.list.innerHTML = body;

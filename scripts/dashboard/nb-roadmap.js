@@ -169,7 +169,7 @@ function nbRoadmapView({$, nb}){
           : `<span class="n">${idx + 1}</span>`)
                  : r.id < 0
                    ? `<span class="n id new" title="not saved yet; it gets its number when you press Save">new</span>`
-                   : `<span class="n id" title="this item is R${r.id} wherever it sits, and what bb roadmap done R${r.id} takes">R${r.id}</span>`}
+                   : `<span class="n id" title="item R${r.id}: a session knows it by that number">R${r.id}</span>`}
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
@@ -181,8 +181,8 @@ function nbRoadmapView({$, nb}){
       aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
       title="${r.shelved
           ? "take it off the shelf: back among the live ones"
-          : "shelve it: worth keeping, not for now. It goes dark at the bottom"
-            + (steps.length ? " with its steps" : "") + " and a session is told it is parked"}"
+          : "shelve it: kept at the bottom"
+            + (steps.length ? " with its steps" : "") + ", not for now"}"
       >${SHELF}</button>` : `<span class="eye ph"></span>`}
     <button class="eye ed" type="button" aria-label="reword"
       title="reword this line">${PENCIL}</button>
@@ -529,11 +529,9 @@ function nbRoadmapView({$, nb}){
       // Enter on, but a `/model` left there has the step still to come, and
       // sending it now would glue the two together. So the switch says so.
       notify(j.switching
-        ? `the /${j.switching} line was typed but not sent; something else has `
-          + "the keyboard there. The step has NOT been sent; clear that tab and "
-          + "send it again"
-        : "typed into the session but not sent; something else has the "
-          + "keyboard there; press Enter in that tab when it is clear", true);
+        ? `Not sent: the session is busy with the /${j.switching} line. `
+          + "Clear its tab and send the step again."
+        : "Not sent: the session is busy. Press Enter in its tab when it is free.", true);
       drawSendBox(!!nb.roadmapSession);
       return;
     }

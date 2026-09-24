@@ -722,7 +722,7 @@ await page.waitForFunction(() => !document.getElementById('roadmapBatch').hidden
                            { timeout: 20000 });
 const banner = () => page.$eval('#roadmapBatch',
   el => el.textContent.replace(/\s+/g, ' ').trim());
-ok(/part-way through changing this notebook/.test(await banner()),
+ok(/is changing this\s+notebook/.test(await banner()),
    'the notebook says a session is mid-change, without being touched');
 ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    '...and Save is held while it is');

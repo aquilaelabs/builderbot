@@ -105,7 +105,7 @@ function drawPendingModal(j){
   const held = ["roadmap", "bugs", "rules"].filter(k => gate[k] === "ask");
   $("pendHint").textContent = rows.length
     ? `A session added these while ${pendFor} is set to ask for ${held.join(", ") || "nothing"}. `
-      + `Nothing lands until you approve it; denying drops it and anything that rode behind it.`
+      + `Approve to apply them; deny to drop them and anything that depends on them.`
     : "";
   $("pendEmpty").hidden = !!rows.length;
   // With nothing waiting, the empty list's border, a Select all over nothing
@@ -144,7 +144,7 @@ function drawPendingModal(j){
     html += `<label class="prow${r.after != null ? " dep" : ""}" data-id="${r.id}">
       <input type="checkbox" checked data-pend="${r.id}" data-after="${r.after ?? ""}">
       <span><span class="psum">${tag(r) ? `<b>${esc(tag(r))}</b> · ` : ""}${esc(r.summary || "")}</span>
-        <div class="pwhen">${esc(when(r.at))}${r.after != null ? " · rides behind the change above" : ""}</div>
+        <div class="pwhen">${esc(when(r.at))}${r.after != null ? " · needs the change above" : ""}</div>
         ${d && d !== r.summary ? `<details${sectAttr("pending:full:" + r.id)}><summary>full text</summary><pre>${esc(d)}</pre></details>` : ""}
       </span></label>`;
   }

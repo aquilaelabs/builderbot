@@ -123,10 +123,8 @@ async function clearReports(btn){
 const SETTING_GROUPS = [
   {title: "Debugging", fields: [
     {key: "debug_mode", label: "Debug mode", type: "bool",
-     hint: "Shows the controls kept out of the way otherwise: Debug settings "
-         + "here, and Debug settings on a node's row, where you grant it the "
-         + "nodes whose agent, runner and terminal logs its sessions may read. "
-         + "It grants nothing by itself."}],
+     hint: "Shows the Debug settings buttons here and on each node. "
+         + "Turning it on grants nothing by itself."}],
    // What a developer of BuilderBot reaches for and nobody else should
    // meet: behind a Debug settings button that opens a dialog while debug
    // mode is on, the same way the node row's Debug settings does.
@@ -138,15 +136,12 @@ const SETTING_GROUPS = [
     // developer of BuilderBot reaches for, and a group headed by one switch
     // read as a feature of the product rather than of its testing.
     {key: "offer_unvetted", label: "Offer dev features", type: "bool",
-     hint: "Alpha is what has been run for real; dev is the rest: git hosts, hypervisors "
-         + "and node OS families nobody has tried yet. Off, only alpha is offered; on, "
-         + "dev appears in the pickers tagged dev, and the header says dev."},
+     hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."},
     {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
      hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."},
     {key: "claude_autoupdate", label: "Update Claude Code before a session starts", type: "bool",
-     hint: "Off, a node stays on the Claude Code it has until Update is pressed on the Nodes tab; the bell "
-         + "says when a newer one is out. On, pressing Claude on a node that is behind updates it first and "
-         + "asks you to press again when the row comes back. An open conversation is never ended for it."}]},
+     hint: "Before a session starts on a node that is behind, Claude Code is updated there first. "
+         + "An open conversation is never ended for it."}]},
 ];
 
 // The reset's confirmation, the way a project's purge asks: the word typed

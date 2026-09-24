@@ -3413,7 +3413,7 @@ rest = argv[1:]
 
 
 def secs(ms):
-    return "—" if ms is None else f"{ms / 1000:.1f}s"
+    return "-" if ms is None else f"{ms / 1000:.1f}s"
 
 
 def bail(r):

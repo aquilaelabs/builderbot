@@ -69,10 +69,8 @@ function fxWireBar(root, st, redraw){
 const findingsOff = () =>
   state && state.reports_ok === false
     ? (state.reports === false
-        ? "no /reports mount: the scanner runs on the host, and its output "
-          + "directory is not mapped in"
-        : "nothing readable in /reports: no SARIF report there parses, or "
-          + "every one of them is a whole cycle behind")
+        ? "no analysis reports: /reports is not mapped in"
+        : "nothing readable in /reports: no analysis report there parses")
     : "";
 
 function openFindingsTab(){

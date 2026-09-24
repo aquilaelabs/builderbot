@@ -161,8 +161,7 @@ function renderJobsInto(i){
   // every compose action, exec and agent update lands on it forever, so it
   // was the tab most in need of it and the one that had it least.
   paginate(d.list, ":scope > .jbrow", {key: "jbList", noun: "jobs"});
-  d.setFoot(`jobs are placed once, on the node that fit when they were taken,
-    and run where they were placed. Cancel stops one; nothing here edits one.`);
+  d.setFoot(`Cancel stops a job. Nothing here edits one.`);
   wireJobsTab(d.el);
 }
 

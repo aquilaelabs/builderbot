@@ -209,10 +209,9 @@ function nbHistoryView({$, nb, project}){
 
   // The fourth, so all four answer "what happened here" the same way.
   logPane({btnId: "anaLog", barId: "anaHistBar", paneId: "anaHist",
-           title: "Analysis: what the scanner started and stopped saying",
-           emptyText: "Nothing has changed here between scans yet. The first "
-             + "scan of a project is taken as the starting point rather than "
-             + "logged, so this fills in from the second one onwards.",
+           title: "Analysis: history",
+           emptyText: "Nothing has changed between scans yet. Changes show "
+             + "from the second scan on.",
            fetchLog: async q => {
              const r = await postJSON("/api/findings", {project, action: "history", ...q});
              const j = await r.json();

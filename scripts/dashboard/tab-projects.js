@@ -229,9 +229,9 @@ function pDraw(){
     : "Leave empty for a public repository. Kept for this project alone.";
   $("pToken").placeholder = fg.hint;
   $("pKeyHint").textContent =
-    "The key every push offers. The host needs the public key below on the repository's deploy-key page."
-    + (pPat && (pMode !== "link" || fg.id === "github") ? " With a PAT configured, none works too."
-       : pMode === "link" ? " No PAT is configured for this host, so a key is required." : "");
+    "The key used to push. Add the public key below to the repository's deploy keys."
+    + (pPat && (pMode !== "link" || fg.id === "github") ? " With an access token configured, none works too."
+       : pMode === "link" ? " No access token is configured for this host, so a key is required." : "");
 }
 
 // The source picker moves like the Dashboard | Terminal switch: the incoming
@@ -284,8 +284,7 @@ function pDrawForge(){
       if (pAskedHost !== host){ pAskedHost = host; pForgeId = "git"; }
       sel.value = pForgeId;
       $("pForgeHint").textContent =
-        `Nothing here knows what ${host} runs, and it decides whether a token `
-        + `can be checked and a missing repository made. Asked once per server.`;
+        `Which software ${host} runs. Asked once per server.`;
     }
     return;
   }
@@ -402,8 +401,8 @@ function pOpen(mode){
     pForgeHosts = j.hosts || {};
     if (!pForges.some(f => f.id === pForgeId)) pForgeId = (pForges[0] || {}).id || "";
     $("pKey").innerHTML = `<option value="">none: ${pPat
-        ? "authenticate with the configured PAT"
-        : "public repo, or the container's default access"}</option>`
+        ? "use the configured access token"
+        : "public repository"}</option>`
       + pKeys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join("");
     pShowKey(); pDraw();
   });

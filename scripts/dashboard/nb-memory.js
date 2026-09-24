@@ -83,7 +83,7 @@ function nbMemoryView({$, nb}){
       <div class="body">${!nb.memEditing.has(m.file) || m.big ? `
         <div class="bfield"><label>in the index</label><div class="bval${m.listed ? "" : " dim"}">${m.listed
             ? `${esc(m.title)}: ${esc(m.hook)}`
-            : "not in the index: Claude sees this only when recall reaches for it"}</div></div>
+            : "not in the index: a session reads this only when it searches memories"}</div></div>
         ${m.description ? `<div class="mdesc">${esc(m.description)}</div>` : ""}
         ${m.big
             ? `<div class="hint bad">${(m.bytes/1024).toFixed(0)}kB: too large to
@@ -105,7 +105,7 @@ function nbMemoryView({$, nb}){
         </div>
         <div class="ixnote${m.listed ? "" : " bad"}">${m.listed
             ? "Its line in the index: the one part loaded into every session started here."
-            : "Not in the index, so Claude sees this only when recall reaches for it. Saving adds the line."}</div>
+            : "Not in the index: a session reads it only when it searches memories. Save adds the line."}</div>
         ${m.description ? `<div class="mdesc">${esc(m.description)}</div>` : ""}
         ${m.big
             ? `<div class="hint bad">${(m.bytes/1024).toFixed(0)}kB: too large to
@@ -119,7 +119,7 @@ function nbMemoryView({$, nb}){
              <div class="actbar macts">
                <span class="state">Save at the foot writes it</span>
                <button type="button" class="stop mCancel"
-                 title="put the fields away: what was typed here is dropped">Cancel</button>
+                 title="discard what was typed">Cancel</button>
                <button type="button" class="danger" data-del="${esc(m.file)}"
                  title="delete this memory and take its line out of the index"
                  >Remove</button>
@@ -128,7 +128,7 @@ function nbMemoryView({$, nb}){
     </details>`).join("")
       // Said in the list, where every other view says it, rather than by
       // hiding the list and leaving a heading over nothing.
-      || `<div class="empty">none yet: a session writes them as it learns the project, and Add writes one by hand</div>`;
+      || `<div class="empty">none yet: sessions write these as they learn the project; Write a memory adds one by hand</div>`;
     paginate($("memList"), ":scope > .mem", {noun: "memories"});
     // The fold, driven rather than left to the browser's instant one: the same
     // height tween the sidebar cards use, so a memory opens the way a card does.
@@ -331,7 +331,7 @@ function nbMemoryView({$, nb}){
             `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></div>
     </div>
     <div class="hint" id="naWhat"></div>
-    <label for="naHook">Hook (required)<span class="help" data-tip="its one line in the index, and what recall matches on; a memory with none cannot be filed" tabindex="0">?</span></label>
+    <label for="naHook">Hook (required)<span class="help" data-tip="one line saying what this memory is about; the index lists it, and a memory needs one" tabindex="0">?</span></label>
     <textarea id="naHook" class="proseline" rows="1" maxlength="240"
       placeholder="a word and an animated ellipsis, never a bar or a percentage"></textarea>
     <label for="naBody">The memory itself</label>
@@ -359,7 +359,7 @@ function nbMemoryView({$, nb}){
     // The one field the server refuses without, said on the form rather
     // than as a toast that names no field (16 Sep).
     if (!$("naHook").value.trim()){
-      $("naWhat").textContent = "a hook is required: the one line the index carries and recall matches on";
+      $("naWhat").textContent = "a hook is required: one line saying what this memory is about";
       $("naHook").focus();
       return;
     }
