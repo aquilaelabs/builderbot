@@ -918,6 +918,17 @@ def _census(c):
     iso = c.get("isolation")
     if isinstance(iso, dict):
         out["isolation"] = {"sessions": bool(iso.get("sessions")), "why": str(iso.get("why") or "")[:200]}
+    # ...and whether each session there reaches only its own project's
+    # containers (R79): whether the node can, why not, whether it is in
+    # force, how many sessions have a network of their own, and what went
+    # wrong setting it up. Absent from an older agent, and empty before its
+    # first look, both of which the row reads as not told.
+    sn = c.get("session_net")
+    if isinstance(sn, dict) and sn:
+        out["session_net"] = {"can": bool(sn.get("can")), "why": str(sn.get("why") or "")[:200],
+                              "wanted": bool(sn.get("wanted")), "active": bool(sn.get("active")),
+                              "sessions": int(sn.get("sessions") or 0) if str(sn.get("sessions") or 0).isdigit() else 0,
+                              "error": str(sn.get("error") or "")[:300]}
     # Which held recipes need system packages the machine lacks (roadmap
     # R51): the family and, per recipe, the package names, both bounded.
     sd = c.get("sysdeps") if isinstance(c.get("sysdeps"), dict) else {}
@@ -1260,6 +1271,39 @@ def node_turn_limit(principal, node_id, limit):
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
     _touch(node_id, principal, "node-turn-limit", {"limit": want})
     return {"ok": True, "limit": want}
+
+
+def node_session_net(principal, node_id, on):
+    """Whether each Claude session on this node reaches only its own
+    project's containers, the controller and the internet (R79). An
+    administrator's, like the rest of the config plane: a session that could
+    turn it off for itself would make it a suggestion. The node hears at once,
+    by a fresh hello, rather than at the next ten-minute one."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    conf = dict(n.get("config") or {})
+    conf["session_net"] = bool(on)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-session-net", {"on": bool(on)})
+    ask_hello(node_id)
+    return {"ok": True, "on": bool(on)}
+
+
+def session_net_on(node_id):
+    """Whether that is set on a node."""
+    return bool(((node(node_id) or {}).get("config") or {}).get("session_net"))
+
+
+def session_net_nudge():
+    """Every node that keeps sessions to their own network says hello again,
+    so what the controller says each project owns there reaches it within a
+    poll: after a container changes hands, or an instance comes or goes."""
+    for n in node_list():
+        if n.get("kind") == "agent" and ((n.get("config") or {}).get("session_net")):
+            ask_hello(n["id"])
 
 
 def turn_limit(node_id):
@@ -1762,6 +1806,10 @@ def node_apply(principal, node_id, what):
 layout_of = lambda: []
 bundle_digest = lambda: ""
 idle_minutes = lambda: 0            # noqa: E731  (idle.minutes, injected by server.py)
+# {"on", "own"} for a node's agent (R79): whether its sessions are kept to
+# their own project's network, and what each project owns there
+# (devapp.session_net_own, joined by server.py).
+session_net_for = lambda nid: None  # noqa: E731
 # server.session_tokens_for: fresh credentials for the Claude sessions alive
 # on one node, so a session idle past its token's life is not locked out of
 # its own controller (R27). Injected, because minting is users.py's and the
@@ -1833,7 +1881,11 @@ def hello(nid, census, addr, version="", digest="", running=None):
             # one. So the machine the session is on refreshes it instead, on
             # the beat it already has. A token lives as long as its tmux
             # session does, and none is ever accepted past its expiry.
-            "session_tokens": session_tokens_for(nid, live_sessions)}
+            "session_tokens": session_tokens_for(nid, live_sessions),
+            # Whether each session here is kept to its own project's network,
+            # and what each project owns here (R79). The node keeps it, so it
+            # holds while this controller is down.
+            "session_net": session_net_for(nid)}
 
 
 def heartbeat(nid, sample, addr, running=0):

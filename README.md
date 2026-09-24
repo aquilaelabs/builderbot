@@ -3519,9 +3519,33 @@ can gain privilege again. The agent installs the helper, its layout file and
 the sudo rule from the bundle, and reports on the node's Sessions section
 whether a view can be built and why not. A Mac, a guest machine or a
 container node, whose agent is not root, cannot, and says so there. The
-view is not a VM: the network and the kernel are shared, so a session can
-still reach another project's dev instance through its published ports.
+view is not a VM: the kernel is shared, and so is the network unless the
+node keeps each session to its own project's network (below).
 A workspace-root shell, which needs the `terminal` right, is not confined.
+
+**Each session on its own project's network (roadmap R79)** is a switch in a
+node's Sessions section, off by default. On, a session started there gets a
+network namespace of its own from `bb-session`: a veth pair to the node, an
+address from `10.231.0.0/16`, and a resolver file naming the node's upstream
+DNS servers. The agent keeps an nftables table (`builderbot_sessnet`) that
+judges everything leaving a session's link: the internet, the controller and
+the DNS servers pass, and so do the containers the session's project owns on
+that node (the project a container belongs to on the Docker tab, the same
+setting that says whose sessions may work on it); everything else that is not
+the internet (every other container, the node's own services, the LAN) is
+refused, and nothing can open a connection into a session. What passes is
+marked, and Docker's `DOCKER-USER` chain lets through only marked traffic
+from a session, so if the table ever disappears a session loses its network
+rather than gaining the node's. A session reaches its own containers at the
+node's address and published port, not at `localhost`, which is its own; the
+emulator it starts itself runs inside with it. Turning the switch on or off
+applies to sessions started afterwards; one started while it was on keeps
+its network until it ends. The row says, in red, when the switch is on and
+it is not in force: an agent that is not root, a firewalld or ufw firewall,
+no upstream DNS server, or an older `bb-session`. When setting it up fails,
+no session starts on that node until it works or the switch is turned off.
+A container in Docker's host network mode is not reachable from an isolated
+session, since it has no address of its own to allow.
 
 ### Push rights
 

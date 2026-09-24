@@ -2532,6 +2532,10 @@ try:
     nodes.bundle_digest = lambda: workspace.bundle()["digest"]
     nodes.idle_minutes = idle.minutes
     nodes.session_tokens_for = session_tokens_for
+    # Each session kept to its own project's network (R79): the setting is
+    # the node's, what each project owns there is devapp's.
+    nodes.session_net_for = lambda nid: ({"on": True, "own": devapp.session_net_own(nid)}
+                                         if nodes.session_net_on(nid) else {"on": False, "own": {}})
     NODES_OK = ""
     # The job logs are the only copy of what a node's job wrote and had no
     # retention at all until R17 step 1. Swept once here for whatever ended
@@ -4807,6 +4811,10 @@ class Handler(BaseHTTPRequestHandler):
             # How many Claude sessions on the node may work at once; 0 for
             # no limit. An administrator's, like the rest of this handler.
             r = nodes.node_turn_limit(self._principal(), nid, req.get("limit"))
+        elif act == "session-net":
+            # Whether each session on the node reaches only its own project's
+            # containers (R79). An administrator's, like the rest.
+            r = nodes.node_session_net(self._principal(), nid, req.get("on") is True)
         elif act == "apply":
             r = nodes.node_apply(self._principal(), nid, field(req, "what"))
         elif act == "runner":
@@ -6082,7 +6090,12 @@ class Handler(BaseHTTPRequestHandler):
         # the way the manager's own listing is.
         with devapp.on_node(nid or None):
             if act == "owner":
-                return self._result(devapp.set_container_owner(name, under))
+                r = devapp.set_container_owner(name, under)
+                # Whose it is also decides whose sessions may reach it (R79).
+                if not r.get("error"):
+                    with contextlib.suppress(Exception):
+                        nodes.session_net_nudge()
+                return self._result(r)
             if act == "logs":
                 return self._json(devapp.container_logs(name))
             return self._result(devapp.container_ctl(name, act))
@@ -6338,6 +6351,11 @@ class Handler(BaseHTTPRequestHandler):
             name, inst, act, req,
             # The command is the project's own, from its settings.
             test_cmd=prefs.get(name)["test"] if act == "test" else "")
+        # An instance made, removed or given to another project changes what
+        # a project's sessions may reach on its node (R79).
+        if status == 200 and act in ("new", "remove", "owner"):
+            with contextlib.suppress(Exception):
+                nodes.session_net_nudge()
         return self._json(payload, status)
 
     def _version(self, req):

@@ -319,6 +319,7 @@ function nodeSessionsSection(n){
         : iso.sessions ? `<div class="sub">Each session sees only its own project.</div>`
         : `<div class="sub warn">Sessions here can read each other's projects: ${esc(iso.why || "this machine cannot build a session's view")}.</div>`}
       ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}</div>` : ""}
+      ${nodeSessNetRow(n)}
       ${nodeTurnsRow(n)}`;
   }
   return docSection("nodes", "sessions", "Sessions", status, body, {cls});
@@ -373,6 +374,26 @@ function nodeClaudeSection(n){
       update before a session starts, if a newer one is out (every node)</label>
     <div class="sub dim">Update ends the Claude sessions here; start them again from the project rows.</div>`;
   return docSection("nodes", "claude", "Claude Code", status, body, {cls});
+}
+
+// Whether each session here reaches only its own project's containers, the
+// controller and the internet (R79): the node's setting, and what its agent
+// says about it underneath, a reason in red when it is on and not in force.
+function nodeSessNetRow(n){
+  const on = !!n.config?.session_net;
+  const sn = n.reported?.session_net || {};
+  const told = Object.keys(sn).length > 0;
+  const line = !told
+      ? (on ? `<div class="sub warn">Update the agent: this one cannot keep a session to its own project's network.</div>` : "")
+    : on && !sn.can ? `<div class="sub bad">Not in force: ${esc(sn.why || "this node cannot do it")}.</div>`
+    : on && sn.error ? `<div class="sub bad">Not in force, so no session starts here until it is: ${esc(sn.error)}.</div>`
+    : on && sn.active ? `<div class="sub">Sessions started here reach the internet, the controller and their own project's containers at this node's address, and nothing else.</div>`
+    : on ? `<div class="sub dim">Setting it up.</div>`
+    : sn.sessions ? `<div class="sub dim">${sn.sessions} session${sn.sessions === 1 ? "" : "s"} started while it was on keep their own network until they end.</div>`
+    : "";
+  return `<label class="ndcap"><input type="checkbox" data-nd-sessnet="1" ${on ? "checked" : ""}>
+      keep each session to its own project's network</label>
+    ${line}`;
 }
 
 // How many Claude sessions here may work on a prompt at once (turns.py on
@@ -1391,6 +1412,14 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                           : "a node stays on the Claude Code it has until Update is pressed");
         refresh();
       }catch(e){ notify("could not save the setting: " + e, true); ca.checked = !ca.checked; }
+    };
+    // Each session kept to its own project's network (R79): the node's own
+    // setting, saved on the change like the switch above it.
+    const sw = box.querySelector("[data-nd-sessnet]");
+    if (sw) sw.onchange = async () => {
+      const j = await nodeAct({action: "session-net", id, on: sw.checked});
+      if (!j.error) notify(sw.checked ? "sessions started on this node from now on reach only their own project's containers"
+                                      : "sessions started on this node from now on share its network");
     };
     const ti = box.querySelector('[data-k="turns"]');
     if (ti){

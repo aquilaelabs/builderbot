@@ -21,6 +21,14 @@ mount, PID and IPC namespace in which:
 Then it drops to the session account for good (no_new_privs) and runs the
 session under a small init that forwards a stop and reaps what is orphaned.
 
+Where the node keeps each session to its own project's network (R79, on in
+the layout file when the agent has set it up), the session also gets a
+network namespace of its own: a veth pair to the node, an address from the
+agent's range, and the agent's resolver file. What it may reach from there
+is the agent's firewall table, keyed on that address: the internet, the
+controller, and its own project's containers. This only makes the namespace
+and says which project it is; the agent keeps the rules.
+
 Root, and the one thing the session account may run through sudo (the agent
 writes that rule and /etc/bb-session.conf). So it trusts nothing it is handed:
 the caller is the one sudo names, the project, account and paths are held to
@@ -33,15 +41,23 @@ file is read only after the drop, as the session.
         the mounts, as JSON, without making any; anybody
     bb-session enter --project P --account U --home H --cwd D --env FILE -- COMMAND...
         the session, inside the view; through sudo
+    bb-session check-net
+        exit 0 when this helper can give a session a network of its own; root
+        only. Its own verb, so an agent asking an older helper hears no.
 """
+import contextlib
 import ctypes
+import fcntl
 import json
 import os
 import pwd
 import re
 import signal
+import socket
 import stat
+import subprocess
 import sys
+import time
 
 CONF = "/etc/bb-session.conf"
 STAGE = "/run/bb-session"
@@ -57,7 +73,15 @@ MS_REMOUNT = 32
 MS_BIND, MS_REC, MS_PRIVATE = 4096, 16384, 1 << 18
 MNT_DETACH = 2
 CLONE_NEWNS, CLONE_NEWIPC, CLONE_NEWPID = 0x00020000, 0x08000000, 0x20000000
+CLONE_NEWNET = 0x40000000
 PR_SET_NO_NEW_PRIVS = 38
+
+# The session network (R79). The folder is the agent's: its resolver file for
+# sessions, its mark that the firewall table is in place, and a file per
+# session saying which project an address is, which is all the table needs.
+NET_DIR = "/run/bb-session-net"
+NET_SLOT = 4             # a /30 per session: the net, the node's side, the session's, broadcast
+IP_BINS = ("/usr/sbin/ip", "/sbin/ip", "/usr/bin/ip", "/bin/ip")
 
 
 class Refused(Exception):
@@ -74,7 +98,10 @@ def conf():
          # session and the agent run. Empty until the agent writes it, and then
          # the bundle is read-only in the view (B157); empty here just leaves
          # it as it was, which an older agent's conf does.
-         "TOOLCHAINS_STORE": ""}
+         "TOOLCHAINS_STORE": "",
+         # The session network (R79): "on" only where the agent has set it
+         # up, and the range sessions are addressed from.
+         "SESSION_NET": "", "SESSION_NET_CIDR": "10.231.0.0/16"}
     # Another layout file only for somebody who is not root, which is `plan`
     # run by the suite: `enter` is root through sudo, which resets the
     # environment, and root reads the machine's own file whatever it says.
@@ -118,6 +145,21 @@ def _ours(entry, ws, project):
     name = _slug(entry)
     return name == _slug(f"{ws}/{project}") or re.fullmatch(
         re.escape(_slug(f"{ws}/.worktrees/{project}/")) + r"u-[0-9a-f]{8}", name) is not None
+
+
+def net_conf(c):
+    """The session network (R79) when this node keeps each session to its own
+    project's network, or None. On only where the agent wrote it on, which it
+    does once its firewall table is in place, with the range sessions are
+    addressed from: a /30 each, so the range is carved into that many."""
+    if c.get("SESSION_NET") != "on":
+        return None
+    m = re.fullmatch(r"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})", c.get("SESSION_NET_CIDR") or "")
+    if not m or any(int(x) > 255 for x in m.groups()[:4]) or not 16 <= int(m.group(5)) <= 28:
+        raise Refused(f"bb-session: {c.get('SESSION_NET_CIDR')!r} is not a range a session can be addressed from")
+    bits = 32 - int(m.group(5))
+    base = int.from_bytes(bytes(int(x) for x in m.groups()[:4]), "big") >> bits << bits
+    return {"base": base, "slots": (1 << bits) // NET_SLOT}
 
 
 def args(argv):
@@ -313,6 +355,13 @@ def plan(c, a, uid):
     for t in ("/tmp", "/var/tmp", "/dev/shm"):
         if _real_dir(t):
             steps.append(("tmpfs", t, "mode=1777"))
+    # A network of its own (R79): the agent's resolver file over the node's,
+    # which names a resolver on the node's loopback that the session's own
+    # namespace cannot reach; then the agent's folder out of sight, since it
+    # says which project every other session's address is.
+    if net_conf(c):
+        steps.append(("bindfile", f"{NET_DIR}/resolv.conf", "/etc/resolv.conf"))
+        steps.append(("hide", NET_DIR))
     steps.append(("detach", STAGE))
     return steps
 
@@ -349,7 +398,7 @@ def _mkdirs(path, uid, gid):
 
 def apply(steps, uid, gid):
     for step in steps:
-        kind, target = step[0], step[-1] if step[0] in ("bind", "bindro", "bindrw") else step[1]
+        kind, target = step[0], step[-1] if step[0] in ("bind", "bindro", "bindrw", "bindfile") else step[1]
         if kind == "private":
             _mount(None, "/", None, MS_REC | MS_PRIVATE)
         elif kind == "proc":
@@ -386,8 +435,132 @@ def apply(steps, uid, gid):
             _mount("tmpfs", target, "tmpfs", MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC, "mode=0500")
         elif kind == "hidefile":
             _mount("/dev/null", target, None, MS_BIND)
+        elif kind == "bindfile":
+            # One file over another. A link at the target is followed, so a
+            # resolv.conf that is systemd-resolved's link is covered where it
+            # points, in this view only.
+            _mount(step[1], target, None, MS_BIND)
         elif kind == "detach":
             _call("umount2", target.encode(), ctypes.c_int(MNT_DETACH))
+
+
+def _ipbin():
+    for p in IP_BINS:
+        if os.access(p, os.X_OK):
+            return p
+    raise Refused("bb-session: there is no ip command here to give the session a network of its own")
+
+
+def _ip(*argv):
+    """iproute2, with arguments this file made: nothing a caller hands in
+    reaches it but the project, which never does, and a pid of our own."""
+    r = subprocess.run([_ipbin(), *argv], capture_output=True, text=True, timeout=15, check=False,
+                       env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"})
+    if r.returncode:
+        raise OSError(f"ip {' '.join(argv)}: {(r.stderr or r.stdout).strip()[:200]}")
+
+
+def _sysctl(key, value):
+    """A setting under /proc/sys, in the network namespace of the process
+    that writes it. One that is not there (no IPv6 at all) is already so."""
+    with contextlib.suppress(FileNotFoundError):
+        with open(f"/proc/sys/{key}", "w") as f:
+            f.write(value)
+
+
+def _ip4(n):
+    return socket.inet_ntoa(n.to_bytes(4, "big"))
+
+
+def net_ready():
+    """The agent's half, before a session is given a network of its own: its
+    folder, its resolver file and its mark that the firewall table is in
+    place, each root's and nobody else's to write. A dir fd, for the parent
+    to take its file back out after the view has covered the folder."""
+    why = ""
+    try:
+        st = os.lstat(NET_DIR)
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != 0 or st.st_mode & 0o022:
+            why = f"{NET_DIR} is not the agent's"
+        for name in ("resolv.conf", "ready"):
+            f = os.lstat(f"{NET_DIR}/{name}")
+            if not stat.S_ISREG(f.st_mode) or f.st_uid != 0 or f.st_mode & 0o022:
+                why = why or f"{NET_DIR}/{name} is not the agent's"
+    except FileNotFoundError as e:
+        why = f"{e.filename} is not there"
+    except OSError as e:
+        why = str(e)
+    if why:
+        raise Refused("bb-session: this node keeps each session to its own project's network, and the "
+                      f"agent has not set that up: {why}. Its row on the Nodes tab says why")
+    return os.open(NET_DIR, os.O_RDONLY | os.O_DIRECTORY)
+
+
+def net_attach(net, pid, project, dfd):
+    """The node's side of a session's network, made from outside: a slot, a
+    veth pair with its far end in the session's namespace, the node's end
+    addressed, and the file that tells the agent whose address it is.
+    Slots go round rather than lowest-first, so an address is not handed to
+    the next session while the agent may still hold the last one's rules."""
+    lk = os.open("lock", os.O_RDWR | os.O_CREAT, 0o600, dir_fd=dfd)
+    try:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            with os.fdopen(os.open("next", os.O_RDONLY, dir_fd=dfd)) as f:
+                start = int(f.read().strip() or 0)
+        except (OSError, ValueError):
+            start = 0
+        for i in range(net["slots"]):
+            k = (start + i) % net["slots"]
+            if not os.path.exists(f"/sys/class/net/bbs{k}"):
+                break
+        else:
+            raise Refused("bb-session: every address for a session on this node is taken")
+        fd = os.open("next.new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644, dir_fd=dfd)
+        with os.fdopen(fd, "w") as f:
+            f.write(f"{(k + 1) % net['slots']}\n")
+        os.rename("next.new", "next", src_dir_fd=dfd, dst_dir_fd=dfd)
+        host_if, first = f"bbs{k}", net["base"] + NET_SLOT * k
+        host, addr = _ip4(first + 1), _ip4(first + 2)
+        _ip("link", "add", host_if, "type", "veth", "peer", "name", "eth0", "netns", str(pid))
+        try:
+            # IPv4 only out of a session: IPv6 is off on both ends of the
+            # link, so nothing leaves by a route the table does not judge.
+            _sysctl(f"net/ipv6/conf/{host_if}/disable_ipv6", "1")
+            _ip("addr", "add", f"{host}/30", "dev", host_if)
+            _ip("link", "set", host_if, "up")
+            name = f"s{k}.json"
+            fd = os.open(name + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644, dir_fd=dfd)
+            with os.fdopen(fd, "w") as f:
+                json.dump({"project": project, "addr": addr, "if": host_if, "pid": pid,
+                           "at": int(time.time())}, f)
+            os.rename(name + ".new", name, src_dir_fd=dfd, dst_dir_fd=dfd)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                _ip("link", "del", host_if)
+            raise
+    finally:
+        os.close(lk)
+    return {"if": host_if, "addr": addr, "host": host, "file": f"s{k}.json"}
+
+
+def net_detach(slot, dfd):
+    """The session is over: its file goes, and its link with it (which, as a
+    rule, went already, with the namespace at the far end)."""
+    with contextlib.suppress(OSError):
+        os.unlink(slot["file"], dir_fd=dfd)
+    with contextlib.suppress(OSError):
+        _ip("link", "del", slot["if"])
+
+
+def net_inside(addr, gw):
+    """The session's side, from inside its namespace while still root: its
+    own loopback, which keeps IPv6 for a server a tool binds to ::1, and the
+    link to the node as the only way out."""
+    _ip("link", "set", "lo", "up")
+    _ip("addr", "add", f"{addr}/30", "dev", "eth0")
+    _ip("link", "set", "eth0", "up")
+    _ip("route", "add", "default", "via", gw)
 
 
 def _read_env(path, uid):
@@ -478,22 +651,79 @@ def enter(c, a, command):
     if not envfile.startswith(f"{home}/.cache/builderbot/u/{account}/project/{project}/"):
         raise Refused("bb-session: the environment file is not in the project's cache folder")
     steps = plan(c, a, uid)
+    net = net_conf(c)
+    # Asked before anything is made: a node that keeps sessions to their own
+    # network and has not got it ready starts none, rather than one on the
+    # node's network that was meant to be kept off it.
+    dfd = net_ready() if net else None
     pane = {k: os.environ[k] for k in FROM_PANE if k in os.environ}
     os.makedirs(STAGE, mode=0o700, exist_ok=True)
     _call("unshare", ctypes.c_int(CLONE_NEWNS | CLONE_NEWIPC | CLONE_NEWPID))
     for s in (signal.SIGINT, signal.SIGQUIT, signal.SIGTSTP, signal.SIGTTIN, signal.SIGTTOU):
         signal.signal(s, signal.SIG_IGN)
+    # The network is made in two halves (R79): the namespace by the init,
+    # which moves into it, and the link by this side, which stays on the
+    # node's network to make the node's end. Two pipes carry the turns:
+    # "made" in, the address out, or a refusal either way.
+    if net:
+        made_r, made_w = os.pipe()
+        addr_r, addr_w = os.pipe()
     init = os.fork()
     if init:
         # Outside: sudo waits on this, so this waits on the namespace's init
         # and passes a stop on to it.
-        sys.exit(_wait_forwarding(init))
+        slot = None
+        if net:
+            os.close(made_w)
+            os.close(addr_r)
+            try:
+                if os.read(made_r, 1) != b"1":
+                    raise Refused("bb-session: the session's network namespace was not made")
+                slot = net_attach(net, init, a["project"], dfd)
+                os.write(addr_w, f"{slot['addr']} {slot['host']}\n".encode())
+            except (OSError, Refused, subprocess.SubprocessError) as e:
+                sys.stderr.write(f"{e}\nthe session did not start: this node could not give it a "
+                                 "network of its own\n")
+                with contextlib.suppress(OSError):
+                    os.write(addr_w, b"x\n")
+                with contextlib.suppress(ChildProcessError):
+                    os.waitpid(init, 0)
+                sys.exit(70)
+            finally:
+                os.close(made_r)
+                os.close(addr_w)
+        rc = _wait_forwarding(init)
+        if slot:
+            net_detach(slot, dfd)
+        sys.exit(rc)
     # PID 1 of the new namespace: make the view, drop, run the session.
     try:
+        if net:
+            os.close(made_r)
+            os.close(addr_w)
+            os.close(dfd)
+            _call("unshare", ctypes.c_int(CLONE_NEWNET))
+            # Before the link arrives, so it arrives with no IPv6: an
+            # interface takes `default`, and the loopback made with the
+            # namespace keeps its ::1.
+            _sysctl("net/ipv6/conf/default/disable_ipv6", "1")
+            os.write(made_w, b"1")
+            os.close(made_w)
+            got = b""
+            while not got.endswith(b"\n"):
+                chunk = os.read(addr_r, 64)
+                if not chunk:
+                    break
+                got += chunk
+            os.close(addr_r)
+            parts = got.decode(errors="replace").split()
+            if len(parts) != 2:
+                raise Refused("bb-session: the node's side of the session's network was not made")
+            net_inside(parts[0], parts[1])
         apply(steps, uid, gid)
         _drop(name, uid, gid)
         env = _read_env(envfile, uid)
-    except (OSError, Refused) as e:
+    except (OSError, Refused, subprocess.SubprocessError) as e:
         sys.stderr.write(f"{e}\nthe session did not start: this node could not build its view\n")
         sys.exit(70)
     env.update(pane)
@@ -538,6 +768,26 @@ def check(c):
         raise Refused("bb-session: this kernel would not make the namespaces a session's view needs")
 
 
+def check_net(c):
+    """Whether this helper can give a session a network of its own (R79): an
+    ip command, and a network namespace made, its loopback brought up, and
+    let go. The agent asks this before it offers the setting."""
+    if os.geteuid() != 0:
+        raise Refused("bb-session: this runs as root")
+    _ipbin()
+    pid = os.fork()
+    if pid == 0:
+        try:
+            _call("unshare", ctypes.c_int(CLONE_NEWNET))
+            _ip("link", "set", "lo", "up")
+            os._exit(0)
+        except (OSError, Refused, subprocess.SubprocessError):
+            os._exit(1)
+    _, status = os.waitpid(pid, 0)
+    if not (os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0):
+        raise Refused("bb-session: this kernel would not make a network namespace for a session")
+
+
 def main(argv):
     verb = argv[0] if argv else ""
     try:
@@ -546,6 +796,10 @@ def main(argv):
             check(c)
             print("ok: a session here runs in a view of its own project")
             return 0
+        if verb == "check-net":
+            check_net(c)
+            print("ok: a session here can have a network of its own")
+            return 0
         a, command = args(argv[1:])
         if verb == "plan":
             print(json.dumps(plan(c, a, None)))
@@ -553,7 +807,7 @@ def main(argv):
         if verb == "enter":
             enter(c, a, command)
             return 0
-        raise Refused("bb-session takes check, plan or enter")
+        raise Refused("bb-session takes check, check-net, plan or enter")
     except Refused as e:
         sys.stderr.write(f"{e}\n")
         return 2

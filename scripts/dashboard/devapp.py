@@ -3063,6 +3063,24 @@ def set_owner(project, instance, owner):
     return {"ok": True, "owner": owner}
 
 
+def session_net_own(node_id):
+    """What each project owns on `node_id`, for its agent to keep each session
+    to its own project's network (R79): the compose projects of the instances
+    bound there, under the project each belongs to, and the containers the
+    operator gave a project there, by name. {project: {"compose", "names"}}.
+    The project a container belongs to is the Docker tab's: the same answer
+    decides whose sessions may work on it and whose may reach it."""
+    out = {}
+    for project, insts in _load().items():
+        for inst, rec in insts.items():
+            owner = owner_of(project, inst, rec)
+            if owner and _instance_node(project, inst) == node_id:
+                out.setdefault(owner, {"compose": set(), "names": set()})["compose"].add(_pname(project, inst))
+    for name, owner in (_owners().get(node_id) or {}).items():
+        out.setdefault(owner, {"compose": set(), "names": set()})["names"].add(name)
+    return {p: {k: sorted(v) for k, v in o.items()} for p, o in sorted(out.items())}
+
+
 def row_named(name):
     """(project, instance) of the instance or written container the Docker
     tab lists as `name`, or None. How a session names one that is not its
