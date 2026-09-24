@@ -2114,6 +2114,18 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   });
   ok(arc.status === 200 && arc.ct === 'application/gzip' && arc.len > 0,
      'and the whole archive comes back as a tarball');
+  // ...and the diagnostics, with what sessions reported about BuilderBot in
+  // them (the operator, 24 Sep): one JSON file, from a link beside the logs.
+  const dg = await page.evaluate(async () => {
+    const r = await fetch('/logs/download?what=diag');
+    return { status: r.status, ct: r.headers.get('content-type'),
+             cd: r.headers.get('content-disposition'), body: await r.json().catch(() => null),
+             // The section's own markup: the Settings tab is put away above.
+             link: /<a class="btnish" href="\/logs\/download\?what=diag" download/.test(logSection()) };
+  });
+  ok(dg.status === 200 && dg.ct === 'application/json' && /builderbot-diagnostics-\d{8}-\d{4}\.json/.test(dg.cd || '')
+     && dg.body && 'controller' in dg.body && Array.isArray(dg.body.reports) && dg.link,
+     `the diagnostics download beside them as one JSON file, with the reports in it (${dg.cd})`);
 }
 
 // The command pin and the project pin are different features that spent an

@@ -4262,7 +4262,17 @@ class Handler(BaseHTTPRequestHandler):
             return None
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         what = (q.get("what") or [""])[0]
-        if what == "archive":
+        if what == "diag":
+            # The controller's diagnostics whole, the report bb diag prints
+            # with what sessions have reported about BuilderBot among it, as
+            # one file to keep or hand over (the operator, 24 Sep). Redacted
+            # as they always are, and on the audit trail as a read of them
+            # through the API is.
+            db.audit(self._principal(), "diag-download", "diagnostics", {})
+            data = (json.dumps(diag.report(), indent=2) + "\n").encode()
+            fname = time.strftime("builderbot-diagnostics-%Y%m%d-%H%M.json")
+            ctype = "application/json"
+        elif what == "archive":
             data, err = logs.archive_bytes()
             if data is None:
                 return self._json({"error": err}, 500)

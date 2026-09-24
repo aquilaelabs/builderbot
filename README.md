@@ -4022,7 +4022,10 @@ through every value the keyboard passes, so typing `30` over `300` would have
 pruned at `3` in passing. Pressing it without changing anything is a
 crop-now, which is the other thing you sometimes want. The same menu
 downloads this session's logs as one file, or everything kept as a `.tar.gz`,
-and clears the kept generations without touching the ones being written.
+or the controller's **diagnostics** as one JSON file (what `bb diag` prints,
+the reports sessions made about BuilderBot among it, redacted and on the audit
+trail), and clears the kept generations without touching the ones being
+written.
 
 Two deliberate omissions from *this session*. `ttyd.log` is the terminal
 server's connection churn (22,000 lines against 4KB of boot log on this box),

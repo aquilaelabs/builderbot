@@ -38,6 +38,7 @@
 - A session lists its project's containers with bb devapp ls, reads one's log with bb devapp log NAME, and starts, stops or restarts one with bb devapp start, stop or restart NAME (5a89323)
 - bb report: a session on any project reports a problem with BuilderBot itself there instead of in its own tracker, as a shipped rule says, and BuilderBot's own sessions read and answer the reports in bb diag reports (4408f62)
 - Claude may: Report BuilderBot bugs, in a project's settings, turns bb report and the rule that points at it off for that project (0a991ed)
+- The logs section has a Diagnostics download: the controller's diagnostics as one JSON file, with the reports sessions made about BuilderBot (7d92273)
 
 ### Changed
 
