@@ -2530,6 +2530,46 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
       rmSync(`${DIR}/devdata/blocked`, { force: true });
       await api('/api/devapp', { project: 'ep.silon', instance: 'blocked', action: 'remove' });
     }
+    // A compose file that reads its settings through `env_file: .env`: the
+    // project's own .env, which BuilderBot never writes. The instance's env
+    // went to compose as --env-file only, which fills ${VAR} and nothing
+    // else, so what was typed into Send to Docker never reached the
+    // container, and Up failed on the missing file (Is-someone-Listening,
+    // 24 Sep). The copy the node runs names the instance's env instead.
+    {
+      writeFileSync(`${DIR}/ws/ep.silon/docker-compose.yml`,
+                    'services:\n  app:\n    image: alpine\n    env_file: .env\n');
+      const set = await api('/api/devapp', { project: 'ep.silon', instance: 'main', action: 'env-set',
+                                              text: 'GREETING=hello\n' });
+      ok(set.ok, `the instance's env is saved (${set.error || 'ok'})`);
+      const up3 = await api('/api/devapp', { project: 'ep.silon', instance: 'main', action: 'up' });
+      ok(up3.ok || up3.started, `Up is queued (${up3.error || 'ok'})`);
+      const je = await until(async () => {
+        const r = await api('/api/v1/jobs?project=ep.silon&type=compose&n=1');
+        const one = (r.jobs || [])[0];
+        if (!one || !['succeeded', 'failed', 'canceled'].includes(one.state) || one.id === j.id) return null;
+        const full = await api(`/api/v1/jobs?id=${one.id}`);
+        return (full.spec?.files || {})['instance.env'] ? full : null;
+      }, 60000);
+      const shipped = je?.spec?.files?.['docker-compose.yml'] || '';
+      ok(je && /env_file: \$\{BB_INSTANCE_ENV\}/.test(shipped) && !/env_file: \.env/.test(shipped)
+         && je.spec.files['instance.env'] === 'GREETING=hello\n'
+         && je.spec.plan.every(st => st.env?.BB_INSTANCE_ENV === '{cdir}/instance.env')
+         && je.state === 'succeeded',
+         `the node gets a compose copy whose env_file names the instance's env, and every step the path (${je?.state}: ${
+           JSON.stringify(shipped.split('\n').filter(l => /env_file/.test(l)))})`);
+      // ...and the controller's own compose calls (the row reads the file
+      // with compose config) run a copy beside the env that names it.
+      await api('/api/devapp', { project: 'ep.silon', instance: 'main', action: 'state' });
+      const copy = (() => { try { return readFileSync(`${DIR}/state/devenv/ep-silon.compose.yml`, 'utf8'); }
+                            catch { return ''; } })();
+      ok(copy.includes(`env_file: ${DIR}/state/devenv/ep-silon.env`),
+         `...and so do the controller's own compose calls (${copy.split('\n').find(l => /env_file/.test(l)) || 'no copy'})`);
+      await api('/api/devapp', { project: 'ep.silon', instance: 'main', action: 'env-set', text: '' });
+      rmSync(`${DIR}/state/devenv/ep-silon.env`, { force: true });
+      rmSync(`${DIR}/state/devenv/ep-silon.compose.yml`, { force: true });
+      writeFileSync(`${DIR}/ws/ep.silon/docker-compose.yml`, 'services:\n  app:\n    image: alpine\n');
+    }
     await api('/api/prefs', { project: 'ep.silon', node: '' });
   }
 

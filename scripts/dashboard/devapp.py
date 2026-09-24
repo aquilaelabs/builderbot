@@ -476,11 +476,16 @@ def _plan(project, instance, action, extra=None):
                   or str(Path(appdata_root()) / pname)))
     base = [DOCKER, "compose", "--project-name", pname,
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
+    ienv = {}
     if env_path(project, instance).is_file():
         base += ["--env-file", "{cdir}/instance.env"]
-    env = _dev_data_env(project, instance) | _build_env(project, instance)
+        # What the copy's env_file lines name (env_to_instance, _plan_spec),
+        # on every step, since down and exec load the file as well; the
+        # agent puts its directory in for {cdir}.
+        ienv = {"BB_INSTANCE_ENV": "{cdir}/instance.env"}
+    env = ienv | _dev_data_env(project, instance) | _build_env(project, instance)
     up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800, "env": env}
-    down = {"name": "stopping", "argv": base + ["down"], "timeout": 180}
+    down = {"name": "stopping", "argv": base + ["down"], "timeout": 180, "env": ienv}
     build = {"name": "building", "argv": base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
     # would start an instance whose env does not answer the repo's new
@@ -514,7 +519,7 @@ def _plan(project, instance, action, extra=None):
         argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1",
                        "-e", "BB_IN_INSTANCE=1", *wd, extra["service"],
                        "sh", "-c", extra["cmd"] + ' "$@"', "test", *extra.get("args", [])]
-        test = [{"name": "testing", "argv": argv, "timeout": 3600}]
+        test = [{"name": "testing", "argv": argv, "timeout": 3600, "env": ienv}]
     return {"up": [up], "down": [down], "remove": [down],
             "rebuild": rebuild, "test": test}.get(action) or []
 
@@ -526,6 +531,8 @@ def _plan_spec(project, instance, action, extra=None):
     ep = env_path(project, instance)
     if ep.is_file():
         files["instance.env"] = ep.read_text()
+        files["docker-compose.yml"] = env_to_instance(files["docker-compose.yml"],
+                                                      "${BB_INSTANCE_ENV}")
     make, _cannot = missing_dirs(project, _config(project, instance), instance)
     d = dev_data_dir(project, instance, make=False)
     return {"project": project, "instance": instance, "action": action,
@@ -1818,6 +1825,43 @@ def env_path(project, instance=MAIN):
     return ENVDIR / f"{_pname(project, instance)}.env"
 
 
+# A service's `env_file: .env` names the project's own .env, which BuilderBot
+# never writes: an instance's env is a file of its own (env_path), handed to
+# compose as --env-file, and that fills ${VAR} in the compose text and
+# nothing else. A compose file that reads its settings through env_file came
+# up without them, or not at all with the .env missing: what the operator
+# typed into Send to Docker never reached Is-someone-Listening's container
+# (24 Sep). The copy compose runs points those lines at the instance's env.
+_ENV_KEY = re.compile(r"^(\s*)env_file:\s*(#.*)?$")
+_ENV_ONE = re.compile(r"""^(\s*env_file:\s*)(["']?)(?:\./)?\.env\2(\s*(?:#.*)?)$""")
+_ENV_ITEM = re.compile(r"""^(\s*-\s*(?:path:\s*)?)(["']?)(?:\./)?\.env\2(\s*(?:#.*)?)$""")
+
+
+def env_to_instance(text, target):
+    """`text` with each env_file that names the project's .env, in any of
+    compose's three spellings (a value, a list item, a long-form `path:`),
+    pointed at `target`. Unchanged when none does. By line, not by parsing:
+    the server carries no YAML library, and these are the lines people write."""
+    out, key = [], None           # the env_file key's indent, inside its list
+    for line in (text or "").split("\n"):
+        body = line.strip()
+        ind = len(line) - len(line.lstrip())
+        if key is not None and body and ind <= key and not (ind == key and body.startswith("-")):
+            key = None
+        m = _ENV_ONE.match(line)
+        if m:
+            out.append(f"{m.group(1)}{target}{m.group(3)}")
+            continue
+        m = _ENV_KEY.match(line)
+        if m:
+            key = len(m.group(1))
+            out.append(line)
+            continue
+        m = _ENV_ITEM.match(line) if key is not None else None
+        out.append(f"{m.group(1)}{target}{m.group(3)}" if m else line)
+    return "\n".join(out)
+
+
 def _compose(project, instance, *args):
     """The one shape every action runs: compose, pinned to this instance's
     name and env and to its project's file. A table of verbs, not a command
@@ -1854,9 +1898,20 @@ def _compose(project, instance, *args):
         # checkout while the row said it came from a branch.
         at = work_tree(project, instance)
         pdir = str(at) if at is not None else str(WORKSPACE / project)
+    ep = env_path(project, instance)
+    if ep.is_file() and cf is not None and cf.is_file():
+        # The copy whose env_file lines name the instance's env, beside it,
+        # written only when it differs: this is on the poll path.
+        with contextlib.suppress(OSError):
+            text = cf.read_text(encoding="utf-8")
+            new = env_to_instance(text, str(ep))
+            if new != text:
+                copy = ENVDIR / f"{_pname(project, instance)}.compose.yml"
+                if not copy.is_file() or copy.read_text(encoding="utf-8") != new:
+                    copy.write_text(new, encoding="utf-8")
+                cf = copy
     argv = [DOCKER, "compose", "--project-name", _pname(project, instance),
             "--project-directory", pdir, "-f", str(cf)]
-    ep = env_path(project, instance)
     if ep.is_file():
         argv += ["--env-file", str(ep)]
     return argv + list(args)
@@ -4072,8 +4127,11 @@ def act(project, instance, action, req, *, test_cmd=""):
                 and req["text"].strip():
             # Written before the build that follows, so the first one has
             # the env it needs instead of stopping at the gate and asking
-            # for it afterwards.
-            write_env(project, req["text"], r["instance"])
+            # for it afterwards. A failed write is said: it was dropped, and
+            # the build then ran as if nothing had been typed.
+            w = write_env(project, req["text"], r["instance"])
+            if w.get("error"):
+                return r | {"error": w["error"]}, 400
         return r, (400 if r.get("error") else 200)
     if instance not in instances(project):
         return {"error": f"no instance {instance} of {project}"}, 400
