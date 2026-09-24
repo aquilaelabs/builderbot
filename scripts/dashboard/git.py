@@ -696,6 +696,17 @@ def branch_owner(repo, branch, trees=None, main=None, names=None):
     return ""
 
 
+# What changes the project directory's working tree, the owner's (B236):
+# action -> (what, for "only X can ..."; the question an administrator is put).
+TREE_WRITES = {
+    "commit": ("commit in it", "Commit in {who}'s working tree?"),
+    "discard": ("discard a change in it", "Discard this change in {who}'s working tree?"),
+    "revert": ("revert a commit in it", "Revert this commit in {who}'s working tree?"),
+    "pull": ("pull into it", "Pull into {who}'s working tree?"),
+    "switch": ("switch its branch", "Switch {who}'s working tree to another branch?"),
+}
+
+
 def not_yours(repo, action, args, uid, kind="", admin=False):
     """What stands between this account and doing this to a branch that is
     another account's session's (branch_owner): {} for nothing, {"error"} for
@@ -712,6 +723,22 @@ def not_yours(repo, action, args, uid, kind="", admin=False):
     naming whose it is.
     """
     args = args if isinstance(args, dict) else {}
+    names = ACCOUNTS() if ACCOUNTS else {}
+    # The project directory is the owner's session's tree (B236): what writes
+    # its working files or moves its branch is the owner's, or an
+    # administrator's who is asked and waits for that session to finish.
+    tree = TREE_WRITES.get(action) or (TREE_WRITES["switch"] if action == "branch" and args.get("switch") else None)
+    owner = (OWNER_UID() if OWNER_UID else "") or ""
+    if tree and owner and owner != uid:
+        who = names.get(owner) or "the owner"
+        what, ask = tree
+        if not admin:
+            return {"error": f"the project directory is {who}'s working tree: only {who} can {what}"}
+        if WORKING and WORKING(Path(repo).name, owner):
+            return {"error": f"{who}'s Claude session is working in the project directory: "
+                             f"{what} when it is waiting"}
+        if not args.get("confirmed"):
+            return {"confirm": f"{ask.format(who=who)}\n\nThe project directory is {who}'s working tree."}
     if action == "merge":
         name = str(args.get("name") or "")
         into = str(args.get("into") or "") or (status(repo).get("branch") or "")
@@ -726,7 +753,6 @@ def not_yours(repo, action, args, uid, kind="", admin=False):
         pairs = [(str(args.get("name") or ""), "switches to it" if action == "switch" else "deletes it")]
     else:
         return {}
-    names = ACCOUNTS() if ACCOUNTS else {}
     main, trees = _main_branch(repo), _worktrees(repo)
     for b, what in pairs:
         o = branch_owner(repo, b, trees, main, names)
@@ -980,6 +1006,15 @@ def act(repo, action, args, env=None, may_push=True):
         if name == into:
             return {"error": f"{name} is the branch the tree is on" if into == here
                              else f"{name} cannot be merged into itself"}
+        # Two branches with no commit in common (B234). git refuses them by
+        # default, because it is usually the wrong branch; here it is how a
+        # project that began without a repository comes together, so the
+        # page asks and sends `unrelated` with the answer. Asked last on each
+        # path below, after every refusal that stands whatever the answer.
+        unrelated = _git(repo, "merge-base", f"refs/heads/{into}", f"refs/heads/{name}") is None \
+            and _has_branch(repo, into)
+        ask_first = {"error": f"{name} and {into} share no history", "unrelated": True} \
+            if unrelated and not args.get("unrelated") else None
         if into != here:
             # Into a branch the tree is NOT on: main, from wherever the tree
             # stands. The pull request button does exactly this on a server,
@@ -1003,7 +1038,7 @@ def act(repo, action, args, env=None, may_push=True):
             behind = _behind_upstream(repo, into)
             if behind:
                 return {"error": behind}
-            return _merge_off_tree(repo, name, into, env)
+            return ask_first or _merge_off_tree(repo, name, into, env, unrelated=unrelated)
         no = _no_drivers(repo, merging=True)
         if no:
             return no
@@ -1014,7 +1049,10 @@ def act(repo, action, args, env=None, may_push=True):
             behind = _behind_upstream(repo, into)
             if behind:
                 return {"error": behind}
-        r = _run(repo, "merge", "--no-edit", name, env=env)
+        if ask_first:
+            return ask_first
+        r = _run(repo, "merge", "--no-edit", *(["--allow-unrelated-histories"] if unrelated else []),
+                 name, env=env)
         if r["code"]:
             # LEFT IN CONFLICT on purpose, where revert aborts. A conflicted
             # merge is a state this view already knows: the Changes section
@@ -1152,7 +1190,7 @@ def _behind_upstream(repo, branch):
             "both ahead and behind")
 
 
-def _merge_off_tree(repo, name, into, env):
+def _merge_off_tree(repo, name, into, env, unrelated=False):
     """Merge `name` into `into` with nothing checked out; {ok, out} or {error}.
 
     The pull request button's job, and nobody's checkout moves. This used to
@@ -1177,7 +1215,8 @@ def _merge_off_tree(repo, name, into, env):
         # git; `bb doctor` checks for it by name, because the controller and
         # a node are built from different Ubuntus and have differed by a
         # release without anything saying so.
-        r = _run(repo, "merge-tree", "--write-tree", a, b, env=env, index=False)
+        r = _run(repo, "merge-tree", "--write-tree",
+                 *(["--allow-unrelated-histories"] if unrelated else []), a, b, env=env, index=False)
         first = ((r["out"] or "").splitlines() or [""])[0].strip()
         if r["code"] or not SHA_RE.match(first):
             return {"error": f"{name} does not merge into {into} cleanly: Send to Claude "
@@ -1249,8 +1288,10 @@ ASKS = {
 }
 
 
-def ask(repo, project, kind, args, sessions=()):
-    """Compose the ask and type it into the project's session."""
+def ask(repo, project, kind, args, sessions=(), session=""):
+    """Compose the ask and type it into `session`: the presser's own Claude
+    session on the project (B235). The bare name alone was the owner's, so a
+    second account's press typed into the owner's conversation."""
     if TELL is None or TMUX_NAME is None:
         return {"error": "no way to reach a session from here"}
     args = args if isinstance(args, dict) else {}
@@ -1279,7 +1320,7 @@ def ask(repo, project, kind, args, sessions=()):
     else:
         return {"error": "nothing picked"}
     line = f"From the operator, on the Git view of {project}: {about}; {what}."
-    session = TMUX_NAME("claude-" + project)
+    session = session or TMUX_NAME("claude-" + project)
     r = TELL(session, line, sessions)
     if r.get("error"):
         return r

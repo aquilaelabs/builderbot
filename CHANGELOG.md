@@ -117,6 +117,10 @@
 - A project with no git repository can be given one from its Git view (Init); before, such a project could not be versioned, built into dist or pushed and nothing said how to get there (281136c)
 - bb version and bb changelog asked from a session's worktree answer for that tree, so a package built there is named after the commit it holds (a6d39d0)
 - A merge into the project directory waits only while your Claude session there is working, not whenever it is open, and the refusal says it is your session (42066ab)
+- Merging two branches that share no history asks first and then joins them, where the Git view used to fail with git's refusal (4019fc5)
+- Send to Claude on the Git view reaches your own Claude session on the project, not the owner's (4019fc5)
+- Another account's Git view no longer commits, discards, reverts, pulls or switches in the owner's working tree; an administrator is asked first (4019fc5)
+- Init on the Git view keeps the code map out of the repository it makes, so a first Commit all no longer sweeps it in (4019fc5)
 
 ### Security
 

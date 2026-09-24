@@ -35,6 +35,13 @@ function nbGitView({$, nb, project}){
     }catch(e){ notify("ask: " + e, true); }
     finally{ if (btn && btn.isConnected) unbusy(btn, btn.dataset.label || btn.textContent); }
   }
+  // The project directory is the owner's working tree (B236): anybody else
+  // sees whose it is, a plain account gets nothing that changes it, and an
+  // administrator is asked by the server first.
+  const treeOf = () => {
+    const owner = git?.owner || "", notMine = !!owner && owner !== state?.me;
+    return {owner, notMine, barred: notMine && !state?.admin};
+  };
   async function loadGit(){
     const hint = $("gitHint"), body = $("gitBody");
     try{
@@ -56,7 +63,8 @@ function nbGitView({$, nb, project}){
     }
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote);
-    hint.textContent = `on ${st.branch || "no branch"} · ${files.length
+    const tree = treeOf();
+    hint.textContent = `${tree.notMine ? `${tree.owner}'s working tree, ` : ""}on ${st.branch || "no branch"} · ${files.length
       ? `${files.length} change${files.length === 1 ? "" : "s"} not committed` : "nothing uncommitted"} · ${
       local.length} branch${local.length === 1 ? "" : "es"}${
       st.upstream ? (st.ahead || st.behind
@@ -74,6 +82,7 @@ function nbGitView({$, nb, project}){
         : "no upstream yet: Push sets one";
       net.querySelector('[data-gitact="push"]').disabled = !git.push;
       net.querySelector('[data-gitact="pull"]').disabled = !st.upstream;
+      net.querySelector('[data-gitact="pull"]').hidden = tree.barred;
     }
     drawGit();
   }
@@ -89,6 +98,11 @@ function nbGitView({$, nb, project}){
       if (j.error){
         if (j.unmerged && confirm(`${j.error}.\n\nDelete it anyway?`))
           return gitAct(action, {...args, force: true}, btn, verb);
+        // Two branches with no commit in common (B234): usually the wrong
+        // branch, and exactly right for a project that began without a
+        // repository, so it is asked.
+        if (j.unrelated && confirm(`${j.error}.\n\nMerging joins them into one history. Join them?`))
+          return gitAct(action, {...args, unrelated: true}, btn, verb);
         // A page drawn before the branch became somebody's: the server asks.
         if (j.confirm){
           if (confirm(j.confirm)) return gitAct(action, {...args, confirmed: true}, btn, verb);
@@ -113,28 +127,31 @@ function nbGitView({$, nb, project}){
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote), remote = (git.branches || []).filter(b => b.remote);
     const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const tree = treeOf();
     const fileRows = files.map(f => `<details class="sect gfile" data-path="${esc(f.path)}"${
         gitOpenFiles.has(f.path) ? " open" : ""}>
         <summary><span class="t"><code>${esc(f.path)}</code></span>
           <span class="sst${f.state === "conflict" ? " bad" : f.state === "untracked" ? " note" : ""}">${
             esc(f.state)}${f.staged ? " · staged" : ""}</span></summary>
         <div class="body gdiff"><div class="loading">loading…</div></div>
-        ${locked ? "" : `<div class="body"><div class="actbar">
-          <button type="button" data-gitaskfile="${esc(f.path)}"
-            title="hand this change to the project's Claude session">Send to Claude</button>
+        ${locked || tree.barred ? "" : `<div class="body"><div class="actbar">
+          ${tree.notMine ? "" : `<button type="button" data-gitaskfile="${esc(f.path)}"
+            title="hand this change to the project's Claude session">Send to Claude</button>`}
           <button type="button" class="danger" data-gitdiscard="${esc(f.path)}"
             title="put the file back as the last commit has it; the change is lost">Discard</button>
         </div></div>`}
       </details>`).join("");
     // Adding goes at the top: the commit's form is the section's first
     // band, above the files it will take.
-    const commitBar = files.length && !locked ? `<div class="addbar gcommitbar" data-add="commit">
+    const treeNote = tree.notMine ? `<div class="sub dim">${esc(tree.owner)}'s uncommitted changes in the project directory${
+      tree.barred ? `; only ${esc(tree.owner)} commits or discards them` : ""}</div>` : "";
+    const commitBar = files.length && !locked && !tree.barred ? `<div class="addbar gcommitbar" data-add="commit">
         <textarea id="gitMsg" class="proseline" rows="1" maxlength="200" placeholder="what changed, for the log"
           aria-label="commit message">${esc(gitMsgDraft)}</textarea>
         <button type="button" class="primary" id="gitCommit"
           title="commit every changed file under your author">Commit all</button>
       </div>` : "";
-    const branchBar = locked ? "" : `<div class="addbar gbranchbar" data-add="branch">
+    const branchBar = locked || tree.barred ? "" : `<div class="addbar gbranchbar" data-add="branch">
         <input id="gitNewBranch" maxlength="120" autocomplete="off" spellcheck="false"
           placeholder="new branch, from the commit the tree is on" aria-label="new branch name" value="${esc(gitBranchDraft)}">
         <button type="button" id="gitBranchGo">New branch</button>
@@ -197,7 +214,7 @@ function nbGitView({$, nb, project}){
             title="bring ${esc(main)} into ${esc(st.branch || "this branch")}, here, so this branch is up to date with it">Merge ${esc(main)} into here</button>`)
             : !barred(b) && (b.main_ahead || st.branch !== main) && !(b.head && st.branch === main) ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"${whoAttr(b)}
             title="merge ${esc(b.name)} into ${esc(main)} without moving the tree, the way a pull request merges; push ${esc(main)} yourself after">Merge into ${esc(main)}</button>` : ""}${
-            b.head || barred(b) ? "" : `<button type="button"
+            b.head || barred(b) || tree.barred ? "" : `<button type="button"
             data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch</button>`}${
             b.head || b.name === main || barred(b) ? "" : `<button type="button" class="danger"
             data-gitdelete="${esc(b.name)}" title="${b.merged ? "delete the branch; everything on it is in " + esc(main) : "delete the branch: refused while it holds commits no other branch has"}">Delete</button>`}</span>`;
@@ -259,7 +276,7 @@ function nbGitView({$, nb, project}){
           <button type="button" id="gitPolApply"${polDirty ? "" : " disabled"}>Apply</button>
         </div></div></div>`;
     body.innerHTML = docSection("git", "changes", "Changes", files.length ? String(files.length) : "none",
-        conflictBar + commitBar + (files.length ? fileRows : `<div class="empty">nothing changed since the last commit</div>`))
+        conflictBar + (files.length ? treeNote : "") + commitBar + (files.length ? fileRows : `<div class="empty">nothing changed since the last commit</div>`))
       + docSection("git", "history", "History", commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
       + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="empty">no branches</div>`))
@@ -419,13 +436,13 @@ function nbGitView({$, nb, project}){
         <div class="sub">${c.files.length} file${c.files.length === 1 ? "" : "s"}: ${c.files.map(f =>
           `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
         ${(state?.projects || []).find(p => p.name === project)?.locked ? "" : `<div class="actbar">
-          <span class="state">revert makes a new commit undoing this one; a branch starts from it</span>
+          ${treeOf().barred ? "" : `<span class="state">revert makes a new commit undoing this one; a branch starts from it</span>`}
           <select data-gitaskkind aria-label="what to ask"><option value="review">review</option>
             <option value="explain">explain</option><option value="revert">revert</option></select>
           <button type="button" data-gitaskcommit="${esc(c.sha)}"
             title="hand this commit to the project's Claude session with the ask picked">Send to Claude</button>
-          <button type="button" data-gitbranchat="${esc(c.sha)}" title="a new branch starting at this commit">Branch here</button>
-          <button type="button" data-gitrevert="${esc(c.sha)}" title="a new commit that undoes this one; nothing is rewritten">Revert</button>
+          ${treeOf().barred ? "" : `<button type="button" data-gitbranchat="${esc(c.sha)}" title="a new branch starting at this commit">Branch here</button>
+          <button type="button" data-gitrevert="${esc(c.sha)}" title="a new commit that undoes this one; nothing is rewritten">Revert</button>`}
         </div>`}
         ${renderDiff(c.diff)}
       </div>`;

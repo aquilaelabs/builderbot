@@ -62,8 +62,11 @@ directory's branch is the owner's; main is everybody's. A user merges only
 their own. An admin may merge anyone's, is asked each time with the owner
 named, and is refused while that person's Claude session is working, because
 a branch mid-prompt holds half a change. A merge into the project directory
-waits only while the session standing in it is working (git.py `not_yours`,
-projsessions.py; the operator, 24 Sep).
+waits only while the session standing in it is working. The project
+directory is the owner's working tree: from the Git view nobody else
+commits, discards, reverts, pulls or switches branches in it, an admin only
+after being asked, and merging into main stays everybody's (git.py
+`not_yours`, projsessions.py; the operator, 24 Sep).
 
 ## Storage
 

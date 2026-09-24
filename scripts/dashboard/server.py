@@ -4079,6 +4079,9 @@ class Handler(BaseHTTPRequestHandler):
             # the project's push rights, granted once in the clone dialog.
             r["remote"] = gitview.has_remote(WORKSPACE / name)
             r["push"] = projects.may_push(name)
+            # Whose working tree this is (B236): the page says so to anybody
+            # else, and offers them nothing that changes it.
+            r["owner"] = users.owner_name() or ""
             # The host by its name (GitHub, Gitea, or the machine's own),
             # so the view can say "in step with GitHub" and not "origin".
             url = gitview.remote_url(WORKSPACE / name)
@@ -6903,7 +6906,10 @@ class Handler(BaseHTTPRequestHandler):
                                             "directory; merge when it is waiting"}, 409)
         if action == "ask":
             live = sessions_anywhere()
-            r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live)
+            # The presser's own session, by the name the roadmap's send uses
+            # (B235): the bare name alone was the owner's.
+            r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live,
+                            session=users.tmux_prefix(me) + claude_session(name))
             return self._result(r)
         env = {**projects._git_env(), **users.git_env(me, name)}
         env.pop("DASHBOARD_AUTH", None)

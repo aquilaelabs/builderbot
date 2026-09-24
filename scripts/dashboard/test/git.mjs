@@ -861,6 +861,25 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
      'a commit, a kind or a file that is not one is refused, not sent');
   tmuxKill('claude-beta');
   execFileSync('git', ['-C', B, 'checkout', '-q', '--', 'a.txt']);
+  // ...and it is the PRESSER's session (B235). The bare name alone was the
+  // owner's, so a second account's press typed into the owner's
+  // conversation, or found no session while its own was running.
+  {
+    const hh = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+    for (const body of [{ action: 'add', name: 'w.asker', password: 'w.asker-pass-1', role: 'user' },
+                        { action: 'projects', name: 'w.asker', projects: ['beta'] }])
+      await fetch(URL.replace(/\/$/, '') + '/api/users', { method: 'POST', headers: hh, body: JSON.stringify(body) });
+    const auid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.asker'].uid;
+    const theirs = `${auid}~claude-beta`;
+    tmuxNew(theirs, B);
+    const r = await fetch(URL.replace(/\/$/, '') + '/api/git', { method: 'POST',
+      headers: { Authorization: 'Basic ' + Buffer.from('w.asker:w.asker-pass-1').toString('base64'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'beta', action: 'ask', kind: 'review', args: { sha: head.sha } }) });
+    const their = await r.json();
+    ok(their.ok && their.session === theirs && tmuxCapture(theirs).includes(head.sha.slice(0, 7)),
+       `a second account's Send to Claude lands in its own session (${their.session || their.error})`);
+    tmuxKill(theirs);
+  }
 
   // ...and the view carries them.
   writeFileSync(`${B}/a.txt`, 'one\ntwo\nsix\n');
@@ -998,6 +1017,7 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
      && landed,
      `...and pressing it asks, naming whose, then merges (${page.dialogs.join(' | ').replace(/\n+/g, ' ')})`);
   // A plain account's row offers none of it and says why.
+  writeFileSync(`${B}/owner-note.txt`, 'the owner\'s own change\n');
   const peerPage = await newPage(browser, { viewport: { width: 1280, height: 900 },
     httpCredentials: { username: 'w.peer', password: 'w.peer-pass-1' },
     extraHTTPHeaders: { Authorization: PEER.Authorization } });
@@ -1007,15 +1027,42 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
   await refreshUntil(peerPage, () => [...document.querySelectorAll('.nb .nbview[data-view="git"] .gbranch')]
     .some(r => r.querySelector('code')?.textContent === 'claude/w.dev'));
   const peerRow = await rowOf(peerPage);
+  const peerTreeView = await peerPage.evaluate(() => {
+    const v = document.querySelector('.nb .nbview[data-view="git"]');
+    return { hint: document.querySelector('.nb #gitHint')?.textContent || '',
+             writes: v.querySelectorAll('#gitCommit, [data-gitdiscard], [data-gitswitch], #gitNewBranch, [data-gitaskfile]').length,
+             note: /only test commits or discards them/.test(v.textContent) };
+  });
+  ok(/test's working tree/.test(peerTreeView.hint) && peerTreeView.writes === 0 && peerTreeView.note,
+     `...and its view says whose working tree it is and offers nothing that changes it (${JSON.stringify(peerTreeView)})`);
   ok(peerRow.acts === 0 && peerRow.asks.join() === 'review' && /only w\.dev merges it/.test(peerRow.text),
      `...while a plain account's row offers none of it and says whose it is (${JSON.stringify({ acts: peerRow.acts, asks: peerRow.asks })})`);
   await peerPage.close();
+  // B236: the project directory is the owner's working tree. A plain
+  // account changes nothing in it; an administrator is asked first.
+  const treeWrites = [['commit', { message: 'from w.peer' }], ['discard', { path: 'a.txt' }],
+                      ['switch', { name: main }], ['pull', {}], ['revert', { sha: 'zzzz' }],
+                      ['branch', { name: 'peer-topic', switch: true }]];
+  const peerTree = [];
+  for (const [action, args] of treeWrites) peerTree.push(await post({ project: 'beta', action, args }, PEER));
+  ok(peerTree.every(r => r.status === 403 && /the project directory is test's working tree: only test can/.test(r.error || '')),
+     `a plain account cannot commit, discard, switch, pull, revert or branch-and-switch in the owner's tree (${
+       peerTree.map(r => r.status).join(',')}: ${peerTree[0].error})`);
+  for (const body of [{ action: 'add', name: 'w.boss', password: 'w.boss-pass-1', role: 'admin' },
+                      { action: 'projects', name: 'w.boss', projects: ['beta'] }]) await users(body);
+  const BOSS = { Authorization: 'Basic ' + Buffer.from('w.boss:w.boss-pass-1').toString('base64'), 'Content-Type': 'application/json' };
+  const bossAsked = await post({ project: 'beta', action: 'revert', args: { sha: 'zzzz' } }, BOSS);
+  const bossSure = await post({ project: 'beta', action: 'revert', args: { sha: 'zzzz', confirmed: true } }, BOSS);
+  ok(bossAsked.status === 409 && /test's working tree/.test(bossAsked.confirm || '')
+     && !/working tree/.test(bossSure.error || '') && bossSure.status !== 409,
+     `an administrator is asked first, naming whose tree, and then goes on (${bossSure.error})`);
   const theirs = { Authorization: 'Basic ' + Buffer.from('w.dev:w.dev-pass-1').toString('base64'), 'Content-Type': 'application/json' };
   const own = await post(merge, theirs);
   ok(!/session's branch|asked/.test(own.error || '') && own.status !== 409,
      `...and its own account merges it unasked (${own.ok ? (own.out || 'merged').slice(0, 40) : (own.error || '').slice(0, 60)})`);
   git('worktree', 'remove', '--force', WT);
   git('branch', '-D', 'claude/w.dev');
+  rmSync(`${B}/owner-note.txt`, { force: true });
   page.errors = [];                     // the 403s and the 409 above are refusals by design
 }
 
@@ -1055,6 +1102,27 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
      '...and Init makes the repository on main with nothing committed, and the view redraws on it');
   const again = await g('init');
   ok(again.status !== 200 || again.error, `...and a second Init is refused (${again.error || '?'})`);
+  ok(readFileSync(`${DIR}/ws/gamma/.git/info/exclude`, 'utf8').split('\n').includes('.bb-map/'),
+     '...and the repository it makes keeps the code map out, as a created project does');
+  // B234: two branches with no commit in common, the shape a project that
+  // began without a repository ends up in. Joined only when asked.
+  const G = `${DIR}/ws/gamma`;
+  const who = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.invalid',
+                GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.invalid' };
+  const gg = (...a) => execFileSync('git', ['-C', G, ...a], { encoding: 'utf8', env: who }).trim();
+  gg('add', '-A'); gg('commit', '-q', '-m', 'Start');
+  const blob = execFileSync('git', ['-C', G, 'hash-object', '-w', '--stdin'], { input: 'the app\n', encoding: 'utf8' }).trim();
+  const tree = execFileSync('git', ['-C', G, 'mktree'], { input: `100644 blob ${blob}\tapp.txt\n`, encoding: 'utf8' }).trim();
+  gg('branch', 'app', execFileSync('git', ['-C', G, 'commit-tree', tree, '-m', 'The app'], { encoding: 'utf8', env: who }).trim());
+  const merge = async extra => { const r = await fetch(URL.replace(/\/$/, '') + '/api/git', { method: 'POST', headers: H2,
+    body: JSON.stringify({ project: 'gamma', action: 'merge', args: { name: 'app', ...extra } }) });
+    return { status: r.status, ...(await r.json()) }; };
+  const asked = await merge({});
+  ok(asked.unrelated === true && /app and main share no history/.test(asked.error || '') && !existsSync(`${G}/app.txt`),
+     `a merge of two branches with no history in common asks first, and does nothing yet (${asked.error})`);
+  const joined = await merge({ unrelated: true });
+  ok(joined.ok && existsSync(`${G}/app.txt`) && gg('log', '-1', '--format=%P').split(' ').length === 2,
+     `...and joins them into one history when the answer is yes (${joined.out || joined.error})`);
   // The view's first read of a project with no repository is a 400 by
   // design, and the browser logs every one as a failed resource. Cleared,
   // so the check below is about the page.
