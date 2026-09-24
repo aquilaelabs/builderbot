@@ -121,6 +121,8 @@
 - Send to Claude on the Git view reaches your own Claude session on the project, not the owner's (4019fc5)
 - Another account's Git view no longer commits, discards, reverts, pulls or switches in the owner's working tree; an administrator is asked first (4019fc5)
 - Init on the Git view keeps the code map out of the repository it makes, so a first Commit all no longer sweeps it in (4019fc5)
+- Builds made on a branch, in another account's worktree, show on the Artifacts tab under whose they are, with Download and View, apart from dist/ (d79fc0a)
+- A project an administrator creates goes on their own project list, so they can work on it at once and the node picked in the dialog is kept (d79fc0a)
 
 ### Security
 
