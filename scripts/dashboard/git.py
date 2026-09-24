@@ -817,6 +817,16 @@ def _dirty(repo):
 def act(repo, action, args, env=None, may_push=True):
     """Do one thing to the repository; {ok, out, ...} or {error}."""
     args = args if isinstance(args, dict) else {}
+    # The one action for a tree that has no repository: a project adopted
+    # from a directory, or unpacked from an archive that carried none, can
+    # otherwise never be versioned, built into dist/ or pushed, and the Git
+    # view showed "nothing to show" with no way on. On main, nothing
+    # committed: the first commit is the person's or a session's.
+    if action == "init":
+        if is_repo(repo):
+            return {"error": "already a git repository"}
+        r = _run(repo, "init", "-b", "main", timeout=30)
+        return _done(r, "a repository, on main, with nothing committed yet", repo)
     if not is_repo(repo):
         return {"error": "not a git repository"}
     if action in ("pull", "switch", "revert", "commit", "discard"):

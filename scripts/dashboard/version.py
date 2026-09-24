@@ -289,7 +289,7 @@ def parts(project, comp="", repo=None):
     tgt, err = target(project, comp)
     repo = _repo(project) if repo is None else repo
     if repo is None:
-        return {"target": tgt, "error": err or "not a git repository, or no commits yet",
+        return {"target": tgt, "error": err or "not a git repository (Init on the Git view makes one), or no commits yet",
                 "ordinal": None, "sha": None, "tag": "", "dirty": False,
                 "describe": None, "released": False}
     where = _sub(project, comp)
@@ -502,7 +502,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
         return {"error": f"no such component here: {comp}"}
     sha = _git(project, "rev-parse", "--short=7", "HEAD")
     if sha is None:
-        return {"error": "not a git repository, or no commits yet"}
+        return {"error": "not a git repository (Init on the Git view makes one), or no commits yet"}
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
         # Which commit it is on, because "it already exists" and "it is on

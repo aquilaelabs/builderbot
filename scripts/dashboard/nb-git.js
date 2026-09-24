@@ -42,9 +42,16 @@ function nbGitView({$, nb, project}){
       git = await r.json();
     }catch(e){ hint.textContent = "git: " + e; return; }
     if (git.error){
-      hint.textContent = git.error === "not a git repository"
-        ? "not a git repository; nothing to show" : "git: " + git.error;
-      body.innerHTML = "";
+      const none = git.error === "not a git repository";
+      hint.textContent = none ? "no repository yet" : "git: " + git.error;
+      // The way on, where the dead end was: Init makes the repository here
+      // (a project adopted from a directory, or unpacked from an archive
+      // without one), and a session then commits and pushes as anywhere.
+      body.innerHTML = none ? `<div class="field actbar">
+          <span class="state">Init makes one, on main, with nothing committed; a session can then version, build and push.</span>
+          <button type="button" data-gitinit="1">Init repository</button></div>` : "";
+      const b = body.querySelector("[data-gitinit]");
+      if (b) b.onclick = () => gitAct("init", {}, b, "Making");
       return;
     }
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];

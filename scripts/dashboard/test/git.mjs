@@ -914,6 +914,33 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
      `the controller never fell back to running git in the tree (${
        fell.length ? fell[0].slice(0, 400) : 'no fallback'})`);
 }
+// ---- a project with no repository gets one from the view ----------------
+// gamma is the fixture's directory-only project. It could be adopted,
+// listed and opened, and its Git view said "nothing to show" with no way
+// on: no version, no dist/, no push, and a session told not to decide that
+// for the person. Init is that way, from the API and from the row.
+{
+  const H2 = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const g = async (action) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/git',
+    { method: 'POST', headers: H2, body: JSON.stringify({ project: 'gamma', action, args: {} }) });
+    return { status: r.status, ...(await r.json()) }; };
+  await page.evaluate(() => openNotebook('gamma', 'git'));
+  await page.waitForSelector('.nb[data-project="gamma"] .nbview[data-view="git"] [data-gitinit]', { timeout: 20000 });
+  ok(/no repository yet/.test(await page.$eval('.nb[data-project="gamma"] #gitHint', e => e.textContent)),
+     'a project with no repository says so on the Git view, with an Init button under it');
+  await page.click('.nb[data-project="gamma"] .nbview[data-view="git"] [data-gitinit]');
+  await page.waitForFunction(() => /on main/.test(document.querySelector('.nb[data-project="gamma"] #gitHint')?.textContent || ''),
+                             null, { timeout: 20000 });
+  ok(existsSync(`${DIR}/ws/gamma/.git`) && !existsSync(`${DIR}/ws/gamma/.git/refs/heads/main`),
+     '...and Init makes the repository on main with nothing committed, and the view redraws on it');
+  const again = await g('init');
+  ok(again.status !== 200 || again.error, `...and a second Init is refused (${again.error || '?'})`);
+  // The view's first read of a project with no repository is a 400 by
+  // design, and the browser logs every one as a failed resource. Cleared,
+  // so the check below is about the page.
+  page.errors = [];
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 // B164: a repository with no main and no master. Merge into main cannot
 // mean anything there, and the refusal said "or on :" with the name empty.
