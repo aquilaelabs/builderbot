@@ -36,6 +36,7 @@
 - An administrator sees every account's sessions on a project at the foot of its settings and can end one; keys and typing in another person's session stay theirs (42066ab)
 - Every container on the Docker tab has a Project setting, one project or none: only that project's Claude sessions can see it, and they work on it as the project's Run its container setting allows. The project's notebook lists it too (5a89323)
 - A session lists its project's containers with bb devapp ls, reads one's log with bb devapp log NAME, and starts, stops or restarts one with bb devapp start, stop or restart NAME (5a89323)
+- bb report: a session on any project reports a problem with BuilderBot itself there instead of in its own tracker, as a shipped rule says, and BuilderBot's own sessions read and answer the reports in bb diag reports (4408f62)
 
 ### Changed
 

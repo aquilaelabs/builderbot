@@ -1,0 +1,106 @@
+// Problems with BuilderBot itself, reported by a session on any project
+// (reports.py, bb report; the operator, 24 Sep). A session files one instead
+// of putting it in its own project's tracker, as a shipped rule tells it to;
+// the report waits on the controller, is read in the diagnostics behind their
+// gate, and is filed into a tracker or closed from there; the session that
+// made it reads what became of it. No browser: it is an API and a verb.
+import { ok, done, URL, DIR } from './lib.mjs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+
+const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+const base = URL.replace(/\/$/, '');
+const ADMIN = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+                'Content-Type': 'application/json' };
+const call = async (path, body, headers = ADMIN) => {
+  const r = await fetch(base + path, body === undefined ? { headers }
+    : { method: 'POST', headers, body: JSON.stringify(body) });
+  return { status: r.status, ...(await r.json().catch(() => ({}))) };
+};
+const token = project => execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', project, 'test'],
+  { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+const as = tok => ({ Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' });
+const ALPHA = as(token('alpha'));
+const BETA = as(token('beta'));
+
+// ---- a session reports one ---------------------------------------------------
+const made = await call('/api/reports', { action: 'add', text: 'bb test ran the tests inside the dev instance',
+  area: 'bb test', repro: 'the log said token=bbs_abcdefgh12345678 and found no tests' }, ALPHA);
+ok(made.status === 200 && made.ok && made.id > 0, `a session reports a problem with BuilderBot (${JSON.stringify(made)})`);
+const stored = JSON.parse(readFileSync(`${DIR}/state/reports.json`, 'utf8')).reports.find(r => r.id === made.id) || {};
+ok(stored.project === 'alpha' && stored.state === 'open' && /redacted/.test(stored.repro)
+   && !/bbs_abcdefgh/.test(JSON.stringify(stored)),
+   `...stored as the project's, open, with anything shaped like a credential redacted (${stored.repro})`);
+const empty = await call('/api/reports', { action: 'add', text: '   ' }, ALPHA);
+ok(empty.status === 400 && /say what happened/.test(empty.error || ''), 'a report with no words is refused');
+
+// ---- who reads it ------------------------------------------------------------------
+const mine = await call('/api/reports', { action: 'mine' }, ALPHA);
+const theirs = await call('/api/reports', { action: 'mine' }, BETA);
+ok((mine.reports || []).some(r => r.id === made.id) && !(theirs.reports || []).some(r => r.id === made.id),
+   'the session that reported it reads it, and another project\'s session does not');
+const listed = await call('/api/reports', { action: 'list' }, BETA);
+ok(listed.status === 403, `...nor may a session list everybody's, outside the diagnostics' gate (${listed.error})`);
+const diag = await call('/api/diag', { sections: ['reports'] });
+const seen = (diag.reports || []).find(r => r.id === made.id);
+ok(seen && seen.project === 'alpha' && /inside the dev instance/.test(seen.text) && seen.when,
+   `the diagnostics carry the open reports, whose and when (${JSON.stringify(seen || diag).slice(0, 120)})`);
+
+// ---- answered from there -------------------------------------------------------------
+const filed = await call('/api/reports', { action: 'filed', id: made.id, bug: 'B9' });
+const after = (await call('/api/reports', { action: 'mine' }, ALPHA)).reports.find(r => r.id === made.id);
+ok(filed.ok && after.state === 'filed' && after.bug === 'B9'
+   && !((await call('/api/diag', { sections: ['reports'] })).reports || []).some(r => r.id === made.id),
+   'filing it records the bug it became, which its session reads, and it leaves the open list');
+const second = await call('/api/reports', { action: 'add', text: 'the briefing names a verb that is gone' }, ALPHA);
+const closed = await call('/api/reports', { action: 'close', id: second.id, why: 'the verb is there: bb map -h' });
+const again = await call('/api/reports', { action: 'close', id: second.id, why: 'twice' });
+ok(closed.ok && again.status === 400 && /already closed/.test(again.error || ''),
+   `closing one takes a reason, and a closed one stays closed (${again.error})`);
+const noWhy = await call('/api/reports', { action: 'close', id: made.id + 100, why: '' });
+ok(noWhy.status === 400, 'a close with no reason is refused');
+
+// ---- the verb ------------------------------------------------------------------------
+// As a session on a node runs it: its token, its project, the controller's address.
+const node = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: base, BB_TOKEN: token('alpha'),
+               BB_PROJECT: 'alpha', XDG_CACHE_HOME: `${DIR}/cache-reports` };
+const bb = (args, env, cwd) => spawnSync('bash', [`${REPO}/scripts/bb`, ...args],
+  { encoding: 'utf8', env, cwd: cwd || `${DIR}/ws/alpha`, timeout: 60000 });
+const said = bb(['report', 'bb map build wrote .bb-map into the tree unignored', '--area', 'bb map'], node);
+ok(said.status === 0 && /reported #\d+/.test(said.stdout), `bb report sends one from a session (${(said.stdout + said.stderr).trim()})`);
+const list = bb(['report'], node);
+ok(list.status === 0 && /filed as B9/.test(list.stdout) && /bb map build wrote/.test(list.stdout),
+   `...and bb report alone says what became of the project's reports (${list.stdout.replace(/\s+/g, ' ').slice(0, 120)})`);
+// Filed from BuilderBot's side, through bb bug add, as an administrator.
+const id = Number((said.stdout.match(/#(\d+)/) || [])[1]);
+const admin = { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_AUTH: 'test:test',
+                BB_CONTROLLER: base, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` };
+const fil = bb(['report', 'file', String(id), '--sev', 'low'], admin);
+const bugNo = (fil.stdout.match(/report #\d+ is (B\d+) now/) || [])[1];
+const bug = bugNo && JSON.parse(readFileSync(`${DIR}/state/bugs.json`, 'utf8')).projects.alpha
+  .find(b => `B${b.id}` === bugNo);
+ok(fil.status === 0 && bug && /bb map build wrote/.test(bug.title) && /report #\d+/.test(bug.repro || '')
+   && (await call('/api/reports', { action: 'get', id })).bug === bugNo,
+   `bb report file N files it through bb bug add and marks it with the bug it became (${(fil.stdout + fil.stderr).trim().slice(-140)})`);
+
+// ---- where a session is told --------------------------------------------------------
+const p = await call('/api/preamble?project=alpha');
+const text = p.text || '';
+ok(text.split('goes to `bb report').length === 2 && /`bb report` alone lists/.test(text),
+   'a session is told once, as a rule, to report BuilderBot\'s problems there, and the briefing says what the verb does');
+// ...and nudged when it files one in its own tracker anyway.
+const own = bb(['bug', 'add', 'bb devapp status says the env is the operator\'s'],
+               { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
+ok(own.status === 0 && /this names BuilderBot: .*bb report sends it/.test(own.stderr),
+   `a bug that names BuilderBot, filed in another project, points at bb report (${own.stderr.trim().slice(0, 100)})`);
+// Not in BuilderBot's own repository, whose tracker it is: beta made to look like it.
+mkdirSync(`${DIR}/ws/beta/scripts/dashboard`, { recursive: true });
+writeFileSync(`${DIR}/ws/beta/scripts/bb`, '#!/bin/sh\n');
+writeFileSync(`${DIR}/ws/beta/scripts/dashboard/server.py`, '');
+const home = bb(['bug', 'add', 'bb devapp status is wrong'], { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'beta' },
+                `${DIR}/ws/beta`);
+ok(home.status === 0 && !/this names BuilderBot/.test(home.stderr),
+   '...and says nothing in BuilderBot\'s own repository');
+rmSync(`${DIR}/ws/beta/scripts`, { recursive: true, force: true });
+
+await done(null);

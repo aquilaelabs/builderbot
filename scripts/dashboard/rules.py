@@ -166,6 +166,15 @@ BUILTIN = [
      "text": "What you notice goes on the record, not only in a reply: a bug"
              " with `bb bug add`, work worth doing with `bb roadmap add`. Tick"
              " items off as you finish them."},
+    # Where a problem with BuilderBot goes when it is met on another project
+    # (the operator, 24 Sep): its maintainers read reports in the
+    # diagnostics, and a project's tracker is for that project.
+    {"name": "report-builderbot",
+     "text": "A problem with BuilderBot itself (a `bb` command, the dashboard,"
+             " a node, this briefing) goes to `bb report \"what happened\"`,"
+             " not to this project's tracker, which is for this project's own"
+             " bugs. In BuilderBot's own repository it is `bb bug add` as"
+             " usual."},
     {"name": "side-quests",
      "text": "A bug met mid-task is fixed only when your own change caused it"
              " or it blocks the work: the smallest fix, in its own commit, said"

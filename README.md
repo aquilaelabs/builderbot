@@ -601,7 +601,22 @@ bb diag [--json] [SECTION...]
                    administrator's. A session reads it only while **debug
                    mode** is on, its node is ticked for **the controller's
                    diagnostics** on its Debug settings, and its account is an
-                   administrator's, so a tester on the same node never gets it
+                   administrator's, so a tester on the same node never gets it.
+                   Its `reports` section is what sessions on other projects
+                   reported about BuilderBot and nobody has answered yet
+bb report "..." [--area A] [--repro "..."]
+                   a problem with BuilderBot itself, from a session on any
+                   project: it waits on the controller for BuilderBot's own
+                   sessions rather than going into the project's tracker (the
+                   shipped rule `report-builderbot`), redacted like the
+                   diagnostics. `bb report` alone lists the project's reports
+                   and what became of each. A `bb bug add` in another project
+                   whose words name BuilderBot or a `bb` command says so
+bb report file N [--sev S] [--as BUG] | close N "why"
+                   answer a report, behind the diagnostics' gate: file it as a
+                   bug in this project's tracker through `bb bug add` (or mark
+                   it as one already there), or close it with the reason its
+                   session will read
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
@@ -4158,6 +4173,7 @@ scripts/
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
     idle.py                      ending Claude sessions nobody has used for a while
     projsessions.py              every account's sessions on a project, and an administrator ending one
+    reports.py                   problems with BuilderBot reported by any project's session (bb report)
     doctor.py                    `bb doctor` run on a timer and cached, for the Doctor card
     runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
     findings.py                  the scanner's reports read and attributed, and what they used to say

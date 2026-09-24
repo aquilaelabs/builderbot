@@ -2768,9 +2768,12 @@ doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes
 # the debug switch and a node's tick, an administrator's session (diag.py).
 import diag                                                      # noqa: E402
 
+import reports                                                   # noqa: E402
+reports.configure(write_json=write_json, state=STATE, redact=diag.redact,
+                  build=lambda: image_stamp().get("version") or image_stamp().get("rev") or "")
 diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.payload,
                settings=settings, nodes=nodes, db=db, log_dir=logs.log_dir,
-               plugins=plugins, users=users)
+               plugins=plugins, users=users, reports=reports)
 
 
 # ---- revisions -------------------------------------------------------------
@@ -3218,6 +3221,7 @@ POST_ROUTES = (
     ("prefix", "/api/artifacts", "_artifacts"),
     ("prefix", "/api/nodelog", "_nodelog"),
     ("exact", "/api/diag", "_diag"),
+    ("exact", "/api/reports", "_reports"),
     ("prefix", "/api/phone", "_phone"),
     ("prefix", "/api/findings", "_findings_log"),
     ("prefix", "/api/tests", "_tests"),
@@ -7386,25 +7390,70 @@ class Handler(BaseHTTPRequestHandler):
         administrator: a node is shared, so the node's tick alone would hand
         it to every tester whose session runs there. POST, so each read is in
         the audit trail."""
-        who = self._who() or {}
-        if who.get("session"):
-            if not settings.get("debug_mode"):
-                return self._json({"error": "debug mode is off, so the controller's diagnostics "
-                                            "are not offered to any session"}, 403)
-            me = users.account_of(who)
-            if me is who or not users.is_admin(me):
-                return self._json({"error": "the controller's diagnostics are an "
-                                            "administrator's, and this session's account "
-                                            "is not one"}, 403)
-            nid = prefs.get(who["session"])["node"]
-            if not nid or not nodes.diag_granted(nid):
-                name = (nodes.node(nid) or {}).get("name") or "this session's node"
-                return self._json({"error": f"{name} has not been granted the controller's "
-                                            "diagnostics: Debug settings on its row"}, 403)
-        elif self._refused("admin"):
+        if self._diag_refused():
             return None
         want = req.get("sections") if isinstance(req.get("sections"), list) else None
         return self._json(diag.report([str(x) for x in want] if want else None))
+
+    def _diag_refused(self):
+        """True, with the refusal written, unless this caller may read the
+        controller's diagnostics: see _diag. The reports sessions make about
+        BuilderBot are read and acted on behind the same gate."""
+        who = self._who() or {}
+        if who.get("session"):
+            if not settings.get("debug_mode"):
+                self._json({"error": "debug mode is off, so the controller's diagnostics "
+                                     "are not offered to any session"}, 403)
+                return True
+            me = users.account_of(who)
+            if me is who or not users.is_admin(me):
+                self._json({"error": "the controller's diagnostics are an "
+                                     "administrator's, and this session's account "
+                                     "is not one"}, 403)
+                return True
+            nid = prefs.get(who["session"])["node"]
+            if not nid or not nodes.diag_granted(nid):
+                name = (nodes.node(nid) or {}).get("name") or "this session's node"
+                self._json({"error": f"{name} has not been granted the controller's "
+                                     "diagnostics: Debug settings on its row"}, 403)
+                return True
+            return False
+        return self._refused("admin")
+
+    def _reports(self, req):
+        """Problems with BuilderBot itself, reported by any project's session
+        (reports.py, bb report). Anybody signed in adds one for a project they
+        may see, and a session only for its own; what became of a project's
+        reports is that project's to read. Reading every project's, and
+        filing or closing one, is the diagnostics' own gate, since that is
+        where BuilderBot's own work reads them (bb diag reports)."""
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        act = field(req, "action")
+        name = str((users.account_of(me) or {}).get("name") or "")
+        if act in ("add", "mine"):
+            proj = sess or field(req, "project")
+            if not sess and self._not_project(proj):
+                return None
+            if act == "mine":
+                return self._json({"reports": reports.listing(None, proj, n=30)})
+            nid = prefs.get(proj)["node"]
+            node = (nodes.node(nid) or {}).get("name", "") if nid and not NODES_OK else ""
+            return self._result(reports.add(proj, req.get("text"), by=name, node=node,
+                                            area=req.get("area"), repro=req.get("repro")))
+        if self._diag_refused():
+            return None
+        if act == "list":
+            st = field(req, "state") or "open"
+            return self._json({"reports": reports.listing(None if st == "all" else st)})
+        if act == "get":
+            r = reports.get(req.get("id"))
+            return self._json(r) if r else self._json({"error": "no such report"}, 400)
+        if act == "filed":
+            return self._result(reports.filed(req.get("id"), field(req, "bug"), by=name))
+        if act == "close":
+            return self._result(reports.close(req.get("id"), field(req, "why"), by=name))
+        return self._json({"error": f"unknown action: {act}"}, 400)
 
     def _doctor(self, req):
         """Re-run bb doctor now and answer with the fresh verdict.

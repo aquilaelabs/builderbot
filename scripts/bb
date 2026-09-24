@@ -189,8 +189,17 @@ bb: BuilderBot helper
   bb diag [--json] [SECTION...]
                          the controller's diagnostics: its build and images,
                          the doctor, each node's agent and sessions, failed
-                         jobs, error lines in its logs, the audit trail; for
-                         a session, behind debug mode and its node's grant
+                         jobs, error lines in its logs, the audit trail, the
+                         reports sessions made about BuilderBot; for a
+                         session, behind debug mode and its node's grant
+  bb report "..." [--area A] [--repro "..."]
+                         a problem with BuilderBot itself, sent to its
+                         maintainers rather than filed here; bb report alone
+                         says what became of this project's reports
+  bb report file N [--sev S] [--as BUG] | close N "why"
+                         turn a report into a bug in this tracker (or mark it
+                         as one already there), or close it; behind the
+                         diagnostics' gate, for BuilderBot's own sessions
   bb logs -p [N]         show a previous boot's log (the log rotates per start)
   bb logs --list         list the kept boot logs, newest first
   bb logs --node NAME [--agent|--runner|--terminal] [N]
@@ -1513,7 +1522,7 @@ cmd_diag() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --json) json=1 ;;
-            -h|--help) printf 'usage: bb diag [--json] [controller|images|settings|doctor|nodes|plugins|jobs|errors|audit]...\n'; return 0 ;;
+            -h|--help) printf 'usage: bb diag [--json] [controller|images|settings|doctor|nodes|plugins|jobs|errors|audit|reports]...\n'; return 0 ;;
             -*) die "bb diag: no such option \`$1'" ;;
             *) sections+=("$1") ;;
         esac
@@ -1582,7 +1591,135 @@ for name, v in d.items():
     elif name == "audit":
         for a in v:
             print(f"  {a['when']:>8}  {a['who']:<24} {a['action']}  {a['target']}")
+    elif name == "reports":
+        # What sessions on other projects said about BuilderBot, unread:
+        # bb report file N or close N "why" answers one.
+        if not v:
+            print("  none open")
+        for r in v:
+            print(f"  #{r['id']}  {r.get('when') or ''}  {r.get('project')}"
+                  + (f", {r['by']}'s session" if r.get("by") else "")
+                  + (f" on {r['node']}" if r.get("node") else "")
+                  + (f", build {r['build']}" if r.get("build") else ""))
+            print(f"      {r.get('text')}")
+            if r.get("area"):
+                print(f"      area: {r['area']}")
+            if r.get("repro"):
+                print(f"      repro: {r['repro']}")
 DIAG
+}
+
+# bb report: a problem with BuilderBot itself, from a session on any project
+# (reports.py). Filed in the project's own tracker it was lost to BuilderBot:
+# the operator read it second hand and the session maintaining BuilderBot
+# never saw it. It goes to the controller instead, where BuilderBot's own
+# sessions read it in the diagnostics (bb diag reports) and turn it into a
+# bug in their tracker, or close it, and the session that reported it reads
+# what became of it here.
+cmd_report() {
+    local auth proj sub="${1:-}"
+    auth="$(bb_auth_or_die)"
+    proj="${BB_PROJECT:-$(project_here 2>/dev/null || true)}"
+    case "$sub" in
+        -h|--help)
+            printf '%s\n' 'usage: bb report "what happened" [--area A] [--repro "..."]' \
+                '       bb report                   what became of this project'"'"'s reports' \
+                '       bb report file N [--sev S] [--as BUG] | close N "why"   (the diagnostics'"'"' gate)'
+            return 0 ;;
+        file|close) ;;
+        ""|status|mine) sub=mine ;;
+        *) sub=add ;;
+    esac
+    [ "$sub" = add ] || shift || true
+    BB_R_AUTH="$auth" BB_R_PROJECT="$proj" BB_R_SUB="$sub" BB_R_SELF="$0" python3 - "$@" <<'PY'
+import os, re, subprocess, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+auth, proj, sub, args = os.environ["BB_R_AUTH"], os.environ.get("BB_R_PROJECT", ""), os.environ["BB_R_SUB"], sys.argv[1:]
+post = lambda b: bbapi.call("/api/reports", b, auth=auth, timeout=60)  # noqa: E731
+
+
+def flags(names):
+    """Words and --name VALUE pairs, in any order."""
+    words, got, i = [], {}, 0
+    while i < len(args):
+        a = args[i]
+        if a.startswith("--") and a[2:] in names:
+            if i + 1 >= len(args):
+                sys.exit(f"[builderbot] ERROR: {a} needs a value after it")
+            got[a[2:]] = args[i + 1]
+            i += 2
+            continue
+        if a.startswith("--"):
+            sys.exit(f"[builderbot] ERROR: bb report: no such option {a}")
+        words.append(a)
+        i += 1
+    return words, got
+
+
+def fail(d):
+    if d.get("error"):
+        sys.exit(f"[builderbot] ERROR: {d['error']}")
+
+
+if sub == "add":
+    words, got = flags(("area", "repro"))
+    d = post({"action": "add", "project": proj, "text": " ".join(words),
+              "area": got.get("area", ""), "repro": got.get("repro", "")})
+    fail(d)
+    print(f"[builderbot] reported #{d['id']}: it is BuilderBot's to look at now, not this project's; "
+          "bb report says what became of it")
+elif sub == "mine":
+    d = post({"action": "mine", "project": proj})
+    fail(d)
+    rows = d.get("reports") or []
+    if not rows:
+        print(f"no reports from {proj or 'this project'} about BuilderBot")
+    for r in rows:
+        when = time.strftime("%d %b %H:%M", time.localtime(r.get("at") or 0))
+        state = (f"filed as {r['bug']}" if r.get("state") == "filed"
+                 else f"closed: {r.get('why') or ''}" if r.get("state") == "closed" else "open")
+        print(f"  #{r['id']}  {when}  {state}")
+        print(f"      {r.get('text')}")
+elif sub == "close":
+    if len(args) < 2:
+        sys.exit('usage: bb report close N "why"')
+    fail(post({"action": "close", "id": args[0], "why": " ".join(args[1:])}))
+    print(f"[builderbot] report #{args[0]} closed")
+else:
+    words, got = flags(("sev", "as"))
+    if not words:
+        sys.exit("usage: bb report file N [--sev S] [--as BUG]")
+    rid = words[0]
+    r = post({"action": "get", "id": rid})
+    fail(r)
+    bug = got.get("as", "")
+    if not bug:
+        # Through the ordinary path, relayed on a node and held for the
+        # operator where this project's settings say so, so a report filed
+        # is exactly a bug somebody added.
+        when = time.strftime("%d %b %Y", time.localtime(r.get("at") or 0))
+        where = (f"{r['by']}'s session on {r['project']}" if r.get("by") else f"a session on {r['project']}")
+        repro = " ".join(x for x in [
+            r.get("repro") or "",
+            f"Reported by {where}" + (f" ({r['node']})" if r.get("node") else "")
+            + f", {when}" + (f", on {r['build']}" if r.get("build") else "")
+            + f", as report #{r['id']}."] if x)
+        p = subprocess.run([os.environ["BB_R_SELF"], "bug", "add", r.get("text") or "",
+                            "--sev", got.get("sev", "medium"),
+                            "--area", r.get("area") or f"reported from {r['project']}",
+                            "--repro", repro], capture_output=True, text=True)
+        out = (p.stdout or "") + (p.stderr or "")
+        sys.stdout.write(out)
+        m = re.search(r"\bfiled (B\d+)", out)
+        if p.returncode != 0 or not m:
+            sys.exit(f"[builderbot] report #{rid} stays open: no bug number came back. Once the bug "
+                     f"has one, bb report file {rid} --as BUG marks it")
+        bug = m.group(1)
+    fail(post({"action": "filed", "id": rid, "bug": bug}))
+    print(f"[builderbot] report #{rid} is {bug} now; the session that reported it reads that with bb report")
+PY
 }
 
 cmd_logs() {
@@ -3715,9 +3852,22 @@ elif op == "show":
     show(b)
 elif op == "add":
     title, flags = pull_flags(rest)
+    said = " ".join([title] + [str(v) for v in flags.values()])
     r = bugs.add(proj, title, by="claude",
                  severity=flags.pop("severity", "medium"), **flags)
     bail(r)
+    # A bug that names BuilderBot, filed in another project's tracker, is
+    # usually BuilderBot's, which is what bb report is for (the operator,
+    # 24 Sep). Said, not refused: the words can be the project's own. Never
+    # in BuilderBot's own repository, whose tracker it is.
+    import re
+    here = os.path.join(os.environ.get("BB_WORKSPACE") or "/workspace", proj)
+    own = (os.path.isfile(os.path.join(here, "scripts", "bb"))
+           and os.path.isfile(os.path.join(here, "scripts", "dashboard", "server.py")))
+    if not own and re.search(r"\bbuilder ?bot\b|(^|[\s`'\"(])bb [a-z]", said, re.I):
+        print(f"[builderbot] this names BuilderBot: if it is a problem with BuilderBot itself "
+              f"rather than {proj}, bb report sends it to BuilderBot's maintainers, and "
+              "bb bug rm takes this one back", file=sys.stderr)
     if r.get("held"):
         h = r["held"]
         print(f"held for approval as {B(h['number'])}: it lands in the tracker "
@@ -7718,6 +7868,7 @@ case "${1:-help}" in
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     diag)     shift; cmd_diag "$@" ;;
+    report)   shift; cmd_report "$@" ;;
     catchup)  shift; cmd_catchup "$@" ;;
     ci-log)   shift; cmd_ci_log "$@" ;;
     phone)    shift; cmd_phone "$@" ;;
