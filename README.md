@@ -570,8 +570,7 @@ bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NOD
                    for another project or another node is always asked. A
                    published image is a compose naming it; a repository with a
                    Dockerfile is a compose with a build context on the projects
-                   share. Never a user's to approve. `bb container ask` is its
-                   old name
+                   share. Never a user's to approve
 bb root            what root commands are waiting on an administrator
 bb root run --why "..." -- CMD...
                    ask for ONE command as root on this project's node: an

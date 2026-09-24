@@ -90,6 +90,7 @@
 
 - The projects list, the startup log and the container's welcome text no longer skip a directory called _work by name: the retired runner's tree is gone from the share, so there is nothing to skip. (d8c1e87)
 - A clone or an unpacked archive with no CLAUDE.md gets none drafted any more; only notes you typed become one, and a repository's own is kept as it is (2be85ab)
+- Where tests run is stored as tests_in alone; bb container ask is gone, the verb is bb container new (899dc82)
 
 ### Fixed
 

@@ -3689,8 +3689,8 @@ body.booting .pane>.loading{margin:auto}
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
-             when there is none, remove it (devbuild; the Docker row used to
-             carry it, and now says what it is set to). Deny by default. -->
+             when there is none, remove it (devbuild; the Docker row says
+             what it is set to). Deny by default. -->
         <label class="pick">Run its container <select id="rnGateDocker"
           aria-label="rebuilding, changing the env of, creating or removing this project's container, from a session"></select></label>
         <!-- bb report, which sends BuilderBot's own problems to its
@@ -4500,7 +4500,6 @@ const NOT_MINE_WHY = "read-only; you have not taken this project on. Add it "
 const mayShell = () => state?.can?.terminal !== false;
 const mayDocker = () => state?.can?.["docker-write"] !== false;
 const mayToolchains = () => state?.can?.["toolchains-write"] !== false;
-const mayGitAuth = () => state?.can?.["git-auth"] !== false;
 // THIS account's Claude session on a project. Prefixed like a shell since
 // roadmap #24: more than one person may work a project at once, each in a
 // worktree of their own, so the name has to say whose conversation it is,

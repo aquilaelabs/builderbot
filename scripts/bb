@@ -4198,11 +4198,11 @@ for a in asks:
           a.get("node_name") or "the default node", a.get("why")))
 PY
             ;;
-        new|ask)
+        new)
             # One verb, and the project's setting decides (the operator, 24
             # Sep, when a session at auto was still asked): refused at deny,
             # asked at ask, done at auto for the project's own container on
-            # its own node. `ask` is its old name and still works.
+            # its own node.
             shift
             while [ $# -gt 0 ]; do
                 case "$1" in
@@ -5700,14 +5700,13 @@ except ValueError:
     rec = {}
 # Three things, in order: the command, where the tests run (node, up or
 # only), then the output globs. What the settings say and nothing else: a
-# command nobody typed must not run as if somebody had. A controller from
-# before tests_in sends devtest alone, and there off meant up.
+# command nobody typed must not run as if somebody had.
 # No apostrophes in here: the whole block is inside shell single quotes.
 role = os.environ["BB_ROLE_"]
 cmd = rec.get(role) or ""
 print(cmd)
 print("set" if cmd else "none")
-print(rec.get("tests_in") or ("only" if rec.get("devtest") else "up"))
+print(rec.get("tests_in") or "node")
 for g in rec.get("outputs") or []:
     print(g)
 ')

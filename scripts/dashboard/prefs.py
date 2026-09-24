@@ -194,8 +194,15 @@ def _load():
         return {"projects": {}, "users": {}}
     p = d.get("projects")
     u = d.get("users")
-    return {"projects": p if isinstance(p, dict) else {},
-            "users": u if isinstance(u, dict) else {}}
+    p = p if isinstance(p, dict) else {}
+    # Where the tests run was a boolean, `devtest`, before it was one of
+    # three places: read as tests_in on the way in, and the file follows on
+    # the next save of any project, which writes the whole of it back.
+    for rec in p.values():
+        if isinstance(rec, dict) and "devtest" in rec:
+            if rec.pop("devtest") is True and "tests_in" not in rec:
+                rec["tests_in"] = "only"
+    return {"projects": p, "users": u if isinstance(u, dict) else {}}
 
 
 def _clean(rec):
@@ -254,22 +261,15 @@ def _clean(rec):
             # names it, with nothing run on the node. Per project because
             # only a project with a compose file has a container to run in.
             "tests_in": _tests_in(rec),
-            # ...and the boolean a node's bb from before tests_in reads
-            # (agent-compat): true for "only", the one meaning it ever had,
-            # which is also how the file keeps "only".
-            "devtest": _tests_in(rec) == "only",
             # Claude may: Report BuilderBot bugs. Off takes `bb report` and
             # the rule that points at it away from this project's sessions.
             "report": "deny" if rec.get("report") == "deny" else "auto"}
 
 
 def _tests_in(rec):
-    """One of TESTS_IN, from the file: `devtest: true` is "only", as it has
-    always been stored, and `tests_in: "up"` is "up"; anything else is the
-    default, "node"."""
-    if rec.get("devtest") is True:
-        return "only"
-    return "up" if rec.get("tests_in") == "up" else "node"
+    """One of TESTS_IN, from the file; anything else is the default, "node"."""
+    v = rec.get("tests_in")
+    return v if v in TESTS_IN else "node"
 
 
 def _devbuild(v):
@@ -355,7 +355,6 @@ def set_prefs(project, node=None, build=None, test=None,
             if tests_in not in TESTS_IN:
                 return {"error": f"tests_in is one of {', '.join(TESTS_IN)}, not {tests_in}"}
             cur["tests_in"] = tests_in
-            cur["devtest"] = tests_in == "only"
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
@@ -375,11 +374,7 @@ def set_prefs(project, node=None, build=None, test=None,
                 rec.pop("gitpol", None)
             if cur["devbuild"] == "deny":
                 rec.pop("devbuild", None)
-            # "only" is `devtest: true` and "up" is `tests_in: "up"`, which
-            # is what _tests_in reads; the default leaves neither.
-            if not cur["devtest"]:
-                rec.pop("devtest", None)
-            if cur["tests_in"] != "up":
+            if cur["tests_in"] == "node":
                 rec.pop("tests_in", None)
             if cur["report"] == "auto":
                 rec.pop("report", None)

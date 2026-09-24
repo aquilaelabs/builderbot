@@ -2691,8 +2691,7 @@ ok(await page.$('#devSend'),
   // the grant cannot reach them however it is set. This is the operator's
   // own line (the user makes them, Claude rebuilds them), and it is checked
   // here rather than trusted to the ordering of two ifs.
-  // (remove joined the dial on 24 Sep; route, which is where the thing is
-  // reached from, stays the operator's.)
+  // (Route, where the thing is reached from, stays the operator's.)
   for (const act of ['route']){
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
     ok(r.status === 403 && /administrator/.test(r.error || ''),
@@ -2935,8 +2934,8 @@ ok(await page.$('#devSend'),
   await page.click('#rnGo');
   await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
   await refreshUntil(page, () => ((state.projects || [])
-    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest === true, { timeout: 20000 });
-  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].devtest === true,
+    .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'only', { timeout: 20000 });
+  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].tests_in === 'only',
      '...and saving it there is what writes the setting');
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
@@ -3000,9 +2999,8 @@ ok(await page.$('#devSend'),
   await where('only');
   await refreshUntil(page, () => ((state.projects || [])
     .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'only', { timeout: 20000 });
-  ok(stored().devtest === true && !('tests_in' in stored())
-     && ((await page.evaluate(() => state.projects.find(p => p.name === 'ep.silon').prefs)).devtest === true),
-     'only is stored as it always was, devtest true, which is what a node from before tests_in reads');
+  ok(stored().tests_in === 'only' && !('devtest' in stored()),
+     'only is stored as tests_in, and nothing else');
   await page.evaluate(() => { dockerList = null; loadDocker(); });
   await page.waitForFunction(() => /only in this container/.test(
     document.querySelector('.dmtab')?.textContent || ''), null, { timeout: 20000 });
@@ -3010,9 +3008,8 @@ ok(await page.$('#devSend'),
   await where('up');
   await refreshUntil(page, () => ((state.projects || [])
     .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'up', { timeout: 20000 });
-  ok(stored().tests_in === 'up' && !('devtest' in stored())
-     && ((await page.evaluate(() => state.projects.find(p => p.name === 'ep.silon').prefs)).devtest === false),
-     '...up is stored as tests_in, and says false to a node that only knows devtest');
+  ok(stored().tests_in === 'up' && !('devtest' in stored()),
+     '...and so is up');
   await where('node');
   // A project left with nothing but defaults has no record at all, and the
   // poll then carries {} for its prefs, which the page reads as the default.
