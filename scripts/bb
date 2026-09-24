@@ -7454,6 +7454,13 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
     esac
 fi
 
+# One group, with the exit inside it: bash reads a script as it runs it, by
+# byte offset, and after a long verb (a preflight, a suite) it read on from
+# where this case used to end. An edit to this file meanwhile had moved the
+# text, and the run ended in a syntax error at a line that was fine (B226).
+# A group is parsed whole before it runs, and the exit means nothing after
+# it is ever read.
+{
 case "${1:-help}" in
     status)   cmd_status ;;
     settings) shift; cmd_settings "$@" ;;
@@ -7499,3 +7506,5 @@ case "${1:-help}" in
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;
 esac
+exit
+}
