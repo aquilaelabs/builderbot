@@ -66,6 +66,7 @@
 - The shipped global rules are now nine: what a session must do is a rule with a switch on Controller settings, while a true report and no credential in the repository are fixed with no switch, and the briefing states only what is true of the machine (d6a2b1e)
 - Nostromo: binding rings down the sidebar's left edge that go behind the cards, in a gutter widened for them, and a card folds by fading its body out before the gap closes, so the plate mark no longer slides into the title bar (12b4f95)
 - Long lists in the notebook and the histories turn pages with Previous and Next instead of growing down the page under a Show more (40ee65c)
+- Nostromo: the cards are smoked glass with the rings showing through, and a card folds by fading away whole before the cards below close the gap (ed1a79e)
 
 ### Removed
 
@@ -108,6 +109,8 @@
 - bb map who-calls sees a Python function passed by name, the way it does for the brace languages (8cf7f00)
 - A Claude Code update press refused for any reason (the node's agent behind, no session account) says so on the node's section, and Update is dead with that reason while the agent is behind; the toast was the only word before (3475fe7)
 - The Claude Code update pins the version it asked for from the installer's own versions directory, not whatever the launcher points at; a lab node's stand-in launcher had it pin the old one (3475fe7)
+- The About popup closes on Escape and on a click outside it, like every other dialog (ed1a79e)
+- bb rules keeps its columns apart for a long rule name, bb roadmap on a node no longer dies after printing, an attached test run finds the kept fixture's tmux server, and the hand-back hook no longer counts a busy harness as a failed check (ed1a79e)
 
 ### Security
 
