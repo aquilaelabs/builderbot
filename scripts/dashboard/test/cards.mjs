@@ -131,6 +131,35 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
   });
   ok(!settled.fading && settled.overflow === '' && settled.opacity === '',
      `...and leaves nothing behind once it has settled (${JSON.stringify(settled)})`);
+  // The rings hold still while the cards scroll over them, and the two
+  // halves of the page wear one glass (the operator, 24 Sep): the cards,
+  // the tab strip, a pane's bar and the document in it, over a pane left
+  // open so it is the hull that shows through.
+  const glass = await page.evaluate(() => {
+    const alpha = c => {
+      const m = /\/\s*([0-9.]+)\s*\)$/.exec(c || '') || /^rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)$/.exec(c || '');
+      return m ? Number(m[1]) : 1;
+    };
+    const bg = e => e ? getComputedStyle(e).backgroundColor : '';
+    // A document, as the tab side draws one, read and taken away again.
+    const pane = document.querySelector('.pane');
+    const doc = document.createElement('div');
+    doc.className = 'doc'; doc.style.visibility = 'hidden';
+    pane?.appendChild(doc);
+    const out = { rings: getComputedStyle(document.querySelector('.col.side')).backgroundAttachment,
+                  card: bg(document.querySelector('.card[data-card="doctor"]')),
+                  tabbar: bg(document.querySelector('.tabbar')),
+                  bar: bg(document.querySelector('.pane .bar')) || 'no bar',
+                  doc: bg(doc), pane: bg(pane) };
+    doc.remove();
+    out.alpha = alpha(out.card);
+    return out;
+  });
+  ok(glass.rings === 'scroll',
+     `the rings stay where the column is while the cards scroll over them (${glass.rings})`);
+  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.card === glass.tabbar && glass.card === glass.doc
+     && (glass.bar === 'no bar' || glass.bar === glass.card) && glass.pane === 'rgba(0, 0, 0, 0)',
+     `...and the tab side wears the cards' own glass, over a pane left open (${JSON.stringify(glass)})`);
   await page.evaluate(() => {
     document.querySelector('.card[data-card="doctor"] h2').click();
     delete document.documentElement.dataset.theme;

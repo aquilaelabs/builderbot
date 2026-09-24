@@ -254,19 +254,32 @@ html[data-theme="nostromo"] .card h2{
   box-shadow:inset 3px 0 0 0 rgba(255,176,0,.5);
   border-radius:calc(var(--r-surface) - 1px) 0 0 0}
 /* Smoked glass: the cards let the hull and the rings behind them show, at
-   a fifth. The buttons stay opaque, which they are by construction (--btn
-   is a mix of the panel colour with white, never with transparent).
+   three tenths, and the tab side wears the same (below) so the two halves
+   of the page read as one material (the operator, 24 Sep). One value, so
+   the halves cannot drift apart. The buttons stay opaque, which they are
+   by construction (--btn is a mix of the panel colour with white, never
+   with transparent).
    The frame is an inset shadow with the border made transparent, and the
    header wears the same frame as an outline drawn in the same place and
    its own share of the fill: both so the fold can fade the card away and
    leave the header standing framed, below. Neither moves a pixel. */
+html[data-theme="nostromo"]{--glass:color-mix(in srgb, var(--panel) 70%, transparent)}
 html[data-theme="nostromo"] .card{
-  background-color:color-mix(in srgb, var(--panel) 80%, transparent);
+  background-color:var(--glass);
   border-color:transparent;box-shadow:inset 0 0 0 1px var(--line);
   transition:background-color .12s ease, box-shadow .12s ease}
 html[data-theme="nostromo"] .card h2{
-  background:color-mix(in srgb, var(--panel) 80%, transparent);
+  background:var(--glass);
   outline:1px solid var(--line);outline-offset:-1px}
+/* The tab side in the same glass: its strip, each pane's bar and the
+   document in it, with the pane behind them left open so it is the hull
+   that shows, as it does behind a card. A terminal keeps its own solid
+   ground, drawn by the terminal itself: output read through a pattern is
+   output misread. */
+html[data-theme="nostromo"] .tabbar,
+html[data-theme="nostromo"] .pane .bar{background:var(--glass)}
+html[data-theme="nostromo"] .pane{background:transparent}
+html[data-theme="nostromo"] .pane .doc{background-color:var(--glass)}
 html[data-theme="nostromo"] .card.closed h2{border-radius:calc(var(--r-surface) - 1px) 0 0 calc(var(--r-surface) - 1px)}
 
 /* CRT scanlines, on the panels only: never over a terminal pane, where they
@@ -306,15 +319,16 @@ html[data-theme="nostromo"] body::before{
    phone, so they occupy space the layout already leaves empty and move
    nothing. The sidebar column is widened leftwards by the gutter and padded
    back by the same amount, so its box spans the gutter and the cards stay
-   where they are: the rings are its background, attached to the content,
-   so they scroll with the cards they bind, which a background on main
-   could not. Each ring is large and centred inside the cards' left edge:
-   most of it shows dimly through the smoked glass, a gap between two cards
-   shows it plain, and its left side runs off into the gutter. */
+   where they are. The rings hold still while the cards scroll over them
+   (the operator, 24 Sep): the column is its own scroller, and a background
+   that is not attached to its content stays where the column is. Each ring
+   is large and centred inside the cards' left edge: most of it shows dimly
+   through the smoked glass, a gap between two cards shows it plain, and
+   its left side runs off into the gutter. */
 html[data-theme="nostromo"] .col.side{
   margin-left:-10px;padding-left:10px;
   background:url(/static/nostromo/rings.svg) repeat-y 0 6px;
-  background-attachment:local}
+  background-attachment:scroll}
 /* Folding a card here fades the card away, fill, frame and body, and then
    closes the gap, rather than sliding the body up under the header: the
    plate mark in the corner is a decal, and a decal sliding into the title
@@ -333,12 +347,6 @@ html[data-theme="nostromo"] .card.fading::after{opacity:0}
   html[data-theme="nostromo"] .col.side{
     margin-left:-8px;padding-left:8px;background-position:-2px 6px}
 }
-/* The plating again on the document panes, which cover the body's: a tab's
-   page is the surface the eye rests on, and with it bare the hull showed
-   only in the gaps. Plain documents only: the notebook and the flush tabs
-   are panel-coloured and dense, and keep their scanlines. */
-html[data-theme="nostromo"] .pane .doc:not(.nbhost):not(.flush){
-  background-image:url(/static/nostromo/plate.svg)}
 /* A stencilled plate mark in an open card's bottom-right corner, the way
    a ship numbers its panels. Absolute in the card's own box (already
    position:relative for the resume chooser), pointer-events off, and
