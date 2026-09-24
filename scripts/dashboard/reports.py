@@ -163,3 +163,21 @@ def close(rid, why, by=""):
     if not str(why or "").strip():
         return {"error": "say why it is closed: the session that reported it reads this"}
     return _finish(rid, "closed", by=by, why=why)
+
+
+def counts():
+    """How many are kept, and how many of those nobody has filed or closed."""
+    rs = _load()["reports"]
+    return {"all": len(rs), "open": sum(1 for r in rs if r.get("state") == "open")}
+
+
+def clear():
+    """Every report deleted, open ones included: the operator's Clear in
+    Controller settings (24 Sep). The sequence is kept, so a report made
+    afterwards never takes a number a bug's repro already names."""
+    with _lock:
+        d = _load()
+        n = len(d["reports"])
+        d["reports"] = []
+        write_json(FILE, d)
+    return {"ok": True, "cleared": n}

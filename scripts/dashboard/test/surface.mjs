@@ -85,6 +85,7 @@ const SURFACE = [
   'renderUsersInto', 'wireUsers', 'openProfileTab', 'loadProfile', 'renderProfileInto', 'wireProfile', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
   'idleSection', 'wireIdleSection', 'settingsSections', 'wireSettingsSections', 'settingsLive', 'openDebugSettings',
   'globalRulesSection', 'paintGlobalRulesCount', 'loadGlobalRules', 'globalRuleRow', 'drawGlobalRules',
+  'reportsSection', 'clearReports',
   'wireGlobalRules', 'openGlobalRules', 'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderToolchainsInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',

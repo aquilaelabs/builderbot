@@ -4026,7 +4026,10 @@ downloads this session's logs as one file, or everything kept as a `.tar.gz`,
 or the controller's **diagnostics** as one JSON file (what `bb diag` prints,
 the reports sessions made about BuilderBot among it, redacted and on the audit
 trail), and clears the kept generations without touching the ones being
-written.
+written. Below it, **Clear reports** deletes every report sessions made about
+BuilderBot, open ones included, after a confirmation that says how many nobody
+has answered; the numbers carry on, so a bug that names report #3 never meets a
+second one, and a session cannot clear them.
 
 Two deliberate omissions from *this session*. `ttyd.log` is the terminal
 server's connection churn (22,000 lines against 4KB of boot log on this box),

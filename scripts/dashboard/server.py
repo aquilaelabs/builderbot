@@ -7435,9 +7435,10 @@ class Handler(BaseHTTPRequestHandler):
         """Problems with BuilderBot itself, reported by any project's session
         (reports.py, bb report). Anybody signed in adds one for a project they
         may see, and a session only for its own; what became of a project's
-        reports is that project's to read. Reading every project's, and
-        filing or closing one, is the diagnostics' own gate, since that is
-        where BuilderBot's own work reads them (bb diag reports)."""
+        reports is that project's to read. Reading every project's, filing
+        or closing one, and clearing them all (Controller settings), is the
+        diagnostics' own gate, since that is where BuilderBot's own work
+        reads them (bb diag reports)."""
         me = self._who() or {}
         sess = me.get("session") or ""
         act = field(req, "action")
@@ -7456,6 +7457,13 @@ class Handler(BaseHTTPRequestHandler):
             node = (nodes.node(nid) or {}).get("name", "") if nid and not NODES_OK else ""
             return self._result(reports.add(proj, req.get("text"), by=name, node=node,
                                             area=req.get("area"), repro=req.get("repro")))
+        # Clearing is a person's, from Controller settings, whatever a
+        # session may otherwise read here: a session answers reports one at
+        # a time, and clearing throws away what other projects' sessions are
+        # waiting to hear back about.
+        if act == "clear" and sess:
+            return self._json({"error": "clearing every report is a person's, from "
+                                        "Controller settings: file or close one instead"}, 403)
         if self._diag_refused():
             return None
         if act == "list":
@@ -7468,6 +7476,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._result(reports.filed(req.get("id"), field(req, "bug"), by=name))
         if act == "close":
             return self._result(reports.close(req.get("id"), field(req, "why"), by=name))
+        if act == "count":
+            return self._json(reports.counts())
+        if act == "clear":
+            r = reports.clear()
+            db.audit(self._principal(), "reports-clear", "reports", {"cleared": r["cleared"]})
+            return self._json(r)
         return self._json({"error": f"unknown action: {act}"}, 400)
 
     def _doctor(self, req):

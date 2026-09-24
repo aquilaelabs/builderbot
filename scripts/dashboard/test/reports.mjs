@@ -137,6 +137,35 @@ await page.waitForFunction(async () => {
 }, null, { timeout: 20000, polling: 500 });
 ok(true, '...and saving the dialog turns it off');
 await setReport('auto');
+
+// ---- cleared from Controller settings --------------------------------------------------
+// The operator, 24 Sep: a button there to clear them. Every one goes, open
+// ones included, after a confirm that says how many are still open; the
+// numbers carry on, and a session may not do it.
+const bySession = await call('/api/reports', { action: 'clear' }, ALPHA);
+ok(bySession.status === 403 && /a person's, from Controller settings/.test(bySession.error || '')
+   && (await call('/api/reports', { action: 'count' })).all > 0,
+   `a session may not clear them (${bySession.error})`);
+await call('/api/reports', { action: 'add', text: 'one nobody has looked at yet' }, ALPHA);
+const before = await call('/api/reports', { action: 'count' });
+const lastId = Math.max(...(await call('/api/reports', { action: 'list', state: 'all' })).reports.map(r => r.id));
+await page.evaluate(() => openSettingsTab());
+await page.waitForSelector('#setReportsClear', { timeout: 15000 });
+page.dialogs.length = 0;
+await page.click('#setReportsClear');
+await page.waitForFunction(async () => (await (await fetch('/api/reports', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'count' }) })).json()).all === 0,
+  null, { timeout: 15000, polling: 300 });
+ok(page.dialogs.length === 1 && new RegExp(`Delete all ${before.all} reports`).test(page.dialogs[0])
+   && before.open === 1 && /1 still open: nobody has filed or closed it/.test(page.dialogs[0]),
+   `Clear reports in Controller settings asks first, naming how many and how many are open (${page.dialogs[0]})`);
+const next = await call('/api/reports', { action: 'add', text: 'the first one after a clear' }, ALPHA);
+ok(next.id > lastId, `...clears every one, and the next report does not take a number already used (#${next.id} after #${lastId})`);
+page.dialogs.length = 0;
+await call('/api/reports', { action: 'clear' });
+await page.click('#setReportsClear');
+await page.waitForFunction(() => /no reports to clear/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
+ok(page.dialogs.length === 0, '...and with none kept, it says so rather than asking');
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 
 await done(browser);

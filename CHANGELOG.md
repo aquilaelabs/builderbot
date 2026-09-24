@@ -39,6 +39,7 @@
 - bb report: a session on any project reports a problem with BuilderBot itself there instead of in its own tracker, as a shipped rule says, and BuilderBot's own sessions read and answer the reports in bb diag reports (4408f62)
 - Claude may: Report BuilderBot bugs, in a project's settings, turns bb report and the rule that points at it off for that project (0a991ed)
 - The logs section has a Diagnostics download: the controller's diagnostics as one JSON file, with the reports sessions made about BuilderBot (7d92273)
+- Controller settings has Clear reports, which deletes the bug reports sessions made about BuilderBot after saying how many are still unanswered (398c6cc)
 
 ### Changed
 
