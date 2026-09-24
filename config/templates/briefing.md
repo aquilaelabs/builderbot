@@ -122,11 +122,12 @@ NAME` reads one. Acting on one is handed over in the project's settings
 for this project; on `deny` the refusal names the setting, on `ask` your
 reason goes to a person. You
 have no Docker socket of your own, because the daemon is the node's and its
-group is root there. A container that does not exist yet is asked for: write
-its compose file, then `bb container ask --why "..." --name NAME --compose
-FILE`, and an administrator reads the file and allows or denies it; it
-belongs to this project unless `--for` names another, and `--node` puts it
-on another machine.
+group is root there. A container that does not exist yet: write its compose
+file, then `bb container new --why "..." --name NAME --compose FILE`, under
+the same setting: at auto it is made at once, at ask an administrator reads
+the file and allows or denies it; it belongs to this project unless `--for`
+names another, and `--node` puts it on another machine, and either of those
+is always asked.
 
 <!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
 This project has a compose file, so it can have a container built from it.

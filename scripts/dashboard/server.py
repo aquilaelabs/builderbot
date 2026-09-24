@@ -6605,6 +6605,35 @@ class Handler(BaseHTTPRequestHandler):
                 under = field(req, "for") or (who.get("session") or "")
                 if under and self._not_project(under):
                     return
+                # A session's is under its project's dial, Claude may: Run
+                # its container, like every other container verb (B250, the
+                # operator, 24 Sep: at auto it was still asked). Refused at
+                # deny; at auto, its own project's on its own node is made
+                # now and built, the way Allow would; one for another project
+                # or on a node it names is always a person's.
+                sess = who.get("session") or ""
+                if sess:
+                    mode = prefs.get(sess)["devbuild"]
+                    if mode == "deny":
+                        return self._json({"error": RUN_DENIED}, 403)
+                    if mode == "auto" and under == sess and not cnode:
+                        r = devapp.create_container(field(req, "name"), req.get("compose"),
+                                                    req.get("env"), "", under)
+                        if r.get("error"):
+                            return self._json(r, 400)
+                        with contextlib.suppress(Exception):
+                            nodes.session_net_nudge()
+                        # Built unless the compose asks for more than its own
+                        # directory, which a person acknowledges once, as new
+                        # says it (B251).
+                        why = devapp.unacked_risks(r["project"], r["instance"])
+                        if why:
+                            return self._json(r | {"needs_ack": why})
+                        built = devapp.rebuild(r["project"], r["instance"]) or {}
+                        if built.get("error"):
+                            return self._json(r | {"error": f"{r['name']} is registered on the Docker "
+                                                            f"tab, and its build did not start: {built['error']}"}, 400)
+                        return self._json(r | {"job": built.get("job")})
                 r = phone.ask_container(field(req, "why"), field(req, "name"),
                                         req.get("compose"), req.get("env"),
                                         target["id"] if target else "",

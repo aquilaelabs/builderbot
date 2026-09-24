@@ -179,7 +179,7 @@ bb: BuilderBot helper
   bb phone run --why "..." -- adb args...    ask to reach it; the operator
                          allows it on the dashboard and this runs it there
   bb container           what container asks are waiting on an administrator
-  bb container ask --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
+  bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                          ask for a container built from that compose file; an
                          administrator reads it and allows or denies it
   bb catchup             what has happened here lately: commits and the first
@@ -4198,7 +4198,11 @@ for a in asks:
           a.get("node_name") or "the default node", a.get("why")))
 PY
             ;;
-        ask)
+        new|ask)
+            # One verb, and the project's setting decides (the operator, 24
+            # Sep, when a session at auto was still asked): refused at deny,
+            # asked at ask, done at auto for the project's own container on
+            # its own node. `ask` is its old name and still works.
             shift
             while [ $# -gt 0 ]; do
                 case "$1" in
@@ -4208,12 +4212,12 @@ PY
                     --env)     [ $# -ge 2 ] || die "--env needs the file after it"; envf="$2"; shift 2 ;;
                     --node)    [ $# -ge 2 ] || die "--node needs the node after it"; node="$2"; shift 2 ;;
                     --for)     [ $# -ge 2 ] || die "--for needs the project after it"; forp="$2"; shift 2 ;;
-                    *) die "usage: bb container ask --why \"what it is for\" --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]" ;;
+                    *) die "usage: bb container new --why \"what it is for\" --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]" ;;
                 esac
             done
-            [ -n "$why" ] || die "bb container ask needs --why \"what it is for\""
-            [ -n "$name" ] || die "bb container ask needs --name"
-            [ -n "$compose" ] || die "bb container ask needs --compose FILE"
+            [ -n "$why" ] || die "bb container new needs --why \"what it is for\""
+            [ -n "$name" ] || die "bb container new needs --name"
+            [ -n "$compose" ] || die "bb container new needs --compose FILE"
             [ -f "$compose" ] || die "no such file: $compose"
             [ -z "$envf" ] || [ -f "$envf" ] || die "no such file: $envf"
             BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" BB_C_NAME="$name" BB_C_COMPOSE="$compose" \
@@ -4233,6 +4237,12 @@ r = post({"action": "ask", "kind": "container", "why": os.environ["BB_PHONE_WHY"
           "project": os.environ.get("BB_PHONE_PROJECT", "")})
 if r.get("error"):
     print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
+if not r.get("id"):
+    # Done at once: the setting is auto and it is this project's own.
+    print(f"[builderbot] created {r.get('name') or 'it'}"
+          + (f", and it cannot be built from here yet: {r['needs_ack']}" if r.get("needs_ack")
+             else "; the build is a job on the Jobs tab"))
+    sys.exit(0)
 rid = r["id"]
 print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}): the compose file is on their "
       "bell, waiting up to 15 minutes for Allow", file=sys.stderr)
@@ -4252,7 +4262,7 @@ print("[builderbot] nobody answered within fifteen minutes", file=sys.stderr)
 sys.exit(1)
 PY
             ;;
-        *) die "usage: bb container [status|ask --why \"...\" --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]]" ;;
+        *) die "usage: bb container [status|new --why \"...\" --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]]" ;;
     esac
 }
 
