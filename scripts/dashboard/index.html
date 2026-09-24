@@ -6237,6 +6237,11 @@ function drawBuild(img){
 // own script cannot do.
 $("bAbout").onclick = () => openAbout();
 $("aboutClose").onclick = closeAbout;
+// Escape and the backdrop mean what Close means (B229): the popup opens
+// itself after an update, over whatever the person came to do, and every
+// other dialog on the page lets them out either way.
+$("aboutModal").addEventListener("click", e => { if (e.target === $("aboutModal")) closeAbout(); });
+addEventListener("keydown", e => { if (e.key === "Escape" && !$("aboutModal").hidden) closeAbout(); });
 document.querySelectorAll(".abswitch button").forEach(b => b.onclick = () => abShow(b.dataset.ab));
 $("aboutModal").onclick = e => {
   if (e.target.id === "aboutModal") closeAbout();

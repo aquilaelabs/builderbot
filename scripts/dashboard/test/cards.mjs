@@ -802,6 +802,18 @@ ok(about.includes('abc1234def5678901234567890abcdef12345678')
    '...and About carries the whole commit, the build time and where to look');
 await page.click('#aboutModal >> text=Close');
 await page.waitForSelector('#aboutModal', { state: 'hidden' });
+// Escape and the backdrop let a person out too (B229): after an update the
+// popup opens itself over whatever they came to do.
+await page.click('#bAbout');
+await page.waitForSelector('#aboutModal:not([hidden])');
+await page.keyboard.press('Escape');
+await page.waitForSelector('#aboutModal', { state: 'hidden' });
+ok(true, 'Escape closes About');
+await page.click('#bAbout');
+await page.waitForSelector('#aboutModal:not([hidden])');
+await page.click('#aboutModal', { position: { x: 4, y: 4 } });
+await page.waitForSelector('#aboutModal', { state: 'hidden' });
+ok(true, '...and so does a click on the page under it');
 // ---- the welcome panel: a guide and the changelog behind one switch -------------
 // The same popup opens itself twice in an account's life: on the guide the
 // first time the account signs in, and on the changelog once after every
