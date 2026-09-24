@@ -4397,9 +4397,16 @@ class Handler(BaseHTTPRequestHandler):
         me = self._who() or {}
         sess = me.get("session") or ""
         # A session reads its own project's node, which is where it works,
-        # whatever it asks for: bb devapp ls names none.
+        # whatever it asks for. Anybody else naming a project and no node
+        # reads that project's (bb devapp ls outside a session).
+        asked = q.get("node", [""])[0]
+        proj = q.get("project", [""])[0]
+        if not asked and proj and not sess:
+            if self._not_project(proj):
+                return None
+            asked = devapp.project_daemon(proj)
         nid, why = ((devapp.project_daemon(sess), None) if sess
-                    else self._node_asked(q.get("node", [""])[0]))
+                    else self._node_asked(asked))
         if why:
             return self._json({"error": why, "blind": True,
                                "instances": [], "containers": []})

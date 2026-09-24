@@ -4386,12 +4386,12 @@ PY
             # What belongs to this project on its node, as its group on the
             # Docker tab lists it (the operator, 24 Sep).
             BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - <<'PY'
-import os, sys
+import os, sys, urllib.parse
 sys.path.insert(0, os.environ["BB_LIB"])
 import bbapi                                                    # noqa: E402
 
 proj = os.environ["BB_DEV_PROJECT"]
-d = bbapi.call("/api/docker", auth=os.environ["BB_DEV_AUTH"])
+d = bbapi.call("/api/docker?project=" + urllib.parse.quote(proj), auth=os.environ["BB_DEV_AUTH"])
 if d.get("error") and not (d.get("instances") or d.get("containers")):
     sys.exit(f"[builderbot] ERROR: {d['error']}")
 blind = bool(d.get("blind"))

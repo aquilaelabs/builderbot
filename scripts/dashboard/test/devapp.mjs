@@ -3171,6 +3171,12 @@ print(json.dumps(out))
      && JSON.stringify(seen.refs) === '{}',
      `a session lists only what belongs to its project, on its node (${JSON.stringify([
        (seen.instances || []).map(d => d.name), (seen.containers || []).map(c => c.name)])})`);
+  // Anybody else naming the project reads the same node (bb devapp ls outside a session).
+  const byProject = await api('/api/docker?project=ep.silon');
+  const noProject = await api('/api/docker?project=no-such-project');
+  ok(byProject.node === seen.node && noProject.status === 400,
+     `naming the project reads its node, as its session does, and a project that is not one is refused (${
+       byProject.node} ${seen.node} ${noProject.status})`);
   const st = await as('/api/devapp', { container: 'helper-for-eps', action: 'state' });
   const theirs = await as('/api/devapp', { project: 'ep.silon', instance: 'loose', action: 'state' });
   ok(st.status === 200 && theirs.status === 403 && /does not belong to ep\.silon/.test(theirs.error || ''),
