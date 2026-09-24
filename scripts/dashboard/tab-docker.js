@@ -888,14 +888,16 @@ function dmState(d, job, mine, busy, blind){
 // One instance row: the same markup wherever the row is drawn, the Docker
 // tab and a project's notebook (its Docker view). `job` is the compose job
 // the answer carried and `blind` whether the daemon answered at all.
-async function dmLogs(name){
+async function dmLogs(name, node = dockerNode){
   const modal = $("dlmodal"), body = $("dlBody");
   if (!modal || !body) return;
   $("dlTitle").textContent = `Log: ${name}`;
   body.innerHTML = `<div class="field"><div class="loading">reading…</div></div>`;
   modal.hidden = false;
   try{
-    const r = await postJSON("/api/dockerctl", {action: "logs", container: name, node: dockerNode});
+    // The node the list came from: a project's notebook lists its own
+    // node's containers, which is not the tab's pick.
+    const r = await postJSON("/api/dockerctl", {action: "logs", container: name, node});
     const j = await r.json();
     body.innerHTML = `<div class="field">${j.error
       ? `<div class="hint bad">${esc(j.error)}</div>`
@@ -1091,7 +1093,7 @@ function dmWireRows(el, list = dockerList){
     }catch(e){ notify(`${what} ${ctr}: ` + e, true); }
     dockerList = null; loadDocker();
   });
-  el.querySelectorAll("[data-logs]").forEach(b => b.onclick = () => dmLogs(b.dataset.logs));
+  el.querySelectorAll("[data-logs]").forEach(b => b.onclick = () => dmLogs(b.dataset.logs, list?.node || dockerNode));
   // Which project a row belongs to: staged on the pick, written by Apply.
   const ownSaved = key => (key.startsWith("ctr:")
     ? (list?.containers || []).find(c => (c.name || c.id) === key.slice(4))

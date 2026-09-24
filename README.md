@@ -455,7 +455,9 @@ bb devapp new [--env FILE] [--why "..."]
                    has none, under the same setting; on ask, Allow creates, writes
                    the env and builds
 bb devapp env [set FILE|-] [--why "..."]
-                   print the container's env, or replace it, under the same setting.
+                   print the container's env, or replace it, under the same setting;
+                   on ask, Allow writes it and builds nothing, since the card said
+                   env set, and the rebuild is the next ask.
                    BuilderBot keeps it per container, never as a file in the project,
                    and points a compose line `env_file: .env` at it when it runs
 bb devapp ls       every container that belongs to this project on its node

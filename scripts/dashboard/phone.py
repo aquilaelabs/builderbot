@@ -897,8 +897,16 @@ def decide(rid, allow, uid, name="", admin=False):
             res = instance_maker(key, r.get("instance") or "") or {}
         if not res.get("error") and r.get("env") is not None and env_writer is not None:
             res = env_writer(key, r["env"], r.get("instance") or "") or {}
-        if not res.get("error"):
+        # Allow does what the card said: a fresh container is created,
+        # written and built, one ask for the three; an env set on one that
+        # exists is written and not built, the way the auto path leaves the
+        # rebuild for the session to ask for next (the review of 24 Sep, when
+        # Allow on "env set" bounced a running container nobody was told
+        # would move).
+        if not res.get("error") and (r.get("create") or r.get("env") is None):
             res = rebuilder(key, r.get("instance") or "") or {}
+        elif not res.get("error"):
+            res = {"job": "env written"}
         with _lock:
             r.update(state="done", code=1 if res.get("error") else 0,
                      out=str(res.get("error") or res.get("job") or "started"))

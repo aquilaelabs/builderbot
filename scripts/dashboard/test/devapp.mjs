@@ -2821,6 +2821,27 @@ ok(await page.$('#devSend'),
     });
     ok(/KEY=secret-value/.test(after.text || ''),
        `...and Allow creates it and writes its env before the build (${after.error || 'stored'})`);
+    // ...while an env set on one that exists is written and NOT built: the
+    // card said "env set", and a build would bounce a container nobody was
+    // told would move (the review of 24 Sep).
+    const builds = () => (dockerLog().match(/compose[^\n]* build/g) || []).length;
+    const b0 = builds();
+    const envAsk = await asSession({ project: 'ep.silon', action: 'env-set', instance: 'asked',
+                                     text: 'KEY=changed\n', why: 'a new key' });
+    await page.evaluate(async (id) => {
+      await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ action: 'allow', id }) });
+    }, envAsk.id);
+    await idle();
+    const envOut = await (await fetch(URL.replace(/\/$/, '') + '/api/phone',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+        body: JSON.stringify({ action: 'outcome', id: envAsk.id }) })).json();
+    const envAfter = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', instance: 'asked', action: 'env-get' }) })).json()).text);
+    ok(envAsk.status === 200 && envOut.state === 'done' && /env written/.test(envOut.out || '')
+       && /KEY=changed/.test(envAfter || '') && builds() === b0,
+       `...and Allow on an env set writes the env and builds nothing (${envOut.out}, ${builds() - b0} builds)`);
     for (const inst of ['fresh', 'asked']) await page.evaluate(async (i) => {
       await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                    body: JSON.stringify({ project: 'ep.silon', instance: i, action: 'remove' }) });

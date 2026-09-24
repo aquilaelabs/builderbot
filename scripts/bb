@@ -1714,7 +1714,8 @@ else:
                             "--repro", repro], capture_output=True, text=True)
         out = (p.stdout or "") + (p.stderr or "")
         sys.stdout.write(out)
-        m = re.search(r"\bfiled (B\d+)", out)
+        # ...or held for approval as one, where the tracker's gate asks.
+        m = re.search(r"\b(?:filed|held for approval as) (B\d+)", out)
         if p.returncode != 0 or not m:
             sys.exit(f"[builderbot] report #{rid} stays open: no bug number came back. Once the bug "
                      f"has one, bb report file {rid} --as BUG marks it")
@@ -3855,7 +3856,7 @@ elif op == "show":
 elif op == "add":
     here = "--here" in rest
     title, flags = pull_flags([a for a in rest if a != "--here"])
-    said = " ".join([title] + [str(v) for v in flags.values()])
+    said = " ".join([title] + [str(v) for k, v in flags.items() if k != "severity"])
     # A bug that names BuilderBot, filed in another project's tracker, is
     # usually BuilderBot's, which is what bb report is for. Asked before it is
     # filed rather than said after: said after, a session filed BuilderBot's
@@ -3866,7 +3867,7 @@ elif op == "add":
     import re
     import prefs
     if not here and prefs.get(proj).get("report") != "deny" \
-            and re.search(r"\bbuilder ?bot\b|(^|[\s`'\"(])bb [a-z]", said, re.I):
+            and re.search(r"\bbuilder ?bot\b|\bbb\b", said, re.I):
         print(f"[builderbot] not filed: this names BuilderBot. A problem with BuilderBot "
               "itself goes to bb report \"what happened\" [--area A] [--repro \"...\"], "
               f"not {proj}'s tracker; if it is {proj}'s own bug, add --here to file it here",

@@ -4721,8 +4721,10 @@ class Handler(BaseHTTPRequestHandler):
         # or remove them. Before the write, because afterwards the old node is
         # not recorded anywhere.
         moved = []
+        moved_node = False
         if "node" in req and str(req.get("node") or "") != (prefs.get(name) or {}).get("node", ""):
             moved = devapp.pin_to_current_node(name)
+            moved_node = True
         r = prefs.set_prefs(name, node=req.get("node"),
                             build=req.get("build"),
                             test=req.get("test"), outputs=req.get("outputs"),
@@ -4748,6 +4750,10 @@ class Handler(BaseHTTPRequestHandler):
             r |= end_claude(name)
         if moved and not r.get("error"):
             r = dict(r) | {"pinned": moved}
+        # A project on another node owns its instances somewhere else now (R79).
+        if moved_node and not r.get("error"):
+            with contextlib.suppress(Exception):
+                nodes.session_net_nudge()
         return self._result(r)
 
     def _nodes(self, req):
@@ -6148,6 +6154,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         r = devapp.create_container(name, req.get("compose") or "",
                                     req.get("env") or "", field(req, "node"), under)
+        # Made for a project: its sessions may reach it (R79).
+        if not r.get("error") and under:
+            with contextlib.suppress(Exception):
+                nodes.session_net_nudge()
         return self._result(r)
 
     def _logs(self, req):
@@ -6292,8 +6302,17 @@ class Handler(BaseHTTPRequestHandler):
                 # is not either: a session cannot propose a change to what it
                 # cannot see, and the change is what is asked about.
                 acct = users.account_of(me) or {}
-                want = field(req, "instance") or devapp.MAIN
+                # The instance a request means when it names none: the
+                # project's only one, as the auto path reads it. `main`
+                # here made Allow write an env for, and build, an instance
+                # the project did not have (the review of 24 Sep).
+                want = field(req, "instance") or (devapp.MAIN if act == "new"
+                                                  else devapp.only_instance(name))
                 text = req.get("text") if act in ("env-set", "new") else None
+                # env-set means the env, whatever was sent as it: a missing
+                # text is an empty env, as the auto path writes one.
+                if act == "env-set" and not isinstance(text, str):
+                    text = ""
                 # Asked by, and answered to, the session's project; acting on
                 # the container named, which may be one written here.
                 r = phone.ask_rebuild(

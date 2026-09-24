@@ -70,7 +70,8 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -f "$KEEPF" ]; then
                 die "another dashboard test run is going (pid $other, attached to the kept fixture, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago). One at a time on this box; wait for it, or set BB_TEST_CONCURRENT=1"
             fi
         fi
-        ( umask 000; mkdir -p "${ALOCK%/*}"; rm -f "$ALOCK"; printf '%s' "$$" > "$ALOCK" ) 2>/dev/null || true
+        ( umask 000; mkdir -p "${ALOCK%/*}"; rm -f "$ALOCK"; printf '%s' "$$" > "$ALOCK" ) 2>/dev/null \
+            || die "cannot take $ALOCK: $(stat -c %U "$ALOCK" 2>/dev/null || echo somebody)'s, and ${ALOCK%/*} is not world-writable; fix the directory's mode (chmod 0777) and re-run"
         trap '[ "$(cat "$ALOCK" 2>/dev/null)" = "$$" ] && rm -f "$ALOCK"' EXIT
         # the dashboard's page and scripts, as they are now
         cp "$HERE"/../*.js "$HERE"/../*.html "$KEEP_HERE/../" 2>/dev/null || true

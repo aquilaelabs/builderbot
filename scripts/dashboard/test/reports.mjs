@@ -96,6 +96,10 @@ const own = bb(['bug', 'add', 'bb devapp status says the env is the operator\'s'
                { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(own.status !== 0 && /not filed: this names BuilderBot.*bb report.*add --here/.test(own.stderr) && bugsNow() === had,
    `a bug that names BuilderBot, filed in another project, is not filed there but sent to bb report (${own.stderr.trim().slice(0, 110)})`);
+const colon = bb(['bug', 'add', 'bb: tests preflight runs every suite', '--sev', 'high'],
+                 { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
+ok(colon.status !== 0 && bugsNow() === had,
+   '...however the verb is written (bb: ..., `bb`, bb-tty), and the severity is not read as words');
 const mine2 = bb(['bug', 'add', 'bb build fails because this project pins an old compiler', '--here'],
                  { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(mine2.status === 0 && /filed B\d+/.test(mine2.stdout) && bugsNow() === had + 1,
