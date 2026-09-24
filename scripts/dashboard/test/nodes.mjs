@@ -2122,4 +2122,38 @@ print(m.mint_session('alpha'))
   await napi('/api/v1/nodes', { action: 'retire', id: en.id });
 }
 
+// A probe's end never moves the job revisions, however the race with its
+// waiter falls. run_wait forgets a probe the moment it sees the end, which
+// takes it off the probe list; job_result asked whether the job was quiet
+// only after its housekeeping, so the waiter usually won and every probe
+// bumped the state revision. The Docker tab refetches on it and its read is
+// a probe: a refresh every second or two for as long as it was open (24 Sep).
+// Forced here by forgetting the job inside that housekeeping, which is the
+// losing order, deterministically.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, sys, time
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+jid, now = "j_quietprobe", int(time.time())
+m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source, spec, outputs,"
+        " state, node, exit_code, queued, started) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (jid, "exec", "", "dashboard", json.dumps({"node": "n_quiet"}), "{}",
+         json.dumps({"argv": ["true"], "probe": True}), "[]", "running", "n_quiet", None, now, now))
+m._probe_ids.add(jid)
+before = m.jobs_state_rev()
+real = m.prune_job_logs
+def racing(*a, **k):
+    m.job_forget(jid)          # the waiter saw the end and let the job go
+    return real(*a, **k)
+m.prune_job_logs = racing
+r = m.job_result("n_quiet", jid, "succeeded", 0)
+print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}))
+`], { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const got = JSON.parse(out.trim().split('\n').pop());
+  ok(got.ok && got.moved === 0,
+     `a probe's result leaves the job revisions still even when its waiter forgets it first (${JSON.stringify(got)})`);
+}
+
 await done(browser);

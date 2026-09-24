@@ -2669,6 +2669,15 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         return {"ok": True, "already": True}
     if state not in JOB_END:
         return {"error": "a result is succeeded, failed or canceled"}
+    # Whether this is a quiet probe, decided BEFORE the state moves. The
+    # waiter in run_wait polls for the end, and on seeing it forgets the job,
+    # which takes it off the probe list; asked after the housekeeping below,
+    # the question found it gone and bumped the revisions. The Docker tab
+    # refetches on one of them and its read is a probe, so every read bumped
+    # the next: a refresh every second or two for as long as the tab was
+    # open (the operator's recording, 24 Sep; measured on the controller,
+    # one bump per read).
+    quiet = _quiet(job_id)
     code = None
     with contextlib.suppress(TypeError, ValueError):
         code = int(exit_code) if exit_code is not None else None
@@ -2711,7 +2720,7 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
             if state != "succeeded" and isinstance(better, str) and better.strip():
                 _exec("UPDATE jobs SET error = ? WHERE id = ?",
                       (better.strip()[:500], job_id))
-    if not _quiet(job_id):
+    if not quiet:
         _jstate_bump()
     with _wake:
         _wake.notify_all()      # the slot is free: a held poll may take the next
