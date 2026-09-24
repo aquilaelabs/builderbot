@@ -1128,6 +1128,38 @@ await page.evaluate(async () => {
   page.errors = [];
 }
 
+// ---- ...and on which node, when more than one runs sessions --------------
+// The server will not pick, so the card asks: one row, a select of the
+// names it sent back and the two buttons, never a button per node stacked
+// down the card. Driven through the same state the refusal sets, with the
+// press stubbed, since the fixture has one node. After the two blocks above,
+// which carry a sign-in state between them that a draw in between upset.
+{
+  const picked = await page.evaluate(async () => {
+    const real = signIn;
+    let got = null;
+    window.signIn = n => { got = n; };
+    signinPick = ['first-node', 'second-node'];
+    drawAuth();
+    const sel = document.getElementById('signinNode');
+    const opts = sel ? [...sel.options].map(o => o.value) : [];
+    const rows = document.querySelectorAll('#docAuth [data-sn]').length;
+    sel.value = 'second-node';
+    document.getElementById('bSignInOn').click();
+    const after = got;
+    signinPick = ['first-node', 'second-node']; drawAuth();
+    document.getElementById('bSignInNo').click();
+    const cancelled = signinPick === null && !document.getElementById('signinNode');
+    window.signIn = real;
+    return { opts, rows, after, cancelled };
+  });
+  ok(picked.opts.join(',') === 'first-node,second-node' && picked.rows === 0,
+     `with several nodes the card offers a select of them, not a button each (${picked.opts.join(', ')})`);
+  ok(picked.after === 'second-node', '...and Sign in runs the flow on the one chosen');
+  ok(picked.cancelled, '...and Cancel puts the row back');
+}
+
+
 // The nodes come back, HERE rather than further down: a drained node is this
 // file's doing and every suite after it needs one that takes work, so the
 // window in which a crash could leave the whole run poisoned is kept to the

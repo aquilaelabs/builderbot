@@ -7087,15 +7087,17 @@ function drawAuth(){
   // on the wrong machine is a real mistake, and it will not pick for you. The
   // names come back with the refusal, so the choice is drawn from what it
   // said rather than from a second request.
+  // One row: a select and the two buttons. A button per node stacked
+  // vertically down a 340px card, which is what this was.
   if (signinPick){
-    if (paint(el, `<span class="sub grow">which node should the sign-in run on?</span>`
-        + signinPick.map(n => `<button data-sn="${esc(n)}">${esc(n)}</button>`).join("")
-        + `<button data-sn="" class="bare">Cancel</button>`))
-      el.querySelectorAll("[data-sn]").forEach(b => b.onclick = () => {
-        const n = b.dataset.sn;
-        signinPick = null;
-        if (n) signIn(n); else drawAuth();
-      });
+    if (paint(el, `<span class="sub">sign in on</span>
+        <select id="signinNode" class="grow" aria-label="which node">${
+          signinPick.map(n => `<option>${esc(n)}</option>`).join("")}</select>
+        <button id="bSignInOn" class="primary">Sign in</button>
+        <button id="bSignInNo" class="bare">Cancel</button>`)){
+      $("bSignInOn").onclick = () => { const n = $("signinNode").value; signinPick = null; signIn(n); };
+      $("bSignInNo").onclick = () => { signinPick = null; drawAuth(); };
+    }
     return;
   }
   // A sign-in that ended without signing anybody in. Said here, where it was
