@@ -2495,7 +2495,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname,.ndrunner,.ndconfacts){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname,.ndrunner,.ndconfacts){
   max-width:min(var(--ctl-w),88%)}
 /* A prose editor in the notebook (a memory's body, a rule, a bug's repro)
    is a page, not a control: it keeps the reading width. */
@@ -2515,7 +2515,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control the rule above forbids everywhere else. */
 .doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
-:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -2528,7 +2528,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control's own height is. `.col` is the stacked field itself and keeps
    its stretch. uniform.mjs measures every line on every tab.  */
 :is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
-  .dmroute,.dmgrant,.dmref,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
+  .dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
   .ndrunner,.ndconfacts,.ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line: the Phone tab's Connect and
@@ -2616,15 +2616,18 @@ button[aria-busy="true"]{opacity:.75}
 .ndpaths input,.ndname input{flex:1 1 auto;min-width:0}
 .dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dmroute select{width:auto;max-width:100%}
-/* The two settings a container row carries, as one block rather than two
-   loose lines: they are read together (which branch, and who may build it),
-   and a phone was stacking them with the row's own line spacing between, so
-   they looked like two unrelated strays. */
-.dmgrant,.dmref{display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+/* The settings a container row carries, as one block rather than loose
+   lines: they are read together (whose it is, which branch, and who may
+   build it), and a phone was stacking them with the row's own line spacing
+   between, so they looked like unrelated strays. */
+/* Their controls line up at the bottom, as every row of controls does: a
+   select stands taller than its Apply here, and centring them left the two
+   bottoms four pixels apart. The label stays centred on the select. */
+.dmgrant,.dmref,.dmowner{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;
   margin:2px 0}
 .dmref + .dmgrant{margin-top:0}
-.dmgrant select,.dmref select{width:auto;max-width:100%}
-.dmgrant label,.dmref label{color:var(--dim);flex:0 0 auto}
+.dmgrant select,.dmref select,.dmowner select{width:auto;max-width:100%}
+.dmgrant label,.dmref label,.dmowner label{color:var(--dim);flex:0 0 auto;align-self:center}
 .dmgrant select{width:auto;max-width:100%}
 /* The row's three settings (build from, Claude may rebuild, Claude tests)
    on one line where there is room, wrapping on a phone: three stacked

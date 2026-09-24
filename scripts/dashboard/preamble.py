@@ -117,6 +117,10 @@ def briefing(project):
             skip = False
             continue
         if not skip:
+            # A block skipped between two blank lines leaves one of them,
+            # not both: the template has no double blank of its own.
+            if not line.strip() and out and not out[-1].strip():
+                continue
             out.append(line)
     return "\n".join(out).strip("\n")
 
