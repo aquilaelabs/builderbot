@@ -22,6 +22,9 @@
 # run reports [skip] rather than passing by omission.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# Its own: the harness sources nothing of bb's, and the sentence a failed copy
+# meant to say ended as "die: command not found" (B231).
+die() { printf '[dashboard-test] ERROR: %s\n' "$*" >&2; exit 1; }
 # Never as root. The suite's premise is an unprivileged runner: the agent it
 # starts drops to the account sessions run as, which as root means an
 # account the machine may not have (inside BuilderBot's own dev container,
@@ -90,8 +93,10 @@ if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
    && [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ]; then
     _src="$(cd "$HERE/../../.." && pwd)"
     _dst="$(mktemp -d "${TMPDIR:-/tmp}/bb-suite.XXXXXX")"
-    tar -C "$_src" -cf - --exclude=./.git --exclude=./dist \
-        --exclude=./android/app/build --exclude=./android/build . \
+    # tar exits 1 for a file that changed under it (a CHANGELOG.md write, a
+    # session's edit) and the copy is still whole: that is not a failed copy.
+    { tar -C "$_src" -cf - --warning=no-file-changed --exclude=./.git --exclude=./dist \
+        --exclude=./android/app/build --exclude=./android/build . || [ $? -eq 1 ]; } \
         | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
     printf '[dashboard-test] running from %s: this tree is on NFS, which fails the suite own waits (B124)\n' "$_dst" >&2
     BB_TEST_COPY="$_dst" BB_TEST_ORIGIN="$_src" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
