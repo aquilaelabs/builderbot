@@ -3678,6 +3678,13 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint" id="rnGitHint"></div>
     </div>
+    <!-- Every account's sessions on the project, for an administrator, each
+         with End (page-projsessions.js). At the foot because the operator
+         asked for it there, and apart from the settings: End acts at once. -->
+    <div class="field" id="rnSessField" hidden>
+      <label>Sessions on this project</label>
+      <div id="rnSessList"></div>
+    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
@@ -4266,6 +4273,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-gear.js"></script>
 <script src="page-doctor.js"></script>
 <script src="page-commands.js"></script>
+<script src="page-projsessions.js"></script>
 <script src="tab-findings.js"></script>
 <script src="tab-projects.js"></script>
 <script src="nb-git.js"></script>
@@ -8644,6 +8652,9 @@ function renameProject(name, mode = "all"){
   $("rnDelete").hidden = git || !p;
   rnLoadAuth(name);
   rnFillPrefs(p);
+  // The sessions at the foot: the gear's door, and an administrator's.
+  $("rnSessField").hidden = true;
+  if (!git && state?.admin) rnSessionsLoad(name);
   $("rnGo").disabled = false;
   $("rnGo").textContent = "Save";
   // Nothing to save is nothing to press: with no credential to set, Cancel is

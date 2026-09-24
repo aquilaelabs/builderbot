@@ -1655,6 +1655,11 @@ def _chat_summary(who, ps):
             "people": sorted(n for n in store if n != mine)}
 
 
+def account_names():
+    """{uid: account name} for every account that has an id."""
+    return {u.get("uid"): n for n, u in users.load()["users"].items() if u.get("uid")}
+
+
 def claude_sessions(sessions):
     """{project: [account name, ...]} for every Claude session running.
 
@@ -1668,8 +1673,7 @@ def claude_sessions(sessions):
     The unprefixed name is the OWNER's, by the same rule as their home and
     their shells.
     """
-    by_uid = {u.get("uid"): n for n, u in users.load()["users"].items()
-              if u.get("uid")}
+    by_uid = account_names()
     owner = users.owner_name()
     out = {}
     for s in sessions:
@@ -1988,6 +1992,25 @@ def end_claude(project):
     if r["code"] != 0:
         return {"ended": False, "why": (r["out"] or "tmux refused").strip()[:200]}
     return {"ended": True}
+
+
+def end_session(session, node=""):
+    """End one session by its page name, wherever it runs: on a node through
+    its agent's held poll, by node id when the caller knows it (one name can
+    live here and there), else with this container's tmux. A name that is
+    not a live session is already ended and answers {gone} rather than an
+    error, because the caller that wants a clean slate (Sign in ending the
+    sign-in terminal first) asks for exactly that ordinary case. The
+    Sessions card's kill (_session) and an administrator's End in a
+    project's settings (projsessions.py) are this one path."""
+    here = {s["name"] for s in tmux_sessions()}
+    on_node = next((s for s in node_tmux_sessions() if s["name"] == session
+                    and (not node or s["node_id"] == node)), None)
+    if on_node and (node or session not in here):
+        return nodes.session_kill(on_node["node_id"], on_node["node_name"])
+    if session not in here:
+        return {"code": 0, "out": "", "err": "", "gone": True}
+    return run(["tmux", "kill-session", "-t", session], timeout=10)
 
 
 def uptime():
@@ -2453,6 +2476,7 @@ import devapp                                                    # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import claudecode                                                # noqa: E402
+import projsessions                                              # noqa: E402
 import turns                                                     # noqa: E402
 
 # The node data plane first, because devapp's job claim asks it which node
@@ -2545,6 +2569,13 @@ if not NODES_OK:
     claudecode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
                          tmux_base=tmux_base, audit=nodes.audit,
                          auto=lambda: settings.get("claude_autoupdate"))
+
+# Every account's sessions on a project, for its settings dialog, and an
+# administrator ending one (projsessions.py): the rows the Sessions card is
+# made from, and its kill.
+projsessions.configure(sessions=lambda: tmux_sessions() + node_tmux_sessions(),
+                       base=tmux_base, owner=tmux_owner, accounts=account_names,
+                       owner_name=users.owner_name, end=end_session)
 
 # The code map, built for a project the moment it exists (mapping.py): the
 # same command a session runs by hand, started in the background by the
@@ -3049,6 +3080,7 @@ GET_ROUTES = (
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/git", "_get_git"),
+    ("prefix", "/api/project-sessions", "_get_project_sessions"),
     ("prefix", "/api/changelog", "_get_changelog"),
     ("prefix", "/api/version", "_get_version"),
     ("prefix", "/api/artifacts", "_get_artifacts"),
@@ -3119,6 +3151,7 @@ POST_ROUTES = (
     ("prefix", "/api/create", "_create"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/git", "_git_act"),
+    ("prefix", "/api/project-sessions", "_project_sessions"),
     ("prefix", "/api/unlink", "_unlink"),
     ("prefix", "/api/link", "_link"),
     ("prefix", "/api/project-job", "_project_job"),
@@ -3913,6 +3946,7 @@ class Handler(BaseHTTPRequestHandler):
                     "/tab-toolchains.js", "/tab-emulator.js", "/tab-docker.js",
                     "/page-welcome.js", "/page-chat.js", "/page-motion.js", "/page-lists.js",
                     "/page-cards.js", "/page-gear.js", "/page-doctor.js", "/page-commands.js",
+                    "/page-projsessions.js",
                     "/tab-findings.js", "/tab-projects.js",
                     "/nb-git.js", "/nb-artifacts.js", "/nb-analysis.js", "/nb-rules.js",
                     "/nb-tests.js", "/nb-bugs.js", "/nb-pending.js", "/nb-roadmap.js",
@@ -7407,26 +7441,30 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown action"}, 400)
         if self._not_theirs(session):
             return None
-        # Already gone is already ended. The check is here so an arbitrary name
-        # never becomes a `-t` argument, which holds either way: nothing runs
-        # for a name that is not a live session. Answering with an error
-        # instead made the caller that wants a clean slate (Sign in, which ends
-        # the sign-in terminal before starting a new flow) report a failure for
-        # the ordinary case of there being nothing to end.
-        # A session on a node (roadmap #24): the kill goes to its agent
-        # through the held poll, under the name the node knows it by, and
-        # the row disappears with the next heartbeat. By node id when the
-        # row said which (the same name can exist here and there), and by
-        # name alone for a caller that only knows the name (a tab closing).
-        want_node = str(req.get("node") or "")
-        on_node = next((s for s in node_tmux_sessions() if s["name"] == session
-                        and (not want_node or s["node_id"] == want_node)), None)
-        if on_node and (want_node or session not in {s["name"] for s in tmux_sessions()}):
-            r = nodes.session_kill(on_node["node_id"], on_node["node_name"])
-            return self._result(r)
-        if session not in {s["name"] for s in tmux_sessions()}:
-            return self._json({"code": 0, "out": "", "err": "", "gone": True})
-        return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
+        # Wherever it runs, with already gone as ended (end_session). A name
+        # that is not a live session never becomes a `-t` argument: nothing
+        # runs for it. By node id when the row said which, and by name alone
+        # for a caller that only knows the name (a tab closing).
+        return self._result(end_session(session, str(req.get("node") or "")))
+
+    def _get_project_sessions(self):
+        """GET /api/project-sessions?project=NAME: every account's sessions on
+        the project, for its settings dialog. An administrator's."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._refused("admin") or self._not_project(name):
+            return None
+        return self._json({"sessions": projsessions.of(name)})
+
+    def _project_sessions(self, req):
+        """POST /api/project-sessions {project, action: "end", session, node}:
+        an administrator ending one of them (projsessions.py)."""
+        name = field(req, "project")
+        if self._refused("admin") or self._not_project(name):
+            return None
+        if field(req, "action") != "end":
+            return self._json({"error": "unknown action"}, 400)
+        return self._result(projsessions.end(name, field(req, "session"), field(req, "node")))
 
     def _not_theirs(self, session):
         """True, with the 403 written, when this account may not act on that
@@ -7437,7 +7475,9 @@ class Handler(BaseHTTPRequestHandler):
         owner's. Nobody acts on anybody else's, administrators included: a
         key in another person's Claude session is an answer to a question
         it asked them. A session's token is held to its own project as well,
-        the way everything else it does is.
+        the way everything else it does is. The one exception is ending one,
+        an administrator's, from a project's settings (projsessions.py, the
+        operator's call of 24 Sep); keys and typing stay the account's.
         """
         who = self._who() or {}
         mine = users.uid_of(who)

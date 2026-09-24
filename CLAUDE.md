@@ -191,7 +191,8 @@ by hand cost four commands and still could not see the failed builds.
     `index.html` is vanilla JS and CSS with one classic `tab-*.js` script per
     document tab, one `nb-*.js` per notebook view, and one `page-*.js` per
     part of the page that is neither (the welcome panel, chat, motion, the
-    sidebar cards, the gear menu, doctor, the command cards, paged lists),
+    sidebar cards, the gear menu, doctor, the command cards, paged lists, a
+    project's sessions),
     all loaded before the page's own script and all pure declarations:
     wiring that must run at load stays in `index.html` under the section's
     header, and the server serves a script only by name (the allow-list in

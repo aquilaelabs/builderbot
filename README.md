@@ -4127,6 +4127,7 @@ scripts/
     jobs.py                      the controller's own job runner (exec here or over ssh) plus /healthz and /metrics
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
     idle.py                      ending Claude sessions nobody has used for a while
+    projsessions.py              every account's sessions on a project, and an administrator ending one
     doctor.py                    `bb doctor` run on a timer and cached, for the Doctor card
     runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
     findings.py                  the scanner's reports read and attributed, and what they used to say
