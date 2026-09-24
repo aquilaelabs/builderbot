@@ -2347,13 +2347,24 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      and a single column made the reader count lines to tell them apart. */
   .dmtab .sect .wire{display:grid;
     grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
-    column-gap:18px;align-items:start}
+    column-gap:18px;align-items:start;
+    /* dense: the first mount beside the first port, not the last */
+    grid-auto-flow:row dense}
   .dmtab .sect .wire > .wport {grid-column:1}
   .dmtab .sect .wire > .wmount{grid-column:2}
   /* Anything that is neither ("it publishes nothing", a read failure)
      is a sentence and spans. */
   .dmtab .sect .wire > .li:not(.wport):not(.wmount){grid-column:1 / -1}
+  /* A stack of more than one container: a group per service, each the same
+     two columns under its name (B252). */
+  .dmtab .sect .wire > .wgrp{grid-column:1 / -1;display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
+    column-gap:18px;align-items:start;grid-auto-flow:row dense}
+  .dmtab .sect .wgrp > .wport {grid-column:1}
+  .dmtab .sect .wgrp > .wmount{grid-column:2}
+  .dmtab .sect .wgrp > .wsvc{grid-column:1 / -1}
 }
+.wgrp + .wgrp{margin-top:6px}
 /* The wiring's own alignment, at every width: the container's side of the
    arrow is the part being looked up, so it gets the fixed column. */
 .wport .wt,.wmount .wt{display:inline-block;min-width:11ch}
@@ -3678,10 +3689,15 @@ body.booting .pane>.loading{margin:auto}
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
-             when there is none (devbuild; the Docker row used to carry it,
-             and now says what it is set to). Deny by default. -->
+             when there is none, remove it (devbuild; the Docker row used to
+             carry it, and now says what it is set to). Deny by default. -->
         <label class="pick">Run its container <select id="rnGateDocker"
-          aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
+          aria-label="rebuilding, changing the env of, creating or removing this project's container, from a session"></select></label>
+        <!-- bb report, which sends BuilderBot's own problems to its
+             maintainers rather than this project's tracker. Off for the
+             project that IS BuilderBot, whose tracker they belong in. -->
+        <label class="pick">Report BuilderBot bugs <select id="rnGateReport"
+          aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
@@ -6157,6 +6173,7 @@ function rnFillPrefs(p){
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
                devbuild: devClaudeMode(rnFor),
+               report: p?.prefs?.report || "auto",
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
   $("rnGitName").value = rnPrefWas.git_name;
@@ -6218,6 +6235,16 @@ function rnFillPrefsRest(p){
       el.dataset.built = "1";
     }
     el.value = p?.prefs?.gate?.[k] || "auto";
+  }
+  {
+    // Auto and deny only: a report has nothing to hold for approval.
+    const el = $("rnGateReport");
+    if (el.dataset.built !== "1"){
+      el.innerHTML = GATE_MODES.filter(([v]) => v !== "ask")
+        .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = p?.prefs?.report || "auto";
   }
   {
     const el = $("rnGateDocker");
@@ -8865,10 +8892,12 @@ async function rnSubmit(){
   // With the node's group: nothing here restarts a session.
   const tests_in = $("rnDevTest").value || "node";
   const devbuild = $("rnGateDocker").value || "deny";
+  const report = $("rnGateReport").value || "auto";
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
-    || tests_in !== rnPrefWas.tests_in || devbuild !== rnPrefWas.devbuild;
+    || tests_in !== rnPrefWas.tests_in || devbuild !== rnPrefWas.devbuild
+    || report !== rnPrefWas.report;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
   // project's group: the same request, a different store on the server.
@@ -8919,7 +8948,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, build, test, gate, color,
-                              tests_in, devbuild,
+                              tests_in, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.

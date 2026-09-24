@@ -367,8 +367,8 @@ MAX_BODY = 64 * 1024
 # deny, wherever a container verb is refused by it: the sentence names the
 # setting, so a session that tries learns where the decision lives.
 RUN_DENIED = ("running this project's containers is the operator's: rebuilding, "
-              "starting and stopping them, changing their env and creating one are "
-              "handed over in the project's settings, Claude may: Run its container")
+              "starting and stopping them, changing their env, creating one and removing "
+              "one are handed over in the project's settings, Claude may: Run its container")
 
 
 def not_ours(what, sess=""):
@@ -2532,6 +2532,10 @@ try:
     nodes.bundle_digest = lambda: workspace.bundle()["digest"]
     nodes.idle_minutes = idle.minutes
     nodes.session_tokens_for = session_tokens_for
+    # Each session kept to its own project's network (R79): the setting is
+    # the node's, what each project owns there is devapp's.
+    nodes.session_net_for = lambda nid: ({"on": True, "own": devapp.session_net_own(nid)}
+                                         if nodes.session_net_on(nid) else {"on": False, "own": {}})
     NODES_OK = ""
     # The job logs are the only copy of what a node's job wrote and had no
     # retention at all until R17 step 1. Swept once here for whatever ended
@@ -2576,6 +2580,7 @@ phone.container_maker = devapp.create_container
 phone.instance_maker = lambda project, instance: devapp.create_instance(project, instance or devapp.MAIN)
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
 phone.ctl_runner = devapp.ctl_on
+phone.remover = devapp.remove_instance
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -2768,9 +2773,12 @@ doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes
 # the debug switch and a node's tick, an administrator's session (diag.py).
 import diag                                                      # noqa: E402
 
+import reports                                                   # noqa: E402
+reports.configure(write_json=write_json, state=STATE, redact=diag.redact,
+                  build=lambda: image_stamp().get("version") or image_stamp().get("rev") or "")
 diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.payload,
                settings=settings, nodes=nodes, db=db, log_dir=logs.log_dir,
-               plugins=plugins, users=users)
+               plugins=plugins, users=users, reports=reports)
 
 
 # ---- revisions -------------------------------------------------------------
@@ -3218,6 +3226,7 @@ POST_ROUTES = (
     ("prefix", "/api/artifacts", "_artifacts"),
     ("prefix", "/api/nodelog", "_nodelog"),
     ("exact", "/api/diag", "_diag"),
+    ("exact", "/api/reports", "_reports"),
     ("prefix", "/api/phone", "_phone"),
     ("prefix", "/api/findings", "_findings_log"),
     ("prefix", "/api/tests", "_tests"),
@@ -4258,7 +4267,17 @@ class Handler(BaseHTTPRequestHandler):
             return None
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         what = (q.get("what") or [""])[0]
-        if what == "archive":
+        if what == "diag":
+            # The controller's diagnostics whole, the report bb diag prints
+            # with what sessions have reported about BuilderBot among it, as
+            # one file to keep or hand over (the operator, 24 Sep). Redacted
+            # as they always are, and on the audit trail as a read of them
+            # through the API is.
+            db.audit(self._principal(), "diag-download", "diagnostics", {})
+            data = (json.dumps(diag.report(), indent=2) + "\n").encode()
+            fname = time.strftime("builderbot-diagnostics-%Y%m%d-%H%M.json")
+            ctype = "application/json"
+        elif what == "archive":
             data, err = logs.archive_bytes()
             if data is None:
                 return self._json({"error": err}, 500)
@@ -4703,14 +4722,17 @@ class Handler(BaseHTTPRequestHandler):
         # or remove them. Before the write, because afterwards the old node is
         # not recorded anywhere.
         moved = []
+        moved_node = False
         if "node" in req and str(req.get("node") or "") != (prefs.get(name) or {}).get("node", ""):
             moved = devapp.pin_to_current_node(name)
+            moved_node = True
         r = prefs.set_prefs(name, node=req.get("node"),
                             build=req.get("build"),
                             test=req.get("test"), outputs=req.get("outputs"),
                             gate=req.get("gate"), gitpol=req.get("gitpol"),
                             devbuild=req.get("devbuild"),
                             tests_in=req.get("tests_in"),
+                            report=req.get("report"),
                             color=req.get("color"),
                             workspace=WORKSPACE)
         # ...and what is the ASKING ACCOUNT's rather than the project's: the
@@ -4729,6 +4751,10 @@ class Handler(BaseHTTPRequestHandler):
             r |= end_claude(name)
         if moved and not r.get("error"):
             r = dict(r) | {"pinned": moved}
+        # A project on another node owns its instances somewhere else now (R79).
+        if moved_node and not r.get("error"):
+            with contextlib.suppress(Exception):
+                nodes.session_net_nudge()
         return self._result(r)
 
     def _nodes(self, req):
@@ -4792,6 +4818,10 @@ class Handler(BaseHTTPRequestHandler):
             # How many Claude sessions on the node may work at once; 0 for
             # no limit. An administrator's, like the rest of this handler.
             r = nodes.node_turn_limit(self._principal(), nid, req.get("limit"))
+        elif act == "session-net":
+            # Whether each session on the node reaches only its own project's
+            # containers (R79). An administrator's, like the rest.
+            r = nodes.node_session_net(self._principal(), nid, req.get("on") is True)
         elif act == "apply":
             r = nodes.node_apply(self._principal(), nid, field(req, "what"))
         elif act == "runner":
@@ -6067,7 +6097,12 @@ class Handler(BaseHTTPRequestHandler):
         # the way the manager's own listing is.
         with devapp.on_node(nid or None):
             if act == "owner":
-                return self._result(devapp.set_container_owner(name, under))
+                r = devapp.set_container_owner(name, under)
+                # Whose it is also decides whose sessions may reach it (R79).
+                if not r.get("error"):
+                    with contextlib.suppress(Exception):
+                        nodes.session_net_nudge()
+                return self._result(r)
             if act == "logs":
                 return self._json(devapp.container_logs(name))
             return self._result(devapp.container_ctl(name, act))
@@ -6120,6 +6155,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         r = devapp.create_container(name, req.get("compose") or "",
                                     req.get("env") or "", field(req, "node"), under)
+        # Made for a project: its sessions may reach it (R79).
+        if not r.get("error") and under:
+            with contextlib.suppress(Exception):
+                nodes.session_net_nudge()
         return self._result(r)
 
     def _logs(self, req):
@@ -6199,10 +6238,10 @@ class Handler(BaseHTTPRequestHandler):
         # Everything else (new, remove, env, route) is configuration rather
         # than a run of the code, and stays an administrator's: except, for a
         # SESSION, what its project's dial hands over below (its env, and
-        # creating the project's own container), which the dial decides
-        # rather than this gate, since a session never passes this one.
+        # creating and removing the project's own container), which the dial
+        # decides rather than this gate, since a session never passes this one.
         session = bool(sess)
-        dialed = ("env-get", "env-set", "new") if session else ()
+        dialed = ("env-get", "env-set", "new", "remove") if session else ()
         if act not in ("starter", "state", "rebuild", "abort", "test") + dialed \
                 and self._refused("docker-write"):
             return None
@@ -6257,15 +6296,24 @@ class Handler(BaseHTTPRequestHandler):
                                                 "belonging to its own project"}, 403)
                 req.pop("owner", None)
                 req["node"] = ""
-            if mode == "ask" and act in ("rebuild", "env-set", "new"):
+            if mode == "ask" and act in ("rebuild", "env-set", "new", "remove"):
                 # Aborting is not asked about: it stops a build this session
                 # was already allowed to start, and a running build nobody
                 # can stop is worse than one nobody approved. Reading the env
                 # is not either: a session cannot propose a change to what it
                 # cannot see, and the change is what is asked about.
                 acct = users.account_of(me) or {}
-                want = field(req, "instance") or devapp.MAIN
+                # The instance a request means when it names none: the
+                # project's only one, as the auto path reads it. `main`
+                # here made Allow write an env for, and build, an instance
+                # the project did not have (the review of 24 Sep).
+                want = field(req, "instance") or (devapp.MAIN if act == "new"
+                                                  else devapp.only_instance(name))
                 text = req.get("text") if act in ("env-set", "new") else None
+                # env-set means the env, whatever was sent as it: a missing
+                # text is an empty env, as the auto path writes one.
+                if act == "env-set" and not isinstance(text, str):
+                    text = ""
                 # Asked by, and answered to, the session's project; acting on
                 # the container named, which may be one written here.
                 r = phone.ask_rebuild(
@@ -6274,7 +6322,7 @@ class Handler(BaseHTTPRequestHandler):
                     asker_name=str(acct.get("name") or ""),
                     asker_admin=users.is_admin(acct),
                     env=text if isinstance(text, str) and (act == "env-set" or text.strip()) else None,
-                    create=act == "new", target="" if name == sess else name)
+                    create=act == "new", remove=act == "remove", target="" if name == sess else name)
                 return self._result(r)
         if act not in ("starter", "state") and name in {p["name"] for p
                                                         in project_list(me)} \
@@ -6323,6 +6371,11 @@ class Handler(BaseHTTPRequestHandler):
             name, inst, act, req,
             # The command is the project's own, from its settings.
             test_cmd=prefs.get(name)["test"] if act == "test" else "")
+        # An instance made, removed or given to another project changes what
+        # a project's sessions may reach on its node (R79).
+        if status == 200 and act in ("new", "remove", "owner"):
+            with contextlib.suppress(Exception):
+                nodes.session_net_nudge()
         return self._json(payload, status)
 
     def _version(self, req):
@@ -6552,6 +6605,35 @@ class Handler(BaseHTTPRequestHandler):
                 under = field(req, "for") or (who.get("session") or "")
                 if under and self._not_project(under):
                     return
+                # A session's is under its project's dial, Claude may: Run
+                # its container, like every other container verb (B250, the
+                # operator, 24 Sep: at auto it was still asked). Refused at
+                # deny; at auto, its own project's on its own node is made
+                # now and built, the way Allow would; one for another project
+                # or on a node it names is always a person's.
+                sess = who.get("session") or ""
+                if sess:
+                    mode = prefs.get(sess)["devbuild"]
+                    if mode == "deny":
+                        return self._json({"error": RUN_DENIED}, 403)
+                    if mode == "auto" and under == sess and not cnode:
+                        r = devapp.create_container(field(req, "name"), req.get("compose"),
+                                                    req.get("env"), "", under)
+                        if r.get("error"):
+                            return self._json(r, 400)
+                        with contextlib.suppress(Exception):
+                            nodes.session_net_nudge()
+                        # Built unless the compose asks for more than its own
+                        # directory, which a person acknowledges once, as new
+                        # says it (B251).
+                        why = devapp.unacked_risks(r["project"], r["instance"])
+                        if why:
+                            return self._json(r | {"needs_ack": why})
+                        built = devapp.rebuild(r["project"], r["instance"]) or {}
+                        if built.get("error"):
+                            return self._json(r | {"error": f"{r['name']} is registered on the Docker "
+                                                            f"tab, and its build did not start: {built['error']}"}, 400)
+                        return self._json(r | {"job": built.get("job")})
                 r = phone.ask_container(field(req, "why"), field(req, "name"),
                                         req.get("compose"), req.get("env"),
                                         target["id"] if target else "",
@@ -7386,25 +7468,88 @@ class Handler(BaseHTTPRequestHandler):
         administrator: a node is shared, so the node's tick alone would hand
         it to every tester whose session runs there. POST, so each read is in
         the audit trail."""
-        who = self._who() or {}
-        if who.get("session"):
-            if not settings.get("debug_mode"):
-                return self._json({"error": "debug mode is off, so the controller's diagnostics "
-                                            "are not offered to any session"}, 403)
-            me = users.account_of(who)
-            if me is who or not users.is_admin(me):
-                return self._json({"error": "the controller's diagnostics are an "
-                                            "administrator's, and this session's account "
-                                            "is not one"}, 403)
-            nid = prefs.get(who["session"])["node"]
-            if not nid or not nodes.diag_granted(nid):
-                name = (nodes.node(nid) or {}).get("name") or "this session's node"
-                return self._json({"error": f"{name} has not been granted the controller's "
-                                            "diagnostics: Debug settings on its row"}, 403)
-        elif self._refused("admin"):
+        if self._diag_refused():
             return None
         want = req.get("sections") if isinstance(req.get("sections"), list) else None
         return self._json(diag.report([str(x) for x in want] if want else None))
+
+    def _diag_refused(self):
+        """True, with the refusal written, unless this caller may read the
+        controller's diagnostics: see _diag. The reports sessions make about
+        BuilderBot are read and acted on behind the same gate."""
+        who = self._who() or {}
+        if who.get("session"):
+            if not settings.get("debug_mode"):
+                self._json({"error": "debug mode is off, so the controller's diagnostics "
+                                     "are not offered to any session"}, 403)
+                return True
+            me = users.account_of(who)
+            if me is who or not users.is_admin(me):
+                self._json({"error": "the controller's diagnostics are an "
+                                     "administrator's, and this session's account "
+                                     "is not one"}, 403)
+                return True
+            nid = prefs.get(who["session"])["node"]
+            if not nid or not nodes.diag_granted(nid):
+                name = (nodes.node(nid) or {}).get("name") or "this session's node"
+                self._json({"error": f"{name} has not been granted the controller's "
+                                     "diagnostics: Debug settings on its row"}, 403)
+                return True
+            return False
+        return self._refused("admin")
+
+    def _reports(self, req):
+        """Problems with BuilderBot itself, reported by any project's session
+        (reports.py, bb report). Anybody signed in adds one for a project they
+        may see, and a session only for its own; what became of a project's
+        reports is that project's to read. Reading every project's, filing
+        or closing one, and clearing them all (Controller settings), is the
+        diagnostics' own gate, since that is where BuilderBot's own work
+        reads them (bb diag reports)."""
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        act = field(req, "action")
+        name = str((users.account_of(me) or {}).get("name") or "")
+        if act in ("add", "mine"):
+            proj = sess or field(req, "project")
+            if not sess and self._not_project(proj):
+                return None
+            if act == "mine":
+                return self._json({"reports": reports.listing(None, proj, n=30)})
+            if prefs.get(proj)["report"] == "deny":
+                return self._json({"error": f"reporting BuilderBot bugs is off for {proj}: its "
+                                            "settings, Claude may: Report BuilderBot bugs. A "
+                                            "problem goes into this project's tracker"}, 403)
+            nid = prefs.get(proj)["node"]
+            node = (nodes.node(nid) or {}).get("name", "") if nid and not NODES_OK else ""
+            return self._result(reports.add(proj, req.get("text"), by=name, node=node,
+                                            area=req.get("area"), repro=req.get("repro")))
+        # Clearing is a person's, from Controller settings, whatever a
+        # session may otherwise read here: a session answers reports one at
+        # a time, and clearing throws away what other projects' sessions are
+        # waiting to hear back about.
+        if act == "clear" and sess:
+            return self._json({"error": "clearing every report is a person's, from "
+                                        "Controller settings: file or close one instead"}, 403)
+        if self._diag_refused():
+            return None
+        if act == "list":
+            st = field(req, "state") or "open"
+            return self._json({"reports": reports.listing(None if st == "all" else st)})
+        if act == "get":
+            r = reports.get(req.get("id"))
+            return self._json(r) if r else self._json({"error": "no such report"}, 400)
+        if act == "filed":
+            return self._result(reports.filed(req.get("id"), field(req, "bug"), by=name))
+        if act == "close":
+            return self._result(reports.close(req.get("id"), field(req, "why"), by=name))
+        if act == "count":
+            return self._json(reports.counts())
+        if act == "clear":
+            r = reports.clear()
+            db.audit(self._principal(), "reports-clear", "reports", {"cleared": r["cleared"]})
+            return self._json(r)
+        return self._json({"error": f"unknown action: {act}"}, 400)
 
     def _doctor(self, req):
         """Re-run bb doctor now and answer with the fresh verdict.

@@ -1688,6 +1688,50 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
      === 'http://stub:7475/',
    'a published port is a link, to the machine its daemon runs on');
 
+// A stack of more than one container says whose each port is (B252, the
+// operator, 24 Sep: "it shows all the ports but I can't see which containers
+// they belong to"): the wiring grouped under each service, the ports line
+// under Details naming them, and the route's port picker too.
+{
+  const ST = `${DIR}/dockerstate`;
+  const wasUp = existsSync(`${ST}/ep-silon.up`);
+  writeFileSync(`${ST}/ep-silon.up`, '');
+  writeFileSync(`${ST}/ep-silon.svcs`, 'app 7475 7474\ngitea 3000 3000\ngitea 2222 22\n');
+  writeFileSync(`${ST}/ep-silon.config`, JSON.stringify({ services: {
+    app: { build: { context: '.' }, ports: [{ target: 7474, published: '7475', protocol: 'tcp' }],
+           volumes: [{ type: 'bind', source: '/mnt/user/appdata/x/config', target: '/config' }] },
+    gitea: { build: { context: '.' }, ports: [{ target: 3000, published: '3000', protocol: 'tcp' },
+                                             { target: 22, published: '2222', protocol: 'tcp' }] } } }));
+  await dmRefresh();
+  // It loads on opening, so a fold the page kept open is shut first.
+  if (await page.$eval(`${DM} details.sect`, d => d.open)) {
+    await page.click(`${DM} .sect > summary`);
+    await page.waitForFunction(sel => !document.querySelector(sel + ' details.sect').open, DM, { timeout: 10000 });
+  }
+  await page.click(`${DM} .sect > summary`);
+  await page.waitForFunction(sel => document.querySelectorAll(sel + ' .sect .wire .wgrp').length === 2, DM,
+                             { timeout: 20000 });
+  const groups = await page.$$eval(`${DM} .sect .wire .wgrp`, gs => gs.map(g => ({
+    name: g.querySelector('.wsvc')?.textContent,
+    ports: [...g.querySelectorAll('.wport')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+    mounts: g.querySelectorAll('.wmount').length })));
+  ok(groups[0].name === 'app' && groups[0].ports.length === 1 && /7474.*7475/.test(groups[0].ports[0])
+     && groups[0].mounts === 1 && groups[1].name === 'gitea' && groups[1].ports.length === 2 && groups[1].mounts === 0,
+     `a stack's Ports and mounts are grouped under each service (${JSON.stringify(groups)})`);
+  const line = await page.$eval(`${DM} .dmports`, e => e.textContent);
+  ok(/app: 7475->7474\/tcp/.test(line) && /gitea: 3000->3000\/tcp, 2222->22\/tcp/.test(line),
+     `...the ports line under Details names whose each is (${line.trim()})`);
+  const how = await page.$eval(`${DM} .dmsvcs`, e => e.textContent);
+  ok(!/->/.test(how), `...and the services list under it says only how each is (${how.trim()})`);
+  const opts = await page.$$eval(`${DM} select[data-route="port"] option`, os => os.map(o => o.textContent));
+  ok(opts.includes(':3000 gitea') && opts.includes(':2222 gitea') && opts.includes(':7475 app'),
+     `...and so does the route's port picker (${opts.join(' ')})`);
+  rmSync(`${ST}/ep-silon.svcs`, { force: true });
+  rmSync(`${ST}/ep-silon.config`, { force: true });
+  if (!wasUp) rmSync(`${ST}/ep-silon.up`, { force: true });
+  await dmRefresh();
+}
+
 // Where the row's state sits, asserted by geometry rather than by a
 // screenshot. It used to be a third column beside the name; it is the action
 // bar's status line now, which is the shared rule: what a thing is doing
@@ -2647,14 +2691,16 @@ ok(await page.$('#devSend'),
   // the grant cannot reach them however it is set. This is the operator's
   // own line (the user makes them, Claude rebuilds them), and it is checked
   // here rather than trusted to the ordering of two ifs.
-  for (const act of ['remove', 'route']){
+  // (remove joined the dial on 24 Sep; route, which is where the thing is
+  // reached from, stays the operator's.)
+  for (const act of ['route']){
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
     ok(r.status === 403 && /administrator/.test(r.error || ''),
        `...and ${act} is not a session's at any setting (${String(r.error).slice(0, 48)})`);
   }
   // Its env and creating its own container are on the setting now (the
   // operator, 24 Sep), so at deny they are refused by it, naming it.
-  for (const act of ['new', 'env-set', 'env-get']){
+  for (const act of ['new', 'env-set', 'env-get', 'remove']){
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
     ok(r.status === 403 && /Run its container/.test(r.error || ''),
        `...and at deny ${act} is refused by the same setting (${String(r.error).slice(0, 48)})`);
@@ -2757,6 +2803,13 @@ ok(await page.$('#devSend'),
        `...and creates its project's own container (${made.error || made.instance})`);
     const under = await asSession({ project: 'ep.silon', action: 'new', instance: 'elsewhere', owner: 'alpha' });
     ok(under.status === 403, `...but not one belonging to another project (${under.status})`);
+    // ...and removes one, under the same setting (the operator, 24 Sep):
+    // the row goes, its env and data stay, as the tab's Remove leaves them.
+    const gone = await asSession({ project: 'ep.silon', action: 'remove', instance: 'fresh' });
+    await idle();
+    const insts = () => Object.keys(JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['ep.silon'] || {});
+    ok(gone.status === 200 && !insts().includes('fresh'),
+       `...and removes its own container on auto (${gone.error || gone.job || 'removed'}; left: ${insts().join(', ')})`);
     await dial('ask');
     const asks = await asSession({ project: 'ep.silon', action: 'new', instance: 'asked',
                                    text: 'KEY=secret-value\n', why: 'a fresh one to try the branch' });
@@ -2777,11 +2830,62 @@ ok(await page.$('#devSend'),
     });
     ok(/KEY=secret-value/.test(after.text || ''),
        `...and Allow creates it and writes its env before the build (${after.error || 'stored'})`);
+    // ...while an env set on one that exists is written and NOT built: the
+    // card said "env set", and a build would bounce a container nobody was
+    // told would move (the review of 24 Sep).
+    const builds = () => (dockerLog().match(/compose[^\n]* build/g) || []).length;
+    const b0 = builds();
+    const envAsk = await asSession({ project: 'ep.silon', action: 'env-set', instance: 'asked',
+                                     text: 'KEY=changed\n', why: 'a new key' });
+    await page.evaluate(async (id) => {
+      await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ action: 'allow', id }) });
+    }, envAsk.id);
+    await idle();
+    const envOut = await (await fetch(URL.replace(/\/$/, '') + '/api/phone',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+        body: JSON.stringify({ action: 'outcome', id: envAsk.id }) })).json();
+    const envAfter = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', instance: 'asked', action: 'env-get' }) })).json()).text);
+    ok(envAsk.status === 200 && envOut.state === 'done' && /env written/.test(envOut.out || '')
+       && /KEY=changed/.test(envAfter || '') && builds() === b0,
+       `...and Allow on an env set writes the env and builds nothing (${envOut.out}, ${builds() - b0} builds)`);
+    // ...and on ask, Allow removes it: the card says remove and nothing else.
+    const rmAsk = await asSession({ project: 'ep.silon', action: 'remove', instance: 'asked', why: 'done with it' });
+    const rmSeen = await page.evaluate(async (id) =>
+      ((await (await fetch('/api/phone')).json()).asks || []).find(a => a.id === id), rmAsk.id);
+    await page.evaluate(async (id) => {
+      await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ action: 'allow', id }) });
+    }, rmAsk.id);
+    await idle();
+    ok(rmAsk.status === 200 && rmAsk.id && /"remove"/.test(JSON.stringify(rmSeen?.cmd)) && !insts().includes('asked'),
+       `on ask a remove waits for a person, and Allow removes it (${JSON.stringify(rmSeen?.cmd)}; left: ${insts().join(', ')})`);
     for (const inst of ['fresh', 'asked']) await page.evaluate(async (i) => {
       await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                    body: JSON.stringify({ project: 'ep.silon', instance: i, action: 'remove' }) });
     }, inst);
     await dial('auto');
+    // A compose asking for more than its own directory needs a person's
+    // acknowledgement once, whatever the setting (a session's report, 24
+    // Sep): new says so rather than promising that rebuild builds it, and
+    // rebuild's refusal names the way past it instead of inviting the
+    // session to cut the compose down.
+    writeFileSync(`${DIR}/dockerstate/riskynew.config`, JSON.stringify(
+      { services: { app: { build: { context: '.' }, privileged: true } } }));
+    const rn = await asSession({ project: 'ep.silon', action: 'new', instance: 'riskynew' });
+    ok(rn.status === 200 && /asks for more than its own directory/.test(rn.needs_ack || '')
+       && /pressing Build or Rebuild on its row on the Docker tab/.test(rn.needs_ack || ''),
+       `on auto, new says a risky compose waits for a person's acknowledgement (${String(rn.needs_ack).slice(0, 90)})`);
+    const rr = await asSession({ project: 'ep.silon', action: 'rebuild', instance: 'riskynew' });
+    ok(rr.status >= 400 && /Build or Rebuild on its row on the Docker tab/.test(rr.error || ''),
+       `...and rebuild's refusal names the way past it (${String(rr.error).slice(0, 90)})`);
+    await page.evaluate(async () => {
+      await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify({ project: 'ep.silon', instance: 'riskynew', action: 'remove' }) });
+    });
+    rmSync(`${DIR}/dockerstate/riskynew.config`, { force: true });
   }
   // The setting lives in the project's settings with the other Claude may
   // dials (the operator, 24 Sep), because it covers creating the container,

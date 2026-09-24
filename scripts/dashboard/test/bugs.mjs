@@ -56,7 +56,9 @@ ok(await page.$eval('#bugList .bug .sev', el => el.textContent) === 'high',
    '...and the row leads with its severity, the way a memory leads with its type');
 
 // ---- the session's half ----------------------------------------------------
-bbBug('add', 'bb lint misses compose files in subdirectories', '--sev', 'low',
+// --here: the title names a bb verb, which bb bug add now asks about on a
+// project other than BuilderBot (reports.mjs holds that); this one is alpha's own.
+bbBug('add', 'bb lint misses compose files in subdirectories', '--here', '--sev', 'low',
       '--area', 'scripts/bb', '--repro', 'put a compose file under tools/ and run bb lint');
 ok(read().length === 2 && read()[1].by === 'claude',
    'a session files one through bb bug, marked as its own');

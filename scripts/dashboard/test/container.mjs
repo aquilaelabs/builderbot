@@ -101,11 +101,38 @@ ok((await api('/api/docker')).body.instances.some(i => i.project === 'sonarr-for
 {
   const tok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
     { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+  // The dial at ask: the fixture's default is deny, and a session's is
+  // under it (below).
+  await api('/api/prefs', { project: 'alpha', devbuild: 'ask' });
   const bySession = await ask({ name: 'sonarr-by-session', project: '' },
     { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok });
   const row = (await api('/api/phone')).body.asks.find(a => a.id === bySession.body.id);
   ok(row && row.for === 'alpha', `a session's ask belongs to its own project when it names none (${row?.for})`);
   await api('/api/phone', { action: 'deny', id: bySession.body.id });
+  // ...and it is under the project's Claude may: Run its container (B250,
+  // the operator, 24 Sep): refused at deny, made at once at auto when it is
+  // the project's own on its own node, and asked at auto all the same for
+  // another project or a node it names.
+  const S = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok };
+  await api('/api/prefs', { project: 'alpha', devbuild: 'deny' });
+  const denied = await ask({ name: 'sonarr-denied-by-dial', project: '' }, S);
+  ok(denied.status === 403 && /Run its container/.test(denied.body.error || ''),
+     `at deny a session's container is refused, naming the setting (${String(denied.body.error).slice(0, 50)})`);
+  await api('/api/prefs', { project: 'alpha', devbuild: 'auto' });
+  const made = await ask({ name: 'sonarr-auto', project: '' }, S);
+  ok(made.status === 200 && !made.body.id && made.body.name === 'sonarr-auto'
+     && (await api('/api/docker')).body.instances.some(i => i.project === 'sonarr-auto' && i.owner === 'alpha'),
+     `at auto it is made at once, nobody asked, and the Docker tab lists it as the project's (${JSON.stringify(made.body).slice(0, 80)})`);
+  const forOther = await ask({ name: 'sonarr-for-beta', project: '', for: 'beta' }, S);
+  const onNode = await ask({ name: 'sonarr-on-node', project: '', node: 'sandbox' }, S);
+  ok(!forOther.body.id && forOther.body.error && onNode.body.id > 0,
+     `while one on a node it names is asked at auto all the same, and one for another project is refused, since a session sees only its own (${
+       String(forOther.body.error).slice(0, 40)})`);
+  await api('/api/phone', { action: 'deny', id: onNode.body.id });
+  await api('/api/prefs', { project: 'alpha', devbuild: 'ask' });
+  const askedStill = await ask({ name: 'sonarr-asked', project: '' }, S);
+  ok(askedStill.body.id > 0, '...and at ask it is asked');
+  await api('/api/phone', { action: 'deny', id: askedStill.body.id });
 }
 
 // ---- Deny: reported to the session, nothing made -------------------------------

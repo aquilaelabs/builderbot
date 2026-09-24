@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.95"
+AGENT_VERSION = "0.6.98"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -286,6 +286,23 @@ SESSION_BIN = os.environ.get("BUILDERBOT_SESSION_BIN", "/usr/local/sbin/bb-sessi
 CLAUDE_DIR = "/usr/local/lib/builderbot/claude"
 SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
 SESSION_SUDOERS = os.environ.get("BUILDERBOT_SESSION_SUDOERS", "/etc/sudoers.d/builderbot-session")
+# Each session kept to its own project's network (R79): the folder this agent
+# shares with bb-session (its resolver file for sessions, its mark that the
+# table is in place, and a file per session saying which project an address
+# is), the table it keeps, the range sessions are addressed from, and the mark
+# the table puts on what it let through, which is all Docker's forwarding is
+# told to let past: a table that is gone lets nothing through, not everything.
+SESSNET_DIR = os.environ.get("BUILDERBOT_SESSNET_DIR", "/run/bb-session-net")
+SESSNET_TABLE = "builderbot_sessnet"
+SESSNET_CIDR = "10.231.0.0/16"
+SESSNET_MARK = 0x10000000
+IPTABLES_BIN = os.environ.get("BUILDERBOT_IPTABLES_BIN", "iptables")
+DOCKER_BIN = os.environ.get("BUILDERBOT_DOCKER_BIN", "docker")
+RESOLV_UPSTREAM = ("/run/systemd/resolve/resolv.conf", "/etc/resolv.conf")
+# What is not the internet: every private, shared, loopback, link-local and
+# multicast range. A session reaches none of it but what the sets name.
+SESSNET_LOCAL = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+                 "172.16.0.0/12", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/3")
 # Where the projects share is mounted, which is what a session works in. The
 # seam is for the suite: it runs its agent as a session account, and inside a
 # session's view /workspace is the view's own read-only root.
@@ -968,9 +985,12 @@ def session_sudoers(user):
             f"{user} ALL=(root) NOPASSWD: {SESSION_BIN}\n")
 
 
-def session_conf(state, user):
+def session_conf(state, user, net=False):
     """This machine's layout for bb-session: the session account and the
-    stores whose other projects' parts a session's view leaves out."""
+    stores whose other projects' parts a session's view leaves out, and,
+    once the table is in place, that each session gets a network of its own
+    (R79). Off, the lines are not written at all, so an older bb-session
+    reads the file it always read."""
     stores = state.get("stores") or {}
     return (f"# Written by the BuilderBot agent (R35) for bb-session.\n"
             f"SESSION_USER={user}\n"
@@ -979,7 +999,8 @@ def session_conf(state, user):
             f"ARTIFACTS_STORE={stores.get('artifacts') or ''}\n"
             f"TOOLCHAINS_STORE={tc_root(state)}\n"
             f"RUNNER_DIR={RUNNER_DIR}\n"
-            f"HIDE=/devdata\n")
+            f"HIDE=/devdata\n"
+            + (f"SESSION_NET=on\nSESSION_NET_CIDR={SESSNET_CIDR}\n" if net else ""))
 
 
 def isolation_now():
@@ -1001,6 +1022,331 @@ def isolation_now():
     if r.returncode:
         return {"sessions": False, "why": ((r.stderr or r.stdout).strip() or "bb-session check failed")[:200]}
     return {"sessions": True, "why": ""}
+
+
+# ---------------------------------------------------------------------------
+# each session kept to its own project's network (R79)
+#
+# bb-session gives the session a network namespace and a veth to the node,
+# addressed from SESSNET_CIDR, and writes which project the address is; this
+# agent keeps the table that judges what leaves by it. Allowed: the internet,
+# the controller, the resolvers, and the containers the controller says the
+# project owns here. Refused: everything else that is not the internet,
+# which is every other container, the node itself, and the LAN.
+
+SESSNET_STATUS = {}          # what the census says about it, kept by SessionNet
+
+
+def sessnet_resolvers(paths=RESOLV_UPSTREAM):
+    """The nameservers a session's own network can reach, and the search line:
+    the node's upstream ones (the list systemd-resolved asks, where it runs),
+    IPv4 and not the node's loopback, which a namespace of its own does not
+    share."""
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        ns, search = [], ""
+        for line in text.splitlines():
+            bits = line.split()
+            if len(bits) >= 2 and bits[0] == "nameserver":
+                try:
+                    a = ipaddress.ip_address(bits[1])
+                except ValueError:
+                    continue
+                if a.version == 4 and not a.is_loopback and not a.is_unspecified:
+                    ns.append(str(a))
+            elif len(bits) >= 2 and bits[0] in ("search", "domain") and not search:
+                search = " ".join(b for b in bits[1:] if re.fullmatch(r"[A-Za-z0-9.-]+", b))
+        if ns:
+            return ns[:3], search
+    return [], ""
+
+
+def sessnet_resolv_text(ns, search):
+    return ("# Written by the BuilderBot agent (R79): the resolvers a session's own network reaches.\n"
+            + "".join(f"nameserver {n}\n" for n in ns)
+            + (f"search {search}\n" if search and search != "." else ""))
+
+
+def sessnet_clash(addrs, routes, cidr=SESSNET_CIDR):
+    """What on this node already uses the range sessions are addressed from,
+    or "": an address or a route (from `ip -j -4 addr` and `ip -j -4 route
+    show table all`) other than a session's own link. A session's /30 would
+    hide its addresses from everything on the machine, and the masquerade
+    would rewrite its traffic, which on a machine used for other things is
+    somebody else's network (the operator, 24 Sep)."""
+    net = ipaddress.ip_network(cidr)
+    for a in addrs if isinstance(addrs, list) else []:
+        if not isinstance(a, dict) or str(a.get("ifname") or "").startswith("bbs"):
+            continue
+        for i in a.get("addr_info") or []:
+            if not isinstance(i, dict) or i.get("family") != "inet" or not i.get("local"):
+                continue
+            try:
+                n = ipaddress.ip_network(f"{i['local']}/{i.get('prefixlen', 32)}", strict=False)
+            except ValueError:
+                continue
+            if n.overlaps(net):
+                return f"{i['local']}/{i.get('prefixlen', 32)} on {a.get('ifname')}"
+    for r in routes if isinstance(routes, list) else []:
+        if not isinstance(r, dict) or str(r.get("dev") or "").startswith("bbs"):
+            continue
+        dst = str(r.get("dst") or "")
+        if dst in ("", "default"):
+            continue
+        try:
+            n = ipaddress.ip_network(dst if "/" in dst else dst + "/32", strict=False)
+        except ValueError:
+            continue
+        if n.version == 4 and n.overlaps(net):
+            return f"a route to {dst}" + (f" on {r['dev']}" if r.get("dev") else "")
+    return ""
+
+
+def sessnet_can():
+    """Whether this node can keep each session to its own project's network,
+    and why not: asked in the order a person would put it right."""
+    if os.geteuid() != 0:
+        return False, "the agent does not run as root here"
+    if not (os.access(SESSION_BIN, os.X_OK) and os.path.isfile(SESSION_SUDOERS)):
+        return False, "sessions here do not start through bb-session, so there is no namespace to give them"
+    try:
+        r = subprocess.run([SESSION_BIN, "check-net"], capture_output=True, text=True, timeout=20, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"bb-session did not run: {e}"[:200]
+    if r.returncode:
+        said = (r.stderr or r.stdout).strip()
+        if "takes check" in said and "check-net" not in said:
+            return False, "the bb-session here is older than this setting; the next bundle brings it"
+        return False, (said or "bb-session check-net failed")[:200]
+    if not _have(NFT_BIN):
+        return False, "nftables (nft) is not installed here"
+    if _have(FIREWALL_CMD) and _run([FIREWALL_CMD, "--state"]) == "running":
+        return False, "firewalld owns this node's firewall, which this setting does not go through yet"
+    if _have("ufw") and _run(["ufw", "status"]).startswith("Status: active"):
+        return False, "ufw owns this node's firewall, which this setting does not go through yet"
+    try:
+        with open("/proc/sys/net/ipv4/ip_forward", encoding="ascii") as f:
+            if f.read().strip() != "1":
+                return False, "IPv4 forwarding is off on this node (net.ipv4.ip_forward)"
+    except OSError:
+        return False, "this node's IPv4 forwarding setting could not be read"
+    if shutil.which(DOCKER_BIN) and not _have(IPTABLES_BIN):
+        return False, "iptables is not here to let a session's traffic past Docker's forwarding"
+    if not sessnet_resolvers()[0]:
+        return False, "the node names no DNS server a session's own network could reach, only its loopback"
+    try:
+        addrs = json.loads(_run(["ip", "-j", "-4", "addr"], timeout=10) or "[]")
+        routes = json.loads(_run(["ip", "-j", "-4", "route", "show", "table", "all"], timeout=10) or "[]")
+    except ValueError:
+        addrs, routes = [], []
+    clash = sessnet_clash(addrs, routes)
+    if clash:
+        return False, f"this node's own network already uses {SESSNET_CIDR}, which sessions are addressed from ({clash})"
+    return True, ""
+
+
+def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
+    """The table, whole. Judged at the node, on the way out of a session's
+    link, before Docker's own forwarding (priority -10 against its 0); the
+    sets are filled by sessnet_fill. What passes is marked, and Docker's
+    DOCKER-USER lets through marked traffic from a session and drops the
+    rest, so without this table a session reaches nothing. Nothing starts a
+    connection into a session: not from the network (forward) and not from
+    the node itself (output), where every other account's programs are.
+    The controller and the resolvers are let through on the way INTO the
+    node as well, for a node that is the controller's own machine or runs
+    the resolver, and by the destination a DNAT started from, for a
+    controller Docker publishes on this node."""
+    return f"""table inet {SESSNET_TABLE} {{
+	set ctl {{ type ipv4_addr . inet_service; }}
+	set dns {{ type ipv4_addr; }}
+	set own {{ type ipv4_addr . ipv4_addr; }}
+	set local {{ type ipv4_addr; flags interval; elements = {{ {", ".join(SESSNET_LOCAL)} }}; }}
+	chain forward {{
+		type filter hook forward priority -10; policy accept;
+		iifname "bbs*" jump outbound
+		oifname "bbs*" ct state established,related accept
+		oifname "bbs*" drop
+	}}
+	chain outbound {{
+		ip saddr != {cidr} drop
+		meta nfproto ipv6 drop
+		ct state established,related goto pass
+		ip daddr . tcp dport @ctl goto pass
+		ct original ip daddr . ct original proto-dst @ctl goto pass
+		ip daddr @dns udp dport 53 goto pass
+		ip daddr @dns tcp dport 53 goto pass
+		ip saddr . ip daddr @own goto pass
+		ip daddr @local reject with icmpx type admin-prohibited
+		goto pass
+	}}
+	chain pass {{
+		meta mark set meta mark or {mark:#x} accept
+	}}
+	chain input {{
+		type filter hook input priority -10; policy accept;
+		iifname "bbs*" ct state established,related accept
+		iifname "bbs*" ip daddr . tcp dport @ctl accept
+		iifname "bbs*" ip daddr @dns udp dport 53 accept
+		iifname "bbs*" ip daddr @dns tcp dport 53 accept
+		iifname "bbs*" reject with icmpx type admin-prohibited
+	}}
+	chain output {{
+		type filter hook output priority -10; policy accept;
+		oifname "bbs*" meta l4proto {{ tcp, udp }} ct state new reject with icmpx type admin-prohibited
+	}}
+	chain postrouting {{
+		type nat hook postrouting priority 100; policy accept;
+		ip saddr {cidr} oifname != "bbs*" masquerade
+	}}
+}}
+"""
+
+
+def sessnet_fill(ctl, dns, own):
+    """The sets, replaced in one transaction: the controller's address and
+    port, the resolvers, and (session address, container address) for every
+    container each session's project owns here."""
+    t = f"inet {SESSNET_TABLE}"
+    out = [f"flush set {t} ctl", f"flush set {t} dns", f"flush set {t} own"]
+    if ctl:
+        out.append(f"add element {t} ctl {{ {', '.join(f'{a} . {p}' for a, p in ctl)} }}")
+    if dns:
+        out.append(f"add element {t} dns {{ {', '.join(dns)} }}")
+    if own:
+        out.append(f"add element {t} own {{ {', '.join(f'{a} . {b}' for a, b in own)} }}")
+    return "\n".join(out) + "\n"
+
+
+def sessnet_sessions(d=SESSNET_DIR):
+    """The sessions bb-session gave a network to, from their files: which
+    project each address is. One whose link has gone is over, whatever its
+    file says, and is left out."""
+    out = []
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return out
+    net = ipaddress.ip_network(SESSNET_CIDR)
+    for name in sorted(names):
+        if not re.fullmatch(r"s\d+\.json", name):
+            continue
+        try:
+            with open(os.path.join(d, name), encoding="utf-8") as f:
+                r = json.load(f)
+            addr = ipaddress.ip_address(str(r.get("addr") or ""))
+        except (OSError, ValueError):
+            continue
+        link, project = str(r.get("if") or ""), str(r.get("project") or "")
+        if (addr in net and re.fullmatch(r"bbs\d{1,5}", link) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", project)
+                and os.path.exists(f"/sys/class/net/{link}")):
+            out.append({"addr": str(addr), "if": link, "project": project})
+    return out
+
+
+def sessnet_containers():
+    """Every running container here: its name, its compose project and its
+    addresses on Docker's networks. One ps and one inspect."""
+    ids = _run([DOCKER_BIN, "ps", "-q"], timeout=15).split()
+    if not ids or not all(re.fullmatch(r"[0-9a-f]{6,64}", i) for i in ids):
+        return []
+    try:
+        p = subprocess.run([DOCKER_BIN, "inspect", *ids[:500]], capture_output=True, text=True,
+                           timeout=30, check=False)
+        rows = json.loads(p.stdout or "[]")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return []
+    out = []
+    for c in rows if isinstance(rows, list) else []:
+        labels = (c.get("Config") or {}).get("Labels") or {}
+        nets = (c.get("NetworkSettings") or {}).get("Networks") or {}
+        ips = set()
+        for n in nets.values():
+            with contextlib.suppress(ValueError):
+                if isinstance(n, dict) and n.get("IPAddress"):
+                    ips.add(str(ipaddress.IPv4Address(str(n["IPAddress"]))))
+        out.append({"name": str(c.get("Name") or "").lstrip("/"),
+                    "compose": str(labels.get("com.docker.compose.project") or ""),
+                    "ips": sorted(ips)})
+    return out
+
+
+def sessnet_pairs(sessions, own, containers):
+    """(session address, container address) for every session and every
+    container its project owns here: by compose project for an instance
+    BuilderBot runs, by name for one the operator gave the project."""
+    addrs = {}
+    for project, o in (own or {}).items():
+        if not isinstance(o, dict):
+            continue
+        comp = {str(x) for x in o.get("compose") or [] if x}
+        names = {str(x) for x in o.get("names") or [] if x}
+        addrs[project] = {ip for c in containers if c["compose"] in comp or c["name"] in names
+                          for ip in c["ips"]}
+    return sorted({(s["addr"], ip) for s in sessions for ip in addrs.get(s["project"], ())})
+
+
+def sessnet_ctl(url):
+    """The controller's IPv4 addresses and port, which every session reaches."""
+    u = urllib.parse.urlsplit(url or "")
+    if not u.hostname:
+        return []
+    port = u.port or (443 if u.scheme == "https" else 80)
+    try:
+        infos = socket.getaddrinfo(u.hostname, port, socket.AF_INET, socket.SOCK_STREAM)
+    except OSError:
+        return []
+    return sorted({(i[4][0], port) for i in infos})
+
+
+# The three rules in Docker's DOCKER-USER that let a session's traffic past
+# Docker's forwarding, in this order: replies back in, what the table marked
+# on its way out, and nothing else from a session.
+DOCKER_USER_RULES = (
+    ["-o", "bbs+", "-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "ACCEPT"],
+    ["-i", "bbs+", "-m", "mark", "--mark", f"{SESSNET_MARK:#x}/{SESSNET_MARK:#x}", "-j", "ACCEPT"],
+    ["-i", "bbs+", "-j", "DROP"],
+)
+
+
+def docker_user(on):
+    """Put the three rules in DOCKER-USER, or take them out. Where Docker is
+    not running there is no such chain and nothing to do. Any of ours out of
+    place and they all go and come back in order, since a drop that lands
+    first would cut every session off."""
+    if not _have(IPTABLES_BIN):
+        return ""
+    ipt = [IPTABLES_BIN, "-w", "5"]
+    listing = subprocess.run(ipt + ["-S", "DOCKER-USER"], capture_output=True, text=True, timeout=15, check=False)
+    if listing.returncode:
+        return ""
+    ours = [ln for ln in listing.stdout.splitlines() if "bbs+" in ln]
+
+    def kind(ln):
+        if "-o bbs+" in ln and "conntrack" in ln and "ACCEPT" in ln:
+            return 1
+        if "-i bbs+" in ln and "--mark" in ln and "ACCEPT" in ln:
+            return 2
+        return 3 if "-i bbs+" in ln and "DROP" in ln else 0
+    if on and [kind(ln) for ln in ours] == [1, 2, 3]:
+        return ""
+    if not on and not ours:
+        return ""
+    for rule in DOCKER_USER_RULES:
+        while subprocess.run(ipt + ["-C", "DOCKER-USER", *rule], capture_output=True, timeout=15,
+                             check=False).returncode == 0:
+            subprocess.run(ipt + ["-D", "DOCKER-USER", *rule], capture_output=True, timeout=15, check=False)
+    if on:
+        for rule in reversed(DOCKER_USER_RULES):
+            r = subprocess.run(ipt + ["-I", "DOCKER-USER", "1", *rule], capture_output=True, text=True,
+                               timeout=15, check=False)
+            if r.returncode:
+                return (r.stderr or r.stdout).strip()[:200] or "iptables refused a rule"
+    return ""
 
 
 def extract_sandbox_tool(text):
@@ -1385,6 +1731,9 @@ def census(state):
         "administers": os.geteuid() == 0 and os.access(SANDBOX_BIN, os.X_OK),
         # Whether a session here sees only its own project (R35).
         "isolation": isolation_now(),
+        # ...and reaches only its own project's containers (R79), as the
+        # thread that keeps it last found it; absent before it has looked.
+        "session_net": dict(SESSNET_STATUS),
         "mounts": mounts_now(),
         "network": network_now(),
         # Which of the machine's own tools a system job would go through.
@@ -2708,6 +3057,177 @@ class Job(threading.Thread):
             pass
 
 
+class SessionNet:
+    """Each session kept to its own project's network, where the controller
+    asks for it and this node can (R79). A thread of its own: a session that
+    has just started should reach its own containers within seconds, and the
+    main loop turns over once a long-poll.
+
+    The order is what keeps it closed. On: the table, then Docker's rules,
+    the resolver file and the sets, and last the ready mark. The layout file
+    says on as soon as it is wanted and this node can; bb-session then starts
+    a session only while the mark is there, so one started before the rules
+    are is refused and pointed at the row, never given the node's network.
+    Off: the layout file first, so no new session gets a namespace; the rules
+    stay while a session that has one is alive, since without them it has no
+    network at all, and go with the last."""
+
+    def __init__(self, agent):
+        self.agent = agent
+        self.can = (False, "")
+        self.can_at = 0.0
+        self.containers = []
+        self.containers_at = 0.0
+        self.seen = None              # the sessions as last read, to notice a new one
+        self.filled = None            # the sets as last written
+        self.docker_at = 0.0          # when Docker's rules were last checked
+        self.ctl = []                 # the controller's addresses as last resolved
+        self.ctl_at = 0.0
+        self.empty_since = None       # when the last session with a network ended
+        self.up = False               # the table and Docker's rules are in place
+        # The layout file says on. Started from what was wanted before this
+        # process, so a restart does not write it off for the seconds before
+        # the first look, when a session starting would get the node's
+        # network; the ready mark decides whether that session starts.
+        self.conf_on = self.wanted()
+        self.said = ""
+
+    def start(self):
+        threading.Thread(target=self.run, name="sessnet", daemon=True).start()
+
+    def run(self):
+        while True:
+            try:
+                self.step()
+            except Exception as e:                                # noqa: BLE001
+                self.say(f"session network: {e}")
+            time.sleep(2)
+
+    def say(self, text):
+        if text != self.said:
+            self.said = text
+            if text:
+                log(text)
+
+    def wanted(self):
+        return bool((self.agent.state.get("session_net") or {}).get("on"))
+
+    def step(self):
+        now = time.time()
+        if now - self.can_at > 60:
+            self.can, self.can_at = sessnet_can(), now
+        want, (can, why) = self.wanted(), self.can
+        sessions = sessnet_sessions()
+        self.empty_since = None if sessions else (self.empty_since or now)
+        error = ""
+        if (want and can) or (sessions and self.up):
+            error = self.keep(sessions, now)
+        elif self.up and not want and now - self.empty_since > 30:
+            # Off, and no session has had a network for half a minute: one
+            # that has passed bb-session's check is still making its link,
+            # and its file is not there to be counted yet.
+            error = self.down()
+        elif want and not can:
+            # Wanted and not possible: closed, not open. The layout file
+            # stays on, so bb-session refuses to start a session rather than
+            # giving it the node's network, and the row says why.
+            error = why
+        if error:
+            # Without the mark bb-session starts no session here while the
+            # layout file says on, and says to look at the row.
+            with contextlib.suppress(OSError):
+                os.unlink(os.path.join(SESSNET_DIR, "ready"))
+        self.say(f"session network: {error}" if error and error != why else "")
+        if want != self.conf_on:
+            self.conf_on = want
+            self.agent.refresh_session_tool()
+            log(f"session network: {'on: each session started here gets a network of its own' if want else 'off for sessions started from now'}")
+        now_is = {"can": can, "why": why, "wanted": want, "active": want and can and self.up and not error,
+                  "sessions": len(sessions), "error": error if error != why else ""}
+        # The census rides hello, every ten minutes: a change here is said
+        # at the main loop's next turn instead, or the row would show the
+        # answer from before the switch for ten minutes. The count of
+        # sessions is not a change worth a hello.
+        if {k: v for k, v in now_is.items() if k != "sessions"} != \
+                {k: v for k, v in SESSNET_STATUS.items() if k != "sessions"}:
+            self.agent.hello_at = 0
+        # Updated, never cleared: the census copies it from another thread,
+        # and every key is written every time, so a copy is always whole.
+        SESSNET_STATUS.update(now_is)
+
+    def keep(self, sessions, now):
+        """The table and what it needs, then the sets as they are now."""
+        if not self.up:
+            os.makedirs(SESSNET_DIR, mode=0o755, exist_ok=True)
+            os.chmod(SESSNET_DIR, 0o755)
+            p = subprocess.run([NFT_BIN, "-f", "-"], input=f"table inet {SESSNET_TABLE}\n"
+                               f"delete table inet {SESSNET_TABLE}\n" + sessnet_table(),
+                               capture_output=True, text=True, timeout=30, check=False)
+            if p.returncode:
+                return f"nft refused the table: {(p.stderr or p.stdout).strip()[:200]}"
+            bad = docker_user(True)
+            if bad:
+                return f"Docker's forwarding would not take the rules: {bad}"
+            self.up, self.filled, self.docker_at = True, None, now
+        elif subprocess.run([NFT_BIN, "list", "table", "inet", SESSNET_TABLE], capture_output=True,
+                            timeout=15, check=False).returncode:
+            # Gone from under us (a flush, a firewall reload): put back next turn.
+            self.up = False
+            return "the table was gone and is being put back"
+        elif now - self.docker_at > 30:
+            # Docker's rules likewise: a Docker restart or a flush takes them,
+            # and without them a session reaches no container (closed, not
+            # open). Looked at every half minute; put back when out of place.
+            self.docker_at = now
+            bad = docker_user(True)
+            if bad:
+                return f"Docker's forwarding would not take the rules back: {bad}"
+        ns, search = sessnet_resolvers()
+        _write_root(os.path.join(SESSNET_DIR, "resolv.conf"), sessnet_resolv_text(ns, search))
+        if sessions != self.seen or now - self.containers_at > 10:
+            self.containers, self.containers_at, self.seen = sessnet_containers(), now, sessions
+        own = (self.agent.state.get("session_net") or {}).get("own") or {}
+        # The controller's address, resolved once a minute and kept when a
+        # resolver fails to answer: an empty set would cut every session off
+        # from it until the next answer.
+        if now - self.ctl_at > 60:
+            self.ctl_at = now
+            self.ctl = sessnet_ctl(self.agent.state.get("controller") or "") or self.ctl
+        fill = sessnet_fill(self.ctl, ns, sessnet_pairs(sessions, own, self.containers))
+        if fill != self.filled:
+            p = subprocess.run([NFT_BIN, "-f", "-"], input=fill, capture_output=True, text=True,
+                               timeout=30, check=False)
+            if p.returncode:
+                return f"nft refused the sets: {(p.stderr or p.stdout).strip()[:200]}"
+            self.filled = fill
+        _write_root(os.path.join(SESSNET_DIR, "ready"), f"{SESSNET_TABLE}\n")
+        return ""
+
+    def down(self):
+        with contextlib.suppress(OSError):
+            os.unlink(os.path.join(SESSNET_DIR, "ready"))
+        bad = docker_user(False)
+        subprocess.run([NFT_BIN, "delete", "table", "inet", SESSNET_TABLE], capture_output=True,
+                       timeout=30, check=False)
+        self.up, self.filled = False, None
+        return f"Docker's forwarding kept a rule: {bad}" if bad else ""
+
+
+def _write_root(path, text):
+    """A small file of ours, root's and readable by all, written when it differs."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            if f.read() == text:
+                return
+    except OSError:
+        pass
+    tmp = path + ".new"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
 class Agent:
     def __init__(self, state):
         self.state = state
@@ -2729,6 +3249,8 @@ class Agent:
         self.session_bound = ""           # the address the ttyds were bound to, to notice it moving
         self.session_mount = None         # (mounted, writable) as the last census said, to notice it moving
         self.fw_checked = 0.0             # when the session ports' firewall rule was last checked
+        self.tool_lock = threading.Lock()  # the session tool's files, written from two threads
+        self.sessnet = SessionNet(self)    # each session kept to its own project's network (R79)
         # The runner as a child of this process where there is no systemd:
         # run.sh in the foreground, supervised here.
         self.runner_procs = {}            # runner directory -> its process
@@ -2856,6 +3378,15 @@ class Agent:
             # anything for one that leaked. So the machine the session is on
             # keeps it, on the beat it already has.
             self.keep_session_tokens(r.get("session_tokens") or [])
+            # Whether each session here is kept to its own project's network,
+            # and what each project owns here (R79), kept in node.json so it
+            # holds while the controller is down. Only replaced when the
+            # controller sends it: an older one says nothing.
+            sn = r.get("session_net")
+            if isinstance(sn, dict) and sn != self.state.get("session_net"):
+                self.state["session_net"] = {"on": bool(sn.get("on")),
+                                             "own": sn.get("own") if isinstance(sn.get("own"), dict) else {}}
+                save_state(self.state)
             n = r.get("node") or {}
             # The row's capabilities are the controller's claim; the ones
             # this node ENFORCES are the ones it enrolled with, kept in
@@ -2989,6 +3520,7 @@ class Agent:
         self.refresh_session_tool()
         self.quiet_distro_ttyd()
         self.session_try()
+        self.sessnet.start()
         while True:
             if time.time() - self.hello_at > 600:
                 self.refresh_session_tool()
@@ -4410,6 +4942,10 @@ class Agent:
         visudo before it replaces anything, since a broken file under
         sudoers.d takes sudo away from every account on the machine; and it is
         written beside its final name with a dot in it, which sudo skips."""
+        with self.tool_lock:
+            self._refresh_session_tool()
+
+    def _refresh_session_tool(self):
         user = self.session_account()
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not user:
             return
@@ -4422,7 +4958,7 @@ class Agent:
             return
         wrote = []
         for path, text, mode, sudoers in ((SESSION_BIN, tool, 0o755, False),
-                                          (SESSION_CONF, session_conf(self.state, user), 0o644, False),
+                                          (SESSION_CONF, session_conf(self.state, user, self.sessnet.conf_on), 0o644, False),
                                           (SESSION_SUDOERS, session_sudoers(user), 0o440, True)):
             try:
                 with open(path, encoding="utf-8") as f:

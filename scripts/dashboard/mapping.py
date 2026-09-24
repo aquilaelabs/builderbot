@@ -58,7 +58,7 @@ def _build(name):
     dest = WORKSPACE / name
     files, error = 0, ""
     try:
-        exclude(dest)
+        # The build keeps .bb-map/ out of git itself (codemap.exclude).
         # A test-only pause, so a suite can see the gate up: the build of a
         # fixture project is over in a tenth of a second otherwise.
         slow = float(os.environ.get("BB_MAP_SLOW") or 0)
@@ -87,22 +87,17 @@ def _build(name):
 
 
 def exclude(dest):
-    """`.bb-map/` into the repository's own exclude file, once. Not the
-    project's .gitignore, which is the project's to write. Also called when
-    the Git view's Init makes a repository, since a map built before there
-    was one excluded nothing and went into the first commit."""
-    info = dest / ".git" / "info"
+    """`.bb-map/` out of git for a project whose repository was just made:
+    the Git view's Init, since a map built before there was a repository
+    had nothing to write the line into and went into the first commit. The
+    map's own `exclude` verb, which every build also runs (codemap.exclude),
+    so there is one place that knows how."""
+    if not CODEMAP:
+        return
     try:
-        if not (dest / ".git").is_dir():
-            return
-        info.mkdir(exist_ok=True)
-        f = info / "exclude"
-        have = f.read_text() if f.exists() else ""
-        if ".bb-map/" in have.split("\n"):
-            return
-        with open(f, "a") as fh:
-            fh.write(("" if have.endswith("\n") or not have else "\n") + ".bb-map/\n")
-    except OSError:
+        subprocess.run([sys.executable, str(CODEMAP), "--root", str(dest), "exclude"],
+                       capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
         pass                     # the map still builds; only the exclude is lost
 
 

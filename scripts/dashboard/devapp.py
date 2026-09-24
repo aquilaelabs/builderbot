@@ -3063,6 +3063,24 @@ def set_owner(project, instance, owner):
     return {"ok": True, "owner": owner}
 
 
+def session_net_own(node_id):
+    """What each project owns on `node_id`, for its agent to keep each session
+    to its own project's network (R79): the compose projects of the instances
+    bound there, under the project each belongs to, and the containers the
+    operator gave a project there, by name. {project: {"compose", "names"}}.
+    The project a container belongs to is the Docker tab's: the same answer
+    decides whose sessions may work on it and whose may reach it."""
+    out = {}
+    for project, insts in _load().items():
+        for inst, rec in insts.items():
+            owner = owner_of(project, inst, rec)
+            if owner and _instance_node(project, inst) == node_id:
+                out.setdefault(owner, {"compose": set(), "names": set()})["compose"].add(_pname(project, inst))
+    for name, owner in (_owners().get(node_id) or {}).items():
+        out.setdefault(owner, {"compose": set(), "names": set()})["names"].add(name)
+    return {p: {k: sorted(v) for k, v in o.items()} for p, o in sorted(out.items())}
+
+
 def row_named(name):
     """(project, instance) of the instance or written container the Docker
     tab lists as `name`, or None. How a session names one that is not its
@@ -3691,11 +3709,14 @@ def wiring(cfg):
     the value compose arrived at and not the spelling. Both spellings of each
     are handled for the same reason _binds does it: depending on one shape of
     somebody else's JSON is how a reader quietly stops reading.
+
+    Each line carries its service: a stack's ports in one list could not be
+    told apart, which container answers on which (B252).
     """
     if cfg is None:
         return {"ports": [], "mounts": []}
     ports, mounts = [], []
-    for _name, sv in sorted(_services(cfg).items()):
+    for name, sv in sorted(_services(cfg).items()):
         for p in sv.get("ports") or []:
             pub = tgt = proto = ""
             if isinstance(p, dict):
@@ -3709,7 +3730,7 @@ def wiring(cfg):
                 tgt = bits[-1]
                 pub = bits[-2] if len(bits) > 1 else ""
             if tgt:
-                ports.append({"target": tgt, "published": pub,
+                ports.append({"service": name, "target": tgt, "published": pub,
                               "proto": (proto or "tcp").upper()})
         for v in sv.get("volumes") or []:
             src = tgt = ""
@@ -3727,7 +3748,7 @@ def wiring(cfg):
                 src, tgt = bits[0], bits[1]
                 ro = len(bits) > 2 and "ro" in bits[2].split(",")
             if src and tgt:
-                mounts.append({"target": tgt, "source": src, "ro": ro})
+                mounts.append({"service": name, "target": tgt, "source": src, "ro": ro})
     return {"ports": ports, "mounts": mounts}
 
 
@@ -3753,8 +3774,22 @@ def _risk_gate(project, instance=MAIN, ack=""):
             _rec(store, project, instance)["risks_ack"] = d
             write_json(FILE, store)
         return ""
+    # With the way past it, which a session met this without: a person
+    # acknowledges the list where it is shown, once, and it holds until the
+    # compose asks for more. Taking the risky lines out of the compose is
+    # the move the bare refusal suggested, and it broke the container it was
+    # for (24 Sep, a PUID/PGID image that needs CHOWN and SETUID).
     return ("this compose asks for more than its own directory: "
-            + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else ""))
+            + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else "")
+            + ". A person acknowledges that once by pressing Build or Rebuild on its row "
+              "on the Docker tab, where the list is shown; after that a rebuild from a "
+              "session works until the compose asks for more")
+
+
+def unacked_risks(project, instance=MAIN):
+    """The risk gate's refusal for this instance as things stand, or "": the
+    gate itself, asked without an acknowledgement, so nothing is written."""
+    return _risk_gate(project, instance, "")
 
 
 def _running(project, instance=MAIN):
@@ -4306,6 +4341,15 @@ def act(project, instance, action, req, *, test_cmd=""):
             w = write_env(project, req["text"], r["instance"])
             if w.get("error"):
                 return r | {"error": w["error"]}, 400
+        if not r.get("error"):
+            # Said now rather than at the first rebuild: a compose that asks
+            # for more than its own directory cannot be built until a person
+            # has acknowledged it, and "rebuild builds it" was untrue (24 Sep).
+            # After the env, which a path in the compose can come from.
+            with contextlib.suppress(Exception):
+                why = unacked_risks(project, r["instance"])
+                if why:
+                    r["needs_ack"] = why
         return r, (400 if r.get("error") else 200)
     if instance not in instances(project):
         return {"error": f"no instance {instance} of {project}"}, 400

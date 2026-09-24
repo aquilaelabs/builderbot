@@ -36,6 +36,12 @@
 - An administrator sees every account's sessions on a project at the foot of its settings and can end one; keys and typing in another person's session stay theirs (42066ab)
 - Every container on the Docker tab has a Project setting, one project or none: only that project's Claude sessions can see it, and they work on it as the project's Run its container setting allows. The project's notebook lists it too (5a89323)
 - A session lists its project's containers with bb devapp ls, reads one's log with bb devapp log NAME, and starts, stops or restarts one with bb devapp start, stop or restart NAME (5a89323)
+- bb report: a session on any project reports a problem with BuilderBot itself there instead of in its own tracker, as a shipped rule says, and BuilderBot's own sessions read and answer the reports in bb diag reports (4408f62)
+- Claude may: Report BuilderBot bugs, in a project's settings, turns bb report and the rule that points at it off for that project (0a991ed)
+- The logs section has a Diagnostics download: the controller's diagnostics as one JSON file, with the reports sessions made about BuilderBot (7d92273)
+- Controller settings has Clear reports, which deletes the bug reports sessions made about BuilderBot after saying how many are still unanswered (398c6cc)
+- A node can keep each Claude session to its own project's network: a switch in its Sessions section gives every session started there a network namespace from which it reaches the internet, the controller and its own project's containers, and nothing else on the node or the LAN (d264e76)
+- A session can remove its project's container under the same setting as rebuild: bb devapp remove, refused on deny, waiting for Allow on ask, done on auto; its env and data stay for a remake (1a6c98e)
 
 ### Changed
 
@@ -77,6 +83,8 @@
 - A session told its container's env is missing is told how to set it, and that the env is kept by BuilderBot rather than as a .env file in the project (5a89323)
 - Nostromo: the rings hold still behind the cards as they scroll, the cards are a little more see-through, and the tab side wears the same glass, its tab strip, pane bars and documents alike; a terminal keeps its solid ground (be4f2ba)
 - The Docker tab's project headings stand out: each is a band tinted and barred in the project's own colour, or the scheme's accent for one with none, with room above each group (20b0e23)
+- bb bug add on another project does not file a bug that names BuilderBot or a bb command: it says to use bb report, and --here files it anyway when it is the project's own (d46dfc9)
+- bb container new (bb container ask, as was) is under the project's Run its container setting: refused at deny, asked at ask, and at auto the project's own container on its own node is made and built at once; one for another project or another node is still asked (45c8a2f)
 
 ### Removed
 
@@ -137,6 +145,11 @@
 - A New container that compose refuses no longer shows on the Docker tab for a moment before it disappears (7c91cc9)
 - A run attached to a kept test fixture waits its turn like any other run, so the hand-back design check no longer runs beside a session's own suites and fails them both (7c91cc9)
 - bb tests preflight runs a changed suite by itself, rather than every suite that happens to name the same endpoint (be4f2ba)
+- bb map keeps its index out of git in every project it builds in, through the repository's own exclude file, where before only projects the dashboard created had that (f586e27)
+- bb devapp new says when a compose that asks for more than its own directory needs a person's acknowledgement before it can be built, and a session's refused rebuild names the way past it: Build or Rebuild once on its Docker row (785efb4)
+- The Docker tab says which container each port belongs to: Ports and mounts is grouped by service, and the ports line under Details and the route's port picker name the service (aff42ca)
+- On a node's row the session network switch is saved by the Sessions section's Save, not by the click, and a node that stops being able to isolate refuses new sessions instead of giving them its network; a controller or DNS server on the node itself is reachable from a session (aa11a12)
+- Allow on a session's env set writes the env and no longer rebuilds the container, and an ask that names no instance means the project's only one; Log in a project's notebook reads from the project's node; bb bug add reads bb however it is written (aa11a12)
 
 ### Security
 

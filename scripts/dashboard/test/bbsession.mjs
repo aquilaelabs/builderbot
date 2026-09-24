@@ -194,6 +194,40 @@ ok(bad.length === 0, `the plan refuses ${refusals.map(r => r[2]).join('; ')}${ba
      `...and a cache that is itself a link is refused, never left untrimmed with other projects' tokens in it (${refused.out.trim().slice(0, 60)})`);
 }
 
+// A network of its own (R79). Where the agent has turned it on, the view
+// also puts the agent's resolver file over the node's (whose resolver sits on
+// the node's loopback, out of a namespace of its own's reach) and covers the
+// agent's folder, which says which project every other session's address is.
+// Off, or with an older layout file, the plan is the one it always was.
+{
+  const netConf = join(L, 'bb-session-net.conf');
+  const withNet = (extra) => {
+    writeFileSync(netConf, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
+      `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `TOOLCHAINS_STORE=${pkg}`,
+      `RUNNER_DIR=${runner}`, `HIDE=${devdata}`, ...extra].join('\n') + '\n', { mode: 0o644 });
+    try {
+      return { code: 0, out: execFileSync(HELPER, ['plan', '--project', 'alpha', '--account', me, '--home', myHome,
+        '--cwd', join(ws, 'alpha')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, BB_SESSION_CONF: netConf } }) };
+    } catch (e) { return { code: e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; }
+  };
+  const on = withNet(['SESSION_NET=on', 'SESSION_NET_CIDR=10.231.0.0/16']);
+  const st = on.code === 0 ? JSON.parse(on.out) : [];
+  const at = (k, t) => st.findIndex(x => x[0] === k && x[x.length - 1] === t);
+  const resolv = at('bindfile', '/etc/resolv.conf'), hid = st.findIndex(x => x[0] === 'hide' && x[1] === '/run/bb-session-net');
+  ok(on.code === 0 && resolv > 0 && st[resolv][1] === '/run/bb-session-net/resolv.conf' && hid > resolv
+     && st[st.length - 1][0] === 'detach',
+     `with the session network on, the view takes the agent's resolver file and then covers the agent's folder (${JSON.stringify(st[resolv] || on.out.slice(0, 80))})`);
+  ok(!steps.some(x => x[0] === 'bindfile' || (x[0] === 'hide' && x[1] === '/run/bb-session-net')),
+     '...and without it, neither: a layout file from before the setting plans what it always did');
+  const badRange = withNet(['SESSION_NET=on', 'SESSION_NET_CIDR=10.231.0.0/30']);
+  ok(badRange.code === 2 && /not a range a session can be addressed from/.test(badRange.out),
+     `a range too small to address sessions from is refused rather than half used (${badRange.out.trim().slice(0, 70)})`);
+  const net = run('check-net');
+  ok(net.code === 2 && /runs as root/.test(net.out),
+     `check-net, the agent's question before it offers the setting, is root's (${net.out.trim().slice(0, 40)})`);
+}
+
 const asMe = run('enter', '--project', 'alpha', '--account', me, '--home', myHome, '--cwd', join(ws, 'alpha'),
                  '--env', join(myCache, 'project', 'alpha', 'session.env'), '--', 'true');
 const checked = run('check');

@@ -70,7 +70,8 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -f "$KEEPF" ]; then
                 die "another dashboard test run is going (pid $other, attached to the kept fixture, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago). One at a time on this box; wait for it, or set BB_TEST_CONCURRENT=1"
             fi
         fi
-        ( umask 000; mkdir -p "${ALOCK%/*}"; rm -f "$ALOCK"; printf '%s' "$$" > "$ALOCK" ) 2>/dev/null || true
+        ( umask 000; mkdir -p "${ALOCK%/*}"; rm -f "$ALOCK"; printf '%s' "$$" > "$ALOCK" ) 2>/dev/null \
+            || die "cannot take $ALOCK: $(stat -c %U "$ALOCK" 2>/dev/null || echo somebody)'s, and ${ALOCK%/*} is not world-writable; fix the directory's mode (chmod 0777) and re-run"
         trap '[ "$(cat "$ALOCK" 2>/dev/null)" = "$$" ] && rm -f "$ALOCK"' EXIT
         # the dashboard's page and scripts, as they are now
         cp "$HERE"/../*.js "$HERE"/../*.html "$KEEP_HERE/../" 2>/dev/null || true
@@ -742,6 +743,17 @@ case "$1" in
     for f in "$ST"/*.up; do
       [ -e "$f" ] || continue
       pn="$(basename "$f" .up)"
+      # A stack of more than one container, where a test lays one out in
+      # $pn.svcs: a line per published port, "SERVICE HOSTPORT TARGET",
+      # and one container per service carrying all of its lines (B252).
+      if [ -f "$ST/$pn.svcs" ]; then
+        for sv in $(awk '{print $1}' "$ST/$pn.svcs" | sort -u); do
+          pp="$(awk -v s="$sv" '$1 == s {printf "%s0.0.0.0:%s->%s/tcp", (n++ ? ", " : ""), $2, $3}' "$ST/$pn.svcs")"
+          printf '{"ID":"aaaa%s%s","Names":"%s-%s-1","Image":"%s-img","State":"running","Status":"Up 3 minutes","Ports":"%s","Labels":"com.docker.compose.project=%s,com.docker.compose.service=%s"}\n' \
+            "$pn" "$sv" "$pn" "$sv" "$pn" "$pp" "$pn" "$sv"
+        done
+        continue
+      fi
       printf '{"ID":"aaaa%s","Names":"%s-app-1","Image":"%s-img","State":"running","Status":"Up 3 minutes","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=%s,com.docker.compose.service=app"}\n' \
         "$pn" "$pn" "$pn" "$pn"
     done

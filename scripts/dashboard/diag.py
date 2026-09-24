@@ -35,11 +35,13 @@ settings = None           # the settings module
 nodes = None              # the node registry
 db = None                 # the store
 plugins = None            # plugins.py: each account's Claude plugins
+reports = None            # reports.py: problems with BuilderBot, from any project's session
 users = None              # the account store, for names
 log_dir = None            # () -> Path of the controller's logs
 IMAGE_LOG = Path(os.environ.get("BB_IMAGE_LOG", "/config/image-log.tsv"))
 
-SECTIONS = ("controller", "images", "settings", "doctor", "nodes", "plugins", "jobs", "errors", "audit")
+SECTIONS = ("controller", "images", "settings", "doctor", "nodes", "plugins", "jobs", "errors", "audit",
+            "reports")
 
 
 def configure(**deps):
@@ -202,9 +204,16 @@ def audit(n=30):
             for r in db.audit_tail(n)]
 
 
+def reports_now(n=40):
+    """What sessions on other projects have reported about BuilderBot and
+    nobody has filed or closed yet, newest first, when each was made. Their
+    words were redacted when they were stored."""
+    return [r | {"when": _ago(r.get("at"))} for r in reports.listing("open", n=n)]
+
+
 _BUILD = {"controller": controller, "images": images, "settings": settings_now,
           "doctor": doctor, "nodes": nodes_now, "plugins": plugins_now, "jobs": jobs, "errors": errors,
-          "audit": audit}
+          "audit": audit, "reports": reports_now}
 
 
 def report(sections=None):

@@ -93,6 +93,16 @@ by hand cost four commands and still could not see the failed builds.
   between runs, and its server is the kept copy's, so a change to the
   dashboard's python needs `bb tests keep stop` and a new keep; its `.js`
   and `.html` are copied over before every attached run.
+- **What other projects' sessions say about BuilderBot:** a session on any
+  other project reports a problem with BuilderBot itself with `bb report`,
+  never its own tracker (the shipped rule `report-builderbot`), and the
+  reports wait on the controller. This project turns it off in its settings
+  (Claude may: Report BuilderBot bugs), so its own problems go into its own
+  tracker as ever. `bb diag reports` lists the open ones;
+  `bb report file N` files one into this tracker as a bug (`--as B123` for
+  one this tracker already has) and `bb report close N "why"` answers one
+  that needs nothing. The session that reported it reads the outcome with
+  `bb report`, so the close's words are addressed to it.
 - **What the page is asking for:** `bb dashboard trace [SECONDS]` prints
   what the server was asked over that window, by endpoint and by who
   asked (browser, session, agent, the companion app), from a ring the
@@ -181,7 +191,7 @@ by hand cost four commands and still could not see the failed builds.
   what follows is the layout they refer to.
   - Two numbers move by machine and one by hand. `bb version` moves per
     commit; a file two builds may read carries a format it checks
-    (`.bb-map/map2.json`, `.bb-map/coverage.json`) and a reader that meets
+    (`.bb-map/map3.json`, `.bb-map/coverage.json`) and a reader that meets
     another rebuilds; and `AGENT_VERSION` in `scripts/agent/builderbot-agent.py`
     moves by hand, so `bb lint` fails when that file changes against the
     branch's base without its patch moving. A node compares the file and

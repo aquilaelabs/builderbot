@@ -448,14 +448,19 @@ bb devapp rebuild [--why "..."]
                    over: Claude may: Run its container, in its settings dialog and
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
-                   command waits for Allow) or auto. Up, Down, removing one and a
-                   container of any other shape stay the operator's
+                   command waits for Allow) or auto. Up, Down and a container of
+                   any other shape stay the operator's
 bb devapp new [--env FILE] [--why "..."]
                    create the project's container from its own compose file when it
                    has none, under the same setting; on ask, Allow creates, writes
                    the env and builds
+bb devapp remove [--why "..."]
+                   take the container out of the manager, under the same setting;
+                   its env and data stay for a remake, as the row's Remove leaves them
 bb devapp env [set FILE|-] [--why "..."]
-                   print the container's env, or replace it, under the same setting.
+                   print the container's env, or replace it, under the same setting;
+                   on ask, Allow writes it and builds nothing, since the card said
+                   env set, and the rebuild is the next ask.
                    BuilderBot keeps it per container, never as a file in the project,
                    and points a compose line `env_file: .env` at it when it runs
 bb devapp ls       every container that belongs to this project on its node
@@ -555,14 +560,18 @@ bb phone run --why "..." -- adb args...
                    and the dashboard runs it, so a session never touches the
                    handset itself
 bb container       what container asks are waiting on an administrator
-bb container ask --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
-                   ask for a container built from a compose file the session
-                   wrote: an administrator reads the file on the bell and
-                   allows or denies it, and Allow registers it through the
-                   Docker tab's own New container path and starts its build.
-                   A published image is a compose naming it; a repository
-                   with a Dockerfile is a compose with a build context on
-                   the projects share. Never a user's to approve
+bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
+                   a container built from a compose file the session wrote,
+                   under the project's *Claude may: Run its container*: refused
+                   at deny, asked at ask (an administrator reads the file on
+                   the bell, and Allow registers it through the Docker tab's own
+                   New container path and starts its build), and at auto made
+                   at once when it is this project's own on its own node; one
+                   for another project or another node is always asked. A
+                   published image is a compose naming it; a repository with a
+                   Dockerfile is a compose with a build context on the projects
+                   share. Never a user's to approve. `bb container ask` is its
+                   old name
 bb root            what root commands are waiting on an administrator
 bb root run --why "..." -- CMD...
                    ask for ONE command as root on this project's node: an
@@ -601,7 +610,26 @@ bb diag [--json] [SECTION...]
                    administrator's. A session reads it only while **debug
                    mode** is on, its node is ticked for **the controller's
                    diagnostics** on its Debug settings, and its account is an
-                   administrator's, so a tester on the same node never gets it
+                   administrator's, so a tester on the same node never gets it.
+                   Its `reports` section is what sessions on other projects
+                   reported about BuilderBot and nobody has answered yet
+bb report "..." [--area A] [--repro "..."]
+                   a problem with BuilderBot itself, from a session on any
+                   project: it waits on the controller for BuilderBot's own
+                   sessions rather than going into the project's tracker (the
+                   shipped rule `report-builderbot`), redacted like the
+                   diagnostics. `bb report` alone lists the project's reports
+                   and what became of each. A `bb bug add` whose words name
+                   BuilderBot or a `bb` command is not filed but sent here,
+                   unless `--here` says it is the project's own. *Claude may: Report
+                   BuilderBot bugs* in a project's settings turns all of it off
+                   for that project, rule and nudge included: BuilderBot's own
+                   project, whose tracker those bugs belong in, has it off
+bb report file N [--sev S] [--as BUG] | close N "why"
+                   answer a report, behind the diagnostics' gate: file it as a
+                   bug in this project's tracker through `bb bug add` (or mark
+                   it as one already there), or close it with the reason its
+                   session will read
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
@@ -667,7 +695,10 @@ markup draws, and which suite names each of those, so `who-calls
 loadDocker` or `draws .dmtab` is one call rather than a hunt. Built with
 nothing installed (python's own parser, a small scanner for the scripts),
 into `.bb-map/` beside the tree, rebuilt by itself when a source is newer.
-It is rough on purpose, braces not scope, and says so where it guesses.
+Every build keeps `.bb-map/` out of git through the repository's own
+exclude file, never the project's `.gitignore`, so a project's commits
+never carry the index. It is rough on purpose, braces not scope, and says
+so where it guesses.
 
 `bb shot` is the container's camera: one URL with an optional output file
 keeps the simple shape, several URLs share one browser and land in a
@@ -3497,9 +3528,38 @@ can gain privilege again. The agent installs the helper, its layout file and
 the sudo rule from the bundle, and reports on the node's Sessions section
 whether a view can be built and why not. A Mac, a guest machine or a
 container node, whose agent is not root, cannot, and says so there. The
-view is not a VM: the network and the kernel are shared, so a session can
-still reach another project's dev instance through its published ports.
+view is not a VM: the kernel is shared, and so is the network unless the
+node keeps each session to its own project's network (below).
 A workspace-root shell, which needs the `terminal` right, is not confined.
+
+**Each session on its own project's network (roadmap R79)** is a switch in a
+node's Sessions section, off by default. On, a session started there gets a
+network namespace of its own from `bb-session`: a veth pair to the node, an
+address from `10.231.0.0/16`, and a resolver file naming the node's upstream
+DNS servers. The agent keeps an nftables table (`builderbot_sessnet`) that
+judges everything leaving a session's link: the internet, the controller and
+the DNS servers pass, and so do the containers the session's project owns on
+that node (the project a container belongs to on the Docker tab, the same
+setting that says whose sessions may work on it); everything else that is not
+the internet (every other container, the node's own services, the LAN) is
+refused, and nothing, on the network or on the node itself, can open a
+connection into a session. Only those sessions are touched: every rule matches
+their links (`bbsN`) or their range, and everybody else's programs on the
+machine keep its network as it was. What passes is
+marked, and Docker's `DOCKER-USER` chain lets through only marked traffic
+from a session, so if the table ever disappears a session loses its network
+rather than gaining the node's. A session reaches its own containers at the
+node's address and published port, not at `localhost`, which is its own; the
+emulator it starts itself runs inside with it. Turning the switch on or off
+applies to sessions started afterwards; one started while it was on keeps
+its network until it ends. The row says, in red, when the switch is on and
+it is not in force: an agent that is not root, a firewalld or ufw firewall,
+no upstream DNS server, an older `bb-session`, or a node whose own network
+already uses `10.231.x.x` (a LAN, a VPN or a VM bridge), which a session's
+address would hide from everything on the machine. When setting it up fails,
+no session starts on that node until it works or the switch is turned off.
+A container in Docker's host network mode is not reachable from an isolated
+session, since it has no address of its own to allow.
 
 ### Push rights
 
@@ -4001,7 +4061,13 @@ through every value the keyboard passes, so typing `30` over `300` would have
 pruned at `3` in passing. Pressing it without changing anything is a
 crop-now, which is the other thing you sometimes want. The same menu
 downloads this session's logs as one file, or everything kept as a `.tar.gz`,
-and clears the kept generations without touching the ones being written.
+or the controller's **diagnostics** as one JSON file (what `bb diag` prints,
+the reports sessions made about BuilderBot among it, redacted and on the audit
+trail), and clears the kept generations without touching the ones being
+written. Below it, **Clear reports** deletes every report sessions made about
+BuilderBot, open ones included, after a confirmation that says how many nobody
+has answered; the numbers carry on, so a bug that names report #3 never meets a
+second one, and a session cannot clear them.
 
 Two deliberate omissions from *this session*. `ttyd.log` is the terminal
 server's connection churn (22,000 lines against 4KB of boot log on this box),
@@ -4155,6 +4221,7 @@ scripts/
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
     idle.py                      ending Claude sessions nobody has used for a while
     projsessions.py              every account's sessions on a project, and an administrator ending one
+    reports.py                   problems with BuilderBot reported by any project's session (bb report)
     doctor.py                    `bb doctor` run on a timer and cached, for the Doctor card
     runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
     findings.py                  the scanner's reports read and attributed, and what they used to say

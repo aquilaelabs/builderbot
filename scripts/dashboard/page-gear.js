@@ -161,6 +161,9 @@ function logSection(){
         <a class="btnish" href="/logs/download?what=archive" download
            title="every log kept, plus the archived CI runs, as a .tar.gz"
            >All logs</a>
+        <a class="btnish" href="/logs/download?what=diag" download
+           title="the controller's diagnostics as one file, with what sessions reported about BuilderBot"
+           >Diagnostics</a>
         <button type="button" id="logClear" class="danger"
            title="delete every kept log except this session's">Clear</button>
       </div>

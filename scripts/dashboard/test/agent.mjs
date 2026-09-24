@@ -568,6 +568,151 @@ print(json.dumps({
       ok(out.iso.sessions === false && /root/.test(out.iso.why),
          `an agent that is not root says its sessions are not kept to their project, and why (${out.iso.why})`);
     }
+    // Each session kept to its own project's network (R79). The halves that
+    // need no root, driven directly: the resolvers a session's namespace can
+    // reach, the layout file, the addresses each session may reach from what
+    // the controller says its project owns, the sets as one transaction, the
+    // files bb-session leaves, and Docker's three rules, in their order.
+    {
+      const sn = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+def f(name, text):
+    p = os.path.join(d, name); open(p, 'w').write(text); return p
+stub = f('stub', 'nameserver 127.0.0.53\\noptions edns0\\n')
+up = f('up', 'nameserver 127.0.0.53\\nnameserver fe80::1\\nnameserver 192.168.1.1\\nsearch lan\\n')
+sessions = [{'addr': '10.231.0.2', 'if': 'bbs0', 'project': 'alpha'}, {'addr': '10.231.0.6', 'if': 'bbs1', 'project': 'beta'}]
+containers = [{'name': 'alpha-app-1', 'compose': 'alpha', 'ips': ['172.18.0.2']},
+              {'name': 'plex', 'compose': '', 'ips': ['172.19.0.5']},
+              {'name': 'beta-db-1', 'compose': 'beta', 'ips': ['172.20.0.3']},
+              {'name': 'stranger', 'compose': 'other', 'ips': ['172.21.0.9']}]
+own = {'alpha': {'compose': ['alpha'], 'names': ['plex']}, 'beta': {'compose': ['beta'], 'names': []}}
+pairs = m.sessnet_pairs(sessions, own, containers)
+# The files bb-session leaves: one live, one whose link is gone, one malformed.
+reg = tempfile.mkdtemp()
+open(os.path.join(reg, 's0.json'), 'w').write(json.dumps({'project': 'alpha', 'addr': '10.231.0.2', 'if': 'bbs0'}))
+open(os.path.join(reg, 's1.json'), 'w').write(json.dumps({'project': 'beta', 'addr': '10.231.0.6', 'if': 'bbs1'}))
+open(os.path.join(reg, 's2.json'), 'w').write(json.dumps({'project': 'x;id', 'addr': '10.231.0.10', 'if': 'bbs2'}))
+real = m.os.path.exists
+m.os.path.exists = lambda p: p in ('/sys/class/net/bbs0', '/sys/class/net/bbs2') or real(p)
+live = m.sessnet_sessions(reg)
+m.os.path.exists = real
+# Docker's rules, against an iptables that records what it was asked and
+# answers -S from what it holds: none, the right three, and a drop alone.
+class Ipt:
+    def __init__(self, held): self.held, self.asked = list(held), []
+    def __call__(self, argv, **k):
+        a = argv[3:]; self.asked.append(a)
+        class R: returncode = 0; stdout = ''; stderr = ''
+        if a[0] == '-S': R.stdout = '-N DOCKER-USER\\n' + ''.join('-A DOCKER-USER ' + ' '.join(r) + '\\n' for r in self.held)
+        elif a[0] == '-C': R.returncode = 0 if a[2:] in self.held else 1
+        elif a[0] == '-D': self.held.remove(a[2:])
+        elif a[0] == '-I': self.held.insert(int(a[2]) - 1, a[3:])
+        return R
+m._have = lambda b: True
+rules = [list(r) for r in m.DOCKER_USER_RULES]
+def order(held):
+    ipt = Ipt(held); m.subprocess.run = ipt; m.docker_user(True)
+    return [ipt.held, sum(1 for a in ipt.asked if a[0] in ('-I', '-D'))]
+fresh, kept, fixed = order([]), order(rules), order([rules[2]])
+off = Ipt(rules); m.subprocess.run = off; m.docker_user(False)
+print(json.dumps({
+  'ns': m.sessnet_resolvers((stub, up)), 'none': m.sessnet_resolvers((stub,)),
+  'resolv': m.sessnet_resolv_text(*m.sessnet_resolvers((stub, up))),
+  'on': m.session_conf({'stores': {}}, 'builder', True), 'off': m.session_conf({'stores': {}}, 'builder'),
+  'pairs': pairs,
+  'fill': m.sessnet_fill([('192.168.1.15', 7680)], ['192.168.1.1'], pairs),
+  'table': m.sessnet_table(), 'live': live,
+  'rules': rules, 'fresh': fresh, 'kept': kept, 'fixed': fixed, 'off': off.held,
+  # What the node's own network already has in the range: a LAN, a VPN or a
+  # VM bridge in 10.231.x.x, from ip -j; a session's own link does not count.
+  'clash': [m.sessnet_clash([{'ifname': 'eth0', 'addr_info': [{'family': 'inet', 'local': '192.168.1.18', 'prefixlen': 24}]},
+                             {'ifname': 'bbs3', 'addr_info': [{'family': 'inet', 'local': '10.231.0.13', 'prefixlen': 30}]}],
+                            [{'dst': 'default', 'dev': 'eth0'}, {'dst': '10.231.0.12/30', 'dev': 'bbs3'}]),
+            m.sessnet_clash([{'ifname': 'virbr0', 'addr_info': [{'family': 'inet', 'local': '10.231.4.1', 'prefixlen': 24}]}], []),
+            m.sessnet_clash([], [{'dst': '10.0.0.0/8', 'dev': 'tun0'}])]}))
+`], { encoding: 'utf8' }).trim().split('\n').pop());
+      ok(JSON.stringify(sn.ns) === JSON.stringify([['192.168.1.1'], 'lan']) && sn.none[0].length === 0
+         && /nameserver 192\.168\.1\.1\nsearch lan\n$/.test(sn.resolv),
+         `a session's resolvers are the node's upstream ones, IPv4 and off the loopback, and none when the node names only its loopback (${JSON.stringify(sn.ns)})`);
+      ok(/\nSESSION_NET=on\nSESSION_NET_CIDR=10\.231\.0\.0\/16\n$/.test(sn.on) && !/SESSION_NET/.test(sn.off),
+         '...the layout file says so only when it is on, and an older bb-session reads the file it always read');
+      ok(JSON.stringify(sn.pairs) === JSON.stringify([['10.231.0.2', '172.18.0.2'], ['10.231.0.2', '172.19.0.5'], ['10.231.0.6', '172.20.0.3']]),
+         `each session may reach its own project's containers, by compose project and by the name the operator gave, and no other (${JSON.stringify(sn.pairs)})`);
+      ok(/^flush set inet builderbot_sessnet ctl\nflush set inet builderbot_sessnet dns\nflush set inet builderbot_sessnet own\n/.test(sn.fill)
+         && sn.fill.includes('add element inet builderbot_sessnet own { 10.231.0.2 . 172.18.0.2, 10.231.0.2 . 172.19.0.5, 10.231.0.6 . 172.20.0.3 }')
+         && sn.fill.includes('ctl { 192.168.1.15 . 7680 }'),
+         '...written as one transaction that replaces the sets whole, the controller and the resolvers with them');
+      ok(/ip daddr @local reject/.test(sn.table) && /ip saddr \. ip daddr @own goto pass/.test(sn.table)
+         && sn.table.indexOf('@own goto pass') < sn.table.indexOf('@local reject')
+         && /meta mark set meta mark or 0x10000000 accept/.test(sn.table) && /oifname "bbs\*" drop/.test(sn.table)
+         && /iifname "bbs\*" reject/.test(sn.table) && /masquerade/.test(sn.table),
+         '...the table lets through what the sets name before it refuses the rest that is not the internet, marks what it passes, and lets nothing start a connection into a session or at the node');
+      ok(sn.live.length === 1 && sn.live[0].project === 'alpha',
+         `a session whose link is gone is over, and a file that names no real project is nobody's (${JSON.stringify(sn.live)})`);
+      ok(sn.clash[0] === '' && /10\.231\.4\.1\/24 on virbr0/.test(sn.clash[1]) && /a route to 10\.0\.0\.0\/8 on tun0/.test(sn.clash[2]),
+         `a node whose own network already uses the range is not offered it, and says which address or route (a VM bridge: ${sn.clash[1]}; a VPN: ${sn.clash[2]}), while a session's own link is no clash`);
+      ok(/chain output \{[^}]*oifname "bbs\*" meta l4proto \{ tcp, udp \} ct state new reject/.test(sn.table),
+         '...and nothing on the node itself, any account\'s program, opens a connection into a session either');
+      ok(/chain input \{[^}]*iifname "bbs\*" ip daddr \. tcp dport @ctl accept[^}]*@dns udp dport 53 accept/.test(sn.table)
+         && /ct original ip daddr \. ct original proto-dst @ctl goto pass/.test(sn.table),
+         '...while the controller and the resolvers are reached even on the node\'s own address, or behind a port Docker publishes on it');
+      // The thread that keeps it, one turn at a time against stubs: wanted
+      // and not possible is closed (the layout file stays on so bb-session
+      // refuses, the ready mark goes, the row hears why); wanted and
+      // possible writes the mark last; off with no session takes it down
+      // only after a half-minute grace.
+      const st = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile, time
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+m.SESSNET_DIR = tempfile.mkdtemp()
+ran = []
+class R: returncode = 0; stdout = ''; stderr = ''
+m.subprocess.run = lambda argv, **k: ran.append(argv[:3]) or R()
+m.docker_user = lambda on: ''
+m.sessnet_resolvers = lambda paths=None: (['192.168.1.1'], '')
+m.sessnet_containers = lambda: []
+m.sessnet_ctl = lambda url: [('192.168.1.15', 7680)]
+class A:
+    state = {'controller': 'http://192.168.1.15:7680', 'session_net': {'on': True, 'own': {}}}
+    hello_at = 1
+    refreshed = 0
+    def refresh_session_tool(self): self.refreshed += 1
+a = A(); sn = m.SessionNet(a)
+ready = os.path.join(m.SESSNET_DIR, 'ready')
+open(ready, 'w').write('x')
+m.sessnet_can = lambda: (False, 'the agent does not run as root here')
+m.sessnet_sessions = lambda d=None: []
+sn.step()
+cannot = {'conf_on': sn.conf_on, 'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS),
+          'conf': m.session_conf({'stores': {}}, 'builder', sn.conf_on)}
+m.sessnet_can = lambda: (True, ''); sn.can_at = 0
+sn.step()
+can = {'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS), 'nft': [r for r in ran if r[0] == m.NFT_BIN]}
+a.state['session_net'] = {'on': False, 'own': {}}
+sn.step()
+off1 = {'conf_on': sn.conf_on, 'up': sn.up, 'ready': os.path.exists(ready)}
+sn.empty_since -= 60
+sn.step()
+off2 = {'up': sn.up, 'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS)}
+print(json.dumps({'cannot': cannot, 'can': can, 'off1': off1, 'off2': off2, 'refreshed': a.refreshed}))
+`], { encoding: 'utf8' }).trim().split('\n').pop());
+      ok(st.cannot.conf_on === true && /SESSION_NET=on/.test(st.cannot.conf) && st.cannot.ready === false
+         && st.cannot.status.active === false && /root/.test(st.cannot.status.why),
+         `wanted and not possible is closed: the layout file says on so bb-session refuses, the ready mark is gone, and the row hears why (${JSON.stringify(st.cannot.status)})`);
+      ok(st.can.ready === true && st.can.status.active === true && st.can.nft.length >= 2,
+         `wanted and possible makes the table and the sets, and writes the mark last (${st.can.nft.length} nft calls)`);
+      ok(st.off1.conf_on === false && st.off1.up === true && st.off2.up === false && st.off2.ready === false
+         && st.refreshed === 1,
+         'off takes the layout file off at once and the table down only after a half-minute with no session, since one may still be making its link');
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      ok(same(sn.fresh[0], sn.rules) && same(sn.kept, [sn.rules, 0]) && same(sn.fixed[0], sn.rules) && sn.off.length === 0,
+         `Docker's forwarding gets its three rules in order (replies in, what the table marked, nothing else from a session), leaves them when they are right, puts a drop that stands alone back behind the other two, and takes all three away (${JSON.stringify(sn.fresh[0].map(r => r[r.length - 1]))})`);
+    }
     // ...and the ones before it do not pile up forever. One directory per
     // delivery, one delivery per commit that touches bb: 33 of them in four
     // days on the first node anybody looked at. Driven directly rather than
@@ -2607,6 +2752,47 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
        `the row shows the agent live, its numbers and the account jobs run as (${row.slice(0, 160)}…)`);
     ok(await page.$(`.nodestab .ndrow[data-node="${minted.id}"] [data-nd="revoke"]`) !== null,
        '...and offers Revoke, which an ssh node does not have');
+    // Each session kept to its own project's network (R79): a switch in the
+    // row's Sessions section, a draft until the section's Save (the rule
+    // apply-not-onchange: it wrote itself on the click at first, the
+    // operator, 24 Sep). The node hears it on its next poll and keeps it in
+    // node.json with what each project owns there, and says whether it can,
+    // which this agent, not root, cannot: said under the switch in red.
+    {
+      const sw = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="sessnet"]`;
+      const save = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd="turns"]`;
+      await page.waitForSelector(sw, { timeout: 15000 });
+      ok(!(await page.$eval(sw, e => e.checked)), 'the Sessions section offers the switch, off to begin with');
+      await page.click(sw);
+      await sleep(1500);
+      ok(!(await nodeById(minted.id)).config?.session_net && await page.$eval(sw, e => e.checked),
+         'ticking it writes nothing by itself, and the tick survives a repaint');
+      await page.click(save);
+      const kept = await until(() => {
+        const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
+        return st.session_net?.on === true ? st : null;
+      }, 30000, 500);
+      ok(kept && kept.session_net.own && typeof kept.session_net.own === 'object',
+         `the node hears it on its next poll and keeps it in node.json, with what each project owns there (${JSON.stringify(kept?.session_net).slice(0, 90)})`);
+      // The census that has heard the switch: the one before it already
+      // carries a reason, from the agent's first look, with wanted false.
+      // Said at the agent's next turn rather than its next ten-minute hello.
+      const said = await until(async () => {
+        const n = await nodeById(minted.id);
+        return n?.reported?.session_net?.wanted === true ? n.reported.session_net : null;
+      }, 45000, 500);
+      ok(said && said.can === false && said.wanted === true && /root/.test(said.why),
+         `...and says whether it can keep sessions there, and why not (${said?.why})`);
+      await page.waitForFunction(id => /Not in force: the agent does not run as root here/.test(
+        document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''), minted.id, { timeout: 30000 });
+      ok(await page.$$eval(`.nodestab .ndrow[data-node="${minted.id}"] .sub.bad`, es => es.some(e => /Not in force/.test(e.textContent))),
+         '...which the row says under the switch, in red');
+      await page.click(sw);
+      await page.click(save);
+      const cleared = await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).session_net?.on === false ? true : null,
+                                  30000, 500);
+      ok(cleared, '...and off, saved the same way, reaches the node the same way');
+    }
     // Enrolling is a dialog, like New project. It used to be a panel at the
     // foot of the tab, below everything about the machine you were looking at.
     await page.click('#ndEnroll');

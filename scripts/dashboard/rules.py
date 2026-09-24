@@ -72,6 +72,7 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
 import pending  # noqa: E402
+import prefs  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 write_json = None
@@ -166,6 +167,18 @@ BUILTIN = [
      "text": "What you notice goes on the record, not only in a reply: a bug"
              " with `bb bug add`, work worth doing with `bb roadmap add`. Tick"
              " items off as you finish them."},
+    # Where a problem with BuilderBot goes when it is met on another project
+    # (the operator, 24 Sep): its maintainers read reports in the
+    # diagnostics, and a project's tracker is for that project.
+    # In front of a project's sessions only while its settings leave Claude
+    # may: Report BuilderBot bugs on (effective(), below).
+    {"name": "report-builderbot",
+     "text": "A problem with BuilderBot itself (a `bb` command, the dashboard,"
+             " a node, this briefing) goes to `bb report \"what happened\""
+             " [--area A] [--repro \"...\"]`, which BuilderBot's maintainers"
+             " read, not to this project's tracker, which is for this project's"
+             " own bugs. `bb report` alone lists what became of this project's"
+             " reports."},
     {"name": "side-quests",
      "text": "A bug met mid-task is fixed only when your own change caused it"
              " or it blocks the work: the smallest fix, in its own commit, said"
@@ -257,7 +270,13 @@ def effective(project):
     marks already say that."""
     if project == GLOBAL:
         return globals_now()
-    return [r for r in globals_now() if not r.get("disabled")] + rules(project)
+    on = [r for r in globals_now() if not r.get("disabled")]
+    # The one shipped rule that follows a project setting: where the project
+    # has reporting BuilderBot bugs off (BuilderBot's own, whose tracker it
+    # is), its sessions are not sent to a verb that would refuse them.
+    if prefs.get(project).get("report") == "deny":
+        on = [r for r in on if r["name"] != "report-builderbot"]
+    return on + rules(project)
 
 
 def _clean(r, i):

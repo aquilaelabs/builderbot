@@ -42,6 +42,7 @@ function renderSettingsInto(i){
       <div class="grow">${logSection()
         || `<div class="sub">log settings arrive with the first poll…</div>`}</div>
     </div>
+    ${reportsSection()}
     <div class="row stack2">
       <div class="grow">${idleSection()}</div>
     </div>
@@ -76,6 +77,42 @@ function renderSettingsInto(i){
   if (nd) nd.onclick = openNodesTab;
   const rs = d.el.querySelector("#setReset");
   if (rs) rs.onclick = () => askReset(d.el);
+  const rc = d.el.querySelector("#setReportsClear");
+  if (rc) rc.onclick = () => clearReports(rc);
+}
+
+// What sessions on other projects reported about BuilderBot with bb report,
+// which the Diagnostics download under Logs carries. Counted on the press
+// rather than on the line: they arrive from sessions at any time, so a count
+// fetched when the tab opened would be stale by the time it was read.
+function reportsSection(){
+  return `<div class="row stack2">
+      <div class="grow">
+        <div class="name">BuilderBot bug reports</div>
+        <div class="sub">What sessions reported about BuilderBot with bb report. The Diagnostics download under Logs carries them.</div>
+        <div class="actbar"><button type="button" class="danger" id="setReportsClear">Clear reports</button></div>
+      </div>
+    </div>`;
+}
+
+async function clearReports(btn){
+  let c;
+  try{
+    c = await (await postJSON("/api/reports", {action: "count"})).json();
+  }catch{ return notify("could not count the reports", true); }
+  if (c.error) return notify(c.error, true);
+  if (!c.all) return notify("there are no reports to clear");
+  const s = c.all === 1 ? "" : "s";
+  if (!confirm(`Delete all ${c.all} report${s} sessions made about BuilderBot?`
+               + (c.open ? `\n\n${c.open} still open: nobody has filed or closed ${c.open === 1 ? "it" : "them"}.` : "")))
+    return;
+  busy(btn, "Clearing");
+  try{
+    const j = await (await postJSON("/api/reports", {action: "clear"})).json();
+    if (j.error) notify(j.error, true);
+    else notify(`cleared ${j.cleared} report${j.cleared === 1 ? "" : "s"}`);
+  }catch{ notify("could not clear the reports", true); }
+  unbusy(btn, "Clear reports");
 }
 
 // The settings that used to be environment variables (roadmap R29): what is

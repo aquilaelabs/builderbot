@@ -53,6 +53,11 @@ DEVBUILD_MODES = ("deny", "ask", "auto")
 # never in its dev instance, which is the default; inside the instance when
 # it is up and on the node otherwise; or inside it and nowhere else.
 TESTS_IN = ("node", "up", "only")
+# Whether this project's sessions report BuilderBot's own problems with
+# `bb report` (reports.py): on everywhere by default, and off where the
+# project IS BuilderBot, whose sessions file those in its own tracker (the
+# operator, 24 Sep). Two of the gates' words, since there is nothing to ask.
+REPORT_MODES = ("auto", "deny")
 # A colour for the project, worn by its notebook tab and its row so that
 # eight open notebooks can be told apart at a glance. Names, not hex: the
 # page maps each to a tone that sits on its palette, and a name survives a
@@ -252,7 +257,10 @@ def _clean(rec):
             # ...and the boolean a node's bb from before tests_in reads
             # (agent-compat): true for "only", the one meaning it ever had,
             # which is also how the file keeps "only".
-            "devtest": _tests_in(rec) == "only"}
+            "devtest": _tests_in(rec) == "only",
+            # Claude may: Report BuilderBot bugs. Off takes `bb report` and
+            # the rule that points at it away from this project's sessions.
+            "report": "deny" if rec.get("report") == "deny" else "auto"}
 
 
 def _tests_in(rec):
@@ -295,7 +303,7 @@ def all_projects(workspace=None):
 
 def set_prefs(project, node=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              devbuild=None, tests_in=None, color=None, workspace=None):
+              devbuild=None, tests_in=None, report=None, color=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -339,6 +347,10 @@ def set_prefs(project, node=None, build=None, test=None,
                 return {"error": f"devbuild is one of {', '.join(DEVBUILD_MODES)}, "
                                  f"not {devbuild}"}
             cur["devbuild"] = mode
+        if report is not None:
+            if report not in REPORT_MODES:
+                return {"error": f"report is one of {', '.join(REPORT_MODES)}, not {report}"}
+            cur["report"] = report
         if tests_in is not None:
             if tests_in not in TESTS_IN:
                 return {"error": f"tests_in is one of {', '.join(TESTS_IN)}, not {tests_in}"}
@@ -351,6 +363,7 @@ def set_prefs(project, node=None, build=None, test=None,
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
+                or cur["report"] != "auto"
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose; _clean puts the defaults
@@ -368,6 +381,8 @@ def set_prefs(project, node=None, build=None, test=None,
                 rec.pop("devtest", None)
             if cur["tests_in"] != "up":
                 rec.pop("tests_in", None)
+            if cur["report"] == "auto":
+                rec.pop("report", None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)
