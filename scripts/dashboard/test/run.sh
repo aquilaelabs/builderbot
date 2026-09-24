@@ -742,6 +742,17 @@ case "$1" in
     for f in "$ST"/*.up; do
       [ -e "$f" ] || continue
       pn="$(basename "$f" .up)"
+      # A stack of more than one container, where a test lays one out in
+      # $pn.svcs: a line per published port, "SERVICE HOSTPORT TARGET",
+      # and one container per service carrying all of its lines (B252).
+      if [ -f "$ST/$pn.svcs" ]; then
+        for sv in $(awk '{print $1}' "$ST/$pn.svcs" | sort -u); do
+          pp="$(awk -v s="$sv" '$1 == s {printf "%s0.0.0.0:%s->%s/tcp", (n++ ? ", " : ""), $2, $3}' "$ST/$pn.svcs")"
+          printf '{"ID":"aaaa%s%s","Names":"%s-%s-1","Image":"%s-img","State":"running","Status":"Up 3 minutes","Ports":"%s","Labels":"com.docker.compose.project=%s,com.docker.compose.service=%s"}\n' \
+            "$pn" "$sv" "$pn" "$sv" "$pn" "$pp" "$pn" "$sv"
+        done
+        continue
+      fi
       printf '{"ID":"aaaa%s","Names":"%s-app-1","Image":"%s-img","State":"running","Status":"Up 3 minutes","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=%s,com.docker.compose.service=app"}\n' \
         "$pn" "$pn" "$pn" "$pn"
     done

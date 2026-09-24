@@ -3691,11 +3691,14 @@ def wiring(cfg):
     the value compose arrived at and not the spelling. Both spellings of each
     are handled for the same reason _binds does it: depending on one shape of
     somebody else's JSON is how a reader quietly stops reading.
+
+    Each line carries its service: a stack's ports in one list could not be
+    told apart, which container answers on which (B252).
     """
     if cfg is None:
         return {"ports": [], "mounts": []}
     ports, mounts = [], []
-    for _name, sv in sorted(_services(cfg).items()):
+    for name, sv in sorted(_services(cfg).items()):
         for p in sv.get("ports") or []:
             pub = tgt = proto = ""
             if isinstance(p, dict):
@@ -3709,7 +3712,7 @@ def wiring(cfg):
                 tgt = bits[-1]
                 pub = bits[-2] if len(bits) > 1 else ""
             if tgt:
-                ports.append({"target": tgt, "published": pub,
+                ports.append({"service": name, "target": tgt, "published": pub,
                               "proto": (proto or "tcp").upper()})
         for v in sv.get("volumes") or []:
             src = tgt = ""
@@ -3727,7 +3730,7 @@ def wiring(cfg):
                 src, tgt = bits[0], bits[1]
                 ro = len(bits) > 2 and "ro" in bits[2].split(",")
             if src and tgt:
-                mounts.append({"target": tgt, "source": src, "ro": ro})
+                mounts.append({"service": name, "target": tgt, "source": src, "ro": ro})
     return {"ports": ports, "mounts": mounts}
 
 

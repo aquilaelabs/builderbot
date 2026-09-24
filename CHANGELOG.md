@@ -144,6 +144,7 @@
 - bb tests preflight runs a changed suite by itself, rather than every suite that happens to name the same endpoint (be4f2ba)
 - bb map keeps its index out of git in every project it builds in, through the repository's own exclude file, where before only projects the dashboard created had that (f586e27)
 - bb devapp new says when a compose that asks for more than its own directory needs a person's acknowledgement before it can be built, and a session's refused rebuild names the way past it: Build or Rebuild once on its Docker row (785efb4)
+- The Docker tab says which container each port belongs to: Ports and mounts is grouped by service, and the ports line under Details and the route's port picker name the service (aff42ca)
 
 ### Security
 

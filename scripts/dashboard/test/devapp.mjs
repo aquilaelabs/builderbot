@@ -1688,6 +1688,50 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
      === 'http://stub:7475/',
    'a published port is a link, to the machine its daemon runs on');
 
+// A stack of more than one container says whose each port is (B252, the
+// operator, 24 Sep: "it shows all the ports but I can't see which containers
+// they belong to"): the wiring grouped under each service, the ports line
+// under Details naming them, and the route's port picker too.
+{
+  const ST = `${DIR}/dockerstate`;
+  const wasUp = existsSync(`${ST}/ep-silon.up`);
+  writeFileSync(`${ST}/ep-silon.up`, '');
+  writeFileSync(`${ST}/ep-silon.svcs`, 'app 7475 7474\ngitea 3000 3000\ngitea 2222 22\n');
+  writeFileSync(`${ST}/ep-silon.config`, JSON.stringify({ services: {
+    app: { build: { context: '.' }, ports: [{ target: 7474, published: '7475', protocol: 'tcp' }],
+           volumes: [{ type: 'bind', source: '/mnt/user/appdata/x/config', target: '/config' }] },
+    gitea: { build: { context: '.' }, ports: [{ target: 3000, published: '3000', protocol: 'tcp' },
+                                             { target: 22, published: '2222', protocol: 'tcp' }] } } }));
+  await dmRefresh();
+  // It loads on opening, so a fold the page kept open is shut first.
+  if (await page.$eval(`${DM} details.sect`, d => d.open)) {
+    await page.click(`${DM} .sect > summary`);
+    await page.waitForFunction(sel => !document.querySelector(sel + ' details.sect').open, DM, { timeout: 10000 });
+  }
+  await page.click(`${DM} .sect > summary`);
+  await page.waitForFunction(sel => document.querySelectorAll(sel + ' .sect .wire .wgrp').length === 2, DM,
+                             { timeout: 20000 });
+  const groups = await page.$$eval(`${DM} .sect .wire .wgrp`, gs => gs.map(g => ({
+    name: g.querySelector('.wsvc')?.textContent,
+    ports: [...g.querySelectorAll('.wport')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+    mounts: g.querySelectorAll('.wmount').length })));
+  ok(groups[0].name === 'app' && groups[0].ports.length === 1 && /7474.*7475/.test(groups[0].ports[0])
+     && groups[0].mounts === 1 && groups[1].name === 'gitea' && groups[1].ports.length === 2 && groups[1].mounts === 0,
+     `a stack's Ports and mounts are grouped under each service (${JSON.stringify(groups)})`);
+  const line = await page.$eval(`${DM} .dmports`, e => e.textContent);
+  ok(/app: 7475->7474\/tcp/.test(line) && /gitea: 3000->3000\/tcp, 2222->22\/tcp/.test(line),
+     `...the ports line under Details names whose each is (${line.trim()})`);
+  const how = await page.$eval(`${DM} .dmsvcs`, e => e.textContent);
+  ok(!/->/.test(how), `...and the services list under it says only how each is (${how.trim()})`);
+  const opts = await page.$$eval(`${DM} select[data-route="port"] option`, os => os.map(o => o.textContent));
+  ok(opts.includes(':3000 gitea') && opts.includes(':2222 gitea') && opts.includes(':7475 app'),
+     `...and so does the route's port picker (${opts.join(' ')})`);
+  rmSync(`${ST}/ep-silon.svcs`, { force: true });
+  rmSync(`${ST}/ep-silon.config`, { force: true });
+  if (!wasUp) rmSync(`${ST}/ep-silon.up`, { force: true });
+  await dmRefresh();
+}
+
 // Where the row's state sits, asserted by geometry rather than by a
 // screenshot. It used to be a third column beside the name; it is the action
 // bar's status line now, which is the shared rule: what a thing is doing

@@ -351,6 +351,12 @@ function dmRouteLine(d){
   const dirty = (draft.mode != null && draft.mode !== r?.mode)
              || (draft.port != null && String(draft.port) !== String(r?.port ?? ""));
   if (!r || (!r.ports?.length && r.mode === "lan" && !r.url)) return "";
+  // Whose each published port is, for the picker, when the instance is more
+  // than one container (B252): a bare :3000 beside a bare :7680 said nothing.
+  const whose = {};
+  if ((d.services || []).length > 1)
+    for (const c of d.services) for (const e of c.ports || [])
+      whose[String(e).split("->")[0]] = c.service || c.name;
   const link = r.url
     ? `<a href="${esc(r.url)}" target="_blank" rel="noreferrer"${r.ready ? "" : ' class="dim"'}>${esc(r.url)}</a>`
     : `<span class="dim">no address</span>`;
@@ -362,7 +368,8 @@ function dmRouteLine(d){
       modes.map(([v, l]) => `<option value="${v}"${v === mode ? " selected" : ""}${
         v === "public" || (v === "funnel" && !r.funnel_ok) ? " disabled" : ""}>${esc(l)}</option>`).join("")}</select>${
     r.ports?.length > 1 ? `<select data-route="port" data-was="${esc(String(r.port))}" aria-label="port" title="which published port">${
-      r.ports.map(p => `<option value="${p}"${String(p) === port ? " selected" : ""}>:${p}</option>`).join("")}</select>` : ""}
+      r.ports.map(p => `<option value="${p}"${String(p) === port ? " selected" : ""}>:${p}${
+        whose[p] ? ` ${esc(whose[p])}` : ""}</option>`).join("")}</select>` : ""}
     <button type="button" data-routeapply${dirty ? "" : " disabled"} title="save the route">Apply</button></div>`;
 }
 
@@ -607,21 +614,30 @@ async function loadWire(d){
   try{
     const r = await postJSON("/api/devapp", {project, instance, action:"state"});
     const st = (await r.json()).state || {};
-    const lines =
-      (st.ports || []).map(p => {
-        const at = `${daemonHost()}:${p.published || ""}`;
-        // A link only where there is something to open: a port with no
-        // published side is picked at start and has no address yet, and a
-        // link to a udp port is a link to nothing.
-        const body = p.published && /tcp/i.test(p.proto || "tcp")
-          ? `<a href="http://${esc(at)}/" target="_blank" rel="noreferrer">${esc(at)}</a>`
-          : esc(p.published ? at : "picked at start");
-        return `<div class="dim li wport"><span class="wt">${esc(p.target)}:${
-          esc(p.proto)}</span> <span class="wa">←</span> ${body}</div>`;
-      }).join("")
-      + (st.mounts || []).map(m => `<div class="dim li wmount"><span class="wt">${
-        esc(m.target)}</span> <span class="wa">${m.ro ? "←" : "↔"}</span> ${
-        esc(m.source)}</div>`).join("");
+    const ports = st.ports || [], mounts = st.mounts || [];
+    const portLine = p => {
+      const at = `${daemonHost()}:${p.published || ""}`;
+      // A link only where there is something to open: a port with no
+      // published side is picked at start and has no address yet, and a
+      // link to a udp port is a link to nothing.
+      const body = p.published && /tcp/i.test(p.proto || "tcp")
+        ? `<a href="http://${esc(at)}/" target="_blank" rel="noreferrer">${esc(at)}</a>`
+        : esc(p.published ? at : "picked at start");
+      return `<div class="dim li wport"><span class="wt">${esc(p.target)}:${
+        esc(p.proto)}</span> <span class="wa">←</span> ${body}</div>`;
+    };
+    const mountLine = m => `<div class="dim li wmount"><span class="wt">${
+      esc(m.target)}</span> <span class="wa">${m.ro ? "←" : "↔"}</span> ${
+      esc(m.source)}</div>`;
+    // Which container each line is, when the compose has more than one: a
+    // stack's ports in one list could not be told apart (B252, the operator,
+    // 24 Sep). A group per service, headed by its name, in the same columns.
+    const svcs = [...new Set([...ports, ...mounts].map(x => x.service || ""))].sort();
+    const lines = svcs.length > 1
+      ? svcs.map(sv => `<div class="wgrp"><div class="lbl wsvc">${esc(sv)}</div>${
+          ports.filter(p => (p.service || "") === sv).map(portLine).join("")}${
+          mounts.filter(m => (m.service || "") === sv).map(mountLine).join("")}</div>`).join("")
+      : ports.map(portLine).join("") + mounts.map(mountLine).join("");
     html = lines || `<div class="dim li">it publishes nothing and mounts nothing</div>`;
   }catch(e){ html = `<div class="dim li bad">could not read it: ${esc(String(e))}</div>`; }
   if (!d.isConnected){
@@ -942,11 +958,15 @@ function dmRowsHtml(ins, job, blind){
              (d.services || []).length > 1 ? `${d.services.length} services` : ""]
               .filter(Boolean).join(" · ") || "settings"}</span></summary>
         ${d.ports.length ? `<div class="sub dmports">${
-          d.ports.map(esc).join(" · ")}</div>` : ""}
+          // Whose each port is, when the instance is more than one
+          // container (B252): the list below then says only how each is.
+          (d.services || []).length > 1
+            ? d.services.filter(c => (c.ports || []).length).map(c =>
+                `${esc(c.service || c.name)}: ${c.ports.map(esc).join(", ")}`).join(" · ")
+            : d.ports.map(esc).join(" · ")}</div>` : ""}
         ${(d.services || []).length > 1 ? `<div class="sub dmsvcs">${d.services.map(c =>
           `<span class="dmsvc ${c.state === "running" ? "ok" : finished(c) ? "" : "dim"}" title="${esc(c.image || "")}">${
-            esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}${
-            (c.ports || []).length ? ` (${c.ports.map(esc).join(", ")})` : ""}</span>`).join("<br>")}</div>` : ""}
+            esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${
           dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>

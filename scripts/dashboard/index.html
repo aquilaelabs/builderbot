@@ -2347,13 +2347,24 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      and a single column made the reader count lines to tell them apart. */
   .dmtab .sect .wire{display:grid;
     grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
-    column-gap:18px;align-items:start}
+    column-gap:18px;align-items:start;
+    /* dense: the first mount beside the first port, not the last */
+    grid-auto-flow:row dense}
   .dmtab .sect .wire > .wport {grid-column:1}
   .dmtab .sect .wire > .wmount{grid-column:2}
   /* Anything that is neither ("it publishes nothing", a read failure)
      is a sentence and spans. */
   .dmtab .sect .wire > .li:not(.wport):not(.wmount){grid-column:1 / -1}
+  /* A stack of more than one container: a group per service, each the same
+     two columns under its name (B252). */
+  .dmtab .sect .wire > .wgrp{grid-column:1 / -1;display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
+    column-gap:18px;align-items:start;grid-auto-flow:row dense}
+  .dmtab .sect .wgrp > .wport {grid-column:1}
+  .dmtab .sect .wgrp > .wmount{grid-column:2}
+  .dmtab .sect .wgrp > .wsvc{grid-column:1 / -1}
 }
+.wgrp + .wgrp{margin-top:6px}
 /* The wiring's own alignment, at every width: the container's side of the
    arrow is the part being looked up, so it gets the fixed column. */
 .wport .wt,.wmount .wt{display:inline-block;min-width:11ch}
