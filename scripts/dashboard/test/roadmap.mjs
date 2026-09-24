@@ -417,6 +417,14 @@ ok(read().projects.alpha.at(-1).text === 'rework the picker',
 const shelvedPrompt = execFileSync(BB, ['roadmap', '--prompt'],
   { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
+// A state dir this copy cannot write (a checkout's bb on a node, B228):
+// the list still prints and the exit is clean; marking it read is a
+// courtesy, not the point.
+const unwritable = execFileSync(BB, ['roadmap'],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: '/proc/bb-no-such-state',
+           WORKSPACE: `${DIR}/ws` }, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+ok(!/Traceback|PermissionError/.test(unwritable),
+   'bb roadmap on a state dir it cannot write prints the list and exits clean');
 ok(/Parked by the operator/.test(shelvedPrompt)
    && new RegExp(`- R${c1.id}  rework the picker`).test(shelvedPrompt),
    '...and a session is told it is parked, under a heading of its own, rather than left to wonder');

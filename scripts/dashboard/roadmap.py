@@ -1354,7 +1354,13 @@ def mark_seen(project, who, kind=None):
         # never match, so every prompt of every session would write the file
         # to record that nothing had changed.
         d.setdefault("read", {}).setdefault(project, {})[who] = int(time.time())
-        save(d)
+        # Reading is the act; recording it is a courtesy. A checkout's bb on
+        # a node runs this against a state dir it cannot write (B228), and a
+        # traceback over a list that was printed whole is the wrong answer.
+        try:
+            save(d)
+        except OSError:
+            pass
 
 
 def readers(project):
