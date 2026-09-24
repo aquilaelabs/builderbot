@@ -610,8 +610,11 @@ bb report "..." [--area A] [--repro "..."]
                    sessions rather than going into the project's tracker (the
                    shipped rule `report-builderbot`), redacted like the
                    diagnostics. `bb report` alone lists the project's reports
-                   and what became of each. A `bb bug add` in another project
-                   whose words name BuilderBot or a `bb` command says so
+                   and what became of each. A `bb bug add` whose words name
+                   BuilderBot or a `bb` command says so. *Claude may: Report
+                   BuilderBot bugs* in a project's settings turns all of it off
+                   for that project, rule and nudge included: BuilderBot's own
+                   project, whose tracker those bugs belong in, has it off
 bb report file N [--sev S] [--as BUG] | close N "why"
                    answer a report, behind the diagnostics' gate: file it as a
                    bug in this project's tracker through `bb bug add` (or mark

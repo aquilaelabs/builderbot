@@ -4715,6 +4715,7 @@ class Handler(BaseHTTPRequestHandler):
                             gate=req.get("gate"), gitpol=req.get("gitpol"),
                             devbuild=req.get("devbuild"),
                             tests_in=req.get("tests_in"),
+                            report=req.get("report"),
                             color=req.get("color"),
                             workspace=WORKSPACE)
         # ...and what is the ASKING ACCOUNT's rather than the project's: the
@@ -7437,6 +7438,10 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             if act == "mine":
                 return self._json({"reports": reports.listing(None, proj, n=30)})
+            if prefs.get(proj)["report"] == "deny":
+                return self._json({"error": f"reporting BuilderBot bugs is off for {proj}: its "
+                                            "settings, Claude may: Report BuilderBot bugs. A "
+                                            "problem goes into this project's tracker"}, 403)
             nid = prefs.get(proj)["node"]
             node = (nodes.node(nid) or {}).get("name", "") if nid and not NODES_OK else ""
             return self._result(reports.add(proj, req.get("text"), by=name, node=node,

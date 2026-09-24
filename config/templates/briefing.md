@@ -78,12 +78,6 @@ this prompt: the titles, so nothing has to be fetched to know what exists, and
 the detail behind one item is `bb roadmap show R4` or `bb bug show B7` when you
 pick it up. `bb <verb> -h` is the rest of any of them.
 
-Problems with BuilderBot itself have a place of their own, apart from this
-project's tracker: `bb report "what happened" [--area A] [--repro "..."]`
-sends one to the people maintaining BuilderBot, who read it in the
-controller's diagnostics, and `bb report` alone lists this project's reports
-and what became of each.
-
 ## Versions
 
 `bb version` is this project's identity; `bb version policy` says what you may

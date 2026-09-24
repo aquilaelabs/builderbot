@@ -3858,13 +3858,13 @@ elif op == "add":
     bail(r)
     # A bug that names BuilderBot, filed in another project's tracker, is
     # usually BuilderBot's, which is what bb report is for (the operator,
-    # 24 Sep). Said, not refused: the words can be the project's own. Never
-    # in BuilderBot's own repository, whose tracker it is.
+    # 24 Sep). Said, not refused: the words can be the project's own. Not
+    # where the project has reporting BuilderBot bugs off, BuilderBot's own
+    # among them, whose tracker it is.
     import re
-    here = os.path.join(os.environ.get("BB_WORKSPACE") or "/workspace", proj)
-    own = (os.path.isfile(os.path.join(here, "scripts", "bb"))
-           and os.path.isfile(os.path.join(here, "scripts", "dashboard", "server.py")))
-    if not own and re.search(r"\bbuilder ?bot\b|(^|[\s`'\"(])bb [a-z]", said, re.I):
+    import prefs
+    if prefs.get(proj).get("report") != "deny" \
+            and re.search(r"\bbuilder ?bot\b|(^|[\s`'\"(])bb [a-z]", said, re.I):
         print(f"[builderbot] this names BuilderBot: if it is a problem with BuilderBot itself "
               f"rather than {proj}, bb report sends it to BuilderBot's maintainers, and "
               "bb bug rm takes this one back", file=sys.stderr)

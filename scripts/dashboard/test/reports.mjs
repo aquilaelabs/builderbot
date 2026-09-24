@@ -4,9 +4,9 @@
 // the report waits on the controller, is read in the diagnostics behind their
 // gate, and is filed into a tracker or closed from there; the session that
 // made it reads what became of it. No browser: it is an API and a verb.
-import { ok, done, URL, DIR } from './lib.mjs';
+import { launch, newPage, ready, ok, done, URL, DIR } from './lib.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const base = URL.replace(/\/$/, '');
@@ -93,14 +93,43 @@ const own = bb(['bug', 'add', 'bb devapp status says the env is the operator\'s'
                { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(own.status === 0 && /this names BuilderBot: .*bb report sends it/.test(own.stderr),
    `a bug that names BuilderBot, filed in another project, points at bb report (${own.stderr.trim().slice(0, 100)})`);
-// Not in BuilderBot's own repository, whose tracker it is: beta made to look like it.
-mkdirSync(`${DIR}/ws/beta/scripts/dashboard`, { recursive: true });
-writeFileSync(`${DIR}/ws/beta/scripts/bb`, '#!/bin/sh\n');
-writeFileSync(`${DIR}/ws/beta/scripts/dashboard/server.py`, '');
-const home = bb(['bug', 'add', 'bb devapp status is wrong'], { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'beta' },
-                `${DIR}/ws/beta`);
-ok(home.status === 0 && !/this names BuilderBot/.test(home.stderr),
-   '...and says nothing in BuilderBot\'s own repository');
-rmSync(`${DIR}/ws/beta/scripts`, { recursive: true, force: true });
+// ---- off for a project, in its settings -------------------------------------------
+// Claude may: Report BuilderBot bugs. BuilderBot's own project has it off:
+// its problems go into its own tracker, so its sessions are not sent to
+// bb report, not nudged toward it, and refused by it.
+const setReport = v => call('/api/prefs', { project: 'alpha', report: v });
+await setReport('deny');
+const refused = await call('/api/reports', { action: 'add', text: 'something about bb' }, ALPHA);
+ok(refused.status === 403 && /Claude may: Report BuilderBot bugs/.test(refused.error || ''),
+   `with it off, bb report is refused and says where the setting is (${refused.error})`);
+const quiet = (await call('/api/preamble?project=alpha')).text || '';
+ok(!quiet.includes('goes to `bb report') && !/`bb report` alone lists/.test(quiet),
+   '...its sessions are not told to use it');
+const noNudge = bb(['bug', 'add', 'bb devapp status is wrong about the env'],
+                   { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
+ok(noNudge.status === 0 && !/this names BuilderBot/.test(noNudge.stderr),
+   '...and a bug naming BuilderBot filed there is not pointed at it');
+ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.report === 'deny',
+   '...stored on the project as the one word that differs from the default');
+await setReport('auto');
 
-await done(null);
+// ...and the setting is in the project's settings dialog, with the others.
+const browser = await launch();
+const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
+await page.goto(URL);
+await ready(page);
+await page.evaluate(() => renameProject('alpha'));
+await page.waitForSelector('#rnmodal:not([hidden]) #rnGateReport', { timeout: 15000 });
+ok(await page.$eval('#rnGateReport', e => e.value === 'auto' && [...e.options].map(o => o.value).join() === 'auto,deny'),
+   "the project's settings carry it under Claude may, on auto, with nothing to ask");
+await page.selectOption('#rnGateReport', 'deny');
+await page.click('#rnGo');
+await page.waitForFunction(async () => {
+  const j = await (await fetch('/api/status')).json();
+  return (j.projects || []).find(p => p.name === 'alpha')?.prefs?.report === 'deny';
+}, null, { timeout: 20000, polling: 500 });
+ok(true, '...and saving the dialog turns it off');
+await setReport('auto');
+ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
+
+await done(browser);
