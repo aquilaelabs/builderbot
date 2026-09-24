@@ -1174,6 +1174,8 @@ cmd_ci_log() {
 project_here() {
     local here; here="$(pwd -P)"
     case "$here" in
+        # A worktree is the project's, not a project called .worktrees.
+        "$BB_WORKTREES"/*) here="${here#"$BB_WORKTREES"/}"; printf '%s' "${here%%/*}" ;;
         "$WORKSPACE"/*) here="${here#"$WORKSPACE"/}"; printf '%s' "${here%%/*}" ;;
         *) return 1 ;;
     esac
@@ -6996,6 +6998,11 @@ cmd_version() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
+    # Asked from one of the project's worktrees, the answer is that tree's:
+    # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
+    # runs this in the caller's cwd, so a node's session gets the same.
+    local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
 import importlib.util, json, os, sys
@@ -7227,6 +7234,11 @@ cmd_changelog() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
+    # Asked from one of the project's worktrees, the answer is that tree's:
+    # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
+    # runs this in the caller's cwd, so a node's session gets the same.
+    local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
 import importlib.util, os, sys

@@ -156,6 +156,23 @@ def configure(*, workspace, state, write_json, roadmap_mod=None, bugs_mod=None,
 
 
 def root(project):
+    """The tree a question is asked of: the project directory, or the
+    worktree the caller stands in (BB_VERSION_TREE, which bb sets from its
+    cwd) when that is one of this project's. A session working in a
+    worktree asked `bb version --file` for a package name and was answered
+    for the main checkout's HEAD, and shipped nothing rather than a file
+    named after a commit that did not hold its code (24 Sep): the branch's
+    own commits, VERSION file and ordinal are what a build there is about.
+    Checked to lie under the project's worktrees, so the variable cannot
+    point this at another project's tree."""
+    want = os.environ.get("BB_VERSION_TREE") or ""
+    if want:
+        try:
+            p = Path(want).resolve()
+            if p.is_dir() and (WORKSPACE / ".worktrees" / project).resolve() in p.parents:
+                return p
+        except OSError:
+            pass
     return WORKSPACE / project
 
 
