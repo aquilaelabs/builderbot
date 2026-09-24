@@ -3345,6 +3345,45 @@ print(json.dumps({'before': before, 'moved': moved, 'after': m.owner_of('radarr'
      `...and a project renamed takes what belongs to it, in both stores (${JSON.stringify(R.owners)})`);
 }
 
+// ---- a container compose refuses never reaches the list (B239) ----------------
+// New container registers the record before compose reads the file, since
+// the check finds the file through it; a listing in that window drew a row
+// for a container that was then refused. It is not listed until compose has
+// read it.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+def wj(p, o):
+    with open(p, 'w') as f:
+        json.dump(o, f)
+m.configure(workspace=d, state=d, write_json=wj)
+m.available_cached = lambda: {'on': False, 'why': 'no daemon here'}
+m.latest_job = lambda: None
+m.source = lambda: {}
+seen = {'during': []}
+def fake_run(argv, timeout=60, **k):
+    if 'config' in argv and '-q' in argv:
+        seen['during'].append([i['name'] for i in m._overview_here('')['instances']])
+        return {'code': seen.pop('fail', 0), 'out': 'yaml: line 2: bad'}
+    return {'code': 0, 'out': ''}
+m._run = fake_run
+seen['fail'] = 1
+bad = m.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
+after_bad = [i['name'] for i in m._overview_here('')['instances']]
+good = m.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
+print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), 'during': seen['during'],
+                  'after_bad': after_bad, 'after_good': [i['name'] for i in m._overview_here('')['instances']]}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  ok(R.bad && R.good && JSON.stringify(R.during) === '[[],[]]' && JSON.stringify(R.after_bad) === '[]',
+     `a container is not listed while compose reads it, and one it refuses never is (${JSON.stringify(R)})`);
+  ok(JSON.stringify(R.after_good) === '["probecase"]', '...while one it reads is listed once it has');
+}
+
 // A one-shot service that ran and exited 0 is finished, not down: the row
 // says running and the chip says finished, while a service that exited
 // non-zero still makes the row partly up (B147).

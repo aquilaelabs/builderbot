@@ -2678,6 +2678,10 @@ def _overview_here(picked):
             # nobody had ever sent them to.
             if picked and _instance_node(project, inst) != picked:
                 continue
+            # A container written here that compose is still reading, which
+            # may yet be refused (B239).
+            if time.time() - float((store[project][inst] or {}).get("pending") or 0) < PENDING_S:
+                continue
             pn = _pname(project, inst)
             mine = by_proj.get(pn, [])
             rec = _read_rec(project, inst)
@@ -2787,6 +2791,7 @@ def _overview_here(picked):
 
 
 COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
+PENDING_S = 120                  # how long a container being checked stays unlisted
 
 
 def create_container(name, compose_text, env_text="", node="", for_project=""):
@@ -2828,6 +2833,11 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
         d2 = _load()
         rec = _rec(d2, slug, MAIN)
         rec["source"] = "file"
+        # Not listed while compose reads it: a manager listing that landed
+        # in this window drew a row for a container that was then refused
+        # (B239). A time, so a record left by a restart mid-check is listed
+        # again after PENDING_S rather than hidden with its name taken.
+        rec["pending"] = int(time.time())
         if node:
             rec["node"] = str(node)
         # The project it belongs to (owner_of): a dev radarr for a media
@@ -2843,6 +2853,10 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
     if r["code"] != 0:
         forget_container(slug)
         return {"error": ("compose will not read that:\n" + r["out"]).strip()[-600:]}
+    with _lock:
+        d3 = _load()
+        ((d3.get(slug) or {}).get(MAIN) or {}).pop("pending", None)
+        write_json(FILE, d3)
     _bump()
     return {"ok": True, "project": slug, "instance": MAIN,
             "name": _pname(slug, MAIN)}
