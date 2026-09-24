@@ -381,6 +381,13 @@ function nodeClaudeSection(n){
 // says about it underneath, a reason in red when it is on and not in force.
 function nodeSessNetRow(n){
   const on = !!n.config?.session_net;
+  // A draft until the section's Save is pressed (the rule apply-not-onchange,
+  // the operator, 24 Sep): the tick is kept across the repaints a heartbeat
+  // brings, and the press is where it is made.
+  const c = nodeDraft(n);
+  if (c.draft.sessnetOn === undefined || c.draft.sessnetFrom !== on){
+    c.draft.sessnetOn = on; c.draft.sessnetFrom = on;
+  }
   const sn = n.reported?.session_net || {};
   const told = Object.keys(sn).length > 0;
   const line = !told
@@ -391,7 +398,7 @@ function nodeSessNetRow(n){
     : on ? `<div class="sub dim">Setting it up.</div>`
     : sn.sessions ? `<div class="sub dim">${sn.sessions} session${sn.sessions === 1 ? "" : "s"} started while it was on keep their own network until they end.</div>`
     : "";
-  return `<label class="ndcap"><input type="checkbox" data-nd-sessnet="1" ${on ? "checked" : ""}>
+  return `<label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}>
       keep each session to its own project's network</label>
     ${line}`;
 }
@@ -399,7 +406,8 @@ function nodeSessNetRow(n){
 // How many Claude sessions here may work on a prompt at once (turns.py on
 // the controller). What is working and waiting now is on the status line,
 // so the number is set against what the machine is actually doing. The
-// typed value is a draft, kept across the repaints a poll brings.
+// typed value is a draft, kept across the repaints a poll brings. Its Save
+// is the Sessions section's one, and saves the switch above it too.
 function nodeTurnsRow(n){
   const t = n.turns || {};
   const have = String(t.limit || 0);
@@ -417,7 +425,7 @@ function nodeTurnsRow(n){
     </div>
     <div class="actbar">
       <span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span>
-      <button type="button" data-nd="turns" title="save the limit: the next prompt here is held to it">Save</button>
+      <button type="button" data-nd="turns" title="save the limit and the switch: the next prompt here is held to the one, the next session started here to the other">Save</button>
     </div>`;
 }
 
@@ -1339,12 +1347,24 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         return;
       }
       if (act === "turns"){
+        // The Sessions section's Save: the limit, and the session network
+        // switch when its tick differs from what the node has.
         const inp = box.querySelector('[data-k="turns"]');
+        const sw = box.querySelector('[data-k="sessnet"]');
+        const was = !!nodesList.find(x => x.id === id)?.config?.session_net;
         const j = await nodeAct({action: "turns", id, limit: Number(inp ? inp.value : 0)});
         if (j.error) return;
         const c = nodesConf[id]; if (c && c.draft) c.draft.turnsText = undefined;
-        notify(j.limit ? `at most ${j.limit} Claude session${j.limit === 1 ? "" : "s"} work here at once`
-                       : "no limit on Claude sessions working here at once");
+        let said = j.limit ? `at most ${j.limit} Claude session${j.limit === 1 ? "" : "s"} work here at once`
+                           : "no limit on Claude sessions working here at once";
+        if (sw && sw.checked !== was){
+          const k = await nodeAct({action: "session-net", id, on: sw.checked});
+          if (k.error) return;
+          if (c && c.draft) c.draft.sessnetOn = undefined;
+          said += sw.checked ? "; sessions started here from now on reach only their own project's containers"
+                             : "; sessions started here from now on share its network";
+        }
+        notify(said);
         return;
       }
       if (act === "paths"){
@@ -1413,14 +1433,10 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         refresh();
       }catch(e){ notify("could not save the setting: " + e, true); ca.checked = !ca.checked; }
     };
-    // Each session kept to its own project's network (R79): the node's own
-    // setting, saved on the change like the switch above it.
-    const sw = box.querySelector("[data-nd-sessnet]");
-    if (sw) sw.onchange = async () => {
-      const j = await nodeAct({action: "session-net", id, on: sw.checked});
-      if (!j.error) notify(sw.checked ? "sessions started on this node from now on reach only their own project's containers"
-                                      : "sessions started on this node from now on share its network");
-    };
+    // Each session kept to its own project's network (R79): a draft until
+    // the section's Save, like the limit beside it.
+    const sw = box.querySelector('[data-k="sessnet"]');
+    if (sw) sw.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.sessnetOn = sw.checked; };
     const ti = box.querySelector('[data-k="turns"]');
     if (ti){
       ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };

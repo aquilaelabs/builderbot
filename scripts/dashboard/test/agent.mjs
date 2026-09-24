@@ -656,6 +656,59 @@ print(json.dumps({
          `a node whose own network already uses the range is not offered it, and says which address or route (a VM bridge: ${sn.clash[1]}; a VPN: ${sn.clash[2]}), while a session's own link is no clash`);
       ok(/chain output \{[^}]*oifname "bbs\*" meta l4proto \{ tcp, udp \} ct state new reject/.test(sn.table),
          '...and nothing on the node itself, any account\'s program, opens a connection into a session either');
+      ok(/chain input \{[^}]*iifname "bbs\*" ip daddr \. tcp dport @ctl accept[^}]*@dns udp dport 53 accept/.test(sn.table)
+         && /ct original ip daddr \. ct original proto-dst @ctl goto pass/.test(sn.table),
+         '...while the controller and the resolvers are reached even on the node\'s own address, or behind a port Docker publishes on it');
+      // The thread that keeps it, one turn at a time against stubs: wanted
+      // and not possible is closed (the layout file stays on so bb-session
+      // refuses, the ready mark goes, the row hears why); wanted and
+      // possible writes the mark last; off with no session takes it down
+      // only after a half-minute grace.
+      const st = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile, time
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+m.SESSNET_DIR = tempfile.mkdtemp()
+ran = []
+class R: returncode = 0; stdout = ''; stderr = ''
+m.subprocess.run = lambda argv, **k: ran.append(argv[:3]) or R()
+m.docker_user = lambda on: ''
+m.sessnet_resolvers = lambda paths=None: (['192.168.1.1'], '')
+m.sessnet_containers = lambda: []
+m.sessnet_ctl = lambda url: [('192.168.1.15', 7680)]
+class A:
+    state = {'controller': 'http://192.168.1.15:7680', 'session_net': {'on': True, 'own': {}}}
+    hello_at = 1
+    refreshed = 0
+    def refresh_session_tool(self): self.refreshed += 1
+a = A(); sn = m.SessionNet(a)
+ready = os.path.join(m.SESSNET_DIR, 'ready')
+open(ready, 'w').write('x')
+m.sessnet_can = lambda: (False, 'the agent does not run as root here')
+m.sessnet_sessions = lambda d=None: []
+sn.step()
+cannot = {'conf_on': sn.conf_on, 'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS),
+          'conf': m.session_conf({'stores': {}}, 'builder', sn.conf_on)}
+m.sessnet_can = lambda: (True, ''); sn.can_at = 0
+sn.step()
+can = {'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS), 'nft': [r for r in ran if r[0] == m.NFT_BIN]}
+a.state['session_net'] = {'on': False, 'own': {}}
+sn.step()
+off1 = {'conf_on': sn.conf_on, 'up': sn.up, 'ready': os.path.exists(ready)}
+sn.empty_since -= 60
+sn.step()
+off2 = {'up': sn.up, 'ready': os.path.exists(ready), 'status': dict(m.SESSNET_STATUS)}
+print(json.dumps({'cannot': cannot, 'can': can, 'off1': off1, 'off2': off2, 'refreshed': a.refreshed}))
+`], { encoding: 'utf8' }).trim().split('\n').pop());
+      ok(st.cannot.conf_on === true && /SESSION_NET=on/.test(st.cannot.conf) && st.cannot.ready === false
+         && st.cannot.status.active === false && /root/.test(st.cannot.status.why),
+         `wanted and not possible is closed: the layout file says on so bb-session refuses, the ready mark is gone, and the row hears why (${JSON.stringify(st.cannot.status)})`);
+      ok(st.can.ready === true && st.can.status.active === true && st.can.nft.length >= 2,
+         `wanted and possible makes the table and the sets, and writes the mark last (${st.can.nft.length} nft calls)`);
+      ok(st.off1.conf_on === false && st.off1.up === true && st.off2.up === false && st.off2.ready === false
+         && st.refreshed === 1,
+         'off takes the layout file off at once and the table down only after a half-minute with no session, since one may still be making its link');
       const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       ok(same(sn.fresh[0], sn.rules) && same(sn.kept, [sn.rules, 0]) && same(sn.fixed[0], sn.rules) && sn.off.length === 0,
          `Docker's forwarding gets its three rules in order (replies in, what the table marked, nothing else from a session), leaves them when they are right, puts a drop that stands alone back behind the other two, and takes all three away (${JSON.stringify(sn.fresh[0].map(r => r[r.length - 1]))})`);
@@ -2700,15 +2753,21 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     ok(await page.$(`.nodestab .ndrow[data-node="${minted.id}"] [data-nd="revoke"]`) !== null,
        '...and offers Revoke, which an ssh node does not have');
     // Each session kept to its own project's network (R79): a switch in the
-    // row's Sessions section, saved on the change. The node hears it on its
-    // next poll and keeps it in node.json with what each project owns there,
-    // and says whether it can, which this agent, not root, cannot: said under
-    // the switch in red while it is on.
+    // row's Sessions section, a draft until the section's Save (the rule
+    // apply-not-onchange: it wrote itself on the click at first, the
+    // operator, 24 Sep). The node hears it on its next poll and keeps it in
+    // node.json with what each project owns there, and says whether it can,
+    // which this agent, not root, cannot: said under the switch in red.
     {
-      const sw = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd-sessnet]`;
+      const sw = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="sessnet"]`;
+      const save = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd="turns"]`;
       await page.waitForSelector(sw, { timeout: 15000 });
       ok(!(await page.$eval(sw, e => e.checked)), 'the Sessions section offers the switch, off to begin with');
       await page.click(sw);
+      await sleep(1500);
+      ok(!(await nodeById(minted.id)).config?.session_net && await page.$eval(sw, e => e.checked),
+         'ticking it writes nothing by itself, and the tick survives a repaint');
+      await page.click(save);
       const kept = await until(() => {
         const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
         return st.session_net?.on === true ? st : null;
@@ -2729,9 +2788,10 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
       ok(await page.$$eval(`.nodestab .ndrow[data-node="${minted.id}"] .sub.bad`, es => es.some(e => /Not in force/.test(e.textContent))),
          '...which the row says under the switch, in red');
       await page.click(sw);
+      await page.click(save);
       const cleared = await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).session_net?.on === false ? true : null,
                                   30000, 500);
-      ok(cleared, '...and off reaches the node the same way');
+      ok(cleared, '...and off, saved the same way, reaches the node the same way');
     }
     // Enrolling is a dialog, like New project. It used to be a panel at the
     // foot of the tab, below everything about the machine you were looking at.

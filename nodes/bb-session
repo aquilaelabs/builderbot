@@ -522,6 +522,10 @@ def net_attach(net, pid, project, dfd):
         os.rename("next.new", "next", src_dir_fd=dfd, dst_dir_fd=dfd)
         host_if, first = f"bbs{k}", net["base"] + NET_SLOT * k
         host, addr = _ip4(first + 1), _ip4(first + 2)
+        # A file left by a session whose parent was killed would name the
+        # old project for this address until ours lands: gone first.
+        with contextlib.suppress(OSError):
+            os.unlink(f"s{k}.json", dir_fd=dfd)
         _ip("link", "add", host_if, "type", "veth", "peer", "name", "eth0", "netns", str(pid))
         try:
             # IPv4 only out of a session: IPv6 is off on both ends of the
@@ -544,13 +548,28 @@ def net_attach(net, pid, project, dfd):
     return {"if": host_if, "addr": addr, "host": host, "file": f"s{k}.json"}
 
 
-def net_detach(slot, dfd):
+def net_detach(slot, dfd, pid):
     """The session is over: its file goes, and its link with it (which, as a
-    rule, went already, with the namespace at the far end)."""
-    with contextlib.suppress(OSError):
-        os.unlink(slot["file"], dir_fd=dfd)
-    with contextlib.suppress(OSError):
-        _ip("link", "del", slot["if"])
+    rule, went already, with the namespace at the far end). Under the slot
+    lock, and only when the slot is still ours: the kernel tears the link
+    down on its own once the namespace goes, and another session may have
+    taken the slot since, whose link and file must not be touched."""
+    lk = os.open("lock", os.O_RDWR | os.O_CREAT, 0o600, dir_fd=dfd)
+    try:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            with os.fdopen(os.open(slot["file"], os.O_RDONLY, dir_fd=dfd)) as f:
+                theirs = json.load(f).get("pid") != pid
+        except (OSError, ValueError):
+            theirs = False
+        if theirs:
+            return
+        with contextlib.suppress(OSError):
+            os.unlink(slot["file"], dir_fd=dfd)
+        with contextlib.suppress(OSError):
+            _ip("link", "del", slot["if"])
+    finally:
+        os.close(lk)
 
 
 def net_inside(addr, gw):
@@ -595,11 +614,10 @@ def _drop(user, uid, gid):
           ctypes.c_ulong(0), ctypes.c_ulong(0))
 
 
-def _wait_forwarding(child):
-    """Wait for `child`, handing it a stop the way it would have had one
-    without this in between, and reaping whatever is orphaned meanwhile.
-    Keyboard signals are not forwarded: the terminal sends those to the
-    session's own process group, and a second Ctrl-C would read as two."""
+def _forward_to(child):
+    """Hand `child` a stop the way it would have had one without this in
+    between. Keyboard signals are not forwarded: the terminal sends those to
+    the session's own process group, and a second Ctrl-C would read as two."""
     def forward(signum, _frame):
         try:
             os.kill(child, signum)
@@ -609,6 +627,12 @@ def _wait_forwarding(child):
         signal.signal(s, forward)
     for s in (signal.SIGINT, signal.SIGQUIT, signal.SIGTSTP, signal.SIGTTIN, signal.SIGTTOU):
         signal.signal(s, signal.SIG_IGN)
+
+
+def _wait_forwarding(child):
+    """Wait for `child`, forwarding a stop, and reaping whatever is orphaned
+    meanwhile."""
+    _forward_to(child)
     while True:
         try:
             pid, status = os.waitpid(-1, 0)
@@ -673,28 +697,34 @@ def enter(c, a, command):
         # Outside: sudo waits on this, so this waits on the namespace's init
         # and passes a stop on to it.
         slot = None
-        if net:
-            os.close(made_w)
-            os.close(addr_r)
-            try:
-                if os.read(made_r, 1) != b"1":
-                    raise Refused("bb-session: the session's network namespace was not made")
-                slot = net_attach(net, init, a["project"], dfd)
-                os.write(addr_w, f"{slot['addr']} {slot['host']}\n".encode())
-            except (OSError, Refused, subprocess.SubprocessError) as e:
-                sys.stderr.write(f"{e}\nthe session did not start: this node could not give it a "
-                                 "network of its own\n")
-                with contextlib.suppress(OSError):
-                    os.write(addr_w, b"x\n")
-                with contextlib.suppress(ChildProcessError):
-                    os.waitpid(init, 0)
-                sys.exit(70)
-            finally:
-                os.close(made_r)
-                os.close(addr_w)
-        rc = _wait_forwarding(init)
-        if slot:
-            net_detach(slot, dfd)
+        # A stop is passed on from here, before the link is made: one that
+        # arrived while it was would have ended this side and left the
+        # session running with a network nobody would take down.
+        _forward_to(init)
+        try:
+            if net:
+                os.close(made_w)
+                os.close(addr_r)
+                try:
+                    if os.read(made_r, 1) != b"1":
+                        raise Refused("bb-session: the session's network namespace was not made")
+                    slot = net_attach(net, init, a["project"], dfd)
+                    os.write(addr_w, f"{slot['addr']} {slot['host']}\n".encode())
+                except (OSError, Refused, subprocess.SubprocessError) as e:
+                    sys.stderr.write(f"{e}\nthe session did not start: this node could not give it a "
+                                     "network of its own\n")
+                    with contextlib.suppress(OSError):
+                        os.write(addr_w, b"x\n")
+                    with contextlib.suppress(ChildProcessError):
+                        os.waitpid(init, 0)
+                    sys.exit(70)
+                finally:
+                    os.close(made_r)
+                    os.close(addr_w)
+            rc = _wait_forwarding(init)
+        finally:
+            if slot:
+                net_detach(slot, dfd, init)
         sys.exit(rc)
     # PID 1 of the new namespace: make the view, drop, run the session.
     try:

@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.97"
+AGENT_VERSION = "0.6.98"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1156,7 +1156,11 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
     DOCKER-USER lets through marked traffic from a session and drops the
     rest, so without this table a session reaches nothing. Nothing starts a
     connection into a session: not from the network (forward) and not from
-    the node itself (output), where every other account's programs are."""
+    the node itself (output), where every other account's programs are.
+    The controller and the resolvers are let through on the way INTO the
+    node as well, for a node that is the controller's own machine or runs
+    the resolver, and by the destination a DNAT started from, for a
+    controller Docker publishes on this node."""
     return f"""table inet {SESSNET_TABLE} {{
 	set ctl {{ type ipv4_addr . inet_service; }}
 	set dns {{ type ipv4_addr; }}
@@ -1173,6 +1177,7 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 		meta nfproto ipv6 drop
 		ct state established,related goto pass
 		ip daddr . tcp dport @ctl goto pass
+		ct original ip daddr . ct original proto-dst @ctl goto pass
 		ip daddr @dns udp dport 53 goto pass
 		ip daddr @dns tcp dport 53 goto pass
 		ip saddr . ip daddr @own goto pass
@@ -1185,6 +1190,9 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 	chain input {{
 		type filter hook input priority -10; policy accept;
 		iifname "bbs*" ct state established,related accept
+		iifname "bbs*" ip daddr . tcp dport @ctl accept
+		iifname "bbs*" ip daddr @dns udp dport 53 accept
+		iifname "bbs*" ip daddr @dns tcp dport 53 accept
 		iifname "bbs*" reject with icmpx type admin-prohibited
 	}}
 	chain output {{
@@ -1256,10 +1264,14 @@ def sessnet_containers():
     for c in rows if isinstance(rows, list) else []:
         labels = (c.get("Config") or {}).get("Labels") or {}
         nets = (c.get("NetworkSettings") or {}).get("Networks") or {}
+        ips = set()
+        for n in nets.values():
+            with contextlib.suppress(ValueError):
+                if isinstance(n, dict) and n.get("IPAddress"):
+                    ips.add(str(ipaddress.IPv4Address(str(n["IPAddress"]))))
         out.append({"name": str(c.get("Name") or "").lstrip("/"),
                     "compose": str(labels.get("com.docker.compose.project") or ""),
-                    "ips": sorted({str(n.get("IPAddress")) for n in nets.values()
-                                   if isinstance(n, dict) and n.get("IPAddress")})})
+                    "ips": sorted(ips)})
     return out
 
 
@@ -3068,6 +3080,10 @@ class SessionNet:
         self.containers_at = 0.0
         self.seen = None              # the sessions as last read, to notice a new one
         self.filled = None            # the sets as last written
+        self.docker_at = 0.0          # when Docker's rules were last checked
+        self.ctl = []                 # the controller's addresses as last resolved
+        self.ctl_at = 0.0
+        self.empty_since = None       # when the last session with a network ended
         self.up = False               # the table and Docker's rules are in place
         # The layout file says on. Started from what was wanted before this
         # process, so a restart does not write it off for the seconds before
@@ -3102,24 +3118,32 @@ class SessionNet:
             self.can, self.can_at = sessnet_can(), now
         want, (can, why) = self.wanted(), self.can
         sessions = sessnet_sessions()
+        self.empty_since = None if sessions else (self.empty_since or now)
         error = ""
         if (want and can) or (sessions and self.up):
             error = self.keep(sessions, now)
-        elif self.up:
+        elif self.up and not want and now - self.empty_since > 30:
+            # Off, and no session has had a network for half a minute: one
+            # that has passed bb-session's check is still making its link,
+            # and its file is not there to be counted yet.
             error = self.down()
+        elif want and not can:
+            # Wanted and not possible: closed, not open. The layout file
+            # stays on, so bb-session refuses to start a session rather than
+            # giving it the node's network, and the row says why.
+            error = why
         if error:
-            # Closed, not open: without the mark bb-session starts no session
-            # here while the layout file says on, and says to look at the row.
+            # Without the mark bb-session starts no session here while the
+            # layout file says on, and says to look at the row.
             with contextlib.suppress(OSError):
                 os.unlink(os.path.join(SESSNET_DIR, "ready"))
-        self.say(f"session network: {error}" if error else "")
-        on = want and can
-        if on != self.conf_on:
-            self.conf_on = on
+        self.say(f"session network: {error}" if error and error != why else "")
+        if want != self.conf_on:
+            self.conf_on = want
             self.agent.refresh_session_tool()
-            log(f"session network: {'on: each session started here gets a network of its own' if on else 'off for sessions started from now'}")
-        now_is = {"can": can, "why": why, "wanted": want, "active": on and self.up and not error,
-                  "sessions": len(sessions), "error": error}
+            log(f"session network: {'on: each session started here gets a network of its own' if want else 'off for sessions started from now'}")
+        now_is = {"can": can, "why": why, "wanted": want, "active": want and can and self.up and not error,
+                  "sessions": len(sessions), "error": error if error != why else ""}
         # The census rides hello, every ten minutes: a change here is said
         # at the main loop's next turn instead, or the row would show the
         # answer from before the switch for ten minutes. The count of
@@ -3127,7 +3151,8 @@ class SessionNet:
         if {k: v for k, v in now_is.items() if k != "sessions"} != \
                 {k: v for k, v in SESSNET_STATUS.items() if k != "sessions"}:
             self.agent.hello_at = 0
-        SESSNET_STATUS.clear()
+        # Updated, never cleared: the census copies it from another thread,
+        # and every key is written every time, so a copy is always whole.
         SESSNET_STATUS.update(now_is)
 
     def keep(self, sessions, now):
@@ -3143,19 +3168,32 @@ class SessionNet:
             bad = docker_user(True)
             if bad:
                 return f"Docker's forwarding would not take the rules: {bad}"
-            self.up, self.filled = True, None
+            self.up, self.filled, self.docker_at = True, None, now
         elif subprocess.run([NFT_BIN, "list", "table", "inet", SESSNET_TABLE], capture_output=True,
                             timeout=15, check=False).returncode:
             # Gone from under us (a flush, a firewall reload): put back next turn.
             self.up = False
             return "the table was gone and is being put back"
+        elif now - self.docker_at > 30:
+            # Docker's rules likewise: a Docker restart or a flush takes them,
+            # and without them a session reaches no container (closed, not
+            # open). Looked at every half minute; put back when out of place.
+            self.docker_at = now
+            bad = docker_user(True)
+            if bad:
+                return f"Docker's forwarding would not take the rules back: {bad}"
         ns, search = sessnet_resolvers()
         _write_root(os.path.join(SESSNET_DIR, "resolv.conf"), sessnet_resolv_text(ns, search))
         if sessions != self.seen or now - self.containers_at > 10:
             self.containers, self.containers_at, self.seen = sessnet_containers(), now, sessions
         own = (self.agent.state.get("session_net") or {}).get("own") or {}
-        fill = sessnet_fill(sessnet_ctl(self.agent.state.get("controller") or ""), ns,
-                            sessnet_pairs(sessions, own, self.containers))
+        # The controller's address, resolved once a minute and kept when a
+        # resolver fails to answer: an empty set would cut every session off
+        # from it until the next answer.
+        if now - self.ctl_at > 60:
+            self.ctl_at = now
+            self.ctl = sessnet_ctl(self.agent.state.get("controller") or "") or self.ctl
+        fill = sessnet_fill(self.ctl, ns, sessnet_pairs(sessions, own, self.containers))
         if fill != self.filled:
             p = subprocess.run([NFT_BIN, "-f", "-"], input=fill, capture_output=True, text=True,
                                timeout=30, check=False)
