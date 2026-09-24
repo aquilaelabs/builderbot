@@ -3653,6 +3653,11 @@ body.booting .pane>.loading{margin:auto}
           aria-label="new house rules from a session"></select></label>
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
+        <!-- The project's container: rebuild it, change its env, create it
+             when there is none (devbuild; the Docker row used to carry it,
+             and now says what it is set to). Deny by default. -->
+        <label class="pick">Run its container <select id="rnGateDocker"
+          aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
@@ -3958,6 +3963,8 @@ body.booting .pane>.loading{margin:auto}
           aria-label="new house rules from a session"></select></label>
         <label class="pick">Fill in build and test <select id="pGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
+        <label class="pick">Run its container <select id="pGateDocker"
+          aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
@@ -6124,6 +6131,7 @@ function rnFillPrefs(p){
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
                devtest: !!p?.prefs?.devtest,
+               devbuild: devClaudeMode(rnFor),
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
   $("rnGitName").value = rnPrefWas.git_name;
@@ -6185,6 +6193,16 @@ function rnFillPrefsRest(p){
       el.dataset.built = "1";
     }
     el.value = p?.prefs?.gate?.[k] || "auto";
+  }
+  {
+    const el = $("rnGateDocker");
+    if (el.dataset.built !== "1"){
+      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = devClaudeMode(rnFor);
+    // An administrator's to change (docker-write), so not offered otherwise.
+    el.closest("label").hidden = !state?.admin;
   }
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
                                   ["rnEffort", EFFORTS, rnPrefWas.effort]]){
@@ -8327,6 +8345,7 @@ $("pCreate").onclick = async () => {
           body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
                                 node: $("pNodeField").hidden ? "" : $("pNode").value,
                                 gate: $("pGateField").hidden ? null : pGateNow(),
+                                devbuild: $("pGateField").hidden ? null : ($("pGateDocker").value || "deny"),
                                 key: mode === "clone" ? key : "",
                                 // Only ever consulted for a host that does not
                                 // name itself: the server prefers the host.
@@ -8817,10 +8836,11 @@ async function rnSubmit(){
   const color = rnColorNow();
   // With the node's group: nothing here restarts a session.
   const devtest = $("rnDevTest").value === "only";
+  const devbuild = $("rnGateDocker").value || "deny";
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
-    || devtest !== rnPrefWas.devtest;
+    || devtest !== rnPrefWas.devtest || devbuild !== rnPrefWas.devbuild;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
   // project's group: the same request, a different store on the server.
@@ -8871,7 +8891,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, build, test, gate, color,
-                              devtest,
+                              devtest, devbuild,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.

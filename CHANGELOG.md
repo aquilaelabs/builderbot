@@ -70,6 +70,7 @@
 - Nostromo: the cards are smoked glass with the rings showing through, and a card folds by fading away whole before the cards below close the gap (ed1a79e)
 - A branch belongs to the session that works on it: a user merges only their own, and an administrator may merge anyone's, asked each time with the owner named and refused while that person's Claude session is working (42066ab)
 - Nostromo's rings are larger, dimmer and more detailed, and sit mostly behind the cards (830e90f)
+- Whether a session may run a project's container is set in the project's settings and the new-project dialog (Claude may: Run its container), and now also lets a session change its env and create its container when it has none; on ask, one request carries it all (6913631)
 
 ### Removed
 

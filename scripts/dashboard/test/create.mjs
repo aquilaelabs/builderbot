@@ -60,9 +60,11 @@ ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
 // The four gates are on the dialog (R78): what a session may enter into
 // the notebook, auto on every open, so it is a choice made rather than a
 // default found later in the settings dialog.
-ok(await page.$$eval('#pGateField select', s => s.length === 4 && s.every(x => x.value === 'auto' && x.options.length === 3))
+ok(await page.$$eval('#pGateField select', s => s.length === 5 && s.every(x => x.options.length === 3)
+                                              && s.filter(x => x.id !== 'pGateDocker').every(x => x.value === 'auto')
+                                              && s.find(x => x.id === 'pGateDocker')?.value === 'deny')
    && await page.$eval('#pGateField', el => !el.hidden),
-   'the four Claude gates are offered on a new local repo, auto by default');
+   'the five Claude gates are offered on a new local repo: the notebook four at auto, Run its container at deny');
 const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    '...with the cursor in none of its fields');
@@ -418,6 +420,10 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
   const g = await page.evaluate(() => state.projects.find(p => p.name === 'Gated-App').prefs.gate);
   ok(g.roadmap === 'ask' && g.bugs === 'deny' && g.rules === 'auto' && g.settings === 'auto',
      `...and the project carries them, the unnamed ones auto (${JSON.stringify(g)})`);
+  // ...and Run its container, so a session can create the first one by request.
+  const docked = await postJson({ name: 'Docked App', mode: 'init', devbuild: 'ask' });
+  await refreshUntil(page, () => state?.projects?.some(p => p.name === 'Docked-App' && p.prefs?.devbuild === 'ask'), { timeout: 15000 });
+  ok(docked.status === 200, 'a project is created with Run its container set, and carries it');
   const bad = await postJson({ name: 'Gated Bad', mode: 'init', gate: { roadmap: 'maybe' } });
   ok(bad.status === 200 && /gates not set/.test(bad.body.note || ''),
      `a gate value that is not auto, ask or deny is refused in the note, and the project still exists (${bad.body.note})`);

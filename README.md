@@ -444,11 +444,17 @@ bb devapp          this project's dev instance: what it was built from, whether 
                    running, and whether its daemon answers
 bb devapp rebuild [--why "..."]
                    build it and bring it up. Only where the project has handed that
-                   over: the dial is on its row in the Docker tab, beside the
-                   Rebuild it hands over, and reads deny (the default, refused with
-                   the sentence that names it), ask (the reason goes to a person and
-                   the command waits for Allow) or auto. Making a container, removing
-                   one, Up, Down and Env stay the operator's whatever it says
+                   over: Claude may: Run its container, in its settings dialog and
+                   the new-project dialog, reads deny (the default, refused with the
+                   sentence that names it), ask (the reason goes to a person and the
+                   command waits for Allow) or auto. Up, Down, removing one and a
+                   container of any other shape stay the operator's
+bb devapp new [--env FILE] [--why "..."]
+                   create the project's container from its own compose file when it
+                   has none, under the same setting; on ask, Allow creates, writes
+                   the env and builds
+bb devapp env [set FILE|-] [--why "..."]
+                   print the container's env, or replace it, under the same setting
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -503,8 +509,8 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    whenever the instance is up, so a suite that tests BuilderBot cannot disturb the
                    BuilderBot it runs on (roadmap R48). "Tests run" in the project's settings
                    dialog can make the container the only place: a container that is down then
-                   refuses rather than falling back to the node. The rebuild dial governs
-                   testing too, since a stale container tests stale code
+                   refuses rather than falling back to the node. Claude may: Run its
+                   container is not asked: a test runs in a container that is already up
 bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
                    Each names what it needs and skips in one line without it, so a missing service
                    is never a failure, and nothing records them: a lab run is a proof, not a timing.

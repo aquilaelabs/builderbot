@@ -115,12 +115,15 @@ Use `dumpsys gfxinfo PKG framestats`.
 ## The dev instance
 
 This project has a compose file, so the Docker tab may carry a row for it.
-Making a container, removing one, Up, Down and Env are the operator's. Rebuild
-can be handed to you per project: `bb devapp` says what it was built from and
-whether it is running; on `deny` the refusal names the dial, on `ask` your
-reason goes to a person. You have no Docker socket of your own, because the
-daemon is the node's and its group is root there. A container that does not
-exist yet is asked for: write its compose file, then `bb container ask --why
-"..." --name NAME --compose FILE`, and an administrator reads the file and
-allows or denies it; `--node` puts it on another machine.
+Removing a container, Up and Down are the operator's. Rebuilding the
+project's container, changing its env and creating it when it has none can be
+handed to you per project (Claude may: Run its container): `bb devapp` says
+what it was built from and whether it is running, then `bb devapp rebuild`,
+`bb devapp env set FILE` and `bb devapp new`; on `deny` the refusal names the
+setting, on `ask` your reason goes to a person. You have no Docker socket of
+your own, because the daemon is the node's and its group is root there. A
+container of any other shape is asked for: write its compose file, then
+`bb container ask --why "..." --name NAME --compose FILE`, and an
+administrator reads the file and allows or denies it; `--node` puts it on
+another machine.
 <!-- BUILDERBOT:END -->

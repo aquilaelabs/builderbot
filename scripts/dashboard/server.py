@@ -2555,6 +2555,8 @@ if not NODES_OK:
 # and a controller without one still has projects whose containers run.
 phone.rebuilder = devapp.rebuild
 phone.container_maker = devapp.create_container
+phone.instance_maker = lambda project, instance: devapp.create_instance(project, instance or devapp.MAIN)
+phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -4651,6 +4653,14 @@ class Handler(BaseHTTPRequestHandler):
         # reaches every other project there.
         if "node" in req and self._refused("node", name):
             return
+        # ...nor is the dial that hands a session this project's container:
+        # it lets a session create one and set its env, which is Docker
+        # configuration, an administrator's (docker-write). Only a CHANGE is
+        # asked about, since the dialog sends every field on every save.
+        if req.get("devbuild") is not None \
+                and str(req.get("devbuild")) != prefs.get(name)["devbuild"] \
+                and self._refused("docker-write"):
+            return
         # A dev instance with no node of its own follows the project's, so a
         # node change would move its row onto a daemon that has none of it
         # while its containers carry on running where they are. They stay up
@@ -6095,8 +6105,13 @@ class Handler(BaseHTTPRequestHandler):
         #     stop one, or a mistake is somebody else's problem to clear.
         #
         # Everything else (new, remove, env, route) is configuration rather
-        # than a run of the code, and stays an administrator's.
-        if act not in ("starter", "state", "rebuild", "abort", "test") \
+        # than a run of the code, and stays an administrator's: except, for a
+        # SESSION, what its project's dial hands over below (its env, and
+        # creating the project's own container), which the dial decides
+        # rather than this gate, since a session never passes this one.
+        session = bool((self._who() or {}).get("session"))
+        dialed = ("env-get", "env-set", "new") if session else ()
+        if act not in ("starter", "state", "rebuild", "abort", "test") + dialed \
                 and self._refused("docker-write"):
             return None
         # A SESSION is a further question, and the answer is a per-project
@@ -6131,23 +6146,42 @@ class Handler(BaseHTTPRequestHandler):
                                             "and a session works on its own node's. The "
                                             "operator uses or removes it from the Docker "
                                             "manager"}, 403)
-        if act not in ("starter", "state", "test") and (self._who() or {}).get("session"):
+        if act not in ("starter", "state", "test") and session:
+            # The dial is the project's (Claude may: Run its container, in its
+            # settings) and covers rebuilding its containers, changing their
+            # env and creating its own when it has none: the operator's
+            # widening, 24 Sep, so a session can bring a fresh container up
+            # by request. What a container IS stays out of reach: `new` from
+            # a session is the project's own compose file on its own node,
+            # never another project's and never a file it wrote, which is
+            # `bb container ask` and an administrator's.
             mode = prefs.get(name)["devbuild"]
             if mode == "deny":
-                return self._json({"error": "rebuilding this project's dev instance is the "
-                                            "operator's; its row on the Docker tab has "
-                                            "the dial that hands it over"}, 403)
-            if mode == "ask" and act == "rebuild":
+                return self._json({"error": "running this project's container is the "
+                                            "operator's: rebuilding it, changing its env and "
+                                            "creating one are handed over in the project's "
+                                            "settings, Claude may: Run its container"}, 403)
+            if act == "new":
+                if field(req, "for") not in ("", name):
+                    return self._json({"error": "a session creates its own project's container, "
+                                                "not one shown under another project"}, 403)
+                req["for"], req["node"] = "", ""
+            if mode == "ask" and act in ("rebuild", "env-set", "new"):
                 # Aborting is not asked about: it stops a build this session
                 # was already allowed to start, and a running build nobody
-                # can stop is worse than one nobody approved.
+                # can stop is worse than one nobody approved. Reading the env
+                # is not either: a session cannot propose a change to what it
+                # cannot see, and the change is what is asked about.
                 acct = users.account_of(self._who()) or {}
                 want = field(req, "instance") or devapp.MAIN
+                text = req.get("text") if act in ("env-set", "new") else None
                 r = phone.ask_rebuild(
                     field(req, "why"), name, want, devapp.pname(name, want),
                     asker_uid=str(acct.get("uid") or ""),
                     asker_name=str(acct.get("name") or ""),
-                    asker_admin=users.is_admin(acct))
+                    asker_admin=users.is_admin(acct),
+                    env=text if isinstance(text, str) and (act == "env-set" or text.strip()) else None,
+                    create=act == "new")
                 return self._result(r)
         if act not in ("starter", "state") and name in {p["name"] for p
                                                         in project_list(self._who())} \
@@ -6803,6 +6837,13 @@ class Handler(BaseHTTPRequestHandler):
             r = prefs.set_prefs(body["name"], gate=gate, workspace=WORKSPACE)
             if r.get("error"):
                 body["note"] = f"{body.get('note') or 'ready'}; gates not set: {r['error']}"
+        # ...and whether a session may run its container, the fifth of them
+        # on the dialog, so a session can create the first one by request.
+        devbuild = req.get("devbuild")
+        if code == 200 and body.get("name") and devbuild and devbuild != "deny":
+            r = prefs.set_prefs(body["name"], devbuild=str(devbuild), workspace=WORKSPACE)
+            if r.get("error"):
+                body["note"] = f"{body.get('note') or 'ready'}; Run its container not set: {r['error']}"
         # Pinned on arrival, once anything has ever been pinned. Without this a
         # project made while a pins file exists is absent from it, so it lands
         # on disk and never reaches the sidebar: created, and apparently gone.

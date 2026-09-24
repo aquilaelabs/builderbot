@@ -354,13 +354,16 @@ const P_GATE_IDS = {roadmap: "pGateRoadmap", bugs: "pGateBugs", rules: "pGateRul
 const pGateNow = () => Object.fromEntries(
   Object.entries(P_GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
 function pFillGates(){
-  for (const id of Object.values(P_GATE_IDS)){
+  for (const id of [...Object.values(P_GATE_IDS), "pGateDocker"]){
     const el = $(id);
     if (el.dataset.built !== "1"){
       el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
       el.dataset.built = "1";
     }
-    el.value = "auto";
+    // Running its container starts at deny, the setting's own default: it
+    // runs the project's code on a shared machine, which the notebook's
+    // four do not.
+    el.value = id === "pGateDocker" ? "deny" : "auto";
   }
 }
 

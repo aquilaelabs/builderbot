@@ -341,11 +341,6 @@ async function openDevEnv(project, instance){
 // A route picked and not yet applied, per instance: the tab redraws when
 // the daemon answers, and a pick a redraw put back could never be applied.
 const dmRouteDraft = {};
-// ...and the same for the rebuild dial, per project. Nothing on a tab takes
-// effect until Apply (docs/design-language.md, Settings): this wrote on the
-// pick when it was a switch, which is a control that cannot be reconsidered
-// and reads differently from every other setting on the page.
-const dmGrantDraft = {};
 const devTestMode = name => ((state?.projects || []).find(p => p.name === name)?.prefs?.devtest
                              ? "only" : "either");
 
@@ -415,26 +410,20 @@ function dmRefLine(d){
 }
 
 function dmGrantLine(d){
-  // Not for a container written here: its compose file IS the thing, so there
-  // is no project codebase for a session to rebuild it from.
+  // Whether a session may run this project's container is the PROJECT's
+  // setting, and lives in its settings dialog with the other "Claude may"
+  // dials (the operator, 24 Sep), because it now also covers creating the
+  // container, which has to be decidable before there is a row to carry it.
+  // The row says what it is set to, and the words link to where it changes,
+  // the way the tests-run line below does. Not for a container written
+  // here: its compose file IS the thing, so there is no codebase to run.
   if (d.source === "file" || !mayDocker()) return "";
-  const saved = devClaudeMode(d.project);
-  const pick = dmGrantDraft[d.project] ?? saved;
-  return `<div class="sub dmgrant"><label for="${
-      esc(`dmg-${d.project}`)}">Claude may rebuild${
-    helpIcon(`A session in ${d.project} builds this from the project's codebase `
-      + `and brings it up: on ask it says what the rebuild is for and waits for `
-      + `you, on auto it just runs. Making a container, removing one, Up, Down `
-      + `and Env are yours whatever this says, and it covers every instance of `
-      + `${d.project}.`)}</label>
-    <select id="${esc(`dmg-${d.project}`)}" data-dmclaude="${esc(d.project)}"
-            data-was="${esc(saved)}"
-            aria-label="whether a session may rebuild ${esc(d.project)}">${
-      DEVBUILD_MODES.map(([v, l]) => `<option value="${v}"${
-        v === pick ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
-    <button type="button" data-dmclaudeapply="${esc(d.project)}"${
-      pick === saved ? " disabled" : ""} title="save who may rebuild ${
-      esc(d.project)}'s containers">Apply</button></div>`;
+  const mode = devClaudeMode(d.project);
+  return `<div class="sub dmgrant dmclaudesays">Claude ${
+    mode === "auto" ? "may rebuild it, change its env and create it"
+    : mode === "ask" ? "asks you before rebuilding it, changing its env or creating it"
+    : "may not rebuild it"} · <a href="#" data-dmtestgo="${esc(d.project)}"
+      title="the project's settings, where Claude may: Run its container is set">change</a></div>`;
 }
 
 function dmTestLine(d){
@@ -1050,31 +1039,6 @@ function dmWireRows(el, list = dockerList){
     const row = document.querySelector(`[data-rn="${CSS.escape(a.dataset.dmtestgo)}"]`);
     if (row) row.click();
     else notify("open the project's settings from its row on the Projects card", true);
-  });
-  el.querySelectorAll("[data-dmclaude]").forEach(sel => sel.onchange = () => {
-    const project = sel.dataset.dmclaude;
-    if (sel.value === sel.dataset.was) delete dmGrantDraft[project];
-    else dmGrantDraft[project] = sel.value;
-    const b = el.querySelector(`[data-dmclaudeapply="${CSS.escape(project)}"]`);
-    if (b) b.disabled = sel.value === sel.dataset.was;
-  });
-  el.querySelectorAll("[data-dmclaudeapply]").forEach(btn => btn.onclick = async () => {
-    const project = btn.dataset.dmclaudeapply;
-    const mode = dmGrantDraft[project];
-    if (!mode) return;
-    busy(btn, "Applying");
-    try{
-      const r = await postJSON("/api/prefs", {project, devbuild: mode});
-      const j = await r.json();
-      if (j.error){ notify(j.error, true); return; }
-      delete dmGrantDraft[project];
-      notify(mode === "auto" ? `a session in ${project} may rebuild its containers`
-             : mode === "ask" ? `a session in ${project} will ask you before rebuilding`
-             : `rebuilding ${project}'s containers is yours again`);
-      refresh();
-      dockerRev++; drawPanes();
-    }catch(e){ notify("the dial: " + e, true); }
-    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   });
   // The route is saved on Apply, not on the pick (docs/design-language.md,
   // Settings): a pick wakes the button when it differs from what is saved.

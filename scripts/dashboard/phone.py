@@ -46,6 +46,10 @@ nodes = None          # the node module, set by server.py once it is up: run_wai
 # keeps having one dependency (the node registry), and so the request queue
 # stays a queue rather than growing an opinion about compose.
 rebuilder = None
+# ...and what a rebuild request may do first (ask_rebuild): make the project's
+# own container, write its env. devapp.create_instance and devapp.write_env.
+instance_maker = None
+env_writer = None
 # devapp.create_container, injected the same way: what Allow on a container
 # ask calls (R71). None where no docker path is wired up.
 container_maker = None
@@ -620,6 +624,13 @@ def _req_public(r):
     # approved by reading its argv: the compose file is the request. The env
     # file is not shown whole, since that is where a token would be; its
     # keys are, so the reader knows what it sets.
+    # ...and a rebuild that creates the container or writes its env says so,
+    # with the env's keys for the same reason.
+    if r.get("kind") == "rebuild":
+        out["create"] = bool(r.get("create"))
+        if r.get("env") is not None:
+            out["env_keys"] = [ln.split("=", 1)[0].strip() for ln in (r.get("env") or "").splitlines()
+                               if "=" in ln and not ln.lstrip().startswith("#")]
     if r.get("kind") == "container":
         out["detail"] = r.get("compose") or ""
         out["env_keys"] = [ln.split("=", 1)[0].strip() for ln in (r.get("env") or "").splitlines()
@@ -753,26 +764,33 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
 
 
 def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
-                asker_admin=False):
+                asker_admin=False, env=None, create=False):
     """A session asking to rebuild its project's dev instance, for a project
-    whose switch is on `ask` (the Docker row's dial).
+    whose dial is on `ask` (Claude may: Run its container, in the project's
+    settings).
 
     The phone's shape applied to a build: the reason and what it would do go
-    to a person, they allow or deny, and allowing starts the build. Nothing
-    about the container is decided here (which compose file, which node, what
-    it mounts), because none of that is the session's to name: it asks about
-    the instance that already exists, which somebody else created.
+    to a person, they allow or deny, and allowing starts the build. The same
+    request may also carry, in the order Allow runs them, creating the
+    project's own container when it has none (`create`) and the env to write
+    first (`env`): the operator's widening of the dial, 24 Sep. What a
+    container IS stays out of the session's hands: it is the project's own
+    compose file on the project's node, never one the session names.
     """
     why = " ".join(str(why or "").split())[:300]
     if not why:
         return {"error": "say what the rebuild is for: the operator is "
                          "answering a question about work they did not start"}
+    if env is not None and len(str(env)) > 65536:
+        return {"error": "that env file is over 64KB, and this holds settings, not data"}
     to, to_name = (("admins", "the administrators") if not (asker_admin and asker_uid)
                    else (asker_uid, f"{asker_name or 'you'} (your own account: it is "
                                     "on the Docker tab and your bell)"))
-    return _queue("rebuild", why, ["devapp", "rebuild", name], "", "", project,
-                  "claude", to, to_name, asker_name,
-                  extra={"instance": str(instance or "")})
+    cmd = (["devapp", "new", name] if create else ["devapp", "env", "set", name]
+           if env is not None else ["devapp", "rebuild", name])
+    return _queue("rebuild", why, cmd, "", "", project, "claude", to, to_name, asker_name,
+                  extra={"instance": str(instance or ""), "create": bool(create),
+                         "env": None if env is None else str(env)})
 
 
 def ask_container(why, name, compose, env, nid, node_name, project, for_project="",
@@ -851,7 +869,15 @@ def decide(rid, allow, uid, name="", admin=False):
             with _lock:
                 r.update(state="done", out="no rebuild is wired up here", code=1)
             return {"ok": True}
-        res = rebuilder(r["project"], r.get("instance") or "") or {}
+        # What the request carried beyond the build, in the order it needs:
+        # the container made, then its env, then the build that uses both.
+        res = {}
+        if r.get("create") and instance_maker is not None:
+            res = instance_maker(r["project"], r.get("instance") or "") or {}
+        if not res.get("error") and r.get("env") is not None and env_writer is not None:
+            res = env_writer(r["project"], r["env"], r.get("instance") or "") or {}
+        if not res.get("error"):
+            res = rebuilder(r["project"], r.get("instance") or "") or {}
         with _lock:
             r.update(state="done", code=1 if res.get("error") else 0,
                      out=str(res.get("error") or res.get("job") or "started"))

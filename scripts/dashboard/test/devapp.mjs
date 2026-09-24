@@ -2624,18 +2624,25 @@ ok(await page.$('#devSend'),
   // The tab is named as well as the switch: the controls moved from the
   // artifact row to the Docker tab and this sentence stayed behind, pointing
   // a session at a tab that no longer has it.
-  ok(off.status === 403 && /Docker tab has the dial that hands it over/.test(off.error || ''),
-     `a session cannot rebuild until the project says so, and is told where the dial is (${
+  ok(off.status === 403 && /project's settings, Claude may: Run its container/.test(off.error || ''),
+     `a session cannot rebuild until the project says so, and is told where the setting is (${
         JSON.stringify(off).slice(0, 90)})`);
   // The two verbs that make and unmake a container are not on the dial at
   // all: they are docker-write, which a session's principal never has, so
   // the grant cannot reach them however it is set. This is the operator's
   // own line (the user makes them, Claude rebuilds them), and it is checked
   // here rather than trusted to the ordering of two ifs.
-  for (const act of ['new', 'remove', 'env-set', 'route']){
+  for (const act of ['remove', 'route']){
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
     ok(r.status === 403 && /administrator/.test(r.error || ''),
        `...and ${act} is not a session's at any setting (${String(r.error).slice(0, 48)})`);
+  }
+  // Its env and creating its own container are on the setting now (the
+  // operator, 24 Sep), so at deny they are refused by it, naming it.
+  for (const act of ['new', 'env-set', 'env-get']){
+    const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
+    ok(r.status === 403 && /Run its container/.test(r.error || ''),
+       `...and at deny ${act} is refused by the same setting (${String(r.error).slice(0, 48)})`);
   }
   // An instance on ANOTHER node is not this session's to touch, whatever the
   // dial says. It is a container still running on a machine this session is
@@ -2719,47 +2726,68 @@ ok(await page.$('#devSend'),
   const on = await asSession({ project: 'ep.silon', action: 'rebuild' });
   ok(on.status === 200 && !on.error && on.started,
      `...and on auto the same call is taken without asking (${JSON.stringify(on).slice(0, 60)})`);
-  // The control lives on the DOCKER tab, beside the Rebuild it hands over,
-  // and it is NOT gated with the daemon buttons: whose decision this is does
-  // not depend on a machine answering. Drawn from the same setting rather
-  // than a second copy of it.
-  const SW = '.dmtab [data-dmclaude="ep.silon"]';
-  // Through the manager's own opener, which waits for the ROWS to be there.
-  // A bare openDocker() returns before the list has arrived, so this was a
-  // twenty-second bet on a fetch finishing, and it lost in a full run on a
-  // loaded box while passing alone straight afterwards (B118). The dial is
-  // drawn from that list, so the row being present is the real condition.
+  await idle();
+  // ---- the setting covers its env and a fresh container (24 Sep) -----------
+  // So a session can bring a container up by request even where the project
+  // has none yet: on auto it sets the env and creates the project's own; on
+  // ask one request carries both, the approver sees the env's keys and never
+  // its values, and Allow creates, writes and builds.
+  {
+    const set = await asSession({ project: 'ep.silon', action: 'env-set', instance: 'main', text: 'MODE=session\n' });
+    const got = await asSession({ project: 'ep.silon', action: 'env-get', instance: 'main' });
+    ok(set.status === 200 && /MODE=session/.test(got.text || ''),
+       `on auto a session sets its container's env and reads it back (${set.status}, ${got.status})`);
+    const made = await asSession({ project: 'ep.silon', action: 'new', instance: 'fresh' });
+    ok(made.status === 200 && made.instance === 'fresh',
+       `...and creates its project's own container (${made.error || made.instance})`);
+    const under = await asSession({ project: 'ep.silon', action: 'new', instance: 'elsewhere', for: 'alpha' });
+    ok(under.status === 403, `...but not one shown under another project (${under.status})`);
+    await dial('ask');
+    const asks = await asSession({ project: 'ep.silon', action: 'new', instance: 'asked',
+                                   text: 'KEY=secret-value\n', why: 'a fresh one to try the branch' });
+    const seen = await page.evaluate(async (id) =>
+      ((await (await fetch('/api/phone')).json()).asks || []).find(a => a.id === id), asks.id);
+    ok(asks.status === 200 && asks.id && seen?.create === true && JSON.stringify(seen.env_keys) === '["KEY"]'
+       && !JSON.stringify(seen).includes('secret-value'),
+       `on ask one request carries the create and the env, showing the env's keys and never its values (${JSON.stringify(seen?.cmd)})`);
+    await page.evaluate(async (id) => {
+      await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ action: 'allow', id }) });
+    }, asks.id);
+    await idle();
+    const after = await page.evaluate(async () => {
+      const r = await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                             body: JSON.stringify({ project: 'ep.silon', instance: 'asked', action: 'env-get' }) });
+      return r.json();
+    });
+    ok(/KEY=secret-value/.test(after.text || ''),
+       `...and Allow creates it and writes its env before the build (${after.error || 'stored'})`);
+    for (const inst of ['fresh', 'asked']) await page.evaluate(async (i) => {
+      await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify({ project: 'ep.silon', instance: i, action: 'remove' }) });
+    }, inst);
+    await dial('auto');
+  }
+  // The setting lives in the project's settings with the other Claude may
+  // dials (the operator, 24 Sep), because it covers creating the container,
+  // which has to be decidable before there is a row. The row says what it is
+  // set to and links there, the way the tests-run line does.
   await dmRefresh();
-  await page.waitForFunction(s2 => document.querySelector(s2)?.value === 'auto',
-                             SW, { timeout: 20000 });
-  ok(await page.$eval(SW, e => e.value === 'auto' && !e.disabled
-                              && [...e.options].map(o => o.value).join() === 'deny,ask,auto'),
-     'the docker tab carries the dial, on auto, with all three settings and live whatever the daemon says');
-  // Nothing on a tab takes effect until Apply (docs/design-language.md,
-  // Settings). This wrote on the pick when it was a switch, which is the one
-  // control on the page that could not be reconsidered.
-  ok(await page.$eval('.dmtab [data-dmclaudeapply="ep.silon"]', b => b.disabled),
-     '...with its Apply asleep until something is picked');
-  ok(await page.$('#devClaude') === null && await page.$('.artrow [data-dmclaude]') === null,
-     '...and not on the artifact row, which is where it was asked not to be');
-  // Turned off from the row itself, which is the gesture this is for,
-  // and waited on the SERVER's own copy of the setting rather than on the
-  // checkbox, because the checkbox is redrawn from the poll and its state
-  // between the click and the next payload is nobody's answer.
-  await page.selectOption(SW, 'deny');
-  ok(await page.$eval('.dmtab [data-dmclaudeapply="ep.silon"]', b => !b.disabled),
-     '...which wakes on a pick that differs from what is saved');
-  // The pick alone changes nothing on the server: read it back before the
-  // press, not after, or this proves only that the press works.
-  ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 200,
-     '...and until it is pressed the grant is exactly what it was');
-  await page.click('.dmtab [data-dmclaudeapply="ep.silon"]');
-  // Falsy, not `'deny'`: a record with nothing left in it is removed rather
-  // than stored, so the row's prefs go back to the thin default and the
-  // field is simply absent. Absent and deny are the same answer here.
+  await page.waitForFunction(() => /may rebuild it, change its env and create it/.test(
+    document.querySelector('.dmtab .row[data-inst^="ep.silon|"] .dmclaudesays')?.textContent || ''),
+    null, { timeout: 20000 });
+  ok(await page.$('.dmtab .row[data-inst^="ep.silon|"] .dmclaudesays [data-dmtestgo="ep.silon"]') !== null
+     && await page.$('.dmtab [data-dmclaude]') === null,
+     'the docker row says what a session may do with it and links to the setting, carrying no control');
+  await page.evaluate(() => renameProject('ep.silon'));
+  await page.waitForSelector('#rnmodal:not([hidden]) #rnGateDocker', { timeout: 15000 });
+  ok(await page.$eval('#rnGateDocker', e => e.value === 'auto' && !e.closest('label').hidden
+                        && [...e.options].map(o => o.value).join() === 'auto,ask,deny'),
+     "the project's settings carry it, on auto, with the other Claude may dials");
+  await page.selectOption('#rnGateDocker', 'deny');
+  await page.click('#rnGo');
   await refreshUntil(page, () => !((state.projects || [])
-    .find(p => p.name === 'ep.silon') || {}).prefs?.devbuild,
-    { timeout: 20000 });
+    .find(p => p.name === 'ep.silon') || {}).prefs?.devbuild, { timeout: 20000 });
   ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
      '...and turning it back to deny there takes the grant back');
   // ---- where the tests run (R48 step 3, moved by R68 step 6) -------------

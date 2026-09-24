@@ -141,8 +141,14 @@ bb: BuilderBot helper
                          and whether its daemon answers
   bb devapp rebuild [--why "..."]
                          build it and bring it up. Only where the project's
-                         docker row has handed that over. On `ask` the reason
-                         goes to a person and this waits for their answer
+                         settings hand that over (Claude may: Run its
+                         container). On `ask` the reason goes to a person and
+                         this waits for their answer
+  bb devapp new [--env FILE] [--why "..."]
+                         create the project's container from its own compose
+                         file when it has none, under the same setting
+  bb devapp env [set FILE|-] [--why "..."]
+                         print its env, or replace it, under the same setting
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -4063,14 +4069,15 @@ PY
     esac
 }
 
-# bb devapp: this project's dev instance, and the one action a session may
-# be given over it.
+# bb devapp: this project's dev instance, and what a session may be given
+# over it.
 #
-# The dashboard's docker row is the operator's: Up, Down, Env, making one and
-# removing one are theirs, and a session is told to ask. REBUILD is the
-# exception a project can hand over, with the dial on that row, because a
-# project whose work IS the container has a loop that a session cannot close
-# otherwise: change it, rebuild it, look at what it did. Three settings and
+# Up, Down, removing one and a container of any other shape are the
+# operator's. What a project can hand over, with one setting in its settings
+# dialog (Claude may: Run its container), is rebuilding its container,
+# changing its env and creating its own when it has none (24 Sep), because
+# a project whose work IS the container has a loop that a session cannot
+# close otherwise: change it, rebuild it, look at what it did. Three settings and
 # `deny` is the default: `auto` is the loop, `ask` puts the reason in front
 # of a person and starts the build when they allow it, `deny` refuses with
 # the sentence that names the dial, so a session that tries learns where the
@@ -4281,7 +4288,79 @@ for _ in range(3600):
 sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs tab")
 PY
             ;;
-        *) die "usage: bb devapp [--instance NAME] [status|rebuild [--why \"what it is for\"]|test [ARGS]]" ;;
+        new|env)
+            # Creating the project's own container, and its env, under the
+            # same setting as rebuild (Claude may: Run its container). On
+            # `ask` one request carries it all and Allow runs it, the build
+            # included; on `auto` it is done and bb devapp rebuild is next.
+            local verb="$sub" why="" file="" setting=0 tmp=""
+            shift || true
+            if [ "$verb" = env ] && [ "${1:-}" = set ]; then
+                setting=1; shift
+                [ $# -ge 1 ] || die "usage: bb devapp env set FILE|- [--why \"what it is for\"]"
+                file="$1"; shift
+            fi
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    --env) { [ "$verb" = new ] && [ $# -ge 2 ]; } || die "usage: bb devapp new [--env FILE] [--why \"...\"]"
+                           file="$2"; shift 2 ;;
+                    *) die "usage: bb devapp new [--env FILE] [--why \"...\"] | env [set FILE|-] [--why \"...\"]" ;;
+                esac
+            done
+            if [ "$file" = - ]; then tmp="$(mktemp)"; cat > "$tmp"; file="$tmp"; fi
+            [ -z "$file" ] || [ -f "$file" ] || die "no such file: $file"
+            local rc=0
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_WHY="$why" BB_DEV_VERB="$verb" \
+            BB_DEV_SET="$setting" BB_DEV_FILE="$file" python3 - <<'PY' || rc=$?
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+proj, auth = os.environ["BB_DEV_PROJECT"], os.environ["BB_DEV_AUTH"]
+verb, setting = os.environ["BB_DEV_VERB"], os.environ.get("BB_DEV_SET") == "1"
+post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", "")}, auth=auth)  # noqa: E731
+path = os.environ.get("BB_DEV_FILE", "")
+text = open(path, encoding="utf-8").read() if path else None
+if verb == "env" and not setting:
+    d = post({"action": "env-get"})
+    if d.get("error"):
+        sys.exit(f"[builderbot] ERROR: {d['error']}")
+    sys.stdout.write(d.get("text") or "")
+    if d.get("seeded"):
+        print("[builderbot] nothing is stored yet: that is the project's .env.example",
+              file=sys.stderr)
+    raise SystemExit(0)
+body = {"action": "new" if verb == "new" else "env-set", "why": os.environ.get("BB_DEV_WHY", "")}
+if text is not None:
+    body["text"] = text
+r = post(body)
+if r.get("error"):
+    sys.exit(f"[builderbot] ERROR: {r['error']}")
+if r.get("id"):
+    # On ask: one request, and Allow runs all of it, the build included.
+    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
+          "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
+    for _ in range(900):
+        time.sleep(1)
+        o = bbapi.call("/api/phone", {"action": "outcome", "id": r["id"]}, auth=auth)
+        if o.get("error"):
+            sys.exit(f"[builderbot] ERROR: {o['error']}")
+        if o["state"] == "denied":
+            sys.exit("[builderbot] it was not allowed")
+        if o["state"] == "done":
+            if o.get("code"):
+                sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
+            print("[builderbot] allowed, and building: bb devapp says how far it got")
+            raise SystemExit(0)
+    sys.exit("[builderbot] nobody answered within fifteen minutes")
+print(f"[builderbot] created {r.get('instance') or 'it'}; bb devapp rebuild builds and starts it"
+      if verb == "new" else "[builderbot] its env is saved; bb devapp rebuild applies it")
+PY
+            [ -z "$tmp" ] || rm -f "$tmp"
+            return "$rc"
+            ;;
+        *) die "usage: bb devapp [--instance NAME] [status|rebuild [--why \"...\"]|new [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]]" ;;
     esac
 }
 
