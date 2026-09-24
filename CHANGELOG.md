@@ -75,6 +75,7 @@
 - Whether a session may run a project's container is set in the project's settings and the new-project dialog (Claude may: Run its container), and now also lets a session change its env and create its container when it has none; on ask, one request carries it all (6913631)
 - The Docker tab groups its rows by the project each container belongs to, in alphabetical order, with the ones that belong to no project last (5a89323)
 - A session told its container's env is missing is told how to set it, and that the env is kept by BuilderBot rather than as a .env file in the project (5a89323)
+- Nostromo: the rings hold still behind the cards as they scroll, the cards are a little more see-through, and the tab side wears the same glass, its tab strip, pane bars and documents alike; a terminal keeps its solid ground (be4f2ba)
 
 ### Removed
 
@@ -134,6 +135,7 @@
 - bb test runs a project's tests on its node unless its settings say otherwise. Tests run offers three places: on the node, the default; in the dev instance when it is up; or only in the dev instance. An image built to ship carries no tests, and a run inside one found none and reported success (7c91cc9)
 - A New container that compose refuses no longer shows on the Docker tab for a moment before it disappears (7c91cc9)
 - A run attached to a kept test fixture waits its turn like any other run, so the hand-back design check no longer runs beside a session's own suites and fails them both (7c91cc9)
+- bb tests preflight runs a changed suite by itself, rather than every suite that happens to name the same endpoint (be4f2ba)
 
 ### Security
 
