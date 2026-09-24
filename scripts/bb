@@ -2711,6 +2711,9 @@ elif op == "list":
     p = reg.payload(proj)
     print(f"{p['standing']} standing, {p['conditional']} conditional; "
           f"{p['chars']} characters in front of every session here")
+    # The name column is as wide as the longest name (B233): a fixed 22 ran
+    # no-credentials-in-the-repo straight into its text.
+    w = max([22] + [len(r['name']) + 1 for r in rs])
     for r in rs:
         when = ""
         if reg.conditional(r):
@@ -2720,7 +2723,7 @@ elif op == "list":
         mine = "*" if r.get("by") == "claude" else " "
         frame = ((" [global]" if r.get("scope") == "global" else "")
                  + (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else ""))
-        print(f" {mine}{r['name']:<22}{first[:60]}{when}{frame}")
+        print(f" {mine}{r['name']:<{w}}{first[:60]}{when}{frame}")
     print("\n`bb rules show <name>` for one in full. A * is one a session "
           "wrote: yours to `edit` or `rm`. The rest are the operator's: read "
           "them, and say in your reply if one looks wrong.")
