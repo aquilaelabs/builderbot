@@ -6909,6 +6909,8 @@ class Handler(BaseHTTPRequestHandler):
         env.pop("DASHBOARD_AUTH", None)
         r = gitview.act(WORKSPACE / name, action, req.get("args") or {}, env=env,
                         may_push=projects.may_push(name))
+        if action == "init" and r.get("ok"):
+            mapping.exclude(WORKSPACE / name)      # the code map is never the project's
         if r.get("ok") and not NODES_OK:
             db.audit(self._principal(), "git-" + action, name,
                         {k: v for k, v in (req.get("args") or {}).items()

@@ -58,7 +58,7 @@ def _build(name):
     dest = WORKSPACE / name
     files, error = 0, ""
     try:
-        _exclude(dest)
+        exclude(dest)
         # A test-only pause, so a suite can see the gate up: the build of a
         # fixture project is over in a tenth of a second otherwise.
         slow = float(os.environ.get("BB_MAP_SLOW") or 0)
@@ -86,9 +86,11 @@ def _build(name):
                      files=files, error=error)
 
 
-def _exclude(dest):
+def exclude(dest):
     """`.bb-map/` into the repository's own exclude file, once. Not the
-    project's .gitignore, which is the project's to write."""
+    project's .gitignore, which is the project's to write. Also called when
+    the Git view's Init makes a repository, since a map built before there
+    was one excluded nothing and went into the first commit."""
     info = dest / ".git" / "info"
     try:
         if not (dest / ".git").is_dir():
