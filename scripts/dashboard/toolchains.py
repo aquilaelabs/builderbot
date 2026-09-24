@@ -96,6 +96,11 @@ def load_toolchains():
         reqs = [x for x in (r.get("requires") or []) if isinstance(x, str) and x]
         if reqs:
             row["requires"] = reqs[:4]
+        # The tool it adds under `bb tool`, projected like the rest: one plain
+        # word, since it is drawn on the row and matched against bb's case.
+        tool = r.get("tool")
+        if isinstance(tool, str) and tool and tool.replace("-", "").isalnum():
+            row["tool"] = tool
         lay = r.get("layout")
         if isinstance(lay, dict):
             row["layout"] = {
@@ -429,6 +434,10 @@ def payload():
         else:
             origin = ""
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      # The tool this recipe adds under `bb tool`, one name
+                      # per recipe, so a row says what installing it adds to
+                      # a session and the suite holds two from claiming one.
+                      "tool": p.get("tool") or "",
                       # Whether a newer version can be fetched in place, or
                       # whether getting one means removing this first.
                       "updatable": bool(p.get("updatable")),
@@ -666,6 +675,55 @@ def abort_job():
 _node_checks = {}
 
 
+_node_errors_seen = {}
+
+
+def _node_errors(job_id, failed, verb):
+    """{name: why} for the toolchains a node job did not land, in the words
+    the controller's own path puts on a row: the end of what that
+    toolchain's section of the log said, minus the progress frames, and
+    the verb. The section is what `bb toolchains install` prints between
+    its own `== bb toolchains install NAME` line and the next `==` line.
+    Without this a failed install on a node ended with the row simply
+    unticked: the reason was in the job's log and nowhere the tab draws
+    (the graphics recipe's 404 was found with bb jobs, not on the tab)."""
+    if not failed:
+        return {}
+    key = (job_id, tuple(failed))
+    if key in _node_errors_seen:
+        return _node_errors_seen[key]
+    parts, cur = {}, None
+    for line in (nodes.job_tail(job_id, 20000) or "").splitlines():
+        m = re.match(r"== bb toolchains \S+ (\S+)", line)
+        if m:
+            cur = m.group(1)
+            parts[cur] = []
+            continue
+        if line.startswith("== "):
+            cur = None
+            continue
+        if cur is not None:
+            parts[cur].append(line)
+    out = {}
+    for name in failed:
+        lines = []
+        for ln in parts.get(name) or []:
+            # The run's own footer, not this toolchain's; and curl's meter
+            # shares its last line with the error it ends on.
+            if re.match(r"^\d+ of \d+ did not install$", ln.strip()):
+                continue
+            if "curl: (" in ln:
+                ln = ln[ln.index("curl: ("):]
+            # ...and the meter's own frames, which are made of these alone.
+            if ln.strip() and not ln.strip().strip("#=O- "):
+                continue
+            lines.append(ln)
+        said = _job_tail("\n".join(lines), keep=4)
+        out[name] = " · ".join(said + [f"{verb} failed on the node"])[-400:]
+    _node_errors_seen[key] = out
+    return out
+
+
 def _check_rows(job_id):
     """{name: {installed, latest, status}} from a finished check job's log.
 
@@ -739,6 +797,10 @@ def payload_for_node(nid):
             {"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
         kb = _tc_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      # The tool this recipe adds under `bb tool`, one name
+                      # per recipe, so a row says what installing it adds to
+                      # a session and the suite holds two from claiming one.
+                      "tool": p.get("tool") or "",
                       # Whether a newer version can be fetched in place, or
                       # whether getting one means removing this first.
                       "updatable": bool(p.get("updatable")),
@@ -772,6 +834,14 @@ def payload_for_node(nid):
         if names:
             i["system"] = {"manager": fam, "names": names,
                            "missing": list(unmet.get(i["name"]) or []) if i["installed"] else None}
+    # A toolchain another one needs, missing on this node: the store is
+    # shared, so diagrams can be installed from one node and be on every
+    # node, while the jdk it runs on was removed from this one, or never
+    # arrived. The row says which, and offers that row's own install.
+    here = {i["name"] for i in items if i["installed"]}
+    for i in items:
+        if i["installed"]:
+            i["needs_missing"] = [r for r in (i.get("needs") or []) if r not in here]
     landed = _landed_at(nid)
     started = [int(x.get("created") or 0) for x in rep.get("sessions") or [] if isinstance(x, dict)]
     shapes = {p["name"]: p.get("layout") or {} for p in TOOLCHAINS}
@@ -807,8 +877,10 @@ def payload_for_node(nid):
                 act = sp.get("action") or "install"
                 here = {i["name"] for i in items if i["installed"]}
                 done = [x for x in names if (x in here) == (act == "install")]
+                failed = [x for x in names if x not in done]
                 job = {"running": False, "action": act, "queue": [], "current": "",
-                       "done": done, "failed": [x for x in names if x not in done],
+                       "done": done, "failed": failed,
+                       "errors": _node_errors(j["id"], failed, act),
                        "aborting": False, "node": nid, "id": j["id"]}
                 break
     # What the last check on this node said, if there has been one. Read from

@@ -32,6 +32,11 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } })
 await page.goto(URL);
 await ready(page);
 
+// The listing's name column is as wide as its longest name (B233): the
+// shipped no-credentials-in-the-repo ran straight into its own text.
+ok(/no-credentials-in-the-repo\s+Never write/.test(bb()),
+   'bb rules pads the name column past its longest name');
+
 // ---- the tab ---------------------------------------------------------------
 await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
 await nbShown(page);

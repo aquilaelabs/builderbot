@@ -150,4 +150,51 @@ const inServer = (py.match(/^TAB_KINDS = \{([^}]*)\}/m) || [, ''])[1]
 ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
    `every tab kind the page has is one the server keeps (page: ${inPage}, server: ${inServer})`);
 
+// The limit is on terminals, per account (R78): a shell past it is refused
+// with a toast that says so, and a document tab opens past it, because it
+// costs no terminal. The strip counted is this account's own layout.
+{
+  await page.evaluate(() => { state.max_tabs = tabs.filter(t => t.kind === 'term').length; });
+  const before = await page.evaluate(() => tabs.length);
+  await page.evaluate(() => openTab({kind: 'term', arg: 'sh:99:alpha', label: 'sh 99'}));
+  ok(await page.evaluate(() => tabs.length) === before
+     && await page.evaluate(() => /Terminal tab limit reached/.test(document.body.textContent)),
+     'a shell past the terminal limit is refused, and the toast names the terminal limit');
+  await page.evaluate(() => openNodesTab());
+  ok(await page.evaluate(() => tabs.length) === before + 1 && await page.evaluate(() => tabs.some(t => t.kind === 'nodes')),
+     '...while a document tab opens past it: it costs no terminal');
+  await page.evaluate(() => { state.max_tabs = 12; });
+}
+
+// A terminal in its own window (R8): the pop-out opens the terminal's own
+// URL in a window, the tab stays as a placeholder with Reattach and its
+// frame is torn down (a second client on the session is the size fight),
+// the layout carries the flag, and the window closing brings the tab back.
+{
+  const id = ids[1];
+  await page.evaluate(id => { panes[0] = id; render(); }, id);
+  await page.evaluate(() => { window.__pops = []; window.open = (url, name) => {
+    const w = { url, name, closed: false, close(){ this.closed = true; } }; window.__pops.push(w); return w; }; });
+  await page.click(`.tab[data-id="${id}"] [data-pop]`);
+  ok(await page.evaluate(() => window.__pops.length === 1 && /^\/term\/\?arg=/.test(window.__pops[0].url) && /^bb-pop-/.test(window.__pops[0].name)),
+     'the pop-out opens the terminal in its own window, on its own /term connection');
+  ok(await page.evaluate(id => tabOf(id).popped === true
+       && !document.querySelector(`#pane0 .stack > [data-key^="${id}|"] iframe`)
+       && !!document.querySelector('#pane0 .slot.popped.on .reattach'), id),
+     '...and the tab stays, blank, with Reattach, its frame torn down');
+  ok(await page.evaluate(id => layoutNow().tabs.find(t => t.id === id).popped === true, id),
+     '...and the layout carries the flag');
+  ok(await page.$eval(`.tab[data-id="${id}"] [data-pop]`, b => /reattach/.test(b.title)),
+     "...and the strip's button now says reattach");
+  await page.click('#pane0 .slot.popped.on .reattach');
+  ok(await page.evaluate(id => tabOf(id).popped === false && window.__pops[0].closed === true
+       && !!document.querySelector(`#pane0 .stack > [data-key^="${id}|"].on iframe`), id),
+     'Reattach closes the window and the terminal is back in the pane');
+  await page.click(`.tab[data-id="${id}"] [data-pop]`);
+  await page.evaluate(() => { window.__pops[1].closed = true; });
+  await page.waitForFunction(id => tabOf(id).popped === false, id, { timeout: 6000 });
+  ok(await page.evaluate(id => !!document.querySelector(`#pane0 .stack > [data-key^="${id}|"].on iframe`), id),
+     'closing the popped window brings the tab back on its own');
+}
+
 await done(browser);

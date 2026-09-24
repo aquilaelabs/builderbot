@@ -42,11 +42,16 @@ put('rules.json', { projects: {} });
 put('roadmap.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 let p = await pre();
-ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules'
+ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules'
    && /The toolchain is the store, not the machine/.test(p.text)
    && /\(global\)/.test(p.text) && p.capped === false,
    `a project with nothing set still gets the briefing and the shipped global rules (${
      (p.parts || []).map(x => x.name).join(',') || 'none'}, ${p.bytes} bytes)`);
+// The line between the two: the briefing states what is true of the machine,
+// a shipped rule is an obligation, and nothing is said in both. An obligation
+// that was in the briefing too could not be turned off by its switch.
+ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length === 2,
+   'an obligation reaches a session once, as a rule, and not again from the briefing');
 
 // ---- the order, which is the operator's rules first -------------------------
 // How they want this worked on comes before what there is to work on. Asserted
@@ -71,7 +76,7 @@ ok(!/\n\n\n/.test(p.text),
    '...joined by one blank line, so a store with nothing leaves no gap where it would have been');
 ok(p.bytes === Buffer.byteLength(p.text, 'utf8') && p.capped === false,
    `...and the size is the block's own (${p.bytes} bytes)`);
-ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap,bugs',
+ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules,roadmap,bugs',
    `...with each named and measured separately, the briefing first (${
      (p.parts || []).map(x => `${x.name} ${x.bytes}`).join(' · ')})`);
 
@@ -79,7 +84,7 @@ ok((p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap,bugs',
 put('bugs.json', { projects: {} });
 p = await pre();
 ok(at('RULESMARK') >= 0 && !/BUGMARK/.test(p.text) && !/\n\n\n/.test(p.text)
-   && (p.parts || []).map(x => x.name).join(',') === 'briefing,rules,roadmap',
+   && (p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules,roadmap',
    'a tracker with nothing open drops out of the block entirely, gap included');
 
 // ---- the cap ---------------------------------------------------------------

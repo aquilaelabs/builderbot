@@ -16,6 +16,8 @@ _work/
 # relayed, and the controller opens the path it is given, so the log has to
 # be somewhere both machines see, which means inside the project.
 scratchpad/
+# bb map's index, built from the tree and rebuilt when a source is newer.
+.bb-map/
 __pycache__/
 *.pyc
 

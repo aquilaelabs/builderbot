@@ -147,27 +147,47 @@ GLOBAL = "*"
 # that reads it twice pays twice and the two copies drift.
 BUILTIN = [
     {"name": "stay-in-project",
-     "text": "Work in this project only. Do not read from, write to, or go"
-             " looking for context in a sibling project under /workspace. If"
-             " something seems to be missing, ask."},
+     "text": "Work in this project only: never read, write or look for context in"
+             " another project under /workspace. If something seems to be"
+             " missing, ask."},
     {"name": "ask-do-not-install",
-     "text": "Never install a tool with a system package manager. It lands on"
-             " that machine only, is invisible to `bb toolchains`, and is gone"
-             " when the node is rebuilt. Say what is missing: installing is"
-             " the operator's."},
-    {"name": "no-credentials-in-the-repo",
-     "text": "Never write a credential into a repository: not in test"
-             " fixtures, not in CI config, not in an .env file that is not"
-             " gitignored."},
-    {"name": "say-what-you-observed",
-     "text": "Report what happened, not what should have. If tests failed, say"
-             " so with the output; if you skipped a step, say that. Never"
-             " invent a local build to route around a refusal, and never claim"
-             " success you did not see."},
+     "text": "Never install a tool with a system package manager: it is invisible"
+             " to `bb toolchains` and gone when the node is rebuilt. Say what is"
+             " missing; installing is the operator's."},
+    {"name": "no-credentials-in-the-repo", "fixed": True,
+     "text": "Never write a credential into a repository: not in a test fixture,"
+             " not in CI config, not in an .env file that is not gitignored."},
+    {"name": "say-what-you-observed", "fixed": True,
+     "text": "Report what happened, not what should have: a failed test with its"
+             " output, a skipped step as skipped. Never claim a success you did"
+             " not see, and never route around a refusal with a local"
+             " workaround."},
+    {"name": "file-what-you-find",
+     "text": "What you notice goes on the record, not only in a reply: a bug"
+             " with `bb bug add`, work worth doing with `bb roadmap add`. Tick"
+             " items off as you finish them."},
+    {"name": "side-quests",
+     "text": "A bug met mid-task is fixed only when your own change caused it"
+             " or it blocks the work: the smallest fix, in its own commit, said"
+             " in the reply. Anything else is filed and left. One level deep:"
+             " a bug found while fixing one of those is filed, not chased."},
+    {"name": "own-branches",
+     "text": "A branch another account's session works on (claude/<their"
+             " name>) is theirs: merge, rebase or delete it only when asked"
+             " to, after saying whose it is."},
+    {"name": "stay-responsive",
+     "text": "A test run never holds a reply. Start it in the background;"
+             " answer questions while it runs; a change asked for meanwhile is"
+             " queued until it ends, and said so."},
+    {"name": "ask-before-unshelving",
+     "text": "A shelved roadmap item is the operator's decision, whatever a"
+             " request sounds like: do not work on it, read for it or draft for"
+             " it. `bb roadmap unshelve N WHY` asks for it back; wait for the"
+             " approval."},
     {"name": "ship-to-dist",
      "text": "Shippable build output goes in this project's dist/, named with"
-             " `bb version --file`, and gitignored. The Artifacts tab lists"
-             " dist/ and nothing else."},
+             " `bb version --file` and gitignored; nothing else goes there. The"
+             " Artifacts tab lists dist/."},
 ]
 
 # What the standing block costs before it is worth saying out loud on the tab.
@@ -209,9 +229,16 @@ def builtins():
     off = _off()
     out = []
     for i, r in enumerate(BUILTIN):
+        fixed = bool(r.get("fixed"))
         r = _clean(dict(r), i)
         r["scope"], r["builtin"], r["by"] = "global", True, "builderbot"
-        r["disabled"] = r["name"] in off
+        # A fixed rule has no switch: it is not a preference about how work is
+        # done but what makes the rest of the record worth reading (a report
+        # that is true, a repository with no secret in it). The tab does not
+        # list it and a save that names it is ignored, so a session cannot
+        # talk anyone into turning it off either.
+        r["fixed"] = fixed
+        r["disabled"] = (not fixed) and r["name"] in off
         out.append(r)
     return out
 
@@ -292,6 +319,13 @@ def _rev_of(rows):
     watches and what a save is checked against are one value."""
     raw = json.dumps(rows or [], sort_keys=True)
     return sum(ord(c) * (i + 1) for i, c in enumerate(raw)) % 1000000007
+
+
+# What a project with no rules hashes to. The poll used to say 0 for a
+# project absent from the file while the payload said this, so the panel
+# read itself as behind and fetched its rules (and the code base beside
+# them) twice more on every first open (B218).
+EMPTY_REV = _rev_of([])
 
 
 def rev(project):
@@ -463,6 +497,10 @@ def _builtin_names():
     return {r["name"] for r in builtins()}
 
 
+def _switchable_names():
+    return {r["name"] for r in builtins() if not r.get("fixed")}
+
+
 def save_global(rule_list, disabled=None, by="you"):
     """The global rules as the dialog saves them: the operator's own list, and
     which shipped ones are off, in one go.
@@ -477,7 +515,7 @@ def save_global(rule_list, disabled=None, by="you"):
         return r
     if disabled is None:
         return r
-    want = {str(n).strip().lower() for n in disabled} & _builtin_names()
+    want = {str(n).strip().lower() for n in disabled} & _switchable_names()
     with _lock:
         d = load()
         p = _project(d, GLOBAL)

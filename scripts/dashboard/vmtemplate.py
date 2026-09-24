@@ -255,7 +255,7 @@ def render(name="", cores=None, memory_gb=None, iso="", uid="", hw="",
     spec = HYPERVISORS.get(hv)
     if spec and not allowed(spec):
         return {"error": f"{spec['label']} is dev, not yet vetted, so it is not offered here: "
-                         "Settings, 'Offer dev features' puts it back, tagged dev"}
+                         "Debug settings on the Settings tab, 'Offer dev features' puts it back, tagged dev"}
     if not spec:
         return {"error": f"no template for {hv}; "
                          f"{', '.join(HYPERVISORS)} are the ones here"}

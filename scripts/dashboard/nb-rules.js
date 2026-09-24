@@ -3,7 +3,16 @@
 // script beside index.html (docs/nodes.md §13): one file per notebook view
 // (R60). A factory makeNotebook calls per notebook.
 function nbRulesView({$, nb, project}){
-  async function loadRules(again = false){
+  // One answer for the several askers of a first show (B218): the view
+  // switch, the view shown again before the first answer landed, and the
+  // poll's watch all asked while nothing was loaded yet, and a notebook's
+  // first open fetched the rules and the code base three times over.
+  function loadRules(again = false){
+    if (nb.rulesInFlight && !again) return nb.rulesInFlight;
+    nb.rulesInFlight = loadRulesNow(again).finally(() => { nb.rulesInFlight = null; });
+    return nb.rulesInFlight;
+  }
+  async function loadRulesNow(again){
     nb.loadCodebase().then(() => drawRules());
     try{
       const r = await fetch("/api/rules?project=" + encodeURIComponent(project));
@@ -18,7 +27,7 @@ function nbRulesView({$, nb, project}){
     // Already behind (see nb-tests.js): read once more now, unless somebody
     // is typing, which is the case the poll's own guard keeps.
     if (!again && nb.ruleData.rev !== undefined && revs[`rules:${project}`] !== undefined
-        && revs[`rules:${project}`] !== nb.ruleData.rev && !ruleDirty()) return loadRules(true);
+        && revs[`rules:${project}`] !== nb.ruleData.rev && !ruleDirty()) return loadRulesNow(true);
   }
 
   // The global rules, read-only, under the project's own. The server has always
@@ -88,9 +97,7 @@ function nbRulesView({$, nb, project}){
     // charge is on every session started in this project, forever.
     const chars = ruleDirty() ? null : d.chars;
     const body = `
-      <div class="hint">How you want this project worked on. A session reads these
-        at the start; it may add rules of its own, marked as its, and cannot
-        change yours.</div>
+      <div class="hint">How you want this project worked on. A session reads these at the start and cannot change yours.</div>
       <div class="addbar" data-add="rule"><button type="button" id="rlAdd">Add a rule</button></div>
       <div class="field" id="rlList">${rows.map((r, i) => `
         <details class="bug rulerow${nb.ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
@@ -110,7 +117,7 @@ function nbRulesView({$, nb, project}){
             ${lbl("", "The rule")}
             <textarea class="rlText" spellcheck="false" maxlength="2000">${esc(r.text || "")}</textarea>
             <div class="two">
-              <div>${lbl("", "Files it covers", "paths or globs, comma-separated. The rule arrives when a session is about to edit one")}
+              <div>${lbl("", "Files it covers", "paths or globs, comma-separated; the rule arrives when a session edits one")}
               <input class="rlPaths" autocomplete="off" spellcheck="false"
                 placeholder="scripts/agent, *.kt"
                 value="${esc((r.paths || []).join(", "))}" aria-label="paths"></div>
@@ -160,7 +167,7 @@ function nbRulesView({$, nb, project}){
     // choice, in the two words the roadmap's band uses, so the same decision
     // reads the same way on both views.
     const theirs = nb.ruleClash?.rules || [];
-    const clash = !nb.ruleClash ? "" : `<div class="field"><div class="hint bad">These rules changed while you had them open: a session or another person wrote to them. Theirs now holds ${
+    const clash = !nb.ruleClash ? "" : `<div class="field"><div class="hint bad">These rules changed while you had them open. Theirs now holds ${
         theirs.length} rule${theirs.length === 1 ? "" : "s"}${theirs.length ? ": " + theirs.map(r => esc(r.name)).join(", ") : ""}.</div>
         <div class="actbar"><span class="state">nothing has been written</span>
           <button type="button" id="rlKeepTheirs">Keep theirs</button>

@@ -154,8 +154,9 @@ await ready(page);
 
   // unfold a log: ONE THIS FILE QUEUED, by id, not the newest succeeded row.
   // `mine` is the set of job ids these tests submitted; the box runs other
-  // jobs, and on a node with a phone paired the newest succeeded row is an
-  // `adb devices` probe whose log says "List of devices attached" (B86).
+  // jobs, and the newest succeeded row was once an `adb devices` probe whose
+  // log says "List of devices attached" (B86). The probe is a forgotten job
+  // now and lists nowhere, but a phone push or a build still can be newest.
   const ids = [...mine];
   let logRow = null;
   for (const id of ids){

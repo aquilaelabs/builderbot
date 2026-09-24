@@ -17,6 +17,8 @@ import gzip
 import hashlib
 import hmac
 import ipaddress
+import atexit
+import collections
 import json
 import os
 import sys
@@ -271,6 +273,10 @@ MACROS = {
     "lint":             ["bb", "lint"],
     "logs":             ["bb", "logs"],
     "logs-follow":      ["bb", "logs", "-f"],
+    # The last test run's output, followed while it is still running: the
+    # Tests view's button sends this into the project's shell. A row used
+    # to carry a tail of the job's log and redraw for every line of it.
+    "tests-log":        ["bb", "tests", "log", "-f"],
 }
 # Sendable, but not listed in the bb commands card: another card owns them.
 # Empty since the controller's own runner went (the Runner card is a view of
@@ -339,7 +345,8 @@ TMUX_LITERALS = {
 # The tab cap: a constant, because each terminal tab is a live terminal over
 # its own socket and twelve is what a browser on this box takes without
 # falling over. It was a setting for one afternoon (R29) and nobody needed to
-# move it.
+# move it. It counts TERMINAL tabs, per account (the layout is kept per
+# account): a document tab is a draw from state and costs nothing to keep.
 MAX_TABS = 12
 
 
@@ -355,6 +362,24 @@ CLAUDE_PROJECTS = Path(
 # Every request body here is a handful of short JSON fields. Anything larger is
 # a mistake or a probe, and reading it into memory unbounded helps neither.
 MAX_BODY = 64 * 1024
+
+# What a session is told when its project's Run its container setting is at
+# deny, wherever a container verb is refused by it: the sentence names the
+# setting, so a session that tries learns where the decision lives.
+RUN_DENIED = ("running this project's containers is the operator's: rebuilding, "
+              "starting and stopping them, changing their env and creating one are "
+              "handed over in the project's settings, Claude may: Run its container")
+
+
+def not_ours(what, sess=""):
+    """The refusal for a container that does not belong to the caller's
+    project. The owner is not named: to a session that would be another
+    project's name, which is the thing it may not read."""
+    return (f"{what} does not belong to {sess}: a session reaches its own project's "
+            "containers, and an administrator sets which project each belongs to on "
+            "the Docker tab" if sess else
+            f"{what} does not belong to one of your projects: an administrator sets "
+            "which project each container belongs to on the Docker tab")
 
 
 def field(req, key, default=""):
@@ -524,11 +549,15 @@ def load_layout(uid):
     # whole dashboard down with a 500 per poll and a crash at the next boot.
     if not isinstance(v, dict):
         v = {}
-    tabs, ids = [], set()
+    tabs, ids, terms = [], set(), 0
     stored = v.get("tabs") if isinstance(v.get("tabs"), list) else []
-    for t in stored[:max_tabs()]:
+    for t in stored[:64]:
         if not isinstance(t, dict) or t.get("kind") not in TAB_KINDS:
             continue
+        if t.get("kind") == "term":
+            if terms >= max_tabs():
+                continue              # the cap, on terminals alone
+            terms += 1
         tid, arg, label = t.get("id"), t.get("arg"), t.get("label")
         if not all(isinstance(x, str) for x in (tid, arg, label)):
             continue
@@ -540,7 +569,10 @@ def load_layout(uid):
             continue
         ids.add(tid)
         tabs.append({"id": tid, "kind": t["kind"], "arg": arg, "label": label,
-                     "fixed": bool(t.get("fixed"))})
+                     "fixed": bool(t.get("fixed")),
+                     # Popped out into its own window (R8): kept so the page
+                     # that popped it reconciles; another page drops it.
+                     "popped": bool(t.get("popped"))})
     stored = v.get("panes") if isinstance(v.get("panes"), list) else []
     panes = [p if isinstance(p, str) and p in ids else None for p in stored[:2]]
     while len(panes) < 2:
@@ -841,17 +873,20 @@ def window_cost(name):
 
 
 def node_holds():
-    """{node id: why} for every agent node whose agent is from another
-    compatibility window than this controller ships: the half of a
-    project's hold that is its node's. Being merely behind is not here:
-    inside a window an older agent takes a job and a session, and the Nodes
-    tab's Update is a courtesy rather than a gate."""
+    """{node id: why} for every agent node no Claude session may start on
+    right now: its agent is from another compatibility window than this
+    controller ships, or its Claude Code is being updated (claudecode.py),
+    which ends the sessions there first. The half of a project's hold that
+    is its node's. Being merely behind is not here: inside a window an
+    older agent takes a job and a session, and the Nodes tab's Update is a
+    courtesy rather than a gate."""
     out = {}
     if NODES_OK:
         return out
     for n in nodes.node_list():
         if n["kind"] == "agent" and nodes.agent_gap(n):
             out[n["id"]] = nodes.agent_stale(n)
+    out.update(claudecode.holds())
     return out
 
 
@@ -1350,7 +1385,10 @@ def project_list(who):
                     # project: another project's node being out of window is
                     # not this row's hold.
                     "held": held_nodes.get(
-                        project_prefs.get(d.name, {}).get("node") or "", ""),
+                        project_prefs.get(d.name, {}).get("node") or "", "")
+                    # ...or its map is still building (mapping.py): the
+                    # same ghosting, for the seconds it takes.
+                    or mapping.held(d.name),
                     "issues": issues})
     # Two projects whose names slug alike are one dev instance: `My.App` and
     # `my-app` both slug to my-app, which is one compose project name, one env
@@ -1525,7 +1563,7 @@ def session_target(project, claude=False):
                # at the first sentence end to put the fact on the row and
                # leave the instruction to the tooltip, and the dash it used
                # to cut at is gone from the page's vocabulary.
-               "why": "no node: pick one in the project's settings, or enroll "
+               "why": "no node to run a Claude session on: pick one in the project's settings, or enroll "
                       "one on the Nodes tab"} if claude \
         else {"where": "local"}
     if not nid or NODES_OK:
@@ -1635,6 +1673,11 @@ def _chat_summary(who, ps):
             "people": sorted(n for n in store if n != mine)}
 
 
+def account_names():
+    """{uid: account name} for every account that has an id."""
+    return {u.get("uid"): n for n, u in users.load()["users"].items() if u.get("uid")}
+
+
 def claude_sessions(sessions):
     """{project: [account name, ...]} for every Claude session running.
 
@@ -1648,8 +1691,7 @@ def claude_sessions(sessions):
     The unprefixed name is the OWNER's, by the same rule as their home and
     their shells.
     """
-    by_uid = {u.get("uid"): n for n, u in users.load()["users"].items()
-              if u.get("uid")}
+    by_uid = account_names()
     owner = users.owner_name()
     out = {}
     for s in sessions:
@@ -1769,11 +1811,24 @@ def tmux_sessions():
             info = panes.get(name, {})
             row = {"name": name, "attached": attached.strip() not in ("", "0"),
                    "cwd": info.get("cwd", "")}
-            if name.startswith("claude-"):
+            # By the unprefixed name, the way node rows are read, so another
+            # account's session here says whether it is working too.
+            if tmux_base(name).startswith("claude-"):
                 state, task = claude_state(info.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
+
+
+def claude_working(project, uid):
+    """Whether that account's Claude session on this project is mid-prompt,
+    here or on a node, by its pane title (claude_state). The owner's is the
+    bare name, as everywhere else on the page."""
+    want = claude_session(project)
+    owner = users.uid_of(users.get(users.owner_name() or ""))
+    return any(tmux_base(s["name"]) == want and (tmux_owner(s["name"]) or owner) == uid
+               and (s.get("claude") or {}).get("state") == "working"
+               for s in tmux_sessions() + node_tmux_sessions())
 
 
 def sessions_anywhere():
@@ -1970,6 +2025,25 @@ def end_claude(project):
     return {"ended": True}
 
 
+def end_session(session, node=""):
+    """End one session by its page name, wherever it runs: on a node through
+    its agent's held poll, by node id when the caller knows it (one name can
+    live here and there), else with this container's tmux. A name that is
+    not a live session is already ended and answers {gone} rather than an
+    error, because the caller that wants a clean slate (Sign in ending the
+    sign-in terminal first) asks for exactly that ordinary case. The
+    Sessions card's kill (_session) and an administrator's End in a
+    project's settings (projsessions.py) are this one path."""
+    here = {s["name"] for s in tmux_sessions()}
+    on_node = next((s for s in node_tmux_sessions() if s["name"] == session
+                    and (not node or s["node_id"] == node)), None)
+    if on_node and (node or session not in here):
+        return nodes.session_kill(on_node["node_id"], on_node["node_name"])
+    if session not in here:
+        return {"code": 0, "out": "", "err": "", "gone": True}
+    return run(["tmux", "kill-session", "-t", session], timeout=10)
+
+
 def uptime():
     # PID 1 started when the container did, so its elapsed time is the
     # container's; /proc/uptime is the host's under a shared kernel.
@@ -1983,7 +2057,7 @@ def uptime():
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
 # field listed there bumps all three together: the app, the file, this.
-APP_API = 2
+APP_API = 3
 
 
 def app_apk():
@@ -2022,6 +2096,51 @@ def _versioned_page(raw, tag):
         return b'<script src="' + m.group(1) + b"?v=" + v.encode() + b'">'
     out = _SCRIPT_TAG.sub(named, raw)
     return out, 'W/"' + hashlib.sha256("|".join(parts).encode()).hexdigest()[:24] + '"'
+
+
+# ---- the request trace (R75 step 4) -----------------------------------------
+# Every request this server answered, lately: when, the method, the path with
+# its query keys, and who (a person, a session, an agent, the companion app)
+# by the user agent and the principal the handler proved. A ring, in memory,
+# because the question it answers is "what is the page asking for right
+# now": the adb probe that put a row a minute on the Jobs tab and the tab
+# that asked for its listing three times were both visible in one such
+# window and invisible everywhere else. /api/trace reads it; `bb dashboard
+# trace` prints it. Nothing here is persisted.
+_TRACE = collections.deque(maxlen=6000)
+_trace_lock = threading.Lock()
+
+
+def trace_note(handler):
+    # A note beside the request, never a fault in it: whatever goes wrong
+    # here is swallowed, since the answer has already been sent.
+    with contextlib.suppress(Exception):
+        path, _, query = handler.path.partition("?")
+        keys = "&".join(sorted(k for k in urllib.parse.parse_qs(query, keep_blank_values=True)))
+        ua = (handler.headers.get("User-Agent") or "")[:40]
+        who = getattr(_writing, "who", None) or {}
+        by = ("session" if who.get("session") else "agent" if path.startswith("/api/v1/agent")
+              else "user" if who.get("name") else "anon")
+        with _trace_lock:
+            _TRACE.append((time.time(), handler.command, path, keys, by, ua))
+
+
+def trace_since(since):
+    now = time.time()
+    with _trace_lock:
+        rows = [r for r in _TRACE if r[0] >= since]
+    groups = {}
+    for t, method, path, keys, by, ua in rows:
+        agent = ("app" if "BuilderBot" in ua else "curl" if ua.startswith("curl")
+                 else "browser" if "Mozilla" in ua else (ua.split("/")[0] or "?"))
+        key = (method, path + ("?" + keys if keys else ""), by, agent)
+        g = groups.setdefault(key, {"n": 0, "first": t, "last": t})
+        g["n"] += 1
+        g["first"] = min(g["first"], t)
+        g["last"] = max(g["last"], t)
+    out = [{"method": k[0], "path": k[1], "by": k[2], "agent": k[3], **v} for k, v in groups.items()]
+    out.sort(key=lambda r: -r["n"])
+    return {"since": since, "now": now, "total": len(rows), "rows": out}
 
 
 def image_stamp():
@@ -2215,6 +2334,7 @@ import forges                                                    # noqa: E402
 forges.configure(run=run, state=STATE, write_json=write_json)
 
 import projects                                                  # noqa: E402
+import mapping                                                   # noqa: E402
 
 # ---- the operator's house rules ---------------------------------------------
 # The one thing in the notebook a session reads and cannot write. It rides in
@@ -2274,10 +2394,16 @@ import artifacts                                                 # noqa: E402
 import git as gitview                                            # noqa: E402
 import workspace                                                 # noqa: E402
 
-artifacts.configure(workspace=WORKSPACE)
+# Each account's git worktree of a project: <this>/<project>/<uid> (common.sh
+# session_dir). The Git view and the Artifacts tab both read them.
+WORKTREES = Path(os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"))
+artifacts.configure(workspace=WORKSPACE, worktrees=WORKTREES)
 gitview.configure(workspace=WORKSPACE,
-                  worktrees=os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"),
-                  tell=notify.tell, tmux_name=tmux_name, state=STATE)
+                  worktrees=WORKTREES,
+                  tell=notify.tell, tmux_name=tmux_name, state=STATE,
+                  accounts=account_names,
+                  owner_uid=lambda: users.uid_of(users.get(users.owner_name() or "")),
+                  working=claude_working)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -2342,7 +2468,20 @@ roadmap.configure(write_json=write_json, state=STATE, tell=notify.tell,
 # join them itself in shell; it asks for this now, and the Briefing tab draws
 # the same string rather than its own idea of it.
 import preamble                                                  # noqa: E402
-preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs)
+def live_block():
+    """The build this controller is running, for the briefing every session
+    starts with (R75 step 5): the fact a session otherwise assumes. Short,
+    and pointing at the verbs that answer the rest."""
+    st = image_stamp()
+    what = st.get("version") or (st.get("rev") or "")[:12] or "an unstamped image"
+    when = f", built {st['built']}" if st.get("built") else ""
+    return ("## What is live\n\n"
+            f"The controller is BuilderBot {what}{when}. A fix pushed since is not "
+            "running until the operator rebuilds; `bb status` says what is, `bb catchup` "
+            "what changed since, and this line is from the moment this session started.")
+
+
+preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, live=live_block)
 
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card; see the module docstring
@@ -2373,6 +2512,8 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
 import devapp                                                    # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
+import claudecode                                                # noqa: E402
+import projsessions                                              # noqa: E402
 import turns                                                     # noqa: E402
 
 # The node data plane first, because devapp's job claim asks it which node
@@ -2432,8 +2573,11 @@ if not NODES_OK:
 # and a controller without one still has projects whose containers run.
 phone.rebuilder = devapp.rebuild
 phone.container_maker = devapp.create_container
+phone.instance_maker = lambda project, instance: devapp.create_instance(project, instance or devapp.MAIN)
+phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
+phone.ctl_runner = devapp.ctl_on
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
-                 log_dir=logs.log_dir,
+                 log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
                  node_addr=nodes.ssh_addr_of if not NODES_OK else None,
                  queue=nodes if not NODES_OK else None,
@@ -2459,12 +2603,32 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 
 
 
+# Claude Code on the nodes (claudecode.py): what each runs against what is
+# out, and the one way it is updated, which is an administrator's press.
+if not NODES_OK:
+    claudecode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
+                         tmux_base=tmux_base, audit=nodes.audit,
+                         auto=lambda: settings.get("claude_autoupdate"))
+
+# Every account's sessions on a project, for its settings dialog, and an
+# administrator ending one (projsessions.py): the rows the Sessions card is
+# made from, and its kill.
+projsessions.configure(sessions=lambda: tmux_sessions() + node_tmux_sessions(),
+                       base=tmux_base, owner=tmux_owner, accounts=account_names,
+                       owner_name=users.owner_name, end=end_session)
+
+# The code map, built for a project the moment it exists (mapping.py): the
+# same command a session runs by hand, started in the background by the
+# create paths, and the one thing a Claude session on a new project waits for.
+mapping.configure(workspace=WORKSPACE,
+                  codemap=Path(__file__).resolve().parent.parent / "lib" / "codemap.py")
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
                    project_name=PROJECT_NAME,
                    state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
                    write_json=write_json,
-                   rename_project_data=devapp.rename_project_data)
+                   rename_project_data=devapp.rename_project_data,
+                   after_create=mapping.start)
 
 # ---- a node's git, relayed --------------------------------------------------
 # Push, fetch, pull and ls-remote from a session on a node, done in a
@@ -2700,7 +2864,12 @@ def revisions(who=None, projects=None):
     }
     # Per project, for the views that are per project.
     for n in names:
-        revs[f"dist:{n}"] = _mtime(WORKSPACE / n / "dist")
+        # ...and each account's worktree's, whose builds the tab lists too
+        # (B237): a stat per worktree, and a project has a handful.
+        wts = WORKTREES / n
+        revs[f"dist:{n}"] = max([_mtime(WORKSPACE / n / "dist")]
+                                + ([_mtime(d / "dist") for d in wts.iterdir()]
+                                   if wts.is_dir() else []))
         # A session may bump while the operator has the tab open, and the
         # policy file moves when they change who may bump. Both are cheap
         # stats; neither shells out to git.
@@ -2729,7 +2898,7 @@ def revisions(who=None, projects=None):
         revs[f"roadmap:{n}"] = (nb_revs.get(n) or {}).get("roadmap", 0)
         revs[f"bug:{n}"] = bug_revs.get(n, 0)
         revs[f"tests:{n}"] = test_revs.get(n, 0)
-        revs[f"rules:{n}"] = rule_revs.get(n, 0)
+        revs[f"rules:{n}"] = rule_revs.get(n, rules.EMPTY_REV)
         revs[f"pending:{n}"] = pend_revs.get(n, 0)
         if who is not None:
             revs[f"mem:{n}"] = memory.census(
@@ -2801,7 +2970,14 @@ def snapshot(who):
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
         "attention": ([] if NODES_OK or users.may(who, "node") else nodes.attention(
+            {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})
+            # ...and a node whose Claude Code is behind what is out
+            # (claudecode.py): amber, with Update on the Nodes tab.
+            + claudecode.attention(
             {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})),
+        # Claude Code per node against the latest known, for the Nodes
+        # tab's section: whoever may manage nodes reads it.
+        "claude_code": ({} if NODES_OK or users.may(who, "node") else claudecode.payload()),
 
         # Whether there is a daemon behind any of the Docker controls, and if
         # not, the sentence saying why. Memoised in devapp, because answering
@@ -2849,6 +3025,9 @@ def snapshot(who):
         # names a project the account may not have been given, and its
         # buttons are that account's.
         "project_job": {} if users.may(who, "create") else projects.job(),
+        # The code maps being built for new projects, and the ones that just
+        # finished: the row says "mapping the code" and then how many files.
+        "mapping": mapping.payload(),
         "max_tabs": max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
         "settings": settings.payload(),
@@ -2941,10 +3120,12 @@ def snapshot(who):
 # its scripts) stay in _get, in front of the credential check (R60).
 GET_ROUTES = (
     ("prefix", "/api/revs", "_get_revs"),
+    ("prefix", "/api/trace", "_get_trace"),
     ("prefix", "/api/status", "_get_status"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/git", "_get_git"),
+    ("prefix", "/api/project-sessions", "_get_project_sessions"),
     ("prefix", "/api/changelog", "_get_changelog"),
     ("prefix", "/api/version", "_get_version"),
     ("prefix", "/api/artifacts", "_get_artifacts"),
@@ -3015,6 +3196,7 @@ POST_ROUTES = (
     ("prefix", "/api/create", "_create"),
     ("prefix", "/api/profile", "_profile"),
     ("prefix", "/api/git", "_git_act"),
+    ("prefix", "/api/project-sessions", "_project_sessions"),
     ("prefix", "/api/unlink", "_unlink"),
     ("prefix", "/api/link", "_link"),
     ("prefix", "/api/project-job", "_project_job"),
@@ -3406,6 +3588,12 @@ class Handler(BaseHTTPRequestHandler):
         if not arg.startswith("claude:"):
             return ""
         project = arg[len("claude:"):].split(":")[0]
+        # A project whose map is still building (mapping.py): its first
+        # session waits the few seconds, so its first question about the
+        # tree is answered from an index rather than by building one. The
+        # button carries the same sentence, and this is the check behind it.
+        if mapping.held(project):
+            return mapping.held(project)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
         # Every Claude session is on a node now (R47), so this container has
@@ -3417,6 +3605,12 @@ class Handler(BaseHTTPRequestHandler):
         t = session_target(project, claude=True)
         if t["where"] != "node":
             return ""
+        # Claude Code on that node first (claudecode.py): an update running
+        # there holds the start, and with Keep Claude Code current on, a
+        # node behind is updated now and this start waits for it.
+        held = claudecode.start_hold(project, t["id"])
+        if held:
+            return held
         mine = claude_auth(home=home_for(uid)).get("email") or ""
         if not mine:
             return ""                     # not signed in: bb-tty says so, better
@@ -3719,7 +3913,10 @@ class Handler(BaseHTTPRequestHandler):
         the one failure mode that looks identical to the container being gone.
         """
         try:
-            return fn()
+            try:
+                return fn()
+            finally:
+                trace_note(self)
         except Exception as e:                          # noqa: BLE001 (last resort)
             try:
                 self._json({"error": f"{type(e).__name__}: {e}"}, 500)
@@ -3732,7 +3929,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self._safely(self._post)
 
-    # The favicon set, generated by `bb favicon` from static/favicon.svg (the
+    # The favicon set, generated by `bb tool graphics favicon` from static/favicon.svg (the
     # header robot as a standalone file) and committed. An allow-list by full
     # path (the same shape as everything else the page can ask for), so this
     # never grows into a general file server by accident.
@@ -3740,6 +3937,13 @@ class Handler(BaseHTTPRequestHandler):
         "/favicon.ico": ("favicon.ico", "image/x-icon"),
         "/favicon.svg": ("favicon.svg", "image/svg+xml"),
         "/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"),
+        # The Nostromo scheme's decals: hand-written SVG, text in the tree
+        # like the favicon's source, drawn by the page's CSS and by nothing
+        # else. Same allow-list, same rule.
+        "/static/nostromo/plate.svg": ("nostromo/plate.svg", "image/svg+xml"),
+        "/static/nostromo/rings.svg": ("nostromo/rings.svg", "image/svg+xml"),
+        "/static/nostromo/corner.svg": ("nostromo/corner.svg", "image/svg+xml"),
+        "/static/nostromo/glyphs.svg": ("nostromo/glyphs.svg", "image/svg+xml"),
     }
 
     def _get(self):
@@ -3785,6 +3989,10 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
                     "/tab-users.js", "/tab-phone.js", "/tab-profile.js",
                     "/tab-toolchains.js", "/tab-emulator.js", "/tab-docker.js",
+                    "/page-welcome.js", "/page-chat.js", "/page-motion.js", "/page-lists.js",
+                    "/page-cards.js", "/page-gear.js", "/page-doctor.js", "/page-commands.js",
+                    "/page-projsessions.js",
+                    "/tab-findings.js", "/tab-projects.js",
                     "/nb-git.js", "/nb-artifacts.js", "/nb-analysis.js", "/nb-rules.js",
                     "/nb-tests.js", "/nb-bugs.js", "/nb-pending.js", "/nb-roadmap.js",
                     "/nb-memory.js", "/nb-history.js"):
@@ -3809,6 +4017,23 @@ class Handler(BaseHTTPRequestHandler):
             if (self.path == route) if how == "exact" else self.path.startswith(route):
                 return getattr(self, name)()
         self._json({"error": "not found"}, 404)
+
+    def _get_trace(self):
+        """GET /api/trace?since=T: what this server was asked since T,
+        grouped by endpoint (R75 step 4). For an admin or a session: the
+        page's own behaviour is what it describes, and a session diagnosing
+        a tab that asks too much is the reader it exists for. Paths and
+        query KEYS only, never values: a project's name in a query is the
+        one thing here that is somebody's."""
+        who = self._who()
+        if not who or not (users.is_admin(who) or who.get("session")):
+            return self._json({"error": "the trace is for an administrator or a session"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        try:
+            since = float((q.get("since") or ["0"])[0])
+        except ValueError:
+            since = 0.0
+        return self._json(trace_since(since))
 
     def _get_revs(self):
         """GET /api/revs."""
@@ -3883,6 +4108,9 @@ class Handler(BaseHTTPRequestHandler):
             # the project's push rights, granted once in the clone dialog.
             r["remote"] = gitview.has_remote(WORKSPACE / name)
             r["push"] = projects.may_push(name)
+            # Whose working tree this is (B236): the page says so to anybody
+            # else, and offers them nothing that changes it.
+            r["owner"] = users.owner_name() or ""
             # The host by its name (GitHub, Gitea, or the machine's own),
             # so the view can say "in step with GitHub" and not "origin".
             url = gitview.remote_url(WORKSPACE / name)
@@ -3929,6 +4157,10 @@ class Handler(BaseHTTPRequestHandler):
         with devapp.read_scope():
             dev = {"devapp": devapp.state(name), "devapps": devapp.states(name)}
         return self._json({"artifacts": artifacts_of(name),
+                           # Each account's own builds, from its worktree
+                           # (B237), apart from dist/, which is what ships.
+                           "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
+                                        for g in artifacts.branches(name)],
                            # What this project can and cannot do off this
                            # box, said on the tab that lists what it built.
                            "build": build_state(name)} | dev
@@ -3946,7 +4178,8 @@ class Handler(BaseHTTPRequestHandler):
         rel = q.get("path", [""])[0]
         if self._not_project(name):
             return
-        f = artifacts.resolve(name, rel)
+        # `tree`: an account's worktree by uid, for a build made there (B237).
+        f = artifacts.resolve(name, rel, q.get("tree", [""])[0])
         if f is None:
             return self._json({"error": "no such artifact"}, 404)
         try:
@@ -4161,28 +4394,42 @@ class Handler(BaseHTTPRequestHandler):
         # is not one of them. No node named means the default, which is
         # the arrangement that predates the picker.
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
-        nid, why = self._node_asked(q.get("node", [""])[0])
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        # A session reads its own project's node, which is where it works,
+        # whatever it asks for. Anybody else naming a project and no node
+        # reads that project's (bb devapp ls outside a session).
+        asked = q.get("node", [""])[0]
+        proj = q.get("project", [""])[0]
+        if not asked and proj and not sess:
+            if self._not_project(proj):
+                return None
+            asked = devapp.project_daemon(proj)
+        nid, why = ((devapp.project_daemon(sess), None) if sess
+                    else self._node_asked(asked))
         if why:
             return self._json({"error": why, "blind": True,
                                "instances": [], "containers": []})
         got = devapp.overview(nid or None)
+        # What an account that is not an administrator sees is what belongs
+        # to its projects, a session's to its own one (the operator, 24 Sep):
+        # a node is shared, and anything else on it is another project's
+        # work, or nobody's, and not this account's to read. The branches
+        # go with them: the Build from picker is an administrator's.
+        if sess or self._node_scope() is not None:
+            seen = {sess} if sess else {p["name"] for p in project_list(me)}
+            got["instances"] = [i for i in got.get("instances") or []
+                                if i.get("owner") in seen]
+            got["containers"] = [c for c in got.get("containers") or []
+                                 if c.get("owner") in seen]
+            got["refs"] = {}
+            return self._json(got)
         # The branches each listed project could be built from. Here
         # rather than per row: they come from one `for-each-ref` per
         # project, and the picker needs them before anybody presses.
         got["refs"] = {p: devapp.refs_of(p)
                        for p in {i["project"] for i in got.get("instances") or []}
                        if not devapp.is_file_source(p)}
-        # An instance of a project this account was not given is one of
-        # the projects hidden from it, wearing a different hat; and a
-        # node is shared, so a restricted account asking about its own
-        # node would otherwise read every other project's name off this
-        # answer. The unowned containers go with them: they are somebody's
-        # work too, and nothing here says whose.
-        if self._node_scope() is not None:
-            seen = {p["name"] for p in project_list(self._who())}
-            got["instances"] = [i for i in got.get("instances") or []
-                                if i.get("project") in seen]
-            got["containers"] = []
         return self._json(got)
 
     def _get_containers(self):
@@ -4439,6 +4686,14 @@ class Handler(BaseHTTPRequestHandler):
         # reaches every other project there.
         if "node" in req and self._refused("node", name):
             return
+        # ...nor is the dial that hands a session this project's container:
+        # it lets a session create one and set its env, which is Docker
+        # configuration, an administrator's (docker-write). Only a CHANGE is
+        # asked about, since the dialog sends every field on every save.
+        if req.get("devbuild") is not None \
+                and str(req.get("devbuild")) != prefs.get(name)["devbuild"] \
+                and self._refused("docker-write"):
+            return
         # A dev instance with no node of its own follows the project's, so a
         # node change would move its row onto a daemon that has none of it
         # while its containers carry on running where they are. They stay up
@@ -4455,7 +4710,7 @@ class Handler(BaseHTTPRequestHandler):
                             test=req.get("test"), outputs=req.get("outputs"),
                             gate=req.get("gate"), gitpol=req.get("gitpol"),
                             devbuild=req.get("devbuild"),
-                            devtest=req.get("devtest"),
+                            tests_in=req.get("tests_in"),
                             color=req.get("color"),
                             workspace=WORKSPACE)
         # ...and what is the ASKING ACCOUNT's rather than the project's: the
@@ -4600,6 +4855,17 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.node_funnel(self._principal(), nid, req.get("port"), bool(req.get("on", True)))
         elif act == "update-agent":
             r = nodes.node_update_agent(self._principal(), nid)
+        elif act == "claude-check":
+            # What the latest Claude Code is, asked now: the same question
+            # the controller asks on its own after a start and every six
+            # hours, with the automatic update behind it where the setting
+            # asks for one. Nothing else is changed by it.
+            r = claudecode.check() | {"ok": True}
+        elif act == "claude-update":
+            # An administrator's, like every action here, and so never a
+            # session's: it ends the Claude sessions on the node and queues
+            # the installer as a job the agent runs (claudecode.py).
+            r = claudecode.update(self._principal(), nid)
         elif act == "cache-clear":
             # Drop a node's build caches, one project's or all (docs/nodes.md
             # §6): a job the agent runs, so it is logged and audited like
@@ -5651,13 +5917,18 @@ class Handler(BaseHTTPRequestHandler):
             # decision the operator made for reasons the session was not told,
             # so it is theirs. The CLI only ever passed on=True; this door
             # took whatever it was handed.
+            # A session asking for one back is held for a person on the
+            # project (R78): roadmap.shelve holds it with its reason.
             on = bool(req.get("on", True))
-            if me.get("session") and not on:
-                return self._json({"error": "taking an item off the shelf is the operator's: a "
-                                            "session can park one and say why, and one tap in "
-                                            "the roadmap panel is what brings it back"}, 403)
             r = roadmap.shelve(name, req.get("id"), on,
-                            by="claude" if me.get("session") else "you", who=who)
+                            by="claude" if me.get("session") else "you", who=who,
+                            why=field(req, "why"))
+            if r.get("held"):
+                return self._json(r | self._roadmap_state(name, live))
+        elif act == "finished":
+            # The ticked-off items, with their plans, for the Roadmap tab's
+            # toggle (R78): fetched when it is turned on, never in the poll.
+            return self._json({"finished": roadmap.finished(name, limit=req.get("limit"))})
         elif act == "history":
             # Fetched only when the panel is showing it. It rides in no poll:
             # a log nobody has opened is bytes on every status request for
@@ -5692,6 +5963,9 @@ class Handler(BaseHTTPRequestHandler):
         # running here" with their own session open in the next tab.
         session = users.tmux_prefix(self._who()) + roadmap.claude_session(name)
         return {"items": roadmap.items(name),
+                # How many are finished, for the toggle's label (R78): the
+                # items themselves come when it is pressed.
+                "finished_n": len(roadmap.finished(name)),
                 # What the poll compares against, handed back with every read
                 # AND every write, so this panel's own change never reads as
                 # somebody else's on the next poll, and a change that lands
@@ -5746,16 +6020,54 @@ class Handler(BaseHTTPRequestHandler):
         An administrator's, like every other docker write here, and the log
         with them: a container's log is whatever it decided to print, which
         on somebody else's container is not a thing to hand out by role.
+
+        The one exception is a SESSION, on a container that belongs to its
+        project (the operator, 24 Sep): on its project's node, its log when it
+        asks, since that is reading it, and start, stop or restart as the
+        project's Run its container setting allows.
         """
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        act, name = field(req, "action"), field(req, "container")
+        if sess:
+            nid = devapp.project_daemon(sess)
+            with devapp.on_node(nid or None):
+                c, owner = devapp.owned_container(name)
+            # A stranger's container and a missing one answer alike.
+            if owner != sess:
+                return self._json({"error": not_ours(name, sess)}, 403)
+            if act == "logs":
+                with devapp.on_node(nid or None):
+                    return self._json(devapp.container_logs(name))
+            if act not in ("start", "stop", "restart"):
+                return self._json({"error": f"a session starts, stops or restarts a "
+                                            f"container, or reads its log, not {act!r}"}, 400)
+            mode = prefs.get(sess)["devbuild"]
+            if mode == "deny":
+                return self._json({"error": RUN_DENIED}, 403)
+            if mode == "ask":
+                acct = users.account_of(me) or {}
+                return self._result(phone.ask_rebuild(
+                    field(req, "why"), sess, "", c["name"],
+                    asker_uid=str(acct.get("uid") or ""),
+                    asker_name=str(acct.get("name") or ""),
+                    asker_admin=users.is_admin(acct), ctl=act, node=nid))
+            with devapp.on_node(nid or None):
+                return self._result(devapp.container_ctl(name, act))
         if self._refused("docker-write"):
             return
         nid, why = self._node_asked(field(req, "node"))
         if why:
             return self._json({"error": why}, 400)
-        act, name = field(req, "action"), field(req, "container")
+        # Which project it belongs to: one of them, or none.
+        under = field(req, "owner")
+        if act == "owner" and under and under not in {p["name"] for p in project_list(me)}:
+            return self._json({"error": f"no project called {under}"}, 400)
         # Every docker call in the block is addressed at that node's daemon,
         # the way the manager's own listing is.
         with devapp.on_node(nid or None):
+            if act == "owner":
+                return self._result(devapp.set_container_owner(name, under))
             if act == "logs":
                 return self._json(devapp.container_logs(name))
             return self._result(devapp.container_ctl(name, act))
@@ -5801,9 +6113,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"that is the project {clash}: a "
                                         f"container written here needs a name "
                                         f"of its own"}, 400)
-        # Shown under a project's notebook as well as here, when asked:
-        # only a project this account can see, or nothing.
-        under = field(req, "for")
+        # The project it belongs to, when one is picked: only a project this
+        # account can see, or none.
+        under = field(req, "owner")
         if under and self._not_project(under):
             return
         r = devapp.create_container(name, req.get("compose") or "",
@@ -5836,18 +6148,39 @@ class Handler(BaseHTTPRequestHandler):
         return self._result(r)
 
     def _devapp(self, req):
-        """The dev-instance controls. Operator-only by construction: these
-        buttons live on the panel, and a session's path to docker is the
-        proxy's allowlist, not this endpoint."""
+        """The dev-instance controls: the Docker tab's buttons, and `bb devapp`
+        from a session. Who may press which is decided below, by the verb, by
+        whose the container is and by its project's Run its container."""
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        # Named as the Docker tab lists it, for one that is not the caller's
+        # own project's: a container written here, or another project's
+        # instance that belongs to this one (bb devapp --container NAME).
+        ctr = field(req, "container")
+        if ctr:
+            row = devapp.row_named(ctr)
+            if not row:
+                return self._json({"error": f"no container called {ctr} on record here"}, 400)
+            req["project"], req["instance"] = row
         name = field(req, "project")
         # A project, OR a container written here, which is not a project and
         # never will be, but carries every one of these controls. Checked
         # against the store rather than waved through: this name reaches a
         # compose call and a data directory either way.
-        if name not in {p["name"] for p in project_list(self._who())} \
+        if name not in {p["name"] for p in project_list(me)} \
                 and name not in devapp.overview_names():
             return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
+        # WHOSE IT IS, before anything else is asked: an account that is not
+        # an administrator reaches what belongs to its projects, and a
+        # session what belongs to its own one (the operator, 24 Sep). The
+        # same answer a stranger's container gets, whatever the verb, so a
+        # session cannot learn by asking what another project runs.
+        if not users.is_admin(me):
+            want = field(req, "instance") or devapp.only_instance(name)
+            owner = devapp.owner_of(name, want)
+            if owner not in ({sess} if sess else {p["name"] for p in project_list(me)}):
+                return self._json({"error": not_ours(devapp.pname(name, want), sess)}, 403)
         # Reading is everybody's; changing what is running is not (roadmap
         # #27). Named, not derived from the verb: an action that should be
         # restricted and is not on this list is a decision somebody has to
@@ -5864,8 +6197,13 @@ class Handler(BaseHTTPRequestHandler):
         #     stop one, or a mistake is somebody else's problem to clear.
         #
         # Everything else (new, remove, env, route) is configuration rather
-        # than a run of the code, and stays an administrator's.
-        if act not in ("starter", "state", "rebuild", "abort", "test") \
+        # than a run of the code, and stays an administrator's: except, for a
+        # SESSION, what its project's dial hands over below (its env, and
+        # creating the project's own container), which the dial decides
+        # rather than this gate, since a session never passes this one.
+        session = bool(sess)
+        dialed = ("env-get", "env-set", "new") if session else ()
+        if act not in ("starter", "state", "rebuild", "abort", "test") + dialed \
                 and self._refused("docker-write"):
             return None
         # A SESSION is a further question, and the answer is a per-project
@@ -5876,13 +6214,12 @@ class Handler(BaseHTTPRequestHandler):
         # front of a person first; `deny`, the default, keeps the button the
         # operator's. The read verbs are nobody's secret.
         #
-        # It governs rebuild and abort and NOTHING else, because nothing else
-        # ever reaches here from a session: new, remove, env and route are
-        # docker-write above, which a session's principal never has. So the
-        # dial is about running the code, never about creating a container.
-        # A test run is not on the rebuild dial: it runs the project's own
-        # test command inside a container that is already up, which a
-        # session could run on the node anyway (roadmap R48).
+        # It governs rebuild, abort, the env and creating the project's own
+        # container, and NOTHING else: remove and route are docker-write
+        # above, which a session's principal never has. A test run is not on
+        # it: it runs the project's own test command inside a container that
+        # is already up, which a session could run on the node anyway
+        # (roadmap R48).
         # ...and before the dial, a session may only touch the instance on its
         # OWN node. A session runs on the project's node; an instance pinned
         # to another one is a container on a machine this session is not on,
@@ -5891,36 +6228,64 @@ class Handler(BaseHTTPRequestHandler):
         # row that happens to carry this project's name, and a rebuild would
         # bounce a service still being used. The operator keeps both, through
         # the Docker manager, which is where an instance is removed.
-        if act not in ("starter", "state") and (self._who() or {}).get("session"):
+        if act not in ("starter", "state") and session:
             on = devapp.instance_node(name, field(req, "instance"))
-            mine = devapp.project_daemon(name)
+            mine = devapp.project_daemon(sess)
             if on and mine and on != mine:
                 return self._json({"error": "this dev instance is on another node: it stayed "
                                             "where it was running when this project moved, "
                                             "and a session works on its own node's. The "
                                             "operator uses or removes it from the Docker "
                                             "manager"}, 403)
-        if act not in ("starter", "state", "test") and (self._who() or {}).get("session"):
-            mode = prefs.get(name)["devbuild"]
+        if act not in ("starter", "state", "test") and session:
+            # The dial is the project's (Claude may: Run its container, in its
+            # settings) and covers rebuilding its containers, changing their
+            # env and creating its own when it has none: the operator's
+            # widening, 24 Sep, so a session can bring a fresh container up
+            # by request. What a container IS stays out of reach: `new` from
+            # a session is the project's own compose file on its own node,
+            # never another project's and never a file it wrote, which is
+            # `bb container ask` and an administrator's.
+            # The dial of the project it belongs to, which is the session's
+            # own: the gate above let nothing else through.
+            mode = prefs.get(sess)["devbuild"]
             if mode == "deny":
-                return self._json({"error": "rebuilding this project's dev instance is the "
-                                            "operator's; its row on the Docker tab has "
-                                            "the dial that hands it over"}, 403)
-            if mode == "ask" and act == "rebuild":
+                return self._json({"error": RUN_DENIED}, 403)
+            if act == "new":
+                if "owner" in req and field(req, "owner") != name:
+                    return self._json({"error": "a session creates its own project's container, "
+                                                "belonging to its own project"}, 403)
+                req.pop("owner", None)
+                req["node"] = ""
+            if mode == "ask" and act in ("rebuild", "env-set", "new"):
                 # Aborting is not asked about: it stops a build this session
                 # was already allowed to start, and a running build nobody
-                # can stop is worse than one nobody approved.
-                acct = users.account_of(self._who()) or {}
+                # can stop is worse than one nobody approved. Reading the env
+                # is not either: a session cannot propose a change to what it
+                # cannot see, and the change is what is asked about.
+                acct = users.account_of(me) or {}
                 want = field(req, "instance") or devapp.MAIN
+                text = req.get("text") if act in ("env-set", "new") else None
+                # Asked by, and answered to, the session's project; acting on
+                # the container named, which may be one written here.
                 r = phone.ask_rebuild(
-                    field(req, "why"), name, want, devapp.pname(name, want),
+                    field(req, "why"), sess, want, devapp.pname(name, want),
                     asker_uid=str(acct.get("uid") or ""),
                     asker_name=str(acct.get("name") or ""),
-                    asker_admin=users.is_admin(acct))
+                    asker_admin=users.is_admin(acct),
+                    env=text if isinstance(text, str) and (act == "env-set" or text.strip()) else None,
+                    create=act == "new", target="" if name == sess else name)
                 return self._result(r)
         if act not in ("starter", "state") and name in {p["name"] for p
-                                                        in project_list(self._who())} \
+                                                        in project_list(me)} \
                 and self._readonly(name):
+            return None
+        # ...and for a container written here, the project it belongs to,
+        # for anybody but an administrator: a session of a locked project
+        # does not work on its containers either.
+        if act not in ("starter", "state") and not users.is_admin(me) \
+                and name not in {p["name"] for p in project_list(me)} \
+                and self._readonly(devapp.owner_of(name, field(req, "instance") or devapp.MAIN)):
             return None
         # Which instance of that project. Absent means the one every project
         # has always had, so a caller that predates instances still works and
@@ -5943,89 +6308,22 @@ class Handler(BaseHTTPRequestHandler):
                        f"{self._principal()[len('user:'):]} ran {act} on "
                        f"{name}" + (f" ({inst})" if inst != devapp.MAIN else ""))
         # `new` is the one action whose instance does not exist yet, which is
-        # what it is for. Everything else names one that must exist, because
-        # the string decides a compose project and a data directory and is not
-        # somewhere an arbitrary one should reach.
-        if act == "abort":
-            # Before the instance check below: a job can be running against an
-            # instance that has since been removed, and stopping it must not
-            # depend on the thing it is building still existing.
-            return self._json({"ok": True, "stopped": devapp.abort_job(name, inst)})
-        if act == "starter":
-            # The project's .env.example, for a container that does not exist
-            # yet: the send dialog opens on it so the env is filled in before
-            # the first build rather than after it stops at the gate. Reads
-            # nothing of the instance, which is the point: there is none.
-            return self._json({"text": devapp.starter(name)})
+        # what it is for; the project it is made for is checked here, where
+        # the account is known, and everything else is the module's: which
+        # verb means what is devapp.py's to say (the one-file rule), and
+        # this handler holds the gate. `owner` names a project the same way.
         if act == "new":
-            under = field(req, "for")
+            under = field(req, "owner")
             if under and self._not_project(under):
                 return
-            r = devapp.create_instance(name, inst, field(req, "node"),
-                                       "" if under == name else under)
-            if not r.get("error") and field(req, "ref"):
-                # Pinned before the build the dialog starts, or the first one
-                # comes from the project's checkout and the row says otherwise.
-                p = devapp.set_ref(name, r["instance"], field(req, "ref"))
-                if p.get("error"):
-                    return self._json(p, 400)
-            if not r.get("error") and isinstance(req.get("text"), str) \
-                    and req["text"].strip():
-                # Written before the build that follows, so the first one has
-                # the env it needs instead of stopping at the gate and asking
-                # for it afterwards.
-                devapp.write_env(name, req["text"], r["instance"])
-            return self._result(r)
-        if inst not in devapp.instances(name):
-            return self._json({"error": f"no instance {inst} of {name}"}, 400)
-        if act == "remove":
-            r = devapp.remove_instance(name, inst)
-            return self._result(r)
-        if act == "ref":
-            # Which branch this instance builds from. `docker-write` above
-            # has already had its say, so this is an administrator's like
-            # every other thing that changes what a container IS.
-            r = devapp.set_ref(name, inst, field(req, "ref"))
-            return self._result(r)
-        if act == "state":
-            # The full picture for one instance (risks, problems, the parsed
-            # compose), which overview() deliberately does not compute for
-            # every instance at once. Asked when somebody is about to act.
-            return self._json({"state": devapp.state(name, inst)})
-        # `ack` is the digest of the risk list the operator was actually
-        # shown, not a bare yes. A compose file that gains a mount between
-        # the row rendering and the button being pressed does not inherit the
-        # acknowledgement of the one before it.
-        if act == "up":
-            r = devapp.up(name, inst, field(req, "ack"))
-        elif act == "down":
-            r = devapp.down(name, inst)
-        elif act == "test":
-            # The command is the project's own, from its settings, with the
-            # same fallback bb test uses when nothing is set.
-            cmd = prefs.get(name)["test"] or prefs.test_default(name, WORKSPACE)
-            r = devapp.test(name, inst, cmd, [str(a) for a in (req.get("args") or [])][:32])
-        elif act == "rebuild":
-            r = devapp.rebuild(name, inst, field(req, "ack"))
-        elif act == "env-get":
-            # An empty env opens on the example rather than on nothing. The
-            # `missing` list still answers about what is STORED, so the hint
-            # under the box stays true while the box is only a draft.
-            stored = devapp.read_env(name, inst)
-            return self._json({"text": stored or devapp.starter(name, inst),
-                               "seeded": not stored,
-                               "missing": devapp.missing_env(name, inst)})
-        elif act == "env-set":
-            r = devapp.write_env(name, req.get("text") or "", inst)
-        elif act == "route":
-            # How the instance is reached (docs/nodes.md §7): lan or funnel,
-            # on which published port.
-            r = devapp.route_set(name, inst, field(req, "mode"), req.get("port"))
-        else:
-            return self._json({"error": f"unknown action: {act}"}, 400)
-        if r.get("error"):
-            return self._json(r, 400)
-        return self._json(r | {"state": devapp.state(name, inst)})
+        if act == "owner" and field(req, "owner") \
+                and field(req, "owner") not in {p["name"] for p in project_list(me)}:
+            return self._json({"error": f"no project called {field(req, 'owner')}"}, 400)
+        payload, status = devapp.act(
+            name, inst, act, req,
+            # The command is the project's own, from its settings.
+            test_cmd=prefs.get(name)["test"] if act == "test" else "")
+        return self._json(payload, status)
 
     def _version(self, req):
         """Move a project's version, or change who is allowed to.
@@ -6248,8 +6546,10 @@ class Handler(BaseHTTPRequestHandler):
                 elif pn:
                     target = pn
                 # The same check the New container form gets: a project
-                # that exists and this account may see, or nothing.
-                under = field(req, "for")
+                # that exists and this account may see. A session's ask
+                # belongs to its own project unless it names another, so the
+                # session that asked can see what it asked for.
+                under = field(req, "for") or (who.get("session") or "")
                 if under and self._not_project(under):
                     return
                 r = phone.ask_container(field(req, "why"), field(req, "name"),
@@ -6615,6 +6915,16 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("create"):
             return None
         body, code = projects.create(req)
+        # Taken on by whoever made it (the operator, 24 Sep), before the
+        # writes below: they ask whether this account may work on the
+        # project, and an administrator's new one was not on their list, so
+        # it came out read-only to them and the node the dialog picked was
+        # quietly not set. A clone's directory exists from here, while the
+        # clone itself runs on; one that fails leaves a name on the list that
+        # matches nothing.
+        me = self._who()
+        if code == 200 and body.get("name") and me and users.uid_of(me):
+            users.take_on(me["name"], body["name"])
         # The node it was made for, when the dialog offered one: the same
         # write the settings dialog makes, so a project is born able to
         # build and start a session rather than needing a second dialog
@@ -6624,6 +6934,21 @@ class Handler(BaseHTTPRequestHandler):
             r = prefs.set_prefs(body["name"], node=nid, workspace=WORKSPACE)
             if r.get("error"):
                 body["note"] = f"{body.get('note') or 'ready'}; node not set: {r['error']}"
+        # ...and the four gates (roadmap #27), when the dialog offered them:
+        # the same write the settings dialog makes, so what a session may
+        # enter into the notebook is decided where the project is made.
+        gate = req.get("gate")
+        if code == 200 and body.get("name") and isinstance(gate, dict) and gate:
+            r = prefs.set_prefs(body["name"], gate=gate, workspace=WORKSPACE)
+            if r.get("error"):
+                body["note"] = f"{body.get('note') or 'ready'}; gates not set: {r['error']}"
+        # ...and whether a session may run its container, the fifth of them
+        # on the dialog, so a session can create the first one by request.
+        devbuild = req.get("devbuild")
+        if code == 200 and body.get("name") and devbuild and devbuild != "deny":
+            r = prefs.set_prefs(body["name"], devbuild=str(devbuild), workspace=WORKSPACE)
+            if r.get("error"):
+                body["note"] = f"{body.get('note') or 'ready'}; Run its container not set: {r['error']}"
         # Pinned on arrival, once anything has ever been pinned. Without this a
         # project made while a pins file exists is absent from it, so it lands
         # on disk and never reaches the sidebar: created, and apparently gone.
@@ -6706,6 +7031,16 @@ class Handler(BaseHTTPRequestHandler):
         if name in set(load_locks()):
             return self._json({"error": "locked: the padlock on its row unlocks it"}, 403)
         action = field(req, "action")
+        # A branch is its session's (git.py not_yours): another account's is
+        # an administrator's to merge, asked each time and never while that
+        # session is working, and nobody else's. Before the check below,
+        # which is about the tree a session stands in, not the branch.
+        mine_ = gitview.not_yours(WORKSPACE / name, action, req.get("args") or {},
+                                  users.uid_of(me), field(req, "kind"), admin=users.is_admin(me))
+        if mine_.get("error"):
+            return self._json(mine_, 403)
+        if mine_.get("confirm"):
+            return self._json({"error": mine_["confirm"].split("\n\n")[-1], "confirm": mine_["confirm"]}, 409)
         # Both of these rewrite the working tree. A merge is not a switch, but
         # it lands other people's files in a directory a session is reading
         # and editing right now, which is the same surprise for the same
@@ -6719,22 +7054,38 @@ class Handler(BaseHTTPRequestHandler):
         lands_here = action == "switch" or (
             action == "merge" and str(args_.get("into") or "")
             in ("", gitview.status(WORKSPACE / name).get("branch") or ""))
+        # The project directory is the owner's session's tree. A switch waits
+        # while that session is open at all, since it changes the branch the
+        # session is on; a merge only while it is WORKING, since a session at
+        # its prompt sees the changed files when it next reads them, and it
+        # was one merely open that refused the operator's own merge, 24 Sep.
+        # "your" to the owner: "the owner's" read as somebody else's.
         if lands_here:
-            mine = claude_session(name)
-            if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
-                   for s in tmux_sessions() + node_tmux_sessions()):
-                return self._json({"error": "the owner's Claude session is running in this "
-                                            f"directory; end it before "
-                                            f"{'switching the branch' if action == 'switch' else 'merging'} "
-                                            "under it"}, 409)
+            owner_uid = users.uid_of(users.get(users.owner_name() or ""))
+            whose = "your" if users.uid_of(me) == owner_uid else f"{users.owner_name()}'s"
+            if action == "switch":
+                mine = claude_session(name)
+                if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
+                       for s in tmux_sessions() + node_tmux_sessions()):
+                    return self._json({"error": f"{whose} Claude session is running in this "
+                                                "directory; end it before switching the branch "
+                                                "under it"}, 409)
+            elif claude_working(name, owner_uid):
+                return self._json({"error": f"{whose} Claude session is working in this "
+                                            "directory; merge when it is waiting"}, 409)
         if action == "ask":
             live = sessions_anywhere()
-            r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live)
+            # The presser's own session, by the name the roadmap's send uses
+            # (B235): the bare name alone was the owner's.
+            r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live,
+                            session=users.tmux_prefix(me) + claude_session(name))
             return self._result(r)
         env = {**projects._git_env(), **users.git_env(me, name)}
         env.pop("DASHBOARD_AUTH", None)
         r = gitview.act(WORKSPACE / name, action, req.get("args") or {}, env=env,
                         may_push=projects.may_push(name))
+        if action == "init" and r.get("ok"):
+            mapping.exclude(WORKSPACE / name)      # the code map is never the project's
         if r.get("ok") and not NODES_OK:
             db.audit(self._principal(), "git-" + action, name,
                         {k: v for k, v in (req.get("args") or {}).items()
@@ -7304,26 +7655,30 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown action"}, 400)
         if self._not_theirs(session):
             return None
-        # Already gone is already ended. The check is here so an arbitrary name
-        # never becomes a `-t` argument, which holds either way: nothing runs
-        # for a name that is not a live session. Answering with an error
-        # instead made the caller that wants a clean slate (Sign in, which ends
-        # the sign-in terminal before starting a new flow) report a failure for
-        # the ordinary case of there being nothing to end.
-        # A session on a node (roadmap #24): the kill goes to its agent
-        # through the held poll, under the name the node knows it by, and
-        # the row disappears with the next heartbeat. By node id when the
-        # row said which (the same name can exist here and there), and by
-        # name alone for a caller that only knows the name (a tab closing).
-        want_node = str(req.get("node") or "")
-        on_node = next((s for s in node_tmux_sessions() if s["name"] == session
-                        and (not want_node or s["node_id"] == want_node)), None)
-        if on_node and (want_node or session not in {s["name"] for s in tmux_sessions()}):
-            r = nodes.session_kill(on_node["node_id"], on_node["node_name"])
-            return self._result(r)
-        if session not in {s["name"] for s in tmux_sessions()}:
-            return self._json({"code": 0, "out": "", "err": "", "gone": True})
-        return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
+        # Wherever it runs, with already gone as ended (end_session). A name
+        # that is not a live session never becomes a `-t` argument: nothing
+        # runs for it. By node id when the row said which, and by name alone
+        # for a caller that only knows the name (a tab closing).
+        return self._result(end_session(session, str(req.get("node") or "")))
+
+    def _get_project_sessions(self):
+        """GET /api/project-sessions?project=NAME: every account's sessions on
+        the project, for its settings dialog. An administrator's."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._refused("admin") or self._not_project(name):
+            return None
+        return self._json({"sessions": projsessions.of(name)})
+
+    def _project_sessions(self, req):
+        """POST /api/project-sessions {project, action: "end", session, node}:
+        an administrator ending one of them (projsessions.py)."""
+        name = field(req, "project")
+        if self._refused("admin") or self._not_project(name):
+            return None
+        if field(req, "action") != "end":
+            return self._json({"error": "unknown action"}, 400)
+        return self._result(projsessions.end(name, field(req, "session"), field(req, "node")))
 
     def _not_theirs(self, session):
         """True, with the 403 written, when this account may not act on that
@@ -7334,7 +7689,9 @@ class Handler(BaseHTTPRequestHandler):
         owner's. Nobody acts on anybody else's, administrators included: a
         key in another person's Claude session is an answer to a question
         it asked them. A session's token is held to its own project as well,
-        the way everything else it does is.
+        the way everything else it does is. The one exception is ending one,
+        an administrator's, from a project's settings (projsessions.py, the
+        operator's call of 24 Sep); keys and typing stay the account's.
         """
         who = self._who() or {}
         mine = users.uid_of(who)
@@ -7593,7 +7950,54 @@ class Server(ThreadingHTTPServer):
     daemon_threads = True
 
 
+# ---- function coverage (roadmap R76) ----------------------------------------
+# Under `bb tests coverage` the harness names a file, and every function of
+# this dashboard's own python that any thread enters is counted and written
+# there, every few seconds and on the way out. A profile hook, not a trace
+# hook: call and return events only, which is what function coverage needs
+# and a tenth of the cost of line events. Nothing here runs otherwise.
+_COV_OUT = os.environ.get("BB_COVERAGE_OUT", "")
+_cov_counts = {}
+_cov_lock = threading.Lock()
+_COV_HERE = str(HERE)
+
+
+def _cov_profile(frame, event, arg):
+    if event != "call":
+        return
+    co = frame.f_code
+    if not co.co_filename.startswith(_COV_HERE):
+        return
+    key = f"{co.co_filename}:{co.co_firstlineno}:{co.co_name}"
+    with _cov_lock:
+        _cov_counts[key] = _cov_counts.get(key, 0) + 1
+
+
+def _cov_write():
+    with _cov_lock:
+        body = json.dumps({"suite": os.environ.get("BB_COVERAGE_SUITE") or "server",
+                           "counts": dict(_cov_counts)})
+    tmp = _COV_OUT + ".tmp"
+    with contextlib.suppress(OSError):
+        Path(tmp).write_text(body)
+        os.replace(tmp, _COV_OUT)
+
+
+def _cov_start():
+    sys.setprofile(_cov_profile)
+    threading.setprofile(_cov_profile)
+
+    def loop():
+        while True:
+            time.sleep(3)
+            _cov_write()
+    threading.Thread(target=loop, daemon=True, name="coverage").start()
+    atexit.register(_cov_write)
+
+
 def main():
+    if _COV_OUT:
+        _cov_start()
     # No accounts is a normal first boot, not a failure. It used to be one:
     # the owner came from DASHBOARD_AUTH and the dashboard refused to start
     # without it, which put a password in the container's environment, where
@@ -7611,6 +8015,8 @@ def main():
     # Daemons: these loops must die with the server, not hold it open.
     doctor.start()
     idle.start()
+    if not NODES_OK:
+        claudecode.start()        # the first check soon after the start, then every six hours
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()

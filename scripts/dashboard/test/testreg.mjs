@@ -436,6 +436,18 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
   ok(read().rev > before, 'a bulk fill moves it too, having changed what the tab draws');
 }
 
+// The run's output is the shell's, not a box on a row. `bb tests log`
+// prints what the last run wrote beside the project, and the Tests view's
+// button sends `bb tests log -f` into the project's shell (the macro the
+// server holds under that name).
+{
+  writeFileSync(`${DIR}/ws/alpha/.bb-test-run.log`, 'PASS  [+0.1s] a line the run wrote\n3 passed, 0 failed in 1.0s\n');
+  const shown = bb('log');
+  ok(/a line the run wrote/.test(shown) && /3 passed/.test(shown), 'bb tests log prints the last run\'s output whole');
+  ok(await page.$eval('.pane .nb [data-view="tests"] #tstOut', b => !b.hidden && /run's output/.test(b.textContent)),
+     'the Tests view carries Open the run\'s output beside its summary');
+}
+
 // B201: a write that lands WHILE the panel's read is out is not marked as
 // seen. The panel used to record the page's token as of when its answer
 // arrived; a poll in between had already moved that token for the write, so

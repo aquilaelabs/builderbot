@@ -110,6 +110,36 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
    && ['shellcheck', 'hadolint', 'actionlint', 'ruff', 'yq', 'fd'].every(t => (lt?.source?.run?.join(' ') || '').includes(t)),
    'the playwright recipe puts the module in the store with NODE_PATH on it, and lint-tools carries what bb lint runs');
 
+// A recipe that gives a session commands says under which name (`tool`):
+// they live under `bb tool NAME`, one name per recipe, so two toolchains may
+// both have a `render` and neither can shadow a verb of bb's own. Held to
+// the script itself: every declared tool is a label in bb's `tool` case, no
+// two recipes claim one, and neither that case nor the dispatch carries a
+// duplicate label, since a bash case takes the first match and hides a
+// second in silence.
+{
+  const bb = readFileSync(`${import.meta.dirname}/../../bb`, 'utf8');
+  const labels = [...bb.matchAll(/^    ([a-z][a-z0-9|-]*)\)\s+(?:shift; )?cmd_/gm)]
+    .flatMap(m => m[1].split('|'));
+  const dup = labels.filter((l, i) => labels.indexOf(l) !== i);
+  ok(dup.length === 0, `bb's dispatch names each verb once (${dup.join(', ') || 'no duplicates'})`);
+  const toolCase = bb.slice(bb.indexOf('\ncmd_tool() {'), bb.indexOf('\n}\n', bb.indexOf('\ncmd_tool() {')));
+  const tools = [...toolCase.matchAll(/^        ([a-z][a-z0-9-]*)\)\s+tool_/gm)].map(m => m[1]);
+  const tdup = tools.filter((l, i) => tools.indexOf(l) !== i);
+  ok(tools.length >= 2 && tdup.length === 0, `bb tool names each tool once (${tools.join(', ')})`);
+  const claimed = new Map();
+  const missing = [];
+  for (const t of catalog.toolchains) if (t.tool) {
+    if (!tools.includes(t.tool)) missing.push(`${t.name}: bb tool ${t.tool}`);
+    if (claimed.has(t.tool)) missing.push(`${t.tool} is claimed by ${claimed.get(t.tool)} and ${t.name}`);
+    if (labels.includes(t.tool)) missing.push(`${t.tool} is also a verb of bb's own`);
+    claimed.set(t.tool, t.name);
+  }
+  ok(missing.length === 0, `every tool a recipe declares is in bb's tool case, and one recipe's only (${missing.join('; ') || 'all agree'})`);
+  ok(await page.$$eval('.doc .tc .sub', ss => ss.some(s => /Adds .*bb tool graphics/.test(s.textContent))),
+     'a row says which tool installing it adds');
+}
+
 // Pressing Install accepts Google's SDK terms, and the tab says so where the
 // button is: the acceptance is the operator's, not a script's.
 ok(await page.$eval('.doc .tcterms', e => /Android SDK terms/.test(e.textContent)

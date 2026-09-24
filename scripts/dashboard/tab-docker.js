@@ -43,10 +43,13 @@ const dmPollSays = () => {
 // Whether this list knows what is actually running. One function because the
 // rows' ghosting and Remove's confirmation are the same question asked twice,
 // and two copies of it would drift.
-// `stale` counts: a listing kept from before the node's current job is not
-// a claim about now, and the job is the thing most likely to have changed it.
+// `stale` does NOT count: a listing kept from before the node's current job
+// is the last thing the daemon said, not a silence, and treating it as one
+// drew "the daemon is not answering" on every row through every build. The
+// pill says "as last seen" for it instead, and the actions stay live: they
+// go through the agent, which is not what is busy.
 const dmBlind = () =>
-  !!(dockerList?.blind || dockerList?.stale || dockerList?.error || dmPollSays());
+  !!(dockerList?.blind || dockerList?.error || dmPollSays());
 
 // Applied to the DOM after a list draws rather than woven into each renderer,
 // four places render one of these controls, and one function that switches
@@ -96,11 +99,26 @@ const dockerSeen = {};
 // anybody picked and was reliably the second entry in the picker.
 function dockerTab(){ return tabs.find(t => t.kind === "docker"); }
 
+// What this tab draws from the node list: the picker's rows. The list
+// itself moves on every heartbeat (nodes.rev folds the agent's numbers in),
+// and a tab keyed on the whole of it repainted for every one while a Nodes
+// tab was open anywhere in the layout, though nothing it shows had changed
+// (B210's second half). A node arriving, leaving, renamed or changing state
+// still repaints, because that is what the picker is made of.
+function dmNodesKey(){
+  if (nodesList === null) return "?";
+  return nodesList.filter(n => n.kind !== "local")
+    .map(n => [n.id, n.name, n.kind, n.state].join(",")).join(";");
+}
+
 function openDocker(){
   const t = dockerTab();
   if (!dockerNode && t?.arg && t.arg !== "__docker") dockerNode = t.arg;
   openTab({kind: "docker", arg: dockerNode || "__docker", label: "Docker"});
-  loadDocker();
+  // Opening is a look: a tab already on screen is read again. Not while an
+  // answer is on its way, which is the case the tab's own open hook just
+  // made when the list was empty.
+  if (!dockerFetching) loadDocker();
 }
 
 // ...and remembered when it changes, which is the only moment it can be
@@ -258,7 +276,7 @@ async function dnSubmit(){
     const r = await fetch("/api/devapp", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({project, action:"new", instance:name,
-                            for: $("dnUnder").value,
+                            owner: $("dnUnder").value,
                             node: $("dnNodeField").hidden ? "" : $("dnNode").value,
                             ref: $("dnRefField").hidden ? "" : $("dnRef").value,
                             text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
@@ -323,13 +341,8 @@ async function openDevEnv(project, instance){
 // A route picked and not yet applied, per instance: the tab redraws when
 // the daemon answers, and a pick a redraw put back could never be applied.
 const dmRouteDraft = {};
-// ...and the same for the rebuild dial, per project. Nothing on a tab takes
-// effect until Apply (docs/design-language.md, Settings): this wrote on the
-// pick when it was a switch, which is a control that cannot be reconsidered
-// and reads differently from every other setting on the page.
-const dmGrantDraft = {};
-const devTestMode = name => ((state?.projects || []).find(p => p.name === name)?.prefs?.devtest
-                             ? "only" : "either");
+const devTestMode = name => (state?.projects || []).find(p => p.name === name)?.prefs?.tests_in
+                             || "node";
 
 function dmRouteLine(d){
   const r = d.route;
@@ -396,27 +409,54 @@ function dmRefLine(d){
       >Apply</button></div>`;
 }
 
-function dmGrantLine(d){
-  // Not for a container written here: its compose file IS the thing, so there
-  // is no project codebase for a session to rebuild it from.
-  if (d.source === "file" || !mayDocker()) return "";
-  const saved = devClaudeMode(d.project);
-  const pick = dmGrantDraft[d.project] ?? saved;
-  return `<div class="sub dmgrant"><label for="${
-      esc(`dmg-${d.project}`)}">Claude may rebuild${
-    helpIcon(`A session in ${d.project} builds this from the project's codebase `
-      + `and brings it up: on ask it says what the rebuild is for and waits for `
-      + `you, on auto it just runs. Making a container, removing one, Up, Down `
-      + `and Env are yours whatever this says, and it covers every instance of `
-      + `${d.project}.`)}</label>
-    <select id="${esc(`dmg-${d.project}`)}" data-dmclaude="${esc(d.project)}"
-            data-was="${esc(saved)}"
-            aria-label="whether a session may rebuild ${esc(d.project)}">${
-      DEVBUILD_MODES.map(([v, l]) => `<option value="${v}"${
-        v === pick ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
-    <button type="button" data-dmclaudeapply="${esc(d.project)}"${
-      pick === saved ? " disabled" : ""} title="save who may rebuild ${
-      esc(d.project)}'s containers">Apply</button></div>`;
+function dmGrantLine(d, other = false){
+  // What a Claude session may do with it: the setting of the PROJECT it
+  // belongs to (Claude may: Run its container, in that project's settings),
+  // said on the row with the words linking there. Nothing for a row that
+  // belongs to no project: its group says no session sees it. `other` is a
+  // container BuilderBot did not start, which is started and stopped rather
+  // than rebuilt.
+  if (!d.owner || !mayDocker()) return "";
+  const mode = devClaudeMode(d.owner);
+  const own = !other && d.owner === d.project && d.source !== "file";
+  const says = other
+    ? {auto: "may start, stop and restart it", ask: "asks you before starting, stopping or restarting it",
+       deny: "may read its log, and not start or stop it"}
+    : own
+    ? {auto: "may rebuild it, change its env and create it",
+       ask: "asks you before rebuilding it, changing its env or creating it", deny: "may not rebuild it"}
+    : {auto: "may rebuild it and change its env", ask: "asks you before rebuilding it or changing its env",
+       deny: "may not rebuild it"};
+  return `<div class="sub dmgrant dmclaudesays">${own ? "Claude" : `${esc(d.owner)}'s Claude`} ${
+    says[mode] || says.deny} · <a href="#" data-dmtestgo="${esc(d.owner)}"
+      title="the project's settings, where Claude may: Run its container is set">change</a></div>`;
+}
+
+// Which project a row belongs to: its group on this tab, the notebook that
+// lists it, and whose Claude sessions may see it and work on it (the
+// operator, 24 Sep). Staged and applied like the branch above, because it
+// is a setting. Keyed `inst:project|instance` or `ctr:name`.
+const dmOwnDraft = {};
+
+function dmOwnerLine(r, key){
+  if (!mayDocker()) return "";
+  const saved = r.owner || "";
+  const pick = dmOwnDraft[key] ?? saved;
+  const names = (state?.projects || []).map(p => p.name);
+  // A project since deleted is still what the row says until it is changed.
+  if (saved && !names.includes(saved)) names.push(saved);
+  names.sort((a, b) => a.localeCompare(b, undefined, {sensitivity: "base"}));
+  const id = "dmo-" + key;
+  return `<div class="sub dmowner"><label for="${esc(id)}">Project${
+      helpIcon("Its project's Claude sessions can see it and, as that project's "
+        + "Run its container setting allows, work on it. No project keeps it "
+        + "from every session.")}</label>
+    <select id="${esc(id)}" data-dmown="${esc(key)}" aria-label="which project it belongs to">
+      <option value=""${pick ? "" : " selected"}>no project</option>${
+      names.map(n => `<option value="${esc(n)}"${n === pick ? " selected" : ""}>${
+        esc(n)}</option>`).join("")}</select>
+    <button type="button" data-dmownapply="${esc(key)}"${
+      pick === saved ? " disabled" : ""} title="put it under that project">Apply</button></div>`;
 }
 
 function dmTestLine(d){
@@ -428,10 +468,11 @@ function dmTestLine(d){
   // The row still says what it is set to, because this is where a person
   // wonders about it, and the words are a link to where it is changed.
   if (d.source === "file") return "";
-  const only = devTestMode(d.project) === "only";
+  const mode = devTestMode(d.project);
   return `<div class="sub dmgrant dmtestsays">Tests run ${
-    only ? "only in this container, never on the node"
-         : "in this container when it is up, else on the node"}${
+    mode === "only" ? "only in this container, never on the node"
+    : mode === "up" ? "in this container when it is up, else on the node"
+    : "on the node, never in this container"}${
     ` · <a href="#" data-dmtestgo="${esc(d.project)}"
       title="the project's settings, where its node and its test command are">change</a>`}</div>`;
 }
@@ -513,12 +554,11 @@ async function dmAction(project, instance, act, btn){
     if (act === "rebuild" && !confirm(
         (st.built_rev ? `Rebuild ${project}/${instance}?\n\nBuilds the image, then down and up. `
                       : `Build ${project}/${instance}?\n\nBuilds the first image and brings it up. `)
-        + "If the build finds new env settings it stops before up, and the Env "
-        + "editor will hold your old values in comments.")) return;
+        + "New env settings stop it before up; the Env editor keeps your old values in comments.")) return;
     if (!st.risks_ack){
       if (!confirm("This compose file asks for more than its own directory:"
           + "\n\n" + (st.risks || []).map(x => "\u2022 " + x).join("\n")
-          + "\n\nA container it starts can reach those. Start it anyway?")) return;
+          + "\n\nStart it anyway?")) return;
       ack = st.risks_digest || "";
     }
   }
@@ -617,6 +657,7 @@ async function openEditContainer(name){
     "Its name is what the compose project is called, so it does not change "
     + "here: remove it and write it again under another one.";
   $("cNodeField").hidden = true;   // where it runs is not an edit either
+  $("cUnderField").hidden = true;  // its project is changed on its row
   $("cYml").value = $("cEnv").value = "";
   $("cErrWrap").hidden = true;
   $("cGo").disabled = false; $("cGo").textContent = "Save";
@@ -632,10 +673,11 @@ async function openEditContainer(name){
              $("cErrWrap").hidden = false; }
 }
 
-// The "show under" picker: every project this account sees, none first.
+// Which project a new container belongs to: every project this account
+// sees, no project first.
 function fillUnderSelect(sel, picked){
   const names = (state?.projects || []).map(p => p.name).sort((a, b) => a.localeCompare(b));
-  sel.innerHTML = `<option value="">none</option>` + names.map(n =>
+  sel.innerHTML = `<option value="">no project</option>` + names.map(n =>
     `<option value="${esc(n)}"${n === picked ? " selected" : ""}>${esc(n)}</option>`).join("");
 }
 
@@ -644,6 +686,7 @@ function openNewContainer(){
   $("cName").disabled = false;
   $("cName").value = "";
   fillUnderSelect($("cUnder"), "");
+  $("cUnderField").hidden = false;
   // Left EMPTY, both of them. The shape each wants is on the field as a
   // placeholder, which shows the same thing and cannot be submitted: seeded
   // as values, an example compose for a radarr nobody asked for was one
@@ -738,7 +781,7 @@ async function cSubmit(){
                             name: editing || $("cName").value,
                             node: editing ? "" : ($("cNodeField").hidden
                               ? "" : $("cNode").value),
-                            for: editing ? "" : $("cUnder").value,
+                            owner: editing ? "" : $("cUnder").value,
                             compose: $("cYml").value, env: $("cEnv").value})});
     const j = await r.json();
     if (j.error){
@@ -765,8 +808,7 @@ async function cSubmit(){
     dockerList = null; dockerRev++; loadDocker();
     if (row?.built_rev && confirm(
           `${editing} is saved. Rebuild it now so the change takes effect?\n\n`
-          + `That takes it down and brings it back up. Cancel keeps the change `
-          + `on disk: the row will offer Rebuild whenever you want it.`)){
+          + `Cancel keeps the change on disk for a later Rebuild.`)){
       dmAction(editing, "main", "rebuild", null);
       return;
     }
@@ -805,6 +847,9 @@ function dmBuilt(d){
 
 // What one dev instance is doing, in a line: the action bar's status.
 function dmState(d, job, mine, busy, blind){
+  // A job in flight on this row is known whatever the listing says: its
+  // phase comes from the job, not from the daemon.
+  if (busy) return esc(job.step || "working") + '<span class="dots"></span>';
   // Nothing was asked, so nothing is claimed. What it was built from is still
   // true (that is a record on this side) and it is the one fact worth
   // carrying into a listing nobody can act on.
@@ -813,7 +858,6 @@ function dmState(d, job, mine, busy, blind){
       ? `${dmBuilt(d)}: the daemon is not answering, so whether it is up is
          unknown`
       : "never built: the daemon is not answering";
-  if (busy) return esc(job.step || "working") + '<span class="dots"></span>';
   // How a job ENDED, which this row never said. A build that failed or was
   // stopped left the row showing the state it happened to be in, so the only
   // account of what went wrong was in the tail below it, and an abort, which
@@ -881,12 +925,12 @@ function dmRowsHtml(ins, job, blind){
             blind ? "state unknown"
             : d.running && live.some(c => c.state !== "running")
               ? `partly up: ${live.filter(c => c.state === "running").length} of ${live.length}`
-            : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
+            : d.running ? "running" : d.exists ? "stopped" : "down"}${
+            dockerList?.stale && !blind ? ", as last seen" : ""})</span></div>
         <div class="sub">${d.source === "file"
           ? `written here: this dashboard holds its compose file`
           : `from ${esc(d.project)}'s compose file${
-              d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}${
-          d.for && d.for !== d.project ? ` · for ${esc(d.for)}` : ""}</div>
+              d.instance && d.instance !== "main" ? `, as ${esc(d.instance)}` : ""}`}</div>
         </div>
         <details class="dmdet"${
           // Remembered on a phone, where it is a fold. On a desktop its summary
@@ -904,24 +948,10 @@ function dmRowsHtml(ins, job, blind){
             esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}${
             (c.ports || []).length ? ` (${c.ports.map(esc).join(", ")})` : ""}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
-        <div class="dmsettings">${dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>
+        <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${
+          dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
         </details>
-        ${busy || (mine && job.error)
-          // What it is actually doing, live. The step word above says the
-          // phase (building, starting) and this says what the phase is
-          // spending its time on, which for a pull is the only way to tell a
-          // slow download from a hang. Raw, and deliberately not parsed into a
-          // bar: docker rewrites a line per layer per tick, and turning that
-          // into a percentage is the thing the toolchains tab gave up on.
-          // Tailed whether or not it is still running. The row only
-          // repaints when something moved, so this is not a fight with the
-          // reader's scrolling, and the end is where the reason is: a failed
-          // job rendered its last 1200 characters scrolled to the TOP, which
-          // on anything that pulled an image is the middle of the download
-          // and never the error that ended it.
-          ? `<pre class="dmlog" data-tail="1">${
-              esc((job.log || "").slice(-1200))}</pre>` : ""}
       </div>
       <div class="actbar dmacts">
         <span class="state${!blind && d.running ? " ok" : ""}">${dmState(d, job, mine, busy, blind)}</span>
@@ -942,8 +972,7 @@ function dmRowsHtml(ins, job, blind){
         `}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}
-            title="stop this build. What is already built is kept: an abort is
-for the rest of the work"
+            title="stop this build; what is already built is kept"
             >${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
         <button type="button" data-dm="rebuild" ${
           // A button that refuses is not information. This slept whenever the
@@ -964,8 +993,7 @@ for the rest of the work"
           d.built_rev ? "Rebuild" : "Build"}</button>
         ${!mayDocker() ? "" : `<button type="button" class="danger" data-dm="remove" ${
             busy ? "disabled" : ""}
-            title="take it down and drop it from this list. Its env and its data
-directory stay, so remaking it under the same name finds them">Remove</button>`}
+            title="take it down and drop it from this list; its env and data stay for a remake">Remove</button>`}
       </div>
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
                    "Ports and mounts", "",
@@ -1029,18 +1057,52 @@ function dmWireRows(el, list = dockerList){
   // including the ones BuilderBot did not create (R68 steps 1 and 2). The
   // name goes back to the server, which looks it up in a fresh listing
   // before it acts: the rule every executing surface here follows.
+  // The node the LIST is about: the notebook reads its project's node, which
+  // need not be the one picked on this tab.
+  const node = list?.node || dockerNode;
   el.querySelectorAll("[data-ctl]").forEach(b => b.onclick = async () => {
     const what = b.dataset.ctl, ctr = b.dataset.ctr;
     if (what === "stop" && !confirm(`Stop ${ctr}?`)) return;
     busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting"}[what]);
     try{
-      const r = await postJSON("/api/dockerctl", {action: what, container: ctr, node: dockerNode});
+      const r = await postJSON("/api/dockerctl", {action: what, container: ctr, node});
       const j = await r.json();
       if (j.error) notify(j.error, true); else notify(j.out || `${what} sent`);
     }catch(e){ notify(`${what} ${ctr}: ` + e, true); }
     dockerList = null; loadDocker();
   });
   el.querySelectorAll("[data-logs]").forEach(b => b.onclick = () => dmLogs(b.dataset.logs));
+  // Which project a row belongs to: staged on the pick, written by Apply.
+  const ownSaved = key => (key.startsWith("ctr:")
+    ? (list?.containers || []).find(c => (c.name || c.id) === key.slice(4))
+    : (list?.instances || []).find(x => `inst:${x.project}|${x.instance}` === key))?.owner || "";
+  el.querySelectorAll("[data-dmown]").forEach(sel => sel.onchange = () => {
+    const key = sel.dataset.dmown;
+    if (sel.value === ownSaved(key)) delete dmOwnDraft[key];
+    else dmOwnDraft[key] = sel.value;
+    const b = sel.parentElement.querySelector("[data-dmownapply]");
+    if (b) b.disabled = sel.value === ownSaved(key);
+  });
+  el.querySelectorAll("[data-dmownapply]").forEach(btn => btn.onclick = async () => {
+    const key = btn.dataset.dmownapply, owner = dmOwnDraft[key];
+    if (owner === undefined) return;
+    const other = key.startsWith("ctr:");
+    const [project, instance] = other ? [] : key.slice(5).split("|");
+    const what = other ? key.slice(4) : (list?.instances || []).find(
+      x => x.project === project && x.instance === instance)?.name || project;
+    busy(btn, "Applying");
+    try{
+      const r = await postJSON(other ? "/api/dockerctl" : "/api/devapp", other
+        ? {action: "owner", container: key.slice(4), owner, node}
+        : {action: "owner", project, instance, owner});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmOwnDraft[key];
+      notify(owner ? `${what} belongs to ${owner} now` : `${what} belongs to no project now`);
+      dockerList = null; dockerRev++; loadDocker();
+    }catch(e){ notify("the project: " + e, true); }
+    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
+  });
 
   // The words on the row are a way in to where the setting lives now.
   el.querySelectorAll("[data-dmtestgo]").forEach(a => a.onclick = e => {
@@ -1048,31 +1110,6 @@ function dmWireRows(el, list = dockerList){
     const row = document.querySelector(`[data-rn="${CSS.escape(a.dataset.dmtestgo)}"]`);
     if (row) row.click();
     else notify("open the project's settings from its row on the Projects card", true);
-  });
-  el.querySelectorAll("[data-dmclaude]").forEach(sel => sel.onchange = () => {
-    const project = sel.dataset.dmclaude;
-    if (sel.value === sel.dataset.was) delete dmGrantDraft[project];
-    else dmGrantDraft[project] = sel.value;
-    const b = el.querySelector(`[data-dmclaudeapply="${CSS.escape(project)}"]`);
-    if (b) b.disabled = sel.value === sel.dataset.was;
-  });
-  el.querySelectorAll("[data-dmclaudeapply]").forEach(btn => btn.onclick = async () => {
-    const project = btn.dataset.dmclaudeapply;
-    const mode = dmGrantDraft[project];
-    if (!mode) return;
-    busy(btn, "Applying");
-    try{
-      const r = await postJSON("/api/prefs", {project, devbuild: mode});
-      const j = await r.json();
-      if (j.error){ notify(j.error, true); return; }
-      delete dmGrantDraft[project];
-      notify(mode === "auto" ? `a session in ${project} may rebuild its containers`
-             : mode === "ask" ? `a session in ${project} will ask you before rebuilding`
-             : `rebuilding ${project}'s containers is yours again`);
-      refresh();
-      dockerRev++; drawPanes();
-    }catch(e){ notify("the dial: " + e, true); }
-    finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   });
   // The route is saved on Apply, not on the pick (docs/design-language.md,
   // Settings): a pick wakes the button when it differs from what is saved.
@@ -1092,9 +1129,7 @@ function dmWireRows(el, list = dockerList){
     const mode = sel?.value || "lan";
     const port = row.querySelector('[data-route="port"]')?.value || "";
     if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
-        `Open ${project}/${instance} to the internet?\n\nTailscale Funnel gives it a public `
-        + `https URL on the node: anyone with the link can reach the port. Turning the `
-        + `route back to lan closes it.`)){
+        `Open ${project}/${instance} to the internet?\n\nAnyone with the link can reach the port until the route goes back to lan.`)){
           row.querySelectorAll("[data-route]").forEach(x => { x.value = x.dataset.was; });
           btn.disabled = true; delete dmRouteDraft[row.dataset.inst]; return; }
     delete dmRouteDraft[row.dataset.inst];
@@ -1106,6 +1141,57 @@ function dmWireRows(el, list = dockerList){
     }catch(e){ notify("route: " + e, true); }
     dockerList = null; dockerRev++; loadDocker();
   });
+}
+
+// Grouped by the PROJECT each row belongs to (the operator, 24 Sep): a
+// project's containers together under its name, the groups in alphabetical
+// order, and what belongs to no project last. In each, BuilderBot's own
+// containers first and then the others, by name. Where a row came from
+// (built from a project, written here, or started by somebody else) is said
+// on the row itself, since that is what decides what can be done to it.
+function dmGroupsHtml(ins, cs, job, blind){
+  // A project's heading wears its own colour when it has one; `null` is
+  // the No project heading, which wears none.
+  const head = (t, sub, tone) => `<div class="field dmgroup${tone === null ? " none" : ""}"${
+    tone ? ` style="--gc:${tone}"` : ""}><b>${esc(t)}</b>${
+    sub ? `<span class="dim">${esc(sub)}</span>` : ""}</div>`;
+  const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
+  const owners = [...new Set([...ins, ...cs].map(r => r.owner || ""))]
+    .filter(Boolean).sort(byName);
+  const group = o =>
+    dmRowsHtml(ins.filter(d => (d.owner || "") === o).sort((a, b) => byName(a.name, b.name)), job, blind)
+    + dmOtherRowsHtml(cs.filter(c => (c.owner || "") === o)
+        .sort((a, b) => byName(a.name || a.id, b.name || b.id)));
+  const loose = [...ins, ...cs].some(r => !r.owner);
+  return owners.map(o => head(o, "", colorTone(projectColor(o))) + group(o)).join("")
+    + (loose ? head("No project", "no Claude session sees these", null) + group("") : "");
+}
+
+// A container BuilderBot did not start: what the daemon says about it,
+// started, stopped and restarted by name, and put under a project on its row.
+function dmOtherRowsHtml(cs){
+  return cs.map(c => `
+    <div class="row stack2 off dmother" data-ctr="${esc(c.name || c.id)}">
+      <div class="grow">
+        <div class="name">${esc(c.name || c.id)} <span class="pill" title="not started by BuilderBot">not ours</span></div>
+        <div class="sub">${esc(c.image)}</div>
+        <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
+          c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
+        ${c.ports.length ? `<div class="sub">${c.ports.map(esc).join(" · ")}</div>` : ""}
+        ${dmOwnerLine(c, "ctr:" + (c.name || c.id))}${dmGrantLine(c, true)}
+      </div>
+      <div class="actbar dmacts">
+        ${!mayDocker() ? "" : `<button type="button" data-ctl="${
+          c.state === "running" ? "stop" : "start"}" data-ctr="${esc(c.name || c.id)}"
+          title="docker ${c.state === "running" ? "stop" : "start"} ${esc(c.name || c.id)}">${
+          c.state === "running" ? "Stop" : "Start"}</button>
+        <button type="button" data-ctl="restart" data-ctr="${esc(c.name || c.id)}"${
+          c.state === "running" ? "" : " disabled"}
+          title="docker restart ${esc(c.name || c.id)}">Restart</button>`}
+        ${!mayDocker() ? "" : `<button type="button" data-logs="${esc(c.name || c.id)}"
+          title="the last ${esc(String(400))} lines it printed">Log</button>`}
+      </div>
+    </div>`).join("");
 }
 
 function renderDockerInto(i){
@@ -1138,45 +1224,7 @@ function renderDockerInto(i){
   const ins = dockerList.instances || [];
   const cs = dockerList.containers || [];
   const job = dockerJob();
-  // Grouped by WHERE A ROW CAME FROM, which is the one thing the tab never
-  // said and the thing that decides what can be done to it: the operator
-  // could see several containers and edit one, and nothing explained that
-  // the difference was provenance rather than favouritism (R68 step 4).
-  // Not grouped by project: the project is on every line, and a heading per
-  // project is a lot of chrome around lists that are usually one long.
-  const head = (t, sub) => `<div class="field dmgroup"><b>${esc(t)}</b>${
-    sub ? ` <span class="dim">${esc(sub)}</span>` : ""}</div>`;
-  const fromProject = ins.filter(d => d.source !== "file");
-  const writtenHere = ins.filter(d => d.source === "file");
-  const rows = (fromProject.length
-      ? head("From a project", "built from its compose file, and rebuilt when the code moves")
-        + dmRowsHtml(fromProject, job, blind) : "")
-    + (writtenHere.length
-      ? head("Written here", "this dashboard holds the compose file; Edit is where it lives")
-        + dmRowsHtml(writtenHere, job, blind) : "")
-    + (cs.length
-      ? head("Already on this machine", "somebody else started these; BuilderBot only lists them")
-        : "") + cs.map(c => `
-    <div class="row stack2 off">
-      <div class="grow">
-        <div class="name">${esc(c.name || c.id)} <span class="pill" title="BuilderBot did not start this one, so it lists it and leaves it alone">not ours</span></div>
-        <div class="sub">${esc(c.image)}</div>
-        <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
-          c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
-        ${c.ports.length ? `<div class="sub">${c.ports.map(esc).join(" · ")}</div>` : ""}
-      </div>
-      <div class="actbar dmacts">
-        ${!mayDocker() ? "" : `<button type="button" data-ctl="${
-          c.state === "running" ? "stop" : "start"}" data-ctr="${esc(c.name || c.id)}"
-          title="docker ${c.state === "running" ? "stop" : "start"} ${esc(c.name || c.id)}">${
-          c.state === "running" ? "Stop" : "Start"}</button>
-        <button type="button" data-ctl="restart" data-ctr="${esc(c.name || c.id)}"${
-          c.state === "running" ? "" : " disabled"}
-          title="docker restart ${esc(c.name || c.id)}">Restart</button>`}
-        ${!mayDocker() ? "" : `<button type="button" data-logs="${esc(c.name || c.id)}"
-          title="the last ${esc(String(400))} lines it printed">Log</button>`}
-      </div>
-    </div>`).join("");
+  const rows = dmGroupsHtml(ins, cs, job, blind);
   // Its own class rather than the projects tab's: the two look alike and a
   // selector that matched both would be a test passing on the wrong tab.
   // Said in words at the top, not only in the tooltips below: a tooltip is
@@ -1202,7 +1250,9 @@ function renderDockerInto(i){
   // Said, not switched off: a listing that failed is worth a line, and the
   // line has to say that the buttons under it still work.
   const note = off || (dockerList.error
-    ? `the daemon did not answer: ${dockerList.error}: the rows cannot say `
+    // The error's own full stop comes off before the clause is joined on:
+    // "...does not know.: the rows cannot say" was on a walk's screenshot.
+    ? `the daemon did not answer: ${String(dockerList.error).replace(/\.\s*$/, "")}: the rows cannot say `
       + `what is running, though the controls still work through the agent`
     : "");
   // Which daemon this is, stated rather than inferred: the node picked
@@ -1220,9 +1270,7 @@ function renderDockerInto(i){
         // configuration that does nothing should not look like it does.
         (src.strays || []).length
           ? `<br><span class="dim">${esc((src.strays || []).join(", "))} ${
-              src.strays.length > 1 ? "are" : "is"} mapped but not mounted here:
-              the daemon's own, and nothing on this side checks ${
-              src.strays.length > 1 ? "them" : "it"}</span>` : ""}</div>`
+              src.strays.length > 1 ? "are" : "is"} mapped but not mounted here</span>` : ""}</div>`
     : "";
   // The picker: every node, online or not: an offline node's view is its
   // last-known list in the ghosted state the blind path draws.
@@ -1242,10 +1290,10 @@ function renderDockerInto(i){
   const asks = (typeof ph !== "undefined" && ph?.asks || [])
     .filter(a => a.kind === "rebuild");
   const askRows = asks.map(a => `<div class="row dmask">
-      <div class="grow"><div class="name">rebuild: ${esc(a.why)}</div>
+      <div class="grow"><div class="name">${esc(a.ctl || "rebuild")}: ${esc(a.why)}</div>
         <div class="phcmd">bb ${esc(a.cmd.join(" "))}</div>
         <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project")
-                                       : a.project || "a session")} asks to rebuild it · ${
+                                       : a.project || "a session")} asks to ${esc(a.ctl || "rebuild")} it · ${
           a.left > 60 ? `${Math.floor(a.left / 60)} min left to answer`
                       : `${a.left}s left to answer`}</div></div>
       <span class="acts">
@@ -1274,13 +1322,6 @@ function renderDockerInto(i){
       }<button id="bDockerRe">Refresh</button>${
       slow ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div></div>`;
   gateDocker(el, off);
-  // Every tail sits at its own bottom after a draw. The list repaints only
-  // when the job moved, so between draws the reader keeps whatever scroll
-  // they chose; what this stops is a redraw putting them back at the top of
-  // output whose point is at the end.
-  el.querySelectorAll('.dmlog[data-tail="1"]').forEach(t => {
-    t.scrollTop = t.scrollHeight;
-  });
   // The asks answer through the phone's endpoint, which holds the one list of
   // them; phFetch redraws this tab when the answer comes back.
   el.querySelectorAll("[data-rallow]").forEach(b => b.onclick = () => {

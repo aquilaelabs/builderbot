@@ -745,7 +745,7 @@ print(json.dumps(out))
   const seeded = await page.$$eval(`${ROW} .ndmount [data-k="source"]`, es => es.map(e => e.value));
   ok(seeded.includes('nas:/mnt/user/old'),
      `the mount editor opens on what the node reports, not on an empty list (${seeded.join(', ')})`);
-  ok(await page.$eval(`${ROW} .ndconf`, e => /the ones the node reports/.test(e.textContent)),
+  ok(await page.$eval(`${ROW} .ndconf`, e => /As the node reports them/.test(e.textContent)),
      '...and says they came from the node rather than from anything saved here');
   // The new row lands after the seeded ones.
   const last = seeded.length;
@@ -1444,6 +1444,22 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   const refusedTc = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
   ok(/runs agent 3/.test(refused.error || '') && /runs agent 3/.test(refusedTc.error || ''),
      `...and the server refuses the same jobs, not only the buttons (${(refused.error || 'no error').slice(0, 60)})`);
+  // The same number and a different file: the agent moved without its
+  // version constant, and the row said "runs 0.6.92 and ships 0.6.92" on a
+  // walk (docs/journeys.md, 23 Sep). It names the files now.
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: 'sha256:' + '0'.repeat(64) }) });
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => /same number as a newer file \(/.test(document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  const sameTc = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
+  ok(/runs agent \S+ \(00000000\) and this controller ships the same number as a newer file \([0-9a-f]{8}\)/.test(sameTc.error || ''),
+     `an agent on the same number but another file is told so, on the row and in the refusal (${(sameTc.error || 'no error').slice(0, 90)})`);
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: CENSUS, version: '3', digest: 'sha256:' + '0'.repeat(64) }) });
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => /runs agent 3 /.test(document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
   await page.evaluate(() => openToolchains());
   await page.waitForSelector('.tctab #tcNodeSel', { timeout: 15000 });
   await page.selectOption('.tctab #tcNodeSel', minted.id);
@@ -1586,7 +1602,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.waitForFunction(id => /sees only its own project/.test(document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
                              minted.id, { timeout: 15000 }).catch(() => {});
   const isolated = await rowText();
-  ok(/Each session here sees only its own project/.test(isolated) && !/not isolated/.test(isolated),
+  ok(/Each session sees only its own project/.test(isolated) && !/not isolated/.test(isolated),
      '...and one whose sessions are says that instead');
   await napi('/api/prefs', { project: 'alpha', node: '' });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
@@ -1986,6 +2002,158 @@ ok(page.errors.length === 0,
   const listed = (await napi('/api/v1/nodes')).nodes.some(n => n.id === shed.id);
   ok(!listed, 'and the node is retired when the job succeeds, so it leaves the list');
   await napi('/api/v1/nodes', { action: 'retire', id: plain.id });
+}
+
+// ---- Claude Code on a node: version, check, update (claudecode.py) ------
+// The node reports what its session account runs; the controller asks the
+// installer's `latest` (a file here) after it starts and on Check. Behind
+// is a bell row and a sentence on the section; Update ends the Claude
+// sessions there, queues the job, and holds the node's projects until it
+// ends. A session's token cannot ask for it, and nothing in bb can.
+{
+  const base = URL.replace(/\/$/, '');
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const napi = async (path, body, hdrs) => (await fetch(base + path, {
+    method: body ? 'POST' : 'GET', headers: { ...H, ...(hdrs || {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}) })).json();
+  const mint = await napi('/api/v1/nodes', { action: 'enroll', name: 'clbox' });
+  const shipped = (await napi('/api/v1/nodes')).agent || {};
+  const census = { cpu: 2, mem_mb: 4096, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64', sandbox: true,
+                   stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 } },
+                   session: { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true,
+                              boot: '77.1', up_s: 900, claude: '1.0.0 (Claude Code)' } };
+  // The enrollment token enrolls and nothing else: the exchange hands the
+  // agent its own, which every hello and heartbeat carries.
+  const en = await napi('/api/v1/agent/enroll', { census, version: shipped.version, digest: shipped.digest, user: 'bb' },
+                        { Authorization: 'Bearer ' + mint.token });
+  en.id = en.node_id || mint.id;
+  const hello = async () => (await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census, version: shipped.version, digest: shipped.digest }) })).json();
+  const hi = await hello();
+  writeFileSync(`${DIR}/claude-latest`, '1.2.0\n');
+  const me = (await napi('/api/v1/nodes')).nodes.find(n => n.id === en.id);
+  ok(!!me?.live && me.reported?.session?.claude === '1.0.0 (Claude Code)',
+     `the node dials in reporting its Claude Code (hello: ${JSON.stringify(hi).slice(0, 80)}; row: live=${me?.live} session=${JSON.stringify(me?.reported?.session || null).slice(0, 120)})`);
+  const chk = await napi('/api/v1/nodes', { action: 'claude-check', id: en.id });
+  ok(chk.ok && chk.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${chk.version || chk.error})`);
+  const st = await napi('/api/status');
+  const row = (st.attention || []).find(a => a.kind === 'claude' && a.id === en.id);
+  ok(!!row && row.from === '1.0.0' && row.to === '1.2.0',
+     `a node behind is a bell row naming both versions (${JSON.stringify(row || st.attention)})`);
+  ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
+     '...and the status payload says which node is behind');
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await pickNode(page, en.id);
+  const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
+  await page.waitForFunction(sel => /1\.0\.0, 1\.2\.0 is out/.test(document.querySelector(sel)?.textContent || ''), ROWC, { timeout: 15000 });
+  ok(await page.$eval(`${ROWC} [data-nd="claude-update"]`, b => !b.disabled) && await page.$eval(`${ROWC} [data-nd="claude-check"]`, b => !b.disabled),
+     'the Claude Code section shows the version against the latest, with Check and Update live');
+  // A session's token gets nowhere near it.
+  const tok = execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys
+sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
+spec = importlib.util.spec_from_file_location('u', ${JSON.stringify(new globalThis.URL('../users.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+def wj(path, d):
+    tmp = str(path) + '.new'
+    with open(tmp, 'w') as f: json.dump(d, f, indent=2)
+    os.replace(tmp, path)
+m.configure(state=${JSON.stringify(`${DIR}/state`)}, write_json=wj)
+print(m.mint_session('alpha'))
+`], { encoding: 'utf8' }).trim();
+  const asSession = await fetch(base + '/api/v1/nodes', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+    body: JSON.stringify({ action: 'claude-update', id: en.id }) });
+  ok(asSession.status === 403, `a session's token cannot ask for the update (${asSession.status})`);
+  // The update: the node's project is bound, a Claude session is reported
+  // there, and the press ends it, queues the job and holds the row.
+  await napi('/api/prefs', { project: 'beta', node: en.id });
+  await fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    // Named the way bb-tty names it on a node: every account is prefixed
+    // there, the owner included; an unprefixed name is nobody's and dropped.
+    body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
+      sessions: [{ name: `${JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid}~claude-beta` }] }, running: [], wait: 0 }) });
+  const up = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });
+  const job = up.job ? await napi(`/api/v1/jobs?id=${up.job}`) : null;
+  ok(up.ok && job?.type === 'claude-update' && job.node === en.id && job.spec?.to === '1.2.0' && (up.ended || []).length === 1,
+     `Update ends the Claude session there and queues the job naming the version (${up.job || up.error}; ended ${JSON.stringify(up.ended)})`);
+  const held = (await napi('/api/status')).projects.find(p => p.name === 'beta')?.held || '';
+  ok(/Claude Code is updating on clbox/.test(held), `...and the node's project is held with the reason while it runs (${held.slice(0, 60)})`);
+  ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
+     '...and the bell row is gone while the update is queued');
+  const again = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });
+  ok(/already queued/.test(again.error || ''), '...and a second press is refused while one is queued');
+  await napi('/api/v1/jobs', { action: 'cancel', id: up.job });
+  await sleep(300);
+  ok(!(await napi('/api/status')).projects.find(p => p.name === 'beta')?.held, 'the hold lifts when the job ends');
+  // A refusal is said on the section, not only in a toast (23 Sep): the
+  // press that queued nothing read as "it said updating and nothing happened".
+  await page.evaluate(id => { nodesClaudeSaid[id] = 'the press was refused for a reason worth reading'; loadNodes(); }, en.id);
+  await page.waitForFunction(sel => /refused for a reason worth reading/.test(document.querySelector(sel)?.textContent || ''), ROWC, { timeout: 10000 });
+  ok(true, 'what the last press answered stays on the section until the next one');
+  await page.evaluate(id => { delete nodesClaudeSaid[id]; }, en.id);
+  // The switch is off by default: a node stays on its version until Update
+  // is pressed. On, a session asked for on a node that is behind updates it
+  // first: the terminal is refused with the reason, the job is queued, and
+  // no open conversation is ended for it.
+  ok((await napi('/api/status')).settings?.settings?.claude_autoupdate?.value === false
+     && await page.$eval(`${ROWC} [data-nd-auto]`, b => !b.checked),
+     'Update before a session starts is off by default, on the Settings tab and on the section');
+  await napi('/api/settings', { set: { claude_autoupdate: true } });
+  await fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [] }, running: [], wait: 0 }) });
+  const term = await fetch(base + '/term/ws?arg=' + encodeURIComponent('claude:beta'), { headers: H });
+  const termBody = await term.json().catch(() => ({}));
+  ok(term.status === 409 && /is being updated to 1\.2\.0 before this session starts/.test(termBody.error || ''),
+     `with the switch on, a session on a node behind waits for the update, and says so (${term.status}: ${(termBody.error || '').slice(0, 70)})`);
+  const started = (await napi('/api/v1/jobs?n=5&type=claude-update&active=1')).jobs?.find(j => j.node === en.id);
+  ok(!!started, '...and the update job is queued by that start');
+  if (started) await napi('/api/v1/jobs', { action: 'cancel', id: started.id });
+  await napi('/api/settings', { set: { claude_autoupdate: false } });
+  // Up to date reads as such.
+  census.session.claude = '1.2.0 (Claude Code)';
+  await hello();
+  ok((await napi('/api/status')).claude_code?.nodes?.[en.id]?.behind === false, 'a node on the latest is not behind');
+  await napi('/api/prefs', { project: 'beta', node: '' });
+  await napi('/api/v1/nodes', { action: 'retire', id: en.id });
+}
+
+// A probe's end never moves the job revisions, however the race with its
+// waiter falls. run_wait forgets a probe the moment it sees the end, which
+// takes it off the probe list; job_result asked whether the job was quiet
+// only after its housekeeping, so the waiter usually won and every probe
+// bumped the state revision. The Docker tab refetches on it and its read is
+// a probe: a refresh every second or two for as long as it was open (24 Sep).
+// Forced here by forgetting the job inside that housekeeping, which is the
+// losing order, deterministically.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, sys, time
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+jid, now = "j_quietprobe", int(time.time())
+m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source, spec, outputs,"
+        " state, node, exit_code, queued, started) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (jid, "exec", "", "dashboard", json.dumps({"node": "n_quiet"}), "{}",
+         json.dumps({"argv": ["true"], "probe": True}), "[]", "running", "n_quiet", None, now, now))
+m._probe_ids.add(jid)
+before = m.jobs_state_rev()
+real = m.prune_job_logs
+def racing(*a, **k):
+    m.job_forget(jid)          # the waiter saw the end and let the job go
+    return real(*a, **k)
+m.prune_job_logs = racing
+r = m.job_result("n_quiet", jid, "succeeded", 0)
+print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}))
+`], { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const got = JSON.parse(out.trim().split('\n').pop());
+  ok(got.ok && got.moved === 0,
+     `a probe's result leaves the job revisions still even when its waiter forgets it first (${JSON.stringify(got)})`);
 }
 
 await done(browser);

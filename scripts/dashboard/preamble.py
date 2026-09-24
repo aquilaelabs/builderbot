@@ -45,12 +45,19 @@ CUT = ("[the rest of this list did not fit in the prompt; `bb roadmap`"
        " and `bb bug` show all of it]")
 
 
-def configure(*, rules_mod, roadmap_mod, bugs_mod):
+live_fn = None
+
+
+def configure(*, rules_mod, roadmap_mod, bugs_mod, live=None):
     """The three stores, injected rather than imported.
 
     Same shape as every other module here: server.py owns configuring them,
-    and `bb` hands in the same three after configuring them itself.
+    and `bb` hands in the same three after configuring them itself. `live`
+    is the server's: what build is running, for the briefing (R75 step 5);
+    bb, which has no server, hands in nothing and the part is left out.
     """
+    global live_fn
+    live_fn = live
     globals().update(rules_mod=rules_mod, roadmap_mod=roadmap_mod, bugs_mod=bugs_mod)
 
 
@@ -110,6 +117,10 @@ def briefing(project):
             skip = False
             continue
         if not skip:
+            # A block skipped between two blank lines leaves one of them,
+            # not both: the template has no double blank of its own.
+            if not line.strip() and out and not out[-1].strip():
+                continue
             out.append(line)
     return "\n".join(out).strip("\n")
 
@@ -133,6 +144,9 @@ def parts(project):
     """
     out = []
     for name, fn in (("briefing", lambda: briefing(project)),
+                     # What is running, as a fact rather than a guess (R75
+                     # step 5): a session argued from a build it assumed once.
+                     ("live", lambda: live_fn() if live_fn else ""),
                      ("rules", lambda: rules_mod.block(project)),
                      ("roadmap", lambda: roadmap_mod.prompt(project)),
                      ("bugs", lambda: bugs_mod.prompt(project))):

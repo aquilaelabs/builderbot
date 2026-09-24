@@ -23,6 +23,12 @@ exactly this reason: the accents range from `#2fb8c6` to `#ffb000`, and
 forty percent of black is not enough darkening under the bright ones. Five
 schemes had text on that fill under AA before the cap, nostromo worst at
 3.56:1. `test/uniform.mjs` measures the rendered pixels on every scheme.
+Nostromo alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
+served by the page's allow-list): hull plating behind the page, ribbing in
+the left gutter, a plate mark in a card's corner and a glyph strip in the
+header. Each bakes its own opacity, none sits under text above a third, and
+none moves the layout: a texture lives in space the page already leaves
+empty. The same suite measures the contrast with them in place.
 
 Watch the class the words wear. A tab's name is a `.lbl`, which is also the
 field-label helper, so it arrived wearing the quiet colour meant for "Your
@@ -30,9 +36,17 @@ email" above a text box, on an accent fill, at 2.51:1.
 
 ## Shape
 
-8px radius for boxes (cards, panes, modals), 6px for controls (buttons,
-fields), 4px for tags, 99px for pills, 50% for dots. Hairlines are
-`1px solid var(--line)`.
+Three corners, as tokens: `--r-surface` (8px) for boxes (cards, panes,
+modals), `--r-control` (6px) for controls (buttons, fields, tabs), `--r-small`
+(4px) for tags. Never the number: a scheme may square all three, and nostromo
+does. 99px for pills and 50% for dots are not corners and stay round
+everywhere. Hairlines are `1px solid var(--line)`.
+
+A colour is a token too, including the ones that look like a one-off: a
+danger edge is `--red2-edge`, a warn edge `--gold-edge`, text on a filled
+accent is `--bg`, and a hover shade is `color-mix()` of the scheme's own.
+A hex outside the scheme blocks is the default scheme leaking into the
+other eleven, and the check counts them.
 
 ## Type
 
@@ -168,6 +182,16 @@ whose whole point is the width: a terminal, a log. `test/uniform.mjs`
 measures every control and control row on every tab against the surface
 holding it.
 
+**A dead control says why on its row, not only in its tooltip.** A ghosted
+button carries the whole reason with the fix as its tip, which is a tap on
+a phone as well as a hover; the first clause of that reason is also
+written in red under the row, where the row's other facts sit (who has a
+session here), because a phone shows nothing until it is tapped and a
+dead button with no visible reason is what somebody stares at. Three
+projects with no node read as broken after an update (23 Sep) with the
+reason sitting in a tooltip the whole time. `shortWhy()` cuts the clause;
+`cards.mjs` holds the no-node and out-of-window rows to it.
+
 ## Settings
 
 Nothing on a tab takes effect until Save or Apply is pressed. A select that
@@ -180,6 +204,22 @@ is the colour scheme in the gear: a theme is looked at, not decided, and a
 swatch that needed a second press to be seen would be answering a question
 nobody asked. Buttons that *do* something (install, build, connect, end)
 are actions, not settings, and act on the press.
+
+## Files
+
+The page is `index.html` and classic scripts beside it, loaded before its
+own script: `tab-*.js` for a document tab, `nb-*.js` for a notebook view,
+`page-*.js` for a part of the page that is neither (the welcome panel,
+chat, motion, the sidebar cards, the gear menu, doctor, the command
+cards, paged lists).
+Each is pure declarations, since it runs before the page and its helpers
+exist; wiring that must run at load stays in `index.html` under the
+section's `// ---- name ----` header, with a line saying where the
+functions went. The server serves a script only by name: a new file goes
+on the allow-list in `server.py` beside the others, or the page 404s on it. `bb map sections index.html` reads the page by those
+headers, with each section's outside callers, what runs at load and what
+the suite covers, and a section with few outside callers and nothing at
+load is the next to move.
 
 ## Document tabs
 
@@ -261,24 +301,28 @@ back to, so cancelling it removes it.
 
 A list that can outgrow a screen shows a page at a time, through `paginate`
 and nothing else: one helper applied to the DOM after a list draws, rather
-than each renderer growing its own. It draws a `.pagemore` footer: what is
-shown of the total, then Show N more, Show all and Fewer as each becomes
-worth offering. It is a bar the framework owns, so it is exempt from the
-action-bar rule and its shape is the same on every list.
+than each renderer growing its own. It draws a `.pagemore` footer: which
+rows are on screen of the total ("26 to 50 of 80 bugs"), then Previous and
+Next, each only when there is a page for it to go to. It is a bar the
+framework owns, so it is exempt from the action-bar rule and its shape is
+the same on every list.
 
-Deliberately not numbered pages: these lists are read in an order that means
-something: bugs by severity, jobs newest first, the roadmap by the order
-the work has to happen in, so "page 4" names nothing.
+Pages, not a list that grows. The footer used to add a page below the last
+one, and after two presses it was a screen away from the head: the same
+number of rows is on screen whichever page is open, and turning a page
+brings its top into view. The order still means something (bugs by
+severity, the roadmap in the order the work has to happen in), so a page
+is named by the rows it holds and never by a number.
 
 Two judgements are yours. A list that only just crosses the line is left
 whole, which `paginate` does for you. And a list somebody SCANS for a name
 rather than reads in order (the toolchain catalog) is not paged at all,
-because hiding half of it behind a button is worse than a long page.
+because hiding half of it behind a control is worse than a long page.
 
 The state is per list and per notebook. A notebook is a clone of one
 template, so its ids belong to every open notebook at once; a key that
 forgets which notebook it is in is one bucket shared by all of them, which
-is how Show more came to undo itself.
+is how a page came to turn itself back.
 
 ## The notebook
 
@@ -330,7 +374,10 @@ slides, a modal leaves the way it arrived (caught off the `hidden` attribute
 by one observer, so no close site has to remember), and a row folding its
 controls out on a phone slides over the height that takes. A change that
 snaps is a change the eye has to find. Every one of them is off under
-`prefers-reduced-motion`.
+`prefers-reduced-motion`. A scheme may ask for a different fold with
+`--fold: fade` on the card (nostromo does: its plate mark is a decal, and a
+decal sliding into the title bar reads as a bug): the body fades where it
+stands, then the gap closes, and the cards below still ride the height.
 
 **The page waits on its own ground.** Nothing can be drawn in a pane until
 the first snapshot lands, and an empty one used to be black and wearing the
@@ -423,7 +470,11 @@ has neither.
 ## Words on the screen
 
 One sentence that tells the person what they need to know to act, in their
-words. A hint, a state line or an empty state is a line, about 25 words. The
-why goes in a code comment, the README or Help, never inline. A stacked row
+words: what the control does, and the one consequence they could not guess.
+Not what they can intuit, not how it came to be, not the reasoning; a
+paragraph on a control is one nobody reads, and a page of them turns the
+reader off (the operator, 23 Sep, after R28 swept them). A hint, a state
+line or an empty state is a line, about 25 words. The why goes in a code
+comment, the README or Help, never inline. A stacked row
 is `flex-wrap: nowrap`; a long token in it wraps or scrolls inside its own
 box, and nothing scrolls the page or the pane sideways on a phone.

@@ -83,11 +83,83 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
   }, null, { timeout: 8000 });
   radii.shut = await page.$eval('.card[data-card="doctor"] h2',
                                 h => getComputedStyle(h).borderBottomLeftRadius);
-  ok(parseFloat(radii.open) > 0 && parseFloat(radii.open) < parseFloat(radii.card),
-     'the card header rounds its own corner to sit inside the card\'s, so the '
-     + 'stencil tick cannot poke out past it');
-  ok(parseFloat(radii.shut) > 0,
-     '...and rounds the bottom too once the header IS the card, which is what closed means');
+  // Nostromo's corners are square (its --r-surface is 0), so the header's
+  // corner is the card's less one pixel, floored at 0: the relation is what
+  // matters, never the number, and a square card has a square header.
+  const inside = (h, c) => parseFloat(c) === 0 ? parseFloat(h) === 0 : parseFloat(h) > 0 && parseFloat(h) < parseFloat(c);
+  ok(inside(radii.open, radii.card),
+     `the card header's corner sits inside the card's, so the stencil tick cannot poke out past it (${
+       radii.open} in ${radii.card})`);
+  ok(inside(radii.shut, radii.card),
+     `...and the bottom too once the header IS the card, which is what closed means (${radii.shut})`);
+  // Nostromo's fold is two phases (--fold: fade): on open the gap opens
+  // first with the body held invisible, then the body fades in; on close
+  // the body fades where it stands and only then does the gap close. Each
+  // is read the instant after its click, which is deterministic: the first
+  // phase starts in the click's own task and runs 120ms or more. The card
+  // is closed here from the block above, so open comes first. Then the end
+  // state: the body's inline opacity and the fading class both gone, so a
+  // card is never left blank by its own fold.
+  // Script-made animations only (the fold's own), never the stylesheet's
+  // transitions: the card's fill and frame ease on a class in this scheme,
+  // and those are CSSTransition objects in the same list.
+  const phaseOf = () => page.evaluate(() => {
+    const made = el => el.getAnimations().filter(a => a.constructor.name === 'Animation').length;
+    const c = document.querySelector('.card[data-card="doctor"]');
+    return { own: made(c), body: [...c.children].filter(n => n.tagName !== 'H2')
+               .map(made).reduce((a, b) => a + b, 0),
+             fading: c.classList.contains('fading') };
+  });
+  const settle = shut => page.waitForFunction(s => {
+    const c = document.querySelector('.card[data-card="doctor"]');
+    return c.classList.contains('closed') === s && !c.getAnimations({ subtree: true }).length;
+  }, shut, { timeout: 8000 });
+  await page.click('.card[data-card="doctor"] h2');
+  const opening = await phaseOf();
+  ok(opening.own === 1 && opening.body === 0 && opening.fading,
+     `under nostromo a card opens its gap first, the body not yet fading (${JSON.stringify(opening)})`);
+  await settle(false);
+  await page.click('.card[data-card="doctor"] h2');
+  const closing = await phaseOf();
+  ok(closing.own === 0 && closing.body > 0 && closing.fading,
+     `...and closes by fading the body first, with no height tween yet (${JSON.stringify(closing)})`);
+  await settle(true);
+  const settled = await page.evaluate(() => {
+    const c = document.querySelector('.card[data-card="doctor"]');
+    return { fading: c.classList.contains('fading'), overflow: c.style.overflow,
+             opacity: [...c.children].filter(n => n.tagName !== 'H2').map(n => n.style.opacity).join('') };
+  });
+  ok(!settled.fading && settled.overflow === '' && settled.opacity === '',
+     `...and leaves nothing behind once it has settled (${JSON.stringify(settled)})`);
+  // The rings hold still while the cards scroll over them, and the two
+  // halves of the page wear one glass (the operator, 24 Sep): the cards,
+  // the tab strip, a pane's bar and the document in it, over a pane left
+  // open so it is the hull that shows through.
+  const glass = await page.evaluate(() => {
+    const alpha = c => {
+      const m = /\/\s*([0-9.]+)\s*\)$/.exec(c || '') || /^rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)$/.exec(c || '');
+      return m ? Number(m[1]) : 1;
+    };
+    const bg = e => e ? getComputedStyle(e).backgroundColor : '';
+    // A document, as the tab side draws one, read and taken away again.
+    const pane = document.querySelector('.pane');
+    const doc = document.createElement('div');
+    doc.className = 'doc'; doc.style.visibility = 'hidden';
+    pane?.appendChild(doc);
+    const out = { rings: getComputedStyle(document.querySelector('.col.side')).backgroundAttachment,
+                  card: bg(document.querySelector('.card[data-card="doctor"]')),
+                  tabbar: bg(document.querySelector('.tabbar')),
+                  bar: bg(document.querySelector('.pane .bar')) || 'no bar',
+                  doc: bg(doc), pane: bg(pane) };
+    doc.remove();
+    out.alpha = alpha(out.card);
+    return out;
+  });
+  ok(glass.rings === 'scroll',
+     `the rings stay where the column is while the cards scroll over them (${glass.rings})`);
+  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.card === glass.tabbar && glass.card === glass.doc
+     && (glass.bar === 'no bar' || glass.bar === glass.card) && glass.pane === 'rgba(0, 0, 0, 0)',
+     `...and the tab side wears the cards' own glass, over a pane left open (${JSON.stringify(glass)})`);
   await page.evaluate(() => {
     document.querySelector('.card[data-card="doctor"] h2').click();
     delete document.documentElement.dataset.theme;
@@ -532,20 +604,27 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
        b => /nowhere else/.test(b.dataset.tip || b.title || '')),
      '...and the whole of it, fix included, is on the ghosted button, a tap on a phone, since these rows are tipified');
-  // A no-node project says nothing on the line: "(node: none)" beside the
-  // name is the whole fact, and a sentence about sessions under every such
-  // row was noise (the operator's call, 15 Sep). The ghosted button still
-  // carries the short reason.
+  // A no-node project says so on the line, in red, and "(node: none)" beside
+  // the name. It said nothing there for a week (15 Sep: the fact beside the
+  // name was called enough); the operator asked for the line back on 23 Sep
+  // after three such rows read as dead buttons, and a tooltip is nothing on
+  // a phone. The fix stays on the button, where a paragraph is free.
   await plant({ session_at: '', locked: false, node_name: '',
-                session_why: "no node: pick one in the project's settings, or enroll one on the Nodes tab" });
-  ok(await line() === ''
+                session_why: "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab" });
+  ok(await line() === 'no node to run a Claude session on'
      && await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: none)',
-     'a project with no node says "(node: none)" beside its name and nothing under it');
-  // The button itself is live here: the fixture has a session open on
-  // alpha and who is here wins. Its words are the short reason either way.
+     `a project with no node says so under its name, the first clause only (${await line()})`);
+  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline', e => e.classList.contains('bad')),
+     '...in red, since it is why the button is dead');
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
-       b => /^no node: pick one/.test(b.dataset.tip || b.title || '')),
-     '...while the button says where to pick one');
+       b => /^no node to run a Claude session on: pick one/.test(b.dataset.tip || b.title || '')),
+     '...while the button carries the fix');
+  // ...and a node whose agent is out of window (held) gets the same line.
+  await plant({ session_at: 'shed', node_name: 'shed', session_why: '',
+                held: 'shed runs agent 0.5.0 and this controller ships 0.6.93: a different compatibility window, so nothing sent to it is promised to work. Update it from the Nodes tab' });
+  ok(await line() === 'shed runs agent 0.5.0 and this controller ships 0.6.93',
+     `a node out of window says so under the name too (${await line()})`);
+  await plant({ held: '' });
   await plant({ node_name: 'shed' });
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: shed)',
      '...and a project with a node wears its name');
@@ -752,6 +831,18 @@ ok(about.includes('abc1234def5678901234567890abcdef12345678')
    '...and About carries the whole commit, the build time and where to look');
 await page.click('#aboutModal >> text=Close');
 await page.waitForSelector('#aboutModal', { state: 'hidden' });
+// Escape and the backdrop let a person out too (B229): after an update the
+// popup opens itself over whatever they came to do.
+await page.click('#bAbout');
+await page.waitForSelector('#aboutModal:not([hidden])');
+await page.keyboard.press('Escape');
+await page.waitForSelector('#aboutModal', { state: 'hidden' });
+ok(true, 'Escape closes About');
+await page.click('#bAbout');
+await page.waitForSelector('#aboutModal:not([hidden])');
+await page.click('#aboutModal', { position: { x: 4, y: 4 } });
+await page.waitForSelector('#aboutModal', { state: 'hidden' });
+ok(true, '...and so does a click on the page under it');
 // ---- the welcome panel: a guide and the changelog behind one switch -------------
 // The same popup opens itself twice in an account's life: on the guide the
 // first time the account signs in, and on the changelog once after every
@@ -1065,6 +1156,38 @@ await page.evaluate(async () => {
   // failed resource. Cleared, so the check below is about the page.
   page.errors = [];
 }
+
+// ---- ...and on which node, when more than one runs sessions --------------
+// The server will not pick, so the card asks: one row, a select of the
+// names it sent back and the two buttons, never a button per node stacked
+// down the card. Driven through the same state the refusal sets, with the
+// press stubbed, since the fixture has one node. After the two blocks above,
+// which carry a sign-in state between them that a draw in between upset.
+{
+  const picked = await page.evaluate(async () => {
+    const real = signIn;
+    let got = null;
+    window.signIn = n => { got = n; };
+    signinPick = ['first-node', 'second-node'];
+    drawAuth();
+    const sel = document.getElementById('signinNode');
+    const opts = sel ? [...sel.options].map(o => o.value) : [];
+    const rows = document.querySelectorAll('#docAuth [data-sn]').length;
+    sel.value = 'second-node';
+    document.getElementById('bSignInOn').click();
+    const after = got;
+    signinPick = ['first-node', 'second-node']; drawAuth();
+    document.getElementById('bSignInNo').click();
+    const cancelled = signinPick === null && !document.getElementById('signinNode');
+    window.signIn = real;
+    return { opts, rows, after, cancelled };
+  });
+  ok(picked.opts.join(',') === 'first-node,second-node' && picked.rows === 0,
+     `with several nodes the card offers a select of them, not a button each (${picked.opts.join(', ')})`);
+  ok(picked.after === 'second-node', '...and Sign in runs the flow on the one chosen');
+  ok(picked.cancelled, '...and Cancel puts the row back');
+}
+
 
 // The nodes come back, HERE rather than further down: a drained node is this
 // file's doing and every suite after it needs one that takes work, so the

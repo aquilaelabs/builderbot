@@ -2,6 +2,8 @@
 // and hands over the URL, the Chromium binary and the fixture directory in
 // the environment; each test file opens its own pages and reports PASS/FAIL
 // lines, exiting non-zero on any failure.
+import { mkdirSync } from 'node:fs';
+import { basename } from 'node:path';
 import { createRequire } from 'module';
 import { writeFileSync, readFileSync } from 'fs';
 import { execFileSync } from 'child_process';
@@ -39,7 +41,7 @@ export const ok = (cond, name) => {
 // same pass/fail tally and exit code as the browser files.
 export const done = async browser => {
   for (const ctx of browser?.contexts() || [])
-    for (const p of ctx.pages()) await leaveNotebooks(p);
+    for (const p of ctx.pages()){ await leaveNotebooks(p); await flushCoverage(p); }
   await browser?.close();
   console.log(`\n${pass} passed, ${fail} failed`
               + (TIMING ? ` in ${((Date.now() - startedAt) / 1000).toFixed(1)}s` : ''));
@@ -60,8 +62,27 @@ export async function leaveNotebooks(p){
     .catch(() => {});
 }
 
+// Function coverage (roadmap R76): under `bb tests coverage` the copy the
+// run is made from is instrumented and every page keeps its counts in
+// window.__bbcovc; they are written out when a page closes and when a
+// suite is done, one file per page, for the run to merge into the tree's
+// .bb-map/coverage.json. Nothing here does anything without the directory
+// the harness names.
+export async function flushCoverage(p){
+  const dir = process.env.BB_COVERAGE_DIR;
+  if (!dir) return;
+  try {
+    const counts = await p.evaluate(() => (typeof __bbcovc === 'undefined' ? null : __bbcovc));
+    if (!counts) return;
+    const suite = basename(process.argv[1] || 'suite').replace(/\.mjs$/, '');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(`${dir}/${suite}-${process.pid}-${Date.now()}.json`, JSON.stringify({ suite, counts }));
+  } catch (e) { /* a page already gone has nothing to say */ }
+}
+
 export async function closePage(p){
   await leaveNotebooks(p);
+  await flushCoverage(p);
   await p.close();
 }
 

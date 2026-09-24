@@ -38,7 +38,7 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # into each notebook tab (roadmap #27): auto lands it, ask holds it for
 # approval, deny refuses it. Creation only; see pending.py. Kept here
 # because it is a project setting, edited in the same dialog as the rest.
-GATE_KINDS = ("roadmap", "bugs", "rules")
+GATE_KINDS = ("roadmap", "bugs", "rules", "settings")
 # The git policy's two questions, and what they read as when nothing is set:
 # a session may push the branch it works on, and may not push to main.
 GITPOL_KEYS = ("push", "main")
@@ -49,6 +49,10 @@ GATE_MODES = ("auto", "ask", "deny")
 # project's dev instance. One vocabulary: a person who has set a notebook
 # tab to "ask me" knows what this one does without being told twice.
 DEVBUILD_MODES = ("deny", "ask", "auto")
+# Where `bb test` runs a project's tests (roadmap R48, B241): on the node and
+# never in its dev instance, which is the default; inside the instance when
+# it is up and on the node otherwise; or inside it and nowhere else.
+TESTS_IN = ("node", "up", "only")
 # A colour for the project, worn by its notebook tab and its row so that
 # eight open notebooks can be told apart at a glance. Names, not hex: the
 # page maps each to a tone that sits on its palette, and a name survives a
@@ -59,7 +63,21 @@ COLORS = ("red", "orange", "yellow", "green", "teal", "blue", "violet", "pink")
 _lock = threading.Lock()
 
 
+def _register():
+    """The replay for a held settings change, registered with the queue.
+    bb loads this module by path (spec_from_file_location) with nothing on
+    sys.path, so the directory it sits in is put there first: pending.py is
+    beside it, and it imports statefile the same way."""
+    import sys                                                  # noqa: PLC0415
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    import pending                                              # noqa: PLC0415
+    pending.applier("settings", replay)
+
+
 def configure(*, write_json, state):
+    _register()
     globals().update(write_json=write_json)
     globals()["FILE"] = Path(state) / "claude-prefs.json"
 
@@ -224,13 +242,26 @@ def _clean(rec):
             # Creating, removing and Up/Down are not on this dial at all:
             # those are docker-write, which a session never has.
             "devbuild": _devbuild(rec.get("devbuild")),
-            # Whether a session's tests run ONLY inside the project's dev
-            # instance (roadmap R48, step 3). Off, `bb test` runs there when
-            # the instance is up and on the node otherwise; on, a down
-            # instance is a refusal that names it, and nothing runs on the
-            # node. Per project because only a project with a compose file
-            # has a container to run in; global would break every other one.
-            "devtest": bool(rec.get("devtest"))}
+            # Where `bb test` runs the tests, one of TESTS_IN. On the node
+            # unless the project says otherwise: an image built to ship
+            # carries no tests, and a run inside one found none and reported
+            # success (B241). "only" makes a down instance a refusal that
+            # names it, with nothing run on the node. Per project because
+            # only a project with a compose file has a container to run in.
+            "tests_in": _tests_in(rec),
+            # ...and the boolean a node's bb from before tests_in reads
+            # (agent-compat): true for "only", the one meaning it ever had,
+            # which is also how the file keeps "only".
+            "devtest": _tests_in(rec) == "only"}
+
+
+def _tests_in(rec):
+    """One of TESTS_IN, from the file: `devtest: true` is "only", as it has
+    always been stored, and `tests_in: "up"` is "up"; anything else is the
+    default, "node"."""
+    if rec.get("devtest") is True:
+        return "only"
+    return "up" if rec.get("tests_in") == "up" else "node"
 
 
 def _devbuild(v):
@@ -252,80 +283,19 @@ def get(project):
 # "build" does not (which target, which flavour, which of an Android
 # project's four), so `bb build` still refuses and says so rather than
 # guessing at somebody's release variant.
-TEST_DEFAULTS = (
-    # This repository's own harness, which is a shell script rather than a
-    # runner anyone would guess at.
-    ("scripts/dashboard/test/run.sh", "bash scripts/dashboard/test/run.sh"),
-    ("gradlew", "./gradlew test"),
-    ("Cargo.toml", "cargo test"),
-    ("go.mod", "go test ./..."),
-    ("pytest.ini", "pytest"),
-    ("tox.ini", "pytest"),
-)
-
-
-def test_default(project, workspace=None):
-    """The test command this project would obviously use, or ""."""
-    return test_default_at(Path(workspace or "/workspace") / str(project or ""))
-
-
-def test_default_at(root):
-    """...for a directory, which is what a caller standing IN the tree has.
-
-    Read from the tree each time rather than remembered: a repo that grows a
-    test runner should start answering, and one that loses it should stop.
-    Two entry points because the two callers know different things: the
-    server knows the workspace and the project name, and bb knows the
-    directory it is being run in and often not the workspace at all.
-    """
-    root = Path(root)
-    try:
-        if not root.is_dir():
-            return ""
-    except OSError:
-        return ""
-    for name, cmd in TEST_DEFAULTS:
-        if (root / name).exists():
-            return cmd
-    # package.json, only when it actually declares a test script: the field
-    # is optional and npm answers "no test specified" with an exit 1 for the
-    # rest, which is a failing suite that never existed.
-    try:
-        pkg = json.loads((root / "package.json").read_text(encoding="utf-8"))
-        if isinstance(pkg, dict) and (pkg.get("scripts") or {}).get("test"):
-            return "npm test"
-    except (OSError, ValueError, AttributeError):
-        pass
-    # ...and a python project with tests but no runner config of its own.
-    if (root / "pyproject.toml").is_file() and (root / "tests").is_dir():
-        return "pytest"
-    return ""
-
-
 def all_projects(workspace=None):
     """Every project's pair, for the status payload. Cheap (one small file,
     no subprocess), which is what lets this ride the poll at all.
 
-    With a workspace, each record also carries `test_default`: what `bb test`
-    would run there with nothing set, so the settings field can offer it as
-    what leaving the box empty means. A handful of `exists()` calls beside a
-    snapshot that already runs git per project.
+    `workspace` is accepted and unused: the status poll passes it.
     """
     d = _load()["projects"]
-    out = {}
-    for k, v in d.items():
-        if not isinstance(k, str):
-            continue
-        rec = _clean(v)
-        if workspace is not None:
-            rec["test_default"] = test_default(k, workspace)
-        out[k] = rec
-    return out
+    return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
 
 
 def set_prefs(project, node=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              devbuild=None, devtest=None, color=None, workspace=None):
+              devbuild=None, tests_in=None, color=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -369,15 +339,18 @@ def set_prefs(project, node=None, build=None, test=None,
                 return {"error": f"devbuild is one of {', '.join(DEVBUILD_MODES)}, "
                                  f"not {devbuild}"}
             cur["devbuild"] = mode
-        if devtest is not None:
-            cur["devtest"] = devtest in (True, 1, "1", "true", "on", "yes")
+        if tests_in is not None:
+            if tests_in not in TESTS_IN:
+                return {"error": f"tests_in is one of {', '.join(TESTS_IN)}, not {tests_in}"}
+            cur["tests_in"] = tests_in
+            cur["devtest"] = tests_in == "only"
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["node"] or cur["color"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
-                or cur["devbuild"] != "deny" or cur["devtest"]
+                or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose; _clean puts the defaults
@@ -389,8 +362,12 @@ def set_prefs(project, node=None, build=None, test=None,
                 rec.pop("gitpol", None)
             if cur["devbuild"] == "deny":
                 rec.pop("devbuild", None)
+            # "only" is `devtest: true` and "up" is `tests_in: "up"`, which
+            # is what _tests_in reads; the default leaves neither.
             if not cur["devtest"]:
                 rec.pop("devtest", None)
+            if cur["tests_in"] != "up":
+                rec.pop("tests_in", None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)
@@ -408,4 +385,36 @@ def forget(project):
         if d["projects"].pop(project, None) is not None:
             write_json(FILE, d)
 
+
+# ---- a session fills in the build, test and outputs fields ------------------
+# The three fields a session can know better than anybody: it has read the
+# tree. What it may do with them is the project's fourth gate (roadmap #27's
+# shape): auto lands the write, ask holds it for the operator on the notebook,
+# deny refuses it with a sentence to quote. Only these three: the node, the
+# policy and the gates themselves stay the operator's, since a session that
+# could loosen its own gate has no gate.
+SESSION_FIELDS = ("build", "test", "outputs")
+
+
+def session_set(project, **fields):
+    """A session's write to build, test or outputs, through the gate."""
+    import pending                                              # noqa: PLC0415
+    got = {k: v for k, v in fields.items() if k in SESSION_FIELDS and v is not None}
+    if not got:
+        return {"error": f"nothing to set: one of {', '.join(SESSION_FIELDS)}"}
+    if not pending.replaying():
+        g = pending.mode(project, "settings")
+        if g == "deny":
+            return {"error": pending.refusal("settings")}
+        if g == "ask":
+            words = "; ".join(f"{k}: {v if isinstance(v, str) else ', '.join(v)}" for k, v in got.items())
+            return pending.hold(project, "settings", "set", got, summary=words)
+    r = set_prefs(project, **got)
+    return r if r.get("error") else {"ok": True, "set": sorted(got)}
+
+
+def replay(project, verb, args):
+    if verb != "set":
+        return {"error": f"not a settings change that can be replayed: {verb}"}
+    return session_set(project, **{k: v for k, v in (args or {}).items() if k in SESSION_FIELDS})
 

@@ -338,3 +338,64 @@ whoever reads it, and the two things behind it were not the same thing.
 - Still dev: a real Claude session on the dev pair, which has no Claude login,
   so the tester's first hour is still unwalked past the point where a session
   would start.
+
+## 23 September: the tabs as a tester sees them, with the map and the trace in hand
+
+Walked on the dev pair after `bb devapp rebuild`, so the instance served the
+branch tip (8d15eca). This walk was as much about the method as the product:
+a browser script signed in as each person, opened every tab, screenshotted
+it, kept the console errors and counted what each open fetched, and the
+controller's own request trace was read beside it.
+
+1. **As `dev2` on a phone.** Signed in, met the welcome panel, closed it.
+   One project, no Administration card, `state.can` all false. The Tests
+   view's *Open the run's output* is hidden, since a user has no shell. The
+   Roadmap view's hint says nothing can be sent because no session runs.
+   No console error on any surface.
+2. **As the owner on a desktop, every tab.** Docker, Toolchains, Nodes,
+   Emulator, Phone, Settings, Jobs and a notebook with all its views. Each
+   open asked its endpoint once, which is the invariant the design suite
+   now holds on the fixture, seen true on an instance. The controller's
+   trace, with no browser open, showed one request in fifteen seconds:
+   the node's own poll. The three counts that first looked like storms
+   (sixteen fetches of the jobs list) were the walker wrapping `fetch`
+   again at every step and counting itself; the instance was quiet.
+3. **Snag, and fixed (B221).** The Nodes, Toolchains and Docker tabs all
+   said *bb-dev-sandbox runs agent 0.6.92 and this controller ships
+   0.6.92: press Update agent first*, and refused work until it was
+   pressed. Both numbers were right and the sentence was nonsense: the
+   check compares the agent file's digest, the words compared version
+   numbers, and the file had moved without its constant. The row and the
+   refusal name the two files by digest now when the numbers match, and
+   the Docker tab no longer joins its clause as *...does not know.: the
+   rows cannot say*.
+4. **Update agent**, pressed as a tester would. The self-update job named
+   the shipped digest, ran in seconds, and the node came back online on
+   the controller's own file. The Docker tab's banner left, the Toolchains
+   tab's ticks came alive.
+5. **Tools, for real on a RedHat node.** Graphics ticked, Install selected
+   pressed: the recipe fixed on 22 Sep fetched ImageMagick by tag and
+   landed with resvg, oxipng, pngquant and cwebp on `bb-dev-sandbox` in
+   a job the row followed, and the row now reads *installed* and says it
+   adds `bb tool graphics` to a session. `needs_missing` is empty there,
+   which is the fonts package present on that machine.
+6. **A step and its arrow.** With one item added to `hello`'s roadmap and
+   no session running, the arrow is drawn dead, the hint under the list
+   says why, and a press on the arrow itself now says *no Claude session
+   is running here* in the band (B213 on an instance). The project row's
+   Claude button is unlit, and the two agree (B214).
+7. **The Phone tab** says in one sentence that no node carries adb and how
+   to change that. **The Emulator tab** draws for the picked node and says
+   where its images would live. **Settings** opens with its three groups
+   and the Debugging dialog.
+
+- Alpha, new evidence: every tab asks once on open, on an instance with a
+  real node heartbeating; the Toolchains tab installs a script recipe onto a
+  RedHat node and the row follows the job; Update agent is a one-press
+  recovery and the tabs it unblocks say so; a dead arrow explains itself.
+- Still dev: a real Claude session on the dev pair (no Claude login there),
+  so build, artifact, send-a-step and the phone journeys are still walked
+  only up to the point where a session would start. The one bug this walk
+  found (B221) was in the words, not the check; it would have cost a tester
+  their first hour on a node.
+

@@ -23,6 +23,9 @@ git('checkout', '-q', main);
 writeFileSync(`${B}/a.txt`, 'one\ntwo\n'); git('commit', '-q', '-am', 'Extend a');
 git('merge', '-q', '--no-ff', '-m', 'Merge feature', 'feature');
 git('branch', 'claude/tabmade');
+// ...and one named like a session's for an account that does not exist,
+// which is nobody's: the name alone once made it "no-such-account's session".
+git('branch', 'claude/no-such-account');
 // ...and a branch whose last commit is three days old, because every row of
 // the view said "just now" whatever its age: the ms/seconds mix-up below. A
 // root commit made with plumbing: --date-order never lists a child before
@@ -43,6 +46,11 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
 await page.goto(URL);
 await ready(page);
+// claude/tabmade is a session's branch because its account exists (git.py
+// branch_owner): made the way the Users tab makes one.
+await fetch(URL.replace(/\/$/, '') + '/api/users', { method: 'POST',
+  headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+  body: JSON.stringify({ action: 'add', name: 'tabmade', password: 'tabmade-pass-1', role: 'user' }) });
 
 // ---- the API, first ---------------------------------------------------------
 const api = async q => (await (await fetch(URL.replace(/\/$/, '') + '/api/git?project=beta&' + q,
@@ -77,6 +85,8 @@ ok(br.main === main && names.includes('feature') && names.includes('claude/tabma
    `the branches come with which one the tree is on (${names.join(',')})`);
 ok(br.branches.find(b => b.name === 'claude/tabmade')?.who === 'tabmade',
    "...and a session's branch says whose");
+ok(br.branches.find(b => b.name === 'claude/no-such-account')?.who === '',
+   "...and a claude/ branch whose account does not exist is nobody's");
 ok(br.branches.find(b => b.name === 'feature')?.main_behind >= 1,
    `...and how far each stands from ${main}`);
 ok(br.branches.find(b => b.name === 'feature')?.merged === true && br.branches.find(b => b.name === 'old-work')?.merged === false
@@ -292,8 +302,19 @@ print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))
      'a name that is not one, or one taken, is refused');
   tmuxNew('claude-beta', `${DIR}/ws/beta`);
   const held = await act('switch', { name: main });
-  ok(held.status === 409 && /Claude session is running/.test(held.error),
-     "Switch is refused while the owner's session stands in the directory, naming it");
+  ok(held.status === 409 && /your Claude session is running/.test(held.error),
+     "Switch is refused while the owner's session stands in the directory, and says it is theirs");
+  // A merge into the tree waits only while that session is WORKING: at its
+  // prompt it sees the changed files when it next reads them, and one merely
+  // open refused the operator's own merge (24 Sep).
+  execFileSync('tmux', ['select-pane', '-t', '=claude-beta:', '-T', '\u25d0 Building the thing']);
+  const busyMerge = await act('merge', { name: main });
+  ok(busyMerge.status === 409 && /your Claude session is working in this directory/.test(busyMerge.error || ''),
+     `a merge into the tree waits while the session there is working (${busyMerge.error})`);
+  execFileSync('tmux', ['select-pane', '-t', '=claude-beta:', '-T', '\u2733 Claude Code']);
+  const idleMerge = await act('merge', { name: main });
+  ok(!/Claude session/.test(idleMerge.error || ''),
+     `...and not while it waits at its prompt (${idleMerge.ok ? 'merged' : (idleMerge.error || '').slice(0, 60)})`);
   // Merge INTO main from another branch moves nothing here, so the session
   // is no reason to refuse it: a temporary worktree on main takes the merge,
   // the way a pull request's button merges on a server. Commits made with
@@ -469,9 +490,13 @@ print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))
     // A branch main already holds: what is being proved is that the check
     // stops refusing, not that git can merge, and this leaves the fixture
     // exactly as the rest of the file expects it.
-    const done_ = await act('merge', { name: 'claude/tabmade', into: main });
+    // Its own branch at main's tip: claude/tabmade is its account's now,
+    // and feature is gone by here.
+    git('branch', 'levelcheck', main);
+    const done_ = await act('merge', { name: 'levelcheck', into: main });
     ok(done_.ok, `...and stops refusing once ${main} here is level with the host again (${
       (done_.out || done_.error || '').trim().slice(0, 40)})`);
+    git('branch', '-D', 'levelcheck');
     rmSync(other, { recursive: true, force: true });
   }
 
@@ -836,6 +861,25 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
      'a commit, a kind or a file that is not one is refused, not sent');
   tmuxKill('claude-beta');
   execFileSync('git', ['-C', B, 'checkout', '-q', '--', 'a.txt']);
+  // ...and it is the PRESSER's session (B235). The bare name alone was the
+  // owner's, so a second account's press typed into the owner's
+  // conversation, or found no session while its own was running.
+  {
+    const hh = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+    for (const body of [{ action: 'add', name: 'w.asker', password: 'w.asker-pass-1', role: 'user' },
+                        { action: 'projects', name: 'w.asker', projects: ['beta'] }])
+      await fetch(URL.replace(/\/$/, '') + '/api/users', { method: 'POST', headers: hh, body: JSON.stringify(body) });
+    const auid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.asker'].uid;
+    const theirs = `${auid}~claude-beta`;
+    tmuxNew(theirs, B);
+    const r = await fetch(URL.replace(/\/$/, '') + '/api/git', { method: 'POST',
+      headers: { Authorization: 'Basic ' + Buffer.from('w.asker:w.asker-pass-1').toString('base64'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'beta', action: 'ask', kind: 'review', args: { sha: head.sha } }) });
+    const their = await r.json();
+    ok(their.ok && their.session === theirs && tmuxCapture(theirs).includes(head.sha.slice(0, 7)),
+       `a second account's Send to Claude lands in its own session (${their.session || their.error})`);
+    tmuxKill(theirs);
+  }
 
   // ...and the view carries them.
   writeFileSync(`${B}/a.txt`, 'one\ntwo\nsix\n');
@@ -899,6 +943,129 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
   git('branch', '-D', 'wtcheck');
 }
 
+// ---- a branch is its session's: its account's, or an administrator's ------
+// The operator's rule of 24 Sep. A branch checked out in another account's
+// worktree is theirs. A plain account may not merge it, have a session merge
+// it, or delete it, and its row offers none of that and says whose it is. An
+// administrator may merge it, asked every time with the owner named, and
+// never while that account's Claude session there is working. Before the
+// fallback check below, so these writes are held to it too.
+{
+  const H2 = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const PEER = { Authorization: 'Basic ' + Buffer.from('w.peer:w.peer-pass-1').toString('base64'), 'Content-Type': 'application/json' };
+  const post = async (body, h = H2) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/git',
+    { method: 'POST', headers: h, body: JSON.stringify(body) }); return { status: r.status, ...(await r.json()) }; };
+  const users = async body => fetch(URL.replace(/\/$/, '') + '/api/users',
+    { method: 'POST', headers: H2, body: JSON.stringify(body) });
+  for (const n of ['w.dev', 'w.peer']) {
+    await users({ action: 'add', name: n, password: `${n}-pass-1`, role: 'user' });
+    await users({ action: 'projects', name: n, projects: ['beta'] });
+  }
+  const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.dev'].uid;
+  const WT = `${DIR}/ws/.worktrees/beta/${uid}`;
+  mkdirSync(`${DIR}/ws/.worktrees/beta`, { recursive: true });
+  git('worktree', 'add', '-q', '-b', 'claude/w.dev', WT, main);
+  writeFileSync(`${WT}/dev.txt`, 'from w.dev\n');
+  execFileSync('git', ['-C', WT, 'add', 'dev.txt']);
+  execFileSync('git', ['-C', WT, 'commit', '-q', '-m', 'Work by w.dev']);
+  ok((await api('what=branches')).branches.find(b => b.name === 'claude/w.dev')?.who === 'w.dev',
+     "a branch checked out in an account's worktree is that account's");
+  const merge = { project: 'beta', action: 'merge', args: { name: 'claude/w.dev', into: main } };
+  const peer = await post(merge, PEER);
+  const peerAsk = await post({ project: 'beta', action: 'ask', kind: 'merge', args: { branch: 'claude/w.dev' } }, PEER);
+  const peerDel = await post({ project: 'beta', action: 'delete', args: { name: 'claude/w.dev' } }, PEER);
+  ok(peer.status === 403 && /claude\/w\.dev is w\.dev's session's branch: only w\.dev merges it/.test(peer.error || '')
+     && peerAsk.status === 403 && peerDel.status === 403,
+     `a plain account may not merge another account's session's branch, ask a session to, or delete it (${peer.error})`);
+  const unasked = await post(merge);
+  ok(unasked.status === 409 && /w\.dev's session's branch/.test(unasked.confirm || ''),
+     `an administrator is asked first, with the owner named (${(unasked.confirm || '').replace(/\n+/g, ' ')})`);
+  // w.dev's session on beta, mid-prompt: the spinner in its pane title is
+  // what the dashboard reads a working session by.
+  tmuxNew(`${uid}~claude-beta`, WT);
+  execFileSync('tmux', ['select-pane', '-t', `=${uid}~claude-beta:`, '-T', '\u25d0 Writing the parser']);
+  const busy_ = await post({ ...merge, args: { ...merge.args, confirmed: true } });
+  ok(busy_.status === 403 && /w\.dev's Claude session is working right now/.test(busy_.error || ''),
+     `...and refused while that account's session is working on it (${busy_.error})`);
+  tmuxKill(`${uid}~claude-beta`);
+  // The page: an administrator's row keeps Merge, and pressing it asks.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => getNotebook('beta').view('git'));
+  await refreshUntil(page, () => [...document.querySelectorAll('.nb .nbview[data-view="git"] .gbranch')]
+    .some(r => r.querySelector('code')?.textContent === 'claude/w.dev'));
+  const rowOf = p => p.evaluate(() => {
+    const r = [...document.querySelectorAll('.nb .nbview[data-view="git"] .gbranch')]
+      .find(x => x.querySelector('code')?.textContent === 'claude/w.dev');
+    return { merge: !!r.querySelector('[data-gitmerge][data-gitwho="w.dev"]'),
+             acts: r.querySelectorAll('[data-gitmerge], [data-gitswitch], [data-gitdelete]').length,
+             asks: [...r.querySelectorAll('[data-gitaskkind] option')].map(o => o.value),
+             text: r.textContent.replace(/\s+/g, ' ') };
+  });
+  const adminRow = await rowOf(page);
+  ok(adminRow.merge && /w\.dev's session/.test(adminRow.text) && !/only w\.dev/.test(adminRow.text),
+     `an administrator's row keeps Merge into ${main} on it, marked whose (${JSON.stringify({ merge: adminRow.merge, asks: adminRow.asks })})`);
+  page.dialogs = [];
+  await page.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="git"] .gbranch')]
+    .find(x => x.querySelector('code')?.textContent === 'claude/w.dev')
+    ?.querySelector('[data-gitmerge]').click());
+  let landed = false;
+  for (let i = 0; i < 40 && !landed; i++) {
+    try { git('merge-base', '--is-ancestor', 'claude/w.dev', main); landed = true; }
+    catch { await new Promise(r => setTimeout(r, 250)); }
+  }
+  ok(page.dialogs.some(d => /^Merge claude\/w\.dev into /.test(d) && /claude\/w\.dev is w\.dev's session's branch\./.test(d))
+     && landed,
+     `...and pressing it asks, naming whose, then merges (${page.dialogs.join(' | ').replace(/\n+/g, ' ')})`);
+  // A plain account's row offers none of it and says why.
+  writeFileSync(`${B}/owner-note.txt`, 'the owner\'s own change\n');
+  const peerPage = await newPage(browser, { viewport: { width: 1280, height: 900 },
+    httpCredentials: { username: 'w.peer', password: 'w.peer-pass-1' },
+    extraHTTPHeaders: { Authorization: PEER.Authorization } });
+  await peerPage.goto(URL);
+  await ready(peerPage);
+  await peerPage.evaluate(() => openNotebook('beta', 'git'));
+  await refreshUntil(peerPage, () => [...document.querySelectorAll('.nb .nbview[data-view="git"] .gbranch')]
+    .some(r => r.querySelector('code')?.textContent === 'claude/w.dev'));
+  const peerRow = await rowOf(peerPage);
+  const peerTreeView = await peerPage.evaluate(() => {
+    const v = document.querySelector('.nb .nbview[data-view="git"]');
+    return { hint: document.querySelector('.nb #gitHint')?.textContent || '',
+             writes: v.querySelectorAll('#gitCommit, [data-gitdiscard], [data-gitswitch], #gitNewBranch, [data-gitaskfile]').length,
+             note: /only test commits or discards them/.test(v.textContent) };
+  });
+  ok(/test's working tree/.test(peerTreeView.hint) && peerTreeView.writes === 0 && peerTreeView.note,
+     `...and its view says whose working tree it is and offers nothing that changes it (${JSON.stringify(peerTreeView)})`);
+  ok(peerRow.acts === 0 && peerRow.asks.join() === 'review' && /only w\.dev merges it/.test(peerRow.text),
+     `...while a plain account's row offers none of it and says whose it is (${JSON.stringify({ acts: peerRow.acts, asks: peerRow.asks })})`);
+  await peerPage.close();
+  // B236: the project directory is the owner's working tree. A plain
+  // account changes nothing in it; an administrator is asked first.
+  const treeWrites = [['commit', { message: 'from w.peer' }], ['discard', { path: 'a.txt' }],
+                      ['switch', { name: main }], ['pull', {}], ['revert', { sha: 'zzzz' }],
+                      ['branch', { name: 'peer-topic', switch: true }]];
+  const peerTree = [];
+  for (const [action, args] of treeWrites) peerTree.push(await post({ project: 'beta', action, args }, PEER));
+  ok(peerTree.every(r => r.status === 403 && /the project directory is test's working tree: only test can/.test(r.error || '')),
+     `a plain account cannot commit, discard, switch, pull, revert or branch-and-switch in the owner's tree (${
+       peerTree.map(r => r.status).join(',')}: ${peerTree[0].error})`);
+  for (const body of [{ action: 'add', name: 'w.boss', password: 'w.boss-pass-1', role: 'admin' },
+                      { action: 'projects', name: 'w.boss', projects: ['beta'] }]) await users(body);
+  const BOSS = { Authorization: 'Basic ' + Buffer.from('w.boss:w.boss-pass-1').toString('base64'), 'Content-Type': 'application/json' };
+  const bossAsked = await post({ project: 'beta', action: 'revert', args: { sha: 'zzzz' } }, BOSS);
+  const bossSure = await post({ project: 'beta', action: 'revert', args: { sha: 'zzzz', confirmed: true } }, BOSS);
+  ok(bossAsked.status === 409 && /test's working tree/.test(bossAsked.confirm || '')
+     && !/working tree/.test(bossSure.error || '') && bossSure.status !== 409,
+     `an administrator is asked first, naming whose tree, and then goes on (${bossSure.error})`);
+  const theirs = { Authorization: 'Basic ' + Buffer.from('w.dev:w.dev-pass-1').toString('base64'), 'Content-Type': 'application/json' };
+  const own = await post(merge, theirs);
+  ok(!/session's branch|asked/.test(own.error || '') && own.status !== 409,
+     `...and its own account merges it unasked (${own.ok ? (own.out || 'merged').slice(0, 40) : (own.error || '').slice(0, 60)})`);
+  git('worktree', 'remove', '--force', WT);
+  git('branch', '-D', 'claude/w.dev');
+  rmSync(`${B}/owner-note.txt`, { force: true });
+  page.errors = [];                     // the 403s and the 409 above are refusals by design
+}
+
 // B153's protection degrades QUIETLY by design: where the controller cannot
 // build a git dir of its own it falls back to the tree, because a Git view
 // that goes blank is worse than one still doing what it always did. That is
@@ -914,6 +1081,54 @@ ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
      `the controller never fell back to running git in the tree (${
        fell.length ? fell[0].slice(0, 400) : 'no fallback'})`);
 }
+// ---- a project with no repository gets one from the view ----------------
+// gamma is the fixture's directory-only project. It could be adopted,
+// listed and opened, and its Git view said "nothing to show" with no way
+// on: no version, no dist/, no push, and a session told not to decide that
+// for the person. Init is that way, from the API and from the row.
+{
+  const H2 = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const g = async (action) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/git',
+    { method: 'POST', headers: H2, body: JSON.stringify({ project: 'gamma', action, args: {} }) });
+    return { status: r.status, ...(await r.json()) }; };
+  await page.evaluate(() => openNotebook('gamma', 'git'));
+  await page.waitForSelector('.nb[data-project="gamma"] .nbview[data-view="git"] [data-gitinit]', { timeout: 20000 });
+  ok(/no repository yet/.test(await page.$eval('.nb[data-project="gamma"] #gitHint', e => e.textContent)),
+     'a project with no repository says so on the Git view, with an Init button under it');
+  await page.click('.nb[data-project="gamma"] .nbview[data-view="git"] [data-gitinit]');
+  await page.waitForFunction(() => /on main/.test(document.querySelector('.nb[data-project="gamma"] #gitHint')?.textContent || ''),
+                             null, { timeout: 20000 });
+  ok(existsSync(`${DIR}/ws/gamma/.git`) && !existsSync(`${DIR}/ws/gamma/.git/refs/heads/main`),
+     '...and Init makes the repository on main with nothing committed, and the view redraws on it');
+  const again = await g('init');
+  ok(again.status !== 200 || again.error, `...and a second Init is refused (${again.error || '?'})`);
+  ok(readFileSync(`${DIR}/ws/gamma/.git/info/exclude`, 'utf8').split('\n').includes('.bb-map/'),
+     '...and the repository it makes keeps the code map out, as a created project does');
+  // B234: two branches with no commit in common, the shape a project that
+  // began without a repository ends up in. Joined only when asked.
+  const G = `${DIR}/ws/gamma`;
+  const who = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.invalid',
+                GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.invalid' };
+  const gg = (...a) => execFileSync('git', ['-C', G, ...a], { encoding: 'utf8', env: who }).trim();
+  gg('add', '-A'); gg('commit', '-q', '-m', 'Start');
+  const blob = execFileSync('git', ['-C', G, 'hash-object', '-w', '--stdin'], { input: 'the app\n', encoding: 'utf8' }).trim();
+  const tree = execFileSync('git', ['-C', G, 'mktree'], { input: `100644 blob ${blob}\tapp.txt\n`, encoding: 'utf8' }).trim();
+  gg('branch', 'app', execFileSync('git', ['-C', G, 'commit-tree', tree, '-m', 'The app'], { encoding: 'utf8', env: who }).trim());
+  const merge = async extra => { const r = await fetch(URL.replace(/\/$/, '') + '/api/git', { method: 'POST', headers: H2,
+    body: JSON.stringify({ project: 'gamma', action: 'merge', args: { name: 'app', ...extra } }) });
+    return { status: r.status, ...(await r.json()) }; };
+  const asked = await merge({});
+  ok(asked.unrelated === true && /app and main share no history/.test(asked.error || '') && !existsSync(`${G}/app.txt`),
+     `a merge of two branches with no history in common asks first, and does nothing yet (${asked.error})`);
+  const joined = await merge({ unrelated: true });
+  ok(joined.ok && existsSync(`${G}/app.txt`) && gg('log', '-1', '--format=%P').split(' ').length === 2,
+     `...and joins them into one history when the answer is yes (${joined.out || joined.error})`);
+  // The view's first read of a project with no repository is a 400 by
+  // design, and the browser logs every one as a failed resource. Cleared,
+  // so the check below is about the page.
+  page.errors = [];
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 // B164: a repository with no main and no master. Merge into main cannot
 // mean anything there, and the refusal said "or on :" with the name empty.

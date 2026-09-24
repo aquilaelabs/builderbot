@@ -36,9 +36,7 @@ function openSettingsTab(){
 function renderSettingsInto(i){
   const d = docSurface(i, "settings");
   if (!d) return;
-  d.setBar(`<span class="dim">controller settings: what this container does,
-    changeable while it runs. Appearance stays in the gear: it is this
-    browser's, not the controller's.</span>`);
+  d.setBar(`<span class="dim">what this controller does; appearance is in the gear</span>`);
   d.list.innerHTML = `
     <div class="row stack2">
       <div class="grow">${logSection()
@@ -51,7 +49,7 @@ function renderSettingsInto(i){
     <div class="row stack2" data-group="Reset">
       <div class="grow">
         <div class="name">Reset BuilderBot</div>
-        <div class="sub">Start over at Create the owner: accounts, node enrolments, project settings, git tokens, the notebook, memories and logs are moved aside; project files are not touched.</div>
+        <div class="sub">Start over at Create the owner. Everything but project files is moved aside, not deleted.</div>
         <div class="actbar"><button type="button" class="danger" id="setReset">Reset BuilderBot</button></div>
         <div id="setResetBox"></div>
       </div>
@@ -86,14 +84,6 @@ function renderSettingsInto(i){
 // says so beside it, and the bar says whether a change takes now or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
 const SETTING_GROUPS = [
-  // One tree behaves as two products (roadmap R54, step 6): production
-  // leaves this off and sees only what has been proven (alpha); a dev
-  // instance turns it on and sees everything, the unproven tagged dev.
-  {title: "What is offered", fields: [
-    {key: "offer_unvetted", label: "Offer dev features", type: "bool",
-     hint: "Alpha is what has been run for real; dev is the rest: git hosts, hypervisors "
-         + "and node OS families nobody has tried yet. Off, only alpha is offered; on, "
-         + "dev appears in the pickers tagged dev, and the header says dev."}]},
   {title: "Debugging", fields: [
     {key: "debug_mode", label: "Debug mode", type: "bool",
      hint: "Shows the controls kept out of the way otherwise: Debug settings "
@@ -104,8 +94,22 @@ const SETTING_GROUPS = [
    // meet: behind a Debug settings button that opens a dialog while debug
    // mode is on, the same way the node row's Debug settings does.
    debug: [
+    // One tree behaves as two products (roadmap R54, step 6): production
+    // leaves this off and sees only what has been proven (alpha); a dev
+    // instance turns it on and sees everything, the unproven tagged dev.
+    // In the debug dialog rather than a group of its own: it is a switch a
+    // developer of BuilderBot reaches for, and a group headed by one switch
+    // read as a feature of the product rather than of its testing.
+    {key: "offer_unvetted", label: "Offer dev features", type: "bool",
+     hint: "Alpha is what has been run for real; dev is the rest: git hosts, hypervisors "
+         + "and node OS families nobody has tried yet. Off, only alpha is offered; on, "
+         + "dev appears in the pickers tagged dev, and the header says dev."},
     {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
-     hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."}]},
+     hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."},
+    {key: "claude_autoupdate", label: "Update Claude Code before a session starts", type: "bool",
+     hint: "Off, a node stays on the Claude Code it has until Update is pressed on the Nodes tab; the bell "
+         + "says when a newer one is out. On, pressing Claude on a node that is behind updates it first and "
+         + "asks you to press again when the row comes back. An open conversation is never ended for it."}]},
 ];
 
 // The reset's confirmation, the way a project's purge asks: the word typed
@@ -115,10 +119,8 @@ const SETTING_GROUPS = [
 function askReset(el){
   const box = el.querySelector("#setResetBox");
   if (!box || box.querySelector(".dropbox")) return;
-  box.innerHTML = `<div class="dropbox"><div class="hint bad">This moves every account, node
-      enrolment, project setting, git token, the notebook, memories and logs into a dated
-      directory under the controller's config and starts the dashboard over at Create the
-      owner. Project files stay where they are. Type <b>reset</b> to confirm.</div>
+  box.innerHTML = `<div class="dropbox"><div class="hint bad">Accounts, nodes, project settings, tokens, the notebook, memories and logs move into a dated
+      directory under the controller's config. Project files stay. Type <b>reset</b> to confirm.</div>
     <input autocomplete="off" placeholder="reset" aria-label="type reset to confirm">
     <div class="foot"><span class="sp"></span>
       <button type="button" class="stop">Keep it</button>
@@ -155,8 +157,7 @@ function openDebugSettings(){
   const s = state?.settings;
   const shut = () => { modal.hidden = true; };
   body.innerHTML = `<div class="field">
-      <div class="hint">What a developer of BuilderBot reaches for. Debug mode shows
-        this button and nothing else: what is here is granted by saving it.</div>
+      <div class="hint">For developing BuilderBot itself. Nothing here is on until saved.</div>
       <div class="logset">${g.debug.map(f => `
         <div class="logdays setrow"><label class="ndcap">
           <input type="checkbox" data-dbgset="${esc(f.key)}"${
@@ -267,8 +268,7 @@ function idleSection(){
   if (m === undefined) return `<div class="sub">the idle rule arrives with the first poll…</div>`;
   return `<h4>Claude sessions</h4>
     <div class="logset">
-      <div class="dim">A session with nothing typed and nothing written for
-        this long is ended, here and on every node.</div>
+      <div class="dim">A session idle this long is ended, on every node.</div>
       <div class="logdays setrow col">
         ${lbl("idleMin", "Minutes idle before a session ends", "0 never ends one. Shells are left alone")}
         <input id="idleMin" type="number" min="0" max="100000" step="1"
@@ -325,7 +325,7 @@ function globalRulesSection(){
   return `<div class="row stack2">
       <div class="grow">
         <div class="name">Global rules</div>
-        <div class="sub">House rules every project's sessions are handed, kept here rather than copied into each project.</div>
+        <div class="sub">House rules every project's sessions are handed.</div>
         <div class="actbar">
           <span class="state">${n === null ? "" : `${n} rule${n === 1 ? "" : "s"}`}</span>
           <button type="button" id="setGlobalRules">Global rules</button>
@@ -374,7 +374,9 @@ function drawGlobalRules(){
   const body = document.getElementById("grBody");
   if (!body) return;
   const rs = globalRules || [];
-  const shipped = rs.filter(r => r.builtin);
+  // A fixed shipped rule (rules.py BUILTIN) has no switch and is not listed:
+  // there is nothing here to decide about it.
+  const shipped = rs.filter(r => r.builtin && !r.fixed);
   const own = rs.filter(r => !r.builtin);
   // Each part in a .field, where every other dialog's inset lives, and the
   // buttons in the dialog's .foot: this one drew flush against the box.

@@ -8,10 +8,19 @@
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
          tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, realpathSync, copyFileSync, cpSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync, chmodSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
+// Under bb tests coverage (R76) every python this file starts, the agent it
+// runs and the module it drives in-process alike, counts the agent's
+// functions into its own file: PID is each process's own, so a self-update's
+// successor and every snippet get a file apiece. Set once, inherited by all.
+if (process.env.BB_COVERAGE_DIR){
+  process.env.BB_COVERAGE_OUT = `${process.env.BB_COVERAGE_DIR}/agent-PID.json`;
+  process.env.BB_COVERAGE_SUITE = 'agent';
+  process.env.BB_COVERAGE_AS = 'scripts/agent/builderbot-agent.py';   // the copy counts as the file
+}
 // The toolchain store is scoped by platform (roadmap R19): a machine's
 // toolchains live under <store>/<os>-<arch>, so every fixture written INTO a
 // store goes there, while the store's own path (the setting) stays the
@@ -251,6 +260,8 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   PATH: `${DIR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
   BUILDERBOT_DPKG_BIN: `${DIR}/bin/dpkg`, BUILDERBOT_APT_BIN: `${DIR}/bin/apt-get-never`,
   BUILDERBOT_IDLE_UNIT: '1',
+  // The Claude Code installer, stood in for: the real one fetches a binary.
+  BUILDERBOT_CLAUDE_INSTALLER: `${DIR}/bin/claude-installer`,
   BUILDERBOT_SESSION_RETRY_S: '2',   // the restart cooldown, which a test waits out
   BUILDERBOT_SYSTEMD: '1',      // this agent takes the service path whichever box runs the suite
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
@@ -354,7 +365,13 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
 // sat for an hour at the same assertion. A file needs no reader.
 const AGENT_LOG_FILE = `${DIR}/agent.log`;
 const agentOut = openSync(AGENT_LOG_FILE, 'a');
-const agent = spawn('python3', [AGENT, 'run'], { env: agentEnv, stdio: ['ignore', agentOut, agentOut] });
+// Run from a copy, not from the file the controller ships: the self-update
+// below moves the shipped file and has to find the running one behind it,
+// which is what every node sees on a controller update.
+const AGENT_RUN = `${DIR}/agent-run/builderbot-agent.py`;
+mkdirSync(`${DIR}/agent-run`, { recursive: true });
+copyFileSync(AGENT, AGENT_RUN);
+const agent = spawn('python3', [AGENT_RUN, 'run'], { env: agentEnv, stdio: ['ignore', agentOut, agentOut] });
 const agentLog = () => { try { return readFileSync(AGENT_LOG_FILE, 'utf8'); } catch { return ''; } };
 try {
   const live = await until(async () => {
@@ -720,6 +737,35 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     ok(two.status === 400 && /One Anthropic account per BuilderBot account/.test(two.error || ''),
        `...so a second Anthropic account is refused rather than recorded (${
          (two.error || '').slice(0, 56)})`);
+
+    // The flow itself finds Claude Code where a SESSION finds it: the session
+    // account's own ~/.local/bin (the provisioner's install) and the pinned
+    // copy, not only the signing-in account's home. The owner's home is the
+    // session account's, so a second account was the one told "not
+    // installed" on a machine whose sessions ran it fine (24 Sep).
+    {
+      const base = `${DIR}/flow-home`;
+      mkdirSync(`${base}/.local/bin`, { recursive: true });
+      writeFileSync(`${base}/.local/bin/claude`, '#!/bin/sh\necho "fake claude $*"\n');
+      chmodSync(`${base}/.local/bin/claude`, 0o755);
+      const run = (uid) => { try {
+        return { code: 0, out: execFileSync('bash', [`${REPO}/scripts/bb`, 'login', '--flow'],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, BUILDERBOT_ROLE: 'node', BUILDER_HOME: base, HOME: base,
+                   BB_ACCOUNT_UID: uid, BB_TOKEN: '', PATH: '/usr/bin:/bin',
+                   BB_CLAUDE_PINNED: `${base}/no-pin` } }) };
+      } catch (e) { return { code: e.status, out: String(e.stdout) + String(e.stderr) }; } };
+      const second = run('u_0badf00d');
+      ok(second.code === 0 && /fake claude auth login/.test(second.out),
+         `the sign-in flow for a second account runs the session account's Claude Code (${
+           second.out.trim().split('\n').pop().slice(0, 70)})`);
+      ok(existsSync(`${base}/users/u_0badf00d/.claude`),
+         "...with the credential's home the second account's own");
+      rmSync(`${base}/.local/bin/claude`);
+      const none = run('u_0badf00d');
+      ok(none.code !== 0 && /Update in the Nodes tab/.test(none.out),
+         '...and with none anywhere the refusal names the Nodes tab as the way out');
+    }
 
     // A token for the project alone (a relayed verb's) is nobody's account,
     // and cannot bind one.
@@ -1434,7 +1480,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // refused, with the sentence saying what to do rather than opening a
       // conversation that could not build anything.
       const nonode = await term('claude:beta');
-      ok(nonode.status === 503 && /no node: pick one/.test(nonode.body)
+      ok(nonode.status === 503 && /no node to run a Claude session on: pick one/.test(nonode.body)
          && /enroll one on the Nodes tab/.test(nonode.body),
          `a project with no node is refused a session, and told why (${
            (nonode.body || '').slice(0, 60)})`);
@@ -1759,19 +1805,23 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     let failed = '';
     try { execFileSync('bash', [`${REPO}/scripts/bb`, 'test'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' }); }
     catch (e) { failed = String(e.stderr) + String(e.stdout); }
-    ok(/no test command is set/.test(failed), 'bb test with nothing set says what to set, and where');
-    // ...unless the tree says how it is tested. "Run the tests" has one
-    // conventional answer per ecosystem, so a project nobody configured
-    // still answers, and says once that nothing was set, because a command
-    // nobody typed should not look like one somebody did.
+    ok(/no test command is set/.test(failed) && /bb settings set test/.test(failed),
+       'bb test with nothing set refuses, and names the verb that fills the field in');
+    // Nothing runs that nobody wrote down: a tree with a go.mod is not a
+    // test command, and bb test says so rather than guessing one. The session
+    // fills the field in, and from then on it runs.
     writeFileSync(`${DIR}/ws/alpha/go.mod`, 'module alpha\n');
-    let fell = '';
-    try { fell = execFileSync('bash', [`${REPO}/scripts/bb`, 'test'],
-      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' }).toString(); }
-    catch (e) { fell = String(e.stderr) + String(e.stdout); }
+    let still = '';
+    try { execFileSync('bash', [`${REPO}/scripts/bb`, 'test'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' }); }
+    catch (e) { still = String(e.stderr) + String(e.stdout); }
     rmSync(`${DIR}/ws/alpha/go.mod`, { force: true });
-    ok(/nothing set for tests on alpha, so: go test \.\/\.\.\./.test(fell),
-       'a project with a go.mod answers bb test with go test, saying it fell back');
+    ok(/no test command is set/.test(still), 'a go.mod in the tree is not a test command: it still refuses');
+    const filled = execFileSync('bash', [`${REPO}/scripts/bb`, 'settings', 'set', 'test', 'echo TEST-SET-RAN'],
+      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
+    ok(/set test for alpha: echo TEST-SET-RAN/.test(filled), 'bb settings set test fills the field in under auto');
+    const ran = execFileSync('bash', [`${REPO}/scripts/bb`, 'test'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
+    ok(/TEST-SET-RAN/.test(ran), '...and bb test runs what the session set');
+    execFileSync('bash', [`${REPO}/scripts/bb`, 'settings', 'set', 'test', ''], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' });
     const sess = (await api('/api/v1/jobs?project=alpha&n=3')).jobs;
     ok(sess.some(j => j.requested_by === 'session:alpha'), 'a run from a session is attributed to the session');
   }
@@ -1806,6 +1856,51 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       return now > ttydsBefore && n?.reported?.session?.up ? now : null;
     }, 30000, 500);
     ok(renewed !== null, `...and the session ttyds are restarted onto the changed store (${ttydsBefore} -> ${renewed})`);
+    // An install that fails on the node says why on its row, as one on the
+    // controller does (B211). The reason was only in the job's log before:
+    // the row went back to unticked and said nothing, and the graphics
+    // recipe's 404 was found with bb jobs rather than on the tab. The
+    // fixture node installs everything it is asked for, so the words are
+    // proved on the log that install actually left, through the parser the
+    // payload uses, and the payload is proved to carry the field.
+    {
+      const fj = await api('/api/toolchains', { action: 'install', names: ['rust'], node: minted.id });
+      ok(fj.ok && /^j_/.test(fj.job), `a toolchain install is queued on the node (${fj.job || fj.error})`);
+      await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${fj.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 60000);
+      // The finished job's view, once nothing on the node is still running:
+      // a toolchain job still active there draws the running view instead.
+      const tcv = await until(async () => {
+        const t = await api(`/api/toolchains?node=${minted.id}`);
+        return t.job && !t.job.running && 'errors' in t.job ? t : null;
+      }, 30000);
+      ok(tcv && typeof tcv.job.errors === 'object',
+         `a node's finished toolchain job carries an errors field for the rows (${JSON.stringify(tcv?.job?.errors)})`);
+      const log = [
+        'toolchain', '== system packages for graphics: fonts-dejavu-core',
+        '== bb toolchains install diagrams', '[builderbot] installing diagrams into /mnt/SDK/linux-x86_64/diagrams',
+        '######################################################################## 100.0%',
+        '[builderbot] diagrams ready: new shells pick it up',
+        '== bb toolchains install graphics', '[builderbot] installing graphics into /mnt/SDK/linux-x86_64/graphics',
+        '#=#=#', '##O#-#',
+        '##O=#  #                                                   curl: (22) The requested URL returned error: 404',
+        '[builderbot] ERROR: could not download https://example.invalid/ImageMagick-gcc-x86_64.AppImage',
+        '[builderbot] WARN: install failed (exit 1); removing the partial /mnt/SDK/linux-x86_64/graphics',
+        '1 of 2 did not install', ''].join('\n');
+      const parsed = JSON.parse(execFileSync('python3', ['-c', `
+import json, sys, types
+sys.path.insert(0, ${JSON.stringify(REPO + 'scripts/dashboard')})
+import toolchains as tc
+tc.nodes = types.SimpleNamespace(job_tail=lambda jid, n=4000: sys.stdin.read())
+print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: log, encoding: 'utf8' }));
+      const why = parsed.graphics || '';
+      ok(/(^| )curl: \(22\)/.test(why) && /could not download/.test(why) && /exit 1/.test(why)
+         && /install failed on the node$/.test(why) && !/diagrams/.test(why) && !/did not install/.test(why)
+         && !/#=#|##O/.test(why),
+         `...and the reason is that toolchain's own section of the log, with the exit and without the frames (${why.slice(0, 120)})`);
+    }
     // The store's own directories decide what is installed there, not the
     // census's placement summary, which named six toolchains and called four
     // installed toolchains missing on the operator's shared toolchain store.
@@ -1924,6 +2019,24 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     // The fixture carries the sandbox stamp (bb-sandbox is stubbed) but the
     // agent is not root, so the controller queues the job and the agent is
     // the one to refuse: exit 77, naming the owner and the packages.
+    // ...and on the Tools tab's own payload, per row: what the row's repair
+    // is drawn from. The packages the census says are missing sit on the
+    // recipe's row with the node's sandbox flag beside them, and a row whose
+    // needed toolchain is not on this node says which, so the link on the
+    // row installs exactly that and nothing else.
+    const tcp = await api(`/api/toolchains?node=${minted.id}`);
+    const pwRow = (tcp.items || []).find(i => i.name === 'playwright');
+    // The stubbed npm stops the fixture's install short, so the controller
+    // counts the row as not installed and its own missing list stays empty;
+    // the census's answer rides the payload whole, which is what the tab's
+    // banner draws from, and a row that IS installed carries its share.
+    ok((tcp.sysdeps?.unmet?.playwright || []).includes('libnss3') && tcp.sandbox === true
+       && (!pwRow?.installed || (pwRow.system?.missing || []).includes('libnss3')),
+       `the Tools payload carries the missing packages and the node's sandbox flag (${JSON.stringify(tcp.sysdeps?.unmet?.playwright || []).slice(0, 60)}, sandbox ${tcp.sandbox}, row installed ${!!pwRow?.installed})`);
+    const here = new Set((tcp.items || []).filter(i => i.installed).map(i => i.name));
+    const wrong = (tcp.items || []).filter(i => i.installed).filter(i =>
+      JSON.stringify(i.needs_missing || []) !== JSON.stringify((i.needs || []).filter(n => !here.has(n))));
+    ok(wrong.length === 0, `every installed row names the toolchains it needs that this node lacks (${wrong.map(i => i.name).join(', ') || 'all agree'})`);
     const dj = await api('/api/toolchains', { action: 'sysdeps', names: ['playwright'], node: minted.id });
     ok(dj.ok && /^j_/.test(dj.job), `a sysdeps job is queued for the held recipe (${dj.job || dj.error})`);
     const dfin = await until(async () => {
@@ -2239,6 +2352,94 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        'a node already on the shipped agent is told so, and no job is queued');
     const n = await nodeById(minted.id);
     ok(n.agent.digest === all.agent.digest, '...because the digests the row would compare are the same');
+
+    // The update itself, which every node performs on every controller
+    // update and no suite had run: the shipped file moves (a comment on
+    // its end, here), the row reads behind, Update agent queues the job,
+    // the agent downloads the file, checks its digest, writes it over its
+    // own, re-executes in place and dials in on the new digest. Then it
+    // still takes work, which is the point of it staying the same process.
+    appendFileSync(AGENT, '\n# the suite: from here on the controller ships a newer agent\n');
+    const shipped = await until(async () => {
+      const r = await api('/api/v1/nodes');
+      return r.agent?.digest && r.agent.digest !== all.agent.digest ? r.agent : null;
+    }, 20000);
+    ok(shipped && shipped.version === all.agent.version,
+       `the controller ships the file as it is now: a new digest, the same number (${shipped?.digest?.slice(0, 19)})`);
+    const behind = await until(async () => { const x = await nodeById(minted.id); return x.agent?.digest !== shipped.digest ? x : null; }, 5000);
+    ok(behind !== null, '...and the node, still on the old file, is behind by digest');
+    const up = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
+    ok(up.ok && /^j_/.test(up.job), `Update agent queues the self-update (${up.job || up.error})`);
+    const ufin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${up.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(ufin?.state === 'succeeded' && /installed sha256:/.test(ufin.log || '') && /restarting/.test(ufin.log || ''),
+       `the agent downloads the file, checks its digest, installs it over its own and restarts (${ufin?.state}: ${(ufin?.log || '').trim().split('\n').pop()?.slice(0, 80)})`);
+    const back = await until(async () => {
+      const x = await nodeById(minted.id);
+      return x.live && x.agent?.digest === shipped.digest ? x : null;
+    }, 60000);
+    ok(back !== null, `...and dials in again on the shipped digest, live (${back?.agent?.digest?.slice(0, 19)})`);
+    ok(/re-executing the new agent/.test(agentLog()), '...having re-executed itself in place, the same process');
+    ok(readFileSync(AGENT_RUN, 'utf8').includes('from here on the controller ships a newer agent'),
+       '...and the file it runs from is the shipped one now');
+    const cur2 = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
+    ok(cur2.ok && cur2.current === true, '...so it is current again and no job is queued');
+    const ej = await api('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['sh', '-c', 'echo alive after the update'] });
+    const efin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${ej.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(efin?.state === 'succeeded' && /alive after the update/.test(efin.log || ''),
+       `...and the new agent takes a job (${efin?.state})`);
+    // The status command, the one the docs tell a person to run on a node.
+    const st = execFileSync('python3', [AGENT_RUN, 'status'], { env: agentEnv, encoding: 'utf8' });
+    ok(st.length > 0 && new RegExp(minted.id).test(st), `\`builderbot-agent status\` names the node (${st.trim().split('\n')[0].slice(0, 80)})`);
+  }
+
+  // ---- one command as root, allowed by a person, run by the real agent -----
+  // root.mjs proves the asking and the allowing on the controller; this is
+  // the other end: the agent runs the command as given, once, its log
+  // opening with the reason and who allowed it, and the output streams
+  // back. The fixture agent is not root, so `id -un` names the test user,
+  // which is the honest answer here.
+  {
+    const asked = await api('/api/phone', { action: 'ask', kind: 'root', why: 'prove the root path on the real agent',
+                                            cmd: ['sh', '-c', 'echo root job ran; id -un'], project: 'alpha' });
+    ok(asked.id > 0, `a root ask for the project on this node is queued (${asked.id || asked.error})`);
+    const al = await api('/api/phone', { action: 'allow', id: asked.id });
+    ok(!al.error, `an administrator allows it (${al.error || 'ok'})`);
+    const rfin = await until(async () => {
+      const r = await api('/api/phone', { action: 'outcome', id: asked.id });
+      return ['done', 'failed', 'denied', 'expired'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(rfin?.state === 'done' && /# root on this node, allowed by test: prove the root path/.test(rfin.out || '')
+       && /root job ran/.test(rfin.out || ''),
+       `the agent runs it once and the log opens with the reason and who allowed it (${rfin?.state}: ${(rfin?.out || '').trim().split('\n')[0]?.slice(0, 90)})`);
+    const sysjob = ((await api('/api/v1/jobs?n=10')).jobs || []).find(j => j.type === 'system' && j.node === minted.id);
+    ok(sysjob && sysjob.state === 'succeeded', `...as a system job on this node, finished (${sysjob?.state || 'no system job found'})`);
+  }
+
+  // ---- Claude Code updated by the real agent (claudecode.py) ---------------
+  // The job runs the installer as the session account (the stub here writes
+  // nothing real), reads the version back and, not being root in this
+  // fixture, keeps the account's own copy; the log says each step.
+  {
+    writeFileSync(`${DIR}/bin/claude-installer`, `#!/bin/sh
+echo "Installing Claude Code (stub) for $USER into $HOME"
+echo "stub-installed" >> "${DIR}/claude-installer.log"
+`, { mode: 0o755 });
+    const cu = await api('/api/v1/nodes', { action: 'claude-update', id: minted.id });
+    ok(cu.ok && /^j_/.test(cu.job), `Update queues the claude-update job on this node (${cu.job || cu.error})`);
+    const cfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${cu.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(/Installing Claude Code \(stub\)/.test(cfin?.log || '') && existsSync(`${DIR}/claude-installer.log`),
+       `the agent runs the installer as the session account and streams its words (${cfin?.state})`);
+    ok(cfin?.state === 'failed' ? /does not run|no claude in|no claude to run/.test(cfin.log || '') : /is what a session here runs now/.test(cfin?.log || ''),
+       `...and says what runs afterwards, or why nothing does (${(cfin?.log || '').trim().split('\n').slice(-1)[0]?.slice(0, 90)})`);
   }
 
   // ---- Send to Claude reaches a session on a node -------------------------
@@ -2328,6 +2529,46 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and names the step, so the row says a directory could not be made rather than that up failed');
       rmSync(`${DIR}/devdata/blocked`, { force: true });
       await api('/api/devapp', { project: 'ep.silon', instance: 'blocked', action: 'remove' });
+    }
+    // A compose file that reads its settings through `env_file: .env`: the
+    // project's own .env, which BuilderBot never writes. The instance's env
+    // went to compose as --env-file only, which fills ${VAR} and nothing
+    // else, so what was typed into Send to Docker never reached the
+    // container, and Up failed on the missing file (Is-someone-Listening,
+    // 24 Sep). The copy the node runs names the instance's env instead.
+    {
+      writeFileSync(`${DIR}/ws/ep.silon/docker-compose.yml`,
+                    'services:\n  app:\n    image: alpine\n    env_file: .env\n');
+      const set = await api('/api/devapp', { project: 'ep.silon', instance: 'main', action: 'env-set',
+                                              text: 'GREETING=hello\n' });
+      ok(set.ok, `the instance's env is saved (${set.error || 'ok'})`);
+      const up3 = await api('/api/devapp', { project: 'ep.silon', instance: 'main', action: 'up' });
+      ok(up3.ok || up3.started, `Up is queued (${up3.error || 'ok'})`);
+      const je = await until(async () => {
+        const r = await api('/api/v1/jobs?project=ep.silon&type=compose&n=1');
+        const one = (r.jobs || [])[0];
+        if (!one || !['succeeded', 'failed', 'canceled'].includes(one.state) || one.id === j.id) return null;
+        const full = await api(`/api/v1/jobs?id=${one.id}`);
+        return (full.spec?.files || {})['instance.env'] ? full : null;
+      }, 60000);
+      const shipped = je?.spec?.files?.['docker-compose.yml'] || '';
+      ok(je && /env_file: \$\{BB_INSTANCE_ENV\}/.test(shipped) && !/env_file: \.env/.test(shipped)
+         && je.spec.files['instance.env'] === 'GREETING=hello\n'
+         && je.spec.plan.every(st => st.env?.BB_INSTANCE_ENV === '{cdir}/instance.env')
+         && je.state === 'succeeded',
+         `the node gets a compose copy whose env_file names the instance's env, and every step the path (${je?.state}: ${
+           JSON.stringify(shipped.split('\n').filter(l => /env_file/.test(l)))})`);
+      // ...and the controller's own compose calls (the row reads the file
+      // with compose config) run a copy beside the env that names it.
+      await api('/api/devapp', { project: 'ep.silon', instance: 'main', action: 'state' });
+      const copy = (() => { try { return readFileSync(`${DIR}/state/devenv/ep-silon.compose.yml`, 'utf8'); }
+                            catch { return ''; } })();
+      ok(copy.includes(`env_file: ${DIR}/state/devenv/ep-silon.env`),
+         `...and so do the controller's own compose calls (${copy.split('\n').find(l => /env_file/.test(l)) || 'no copy'})`);
+      await api('/api/devapp', { project: 'ep.silon', instance: 'main', action: 'env-set', text: '' });
+      rmSync(`${DIR}/state/devenv/ep-silon.env`, { force: true });
+      rmSync(`${DIR}/state/devenv/ep-silon.compose.yml`, { force: true });
+      writeFileSync(`${DIR}/ws/ep.silon/docker-compose.yml`, 'services:\n  app:\n    image: alpine\n');
     }
     await api('/api/prefs', { project: 'ep.silon', node: '' });
   }
@@ -2661,6 +2902,78 @@ print(json.dumps({'fam': fam, 'nd_backend': nd_backend, 'r1': r1, 'nd_text': nd_
      `with ifupdown the interface's own stanza is replaced and the neighbours kept (${R.if_backend}, ${R.r3[0]})`);
   ok(R.r4[0] === 'failed' && R.if_after === R.if_text,
      '...and its revert is the whole file as it was before the change');
+}
+
+// ---- the last two backends: wicked, and dhcpcd on its own -------------------
+// SUSE's wicked is ifcfg and ifroute files plus netconfig's resolver line,
+// then ifreload; Void's dhcpcd is a marked block in dhcpcd.conf and a
+// restart. Same spec, same revert, driven in process like the two above.
+{
+  const NB = `${DIR}/nbin2`; mkdirSync(NB, { recursive: true });
+  writeFileSync(`${NB}/systemctl`, `#!/bin/sh
+echo "systemctl $*" >> "${DIR}/net2.log"
+case "$*" in "is-active wicked") echo active ;; *) echo inactive ;; esac
+`, { mode: 0o755 });
+  for (const b of ['wicked', 'netconfig', 'dhcpcd'])
+    writeFileSync(`${NB}/${b}`, `#!/bin/sh\necho "${b} $*" >> "${DIR}/net2.log"\n`, { mode: 0o755 });
+  writeFileSync(`${NB}/pgrep`, `#!/bin/sh\necho 4242\n`, { mode: 0o755 });
+  const NONE = ['NETPLAN', 'NMCLI', 'NETWORKCTL', 'IFUP']
+    .map(k => `os.environ['BUILDERBOT_${k}_BIN'] = '/nonexistent/${k.toLowerCase()}'`).join('\n');
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+${NONE}
+os.environ['PATH'] = ${JSON.stringify(NB)} + ':' + os.environ.get('PATH', '')
+os.environ['BUILDERBOT_WICKED_BIN'] = ${JSON.stringify(`${NB}/wicked`)}
+os.environ['BUILDERBOT_SYSCONFIG_NET_DIR'] = sc = tempfile.mkdtemp()
+os.environ['BUILDERBOT_DHCPCD_CONF'] = dc = os.path.join(tempfile.mkdtemp(), 'dhcpcd.conf')
+os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.DIAL_BACK_S = 1
+a = m.Agent.__new__(m.Agent); a.state = {'stores': {}}
+class J:
+    def __init__(self): self.lines = []
+    def say(self, t): self.lines.append(t)
+    def flush(self): pass
+want = {'network': {'mode': 'static', 'address': '10.3.3.5/24', 'gateway': '10.3.3.1', 'dns': ['10.3.3.1', '10.3.3.2'], 'interface': 'eth0'}}
+open(os.path.join(sc, 'config'), 'w').write('NETCONFIG_DNS_POLICY="auto"\\nNETCONFIG_DNS_STATIC_SERVERS="9.9.9.9"\\n')
+w_backend = m.net_backend().name
+a.hello = lambda: (200, {})
+j1 = J(); r1 = a._apply_network(j1, want)
+rd = lambda n: open(os.path.join(sc, n)).read() if os.path.exists(os.path.join(sc, n)) else None
+w_files = {'ifcfg': rd('ifcfg-eth0'), 'ifroute': rd('ifroute-eth0'), 'config': rd('config')}
+a.hello = lambda: (503, {})
+j2 = J(); r2 = a._apply_network(j2, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})
+w_after = {'ifcfg': rd('ifcfg-eth0'), 'ifroute': rd('ifroute-eth0'), 'config': rd('config')}
+# dhcpcd: wicked out of the way, a conf with lines of its own to keep
+m.WICKED_BIN = '/nonexistent/wicked'
+open(dc, 'w').write('hostname\\nnoipv6\\n')
+d_backend = m.net_backend().name
+a.hello = lambda: (200, {})
+j3 = J(); r3 = a._apply_network(j3, want)
+d_text = open(dc).read()
+j4 = J(); r4 = a._apply_network(j4, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})
+d_after = open(dc).read()
+print(json.dumps({'w_backend': w_backend, 'r1': r1, 'w_files': w_files, 'r2': r2, 'w_after': w_after, 'log2': ''.join(j2.lines),
+                  'd_backend': d_backend, 'r3': r3, 'd_text': d_text, 'r4': r4, 'd_after': d_after,
+                  'calls': open(${JSON.stringify(`${DIR}/net2.log`)}).read()}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  ok(R.w_backend === 'wicked' && R.r1[0] === 'succeeded'
+     && R.w_files.ifcfg === "STARTMODE='auto'\nBOOTPROTO='static'\nIPADDR='10.3.3.5/24'\n"
+     && R.w_files.ifroute === 'default 10.3.3.1 - eth0\n'
+     && /NETCONFIG_DNS_POLICY="auto"\nNETCONFIG_DNS_STATIC_SERVERS="10\.3\.3\.1 10\.3\.3\.2"\n/.test(R.w_files.config)
+     && /wicked ifreload eth0/.test(R.calls) && /netconfig update -f/.test(R.calls),
+     `with wicked active the spec is ifcfg, ifroute and netconfig's resolver line, then a reload (${R.w_backend}, ${R.r1[0]})`);
+  ok(R.r2[0] === 'failed' && /reverting/.test(R.log2) && R.w_after.ifcfg === R.w_files.ifcfg
+     && R.w_after.ifroute === R.w_files.ifroute && R.w_after.config === R.w_files.config,
+     '...and a change the controller cannot confirm puts all three files back');
+  ok(R.d_backend === 'dhcpcd' && R.r3[0] === 'succeeded'
+     && /^hostname\nnoipv6\n\n# BuilderBot: eth0\ninterface eth0\nstatic ip_address=10\.3\.3\.5\/24\nstatic routers=10\.3\.3\.1\nstatic domain_name_servers=10\.3\.3\.1 10\.3\.3\.2\n# BuilderBot: end\n$/.test(R.d_text)
+     && /systemctl restart dhcpcd/.test(R.calls),
+     `with dhcpcd alone the spec is a marked block after the file's own lines, and a restart (${R.d_backend}, ${R.r3[0]})`);
+  ok(R.r4[0] === 'succeeded' && R.d_after === 'hostname\nnoipv6\n',
+     '...and dhcp takes the block out again, leaving the file as it was');
 }
 
 // ---- the toolchain store, scoped by platform; and a Mac ----------------------------

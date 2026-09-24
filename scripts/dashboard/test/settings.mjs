@@ -29,11 +29,15 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 await page.evaluate(() => openSettingsTab());
 await page.waitForSelector('.settingstab [data-set="debug_mode"]', { timeout: 15000 });
 // One tree, two products (roadmap R54, step 6): the switch that offers the
-// unvetted git hosts, hypervisors and OS families sits in its own group,
-// off by default, and the header carries the word while it is on.
-ok(await page.$eval('.settingstab [data-set="offer_unvetted"]', e => e.type === 'checkbox' && !e.checked
-     && e.closest('[data-group]')?.dataset.group === 'What is offered'),
-   'the "offer dev features" switch has a group of its own and starts off');
+// unvetted git hosts, hypervisors and OS families is a developer's, so it
+// lives in the Debugging dialog and not on the tab, off by default, and the
+// header carries the word while it is on.
+ok(await page.$('.settingstab [data-set="offer_unvetted"]') === null,
+   'the "offer dev features" switch is not on the tab');
+await page.evaluate(() => openDebugSettings());
+ok(await page.$eval('#setdbgBody [data-dbgset="offer_unvetted"]', e => e.type === 'checkbox' && !e.checked),
+   '...it is in the Debugging dialog, and starts off');
+await page.click('#setdbgCancel');
 ok(await page.$eval('#devtag', e => e.hidden), '...and the header says nothing while it is off');
 await post('/api/settings', { set: { offer_unvetted: true } });
 await page.waitForFunction(() => !document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
@@ -79,8 +83,8 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'What is offered|Debugging|Reset',
-   `the tab's stored settings are the two groups that survived the question "does this need to exist", and the reset: nothing that should be a constant or a project's (${groups.join(', ')})`);
+ok(groups.join('|') === 'Debugging|Reset',
+   `the tab's stored settings are the one group that survived the question "does this need to exist", and the reset: nothing that should be a constant or a project's (${groups.join(', ')})`);
 // Debug mode grants nothing by itself: it puts the grant on a node's row.
 // Off by default, because what it opens is root's on the machine.
 ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
@@ -237,6 +241,37 @@ ok(elsewhere.git_name === 'T. Person',
     { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
   ok(/Never write credentials/.test(pre.text || '') && /\(global\)/.test(pre.text || ''),
      'and a project\'s sessions are handed it, marked global, with nothing pushed to the project');
+}
+
+// A fixed shipped rule (rules.py BUILTIN, `fixed`) is the part of the record
+// that is not a preference: a report that is true, a repository with no
+// secret in it. It has no switch on the dialog and a save that names it as
+// off is ignored, so neither a press nor a session's request turns it off.
+{
+  const auth = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  const api = async (body) => (await fetch(URL.replace(/\/$/, '') + '/api/global-rules',
+    body ? { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+         : { headers: auth })).json();
+  const rs = (await api()).rules || [];
+  const fixed = rs.filter(r => r.builtin && r.fixed).map(r => r.name);
+  const switchable = rs.filter(r => r.builtin && !r.fixed).map(r => r.name);
+  await page.click('#setGlobalRules');
+  await page.waitForSelector('#grmodal:not([hidden]) #grAdd', { timeout: 15000 });
+  const rows = await page.$$eval('#grBody .rulerow[data-builtin]', es => es.map(e => e.dataset.builtin));
+  ok(fixed.length >= 2 && rows.length === switchable.length && switchable.every(n => rows.includes(n))
+     && !fixed.some(n => rows.includes(n)),
+     `the dialog lists a switch for every shipped rule that has one and none for a fixed one (${rows.join(', ')}; fixed: ${fixed.join(', ')})`);
+  await page.click('#grClose');
+  await api({ action: 'save', rules: rs.filter(r => !r.builtin), disabled: [fixed[0], switchable[0]] });
+  const after = (await api()).rules || [];
+  ok(after.find(r => r.name === switchable[0])?.disabled === true
+     && after.find(r => r.name === fixed[0])?.disabled === false,
+     `a save that turns a fixed rule off turns off only the one beside it (${fixed[0]} still on, ${switchable[0]} off)`);
+  const pre = await (await fetch(URL.replace(/\/$/, '') + '/api/preamble?project=alpha', { headers: auth })).json();
+  const said = n => (pre.text || '').includes(after.find(r => r.name === n).text.slice(0, 40));
+  ok(said(fixed[0]) && !said(switchable[0]),
+     '...and a session is handed the fixed one and not the one turned off');
+  await api({ action: 'save', rules: rs.filter(r => !r.builtin), disabled: [] });
 }
 
 // ---- the time zone is this browser's (Profile, On this browser) ----------

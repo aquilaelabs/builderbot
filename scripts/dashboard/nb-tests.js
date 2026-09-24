@@ -16,6 +16,43 @@ function nbTestsView({$, nb, project}){
   let tstEditing = new Set();   // the rows whose two fields are out
   nb.tstSuite = ""; nb.tstFlagged = false, nb.tstUndoc = false;
 
+  // The run's output, in the project's shell: opened if none is, focused if
+  // one is, and `bb tests log -f` typed into it, which follows a run still
+  // going. Output belongs in a terminal, where it scrolls and pages and can
+  // be left running; a box on the Docker row used to carry a tail of it and
+  // redraw for every line.
+  async function openRunOutput(){
+    const btn = $("tstOut");
+    const mine = tabs.find(t => t.kind === "term" && !isClaude(t)
+                                && typeof t.arg === "string" && t.arg.startsWith("sh:") && t.arg.endsWith(":" + project));
+    if (mine) focusTab(mine.id); else newShell(project);
+    busy(btn, "Opening");
+    const t = tabOf(panes[active]);
+    if (!t || t.kind !== "term"){
+      unbusy(btn, "Open the run's output");
+      return notify("no shell tab opened; open one and run bb tests log -f", true);
+    }
+    // Sent, and sent again while the shell is still coming up. The server
+    // asks tmux itself whether the session is there, so this does not wait
+    // on the page's own list of sessions, which arrives with the status
+    // poll every fifteen seconds and, for a shell on a node, only after the
+    // node's next heartbeat: waiting on that said "the shell did not come
+    // up" over a shell that was up.
+    const session = sessionOf(t.arg);
+    let said = "";
+    for (let i = 0; i < 24; i++){
+      try{
+        const r = await postJSON("/api/send", {session, macro: "tests-log"});
+        const j = await r.json();
+        said = j.error || "";
+        if (!said || !/no such session/.test(said)) break;
+      }catch(e){ said = "could not send: " + e; break; }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    if (said) notify(said, true);
+    unbusy(btn, "Open the run's output");
+  }
+
   async function loadTests(again = false){
     try{
       const r = await fetch("/api/tests?project=" + encodeURIComponent(project));
@@ -68,6 +105,8 @@ function nbTestsView({$, nb, project}){
 
   function drawTests(){
     const j = nb.tests || {};
+    const ob = $("tstOut");
+    if (ob){ ob.onclick = openRunOutput; ob.hidden = !mayShell(); }
     if (j.error){
       $("tstHint").textContent = "tests: " + j.error;
       $("tstList").innerHTML = ""; $("tstStats").hidden = true;
@@ -100,8 +139,7 @@ function nbTestsView({$, nb, project}){
     if (!all.length){
       $("tstHint").textContent = "";
       $("tstStats").hidden = false;
-      $("tstStats").innerHTML = `<div class="hint">No test run recorded yet. A session
-        runs the tests and records what each cost with
+      $("tstStats").innerHTML = `<div class="hint">No test run recorded yet. A session records one with
         <pre class="ndcmd">bb tests run</pre></div>`;
       $("tstList").innerHTML = ""; $("tstBar").hidden = true;
       $("tstFolds").innerHTML = "";
@@ -156,8 +194,7 @@ function nbTestsView({$, nb, project}){
            nDrift ? driftRows.join("")
                     + (nDrift > driftRows.length
                        ? `<div class="sub dim">…and ${nDrift - driftRows.length} more</div>` : "")
-                  : `<div class="sub">every test the runner reported is on this
-                     list, and every entry on this list ran.</div>`,
+                  : `<div class="sub">the list and the last run agree.</div>`,
            {cls: nDrift ? "warn" : "", open: false}) : "");
     wireSections($("tstFolds"));
     // ---- the filter --------------------------------------------------------

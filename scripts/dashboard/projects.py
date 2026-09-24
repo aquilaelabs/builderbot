@@ -199,6 +199,7 @@ PROJECT_NAME = None
 STATE = None
 HOME = None
 write_json = None
+after_create = None
 # Moving the dev-instance data is devapp's, whole: the layout is a directory
 # per instance under a derived name, and where it lives depends on the daemon:
 # a mounted /devdata is this box's, a sandbox's is on that machine's disk.
@@ -210,14 +211,16 @@ rename_project_data = None
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
               project_name,
-              state, home, write_json, rename_project_data=None):
-    """Hand over the server's helpers."""
+              state, home, write_json, rename_project_data=None, after_create=None):
+    """Hand over the server's helpers. `after_create(name)` is called once
+    a project's tree is in place (a fresh repo, a clone, an unpacked
+    archive): the map build that mapping.py starts in the background."""
     globals().update(
         run=run, WORKSPACE=Path(workspace), agent_keys=agent_keys,
         gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
         PROJECT_NAME=project_name,
         STATE=Path(state), HOME=Path(home), write_json=write_json,
-        rename_project_data=rename_project_data)
+        rename_project_data=rename_project_data, after_create=after_create)
     # The peer library takes the same runner: it shells out to `ssh -G` to
     # resolve a deploy-key alias, and to nothing else.
     forges.configure(run=run, state=state, write_json=write_json)
@@ -1308,7 +1311,7 @@ def create(req):
             if r.get("error"):
                 shutil.rmtree(dest, ignore_errors=True)
                 return r, 400
-            body, code = _init(dest, name, about, cloned=not about)
+            body, code = _init(dest, name, about)
             if code == 200:
                 body["note"] = f"{r['files']} files from {r['name']}; {body.get('note') or 'ready'}"
             return body, code
@@ -1332,12 +1335,15 @@ def create(req):
 _mkdir_lock = threading.Lock()
 
 
-def _init(dest, name, about, cloned=False):
+def _init(dest, name, about):
     r = run(["git", "init", "-b", "main", str(dest)], timeout=30)
     if r["code"] != 0:
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
         return {"error": r["out"].strip()[-2000:] or "git init failed"}, 500
-    return {"ok": True, "name": name, "note": _write_md(dest, about, cloned)}, 200
+    note = _write_md(dest, about)
+    if after_create:
+        after_create(name)          # the map, in the background, from here on
+    return {"ok": True, "name": name, "note": note}, 200
 
 
 # ---- starting from an archive ---------------------------------------------
@@ -1605,25 +1611,30 @@ def _clone(dest, url, helper="", may_push_=False):
         _scope_to_token(dest, helper)
     set_push_hook(dest, may_push_)
     _step("reading the repository")
-    return "", _write_md(dest, "", True)
+    note = _write_md(dest, "")
+    if after_create:
+        after_create(dest.name)     # the map, in the background, from here on
+    return "", note
 
 
-def _write_md(dest, about, cloned):
+def _write_md(dest, about):
     """A CLAUDE.md for a new project, and the sentence saying what happened.
 
-    Only the project's OWN notes now. The environment block that used to go in
-    beside them is assembled per session from the controller instead (R63), so
-    there is nothing here to render, push or keep in step: a project that
-    brought its own CLAUDE.md keeps it untouched, and one with none gets a
-    short file it owns from that moment on.
+    Only the project's OWN notes, and only typed ones. The environment block
+    that used to go in beside them is assembled per session from the
+    controller instead (R63), so there is nothing here to render, push or
+    keep in step: a project that brought its own CLAUDE.md keeps it
+    untouched, one with none and no notes gets nothing, and one with notes
+    gets a short file it owns from that moment on.
     """
     md = dest / "CLAUDE.md"
     if md.is_file():
         return "kept the repository's own CLAUDE.md"
-    # A project that arrived rather than being typed gets its notes drafted
-    # from its own files, marked as a draft for a session to check.
-    if cloned and not about.strip():
-        about = describe_repo(dest) or ""
+    # Only what was typed. A project that arrived (a clone, an archive) used
+    # to get notes drafted from its README and build files, untracked, with
+    # a note to commit or delete them; the operator dropped that on 23 Sep:
+    # an unasked-for file in somebody's checkout, for a briefing the
+    # controller assembles per session anyway (R63).
     text = (about.strip() + "\n") if about.strip() else ""
     if not text:
         return "no CLAUDE.md written; this project's notes are yours to start"
@@ -1635,8 +1646,7 @@ def _write_md(dest, about, cloned):
     # else's tree: it is not in the repository's history, and a `git status`
     # that opens with an unexpected untracked file is a small mystery worth
     # not creating.
-    return ("CLAUDE.md drafted from the repository's own files, untracked, "
-            "commit or delete it" if cloned else "CLAUDE.md created from your notes")
+    return "CLAUDE.md created from your notes"
 
 
 # ---- linking --------------------------------------------------------------
@@ -1887,83 +1897,3 @@ def _link(dest, name, forge, host, path, remote, keyed, pat,
     return "", f"{created}pushed {branch}"
 
 
-# ---- drafting a CLAUDE.md from a cloned tree ------------------------------
-
-def _readme_intro(dest):
-    """The first prose paragraph of the repo's README, or None.
-
-    Headings, badges and raw HTML are skipped: the first thing most READMEs
-    hold is a wall of shields, and a CLAUDE.md that opens with badge markup
-    describes the README, not the project."""
-    for name in ("README.md", "README.rst", "README.txt", "README"):
-        p = dest / name
-        if not p.is_file():
-            continue
-        try:
-            text = p.read_text(errors="replace")
-        except OSError:
-            return None
-        out = []
-        for para in text.split("\n\n"):
-            # Filtered line by line, not paragraph by paragraph: the most
-            # common README opens "# Title\nprose" with no blank line
-            # between, and skipping that whole block threw away the prose
-            # with the heading.
-            lines = [l for l in para.splitlines()
-                     if l.strip() and not l.lstrip().startswith(
-                         ("#", "<", "![", "[![", "---", "=", "|", "```", ">"))]
-            if not lines:
-                continue
-            out.append(re.sub(r"\s+", " ", " ".join(lines)).strip())
-            if sum(map(len, out)) > 400:
-                break
-        return " ".join(out)[:600] or None
-    return None
-
-
-def _build_hints(dest):
-    """Build/test commands read off the tree's own marker files.
-
-    Heuristics, deliberately shallow: the point is a first draft that names
-    the toolchain, not a build system parser. Wrong guesses are cheap here:
-    the section carries a note saying to verify it."""
-    hints = []
-    try:
-        scripts = (json.loads((dest / "package.json").read_text())
-                   .get("scripts") or {})
-        hints += [f"- **{k}:** `npm run {k}`"
-                  for k in ("build", "test", "lint", "dev") if k in scripts]
-    except (OSError, ValueError):
-        pass
-    if (dest / "gradlew").is_file():
-        hints += ["- **Build:** `./gradlew build`"
-                  + (", or `./gradlew assembleDebug` for an APK"
-                     if (dest / "app").is_dir() else ""),
-                  "- **Test:** `./gradlew test`"]
-    if (dest / "Cargo.toml").is_file():
-        hints += ["- **Build:** `cargo build`", "- **Test:** `cargo test`"]
-    if (dest / "go.mod").is_file():
-        hints += ["- **Build:** `go build ./...`", "- **Test:** `go test ./...`"]
-    if (dest / "pyproject.toml").is_file():
-        hints.append("- **Python:** `pyproject.toml` present: `uv pip install -e .`"
-                     + ("; `pytest`" if (dest / "tests").is_dir() else ""))
-    if (dest / "Makefile").is_file():
-        hints.append("- **Make:** a `Makefile` is present; see its targets")
-    return hints
-
-
-def describe_repo(dest):
-    """A drafted project section for a repo that arrived without a CLAUDE.md:
-    the README's own first paragraph, plus whatever the marker files say about
-    building it. None when the tree says nothing: the template's placeholder
-    section is more honest than an empty guess."""
-    parts = [p for p in (_readme_intro(dest),) if p]
-    hints = _build_hints(dest)
-    if hints:
-        parts.append("What the tree suggests:\n\n" + "\n".join(hints))
-    if not parts:
-        return None
-    parts.append("<!-- Drafted automatically at clone time from the repository's "
-                 "own files. Have a session verify this against the code and "
-                 "flesh it out. -->")
-    return "\n\n".join(parts)

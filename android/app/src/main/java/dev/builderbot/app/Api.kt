@@ -169,7 +169,10 @@ class Api(private val base: String, private val user: String, private val passwo
 
 // JSON helpers: every field read with a default, because the dashboard
 // moves and a missing key is a blank on screen, never a crash.
-fun JSONObject.str(key: String, default: String = "") = optString(key, default) ?: default
+// JSON null is a blank, not the word "null": optString renders a null value
+// as the string, which is how a project with no branch read "null" on the
+// projects list.
+fun JSONObject.str(key: String, default: String = "") = if (isNull(key)) default else (optString(key, default) ?: default)
 fun JSONObject.int(key: String, default: Int = 0) = optInt(key, default)
 fun JSONObject.bool(key: String, default: Boolean = false) = optBoolean(key, default)
 fun JSONObject.obj(key: String): JSONObject = optJSONObject(key) ?: JSONObject()

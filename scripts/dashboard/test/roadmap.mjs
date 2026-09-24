@@ -42,7 +42,7 @@ const post = body => page.evaluate(async b => {
 const open = () => page.$$eval('#roadmapList .roadmap', ts => ts.map(t => ({
   id: t.dataset.id, step: t.dataset.step, text: t.querySelector('.txt').textContent,
   sent: t.classList.contains('sent'),
-  can: !t.querySelector('.go').disabled,
+  can: t.querySelector('.go').getAttribute('aria-disabled') !== 'true',
   sel: t.querySelector('.go').classList.contains('sel'),
   claude: !!t.querySelector('.who:not(.fin)') })));
 
@@ -261,7 +261,7 @@ await page.fill('#roadmapText', 'staged, deliberately not saved');
 await page.click('#roadmapAdd');
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .txt')]
   .some(t => t.textContent.includes('staged, deliberately')));
-ok(await page.$$eval('#roadmapList .roadmap .go', gs => gs.every(g => g.disabled)),
+ok(await page.$$eval('#roadmapList .roadmap .go', gs => gs.every(g => g.getAttribute('aria-disabled') === 'true')),
    'an unsaved change puts every arrow down');
 ok(/not saved/.test(await page.$eval('#roadmapHint', h => h.textContent)),
    '...and the line above the list says which, and what to do about it');
@@ -417,6 +417,14 @@ ok(read().projects.alpha.at(-1).text === 'rework the picker',
 const shelvedPrompt = execFileSync(BB, ['roadmap', '--prompt'],
   { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
+// A state dir this copy cannot write (a checkout's bb on a node, B228):
+// the list still prints and the exit is clean; marking it read is a
+// courtesy, not the point.
+const unwritable = execFileSync(BB, ['roadmap'],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: '/proc/bb-no-such-state',
+           WORKSPACE: `${DIR}/ws` }, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+ok(!/Traceback|PermissionError/.test(unwritable),
+   'bb roadmap on a state dir it cannot write prints the list and exits clean');
 ok(/Parked by the operator/.test(shelvedPrompt)
    && new RegExp(`- R${c1.id}  rework the picker`).test(shelvedPrompt),
    '...and a session is told it is parked, under a heading of its own, rather than left to wonder');
@@ -520,10 +528,12 @@ bbRoadmap('mv', c1.id, 'down');
 ok(JSON.stringify(orderNow()) === JSON.stringify(wasOrder), '...and back down');
 bbRoadmap('shelve', c1.id);
 ok(read().projects.alpha.at(-1).shelved, 'bb roadmap shelve parks one');
-ok(/no unshelve|usage: bb roadmap/.test(
-     (() => { try { return bbRoadmap('unshelve', c1.id); }
-              catch (e) { return String(e.stderr || e); } })()),
-   '...and there is no unshelve for a session; that tap is the operator\'s');
+// ...and asking for it back is a request (R78): held for a person on the
+// project with its reason, the item still shelved until they answer. The
+// pending suite walks the approval; here the ask and the hold.
+ok(/asked to take R\d+ off the shelf: held for approval on the notebook/.test(bbRoadmap('unshelve', c1.id, 'the blocker is gone'))
+   && read().projects.alpha.at(-1).shelved,
+   '...and a session asking to unshelve is held for approval, the item still shelved');
 await post({ action: 'shelve', project: 'alpha', id: Number(c1.id), on: false });
 
 // ---- batches -------------------------------------------------------------
@@ -874,6 +884,20 @@ const finId = String(fin.body.item.id);
 bbRoadmap('done', finId);
 ok(!read().projects.alpha.some(r => String(r.id) === finId),
    'bb roadmap done takes the item off the list rather than fading it in place');
+// ...and the Roadmap tab can still show it (R78): Finished at the top, off by
+// default, draws the ticked-off items with their plans below the list.
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(() => /Finished \(\d+\)/.test(document.querySelector('.nb #roadmapDone')?.textContent || ''),
+                           null, { timeout: 10000 });
+ok(await page.$eval('.nb #roadmapDoneList', e => e.hidden), 'the finished items are hidden until asked for');
+await page.click('.nb #roadmapDone');
+await page.waitForSelector(`.nb #roadmapDoneList .grp.done[data-done="${finId}"]`, { timeout: 10000 });
+ok(await page.$eval(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] .txt`, e => e.textContent) === 'a job to finish',
+   'Finished shows the ticked-off item, struck through, with no arrow');
+ok(await page.evaluate(() => !!(document.querySelector('.nb #roadmapList').compareDocumentPosition(document.querySelector('.nb #roadmapDoneList')) & Node.DOCUMENT_POSITION_FOLLOWING)),
+   '...below the live and shelved ones');
+await page.click('.nb #roadmapDone');
+ok(await page.$eval('.nb #roadmapDoneList', e => e.hidden), '...and the toggle folds them away again');
 const afterDone = bbRoadmap('history');
 ok(new RegExp(`done\\s+R${finId}\\s+a job to finish`).test(afterDone),
    '...and writes it into the history, under the word a session used');
@@ -1357,13 +1381,20 @@ ok((await open()).some(i => i.can), 'with the session up, something can be sent'
 tmuxKill('claude-alpha');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap .go')]
-  .every(g => g.disabled), null, { timeout: 15000 });
+  .every(g => g.getAttribute('aria-disabled') === 'true'), null, { timeout: 15000 });
 ok(/no session/.test(await page.$eval('#roadmapHint', h => h.textContent)),
    'the session going away puts the arrows down, without touching the tab');
+// ...and a dead arrow says why when pressed (B213). It used to be a disabled
+// button, which swallows the press: the reason lived in a hover title a
+// finger never sees and in the line under the whole list.
+// Through the DOM: Playwright itself refuses to click what is aria-disabled.
+await page.$eval('#roadmapList .roadmap .go', b => b.click());
+ok(/no Claude session is running here/.test(await page.$eval('#toast', t => t.textContent)),
+   `pressing a dead arrow says why in the band (${await page.$eval('#toast', t => t.textContent.slice(0, 60))})`);
 tmuxNew('claude-alpha');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap .go')]
-  .some(g => !g.disabled), null, { timeout: 15000 });
+  .some(g => g.getAttribute('aria-disabled') !== 'true'), null, { timeout: 15000 });
 ok(/is running, so the arrows are live/.test(
      await page.$eval('#roadmapHint', h => h.textContent)),
    '...and starting one brings them back, with the notebook left open the whole time');
@@ -1503,7 +1534,7 @@ await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="1"]`)?.classList.contains('done'), widget.id);
 const drawn = await page.$$eval(`#roadmapList .roadmap[data-id="${widget.id}"]`, ts => ts.map(t => ({
   step: t.dataset.step, done: t.classList.contains('done'), sent: t.classList.contains('sent'),
-  n: t.querySelector('.n')?.textContent, can: !t.querySelector('.go').disabled,
+  n: t.querySelector('.n')?.textContent, can: t.querySelector('.go').getAttribute('aria-disabled') !== 'true',
   why: t.querySelector('.go').title })));
 ok(drawn.find(d => d.step === '1').done && !drawn.find(d => d.step === '1').sent
    && drawn.find(d => d.step === '1').n === '✓',

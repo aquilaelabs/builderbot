@@ -167,7 +167,7 @@ def allowed(f):
 def not_offered(f):
     """The sentence a refusal carries for an unvetted host."""
     return (f"{f['name']} is dev, not yet vetted, so it is not offered here: "
-            "Settings, 'Offer dev features' puts it back, tagged dev")
+            "Debug settings on the Settings tab, 'Offer dev features' puts it back, tagged dev")
 
 
 def slug(host):

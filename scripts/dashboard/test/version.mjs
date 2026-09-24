@@ -382,6 +382,24 @@ const bare = (...a) => {
 };
 ok(bare('--code').out === '1',
    'a project with no VERSION file still has an ordinal: it is pure git');
+// Asked from one of the project's worktrees, the answer is that tree's: a
+// session building in its worktree was handed the main checkout's commit as
+// its package name and shipped nothing rather than a file named after code
+// it did not hold (24 Sep).
+{
+  const WT = `${WS}/.worktrees/unversioned/u_0badf00d`;
+  mkdirSync(`${WS}/.worktrees/unversioned`, { recursive: true });
+  execFileSync('git', ['-C', BARE, 'worktree', 'add', '-q', '-b', 'claude/side', WT], { env });
+  writeFileSync(`${WT}/g`, 'y');
+  execFileSync('git', ['-C', WT, 'add', '-A'], { env });
+  execFileSync('git', ['-C', WT, 'commit', '-qm', 'side work'], { env });
+  const inWt = (...a) => execFileSync('bash', [BB, 'version', ...a], { cwd: WT, env }).toString().trim();
+  ok(inWt('--code') === '2' && bare('--code').out === '1',
+     `bb version asked from a worktree answers for that tree (${inWt('--code')} there, ${bare('--code').out} in the project directory)`);
+  ok(inWt('--file') !== bare('--file').out,
+     '...so a package built there is named after the commit it holds');
+  execFileSync('git', ['-C', BARE, 'worktree', 'remove', '--force', WT], { env });
+}
 ok(bare('--msi').code !== 0,
    '...but a format that cannot be produced without one refuses');
 ok(/no VERSION file/.test(bare().out), '...and says how to opt in');
@@ -1106,7 +1124,7 @@ for (let t = 0; t < 50 * SLOW; t++){
   if (/no CHANGELOG\.md here yet/.test(paneText)) break;
   await sleep(200);
 }
-ok(/no CHANGELOG\.md here yet/.test(paneText),
+ok(/no CHANGELOG\.md yet/.test(paneText),
    'the changelog pane says how to opt in when there is no file');
 // The flake this suite carried for weeks, as a rule instead. The pane used to
 // live in #verBox and be MOVED into the sheet, so a repaint of that box while

@@ -1495,9 +1495,17 @@ def agent_stale(n):
                 f"a different compatibility window ({agent_window(mine)} against "
                 f"{agent_window(ours['version'])}), so nothing sent to it is promised to work. "
                 "Update it from the Nodes tab before relying on this node.")
+    if mine == ours["version"]:
+        # The same number and a different file: the agent moved without its
+        # version constant. Said as such, since "runs 0.6.92 and ships 0.6.92"
+        # read as nonsense on a walk (docs/journeys.md, 23 Sep).
+        return (f"{n['name']} runs agent {mine} ({theirs.split(':')[-1][:8]}) and this controller "
+                f"ships the same number as a newer file ({ours['digest'].split(':')[-1][:8]}): "
+                "press Update agent on its row first. A job this version sends could name "
+                "something that agent does not know")
     return (f"{n['name']} runs agent {mine} and this controller ships {ours['version']}: "
             "press Update agent on its row first. A job this version sends could name "
-            "something that agent does not know.")
+            "something that agent does not know")
 
 
 def agent_gap(n):
@@ -1912,6 +1920,11 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # prompt with no newline after it, and the grant has to land in
              # the home a session will read it from.
              "claude-login",
+             # Claude Code itself, for the session account: the installer run
+             # there, then the binary pinned where the account cannot write it
+             # (claudecode.py). Queued by an administrator's press and nothing
+             # else; the Claude sessions on the node are ended first.
+             "claude-update",
              # A line typed into a Claude session on the node, Enter pressed
              # only once the pane echoes it (notify.py's rule, run where the
              # pane is): the roadmap's and the tracker's Send to Claude.
@@ -1951,6 +1964,19 @@ def _jbump():
     _jrev[0] += 1
 
 
+# The jobs rev without the log chunks: a job queued, taken, finished,
+# cancelled, or a new step word, and nothing for a line of output. What a
+# ROW watches. The Docker manager followed the jobs rev and refetched its
+# whole listing several times a second through every build, for a tail it
+# has since stopped drawing; the Jobs tab, which does draw the log, keeps
+# the full rev.
+_jsrev = [0]
+
+
+def jobs_state_rev():
+    return _jsrev[0]
+
+
 def _jstate_bump():
     """A job was queued, taken, finished or cancelled: the jobs rev, and the
     nodes rev with it, because a node's row carries what is applying on it,
@@ -1959,6 +1985,7 @@ def _jstate_bump():
     "installing now" and then the result without anybody reloading. A log
     chunk moves only the jobs rev: a row does not change for one."""
     _jbump()
+    _jsrev[0] += 1
     _bump()
 
 
@@ -2563,7 +2590,10 @@ def job_set(job_id, **fields):
         _exec("UPDATE jobs SET " + ", ".join(f"{k} = ?" for k in sets)
               + " WHERE id = ?", (*sets.values(), job_id))
         if not _quiet(job_id):
+            # A step word or a reason is what a row draws, so the state-only
+            # rev moves too: the controller's own runner sets them here.
             _jbump()
+            _jsrev[0] += 1
 
 
 def job_log(node_id, job_id, chunks, step=None):
@@ -2599,6 +2629,8 @@ def job_log(node_id, job_id, chunks, step=None):
             _exec("UPDATE jobs SET step = ? WHERE id = ?", (str(step)[:60], job_id))
     if (n or step is not None) and not _quiet(job_id):
         _jbump()
+        if step is not None:
+            _jsrev[0] += 1
     # ...and anything waiting to go DOWN to the job. The agent posts output
     # every half second, so this reply is the only channel the controller has
     # toward a running job: `cancel` has ridden it since the start, and a
@@ -2637,6 +2669,15 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         return {"ok": True, "already": True}
     if state not in JOB_END:
         return {"error": "a result is succeeded, failed or canceled"}
+    # Whether this is a quiet probe, decided BEFORE the state moves. The
+    # waiter in run_wait polls for the end, and on seeing it forgets the job,
+    # which takes it off the probe list; asked after the housekeeping below,
+    # the question found it gone and bumped the revisions. The Docker tab
+    # refetches on one of them and its read is a probe, so every read bumped
+    # the next: a refresh every second or two for as long as the tab was
+    # open (the operator's recording, 24 Sep; measured on the controller,
+    # one bump per read).
+    quiet = _quiet(job_id)
     code = None
     with contextlib.suppress(TypeError, ValueError):
         code = int(exit_code) if exit_code is not None else None
@@ -2679,7 +2720,7 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
             if state != "succeeded" and isinstance(better, str) and better.strip():
                 _exec("UPDATE jobs SET error = ? WHERE id = ?",
                       (better.strip()[:500], job_id))
-    if not _quiet(job_id):
+    if not quiet:
         _jstate_bump()
     with _wake:
         _wake.notify_all()      # the slot is free: a held poll may take the next

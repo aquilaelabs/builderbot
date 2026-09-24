@@ -95,7 +95,12 @@ bb: BuilderBot helper
                          ARGS go to the command, so a suite that takes file
                          names runs only those: `bb tests run auth cards`
   bb tests last          that verdict again from the last run's log, running nothing
+  bb tests log [-f]      the last run's output, whole; -f follows a run still going
   bb tests lab           the lab suites, against real services: the dev stack's Gitea, a real node
+  bb tests probe FILE    a scratch Playwright script against the dashboard fixture, like a suite
+  bb tests keep [stop|log]  keep the fixture up, so a suite or a probe attaches to it
+  bb tests preflight [--dry] [--base REF] [--files F...]  the suites and checks a change touches, run
+  bb tests coverage [SUITE...]  a covered run: which functions the suites reach, into bb map coverage
   bb devapp test [ARGS]  the project's test command inside its running dev instance, log and exit code
                          (--instance NAME on any devapp verb for a project with several)
   bb rules               the house rules for this project: the operator's and yours
@@ -119,7 +124,9 @@ bb: BuilderBot helper
   bb users               the dashboard's accounts; passwd NAME is the way back in
   bb users token PROJECT [ACCOUNT]  a session token for one project (and one
                          account), for a node proved by hand
-  bb settings [--json]   this project's settings as the dashboard has them (read-only)
+  bb settings [--json]   this project's settings as the dashboard has them
+  bb settings set build|test|outputs VALUE   fill one in for the operator; held
+                         or refused where the project's gate says so
   bb work                who else is changing this project, and which files
                          two of you have open at once
   bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended;
@@ -128,14 +135,32 @@ bb: BuilderBot helper
   bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node,
                          stream the log back; --out GLOB brings files into dist/
   bb build               the project's build command, on its node (settings dialog)
-  bb test [ARGS]         the project's test command, on its node; ARGS are
+  bb test [ARGS]         the project's test command, on its node or inside its
+                         dev instance as its settings say (Tests run); ARGS are
                          appended to it, to narrow a run to some of it
   bb devapp              this project's dev instance: built from what, running,
                          and whether its daemon answers
   bb devapp rebuild [--why "..."]
                          build it and bring it up. Only where the project's
-                         docker row has handed that over. On `ask` the reason
-                         goes to a person and this waits for their answer
+                         settings hand that over (Claude may: Run its
+                         container). On `ask` the reason goes to a person and
+                         this waits for their answer
+  bb devapp new [--env FILE] [--why "..."]
+                         create the project's container from its own compose
+                         file when it has none, under the same setting
+  bb devapp env [set FILE|-] [--why "..."]
+                         print its env, or replace it, under the same setting.
+                         The env is kept by BuilderBot, not as a file in the
+                         project: a compose line `env_file: .env` is pointed
+                         at it when the container runs
+  bb devapp ls           every container that belongs to this project on its
+                         node: its own, one written for it, one somebody else
+                         started that the operator put under it
+  bb devapp log NAME     one of those containers' log
+  bb devapp start|stop|restart NAME [--why "..."]
+                         one of those, under the same setting
+                         (--container NAME on status, rebuild, env and test,
+                         for one of them that is not the project's own)
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -184,8 +209,17 @@ bb: BuilderBot helper
   bb dashboard status    which copy of the dashboard is serving right now
   bb drift [REPO]        which files this checkout changed that the running
                          container is not serving yet
+  bb map [VERB ...]      the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
+                         draws ID|.class, suites FILE..., state [FILE], sections FILE, unused,
+                         addresses [FILE...], coverage, covered NAME, uncovered [FILE]; ask it before grepping
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
-  bb favicon SVG [DIR]   favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
+  bb tool                the tools toolchains add to a session, each under its own name
+  bb tool graphics CMD   pictures a session can make and read back (the graphics toolchain):
+                         info F | resize F WxH [OUT] | crop F WxH+X+Y [OUT] | compose BASE OVER [+X+Y] [OUT]
+                         annotate F TEXT [OUT] [--at +X+Y] [--size N] [--color C] | diff A B [OUT]
+                         svg2png F [WIDTH] [OUT] | optimize F... [--lossy] [--webp]; into dist/img/
+                         favicon SVG [DIR]: favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
+  bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) to PNG and SVG in dist/diagrams/
   bb toolchains            the toolchains kept outside the image: status, install X, remove X
 EOF
 }
@@ -217,6 +251,14 @@ cmd_status() {
         printf '  %-8s %s\n' means \
             "builds go to this project's node; bb nodes says which"
     fi
+    # Which credential bb is reaching the controller with and how long it
+    # lasts. A session token renews itself on every call and the agent keeps
+    # an idle session's fresh, so the copy in the environment is usually the
+    # OLDER one and reads as expired to anything that looks only there: a
+    # session reported exactly that as a fault once. Said here so renewal is
+    # something to see rather than to trust.
+    local tl; tl="$(bb_token_line)"
+    [ -z "$tl" ] || printf '  %-8s %s\n' token "$tl"
     echo
     echo "== versions =="
     # First, because it is the identity of everything under it: every version
@@ -569,16 +611,23 @@ LISTPY
     # machine is now signed in as, so the card can name it and a second
     # account on another node is refused.
     if [ "${1:-}" = --flow ]; then
-        local uid="${BB_ACCOUNT_UID:-}"
+        local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}"
+        # The pinned dir is the agent's CLAUDE_DIR; BB_CLAUDE_PINNED is for
+        # the suite, which runs on a machine that may carry a real one.
+        local pinned="${BB_CLAUDE_PINNED:-/usr/local/lib/builderbot/claude}"
         [ -n "$uid" ] && HOME="$(user_home "$uid")" && export HOME
         mkdir -p "$HOME/.claude" 2>/dev/null || true
-        # The agent runs this with its own PATH, and the native installer
-        # the provisioner uses puts claude in the account's ~/.local/bin,
-        # which only a login shell adds. Every provisioned node said "not
-        # installed" here while a session on it ran claude fine (16 Sep).
-        PATH="$HOME/.local/bin:$PATH"; export PATH
+        # Claude Code from where a SESSION finds it (the agent's session
+        # PATH): the pinned copy first, then the session account's own
+        # ~/.local/bin, which is where the provisioner installs it, and only
+        # then this account's. The agent runs this with its own PATH, and
+        # the flow used to look in this account's home alone: the owner's
+        # home IS the session account's, so it worked for them and for
+        # nobody else, and a second account was told Claude Code was not
+        # installed on a machine whose sessions ran it fine (24 Sep).
+        PATH="$pinned:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
         command -v claude >/dev/null 2>&1 \
-            || die "Claude Code is not installed for this account on this machine (looked on PATH and in $HOME/.local/bin)"
+            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Update in the Nodes tab's Claude Code section installs one copy every account runs"
         claude auth login || die "the sign-in did not complete"
         claude_login_check --loud || true
         return 0
@@ -647,9 +696,19 @@ emu_avd() {
         printf '%s' "$ANDROID_AVD_NAME"
         return
     fi
-    # The newest API level the store holds an image for: what the machine
-    # actually has, rather than a variable naming what somebody once meant to
-    # install (ANDROID_SYSTEM_IMAGES, which went with the baseline hook).
+    # An AVD that EXISTS, the newest of this prefix, before any guess from
+    # the images: the store held a 37.0 image nobody had made an AVD for, so
+    # the guess named builderbot-37.0, found nothing, fell back to the bare
+    # name and `bb emu start` said "AVD 'builderbot' not found" one minute
+    # after `bb emu create 36` said its AVD was ready (B209).
+    local have
+    have="$(avdmanager list avd 2>/dev/null | sed -n "s/^ *Name: \(${prefix}-[0-9][0-9.]*\)$/\1/p" | sort -V | tail -1)"
+    if [ -n "$have" ]; then
+        printf '%s' "$have"
+        return
+    fi
+    # Nothing made yet: the newest API level the store holds an image for,
+    # which is what `bb emu create` would name, so the refusal names it.
     first="$(emu_apis | tail -1)"
     [ -n "$first" ] || first=36
     if avd_exists "${prefix}-${first}"; then
@@ -657,6 +716,13 @@ emu_avd() {
     else
         printf '%s' "$prefix"
     fi
+}
+
+# Whether the running emulator has finished booting: adb lists it as a
+# device well before that, and an install or a launch aimed at it in between
+# fails with nothing said. SERIAL is emu_serial's.
+emu_booted() {
+    [ "$(adb -s "$1" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]
 }
 
 # Does hardware GLES actually work here? Not "is there a GPU": the card can be
@@ -822,13 +888,27 @@ cmd_emu() {
             if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
             echo no | avdmanager create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
                 || die "AVD creation failed for ${name}"
-            log "AVD '${name}' ready; bb emu start ${api}"
+            # The image path, written by hand. avdmanager is the android-tools
+            # entry on the store, a different directory from the SDK, and it
+            # writes image.sysdir.1 relative to the root it works out from its
+            # own location; the emulator resolves that line against
+            # ANDROID_HOME, and the two disagreed by one directory, so every
+            # start died with "Broken AVD system path" (B209). This line is
+            # what the emulator wants whatever avdmanager decided.
+            local ini="${ANDROID_AVD_HOME:-$HOME/.android/avd}/${name}.avd/config.ini"
+            if [ -f "$ini" ]; then
+                sed -i "s|^image.sysdir.1=.*|image.sysdir.1=system-images/android-${api}/google_apis/x86_64/|" "$ini"
+            else
+                warn "no config.ini at ${ini}; if the emulator says Broken AVD system path, that file's image.sysdir.1 is the line"
+            fi
+            log "AVD '${name}' ready; bb emu start"
             ;;
         install)
             local apk="${2:-}" serial
             [ -f "$apk" ] || die "bb emu install <apk>: ${apk:-?} is not a file"
             serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running; bb emu start first"
-            adb -s "$serial" install -r "$apk"
+            emu_booted "$serial" || die "the emulator is still booting; bb emu start waits for it, or try again in a moment"
+            adb -s "$serial" install -r "$apk" || die "adb install failed"
             ;;
         shot)
             # A screenshot of the emulator's screen, into dist/ so the
@@ -928,8 +1008,16 @@ cmd_emu() {
                 sleep 1; waited=$((waited + 1))
             done
             [ -n "$serial" ] \
-                || die "the emulator did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s; see ~/.android/emulator.log"
-            log "emulator is up as ${serial}"
+                || die "the emulator did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s; bb emu log has what it said"
+            # ...and BOOTED, on the same clock. adb lists the device the
+            # moment the emulator's adbd answers, minutes before the system
+            # is up; an install or a launch in that gap fails saying nothing.
+            while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-180}" ] && ! emu_booted "$serial"; do
+                sleep 2; waited=$((waited + 2))
+            done
+            emu_booted "$serial" \
+                || die "the emulator appeared as ${serial} but had not booted within ${ANDROID_BOOT_TIMEOUT:-180}s; bb emu log has what it said"
+            log "emulator is up as ${serial}, booted"
             adb devices
             ;;
         stop)
@@ -949,6 +1037,7 @@ cmd_emu() {
             # when a command aimed at "the device" could mean either. The
             # emulator is the one named emulator-NNNN.
             adb devices -l
+            [ -n "$(emu_serial)" ] || printf 'no emulator is running; bb emu start\n'
             ;;
         gpu)
             # "Which renderer would a start use, and why", in one command,
@@ -1103,6 +1192,8 @@ cmd_ci_log() {
 project_here() {
     local here; here="$(pwd -P)"
     case "$here" in
+        # A worktree is the project's, not a project called .worktrees.
+        "$BB_WORKTREES"/*) here="${here#"$BB_WORKTREES"/}"; printf '%s' "${here%%/*}" ;;
         "$WORKSPACE"/*) here="${here#"$WORKSPACE"/}"; printf '%s' "${here%%/*}" ;;
         *) return 1 ;;
     esac
@@ -2002,7 +2093,23 @@ elif op == "shelve":
         print("usage: bb roadmap shelve <n>", file=sys.stderr); sys.exit(1)
     n = ident(rest[0]); behind(n, None, None, None)
     r = roadmap.shelve(proj, n, True, by="claude", who=_who); bail(r)
-    print(f"shelved {R(n)}; say in your reply why, the operator unshelves it")
+    print(f"shelved {R(n)}; say in your reply why. `bb roadmap unshelve {R(n)} WHY` asks for it back")
+elif op == "unshelve":
+    # The other direction is a request, not a change (R78): taking one off
+    # the shelf reverses a decision the operator made for reasons the session
+    # was not told, so it is held with the reason for a person on the
+    # project, whatever the gate says, and lands when they approve it.
+    if not rest:
+        print("usage: bb roadmap unshelve <n> [WHY]", file=sys.stderr); sys.exit(1)
+    n = ident(rest[0])
+    r = roadmap.shelve(proj, n, False, by="claude", who=_who,
+                       why=" ".join(rest[1:]).strip()); bail(r)
+    if r.get("held"):
+        print(f"asked to take {R(n)} off the shelf: held for approval on the notebook, "
+              "where a person on the project allows or denies it. Carry on with something "
+              "else meanwhile")
+    else:
+        print(f"{R(n)} is off the shelf")
 elif op == "edit":
     # A plan written last week can describe a design that has since moved.
     # Correcting it is better than working around it, and the history keeps
@@ -2177,7 +2284,7 @@ elif op in ("history", "log"):
 else:
     print("usage: bb roadmap [list|show N|add TEXT [--step ...]|edit N TEXT|"
           "info N [M] TEXT|step add|edit|rm|mv|done|info ...|mv N up|down|done N|"
-          "rm N [WHY]|restore N|shelve N|begin|commit|revert|pending|"
+          "rm N [WHY]|restore N|shelve N|unshelve N [WHY]|begin|commit|revert|pending|"
           "history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)
     sys.exit(1)
@@ -2631,6 +2738,9 @@ elif op == "list":
     p = reg.payload(proj)
     print(f"{p['standing']} standing, {p['conditional']} conditional; "
           f"{p['chars']} characters in front of every session here")
+    # The name column is as wide as the longest name (B233): a fixed 22 ran
+    # no-credentials-in-the-repo straight into its text.
+    w = max([22] + [len(r['name']) + 1 for r in rs])
     for r in rs:
         when = ""
         if reg.conditional(r):
@@ -2640,7 +2750,7 @@ elif op == "list":
         mine = "*" if r.get("by") == "claude" else " "
         frame = ((" [global]" if r.get("scope") == "global" else "")
                  + (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else ""))
-        print(f" {mine}{r['name']:<22}{first[:60]}{when}{frame}")
+        print(f" {mine}{r['name']:<{w}}{first[:60]}{when}{frame}")
     print("\n`bb rules show <name>` for one in full. A * is one a session "
           "wrote: yours to `edit` or `rm`. The rest are the operator's: read "
           "them, and say in your reply if one looks wrong.")
@@ -2816,6 +2926,156 @@ cmd_tests() {
     # any project's stack, never by a verb of this script's, so testing
     # BuilderBot takes the paths every project takes. Reached on the node
     # the stack runs on, which is where a suite runs too.
+    # A probe (roadmap R75 step 2): a scratch Playwright script, from
+    # anywhere, run against the dashboard fixture the way a suite is. The
+    # harness copies it beside lib.mjs so its `./lib.mjs` resolves, and
+    # runs it against a kept fixture when one is up.
+    if [ "${1:-}" = probe ]; then
+        shift
+        [ $# -gt 0 ] || die "bb tests probe FILE.mjs [FILE...]: a script that imports './lib.mjs' and drives the fixture; after bb tests keep it attaches to the fixture that is up"
+        local f files=()
+        for f in "$@"; do
+            [ -f "$f" ] || die "no such file: $f"
+            files+=("$(readlink -f "$f")")
+        done
+        cmd_dashboard test "${files[@]}"
+        return
+    fi
+    # The kept fixture: the harness's whole set-up once, held up until
+    # stopped, so a suite or a probe attaches to it, and the world a suite
+    # just left is there for a probe to look at. Its state is not put back
+    # between runs; `bb tests keep` again for a clean world.
+    if [ "${1:-}" = keep ]; then
+        shift
+        local keepf="${TMPDIR:-/tmp}/bb-suite.keep" here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh"
+        local keeplog="${TMPDIR:-/tmp}/bb-suite.keep.log"
+        case "${1:-}" in
+            stop)
+                [ -f "$keepf" ] || die "no fixture is kept"
+                # shellcheck source=/dev/null
+                . "$keepf"
+                kill "${KEEP_PID:-0}" 2>/dev/null || true
+                local _
+                for _ in $(seq 100); do [ -f "$keepf" ] || break; sleep 0.2; done
+                [ -f "$keepf" ] && rm -f "$keepf"
+                log "the kept fixture is stopped"; return ;;
+            log) tail -n "${2:-40}" "$keeplog" 2>/dev/null || die "no kept fixture has logged anything"; return ;;
+            "") ;;
+            *) die "bb tests keep [stop|log]" ;;
+        esac
+        if [ -f "$keepf" ]; then
+            # shellcheck source=/dev/null
+            . "$keepf"
+            if kill -0 "${KEEP_PID:-0}" 2>/dev/null; then
+                log "a fixture is kept at $KEEP_URL (test:test), up $(( $(date +%s) - ${KEEP_SINCE:-0} ))s; bb tests keep stop ends it"
+                return
+            fi
+            rm -f "$keepf"
+        fi
+        [ -x "$here" ] || die "no dashboard test harness at $here: run this from the BuilderBot checkout"
+        ( BB_TEST_HOLD=1 nohup bash "$here" > "$keeplog" 2>&1 & )
+        local _
+        for _ in $(seq 150); do [ -f "$keepf" ] && break; sleep 1; done
+        [ -f "$keepf" ] || die "the fixture did not come up within 150s: bb tests keep log has what it said"
+        # shellcheck source=/dev/null
+        . "$keepf"
+        log "fixture kept at $KEEP_URL (test:test): bb dashboard test SUITE and bb tests probe FILE attach to it; bb tests keep stop ends it"
+        return
+    fi
+    # Preflight (roadmap R75 step 3): the suites a change touches, picked by
+    # the code map from the files that changed, run before a push with the
+    # checks the house rules name. Never picked by hand again: the one
+    # suite skipped before a push this month was the one that would have
+    # caught it. The files: the branch against its base, plus the working
+    # tree; or --files given outright; --dry only prints the plan.
+    if [ "${1:-}" = preflight ]; then
+        shift
+        local dry="" base="" files=() f suites=() checks=() all_dash="" own=() mapped=()
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --dry) dry=1; shift ;;
+                --base) base="$2"; shift 2 ;;
+                --files) shift; while [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; do files+=("$1"); shift; done ;;
+                *) die "bb tests preflight [--dry] [--base REF] [--files F...]" ;;
+            esac
+        done
+        if [ "${#files[@]}" -eq 0 ]; then
+            git rev-parse --git-dir >/dev/null 2>&1 || die "not in a git tree: bb tests preflight --files F... names the files instead"
+            local defaulted=""
+            if [ -z "$base" ]; then
+                base="$(git rev-parse --verify -q origin/main >/dev/null 2>&1 && echo origin/main || echo main)"
+                defaulted=1
+            fi
+            local mb; mb="$(git merge-base "$base" HEAD 2>/dev/null || echo "$base")"
+            while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(
+                { git diff --name-only "$mb" HEAD; git status --porcelain | sed -E 's/^.{3}//; s/.* -> //'; } | sort -u)
+            # The base is the branch's by default, which on a long branch is
+            # every file it ever touched and the whole suite every time
+            # (B225): said here, with the narrower measure beside it, so
+            # a session proving one change knows the flag exists.
+            log "preflight: $(printf '%s' "${#files[@]}") file(s) changed since $base ($(git rev-parse --short "$mb"))$(
+                [ -n "$defaulted" ] && [ "${#files[@]}" -gt 20 ] && printf '%s' "; --base HEAD measures the working tree alone, --base HEAD~1 the last commit with it")"
+        fi
+        [ "${#files[@]}" -gt 0 ] || { log "nothing changed: nothing to run"; return 0; }
+        # The suites, from the map. Python under the dashboard reaches its
+        # suites through the API paths it names; server.py names them all,
+        # so a change there is the whole suite, said as such, and so do the
+        # harness's own lib.mjs and run.sh, which every suite runs on.
+        # A changed SUITE is itself and nothing more: what it names is what
+        # it asks of the page and the server, which it cannot change, and
+        # the map added every suite naming the same endpoint, 27 for one
+        # change to roles.mjs (B244).
+        for f in "${files[@]}"; do
+            case "$f" in
+                scripts/dashboard/server.py|scripts/dashboard/test/lib.mjs|scripts/dashboard/test/run.sh) all_dash=1 ;;
+                scripts/dashboard/test/*.mjs) own+=("$(basename "$f" .mjs)") ;;
+                *) mapped+=("$f") ;;
+            esac
+        done
+        if [ -n "$all_dash" ]; then
+            suites=(ALL)
+        else
+            suites=("${own[@]}")
+            if [ "${#mapped[@]}" -gt 0 ]; then
+                while IFS= read -r f; do
+                    [ -n "$f" ] && case " ${suites[*]:-} " in *" $f "*) ;; *) suites+=("$f") ;; esac
+                done < <(cmd_map suites "${mapped[@]}" --names)
+            fi
+        fi
+        # The checks the house rules ask for before handing back.
+        checks=(lint voice)
+        for f in "${files[@]}"; do
+            case "$f" in scripts/dashboard/*) checks+=(design); break ;; esac
+        done
+        printf '  files:   %s\n' "${files[*]}"
+        printf '  suites:  %s\n' "${suites[*]:-none}"
+        printf '  checks:  %s\n' "${checks[*]}"
+        [ -z "$dry" ] || return 0
+        # Not cmd_dashboard test, which execs the harness and would end this
+        # verb before its checks: the harness is run as a child here.
+        local rc=0 here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh"
+        [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
+        if [ "${suites[*]:-}" = ALL ]; then bash "$here" || rc=1
+        elif [ "${#suites[@]}" -gt 0 ]; then bash "$here" "${suites[@]}" || rc=1; fi
+        local c
+        for c in "${checks[@]}"; do
+            # design is uniform.mjs, already in the run when it is listed
+            case "$c" in design) case " ${suites[*]:-} " in *" uniform "*|*" ALL "*) continue ;; esac ;; esac
+            bash "$0" rules check "$c" || rc=1
+        done
+        [ "$rc" = 0 ] && log "preflight: clean" || warn "preflight: something above failed"
+        return "$rc"
+    fi
+    # A covered run (roadmap R76): the suite, or the named suites, with the
+    # counters in, and the map's account of what they reached after.
+    if [ "${1:-}" = coverage ]; then
+        shift
+        local here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh" rc=0
+        [ -x "$here" ] || die "no dashboard test harness at $here: run this from the BuilderBot checkout"
+        BB_COVERAGE=1 bash "$here" "$@" || rc=$?
+        cmd_map coverage
+        return "$rc"
+    fi
     if [ "${1:-}" = lab ]; then
         # Each lab suite says what it needs and skips itself in one line
         # without it (R54 step 4). This used to die unless a Gitea answered,
@@ -2872,6 +3132,20 @@ cmd_tests() {
     # running anything. A red suite should cost one run, not four: what broke
     # is a fact the log already holds, and re-running to find it out again is
     # nine minutes for an answer that was on disk.
+    # The run's output itself, which bb tests run tees beside the project.
+    # `-f` follows a run that is still going: the Tests view's button sends
+    # this into the project's shell, where output belongs (it can be
+    # scrolled, paged and left running), rather than into a box on a row
+    # that redrew for every line.
+    if [ "${1:-}" = log ]; then
+        local rl="${WORKSPACE}/${proj}/.bb-test-run.log"
+        [ -f "$rl" ] || die "no run log yet; \`bb tests run\` writes one beside the project"
+        if [ "${2:-}" = -f ] || [ "${2:-}" = --follow ]; then
+            exec tail -n 200 -f "$rl"
+        fi
+        cat "$rl"
+        return
+    fi
     if [ "${1:-}" = last ]; then
         local prev="${WORKSPACE}/${proj}/.bb-test-run.log"
         [ -f "$prev" ] || die "no run log yet; \`bb tests run\` writes one beside the project"
@@ -3821,14 +4095,15 @@ PY
     esac
 }
 
-# bb devapp: this project's dev instance, and the one action a session may
-# be given over it.
+# bb devapp: this project's dev instance, and what a session may be given
+# over it.
 #
-# The dashboard's docker row is the operator's: Up, Down, Env, making one and
-# removing one are theirs, and a session is told to ask. REBUILD is the
-# exception a project can hand over, with the dial on that row, because a
-# project whose work IS the container has a loop that a session cannot close
-# otherwise: change it, rebuild it, look at what it did. Three settings and
+# Up, Down, removing one and a container of any other shape are the
+# operator's. What a project can hand over, with one setting in its settings
+# dialog (Claude may: Run its container), is rebuilding its container,
+# changing its env and creating its own when it has none (24 Sep), because
+# a project whose work IS the container has a loop that a session cannot
+# close otherwise: change it, rebuild it, look at what it did. Three settings and
 # `deny` is the default: `auto` is the loop, `ask` puts the reason in front
 # of a person and starts the build when they allow it, `deny` refuses with
 # the sentence that names the dial, so a session that tries learns where the
@@ -3840,16 +4115,20 @@ cmd_devapp() {
     # --instance NAME before or after the verb, for a project with several;
     # with none named the controller answers for the project's only one.
     local -a rest=()
-    local inst="" a
+    local inst="" ctr="" a
     while [ $# -gt 0 ]; do
         case "$1" in
             --instance) [ $# -ge 2 ] || die "--instance needs the name after it"; inst="$2"; shift 2 ;;
             --instance=*) inst="${1#--instance=}"; shift ;;
+            # One that belongs to this project and is not its own instance: a
+            # container written for it, named as bb devapp ls lists it.
+            --container) [ $# -ge 2 ] || die "--container needs the name after it"; ctr="$2"; shift 2 ;;
+            --container=*) ctr="${1#--container=}"; shift ;;
             *) rest+=("$1"); shift ;;
         esac
     done
     set -- "${rest[@]}"
-    export BB_DEV_INSTANCE="$inst"
+    export BB_DEV_INSTANCE="$inst" BB_DEV_CONTAINER="$ctr"
     local sub="${1:-status}" auth proj
     auth="$(bb_auth_or_die)"
     proj="${BB_PROJECT:-}"
@@ -3866,6 +4145,7 @@ import bbapi                                                    # noqa: E402
 
 d = bbapi.call("/api/devapp", {"project": os.environ["BB_DEV_PROJECT"],
                                "instance": os.environ.get("BB_DEV_INSTANCE", ""),
+                               "container": os.environ.get("BB_DEV_CONTAINER", ""),
                                "action": "state"},
                auth=os.environ["BB_DEV_AUTH"])
 if d.get("error"):
@@ -3884,8 +4164,10 @@ elif st.get("needs_build"):
     print(f"  {'built from':<12} nothing here yet")
 miss = st.get("missing_env") or []
 if miss:
+    # Kept by BuilderBot for this container, never a file in the project.
     print(f"  {'env':<12} missing " + ", ".join(miss[:6])
-          + (" …" if len(miss) > 6 else "") + "; the operator fills these in (Env)")
+          + (" …" if len(miss) > 6 else "") + "; bb devapp env prints it and bb devapp env set "
+          "replaces it where the project's settings allow, else the operator's Env on the Docker tab")
 job = st.get("job") or {}
 if job.get("running"):
     print(f"  {'job':<12} {job.get('step') or 'working'}")
@@ -3910,7 +4192,8 @@ import bbapi                                                    # noqa: E402
 
 proj = os.environ["BB_DEV_PROJECT"]
 auth = os.environ["BB_DEV_AUTH"]
-post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", "")}, auth=auth)  # noqa: E731
+post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),  # noqa: E731
+                                                "container": os.environ.get("BB_DEV_CONTAINER", "")}, auth=auth)
 
 def look():
     d = post({"action": "state"})
@@ -3979,8 +4262,9 @@ while waited < 3600:
                  else "built and not running" if st.get("await_env")
                  else "not running"))
         if st.get("await_env"):
-            print("[builderbot] its env is not filled in, which is the operator's: "
-                  "Env on the docker row", file=sys.stderr)
+            print("[builderbot] its env is not filled in: bb devapp env set FILE writes it where "
+                  "the project's settings allow, else the operator's Env on the Docker tab",
+                  file=sys.stderr)
         raise SystemExit(0)
     if waited >= 21:
         sys.exit("[builderbot] ERROR: no build appeared within twenty seconds; "
@@ -4009,6 +4293,7 @@ auth = os.environ["BB_DEV_AUTH"]
 # caller was told nothing had been timed (B202, four sightings on 21 Sep).
 START_WAIT = 120
 r = bbapi.call("/api/devapp", {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),
+                               "container": os.environ.get("BB_DEV_CONTAINER", ""),
                                "action": "test", "args": sys.argv[1:]}, auth=auth, timeout=START_WAIT)
 if r.get("error"):
     # The one refusal that does not mean nothing happened.
@@ -4039,7 +4324,167 @@ for _ in range(3600):
 sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs tab")
 PY
             ;;
-        *) die "usage: bb devapp [--instance NAME] [status|rebuild [--why \"what it is for\"]|test [ARGS]]" ;;
+        new|env)
+            # Creating the project's own container, and its env, under the
+            # same setting as rebuild (Claude may: Run its container). On
+            # `ask` one request carries it all and Allow runs it, the build
+            # included; on `auto` it is done and bb devapp rebuild is next.
+            local verb="$sub" why="" file="" setting=0 tmp=""
+            shift || true
+            if [ "$verb" = env ] && [ "${1:-}" = set ]; then
+                setting=1; shift
+                [ $# -ge 1 ] || die "usage: bb devapp env set FILE|- [--why \"what it is for\"]"
+                file="$1"; shift
+            fi
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    --env) { [ "$verb" = new ] && [ $# -ge 2 ]; } || die "usage: bb devapp new [--env FILE] [--why \"...\"]"
+                           file="$2"; shift 2 ;;
+                    *) die "usage: bb devapp new [--env FILE] [--why \"...\"] | env [set FILE|-] [--why \"...\"]" ;;
+                esac
+            done
+            if [ "$file" = - ]; then tmp="$(mktemp)"; cat > "$tmp"; file="$tmp"; fi
+            [ -z "$file" ] || [ -f "$file" ] || die "no such file: $file"
+            local rc=0
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_WHY="$why" BB_DEV_VERB="$verb" \
+            BB_DEV_SET="$setting" BB_DEV_FILE="$file" python3 - <<'PY' || rc=$?
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+proj, auth = os.environ["BB_DEV_PROJECT"], os.environ["BB_DEV_AUTH"]
+verb, setting = os.environ["BB_DEV_VERB"], os.environ.get("BB_DEV_SET") == "1"
+post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),  # noqa: E731
+                                                "container": os.environ.get("BB_DEV_CONTAINER", "")}, auth=auth)
+path = os.environ.get("BB_DEV_FILE", "")
+text = open(path, encoding="utf-8").read() if path else None
+if verb == "env" and not setting:
+    d = post({"action": "env-get"})
+    if d.get("error"):
+        sys.exit(f"[builderbot] ERROR: {d['error']}")
+    sys.stdout.write(d.get("text") or "")
+    if d.get("seeded"):
+        print("[builderbot] nothing is stored yet: that is the project's .env.example",
+              file=sys.stderr)
+    raise SystemExit(0)
+body = {"action": "new" if verb == "new" else "env-set", "why": os.environ.get("BB_DEV_WHY", "")}
+if text is not None:
+    body["text"] = text
+r = post(body)
+if r.get("error"):
+    sys.exit(f"[builderbot] ERROR: {r['error']}")
+if r.get("id"):
+    # On ask: one request, and Allow runs all of it, the build included.
+    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
+          "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
+    for _ in range(900):
+        time.sleep(1)
+        o = bbapi.call("/api/phone", {"action": "outcome", "id": r["id"]}, auth=auth)
+        if o.get("error"):
+            sys.exit(f"[builderbot] ERROR: {o['error']}")
+        if o["state"] == "denied":
+            sys.exit("[builderbot] it was not allowed")
+        if o["state"] == "done":
+            if o.get("code"):
+                sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
+            print("[builderbot] allowed, and building: bb devapp says how far it got")
+            raise SystemExit(0)
+    sys.exit("[builderbot] nobody answered within fifteen minutes")
+print(f"[builderbot] created {r.get('instance') or 'it'}; bb devapp rebuild builds and starts it"
+      if verb == "new" else "[builderbot] its env is saved; bb devapp rebuild applies it")
+PY
+            [ -z "$tmp" ] || rm -f "$tmp"
+            return "$rc"
+            ;;
+        ls|list)
+            # What belongs to this project on its node, as its group on the
+            # Docker tab lists it (the operator, 24 Sep).
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - <<'PY'
+import os, sys, urllib.parse
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+proj = os.environ["BB_DEV_PROJECT"]
+d = bbapi.call("/api/docker?project=" + urllib.parse.quote(proj), auth=os.environ["BB_DEV_AUTH"])
+if d.get("error") and not (d.get("instances") or d.get("containers")):
+    sys.exit(f"[builderbot] ERROR: {d['error']}")
+blind = bool(d.get("blind"))
+rows = []
+for i in d.get("instances") or []:
+    if i.get("owner") != proj:
+        continue
+    kind = ("written here" if i.get("source") == "file" else
+            "its own" if i.get("project") == proj else f"built from {i.get('project')}")
+    state = "?" if blind else "running" if i.get("running") else "stopped" if i.get("exists") else "down"
+    rows.append((i.get("name") or "", kind, state, " ".join(i.get("ports") or [])))
+for c in d.get("containers") or []:
+    if c.get("owner") != proj:
+        continue
+    rows.append((c.get("name") or c.get("id") or "", "not ours", c.get("state") or "?",
+                 " ".join(c.get("ports") or [])))
+if not rows:
+    print(f"nothing belongs to {proj} on its node: the operator puts a container under a "
+          "project on its row on the Docker tab")
+    raise SystemExit(0)
+w = max(len(r[0]) for r in rows)
+for name, kind, state, ports in sorted(rows):
+    print(f"  {name:<{w}}  {kind:<14} {state:<8} {ports}".rstrip())
+if blind:
+    print("[builderbot] the daemon did not answer, so what is running is not known", file=sys.stderr)
+print("[builderbot] bb devapp log NAME reads one; bb devapp start|stop|restart NAME, and "
+      "--container NAME on the other verbs, act on one where the project's settings allow",
+      file=sys.stderr)
+PY
+            ;;
+        log|logs|start|stop|restart)
+            # One container that belongs to this project, by the name bb
+            # devapp ls lists: its log, or start, stop and restart under the
+            # project's Run its container setting.
+            local verb="$sub" name="" why=""
+            shift || true
+            [ $# -ge 1 ] || die "usage: bb devapp $verb NAME [--why \"...\"]"
+            name="$1"; shift
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    *) die "usage: bb devapp $verb NAME [--why \"...\"]" ;;
+                esac
+            done
+            [ "$verb" = logs ] && verb=log
+            BB_DEV_AUTH="$auth" BB_DEV_VERB="$verb" BB_DEV_NAME="$name" BB_DEV_WHY="$why" python3 - <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+
+auth, verb, name = os.environ["BB_DEV_AUTH"], os.environ["BB_DEV_VERB"], os.environ["BB_DEV_NAME"]
+r = bbapi.call("/api/dockerctl", {"action": "logs" if verb == "log" else verb, "container": name,
+                                  "why": os.environ.get("BB_DEV_WHY", "")}, auth=auth)
+if r.get("error"):
+    sys.exit(f"[builderbot] ERROR: {r['error']}")
+if verb == "log":
+    sys.stdout.write(r.get("text") or "")
+    raise SystemExit(0)
+if r.get("id"):
+    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
+          "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
+    for _ in range(900):
+        time.sleep(1)
+        o = bbapi.call("/api/phone", {"action": "outcome", "id": r["id"]}, auth=auth)
+        if o.get("error"):
+            sys.exit(f"[builderbot] ERROR: {o['error']}")
+        if o["state"] == "denied":
+            sys.exit("[builderbot] it was not allowed")
+        if o["state"] == "done":
+            if o.get("code"):
+                sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it did not happen'}")
+            print(f"[builderbot] allowed: {o.get('out') or verb}")
+            raise SystemExit(0)
+    sys.exit("[builderbot] nobody answered within fifteen minutes")
+print(f"[builderbot] {r.get('out') or verb}")
+PY
+            ;;
+        *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
     esac
 }
 
@@ -4169,6 +4614,37 @@ bb_token_dead() {
     local e; e="$(bb_token_exp "${1:-}")"
     [ -n "$e" ] || return 1                  # not a session token: not ours to judge
     [ "$e" -le "$(date +%s)" ]
+}
+
+# One line for bb status: which copy of the session token is in use, where
+# it came from and when it runs out, so a person can see renewal working.
+bb_token_line() {
+    local t="${BB_TOKEN:-}" now; now="$(bb_token_now)"
+    local when=""
+    if [ -z "$now" ]; then
+        [ -n "${DASHBOARD_AUTH:-}" ] && printf 'none; the operator credential (DASHBOARD_AUTH) reaches the controller'
+        return 0
+    fi
+    bb_token_dead "$now" && {
+        printf 'expired%s; open this session'"'"'s tab from the dashboard and the next command works' \
+            "$(bb_token_when "$now")"; return 0; }
+    if [ "$now" = "$t" ]; then
+        printf 'the environment'"'"'s, expires%s (renews on every call past half its life)' "$(bb_token_when "$now")"
+    else
+        when="$(bb_token_when "$now")"
+        if [ -n "$t" ] && bb_token_dead "$t"; then
+            printf 'the kept copy, expires%s; the environment'"'"'s ran out%s and is not what bb sends' \
+                "$when" "$(bb_token_when "$t")"
+        else
+            printf 'the kept copy (renewed by calls and the agent), expires%s' "$when"
+        fi
+    fi
+}
+
+# " 23 Sep at 21:12" for a token, or "" when it carries no expiry.
+bb_token_when() {
+    local e; e="$(bb_token_exp "${1:-}")"
+    [ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null || true
 }
 
 # The session token to use now: the one in the environment unless it has
@@ -4446,8 +4922,13 @@ run_here() {
 
 # bb settings [--json]: this project's settings, as the dashboard has them:
 # node, model, effort, the build and test commands, whether it is locked.
-# Read-only, and no verb writes any of it: those are the settings dialog's.
 # On a node it is relayed, and it is what bb-tty and bb build read there.
+# bb settings set build|test|outputs VALUE: the one write, and only those
+# three fields: a session has read the tree and knows how it builds, and the
+# operator often does not. It goes through the project's fourth gate (auto,
+# ask, deny), the same shape as a roadmap add; the node, the policy and the
+# gates themselves have no verb, since a session that could loosen its own
+# gate has no gate.
 # bb git VERB [ARGS...]: git's network half, run where the credential is.
 #
 # Rule 2 of docs/nodes.md §20: PATs and deploy keys are set up on the
@@ -4520,6 +5001,35 @@ cmd_settings() {
             proj=""
         }
     fi
+    if [ "${1:-}" = set ]; then
+        [ -n "$proj" ] || die "not inside a project under ${WORKSPACE}; cd into one first"
+        local field="${2:-}"; shift 2 2>/dev/null || true
+        case "$field" in build|test|outputs) ;; *) die "bb settings set build|test|outputs VALUE" ;; esac
+        [ $# -ge 1 ] || die "bb settings set $field VALUE: the command to run, or for outputs the globs, comma-separated"
+        BB_SET_FIELD="$field" BB_SET_VALUE="$*" DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+            python3 - "$(dirname "$(readlink -f "$0")")/dashboard" "$proj" <<'PY'
+import json, os, sys
+here, proj = sys.argv[1], sys.argv[2]
+sys.path.insert(0, here)
+import prefs, pending
+def _w(path, obj):
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f: json.dump(obj, f)
+    os.replace(tmp, path)
+prefs.configure(state=os.environ["DASHBOARD_STATE"], write_json=_w)
+pending.configure(state=os.environ["DASHBOARD_STATE"], write_json=_w)
+field, value = os.environ["BB_SET_FIELD"], os.environ["BB_SET_VALUE"]
+r = prefs.session_set(proj, **{field: value})
+if r.get("error"):
+    print("[builderbot] ERROR: " + r["error"], file=sys.stderr); raise SystemExit(1)
+if r.get("held"):
+    print(f"held for approval: {field} for {proj} lands in its settings when the operator "
+          "approves it on the notebook; you are told on a later turn what they decided")
+else:
+    print(f"set {field} for {proj}: {value}")
+PY
+        return
+    fi
     # The tree this is being asked from, when the caller is standing in the
     # project it is asking about: what says how the project is tested is the
     # directory, and a relayed verb does not always carry the workspace.
@@ -4543,13 +5053,6 @@ rec = dict(prefs.get(proj) or {})
 # nothing set, which is claude's own default.
 _mine = prefs.for_user(os.environ.get("BB_ACCOUNT_UID", ""), proj) if proj else {}
 rec["model"], rec["effort"] = _mine.get("model", ""), _mine.get("effort", "")
-# What `bb test` runs here with nothing set. Never written to the file: the
-# record stays the operator's, and this is what an empty box means. From the
-# tree itself where the caller stands in one; the workspace is not in the
-# environment on every path a relayed verb takes, and the directory is.
-_root = os.environ.get("BB_PROJECT_ROOT") or os.path.join(
-    os.environ.get("BB_WORKSPACE") or "/workspace", proj)
-rec["test_default"] = prefs.test_default_at(_root) if proj else ""
 try:
     locks = json.load(open(os.path.join(state, "locked-projects.json")))
 except (OSError, ValueError):
@@ -5015,31 +5518,32 @@ try:
     rec = json.load(sys.stdin)
 except ValueError:
     rec = {}
-# Four things, in order: the command, where it came from, whether the tests
-# run only in the container, then the output globs. What the settings say,
-# or, for a test, the command a project of this shape obviously runs, so a
-# repo nobody configured still answers bb test. Where it came from rides
-# along because the caller says so out loud, and asking a second time would
-# be a second relay from a node.
+# Three things, in order: the command, where the tests run (node, up or
+# only), then the output globs. What the settings say and nothing else: a
+# command nobody typed must not run as if somebody had. A controller from
+# before tests_in sends devtest alone, and there off meant up.
 # No apostrophes in here: the whole block is inside shell single quotes.
 role = os.environ["BB_ROLE_"]
-set_here = rec.get(role) or ""
-cmd = set_here or (rec.get("test_default") if role == "test" else "") or ""
+cmd = rec.get(role) or ""
 print(cmd)
-print("set" if set_here else ("default" if cmd else "none"))
-print("only" if rec.get("devtest") else "either")
+print("set" if cmd else "none")
+print(rec.get("tests_in") or ("only" if rec.get("devtest") else "up"))
 for g in rec.get("outputs") or []:
     print(g)
 ')
-    local cmd="${rec[0]:-}" from="${rec[1]:-none}" where="${rec[2]:-either}"
-    [ -n "$cmd" ] || die "no $role command is set for $proj; the operator sets it in the project's settings dialog (Build and test)"
-    # A test runs inside the project's dev instance when it has one that is
-    # UP (roadmap R48): the container is the boundary. Otherwise on the node,
-    # unless the project's Docker row says the tests are the container's
-    # only: then a container that is down is a refusal naming it, and nothing
-    # runs on the node, which is what stops a suite that tests BuilderBot
-    # from running on the BuilderBot it is running on.
-    if [ "$role" = test ]; then
+    local cmd="${rec[0]:-}" where="${rec[2]:-node}"
+    [ -n "$cmd" ] || die "no $role command is set for $proj: bb settings set $role '...' fills it in (the operator approves it where the project asks), or the operator does in the settings dialog (Build and test)"
+    # Where the tests run is the project's setting (Tests run, in its settings
+    # dialog). On the node unless it says otherwise, and then the dev
+    # instance is not even asked about: an image built to ship carries no
+    # tests, and a run inside one found none and reported success (B241).
+    # "up" runs them inside the instance when it is up (roadmap R48), and
+    # "only" makes a down instance a refusal naming it, with nothing run on
+    # the node, which is what stops a suite that tests BuilderBot from
+    # running on the BuilderBot it is running on.
+    if [ "$role" = test ] && [ "$where" = node ]; then
+        echo "[builderbot] $proj's tests run on the node, as its settings say (Tests run)" >&2
+    elif [ "$role" = test ]; then
         local inst
         # The refusal kept rather than thrown away. This was `2>/dev/null`,
         # and when the controller did not answer (a relay call that timed out,
@@ -5054,7 +5558,7 @@ for g in rec.get("outputs") or []:
         fi
         rm -f "$inst_err"
         if [ "$(printf '%s\n' "$inst" | awk '$1 == "running" {print $2}')" = yes ]; then
-            echo "[builderbot] $proj's dev instance is up: the tests run inside it" >&2
+            echo "[builderbot] $proj's dev instance is up: the tests run inside it, as its settings say (Tests run)" >&2
             BB_PROJECT="$proj" exec "$0" devapp test "$@"
         elif [ "$where" = only ]; then
             local name; name="$(printf '%s\n' "$inst" | awk '$1 == "instance" {print $2}')"
@@ -5063,7 +5567,6 @@ for g in rec.get("outputs") or []:
     fi
     # Said before it runs: a command nobody typed should not look like one
     # somebody did.
-    [ "$from" = default ] && log "nothing set for tests on $proj, so: $cmd"
     local -a args=(--role "$role") g
     for g in "${rec[@]:3}"; do [ -n "$g" ] && args+=(--out "$g"); done
     # Anything else on the line is APPENDED TO THE COMMAND, not read as a flag
@@ -5619,6 +6122,17 @@ except xml.parsers.expat.ExpatError as e:
     # runs is the one that goes stale: `bb toolchains migrate` outlived its code in
     # the README because nothing compared them.
     if [ -f scripts/bb ] && [ -f README.md ] && grep -q '^bb status ' README.md; then
+        # The agent's version is the one number in this tree a person moves
+        # by hand, and a node compares the file while the row names the
+        # number (B221): tools/agent-version.sh holds the two together, here
+        # and in the lint workflow, so the two agree.
+        section "agent version (moves with its file)"
+        if [ -x tools/agent-version.sh ]; then
+            sh tools/agent-version.sh || rc=1
+        else
+            echo "  [skip] tools/agent-version.sh is not in this tree"
+        fi
+
         section "docs (bb help vs README)"
         local missing extra
         missing="$(comm -23 \
@@ -5813,6 +6327,19 @@ is not running; see bb logs."
 # not serving. Compares the image's /opt/builderbot/scripts and the shipped
 # templates against the repo's, file by file. Answers the question every
 # session asks itself after editing anything here.
+# bb map: the code map (lib/codemap.py, roadmap R75). Over the project tree
+# a session is in (BB_TREE on a node, else the working directory), rebuilt
+# by itself when a source is newer than the index.
+cmd_map() {
+    # `addresses` with nothing to read reads the roadmap: the plan is where
+    # a session writes `file ~line`, and where those go stale (item 7).
+    if [ "${1:-}" = addresses ] && [ $# -eq 1 ]; then
+        cmd_roadmap | python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" addresses -
+        return
+    fi
+    python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" "$@"
+}
+
 cmd_drift() {
     local repo="${1:-$PWD}" n=0
     [ -d "$repo/scripts" ] || die "$repo does not look like the BuilderBot checkout (no scripts/)"
@@ -6056,7 +6583,7 @@ EOF
     printf '%s\n' "$files"
 }
 
-# bb favicon: one SVG mark in, the favicon set a web app actually needs out:
+# bb tool graphics favicon: one SVG mark in, the favicon set a web app actually needs out:
 # favicon.ico carrying every small size in one file (the bare /favicon.ico
 # request browsers make on their own has no way to ask for a particular one),
 # apple-touch-icon.png at 180 for iOS home screens, and the SVG copied
@@ -6069,7 +6596,238 @@ EOF
 # project would otherwise re-learn. (Generalized from the private tool
 # MediaReducer grew for this, minus its PIL dependency, which the container
 # python does not carry.)
-cmd_favicon() {
+# ---- bb tool: what a toolchain adds to a session, under its own name -----------
+# `bb tool TOOL COMMAND...`: a toolchain's commands live under the toolchain's
+# name, so two toolchains may both have a `render` or a `shot` and none can
+# shadow one of bb's own verbs. The catalogue names each recipe's tool
+# (`tool` in config/toolchains.json), the Toolchains tab says so on the row,
+# and the suite holds the catalogue to the case below.
+cmd_tool() {
+    local tool="${1:-}"; [ $# -gt 0 ] && shift
+    case "$tool" in
+        graphics)  tool_graphics "$@" ;;
+        diagrams)  tool_diagrams "$@" ;;
+        "")
+            local t d
+            for t in graphics diagrams; do
+                if d="$(sdk_find "$t" 2>/dev/null)" && [ -n "$d" ]; then
+                    printf '  %-10s installed here\n' "$t"
+                else
+                    printf '  %-10s not on this node: the Toolchains tab installs it\n' "$t"
+                fi
+            done
+            printf '\n  bb tool graphics info|resize|crop|compose|annotate|diff|svg2png|optimize|favicon ...\n'
+            printf '  bb tool diagrams render FILE... [--out DIR]\n' ;;
+        *) die "no tool called ${tool}: bb tool lists them" ;;
+    esac
+}
+
+# ---- graphics ------------------------------------------------------------------
+# A session cannot see a picture it has not rendered, and these are how it
+# renders one it can then read back. Every verb is an argv built here from
+# checked arguments and handed to a tool on the store: the graphics toolchain
+# (ImageMagick's magick, resvg, oxipng, pngquant, cwebp) and the diagrams one
+# (PlantUML on the store's JDK, Mermaid through the store's Chromium).
+# Results go under dist/, where the Artifacts tab lists them.
+
+# gfx_tool RECIPE NAME: the store's copy of a tool, else the one on PATH,
+# else a refusal that names the recipe to install.
+gfx_tool() {
+    local recipe="$1" name="$2" d=""
+    d="$(sdk_find "$recipe" 2>/dev/null)" || d=""
+    if [ -n "$d" ] && [ -x "$d/bin/$name" ]; then printf '%s' "$d/bin/$name"; return 0; fi
+    if command -v "$name" >/dev/null 2>&1; then command -v "$name"; return 0; fi
+    die "no ${name} here: install the ${recipe} toolchain on the Toolchains tab with this node picked"
+}
+
+# img_out IN VERB [OUT] [EXT]: where a result goes. Named, or dist/img/ by
+# the input's name and the verb, so two runs do not overwrite each other's
+# and the tab can tell them apart.
+img_out() {
+    local in="$1" verb="$2" out="${3:-}" ext="${4:-}"
+    if [ -n "$out" ]; then printf '%s' "$out"; return; fi
+    mkdir -p dist/img
+    printf 'dist/img/%s-%s.%s' "$(basename "${in%.*}")" "$verb" "${ext:-${in##*.}}"
+}
+
+img_file() { [ -f "$1" ] || die "no such file: $1"; }
+
+# A font file for magick to draw text with. The unpacked ImageMagick carries
+# no fonts and, given none, draws NOTHING and says nothing: an annotate that
+# succeeded with an image identical to its input, measured on bb-sandbox. So
+# the file is named on every call: fontconfig's sans, then the usual files
+# under the system fonts, then the one the caller passed.
+img_font() {
+    local f="${1:-}"
+    if [ -n "$f" ]; then [ -f "$f" ] || die "no such font file: $f"; printf '%s' "$f"; return; fi
+    f="$(fc-match -f '%{file}' sans 2>/dev/null || true)"
+    [ -f "$f" ] || f="$(find /usr/share/fonts /usr/local/share/fonts -type f \( -iname 'DejaVuSans.ttf' -o -iname 'LiberationSans-Regular.ttf' -o -iname 'NotoSans-Regular.ttf' -o -iname 'FreeSans.ttf' \) 2>/dev/null | head -1)"
+    [ -f "$f" ] || die "no font found on this machine to draw text with: pass --font FILE.ttf, or ask the operator for a fonts package on this node"
+    printf '%s' "$f"
+}
+
+tool_graphics() {
+    local verb="${1:-}"; [ $# -gt 0 ] && shift
+    local magick f out
+    case "$verb" in
+        info)
+            img_file "${1:-}"; magick="$(gfx_tool graphics magick)"
+            "$magick" identify -format '%f: %m %wx%h, %[colorspace], %b\n' "$1"
+            ;;
+        resize)
+            f="${1:-}"; img_file "$f"; local geom="${2:-}"
+            case "$geom" in ''|*[!0-9x%]*) die "bb tool graphics resize FILE WxH|W|N% [OUT]" ;; esac
+            out="$(img_out "$f" resize "${3:-}")"; magick="$(gfx_tool graphics magick)"
+            "$magick" "$f" -resize "$geom" "$out" || die "resize failed"
+            log "wrote ${out}"
+            ;;
+        crop)
+            f="${1:-}"; img_file "$f"; local geom="${2:-}"
+            case "$geom" in ''|*[!0-9x+-]*) die "bb tool graphics crop FILE WxH+X+Y [OUT]" ;; esac
+            out="$(img_out "$f" crop "${3:-}")"; magick="$(gfx_tool graphics magick)"
+            "$magick" "$f" -crop "$geom" +repage "$out" || die "crop failed"
+            log "wrote ${out}"
+            ;;
+        compose)
+            # OVER laid on BASE at an offset, +0+0 by default: an icon on a
+            # ground, a badge on a screenshot.
+            local base="${1:-}" over="${2:-}" off="+0+0"; img_file "$base"; img_file "$over"; shift 2
+            case "${1:-}" in +*|-*) off="$1"; shift ;; esac
+            case "$off" in *[!0-9+-]*) die "the offset is +X+Y" ;; esac
+            out="$(img_out "$base" compose "${1:-}")"; magick="$(gfx_tool graphics magick)"
+            "$magick" "$base" "$over" -geometry "$off" -composite "$out" || die "compose failed"
+            log "wrote ${out}"
+            ;;
+        annotate)
+            f="${1:-}"; img_file "$f"; local text="${2:-}" at="+12+28" size=22 color="white" font=""
+            [ -n "$text" ] || die "bb tool graphics annotate FILE TEXT [OUT] [--at +X+Y] [--size N] [--color C] [--font FILE]"
+            shift 2; out=""
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --at) at="$2"; shift 2 ;;
+                    --size) size="$2"; shift 2 ;;
+                    --color) color="$2"; shift 2 ;;
+                    --font) font="$2"; shift 2 ;;
+                    -*) die "unknown option: $1" ;;
+                    *) out="$1"; shift ;;
+                esac
+            done
+            case "$at" in *[!0-9+-]*) die "--at takes +X+Y" ;; esac
+            case "$size" in ''|*[!0-9]*) die "--size takes a number" ;; esac
+            case "$color" in *[!#A-Za-z0-9]*) die "--color takes a CSS color name or #hex" ;; esac
+            out="$(img_out "$f" annotate "$out")"; magick="$(gfx_tool graphics magick)"; font="$(img_font "$font")"
+            "$magick" "$f" -font "$font" -fill "$color" -pointsize "$size" -annotate "$at" "$text" "$out" || die "annotate failed"
+            log "wrote ${out}"
+            ;;
+        diff)
+            # How many pixels differ, and a picture of where: the before and
+            # after of a screen, checked by a number rather than by eye.
+            local a="${1:-}" b="${2:-}" n; img_file "$a"; img_file "$b"
+            out="$(img_out "$a" diff "${3:-}" png)"; magick="$(gfx_tool graphics magick)"
+            # The count, then the same normalised in brackets: "1335.63 (0.0005)".
+            # The first word is the answer; compare exits non-zero whenever
+            # the images differ, which is not a failure here.
+            n="$("$magick" compare -metric AE "$a" "$b" "$out" 2>&1 >/dev/null || true)"; n="${n%% *}"
+            case "$n" in ''|*[!0-9.e+]*) die "compare failed: ${n}" ;; esac
+            printf '%s pixels differ; the difference is drawn in %s\n' "${n%%.*}" "$out"
+            ;;
+        svg2png)
+            # A width is digits; anything else in that place is the output.
+            f="${1:-}"; img_file "$f"; local w="" resvg; out=""
+            case "${2:-}" in '') ;; *[!0-9]*) out="$2" ;; *) w="$2"; out="${3:-}" ;; esac
+            out="$(img_out "$f" png "$out" png)"; resvg="$(gfx_tool graphics resvg)"
+            if [ -n "$w" ]; then "$resvg" -w "$w" "$f" "$out"; else "$resvg" "$f" "$out"; fi || die "resvg failed"
+            log "wrote ${out}"
+            ;;
+        optimize)
+            # In place, losslessly, unless --lossy is asked for: a PNG through
+            # oxipng, a JPEG stripped and requantised, and --webp makes a
+            # .webp beside each. What an app ships, made smaller before it
+            # does.
+            local lossy=0 webp=0 files=() t
+            while [ $# -gt 0 ]; do
+                case "$1" in --lossy) lossy=1 ;; --webp) webp=1 ;; -*) die "unknown option: $1" ;; *) img_file "$1"; files+=("$1") ;; esac; shift
+            done
+            [ "${#files[@]}" -gt 0 ] || die "bb tool graphics optimize FILE... [--lossy] [--webp]"
+            for f in "${files[@]}"; do
+                case "$f" in
+                    *.png|*.PNG)
+                        if [ "$lossy" = 1 ]; then t="$(gfx_tool graphics pngquant)"; "$t" --force --skip-if-larger --ext .png -- "$f" || true; fi
+                        t="$(gfx_tool graphics oxipng)"; "$t" -o 4 --strip safe -q "$f" || die "oxipng failed on ${f}" ;;
+                    *.jpg|*.jpeg|*.JPG|*.JPEG)
+                        magick="$(gfx_tool graphics magick)"; "$magick" "$f" -strip -quality 85 "$f" || die "magick failed on ${f}" ;;
+                    *) log "skipping ${f}: not a PNG or JPEG" ;;
+                esac
+                if [ "$webp" = 1 ]; then t="$(gfx_tool graphics cwebp)"; "$t" -quiet -q 85 "$f" -o "${f%.*}.webp" || die "cwebp failed on ${f}"; fi
+                log "optimized ${f} ($(du -h "$f" | cut -f1))"
+            done
+            ;;
+        favicon) tool_graphics_favicon "$@" ;;
+        *) die "bb tool graphics info|resize|crop|compose|annotate|diff|svg2png|optimize|favicon ...; bb help has the shapes" ;;
+    esac
+}
+
+tool_diagrams() {
+    local cmd="${1:-}"; [ $# -gt 0 ] && shift
+    case "$cmd" in
+        render) tool_diagrams_render "$@" ;;
+        *) die "bb tool diagrams render FILE... [--out DIR]" ;;
+    esac
+}
+
+tool_diagrams_render() {
+    local out="dist/diagrams" files=() f name plantuml mmdc java
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --out) out="$2"; shift 2 ;;
+            -*) die "unknown option: $1" ;;
+            *) img_file "$1"; files+=("$1"); shift ;;
+        esac
+    done
+    [ "${#files[@]}" -gt 0 ] || die "bb tool diagrams render FILE... [--out DIR]: .puml or .plantuml (PlantUML), .mmd or .mermaid (Mermaid)"
+    mkdir -p "$out"; out="$(cd "$out" && pwd)"
+    # A result is named by its source's stem, so two sources with one stem
+    # (flow.puml and flow.mmd) would write one flow.png, the second over
+    # the first without a word (B212). Refused before anything renders.
+    local seen=" " stems=() first
+    for f in "${files[@]}"; do
+        name="$(basename "${f%.*}")"
+        case "$seen" in
+            *" $name "*)
+                first="$(printf '%s\n' "${stems[@]}" | awk -F'\t' -v n="$name" '$1 == n { print $2; exit }')"
+                die "${first} and ${f} would both write ${out}/${name}.png: rename one, or render them into different --out directories" ;;
+        esac
+        seen="$seen$name "; stems+=("${name}	${f}")
+    done
+    for f in "${files[@]}"; do
+        name="$(basename "${f%.*}")"
+        case "$f" in
+            *.puml|*.plantuml)
+                plantuml="$(gfx_tool diagrams plantuml)"
+                # The store's JDK when it is here; the wrapper falls back to
+                # whatever java is on PATH.
+                java="$(sdk_find jdk 2>/dev/null)/bin/java"; [ -x "$java" ] || java=""
+                JAVA="${java:-java}" "$plantuml" -tpng -o "$out" "$f" || die "plantuml failed on ${f}"
+                JAVA="${java:-java}" "$plantuml" -tsvg -o "$out" "$f" || die "plantuml failed on ${f}"
+                ;;
+            *.mmd|*.mermaid)
+                mmdc="$(gfx_tool diagrams mmdc)"
+                # Mermaid renders in a browser: the store's Chromium, told
+                # where it is and to run without a sandbox, since a node has
+                # no user namespaces for one.
+                local cfg; cfg="$(mktemp)"
+                printf '{"executablePath":"%s","args":["--no-sandbox","--disable-gpu"]}\n' "$(find_chromium)" > "$cfg"
+                "$mmdc" -q -p "$cfg" -i "$f" -o "$out/$name.png" || { rm -f "$cfg"; die "mmdc failed on ${f}"; }
+                "$mmdc" -q -p "$cfg" -i "$f" -o "$out/$name.svg" || { rm -f "$cfg"; die "mmdc failed on ${f}"; }
+                rm -f "$cfg"
+                ;;
+            *) die "${f}: not a .puml, .plantuml, .mmd or .mermaid file" ;;
+        esac
+        log "wrote ${out}/${name}.png and ${out}/${name}.svg"
+    done
+}
+
+tool_graphics_favicon() {
     local svg="" out="" bg=""
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -6078,15 +6836,14 @@ cmd_favicon() {
             *) if [ -z "$svg" ]; then svg="$1"; else out="$1"; fi; shift ;;
         esac
     done
-    [ -n "$svg" ] || die "usage: bb favicon LOGO.svg [OUTDIR] [--bg COLOR]"
+    [ -n "$svg" ] || die "usage: bb tool graphics favicon LOGO.svg [OUTDIR] [--bg COLOR]"
     [ -f "$svg" ] || die "no such file: $svg"
     # Only ever an argv to convert, but a color is a name or #hex, and saying
     # so beats handing ImageMagick something to be confused by.
     case "$bg" in *[!#A-Za-z0-9]*) die "--bg takes a CSS color name or #hex" ;; esac
     out="${out:-.}"
     mkdir -p "$out"
-    command -v convert >/dev/null 2>&1 || die "imagemagick's convert is required"
-    local chrome; chrome="$(find_chromium)"
+    local magick chrome; magick="$(gfx_tool graphics magick)"; chrome="$(find_chromium)"
 
     local tmp
     tmp="$(mktemp -d)"
@@ -6112,12 +6869,12 @@ const [exe, tmp] = process.argv.slice(2);
   await b.close();
 })().catch(e => { console.error(String(e)); process.exit(1); });
 EOF
-    convert "$tmp/16.png" "$tmp/32.png" "$tmp/48.png" "$tmp/64.png" \
+    "$magick" "$tmp/16.png" "$tmp/32.png" "$tmp/48.png" "$tmp/64.png" \
             "$tmp/128.png" "$tmp/256.png" "$out/favicon.ico"
     if [ -n "$bg" ]; then
         # iOS composites the touch icon onto black when it is transparent;
         # --bg flattens it onto the color the caller actually wants.
-        convert "$tmp/180.png" -background "$bg" -flatten "$out/apple-touch-icon.png"
+        "$magick" "$tmp/180.png" -background "$bg" -flatten "$out/apple-touch-icon.png"
     else
         cp "$tmp/180.png" "$out/apple-touch-icon.png"
     fi
@@ -6449,6 +7206,11 @@ cmd_version() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
+    # Asked from one of the project's worktrees, the answer is that tree's:
+    # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
+    # runs this in the caller's cwd, so a node's session gets the same.
+    local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
 import importlib.util, json, os, sys
@@ -6680,6 +7442,11 @@ cmd_changelog() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
+    # Asked from one of the project's worktrees, the answer is that tree's:
+    # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
+    # runs this in the caller's cwd, so a node's session gets the same.
+    local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
 import importlib.util, os, sys
@@ -6895,7 +7662,8 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # which is a controller of its own and where there is no scanner. Sent
         # to the real controller it would be a session planting findings in
         # somebody else's report directory.
-        "tests run"|"tests last"|"tests lab"|"rules check"|"findings sample") : ;;
+        # `probe` and `keep` drive the dashboard fixture, which runs here.
+        "tests run"|"tests last"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests coverage"|"rules check"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and
@@ -6913,6 +7681,13 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
     esac
 fi
 
+# One group, with the exit inside it: bash reads a script as it runs it, by
+# byte offset, and after a long verb (a preflight, a suite) it read on from
+# where this case used to end. An edit to this file meanwhile had moved the
+# text, and the run ended in a syntax error at a line that was fine (B226).
+# A group is parsed whole before it runs, and the exit means nothing after
+# it is ever read.
+{
 case "${1:-help}" in
     status)   cmd_status ;;
     settings) shift; cmd_settings "$@" ;;
@@ -6951,9 +7726,12 @@ case "${1:-help}" in
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;
+    map)      shift; cmd_map "$@" ;;
     shot)     shift; cmd_shot "$@" ;;
-    favicon)  shift; cmd_favicon "$@" ;;
+    tool)     shift; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;
 esac
+exit
+}

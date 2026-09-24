@@ -156,6 +156,23 @@ def configure(*, workspace, state, write_json, roadmap_mod=None, bugs_mod=None,
 
 
 def root(project):
+    """The tree a question is asked of: the project directory, or the
+    worktree the caller stands in (BB_VERSION_TREE, which bb sets from its
+    cwd) when that is one of this project's. A session working in a
+    worktree asked `bb version --file` for a package name and was answered
+    for the main checkout's HEAD, and shipped nothing rather than a file
+    named after a commit that did not hold its code (24 Sep): the branch's
+    own commits, VERSION file and ordinal are what a build there is about.
+    Checked to lie under the project's worktrees, so the variable cannot
+    point this at another project's tree."""
+    want = os.environ.get("BB_VERSION_TREE") or ""
+    if want:
+        try:
+            p = Path(want).resolve()
+            if p.is_dir() and (WORKSPACE / ".worktrees" / project).resolve() in p.parents:
+                return p
+        except OSError:
+            pass
     return WORKSPACE / project
 
 
@@ -289,7 +306,7 @@ def parts(project, comp="", repo=None):
     tgt, err = target(project, comp)
     repo = _repo(project) if repo is None else repo
     if repo is None:
-        return {"target": tgt, "error": err or "not a git repository, or no commits yet",
+        return {"target": tgt, "error": err or "not a git repository (Init on the Git view makes one), or no commits yet",
                 "ordinal": None, "sha": None, "tag": "", "dirty": False,
                 "describe": None, "released": False}
     where = _sub(project, comp)
@@ -502,7 +519,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
         return {"error": f"no such component here: {comp}"}
     sha = _git(project, "rev-parse", "--short=7", "HEAD")
     if sha is None:
-        return {"error": "not a git repository, or no commits yet"}
+        return {"error": "not a git repository (Init on the Git view makes one), or no commits yet"}
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
         # Which commit it is on, because "it already exists" and "it is on

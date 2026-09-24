@@ -47,7 +47,7 @@ ok(/hand over the compose file/.test((await ask({ compose: '   ' })).body.error 
 ok(/no node called nowhere/.test((await ask({ node: 'nowhere' })).body.error || ''),
    '...and one naming a machine that is not a node, before it reaches anybody');
 ok(/not a project: zeta/.test((await ask({ for: 'zeta' })).body.error || ''),
-   '...and one asking to be shown under a project the asker cannot see');
+   '...and one for a project the asker cannot see');
 
 // ---- a second account, of the kind that is never asked --------------------
 execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'visitor', '--role', 'user'],
@@ -94,6 +94,19 @@ ok(allowed.body.ok && out.state === 'done' && out.code === 0,
      out.state}: ${out.out})`);
 ok((await api('/api/docker')).body.instances.some(i => i.project === 'sonarr-for-alpha'),
    '...and the Docker tab lists it, written from the file the administrator read');
+
+// ---- a session's ask belongs to its own project -------------------------------
+// So the session that asked can see what it asked for once it exists, and
+// work on it as its project's settings allow (the operator, 24 Sep).
+{
+  const tok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+  const bySession = await ask({ name: 'sonarr-by-session', project: '' },
+    { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok });
+  const row = (await api('/api/phone')).body.asks.find(a => a.id === bySession.body.id);
+  ok(row && row.for === 'alpha', `a session's ask belongs to its own project when it names none (${row?.for})`);
+  await api('/api/phone', { action: 'deny', id: bySession.body.id });
+}
 
 // ---- Deny: reported to the session, nothing made -------------------------------
 const again = await ask({ name: 'sonarr-denied' });

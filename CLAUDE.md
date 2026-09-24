@@ -80,6 +80,69 @@ by hand cost four commands and still could not see the failed builds.
   resolves `bb` as the copy beside it, so `bb dashboard dev` exercises the
   checkout's subcommands too.
 
+- **Iterating on one suite or one question:** `bb tests keep` runs the
+  harness's whole set-up once and holds the fixture up; after that
+  `bb dashboard test SUITE` and `bb tests probe FILE.mjs` attach to it:
+  half the time of a fresh run (4s against 8s for a small suite here, the
+  set-up being a copy of the tree and the fixtures), and, what matters
+  more, the world a suite just left is still there for a probe to look
+  at. A probe is a scratch Playwright script that imports `./lib.mjs` and
+  asks the page a question (count fetches, read a variable, screenshot):
+  the fastest route to the truth about the dashboard, and the front door
+  for what used to need a path hack. The kept world is not put back
+  between runs, and its server is the kept copy's, so a change to the
+  dashboard's python needs `bb tests keep stop` and a new keep; its `.js`
+  and `.html` are copied over before every attached run.
+- **What the page is asking for:** `bb dashboard trace [SECONDS]` prints
+  what the server was asked over that window, by endpoint and by who
+  asked (browser, session, agent, the companion app), from a ring the
+  server keeps in memory. It is the one command that shows a poll that
+  should not be there or a tab that asks twice; `uniform.mjs` holds the
+  invariant (an idle page issues only its polls; opening a tab asks each
+  endpoint once).
+- **What the suite covers:** `bb tests coverage [SUITE...]` runs the
+  harness with a counter in every function of the copy it runs from (the
+  page's, the server's and the node agent's under a profile hook, the
+  agent counted whether run as a process or driven in process) and merges what they
+  reached into `.bb-map/coverage.json`; then `bb map covered NAME` says
+  which suites ran a function and how often, which is the regression net
+  for touching it, and `bb map uncovered [FILE]` lists what no suite
+  reaches, which is where a probe is written before a refactor. `bb map
+  unused` is dead code by measurement: no call and nothing passing the
+  name anywhere. R76.
+- **Before a push:** `bb tests preflight` lists the files the branch
+  changed (against `origin/main`, plus the working tree), asks the map
+  which suites reach them, and runs those with the lint, voice and design
+  checks the house rules name; `--dry` prints the plan, `--files F...`
+  names the files instead, and `--base HEAD` measures the working tree
+  alone when the branch is long and the default would be everything. A
+  change to `server.py` is the whole suite, said as such. This exists because the one suite skipped by hand before
+  a push was the one that would have caught it.
+- **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
+  `bb map draws ID` and `bb map suites FILE` answer "where would I look"
+  from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).
+  Ask it before grepping; `test/codemap.mjs` holds it to the tree. `find`
+  and `who-calls` also hand over what a function says about itself, the
+  comment directly above it or its docstring's first sentence: the notes
+  live in the code, never in the map, and the map reads them out.
+  A new project is mapped in the background as it is created
+  (`mapping.py`), and its first Claude session waits for that, so the
+  index is there before the first question.
+  `bb map sections FILE` reads a file by its `// ---- name ----` headers:
+  each section's functions, how many callers reach in from outside, what
+  runs at load, what the suite covers. A section with few outside
+  callers and nothing at load moves to its own file whole, which is how
+  the inline script leaves `index.html`. `bb map state [FILE]` lists a
+  page script's page-level `let`s with where each is assigned and from
+  what: one fed from `state` is a copy of the poll kept by hand (B213,
+  B215), and the sweep for those starts there. `who-calls` lists where a
+  function is passed by name as well as where it is called, so a handler
+  handed to a draw never reads as dead. Every fix here carries its reason
+  in a comment beside it, and what moves keeps the words and changes the
+  addresses: `bb map addresses` reads the roadmap's `file ~line` details
+  (or any file) and says which addresses moved away from the name beside
+  them and which names are gone, which is how a plan written last month
+  is still a plan.
 - **Seeing a change without a rebuild:** `bb drift` lists what this checkout
   has changed that the running container is not serving. For the dashboard
   specifically, `bb dashboard dev` restarts the live dashboard from
@@ -116,10 +179,25 @@ by hand cost four commands and still could not see the failed builds.
   `bb-PY-7.py`, with its line numbers those of the script it sits in.
 - **Conventions** live in the house rules on the Briefing tab (`bb rules`);
   what follows is the layout they refer to.
+  - Two numbers move by machine and one by hand. `bb version` moves per
+    commit; a file two builds may read carries a format it checks
+    (`.bb-map/map2.json`, `.bb-map/coverage.json`) and a reader that meets
+    another rebuilds; and `AGENT_VERSION` in `scripts/agent/builderbot-agent.py`
+    moves by hand, so `bb lint` fails when that file changes against the
+    branch's base without its patch moving. A node compares the file and
+    the row names the number, and when they disagreed three tabs said
+    "runs 0.6.92 and ships 0.6.92" (B221).
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is vanilla JS and CSS with one classic `tab-*.js` script per
-    document tab and one `nb-*.js` per notebook view beside it. No framework,
-    no build step.
+    document tab, one `nb-*.js` per notebook view, and one `page-*.js` per
+    part of the page that is neither (the welcome panel, chat, motion, the
+    sidebar cards, the gear menu, doctor, the command cards, paged lists, a
+    project's sessions),
+    all loaded before the page's own script and all pure declarations:
+    wiring that must run at load stays in `index.html` under the section's
+    header, and the server serves a script only by name (the allow-list in
+    `server.py`). No framework, no build step. `bb map sections index.html`
+    says which section moves next, and R77 is the rest of that migration.
   - **The dashboard's design language is `docs/design-language.md`**, held
     by the house rule `design`, which names it and runs `test/uniform.mjs`
     as its check. A new tab kind declares `multi` (a notebook is per

@@ -61,10 +61,12 @@ from pathlib import Path
 WORKSPACE = None
 STATE = None
 FILE = None
+OWNERS = None
 node_for = None
 node_addr = None
 ENVDIR = None
 write_json = None
+field = None                     # server.py's one-string-field reader, for act()
 
 DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
 
@@ -377,7 +379,6 @@ runner = None                    # jobs.py, for Abort to reach the process
 
 # How much of a long command's output the row carries. A pull writes a line
 # per layer per progress tick, so this is a tail and not a transcript.
-LOG_TAIL = 4000
 
 # One action per INSTANCE at a time. Two clicks on one row are two compose
 # calls on one project; two rows are two jobs, and the queue orders those.
@@ -476,11 +477,16 @@ def _plan(project, instance, action, extra=None):
                   or str(Path(appdata_root()) / pname)))
     base = [DOCKER, "compose", "--project-name", pname,
             "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
+    ienv = {}
     if env_path(project, instance).is_file():
         base += ["--env-file", "{cdir}/instance.env"]
-    env = _dev_data_env(project, instance) | _build_env(project, instance)
+        # What the copy's env_file lines name (env_to_instance, _plan_spec),
+        # on every step, since down and exec load the file as well; the
+        # agent puts its directory in for {cdir}.
+        ienv = {"BB_INSTANCE_ENV": "{cdir}/instance.env"}
+    env = ienv | _dev_data_env(project, instance) | _build_env(project, instance)
     up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800, "env": env}
-    down = {"name": "stopping", "argv": base + ["down"], "timeout": 180}
+    down = {"name": "stopping", "argv": base + ["down"], "timeout": 180, "env": ienv}
     build = {"name": "building", "argv": base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
     # would start an instance whose env does not answer the repo's new
@@ -514,7 +520,7 @@ def _plan(project, instance, action, extra=None):
         argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1",
                        "-e", "BB_IN_INSTANCE=1", *wd, extra["service"],
                        "sh", "-c", extra["cmd"] + ' "$@"', "test", *extra.get("args", [])]
-        test = [{"name": "testing", "argv": argv, "timeout": 3600}]
+        test = [{"name": "testing", "argv": argv, "timeout": 3600, "env": ienv}]
     return {"up": [up], "down": [down], "remove": [down],
             "rebuild": rebuild, "test": test}.get(action) or []
 
@@ -526,6 +532,8 @@ def _plan_spec(project, instance, action, extra=None):
     ep = env_path(project, instance)
     if ep.is_file():
         files["instance.env"] = ep.read_text()
+        files["docker-compose.yml"] = env_to_instance(files["docker-compose.yml"],
+                                                      "${BB_INSTANCE_ENV}")
     make, _cannot = missing_dirs(project, _config(project, instance), instance)
     d = dev_data_dir(project, instance, make=False)
     return {"project": project, "instance": instance, "action": action,
@@ -589,12 +597,16 @@ def _compose_done(job, state):
         for o in (job.get("outputs") or []):
             if isinstance(o, dict) and o.get("kind") == "compose":
                 step = str(o.get("failed_at") or "")
-        return {"building": "build failed; the tail of its output is below",
-                "stopping": "stopping it failed; the tail of its output is below",
-                "starting": "up failed; the tail of its output is below",
-                "testing": "the tests failed: their output is the job's log",
-                "preparing": "a bind directory could not be made on the node: its line is below",
-                }.get(step, "")
+        # The output's last words ride the reason: the row shows the last
+        # line of it, and the whole log is the Jobs tab's.
+        tail = (queue.job_tail(job["id"], 500) if queue is not None else "").strip()
+        head = {"building": "build failed", "stopping": "stopping it failed",
+                "starting": "up failed", "testing": "the tests failed",
+                "preparing": "a bind directory could not be made on the node"}.get(step, "")
+        # The head stays whole and only the tail is cut: sliced from the end
+        # as one string, a long tail took the head with it and the row
+        # stopped saying what had failed.
+        return (head + ":\n" + tail[-400:]) if head and tail else head
     # A gated rebuild built and stopped, and that is the whole of what it was
     # asked to do: rewrite the env with the old values in comments and leave
     # Up to the operator. The row below would clear the flag, so this returns.
@@ -800,7 +812,6 @@ def job_view(project, instance):
                 "action": (j.get("spec") or {}).get("action", ""),
                 "step": ("queued" if j["state"] == "queued" else j["step"])
                         if running else "",
-                "log": queue.job_tail(j["id"], LOG_TAIL),
                 "error": "" if running else j["error"],
                 "aborting": bool(running and j["cancel"]),
                 "node": j["node"]}
@@ -834,22 +845,25 @@ def abort_job(project, instance):
 
 def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
               node_addr=None, queue=None, runner=None, project_node=None,
-              node_paths=None):
+              node_paths=None, field=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json, log_dir=log_dir,
+                     write_json=write_json, log_dir=log_dir, field=field,
                      node_for=node_for, node_addr=node_addr, project_node=project_node,
                      node_paths=node_paths,
                      queue=queue, runner=runner)
     if runner is not None:
         runner.register("compose", run_compose_job)
     globals()["FILE"] = Path(state) / "devapps.json"
+    globals()["OWNERS"] = Path(state) / "docker-owners.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
 
 
 def job_rev():
     """The poll's cheap tell that something here moved: the store, and the
     queue's own rev, since a job's every log chunk is a repaint."""
-    q = queue.jobs_rev() if queue is not None else 0
+    # The state-only rev: a row draws a job's state, step and how it ended,
+    # never its output, so a line of output is not a reason to redraw.
+    q = queue.jobs_state_rev() if queue is not None else 0
     return f"{_rev}:{q}:{_mtime(FILE)}"
 
 
@@ -1598,6 +1612,21 @@ def container_ctl(name, what):
                                else f"{what}ed {c.get('name')}"}
 
 
+def owned_container(name):
+    """The container the daemon reports under `name` now, with the project
+    it belongs to: (None, "") when there is none. On the node the current
+    block addresses."""
+    c = _known_container(name)
+    return (c, listed_owner(c)) if c else (None, "")
+
+
+def ctl_on(node, name, what):
+    """container_ctl on a named node, for a caller that opened no block of
+    its own: Allow on a session's ask to start, stop or restart one."""
+    with on_node(node or None):
+        return container_ctl(name, what)
+
+
 def container_logs(name, lines=None):
     """The tail of one container's log, timestamped.
 
@@ -1632,7 +1661,8 @@ def containers():
     `ours` is the honest part: a container is this dashboard's when its compose
     project is one this dashboard has a record of. Asked of the store rather
     than read off the name, so a container you started by hand over there is
-    listed and marked as not ours, and nothing here offers to act on it.
+    listed and marked as not ours: started, stopped or restarted by name one
+    at a time, and nobody's project until its row names one.
     """
     r = _run([DOCKER, "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
              timeout=25)
@@ -1788,8 +1818,8 @@ def name_clash(project, instance=MAIN):
     started, which is the moment the clash becomes real rather than possible.
 
     Which project owns an instance is not this question and is never derived
-    from the name: it is the store's own key, which is what decides whose
-    session may touch it.
+    from the name: it is owner_of, which is what decides whose session may
+    touch it.
     """
     want = _pname(project, instance)
     for proj, insts in _load().items():
@@ -1811,6 +1841,43 @@ def env_path(project, instance=MAIN):
     already slugged.
     """
     return ENVDIR / f"{_pname(project, instance)}.env"
+
+
+# A service's `env_file: .env` names the project's own .env, which BuilderBot
+# never writes: an instance's env is a file of its own (env_path), handed to
+# compose as --env-file, and that fills ${VAR} in the compose text and
+# nothing else. A compose file that reads its settings through env_file came
+# up without them, or not at all with the .env missing: what the operator
+# typed into Send to Docker never reached Is-someone-Listening's container
+# (24 Sep). The copy compose runs points those lines at the instance's env.
+_ENV_KEY = re.compile(r"^(\s*)env_file:\s*(#.*)?$")
+_ENV_ONE = re.compile(r"""^(\s*env_file:\s*)(["']?)(?:\./)?\.env\2(\s*(?:#.*)?)$""")
+_ENV_ITEM = re.compile(r"""^(\s*-\s*(?:path:\s*)?)(["']?)(?:\./)?\.env\2(\s*(?:#.*)?)$""")
+
+
+def env_to_instance(text, target):
+    """`text` with each env_file that names the project's .env, in any of
+    compose's three spellings (a value, a list item, a long-form `path:`),
+    pointed at `target`. Unchanged when none does. By line, not by parsing:
+    the server carries no YAML library, and these are the lines people write."""
+    out, key = [], None           # the env_file key's indent, inside its list
+    for line in (text or "").split("\n"):
+        body = line.strip()
+        ind = len(line) - len(line.lstrip())
+        if key is not None and body and ind <= key and not (ind == key and body.startswith("-")):
+            key = None
+        m = _ENV_ONE.match(line)
+        if m:
+            out.append(f"{m.group(1)}{target}{m.group(3)}")
+            continue
+        m = _ENV_KEY.match(line)
+        if m:
+            key = len(m.group(1))
+            out.append(line)
+            continue
+        m = _ENV_ITEM.match(line) if key is not None else None
+        out.append(f"{m.group(1)}{target}{m.group(3)}" if m else line)
+    return "\n".join(out)
 
 
 def _compose(project, instance, *args):
@@ -1849,9 +1916,20 @@ def _compose(project, instance, *args):
         # checkout while the row said it came from a branch.
         at = work_tree(project, instance)
         pdir = str(at) if at is not None else str(WORKSPACE / project)
+    ep = env_path(project, instance)
+    if ep.is_file() and cf is not None and cf.is_file():
+        # The copy whose env_file lines name the instance's env, beside it,
+        # written only when it differs: this is on the poll path.
+        with contextlib.suppress(OSError):
+            text = cf.read_text(encoding="utf-8")
+            new = env_to_instance(text, str(ep))
+            if new != text:
+                copy = ENVDIR / f"{_pname(project, instance)}.compose.yml"
+                if not copy.is_file() or copy.read_text(encoding="utf-8") != new:
+                    copy.write_text(new, encoding="utf-8")
+                cf = copy
     argv = [DOCKER, "compose", "--project-name", _pname(project, instance),
             "--project-directory", pdir, "-f", str(cf)]
-    ep = env_path(project, instance)
     if ep.is_file():
         argv += ["--env-file", str(ep)]
     return argv + list(args)
@@ -2316,8 +2394,13 @@ def rename_project_data(old, new):
     Order matters at the call site: the store's record has already moved to
     the new name by the time this runs, so the instance list is asked of the
     NEW key.
+
+    What BELONGS to the project moves with it here too: a container's project
+    is a value in two files, and the rename's table only moves keys.
     """
     moved, failed = [], []
+    if rename_owner(old, new):
+        moved.append("the containers that belong to it")
     for inst in instances(new):
         was, now = _pname(old, inst), _pname(new, inst)
         if was == now:
@@ -2595,16 +2678,19 @@ def _overview_here(picked):
             # nobody had ever sent them to.
             if picked and _instance_node(project, inst) != picked:
                 continue
+            # A container written here that compose is still reading, which
+            # may yet be refused (B239).
+            if time.time() - float((store[project][inst] or {}).get("pending") or 0) < PENDING_S:
+                continue
             pn = _pname(project, inst)
             mine = by_proj.get(pn, [])
             rec = _read_rec(project, inst)
             same_daemon = rec.get("daemon") == daemon_id()
             out.append({
                 "project": project, "instance": inst, "name": pn,
-                # The project whose notebook lists it, when it is not this
-                # one's own (a container written here, or a second project's
-                # helper): "" otherwise.
-                "for": str(rec.get("for") or ""),
+                # The project it belongs to, or "" for none: whose sessions
+                # may see it and work on it, and the group it is drawn in.
+                "owner": owner_of(project, inst, rec),
                 "running": any(c["state"] == "running" for c in mine),
                 "exists": bool(mine),
                 "containers": len(mine),
@@ -2697,11 +2783,15 @@ def _overview_here(picked):
             "job": latest_job(),
             # Only the ones that are not an instance of ours: the instances
             # above already account for those, and listing them twice would
-            # make the page look like the daemon is running double.
-            "containers": [c for c in cs["containers"] if not c["ours"]]}
+            # make the page look like the daemon is running double. Each with
+            # the project it was put under, read once for the node.
+            "containers": [c | {"owner": held.get(c["name"], "")}
+                           for held in [_owners().get(picked or _node_here()) or {}]
+                           for c in cs["containers"] if not c["ours"]]}
 
 
 COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
+PENDING_S = 120                  # how long a container being checked stays unlisted
 
 
 def create_container(name, compose_text, env_text="", node="", for_project=""):
@@ -2743,12 +2833,16 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
         d2 = _load()
         rec = _rec(d2, slug, MAIN)
         rec["source"] = "file"
+        # Not listed while compose reads it: a manager listing that landed
+        # in this window drew a row for a container that was then refused
+        # (B239). A time, so a record left by a restart mid-check is listed
+        # again after PENDING_S rather than hidden with its name taken.
+        rec["pending"] = int(time.time())
         if node:
             rec["node"] = str(node)
-        # Which project's notebook lists this container (roadmap: the
-        # operator's ask, 15 Sep): a dev radarr for a media project shows
-        # under that project, not only in the manager. Kept only when
-        # given; the creator's own project needs no note.
+        # The project it belongs to (owner_of): a dev radarr for a media
+        # project is that project's, listed in its notebook and reachable
+        # by its sessions. None when not given, which is the default here.
         if for_project:
             rec["for"] = str(for_project)[:100]
         write_json(FILE, d2)
@@ -2759,6 +2853,10 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
     if r["code"] != 0:
         forget_container(slug)
         return {"error": ("compose will not read that:\n" + r["out"]).strip()[-600:]}
+    with _lock:
+        d3 = _load()
+        ((d3.get(slug) or {}).get(MAIN) or {}).pop("pending", None)
+        write_json(FILE, d3)
     _bump()
     return {"ok": True, "project": slug, "instance": MAIN,
             "name": _pname(slug, MAIN)}
@@ -2850,8 +2948,11 @@ def forget_container(name):
     return gone
 
 
-def create_instance(project, name, node="", for_project=""):
+def create_instance(project, name, node="", owner=None):
     """Register a new instance of a project. Nothing is built or started.
+
+    `owner` is the project it belongs to when the caller said (another one,
+    or "" for none); None is the default, the project it is built from.
 
     `node` is which docker-host the instance is bound to: the daemon every
     action on it will address. Empty means the default node, resolved at USE
@@ -2883,12 +2984,9 @@ def create_instance(project, name, node="", for_project=""):
         rec = _rec(d, project, slug)
         if node:
             rec["node"] = str(node)
-        # Which project's notebook lists this container (roadmap: the
-        # operator's ask, 15 Sep): a dev radarr for a media project shows
-        # under that project, not only in the manager. Kept only when
-        # given; the creator's own project needs no note.
-        if for_project:
-            rec["for"] = str(for_project)[:100]
+        # Stored the way owner_of reads it: nothing for the default.
+        if owner is not None and owner != project:
+            rec["for"] = str(owner)[:100]
         write_json(FILE, d)
     _bump()
     return {"ok": True, "project": project, "instance": slug,
@@ -2927,6 +3025,142 @@ def set_ref(project, instance, ref):
         write_json(FILE, d)
     _bump()
     return {"ok": True, "ref": ref}
+
+
+def owner_of(project, instance=MAIN, rec=None):
+    """The project an instance or a written container belongs to, or "".
+
+    Which project's sessions may see it and work on it, which group the
+    Docker tab draws it in and which notebook lists it: one setting for the
+    three (the operator, 24 Sep). Stored as `for` and read by presence. No
+    `for` is the default: the project it was built from, or none for a
+    container written here, which has no project behind it. An empty `for`
+    is none, set on purpose.
+    """
+    rec = _read_rec(project, instance) if rec is None else rec
+    if "for" in rec:
+        return str(rec.get("for") or "")
+    return "" if rec.get("source") == "file" else project
+
+
+def set_owner(project, instance, owner):
+    """Which project an instance or a written container belongs to: a
+    project's name, or "" for none. server.py has checked that the name is a
+    project; this stores it the way owner_of reads it, with no `for` at all
+    when the answer is the default."""
+    owner = str(owner or "").strip()[:100]
+    with _lock:
+        d = _load()
+        if instance not in (d.get(project) or {}):
+            return {"error": f"{project} has no instance called {instance}"}
+        rec = _rec(d, project, instance)
+        if owner == ("" if rec.get("source") == "file" else project):
+            rec.pop("for", None)
+        else:
+            rec["for"] = owner
+        write_json(FILE, d)
+    _bump()
+    return {"ok": True, "owner": owner}
+
+
+def row_named(name):
+    """(project, instance) of the instance or written container the Docker
+    tab lists as `name`, or None. How a session names one that is not its
+    project's own (bb devapp --container)."""
+    for proj, insts in _load().items():
+        for inst in insts:
+            if _pname(proj, inst) == name:
+                return proj, inst
+    return None
+
+
+def _owners():
+    """Which project each container BuilderBot did not start belongs to:
+    {node: {container name: project}}. A file of its own, because the
+    instance store is {project: {instance: record}} and _load keeps nothing
+    else."""
+    try:
+        with open(OWNERS) as f:
+            d = json.load(f)
+    except (OSError, ValueError, TypeError):
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    return {n: {c: p for c, p in v.items() if isinstance(p, str) and p}
+            for n, v in d.items() if isinstance(v, dict)}
+
+
+def _node_here():
+    """The node the current block addresses, or the default one: the key a
+    container's owner is kept under, since a name is only unique on its own
+    daemon."""
+    return getattr(_node_ctx, "node", None) or _default_node() or ""
+
+
+def listed_owner(c):
+    """The project a container from containers() belongs to, or "".
+
+    One of ours belongs where its instance does. Any other belongs where the
+    operator put it on its row, kept by name on its node, so the same
+    container recreated under its name keeps its project."""
+    if c.get("ours"):
+        row = row_named(c.get("project") or "")
+        return owner_of(*row) if row else ""
+    return (_owners().get(_node_here()) or {}).get(c.get("name") or "", "")
+
+
+def set_container_owner(name, owner):
+    """Which project a container BuilderBot did not start belongs to, on the
+    node the current block addresses; "" for none. Only a container the
+    daemon reports now, looked up again as every executing surface here is."""
+    c = _known_container(name)
+    if not c:
+        return {"error": f"no container called {name} on this daemon now"}
+    if c.get("ours"):
+        return {"error": f"{c.get('name')} is part of {c.get('project')}: its "
+                         "project is set on that row"}
+    owner = str(owner or "").strip()[:100]
+    node = _node_here()
+    with _lock:
+        d = _owners()
+        held = d.setdefault(node, {})
+        if owner:
+            held[c.get("name")] = owner
+        else:
+            held.pop(c.get("name"), None)
+            if not held:
+                d.pop(node, None)
+        write_json(OWNERS, d)
+    _bump()
+    return {"ok": True, "owner": owner}
+
+
+def rename_owner(old, new):
+    """Every container that belonged to the project `old` belongs to `new`.
+    True when any moved. The rename's table moves what is KEYED by a
+    project's name; these hold it as a value, which that table cannot see."""
+    moved = False
+    with _lock:
+        d = _load()
+        for insts in d.values():
+            for rec in insts.values():
+                if rec.get("for") == old:
+                    rec["for"] = new
+                    moved = True
+        if moved:
+            write_json(FILE, d)
+        o = _owners()
+        hit = False
+        for held in o.values():
+            for c, p in held.items():
+                if p == old:
+                    held[c] = new
+                    hit = True
+        if hit:
+            write_json(OWNERS, o)
+    if moved or hit:
+        _bump()
+    return moved or hit
 
 
 def refs_of(project):
@@ -3791,7 +4025,7 @@ def _job_up(project, instance, run):
     if r["code"] != 0:
         # On the JOB, which is what the row reads: without this a failed Up
         # left a row that said "stopped" with no account of why.
-        return {"state": "failed", "error": ("up failed:\n" + r["out"])[-500:]}
+        return {"state": "failed", "error": "up failed:\n" + r["out"][-400:]}
     with _lock:
         d = _load()
         row = _rec(d, project, instance)
@@ -3832,8 +4066,9 @@ def test(project, instance=MAIN, cmd="", args=()):
         return {"error": "no compose file here, so there is no container to test in"}
     cmd = str(cmd or "").strip()
     if not cmd:
-        return {"error": f"no test command is set for {project}: the operator sets it "
-                         "in the project's settings dialog (Build and test)"}
+        return {"error": f"no test command is set for {project}: bb settings set test "
+                         "'...' fills it in, or the operator does in the project's "
+                         "settings dialog (Build and test)"}
     bad = [a for a in args if not _ARG.fullmatch(str(a))]
     if bad:
         return {"error": f"an argument the test command cannot take: {bad[0]!r}"}
@@ -3975,8 +4210,9 @@ def _job_rebuild(project, instance, run):
             return {"state": "canceled",
                     "error": "stopped; what had already been built is kept"}
         if r["code"] != 0:
-            return {"state": "failed",
-                    "error": "build failed; the tail of its output is below"}
+            # The reason carries the output's last words: the row shows the
+            # last line of it, and the whole log is the Jobs tab's.
+            return {"state": "failed", "error": "build failed:\n" + r["out"][-400:]}
         with _lock:
             d = _load()
             _stamp(_rec(d, project, instance), project, instance)
@@ -4014,7 +4250,7 @@ def _job_rebuild(project, instance, run):
             return {"state": "canceled",
                     "error": "stopped: the image is built, but not started"}
         if r["code"] != 0:
-            return {"state": "failed", "error": ("up failed:\n" + r["out"])[-500:]}
+            return {"state": "failed", "error": "up failed:\n" + r["out"][-400:]}
         return {"state": "succeeded"}
     finally:
         # Whatever happened (built, failed, gated) the build is no longer in
@@ -4022,3 +4258,105 @@ def _job_rebuild(project, instance, run):
         # which is exactly what it is for.
         _clear_marker(project, instance)
         _bump()
+
+
+def act(project, instance, action, req, *, test_cmd=""):
+    """One dev-instance verb, as the dashboard and `bb devapp` name them,
+    once server.py has decided who may ask (docker-write, the per-project
+    dial, a session's own node) and which instance is meant.
+
+    The answer is (payload, status): a module's {ok} or {error} with 400 on
+    the error, the way Handler._result reads one, and the instance's fresh
+    state riding on every change so nothing on screen is stale. Here rather
+    than in the handler because what a verb means is this module's to say
+    (the one-file rule); the handler holds the gate and nothing else.
+    """
+    f = field
+    if action == "abort":
+        # Before the instance check below: a job can be running against an
+        # instance that has since been removed, and stopping it must not
+        # depend on the thing it is building still existing.
+        return {"ok": True, "stopped": abort_job(project, instance)}, 200
+    if action == "starter":
+        # The project's .env.example, for a container that does not exist
+        # yet: the send dialog opens on it so the env is filled in before
+        # the first build rather than after it stops at the gate. Reads
+        # nothing of the instance, which is the point: there is none.
+        return {"text": starter(project)}, 200
+    if action == "new":
+        # The one action whose instance does not exist yet, which is what it
+        # is for. Everything below names one that must exist, because the
+        # string decides a compose project and a data directory and is not
+        # somewhere an arbitrary one should reach.
+        # The project it belongs to when the request says, "" being none.
+        r = create_instance(project, instance, f(req, "node"),
+                            f(req, "owner") if "owner" in req else None)
+        if not r.get("error") and f(req, "ref"):
+            # Pinned before the build the dialog starts, or the first one
+            # comes from the project's checkout and the row says otherwise.
+            p = set_ref(project, r["instance"], f(req, "ref"))
+            if p.get("error"):
+                return p, 400
+        if not r.get("error") and isinstance(req.get("text"), str) \
+                and req["text"].strip():
+            # Written before the build that follows, so the first one has
+            # the env it needs instead of stopping at the gate and asking
+            # for it afterwards. A failed write is said: it was dropped, and
+            # the build then ran as if nothing had been typed.
+            w = write_env(project, req["text"], r["instance"])
+            if w.get("error"):
+                return r | {"error": w["error"]}, 400
+        return r, (400 if r.get("error") else 200)
+    if instance not in instances(project):
+        return {"error": f"no instance {instance} of {project}"}, 400
+    if action == "remove":
+        r = remove_instance(project, instance)
+        return r, (400 if r.get("error") else 200)
+    if action == "ref":
+        # Which branch this instance builds from. `docker-write` has already
+        # had its say in the handler, so this is an administrator's like
+        # every other thing that changes what a container IS.
+        r = set_ref(project, instance, f(req, "ref"))
+        return r, (400 if r.get("error") else 200)
+    if action == "owner":
+        # Which project it belongs to. An administrator's too, and the name
+        # was checked against the projects in the handler.
+        r = set_owner(project, instance, f(req, "owner"))
+        return r, (400 if r.get("error") else 200)
+    if action == "state":
+        # The full picture for one instance (risks, problems, the parsed
+        # compose), which overview() deliberately does not compute for
+        # every instance at once. Asked when somebody is about to act.
+        return {"state": state(project, instance)}, 200
+    # `ack` is the digest of the risk list the operator was actually
+    # shown, not a bare yes. A compose file that gains a mount between
+    # the row rendering and the button being pressed does not inherit the
+    # acknowledgement of the one before it.
+    if action == "up":
+        r = up(project, instance, f(req, "ack"))
+    elif action == "down":
+        r = down(project, instance)
+    elif action == "test":
+        r = test(project, instance, test_cmd,
+                 [str(a) for a in (req.get("args") or [])][:32])
+    elif action == "rebuild":
+        r = rebuild(project, instance, f(req, "ack"))
+    elif action == "env-get":
+        # An empty env opens on the example rather than on nothing. The
+        # `missing` list still answers about what is STORED, so the hint
+        # under the box stays true while the box is only a draft.
+        stored = read_env(project, instance)
+        return {"text": stored or starter(project, instance),
+                "seeded": not stored,
+                "missing": missing_env(project, instance)}, 200
+    elif action == "env-set":
+        r = write_env(project, req.get("text") or "", instance)
+    elif action == "route":
+        # How the instance is reached (docs/nodes.md §7): lan or funnel,
+        # on which published port.
+        r = route_set(project, instance, f(req, "mode"), req.get("port"))
+    else:
+        return {"error": f"unknown action: {action}"}, 400
+    if r.get("error"):
+        return r, 400
+    return r | {"state": state(project, instance)}, 200

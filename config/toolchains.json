@@ -858,6 +858,115 @@
       }
     },
     {
+      "name": "graphics",
+      "label": "Graphics tools (ImageMagick, resvg, oxipng, pngquant, cwebp)",
+      "probe": "graphics",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/magick",
+        "reports": "magick"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "What bb tool graphics runs: ImageMagick's magick for resizing, cropping, composing, annotating and comparing rasters; resvg for SVG to PNG without a browser; oxipng, pngquant and cwebp for what an app ships. A session cannot see a picture it has not rendered, so this is how it makes one it can then read back. Static builds from each project's release; ImageMagick's AppImage is unpacked at install, so nothing here needs FUSE.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 120000000
+        },
+        "url": "https://github.com/linebender/resvg/releases/latest/download/resvg-linux-x86_64.tar.gz",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; bin=\"$dst/bin\"; t=\"$(mktemp -d)\"; mkdir -p \"$bin\"; get() { curl -fsSL --retry 3 -o \"$2\" \"$1\"; }; tag() { curl -fsSIL -o /dev/null -w '%{url_effective}' \"https://github.com/$1/releases/latest\" | sed 's#.*/tag/##'; }; v=\"$(tag ImageMagick/ImageMagick)\"; im=\"$t/magick.AppImage\"; get \"https://github.com/ImageMagick/ImageMagick/releases/download/$v/ImageMagick-$v-gcc-x86_64.AppImage\" \"$im\"; chmod +x \"$im\"; (cd \"$t\" && \"$im\" --appimage-extract >/dev/null); rm -rf \"$dst/magick\"; mv \"$t/squashfs-root\" \"$dst/magick\"; ln -sf ../magick/AppRun \"$bin/magick\"; rs=\"$1\"; if ! tar -tzf \"$rs\" >/dev/null 2>&1; then rs=\"$t/resvg.tgz\"; get https://github.com/linebender/resvg/releases/latest/download/resvg-linux-x86_64.tar.gz \"$rs\"; fi; tar -xzf \"$rs\" -C \"$t\"; cp \"$(find \"$t\" -name resvg -type f | head -1)\" \"$bin/\"; v=\"$(tag oxipng/oxipng)\"; get \"https://github.com/oxipng/oxipng/releases/download/$v/oxipng-${v#v}-x86_64-unknown-linux-musl.tar.gz\" \"$t/ox.tgz\"; tar -xzf \"$t/ox.tgz\" -C \"$t\"; cp \"$(find \"$t\" -name oxipng -type f | head -1)\" \"$bin/\"; get https://pngquant.org/pngquant-linux.tar.bz2 \"$t/pq.tbz\"; python3 -c 'import sys, tarfile; tarfile.open(sys.argv[1]).extractall(sys.argv[2])' \"$t/pq.tbz\" \"$t\"; cp \"$(find \"$t\" -name pngquant -type f | head -1)\" \"$bin/\"; wv=\"$(curl -fsS 'https://api.github.com/repos/webmproject/libwebp/tags?per_page=20' | grep -o '\"name\": *\"v[0-9.]*\"' | sed 's/.*\"v//; s/\"//' | sort -V | tail -1)\"; get \"https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-$wv-linux-x86-64.tar.gz\" \"$t/webp.tgz\"; tar -xzf \"$t/webp.tgz\" -C \"$t\"; cp \"$(find \"$t\" -path '*/bin/cwebp' -type f | head -1)\" \"$(find \"$t\" -path '*/bin/dwebp' -type f | head -1)\" \"$bin/\"; chmod +x \"$bin\"/*; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/magick",
+          "-version"
+        ]
+      },
+      "system": {
+        "apt": [
+          "fonts-dejavu-core"
+        ],
+        "dnf": [
+          "dejavu-sans-fonts"
+        ],
+        "pacman": [
+          "ttf-dejavu"
+        ],
+        "zypper": [
+          "dejavu-fonts"
+        ],
+        "apk": [
+          "font-dejavu"
+        ],
+        "xbps": [
+          "dejavu-fonts-ttf"
+        ],
+        "emerge": [
+          "media-fonts/dejavu"
+        ]
+      },
+      "tool": "graphics"
+    },
+    {
+      "name": "diagrams",
+      "label": "Diagram renderers (PlantUML, Mermaid)",
+      "probe": "diagrams",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/plantuml",
+        "reports": "plantuml"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "What bb tool diagrams runs: PlantUML for UML, sequence and architecture diagrams from text, and Mermaid's command line for the flowcharts and sequence diagrams written in Markdown. A session draws from text and reads the PNG back. PlantUML is one jar and runs on this store's JDK; Mermaid renders through the Chromium the playwright toolchain puts here, so both of those are needed beside this.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 60000000
+        },
+        "url": "https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; mkdir -p \"$dst/bin\" \"$dst/lib\"; cp \"$1\" \"$dst/lib/plantuml.jar\"; printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"${JAVA:-java}\" -Djava.awt.headless=true -jar \"$here/../lib/plantuml.jar\" \"$@\"\\n' > \"$dst/bin/plantuml\"; chmod +x \"$dst/bin/plantuml\"; npm install --silent --no-audit --no-fund --prefix \"$dst\" @mermaid-js/mermaid-cli; ln -sf ../node_modules/.bin/mmdc \"$dst/bin/mmdc\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "test",
+          "-s",
+          "{dir}/lib/plantuml.jar"
+        ]
+      },
+      "requires": [
+        "jdk",
+        "node",
+        "playwright"
+      ],
+      "tool": "diagrams"
+    },
+    {
       "name": "language-servers",
       "label": "Language servers (Python, TypeScript)",
       "probe": "language-servers",

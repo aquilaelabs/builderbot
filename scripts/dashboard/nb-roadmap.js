@@ -161,7 +161,7 @@ function nbRoadmapView({$, nb}){
     return `<div class="roadmap${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
          idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
        data-id="${r.id}" data-step="${idx}">
-    ${nb.roadmapOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
+    ${nb.roadmapOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : ` aria-disabled="true"`}
       title="${esc(why)}" aria-label="send"
       aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
     ${idx >= 0 ? (st.done
@@ -231,7 +231,18 @@ function nbRoadmapView({$, nb}){
     // whatever inline box was open (a send box, a drop confirmation) under
     // the finger that opened it.
     if (j.rev !== undefined) nb.roadmapRev = j.rev;
-    const rows = j.items || [], live = !!j.session;
+    // Whether there is a session to send into, from the answer OR from the
+    // page's own session list, which is what lights the Claude button on
+    // the project row. The two are the same fact read from the same place
+    // on the server, and reading it here from one source only is what let
+    // the row say running while every arrow here said no session (B214):
+    // an answer drawn before the list caught up stood until something else
+    // redrew, and nothing said which of the two to believe.
+    const sess = j.session || (typeof liveSessions === "function" && nb.memProj
+                               && liveSessions().has(myClaude(nb.memProj))
+                               ? myClaude(nb.memProj) : null);
+    j = Object.assign({}, j, {session: sess});
+    const rows = j.items || [], live = !!sess;
     // Whatever was armed may have been crossed off, dropped, or overtaken by a
     // step in front of it since the last draw.
     if (nb.roadmapSel){
@@ -258,7 +269,9 @@ function nbRoadmapView({$, nb}){
             esc(j.session)} is running, so the arrows are live`
         : `${left} still to send${parked ? `, ${parked} shelved` : ""}: no session `
           + `is running here, so nothing can be sent yet`;
-    $("roadmapField").hidden = !rows.length;
+    $("roadmapField").hidden = !rows.length && !j.finished_n;
+    $("roadmapDone").textContent = j.finished_n ? `Finished (${j.finished_n})` : "Finished";
+    $("roadmapDone").hidden = !j.finished_n && !nb.roadmapDoneOn;
     if (nb.roadmapLogOn) nb.drawHistory();
     {
     $("roadmapList").innerHTML = rows.map(r =>
@@ -281,6 +294,11 @@ function nbRoadmapView({$, nb}){
       // A group's title arrow stands for its next step, so both resolve to the
       // same choice and light up together.
       if (go) go.onclick = () => {
+        // A dead arrow says why when pressed (B213). It is aria-disabled
+        // rather than disabled because a disabled button swallows the press
+        // and the reason was only in its hover title, which a finger never
+        // sees, and in the line under the whole list.
+        if (go.getAttribute("aria-disabled") === "true") return notify(go.title, true);
         const r = (nb.roadmapItems || []).find(x2 => String(x2.id) === String(id));
         const steps = r?.steps || [];
         pickRoadmap(id, step >= 0 ? step : (steps.length ? nextStep(r) : null));
@@ -948,5 +966,61 @@ function nbRoadmapView({$, nb}){
     }
   };
 
+  // ---- the finished ones (R78) --------------------------------------------
+  // Ticked-off items leave the list (a list is read to find out what is
+  // left) and live in the history with their plans. The toggle at the top
+  // fetches them and draws them below the shelved ones, struck through,
+  // with no arrows: there is nothing left to send. Off by default, and off
+  // again when the notebook reopens.
+  async function loadFinished(){
+    let j;
+    try{
+      const r = await postJSON("/api/roadmap", {project: nb.memProj, action: "finished"});
+      j = await r.json();
+    }catch(e){ j = {error: String(e)}; }
+    nb.roadmapDone = j.finished || [];
+    drawFinished();
+  }
+  function drawFinished(){
+    const host = $("roadmapDoneList");
+    if (!host) return;
+    if (!nb.roadmapDoneOn){ host.innerHTML = ""; host.hidden = true; return; }
+    host.hidden = false;
+    const rows = nb.roadmapDone;
+    if (rows === null){ host.innerHTML = `<div class="loading">loading…</div>`; return; }
+    if (!rows.length){ host.innerHTML = `<div class="empty">nothing finished yet</div>`; return; }
+    const when = t => t ? fmtTime(t * 1000, {day: "2-digit", month: "short"}) : "";
+    host.innerHTML = rows.map(r => `<div class="grp done" data-done="${r.id}">
+      <div class="roadmap"><span class="rid">R${r.id}</span> <span class="txt">${esc(r.text || "")}</span>
+        <span class="dim"> · done${r.done_by ? " by " + esc(r.done_by) : ""}${r.done_at ? " " + esc(when(r.done_at)) : ""}</span></div>${
+      (r.steps || []).map((st, i) => `<div class="roadmap step"><span class="rid">${i + 1}.</span> <span class="txt">${esc(st.text || "")}</span></div>`).join("")}
+    </div>`).join("");
+  }
+  $("roadmapDone").onclick = () => {
+    nb.roadmapDoneOn = !nb.roadmapDoneOn;
+    $("roadmapDone").classList.toggle("on", nb.roadmapDoneOn);
+    if (nb.roadmapDoneOn && nb.roadmapDone === null) loadFinished();
+    else drawFinished();
+  };
+  nb.drawFinished = drawFinished;
+
   return {cancelSend, drawSendBox, flushPending, loadRoadmap, postRoadmap, redrawRoadmap, revertPending, sendBoxEl, shutSendBoxes};
+}
+
+// ---- a step that needs no sending -----------------------------------------
+// Handed over, or finished by a session. Two marks, one question: sent is
+// the dashboard's and says a line went; done is a session's and says the
+// work is finished, sent or not. Moved here from index.html: only this view
+// asks.
+
+// A step that needs no sending: handed over, or finished by a session.
+// Two marks, one question: sent is the dashboard's and says a line went;
+// done is a session's and says the work is finished, sent or not.
+const stepGone = s => !!(s.sent || s.done);
+
+function nextStep(r){
+  const steps = r.steps || [];
+  if (!steps.length) return stepGone(r) ? null : -1;
+  const i = steps.findIndex(s => !stepGone(s));
+  return i < 0 ? null : i;
 }

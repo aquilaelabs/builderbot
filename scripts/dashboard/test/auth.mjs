@@ -964,10 +964,13 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     const on = await (await post('/api/roadmap',
       { action: 'shelve', project: 'alpha', id, on: true })).json();
     ok(!on.error, `a session may park a roadmap item (${on.error || 'shelved'})`);
-    const off = await post('/api/roadmap', { action: 'shelve', project: 'alpha', id, on: false });
-    const why = (await off.json()).error || '';
-    ok(off.status === 403 && /operator/.test(why),
-       `...and may not take it back off, which is the operator's (${why.slice(0, 60)})`);
+    // ...and asking for it back is held for a person on the project (R78),
+    // the item still shelved: the door used to refuse outright.
+    const off = await post('/api/roadmap', { action: 'shelve', project: 'alpha', id, on: false, why: 'unblocked' });
+    const offBody = await off.json();
+    ok(off.status === 200 && offBody.held?.verb === 'unshelve' && /unblocked/.test(offBody.held?.summary || '')
+       && (offBody.items || []).find(r => r.id === id)?.shelved,
+       `...and asking for it back is held for approval, the item still shelved (${(offBody.held?.summary || offBody.error || '').slice(0, 60)})`);
     const still = await (await as('/api/status')).json();
     ok((still.projects || []).length === 1, '...with the refusal leaving the rest answering');
   }

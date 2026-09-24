@@ -19,8 +19,9 @@ const jobsOpen = new Set();      // ids whose log is unfolded
 const jobsLogs = {};             // id -> the log fetched for an unfolded row
 
 function openJobsTab(){
+  // The kind's open hook loads; a second load here asked the queue twice
+  // for one press (the quiet-page invariant in uniform.mjs holds it now).
   openTab({kind: "jobs", arg: "__jobs", label: "Jobs"});
-  loadJobs();
 }
 
 async function loadJobs(){

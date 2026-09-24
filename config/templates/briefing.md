@@ -32,7 +32,28 @@ something to assume: `bb toolchains` says what is installed and where.
 
 When the toolchain lacks what a build needs, the refusal names the way out:
 push and let CI build it, or say plainly that it cannot be built until the
-operator installs the tool.
+operator installs the tool. A project whose build or test command is not set
+refuses too: `bb settings set build|test|outputs "..."` fills the field in
+for the operator, and the project's gate decides whether that lands, waits
+for their approval, or is refused.
+
+A `pkill -f PATTERN` run from a tool call matches the shell running that
+call, because the pattern is on its command line, and kills it: end a
+process by pid, or with `pkill -x NAME`.
+
+## Finding your way
+
+    bb map who-calls NAME      every call of NAME, with the function it is made from
+    bb map find NAME           where NAME is defined; bb map defs FILE lists a file
+    bb map draws ID|.class     which functions draw an element, which suites name it
+    bb map suites FILE...      the suites that reach what a file defines or draws
+
+Ask the map before grepping. It is an index over this tree (python, the
+dashboard's scripts, bb's shell, the suites), rebuilt by itself when a
+source is newer, and it answers "where would I look" in one call: the
+question that otherwise costs thirty greps and a wrong guess. It is rough
+by design: braces, not scope; an anonymous callback is attributed to the
+nearest named function around it.
 
 ## Git
 
@@ -55,8 +76,7 @@ question, so ask for the smallest command that does the job.
 `bb roadmap`, `bb bug`, `bb rules`, `bb tests`. What is open is named below in
 this prompt: the titles, so nothing has to be fetched to know what exists, and
 the detail behind one item is `bb roadmap show R4` or `bb bug show B7` when you
-pick it up. Tick items off as you finish them, and file what you find rather
-than only saying it in a reply. `bb <verb> -h` is the rest of any of them.
+pick it up. `bb <verb> -h` is the rest of any of them.
 
 ## Versions
 
@@ -91,16 +111,30 @@ hierarchy intact; a window that stops updating part way through a long session
 Use `dumpsys gfxinfo PKG framestats`.
 <!-- BUILDERBOT:END -->
 
-<!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
-## The dev instance
+## Containers
 
-This project has a compose file, so the Docker tab may carry a row for it.
-Making a container, removing one, Up, Down and Env are the operator's. Rebuild
-can be handed to you per project: `bb devapp` says what it was built from and
-whether it is running; on `deny` the refusal names the dial, on `ask` your
-reason goes to a person. You have no Docker socket of your own, because the
-daemon is the node's and its group is root there. A container that does not
-exist yet is asked for: write its compose file, then `bb container ask --why
-"..." --name NAME --compose FILE`, and an administrator reads the file and
-allows or denies it; `--node` puts it on another machine.
+A container on the Docker tab belongs to one project or to none, which the
+operator sets on its row, and a session sees and works on its own project's
+only. `bb devapp ls` lists them on this project's node and `bb devapp log
+NAME` reads one. Acting on one is handed over in the project's settings
+(Claude may: Run its container): `bb devapp start|stop|restart NAME`, and
+`--container NAME` on `bb devapp rebuild` or `bb devapp env` for one written
+for this project; on `deny` the refusal names the setting, on `ask` your
+reason goes to a person. You
+have no Docker socket of your own, because the daemon is the node's and its
+group is root there. A container that does not exist yet is asked for: write
+its compose file, then `bb container ask --why "..." --name NAME --compose
+FILE`, and an administrator reads the file and allows or denies it; it
+belongs to this project unless `--for` names another, and `--node` puts it
+on another machine.
+
+<!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
+This project has a compose file, so it can have a container built from it.
+Removing one, Up and Down are the operator's; under the same setting you may
+rebuild it, change its env and create it when it has none: `bb devapp` says
+what it was built from and whether it is running, then `bb devapp rebuild`,
+`bb devapp env set FILE` and `bb devapp new`. Its env is kept by BuilderBot,
+not as a file in the tree: `bb devapp env` prints it, and a compose line
+`env_file: .env` is pointed at it when the container runs, so a missing
+`.env` in the project is expected.
 <!-- BUILDERBOT:END -->

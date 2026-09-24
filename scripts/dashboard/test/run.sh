@@ -22,6 +22,9 @@
 # run reports [skip] rather than passing by omission.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# Its own: the harness sources nothing of bb's, and the sentence a failed copy
+# meant to say ended as "die: command not found" (B231).
+die() { printf '[dashboard-test] ERROR: %s\n' "$*" >&2; exit 1; }
 # Never as root. The suite's premise is an unprivileged runner: the agent it
 # starts drops to the account sessions run as, which as root means an
 # account the machine may not have (inside BuilderBot's own dev container,
@@ -32,6 +35,68 @@ if [ "$(id -u)" = 0 ] && id builder >/dev/null 2>&1 && command -v runuser >/dev/
     echo "[dashboard-test] started as root: running as builder instead" >&2
     exec runuser -u builder -- env HOME="$(getent passwd builder | cut -d: -f6)" \
         USER=builder bash "$0" "$@"
+fi
+
+# ---- a kept fixture (roadmap R75 step 2) ------------------------------------
+# `bb tests keep` runs this script with BB_TEST_HOLD=1: the whole set-up, then
+# instead of suites it writes its address to $KEEPF and waits to be stopped.
+# Any run after that ATTACHES: no copy, no fixtures, no server, just the
+# named suite or probe against the fixture that is up: half the time of a
+# fresh run, and the world a suite just left still there for a probe to
+# look at, which is what iterating on one failure needs. The trade: the
+# world is not put back between runs
+# (`bb tests keep` again for a clean one), and the server is the kept copy's,
+# so a change to the dashboard's python needs a fresh keep; its .js and
+# .html are copied over before every attached run, since the server reads
+# those per request. The whole suite is refused here: it wants a clean
+# world per file, which is what the ordinary run gives it.
+KEEPF="${TMPDIR:-/tmp}/bb-suite.keep"
+if [ -z "${BB_TEST_HOLD:-}" ] && [ -f "$KEEPF" ]; then
+    # shellcheck source=/dev/null
+    . "$KEEPF"
+    if kill -0 "${KEEP_PID:-0}" 2>/dev/null; then
+        [ $# -gt 0 ] || { printf '[dashboard-test] ERROR: a fixture is kept (%s): name a suite or a probe to run against it, or bb tests keep stop\n' "$KEEP_URL" >&2; exit 1; }
+        # One attached run at a time, as a fresh run is (B240). The keeper
+        # holds the harness's lock, so an attached run keeps its own beside
+        # it: two pages on the test account in one kept world fight over its
+        # tabs, and the hand-back hook's design check, attaching in the
+        # middle of a session's own suites, failed both on waits that had
+        # nothing to do with the change. The sentence is the fresh run's, so
+        # the hook passes it through as a check that could not run (B232).
+        ALOCK="${TMPDIR:-/tmp}/dashboard-test.d/attached"
+        if [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$ALOCK" ]; then
+            other="$(cat "$ALOCK" 2>/dev/null || true)"
+            if [ -n "$other" ] && [ -d "/proc/$other" ]; then
+                die "another dashboard test run is going (pid $other, attached to the kept fixture, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago). One at a time on this box; wait for it, or set BB_TEST_CONCURRENT=1"
+            fi
+        fi
+        ( umask 000; mkdir -p "${ALOCK%/*}"; rm -f "$ALOCK"; printf '%s' "$$" > "$ALOCK" ) 2>/dev/null || true
+        trap '[ "$(cat "$ALOCK" 2>/dev/null)" = "$$" ] && rm -f "$ALOCK"' EXIT
+        # the dashboard's page and scripts, as they are now
+        cp "$HERE"/../*.js "$HERE"/../*.html "$KEEP_HERE/../" 2>/dev/null || true
+        cp "$HERE/lib.mjs" "$KEEP_HERE/lib.mjs"
+        rc=0
+        for t in "$@"; do
+            case "$t" in
+                /*) f="$KEEP_HERE/_probe-$(basename "${t%.mjs}").mjs"; cp "$t" "$f" ;;
+                *)  f="$KEEP_HERE/${t%.mjs}.mjs"; cp "$HERE/${t%.mjs}.mjs" "$f" ;;
+            esac
+            printf '[dashboard-test] == %s == (attached to the kept fixture at %s)\n' "$(basename "$f")" "$KEEP_URL"
+            # The kept world's own environment, the same as a fresh run sets
+            # below: its private tmux server, its git config, and none of the
+            # node's or the session's own variables. Without it a suite that
+            # ends or makes a tmux session refused to run attached (B230).
+            env -u TMUX -u BUILDERBOT_ROLE -u BB_CONTROLLER -u BB_CONTROLLER_PIN -u BB_NODE \
+                -u BUILDERBOT_NODE -u BB_ACCOUNT_NAME -u BB_ACCOUNT_UID -u BB_PROJECT -u BB_TREE \
+                -u BB_TREE_OWNER -u BB_CI_LOG_DIR -u BB_NODE_TOOLCHAINS -u BB_EMU_LOCAL \
+                TMUX_TMPDIR="$KEEP_S/tmux" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$KEEP_S/gitconfig" \
+                DASHBOARD_TEST_URL="$KEEP_URL" DASHBOARD_TEST_CHROME="$KEEP_CHROME" \
+                DASHBOARD_TEST_DIR="$KEEP_S" node "$f" || rc=1
+            case "$f" in */_probe-*) rm -f "$f" ;; esac
+        done
+        exit "$rc"
+    fi
+    rm -f "$KEEPF"
 fi
 # ...and never straight off the projects share. The server serves its own
 # code on every request and the suite reads its files as it goes, and
@@ -52,13 +117,24 @@ if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
    && [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ]; then
     _src="$(cd "$HERE/../../.." && pwd)"
     _dst="$(mktemp -d "${TMPDIR:-/tmp}/bb-suite.XXXXXX")"
-    tar -C "$_src" -cf - --exclude=./.git --exclude=./dist \
-        --exclude=./android/app/build --exclude=./android/build . \
+    # tar exits 1 for a file that changed under it (a CHANGELOG.md write, a
+    # session's edit) and the copy is still whole: that is not a failed copy.
+    { tar -C "$_src" -cf - --warning=no-file-changed --exclude=./.git --exclude=./dist \
+        --exclude=./android/app/build --exclude=./android/build . || [ $? -eq 1 ]; } \
         | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
     printf '[dashboard-test] running from %s: this tree is on NFS, which fails the suite own waits (B124)\n' "$_dst" >&2
-    BB_TEST_COPY="$_dst" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
+    BB_TEST_COPY="$_dst" BB_TEST_ORIGIN="$_src" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
 fi
 DASH="$(dirname "$HERE")"
+# Function coverage (roadmap R76), under `bb tests coverage`: the page files
+# of THIS copy are rewritten to count every function body they enter (never
+# the tree: with no copy, BB_TEST_INPLACE, it is refused), the server
+# records the functions it enters, and the counts are merged into the
+# tree's .bb-map/coverage.json when the run ends.
+if [ -n "${BB_COVERAGE:-}" ]; then
+    [ -n "${BB_TEST_COPY:-}" ] || { printf '[dashboard-test] ERROR: coverage instruments the run copy and there is none here (BB_TEST_INPLACE)\n' >&2; exit 1; }
+    python3 "$DASH/../lib/codemap.py" instrument "$DASH" >&2 || exit 1
+fi
 # shellcheck source=/dev/null
 . /opt/builderbot/scripts/lib/common.sh 2>/dev/null || {
     log()  { printf '[dashboard-test] %s\n' "$*"; }
@@ -164,6 +240,13 @@ rm -f "$LOCK" 2>/dev/null || true
 ( umask 000; printf '%s' "$$" > "$LOCK" ) 2>/dev/null \
     || die "cannot take $LOCK: $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
+if [ -n "${BB_COVERAGE:-}" ]; then
+    export BB_COVERAGE_DIR="$S/coverage"
+    mkdir -p "$BB_COVERAGE_DIR"
+    # A counted page is a slower page, and the suites' waits are budgets
+    # for the real one (B219): every patience() gets twice the time here.
+    export BB_TEST_SLOW="${BB_TEST_SLOW:-2}"
+fi
 # Every tmux call from here on (ours and the server's) talks to a private
 # server whose socket lives in the scratch dir. Nothing reaches the real one.
 #
@@ -239,11 +322,27 @@ case "$sock" in
        die "refusing to run: tmux is on '${sock:-?}', not the private test server" ;;
 esac
 trap 'cleanup' EXIT
+trap 'exit 0' TERM INT      # so a kept fixture's stop runs the cleanup above
+probes=()
 pid=""
 agent_pid=""
 stub_pid=""
+coverage_merge() {
+    # Into the tree the copy was made from: the counts name the copy's
+    # paths, which the merge strips.
+    local origin="${BB_TEST_ORIGIN:-$(cd "$HERE/../../.." && pwd)}" n
+    n="$(ls "$BB_COVERAGE_DIR"/*.json 2>/dev/null | wc -l)"
+    [ "$n" -gt 0 ] || { warn "coverage: no counts were written"; return; }
+    python3 "$DASH/../lib/codemap.py" --root "$origin" coverage-ingest \
+        --strip "${BB_TEST_COPY:-$origin}/" "$BB_COVERAGE_DIR"/*.json >&2 || warn "coverage: the merge failed"
+    log "coverage from $n file(s) merged into $origin/.bb-map/coverage.json; bb map coverage reads it"
+}
 cleanup() {
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+    [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
+    # The server's counts are written on its way out, so the merge waits for
+    # it before reading the directory.
+    if [ -n "${BB_COVERAGE_DIR:-}" ]; then sleep 1; coverage_merge; fi
     [ -n "$agent_pid" ] && kill "$agent_pid" 2>/dev/null || true
     [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
     [ -n "${PIDF:-}" ] && rm -f "$PIDF"
@@ -257,6 +356,8 @@ cleanup() {
     # inside them looked like, and they used to go with the run that made it.
     [ -n "${BB_TEST_KEEP:-}" ] && log "scratch kept at $S" || rm -rf "$S"
     [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
+    for f in "${probes[@]}"; do rm -f "$f"; done
+    [ "${KEEP_MINE:-}" = 1 ] && rm -f "$KEEPF"
     # ...and the local copy this run was made from, if it was made from one.
     # cd out of it first: this script is inside what it is removing. Kept with
     # the scratch dir under BB_TEST_KEEP, since a failure in the copy is read
@@ -909,7 +1010,10 @@ start_server() {
     PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \
     BB_DOCKER_BIN="$S/bin/docker" DOCKER_STUB_STATE="$S/dockerstate" \
     BB_DEV_DATA_DIR="$S/devdata" \
+    BB_COVERAGE_OUT="${BB_COVERAGE_DIR:+$BB_COVERAGE_DIR/server-$RANDOM.json}" \
+    BB_COVERAGE_SUITE="${BB_COVERAGE_SUITE:-server}" \
     BB_ARCHIVE_SPOOL="$S/spool" \
+    BB_CLAUDE_LATEST_URL="file://$S/claude-latest" BB_CLAUDE_CHECK_DELAY=3600 \
     BUILDERBOT_IDLE_UNIT=1 \
     BB_COMPAT_SWEEP=1 \
     python3 "$DASH/server.py" >> "$S/server.log" 2>&1 &
@@ -1028,7 +1132,9 @@ stop_world() {
     done
     pid=""; stub_pid=""
 }
-WORLD_OUT=(tmux ssh-agent.sock server.log agent-stub.log .world.tar)
+# ...and the coverage counts, which every suite adds to and a restore must not
+# take back to the empty directory the snapshot holds (R76).
+WORLD_OUT=(tmux ssh-agent.sock server.log agent-stub.log .world.tar coverage)
 snapshot_world() {
     local ex=() n
     for n in "${WORLD_OUT[@]}"; do ex+=("--exclude=./$n"); done
@@ -1066,19 +1172,42 @@ fresh_world() {
 stop_world
 snapshot_world
 
+# ---- kept: the world is up; wait for bb tests keep stop --------------------
+if [ -n "${BB_TEST_HOLD:-}" ]; then
+    fresh_world
+    fresh
+    KEEP_MINE=1
+    printf 'KEEP_PID=%s\nKEEP_URL=%s\nKEEP_S=%s\nKEEP_HERE=%s\nKEEP_CHROME=%s\nKEEP_SINCE=%s\n' \
+        "$$" "http://127.0.0.1:$PORT/" "$S" "$HERE" "$CHROME" "$(date +%s)" > "$KEEPF"
+    log "fixture kept at http://127.0.0.1:$PORT/ (test:test); bb dashboard test SUITE and bb tests probe FILE attach to it; bb tests keep stop ends it"
+    while :; do sleep 3600 & wait $! || true; done
+fi
+
 # ---- tests -----------------------------------------------------------------
 if [ $# -gt 0 ]; then
     tests=()
-    for t in "$@"; do tests+=("$HERE/${t%.mjs}.mjs"); done
+    for t in "$@"; do
+        case "$t" in
+            # A probe (`bb tests probe FILE`): a script from anywhere, copied
+            # beside lib.mjs so its `./lib.mjs` resolves, and removed after.
+            /*) f="$HERE/_probe-$(basename "${t%.mjs}").mjs"; cp "$t" "$f"; probes+=("$f"); tests+=("$f") ;;
+            *)  tests+=("$HERE/${t%.mjs}.mjs") ;;
+        esac
+    done
 else
     # Every suite but the library and the lab's: a lab-*.mjs runs against a
     # real service (roadmap R54) and is asked for by name, `bb tests lab`.
     tests=()
     for t in "$HERE"/*.mjs; do
-        case "$(basename "$t")" in lib.mjs|lab-*.mjs) ;; *) tests+=("$t") ;; esac
+        case "$(basename "$t")" in lib.mjs|lab-*.mjs|_probe-*) ;; *) tests+=("$t") ;; esac
     done
 fi
 run_file() {
+    # The suite's name, for the server's coverage counts to carry (R76):
+    # the server is started fresh for every file, so its counts are that
+    # file's and the map can say which suite reached a handler.
+    BB_COVERAGE_SUITE="$(basename "${1%.mjs}")"
+    export BB_COVERAGE_SUITE
     fresh_world
     fresh
     log "== $(basename "$1")${2:+ $2} =="

@@ -417,9 +417,11 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
 bb nodes           the machines enrolled as nodes, read-only in a terminal;
                    the Nodes tab is where they are edited
 bb settings        this project's settings as the dashboard has them: node,
-                   model, effort, build and test commands, lock. Read-only;
-                   on a node it is relayed from the controller, and it is
-                   what bb-tty and bb build read there.
+                   model, effort, build and test commands, lock. On a node
+                   it is relayed from the controller, and it is what bb-tty
+                   and bb build read there. `set build|test|outputs VALUE`
+                   is the one write: a session fills a field in for the
+                   operator, under the project's gate (below).
 bb users           the dashboard's accounts. `passwd NAME` resets one from a
                    shell, which is the way back when the owner is locked out
 bb work            who else is working this project, and which files two of
@@ -434,19 +436,33 @@ bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
 bb build           the project's build command on its node, with the outputs
                    it lists: all set in the project's settings dialog
 bb test [ARGS]     the same for its test command; ARGS are appended to it, so a
-                   suite that takes file names runs only those. Inside the project's
-                   dev instance whenever that is up; and where its Docker row says
-                   the tests are the container's only, a container that is down is
-                   a refusal naming it, and nothing runs on the node
+                   suite that takes file names runs only those. Where it runs is
+                   "Tests run" in the project's settings: on the node, which is the
+                   default; inside its dev instance when that is up, else on the
+                   node; or only inside it, where a container that is down is a
+                   refusal naming it and nothing runs on the node
 bb devapp          this project's dev instance: what it was built from, whether it is
                    running, and whether its daemon answers
 bb devapp rebuild [--why "..."]
                    build it and bring it up. Only where the project has handed that
-                   over: the dial is on its row in the Docker tab, beside the
-                   Rebuild it hands over, and reads deny (the default, refused with
-                   the sentence that names it), ask (the reason goes to a person and
-                   the command waits for Allow) or auto. Making a container, removing
-                   one, Up, Down and Env stay the operator's whatever it says
+                   over: Claude may: Run its container, in its settings dialog and
+                   the new-project dialog, reads deny (the default, refused with the
+                   sentence that names it), ask (the reason goes to a person and the
+                   command waits for Allow) or auto. Up, Down, removing one and a
+                   container of any other shape stay the operator's
+bb devapp new [--env FILE] [--why "..."]
+                   create the project's container from its own compose file when it
+                   has none, under the same setting; on ask, Allow creates, writes
+                   the env and builds
+bb devapp env [set FILE|-] [--why "..."]
+                   print the container's env, or replace it, under the same setting.
+                   BuilderBot keeps it per container, never as a file in the project,
+                   and points a compose line `env_file: .env` at it when it runs
+bb devapp ls       every container that belongs to this project on its node
+bb devapp log NAME one of those containers' log
+bb devapp start|stop|restart NAME [--why "..."]
+                   one of those, under the same setting; --container NAME on the
+                   other verbs reaches one written for this project
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -475,6 +491,7 @@ bb roadmap show N     one item in full: its details, its steps and theirs (N is 
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` abandoned
 bb roadmap restore N  put a dropped one back from the history, as it was
 bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
+bb roadmap unshelve N [WHY]   ask for one back: held for a person on the project to approve
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
 bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for one step
 bb roadmap info N [M] "..."           attach the technical details to one, or step M
@@ -493,13 +510,15 @@ bb tests run [ARGS]  run the project's test command, time it, and record the run
                    run that only said "failures above" cost four whole runs to read once. ARGS go to the
                    command, so `bb tests run auth cards` times and records those two files and nothing else
 bb tests last      that verdict again off the last run's log, running nothing
+bb tests log [-f]  the last run's output, whole; -f follows a run still going. The
+                   Tests view's Open the run's output sends this into the project's shell
 bb devapp test [ARGS]  the project's test command inside its running dev instance, as a compose job on
                    its node: the whole log, and the job's exit code. `bb test` takes this path on its own
-                   whenever the instance is up, so a suite that tests BuilderBot cannot disturb the
-                   BuilderBot it runs on (roadmap R48). "Tests run" in the project's settings
-                   dialog can make the container the only place: a container that is down then
-                   refuses rather than falling back to the node. The rebuild dial governs
-                   testing too, since a stale container tests stale code
+                   where "Tests run" in the project's settings says the dev instance, so a suite that
+                   tests BuilderBot cannot disturb the BuilderBot it runs on (roadmap R48). Only for an
+                   image that carries its tests: one built to ship has none, and a run inside it finds
+                   nothing and passes. Claude may: Run its container is not asked: a test runs in a
+                   container that is already up
 bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
                    Each names what it needs and skips in one line without it, so a missing service
                    is never a failure, and nothing records them: a lab run is a proof, not a timing.
@@ -590,12 +609,65 @@ bb dashboard test  browser-test the dashboard from this checkout, isolated
 bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reverts)
 bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
+bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
+                   draws ID|.class, suites FILE...; a session asks it before grepping
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
-bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
+bb tool            the tools toolchains add to a session, each under its own name
+bb tool graphics CMD  pictures a session can make and then read back, with the
+                   graphics toolchain on its node: info, resize, crop, compose,
+                   annotate, diff, svg2png and optimize, into dist/img/, and
+                   favicon SVG [DIR], a favicon set (ico + touch icon) from one mark
+bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) rendered to
+                   PNG and SVG in dist/diagrams/, with the diagrams toolchain
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
 The dashboard's Commands flyout carries this same list in this same order.
+
+`bb tests keep` holds the dashboard's test fixture up after the harness's
+set-up, so `bb dashboard test SUITE` and `bb tests probe FILE.mjs` attach
+to it: half the time of a fresh run, and the world a suite just left is
+still there for a probe to look at. A probe is a scratch Playwright script
+(importing `./lib.mjs`) that asks the page a question, which is how a
+session finds out what a tab really fetches or what a variable holds. The
+kept world is not put back between runs, and a change to the dashboard's
+python needs a fresh keep; `bb tests keep stop` ends it. Both are R75's
+second step.
+
+`bb dashboard trace [SECONDS]` prints what the dashboard was asked over
+that window, by endpoint and by who asked, from a ring the server keeps in
+memory: the command that shows a poll that should not be there or a tab
+that asks twice, which nothing counted before. The design suite holds the
+matching invariant: an idle page issues only its two polls, and opening a
+tab asks each endpoint once. R75's fourth step; the fifth puts the
+running build into every session's briefing, so no session argues from a
+build it assumed.
+
+`bb tests coverage [SUITE...]` is a covered run: the copy the harness runs
+from gets a counter at the head of every function the map knows, the
+server counts the functions it enters, and the counts are merged into
+`.bb-map/coverage.json`. `bb map covered NAME` then names the suites that
+ran a function, `bb map uncovered [FILE]` what no suite reaches, and `bb
+map unused` what nothing calls or passes by name. R76: a refactor knows
+its regression net before it starts.
+
+`bb tests preflight` is what a session runs before a push: the files the
+branch changed, the suites the code map says reach them (a page function
+they call bare, an id or class they name, an API path a changed python
+module answers through the server's route table, a file named outright),
+and the lint, voice and design checks, run together; `--dry` prints the
+plan. R75's third step, so the suites are never picked by hand.
+
+`bb map` is the code map a session asks instead of grepping (roadmap R75):
+one index over the tree it is in, python, the dashboard's scripts (the
+inline script in `index.html` included), `bb`'s own shell and the test
+suites. It knows where every function is defined, every call by name with
+the function it is made from, every element id and class a function's
+markup draws, and which suite names each of those, so `who-calls
+loadDocker` or `draws .dmtab` is one call rather than a hunt. Built with
+nothing installed (python's own parser, a small scanner for the scripts),
+into `.bb-map/` beside the tree, rebuilt by itself when a source is newer.
+It is rough on purpose, braces not scope, and says so where it guesses.
 
 `bb shot` is the container's camera: one URL with an optional output file
 keeps the simple shape, several URLs share one browser and land in a
@@ -609,7 +681,7 @@ screenshots: the project keeps a script that boots its app into a
 photogenic state (staged data, ready-wait) and ends with one `bb shot`
 line; the Playwright plumbing lives here, once.
 
-`bb favicon LOGO.svg [DIR]` is the same idea for a web app's icon: the
+`bb tool graphics favicon LOGO.svg [DIR]` is the same idea for a web app's icon: the
 project supplies its mark as one SVG, and out come `favicon.ico` holding
 every small size in one file (the bare `/favicon.ico` request browsers make
 cannot ask for a particular one), `apple-touch-icon.png` at 180 for iOS
@@ -1248,21 +1320,28 @@ lives in its body. The cards:
   enrolled it also asks which node the project runs on (the only one is
   picked for you; *none* is an option), the same setting the project's
   settings dialog changes later, so a new project can build and start a
-  session without a second dialog. It can
+  session without a second dialog. It asks the same way what a session
+  may enter into the notebook (add to the roadmap, file bugs, add rules,
+  fill in build and test), auto unless you say otherwise, so that is a
+  choice made rather than a default found later. It can
   also start from an archive you already have: zip, or tar with gzip, bzip2
-  or xz, unpacked into the new directory before `git init`. A single
+  or xz, unpacked into the new directory before `git init`. However it
+  arrived, the code map a session asks before grepping (`bb map`) is built
+  for it in the background the moment the tree is there: the dialog closes
+  as usual, the row says *mapping the code* for the seconds it takes, and
+  a Claude session on that project waits for it, so its first question
+  about the tree is answered from an index rather than by building one. A single
   top-level folder inside is dropped (the project directory *is* that
-  folder), desktop junk like `__MACOSX` is skipped, and with no notes typed
-  the `CLAUDE.md` is drafted from the unpacked files the way a clone's is.
+  folder), desktop junk like `__MACOSX` is skipped, and a `CLAUDE.md` is
+  written only from notes you typed.
   Nothing is committed; the first session, or you, decides what the first
   commit is. Paths that would land outside the directory are refused whole. A clone
   of a GitHub repository asks for nothing but the URL: it is fetched with the
   container's own access (a deploy key or PAT that can already reach it).
-  The directory takes the repository's name, and the `CLAUDE.md` project
-  section is drafted from the repo itself (the README's opening paragraph,
-  plus build/test commands read off marker files like `package.json`,
-  `gradlew`, `Cargo.toml`), marked as a draft for a session to verify. A
-  repo that already carries a `CLAUDE.md` keeps its own, untouched.
+  The directory takes the repository's name. A repo that carries a
+  `CLAUDE.md` keeps its own, untouched, and one that does not gets none:
+  the briefing a session reads is assembled by the controller, and an
+  untracked draft in somebody's checkout was not worth the mystery.
   For a private repo with its own deploy key, a **Deploy key** picker lists
   what the shielded agent holds (public halves only, via `ssh-add -L`) and
   shows the selected key for copying into the repo's GitHub deploy-key page.
@@ -1322,7 +1401,11 @@ lives in its body. The cards:
   every toolchain on the [toolchain store](#the-toolchain-store-lives-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
-  is a bin on the row. Each row also names the system packages its tool puts
+  is a bin on the row. A recipe that gives a session commands says under
+  which name: they live under `bb tool NAME` (`bb tool graphics`, `bb tool
+  diagrams`), one name per recipe, so the row says what installing it adds,
+  two toolchains may both have a `render`, and none can shadow a verb of
+  bb's own; the suite holds the catalogue to the script. Each row also names the system packages its tool puts
   on the picked machine, in that machine's package manager's names, and for
   one already installed which of them are missing there. They install with
   the tool and only then; uninstalling a tool leaves them, since another may
@@ -1337,8 +1420,13 @@ lives in its body. The cards:
   reports in, once per missing set, and never while its system changes are
   locked to its console. Anywhere it cannot (a guest node, a locked one, an
   install that failed) the tab says which and **Install system packages**
-  puts them on that node without reinstalling the toolchain; the node's row
-  says the same, before a build fails on it. A toolchain that puts something on
+  puts them on that node without reinstalling the toolchain, and the row
+  that lacks them carries **Install them now**, which does it for that row
+  alone; the node's row says the same, before a build fails on it. A
+  toolchain another one needs (the JDK that PlantUML runs on, the Node that
+  Playwright's module needs) is installed with it, and a row whose needed
+  toolchain is not on the picked node says which and offers that row's own
+  install. A toolchain that puts something on
   PATH reaches a session when the session starts, so its row says how many
   sessions open on that node started before it was installed, and to reopen
   them. Beside it, **Docker manager…**, **Emulator** (a node's Android
@@ -1706,15 +1794,16 @@ offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog: one
 node for everything it does off this box: containers, builds, tests, CI and
-emulation, and gives its build and test commands and the output globs. **The
-test command has a default and the build command does not**: "run the tests"
-has one conventional answer per ecosystem, so a tree with a `gradlew`, a
-`go.mod`, a `Cargo.toml`, a `pytest.ini`, a `package.json` declaring a test
-script (or this repository's own harness) answers `bb test` and `bb tests
-run` with nothing set, saying once which command it fell back to, and the
-field shows it as what leaving the box empty means. "Build" has no such
-answer (which target, which flavour, which of an Android project's four),
-so `bb build` still refuses and names the dialog. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
+emulation, and gives its build and test commands and the output globs.
+**Nothing runs that nobody wrote down**: with a field empty, `bb build` and
+`bb test` refuse and say how to fill it. The person who knows how a tree
+builds is often the session that has just read it, so a session can:
+`bb settings set test "./gradlew test"` (or `build`, or `outputs`), and
+what happens then is the project's fourth gate, beside the three for the
+notebook: auto lands it, ask holds it on the notebook for approval with the
+command in full, deny refuses it with a sentence the session quotes. Only
+those three fields have a verb; the node, the git policy and the gates
+themselves stay the dialog's. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
 tree here, dirty edits included, run on that node in a workspace of the job's
 own, and stream the log back; what the outputs match comes back into `dist/`
 by name with a provenance record beside it, which the Artifacts tab shows on
@@ -1897,8 +1986,9 @@ and the idle rule for Claude sessions: end one after N minutes with nothing
 typed or written, here and on every node, where the node itself enforces it
 so the rule holds while this container is down, and the tab says
 plainly what still comes from the environment and why (the placement rule and
-the unhardwiring are docs/nodes.md §13 and §11). Its **What is offered**
-group is one switch, *Offer dev features*: alpha is what has been run for
+the unhardwiring are docs/nodes.md §13 and §11). One switch in its
+Debugging dialog, *Offer dev features* (Debug mode on, then Debug settings),
+decides which product this dashboard is: alpha is what has been run for
 real (GitHub and Gitea among git hosts, Unraid among the VM sandbox
 methods, Debian's and RHEL's families for the provisioner), dev is the rest,
 written to each product's documented shape and never run. Off, only alpha
@@ -1942,9 +2032,8 @@ stop. The row then says how the job ended rather than silently reverting to
 whatever state it was in.
 
 **New container** on that tab runs something with no project behind it, and
-takes a project to **show under**, so it is listed on that project's notebook
-Docker view as well as here (Send to Docker manager takes the same, with the
-project it is built from picked by default): a
+takes the **project** it belongs to (Send to Docker manager takes the same,
+with the project it is built from picked by default): a
 name, a compose file and an environment, which is the shape Portainer's stacks
 and Dockge use. Labels are not a fourth box, in compose they belong in the
 YAML. The compose file is checked by compose itself before it is saved, and
@@ -1964,9 +2053,21 @@ which is where it comes back from.
 The same tab lists every container on the picked node's daemon, not only the ones this
 dashboard started. A port taken by something else is exactly what you open a
 list like this to find out about, so the others are shown and marked *not ours*
-rather than hidden. It is a read: `docker ps` is one of two verbs the dev
-instance's guard allows outside compose, and nothing on the tab acts on a
-container.
+rather than hidden, and an administrator can start, stop and restart one by
+name and read its log.
+
+**Every row belongs to a project or to none**, and the tab is grouped that way:
+each project's containers together under its name, the projects in
+alphabetical order, and what belongs to none last. A container built from a
+project belongs to it until its row says otherwise, one written here belongs
+to the project picked when it was made, and one somebody else started belongs
+to none until an administrator picks a project on its row; that choice is kept
+by name on its node, so the same container recreated keeps it. The project it
+belongs to lists it in its notebook's Docker view, and that project's Claude
+sessions are the only ones that can see it: `bb devapp ls` lists them and `bb
+devapp log NAME` reads one, while rebuilding, changing the env, starting and
+stopping follow that project's *Claude may: Run its container*. An account
+that is not an administrator sees what belongs to its projects.
 
 - a rendered **findings report**: the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD.
@@ -2034,7 +2135,11 @@ empty. Reaping on absence would wipe the strip at every boot.
 The page starts with one tab (**workspace**, a shell at `/workspace`) and
 everything you open gets its own tab above the terminal. Every tab, the
 workspace one included, can be minimized or closed; an empty strip just shows
-a placeholder, and **+** starts over.
+a placeholder, and **+** starts over. On a desktop a terminal tab can also be
+popped out into its own window (the ⧉ on the tab): the tab stays in the strip
+as a blank pane with **Reattach**, in a split view as in a single one, and
+closing the window brings it back on its own. The window is the terminal's
+own address, so closing the dashboard leaves it working.
 
 - **Claude** on a project opens *one* session per project. If it is already
   running the button is green and takes you to its tab. If it is not but the
@@ -2070,10 +2175,10 @@ each is its own instance, so what is half-typed in one survives working in
 another, and the button lights green while that project's is open. Its tab
 strip: **Briefing** (the rules, and what Claude remembers here), the
 **Roadmap** (the shared list of design work and ordered plans), **Bugs**,
-**Git**, **Artifacts**, **Docker** (this project's containers: its own dev
-instances and any container made with *show under* naming it, with the
-manager's rows and controls, so a dev radarr for a media project is found
-beside that project rather than among every project's on the Docker tab),
+**Git**, **Artifacts**, **Docker** (every container that belongs to this
+project, with the manager's rows and controls, so a dev radarr for a media
+project is found beside that project rather than among every project's on
+the Docker tab),
 **Tests**, and **Analysis** (the scanner's findings for this project alone).
 
 **Unsaved work does not cross those views.** Leaving a view asks, and answering
@@ -2196,8 +2301,13 @@ it applies to an item, never to one step of a plan, because the thing you
 have decided not to do now is the whole plan. Shelved items do not count
 towards the number on the project row. A session can shelve (something turns
 out to be blocked, and saying so on the row beats saying it in a reply nobody
-re-reads), but cannot unshelve: taking one off reverses a decision it was not
-told the reason for.
+re-reads), and can ask for one back with `bb roadmap unshelve N WHY`: taking
+one off reverses a decision it was not told the reason for, so the request
+is held on the notebook with its reason, whatever the roadmap gate says, and
+a user or administrator on the project approves or denies it there.
+**Finished** at the top of the tab shows the items ticked off, with the
+plans they had, below the shelved ones; they are hidden until asked for,
+because a list is read to find out what is left.
 
 **A Claude tab does not come back on its own after a restart.** The
 conversation ended with the container; the transcript did not, so the
@@ -2397,8 +2507,8 @@ switch as the default for *new* sessions, so a per-project pick would leak to
 every project.
 
 **How much of what a session adds lands on its own** is the last row of the
-same dialog: *Claude may* add to the roadmap, file bugs and add rules, each
-**auto**, **ask** or **deny**. Auto is today's behaviour: an item, report or
+same dialog: *Claude may* add to the roadmap, file bugs, add rules and fill
+in build and test, each **auto**, **ask** or **deny**. Auto is today's behaviour: an item, report or
 rule a session adds lands at once, marked as its own. Ask holds it instead: the
 session is told "held for approval as R12", the notebook shows a band above
 its tabs with how many changes are waiting (and a count on each tab), the bell
@@ -3599,6 +3709,26 @@ session token a Claude session is given, for proving a node by hand, where
 account named it is the token a node-bound terminal carries, which also
 fetches that account's Claude login onto the node.
 
+**Claude Code on a node is updated from the Nodes tab, and by nothing a
+session can do.** Each node's row has a Claude Code section: the version
+its session account runs against the latest the controller knows, which
+it asks the installer's own `latest` for after it starts and every six
+hours, or on **Check for updates**. A node behind is a row in the bell.
+**Update** ends every Claude session on that node first, then the agent
+runs the installer as the session account and, on a managed node, pins
+the binary where the account cannot write it, so `claude update` typed in
+a session changes nothing that runs (the auto-updater is off there too).
+Nothing starts again on its own: the project rows do, when you press
+them, and until the job ends those rows are held with the reason. The
+node action is an administrator's, so a session's token is refused, and
+no `bb` verb reaches it. **Update Claude Code before a session starts**,
+a switch on the Settings tab and on each node's section, is off by
+default: off, a node stays on what it has until you press Update; on,
+pressing Claude on a node that is behind updates it first, the start is
+held with the reason, and you press again when the row comes back. An
+open conversation is never ended for it. A press refused for any reason
+says so on the section, not only in a toast.
+
 **A token lasts twelve hours, and a conversation can last longer.** One is
 minted per connection, so opening the session's tab refreshes it, but the
 `claude` already running keeps the environment it started in, and nothing
@@ -3619,6 +3749,10 @@ An expired token is never renewed, which is what keeps twelve hours meaning
 something for one that leaked. This came from a session driven from the
 remote view overnight: the token from the tab it was started in ran out at
 one in the morning, every `bb` verb stopped, and there was no tab to open.
+`bb status` says which copy is in use and when it runs out (the
+environment's, or the kept one once that has been renewed past it), so
+renewal is something to see: a session reading only its environment once
+reported a token that had been replaced hours earlier as expired.
 
 #### Accounts
 
@@ -3665,8 +3799,10 @@ tree could not have been: `/workspace/<project>` is a single working tree, so
 two sessions in it commit each other's half-finished work and delete it with a
 `checkout`. Separate trees make that impossible and put the conflicts at the
 merge, where git is good at them. A worktree session builds into its own
-`dist/`, so the Artifacts tab will not show it, and the dev instance belongs to
-the project rather than to the session.
+`dist/`, which the Artifacts tab lists apart from the project's, under whose
+worktree and branch it is, with Download and View; Install and Push stay with
+the project's `dist/`. The dev instance belongs to the project rather than to
+the session.
 
 **Chat** is the fourth flyout beside Keys, Commands and Sessions. It lists the
 other accounts (a green dot for whoever is here right now) and, under them,
@@ -3924,12 +4060,16 @@ a bottom bar, not the tabs a browser page needs. Sign in with the
 dashboard's address and your account; the credential is kept in the
 device's encrypted preferences.
 
-**Notifications.** A foreground service polls the dashboard on the interval
-you set and posts what the bell would show: a session asking for your phone
-or for root on a node arrives as a notification with **Approve** and
-**Deny** on it, answered without opening the app; changes a session has
-waiting, and a node whose agent is behind or out of window, arrive as notes
-that open the right screen. There is no push service: the phone reaches
+**Notifications.** The app asks the dashboard what the bell would show and
+posts it: on the interval you set while the app is open, and about once a
+minute in the background through an inexact alarm, so nothing stays in the
+shade between questions and the icon carries no dot of its own. A session
+asking for your phone or for root on a node arrives as a notification with
+**Approve** and **Deny** on it, answered without opening the app; changes a
+session has waiting, and a node whose agent is behind or out of window or
+whose Claude Code is behind, arrive as notes that open the right screen. A
+phone left alone can hold the alarm back for some minutes, which is why the
+dashboard's bell carries the same questions. There is no push service: the phone reaches
 your BuilderBot directly, on your network or over your tailnet, so nothing
 needs an account with anybody, and nothing is kept in the repository.
 
@@ -4014,6 +4154,7 @@ scripts/
     jobs.py                      the controller's own job runner (exec here or over ssh) plus /healthz and /metrics
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
     idle.py                      ending Claude sessions nobody has used for a while
+    projsessions.py              every account's sessions on a project, and an administrator ending one
     doctor.py                    `bb doctor` run on a timer and cached, for the Doctor card
     runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
     findings.py                  the scanner's reports read and attributed, and what they used to say

@@ -37,6 +37,20 @@ const served = () => page.evaluate(async () => {
 // not news for a view, it is the end of the page.
 const OWN = ['boot'];
 
+// The request trace (R75 step 4): what the server was asked, by endpoint,
+// with query keys and never values. Read by an admin here; a session may
+// too; anybody else may not.
+{
+  const tr = await page.evaluate(async () => (await fetch('/api/trace?since=0')).json());
+  const paths = (tr.rows || []).map(r => r.path);
+  ok(tr.total > 0 && paths.some(p => p.startsWith('/api/revs')) && paths.some(p => p === '/api/status'),
+     `the trace lists what the page asked, by endpoint (${tr.total} requests, ${paths.length} endpoints)`);
+  ok(paths.every(p => !/alpha|beta/.test(p)) && paths.some(p => /^\/api\/revs\?p$/.test(p)),
+     "...with a query's keys and never its values");
+  ok((tr.rows || []).every(r => ['browser', 'curl', 'app', 'session', '?'].includes(r.agent) || r.agent) && (tr.rows || []).some(r => r.by === 'user'),
+     '...and who asked, by principal and user agent');
+}
+
 const bare = { watched: await watched(), served: await served() };
 let orphan = bare.watched.filter(k => !bare.served.includes(k));
 ok(orphan.length === 0,

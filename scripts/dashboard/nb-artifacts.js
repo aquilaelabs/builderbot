@@ -16,6 +16,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     }catch(e){ hint.textContent = "artifacts: " + e; return; }
     if (art.error){ hint.textContent = "artifacts: " + art.error; return; }
     const rows = art.artifacts || [], job = art.push || {}, dev = art.phone;
+    const groups = art.branches || [];
     // The code base itself, as a zip through the browser: a navigation, so
     // the browser's own download handles it, cookie and all.
     const src = $("artSource");
@@ -28,7 +29,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     const inst = art.install || {};
     hint.textContent = rows.length
       ? `${rows.length} in dist/: what this project ships, newest first`
-      : "nothing here yet";
+      : groups.length ? "nothing in dist/ yet; built on a branch, below" : "nothing here yet";
     {
       // Where this project compiles, as a section rather than a loose band:
       // this tab is three subjects stacked, where it builds, what it is
@@ -128,7 +129,11 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             <span class="dim state ${da.running ? "ok" : ""}">(${devState})</span></div>
           <div class="dim">${
             daJob?.running ? esc(daJob.step || "working") + '<span class="dots"></span>'
-            : daJob?.error ? "build failed; see below"
+            // The reason's head and its last words, on one line: "build
+            // failed: stub build exploded". The whole output is the Jobs
+            // tab's, and the shell's through the Tests view.
+            : daJob?.error ? esc((l => l.length > 1 && l[0] !== l[l.length - 1] ? `${l[0]} ${l[l.length - 1]}` : l[0] || "")(
+                String(daJob.error).split("\n").map(x => x.trim()).filter(Boolean)))
             : da.await_env ? "built: fill in the env (Env), then Up"
             : da.interrupted ? `a build was interrupted: BuilderBot restarted
                 while it was running${da.built_rev
@@ -150,9 +155,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           // instance Send makes gets an env of its own, and the port goes in
           // it. So a note, in the quiet voice, not a verdict in red.
           da.port_clash?.length ? `<div class="dim li">port ${esc(da.port_clash.join(", "))} ${
-            da.port_clash.length === 1 ? "is" : "are"} published already on this node: the instance Send makes sets its own in its env</div>` : ""}
-          ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
-            esc((daJob.log || "").slice(-600))}</div>` : ""}
+            da.port_clash.length === 1 ? "is" : "are"} already published on this node</div>` : ""}
         </div>
         <span class="acts">
           ${devWeb ? `<a class="btn" href="${esc(devWeb)}" target="_blank"
@@ -160,8 +163,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           ${devAsk ? `<button type="button" id="devOpen"
             title="it publishes ${devTcp.length} ports: pick one">Open</button>` : ""}
           <button type="button" id="devSend" class="primary"
-            title="name a container built from this project and manage it there: a
-project can have several"
+            title="make a container from this project and manage it on the Docker tab"
             >Send to Docker manager</button>
         </span>
       </div>`;
@@ -189,8 +191,7 @@ project can have several"
           inst.error ? `: ${esc(inst.error)}` : ""}</span>
       </div>` : "";
     list.innerHTML = devHtml + (!rows.length
-      ? `<div class="hint">Nothing in <b>dist/</b>. A build worth keeping is copied
-           into the project's dist/ directory; this tab lists that and nothing else.</div>`
+      ? `<div class="hint">Nothing in <b>dist/</b> yet: a build copies what it keeps there.</div>`
       : jobHtml + instHtml + rows.map((a, i) => `
         <div class="artrow">
           <span class="grow">
@@ -224,14 +225,49 @@ project can have several"
           </span>
         </div>`).join(""));
     paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
+    // Builds made on a branch, in each account's worktree (B237): Download
+    // and View, carrying the tree. Install and Push stay with dist/, whose
+    // files the phone's node is sent by their path in the project.
+    const brList = $("artBranches");
+    const brRows = groups.flatMap(g => g.artifacts.map(a => ({...a, tree: g.uid})));
+    if (brList){
+      brList.hidden = !brRows.length;
+      let at = 0;
+      brList.innerHTML = !brRows.length ? "" : `<div class="hint">Built on a branch, in each account's own worktree; merging it to main is what puts its build in dist/.</div>`
+        + groups.map(g => `<div class="sub dim ggroup">${esc(g.who === state?.me ? "your" : `${g.who}'s`)} worktree${
+            g.branch ? `, on ${esc(g.branch)}` : ""}</div>` + g.artifacts.map(a => { const i = at++; return `
+          <div class="artrow">
+            <span class="grow">
+              <span class="top"><span class="pill">${esc(a.kind)}</span> <b>${esc(a.name)}</b></span>
+              <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}</span></span>
+            <span class="acts">
+              ${a.view ? `<button type="button" data-artbview="${i}"
+                  title="read it here, without downloading it">View</button>` : ""}
+              <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
+                }&path=${encodeURIComponent(a.path)}&tree=${encodeURIComponent(g.uid)}" download>Download</a>
+            </span>
+          </div>`; }).join("")).join("");
+      paginate(brList, ":scope > .artrow", {key: "artBranches", noun: "files"});
+      brList.querySelectorAll("[data-artbview]").forEach(b => b.onclick = async () => {
+        const a = brRows[Number(b.dataset.artbview)];
+        const pane = document.createElement("div");
+        pane.className = "verlogpane";
+        nb.openSheet(a.name, [pane]);
+        pane.innerHTML = `<div class="loading">loading…</div>`;
+        try{
+          const r = await fetch(`/api/artifact?project=${encodeURIComponent(project)
+                                }&path=${encodeURIComponent(a.path)}&tree=${encodeURIComponent(a.tree)}`);
+          pane.textContent = r.ok ? await r.text() : `could not read ${a.name}`;
+        }catch(e){ pane.textContent = String(e); }
+      });
+    }
     if (!tcDotsTimer && list.querySelector(".dots"))
       tcDotsTimer = setInterval(tcTickDots, 400);
     const devOpenBtn = $("devOpen");
     if (devOpenBtn) devOpenBtn.onclick = () => {
       const box = document.createElement("div");
       box.className = "portpick";
-      box.innerHTML = `<div class="hint">It publishes ${devTcp.length} ports and
-        nothing here knows which one is the web UI. Pick the one you meant.</div>`
+      box.innerHTML = `<div class="hint">It publishes ${devTcp.length} ports: pick one.</div>`
         + devTcp.map(p => `<a class="btn" href="${esc(devUrl(p))}" target="_blank"
             rel="noreferrer">${esc(daemonHost())}:${esc(p.published)}
             <span class="dim">→ ${esc(p.target)}:${esc(p.proto)}</span></a>`).join("");
@@ -348,10 +384,7 @@ project can have several"
       const blk = all.find(x => (x.component || "") === comp);
       const tag = comp ? `${comp}-v${blk?.target}` : `v${blk?.target}`;
       if (!confirm(`Release ${blk?.target}?\n\n`
-                   + `This tags the commit you are on as ${tag} and pushes the tag. `
-                   + `From then on a build of that commit is ${blk?.target} rather `
-                   + `than ${blk?.target}-dev.\n\nA pushed tag is not moved or `
-                   + `deleted from here.`)) return;
+                   + `Tags this commit as ${tag} and pushes the tag; a pushed tag is not moved or deleted from here.`)) return;
       busy(b, "Releasing");
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
       const j = await postVersion({action: "release", component: comp});
@@ -364,8 +397,8 @@ project can have several"
       const blk = all.find(x => (x.component || "") === comp);
       if (!confirm(`Take ${comp ? comp + "'s" : "this project's"} version back `
                    + `from ${blk?.target} to ${blk?.prev}?\n\n`
-                   + `The code stays. The ${blk?.target} changelog section `
-                   + `dissolves into Unreleased, and the next bump dates the `
+                   + `The code stays; the ${blk?.target} changelog section `
+                   + `goes back to Unreleased, and the next bump dates the `
                    + `whole group together.`)) return;
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
       await postVersion({action: "unbump", component: comp});
@@ -440,8 +473,7 @@ project can have several"
         const top = box ? box.scrollTop : null;
         pane.innerHTML =
           `<div class="clog">
-             <div class="hint">Sessions add the lines; the order, the categories
-               and the words are yours, saved to CHANGELOG.md when you press Save.</div>
+             <div class="hint">Sessions add the lines; the order and the words are yours. Save writes CHANGELOG.md.</div>
              ${gs.length ? gs.map((g, gi) => `
                <div class="clgroup" data-g="${gi}">
                  ${g.name ? `<div class="clhead">
@@ -581,8 +613,7 @@ project can have several"
           // No file yet. The first line can be written here as well as by
           // a session's `bb changelog add`: the editor used to sit dead
           // until Claude made the file.
-          pane.innerHTML = `<div class="sub">no CHANGELOG.md here yet: a session's first
-              <code>bb changelog add "..."</code> creates it, or write the first line:</div>
+          pane.innerHTML = `<div class="sub">no CHANGELOG.md yet: write the first line, or a session's first <code>bb changelog add</code> does</div>
             <div class="actbar"><input id="clFirst" maxlength="300" autocomplete="off"
               placeholder="what changed for the person using it, in their words">
               <button type="button" class="primary" id="clFirstGo">Create</button></div>`;
@@ -812,8 +843,7 @@ unreleased.">↩ ${esc(v.prev)}</button>` : ""}
                 + "Until then every build reads " + esc(v.target) + "-dev.<n>, which sorts BEFORE " + esc(v.target)}"
             >Release ${esc(v.target)}</button>`}
           <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
-            title="the user-facing record of what changed here: sessions add to
-it as work lands, and a bump dates the accumulated lines">Changelog${
+            title="what changed, for the people using it; a bump dates the lines so far">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
         </div>
         ${v.component ? "" : verPolicyPicker(v)}
@@ -824,7 +854,7 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
              <b>Release</b> tags and pushes it. ${helpIcon(`Two steps. Until the release, a build reads ${
                v.target}-dev.${v.ordinal ?? "n"} rather than ${v.target}: the tag on the commit, pushed, is what says it happened.`)}`}</p>
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save, and is never pushed. ${
-          helpIcon("Save writes VERSION and commits that one path. The policy stops bb version bump and a session's file tools; it does not stop Bash. It covers this project and its components alike.")}</p>
+          helpIcon("Save writes VERSION and commits that one path. The policy stops a session's bb version bump and file tools, not Bash.")}</p>
         ${verAddFold(v)}`}` : `
         ${v.component ? "" : verPolicyPicker(v)}
         <div class="verln"><span>start at</span>
@@ -837,12 +867,9 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
           </span></div>
         <div class="actbar verbtns">
           <button type="button" data-verask="${esc(v.component || "")}"
-            title="put the question to this project's Claude session; it can read
-the code, the roadmap and the changelog, and you can argue with the answer.
-It proposes and asks before doing anything.">Send to Claude</button>
+            title="ask this project's Claude session what the version should be; it proposes and asks before doing anything">Send to Claude</button>
           <button type="button" data-verlog="${esc(v.component || "")}"
-            title="entries logged before the first version wait here, and
-become that version's section when it is created">Changelog${
+            title="entries logged before the first version wait here">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
         </div>
         <p class="verwhy">No version yet. Setting one writes a

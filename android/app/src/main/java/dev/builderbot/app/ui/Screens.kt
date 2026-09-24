@@ -4,7 +4,9 @@
 // dashboard it talks to).
 package dev.builderbot.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -45,14 +47,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
-import dev.builderbot.app.Accent
 import dev.builderbot.app.Api
-import dev.builderbot.app.Bad
 import dev.builderbot.app.BuildConfig
-import dev.builderbot.app.Ok
 import dev.builderbot.app.Store
-import dev.builderbot.app.Warn
-import dev.builderbot.app.WatchService
+import dev.builderbot.app.Watch
 import dev.builderbot.app.arr
 import dev.builderbot.app.bool
 import dev.builderbot.app.int
@@ -78,21 +76,25 @@ fun Problem(text: String) {
 
 @Composable
 fun Section(title: String, content: @Composable () -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(6.dp))
-        content()
+    Column {
+        SectionHead(title)
+        Column(Modifier.padding(horizontal = 16.dp)) { content() }
     }
 }
 
 @Composable
 fun Dim(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .6f))
+    Text(text, style = MaterialTheme.typography.bodySmall, color = Dim)
 }
 
+// A command or a path, in the data voice, set into the panel the way the
+// site sets a field: the sunk ground, the corner of a control.
 @Composable
 fun Mono(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+    Text(text, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, color = Ink,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            .background(Sunk, RoundedCornerShape(6.dp))
+            .padding(8.dp, 6.dp))
 }
 
 // One fetch with its outcome, the way every screen loads: null while
@@ -109,6 +111,22 @@ fun <T> load(key: Any?, fetch: suspend () -> T): Pair<Loaded<T>, () -> Unit> {
     return state to { tick++ }
 }
 
+// Pull down to re-read, on every list: the gesture a phone expects, beside
+// the Refresh button each screen keeps for a thumb that is already at the
+// top. `reload` is a load()'s second half; the indicator shows while the
+// pull is held and goes when the fetch it started has landed.
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun Pull(loading: Boolean, reload: () -> Unit, content: @Composable () -> Unit) {
+    var pulled by remember { mutableStateOf(false) }
+    if (pulled && !loading) pulled = false
+    androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+        isRefreshing = pulled && loading,
+        onRefresh = { pulled = true; reload() },
+        modifier = Modifier.fillMaxSize(),
+        content = { content() })
+}
+
 // ---- sign in -----------------------------------------------------------------
 
 @Composable
@@ -120,7 +138,7 @@ fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-        Text("BuilderBot", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text("BuilderBot", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Ink)
         Dim("Sign in with your dashboard account. The address is the one you open in a browser: on your network, or over your tailnet.")
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(server, { server = it }, label = { Text("Dashboard address") }, singleLine = true,
@@ -152,17 +170,21 @@ fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
 // ---- home: the bell's items, then the projects -------------------------------
 
 @Composable
-fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, openProject: (String) -> Unit) {
+fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Unit = {}, openProject: (String) -> Unit) {
     val api = store.api() ?: return
     val (st, reload) = load("status") { api.status() }
     val s = st.value
-    if (s != null) onAdmin(s.obj("can").optBoolean("admin", true))
+    if (s != null){ onAdmin(s.obj("can").optBoolean("admin", true)); onWaiting(s.int("phone_asks")) }
+    Pull(st.value == null && st.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Mark(26.dp)
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Projects", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    if (s != null) Dim("${s.str("me")} · BuilderBot ${s.obj("image").str("version").ifBlank { "unstamped" }} on ${s.str("host")}")
+                    Text("BuilderBot", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
+                    if (s != null) Text("${s.str("me")} · ${s.obj("image").str("version").ifBlank { "unstamped" }} on ${s.str("host")}",
+                        color = Dim, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
                 TextButton(onClick = reload) { Text("Refresh") }
             }
@@ -173,30 +195,36 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, openProject: (String) -
             val asks = s.int("phone_asks")
             val att = s.arr("attention")
             if (asks > 0 || att.isNotEmpty()) item {
-                Card(Modifier.fillMaxWidth().padding(16.dp, 4.dp)) {
-                    Column(Modifier.padding(12.dp)) {
-                        if (asks > 0) Text("$asks question${if (asks == 1) "" else "s"} waiting for your answer; see Approvals", color = Warn)
-                        for (a in att) Text(WatchService.attentionLine(a), color = if (a.bool("window")) Bad else Warn)
-                    }
+                // The bell's row: amber for a question, red for stopped work,
+                // as a bar down the side rather than coloured words.
+                Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = if (att.any { it.bool("window") }) Bad else Warn) {
+                    if (asks > 0) Text("$asks question${if (asks == 1) "" else "s"} waiting for your answer; see Approvals", color = Ink)
+                    for (a in att) Text(Watch.attentionLine(a), color = if (a.bool("window")) Bad else Warn)
                 }
             }
+            item { SectionHead("Projects") }
             items(s.arr("projects")) { p ->
-                Column(Modifier.fillMaxWidth().clickable { openProject(p.str("name")) }.padding(16.dp, 10.dp)) {
+                // A project's row: a panel wearing the project's colour down
+                // its side, the way its notebook tab does, its state as pills.
+                Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp).clickable { openProject(p.str("name")) },
+                      bar = projectTone(p.obj("prefs").str("color"))) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.str("name"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        if (p.str("session_at").isNotBlank()) Text("Claude", color = Ok, style = MaterialTheme.typography.labelMedium)
-                        if (p.bool("locked")) Text("  locked", color = Warn, style = MaterialTheme.typography.labelMedium)
+                        Text(p.str("name"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                             color = Ink, modifier = Modifier.weight(1f))
+                        if (p.str("session_at").isNotBlank()) Pill("Claude", Ok)
+                        if (p.bool("locked")){ Spacer(Modifier.width(6.dp)); Pill("locked", Warn) }
                     }
                     val bits = mutableListOf<String>()
                     if (p.str("git").isNotBlank()) bits += p.str("git")
                     if (p.int("roadmap") > 0) bits += "${p.int("roadmap")} on the roadmap"
                     if (p.int("bugs") > 0) bits += "${p.int("bugs")} open bug${if (p.int("bugs") == 1) "" else "s"}"
                     if (p.int("pending") > 0) bits += "${p.int("pending")} waiting for approval"
+                    Spacer(Modifier.height(2.dp))
                     Dim(bits.joinToString(" · ").ifBlank { "nothing waiting" })
                 }
-                HorizontalDivider()
             }
         }
+    }
     }
 }
 
@@ -209,25 +237,38 @@ fun ApprovalsScreen(store: Store) {
     val (ph, reloadPh) = load("phone") { api.phone() }
     val (st, reloadSt) = load("status-appr") { api.status() }
     var said by remember { mutableStateOf("") }
+    Pull(ph.value == null && ph.error == null, { reloadPh(); reloadSt() }) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Mark(26.dp)
+                Spacer(Modifier.width(10.dp))
                 Text("Approvals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 TextButton(onClick = { reloadPh(); reloadSt() }) { Text("Refresh") }
             }
-            if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Accent)
+            if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Note)
         }
         val asks = ph.value?.arr("asks") ?: emptyList()
         if (ph.error != null) item { Problem(ph.error) }
-        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, or for root on a node, appears here") } }
+        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, for root on a node, for a rebuild or for a container appears here") } }
         items(asks) { a ->
-            val root = a.str("kind") == "root"
-            Card(Modifier.fillMaxWidth().padding(16.dp, 4.dp)) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(if (root) "Root on ${a.str("node_name")}" else "The phone on ${a.str("node_name")}",
-                        color = if (root) Bad else Warn, fontWeight = FontWeight.SemiBold)
+            val kind = a.str("kind")
+            Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = if (kind == "root") Bad else Warn) {
+                Column {
+                    Text(Watch.askTitle(a), color = Ink, fontWeight = FontWeight.SemiBold)
                     Text(a.str("why"), style = MaterialTheme.typography.bodyLarge)
-                    Mono((if (root) "# " else "adb ") + a.strs("cmd").joinToString(" "))
+                    Mono(Watch.askCommand(a))
+                    // A container is approved by reading its compose file: that
+                    // is the request. The env file is never shown, since that
+                    // is where a token would be; its keys are, so the reader
+                    // knows what it sets.
+                    if (kind == "container") {
+                        var open by remember(a.int("id")) { mutableStateOf(false) }
+                        TextButton(onClick = { open = !open }) { Text(if (open) "Hide the compose file" else "Read the compose file") }
+                        if (open) Mono(a.str("detail"))
+                        if (a.strs("env_keys").isNotEmpty()) Dim("and an env file setting " + a.strs("env_keys").joinToString(", "))
+                        if (a.str("for").isNotBlank()) Dim("shown under ${a.str("for")}")
+                    }
                     Dim("${a.str("asker").ifBlank { "a session" }} in ${a.str("project")} · ${a.int("left") / 60} min left to answer")
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                         Spacer(Modifier.weight(1f))
@@ -239,8 +280,9 @@ fun ApprovalsScreen(store: Store) {
             }
         }
         val waiting = st.value?.arr("projects")?.filter { it.int("pending") > 0 } ?: emptyList()
-        item { Section("Changes a session has waiting") { if (waiting.isEmpty()) Dim("none: roadmap items, bugs and rules a session added under an ask gate are listed here") } }
+        item { Section("Changes a session has waiting") { if (waiting.isEmpty()) Dim("none: roadmap items, bugs, rules and build settings a session added under an ask gate are listed here") } }
         items(waiting) { p -> PendingBlock(api, p.str("name"), onChanged = reloadSt) }
+    }
     }
 }
 
@@ -275,13 +317,14 @@ fun NodesScreen(store: Store) {
     val (nd, reload) = load("nodes") { api.nodes() }
     var said by remember { mutableStateOf("") }
     val rows = nd.value?.arr("nodes")?.filter { it.str("kind") != "local" && it.str("state") != "retired" } ?: emptyList()
+    Pull(nd.value == null && nd.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Nodes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 TextButton(onClick = reload) { Text("Refresh") }
             }
-            if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Accent)
+            if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Note)
             if (nd.error != null) Problem(nd.error)
             if (nd.value != null && rows.isEmpty()) Dim("no node is enrolled; the dashboard's Nodes tab mints a token for one")
         }
@@ -289,17 +332,19 @@ fun NodesScreen(store: Store) {
             val rep = n.obj("reported")
             val locked = n.obj("config").bool("lock")
             val live = n.bool("live")
-            Card(Modifier.fillMaxWidth().padding(16.dp, 6.dp)) {
-                Column(Modifier.padding(12.dp)) {
+            Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = if (live) Ok else Warn) {
+                Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(n.str("name"), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text(n.str("name"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                             color = Ink, modifier = Modifier.weight(1f))
+                        Dot(if (live) Ok else Warn)
                         Text(if (live) "live" else n.str("state"), color = if (live) Ok else Warn, style = MaterialTheme.typography.labelMedium)
+                        if (locked){ Spacer(Modifier.width(6.dp)); Pill("locked", Warn) }
                     }
                     Dim(listOf(rep.str("os"), if (rep.int("cpu") > 0) "${rep.int("cpu")} cpu · ${rep.int("mem_mb") / 1024}GB" else "",
                                rep.obj("distro").str("pretty")).filter { it.isNotBlank() }.joinToString(" · "))
                     val dist = rep.obj("distro")
                     if (dist.str("pkg").isNotBlank()) Dim("packages: ${dist.str("pkg")} · network: ${dist.str("network").ifBlank { "none" }} · init: ${dist.str("init")}")
-                    if (locked) Text("System changes locked to its own console", color = Warn, style = MaterialTheme.typography.bodySmall)
                     Row(Modifier.padding(top = 8.dp)) {
                         OutlinedButton(onClick = { scope.launch { said = act(api, n.str("id"), if (locked) "unlock" else "lock"); reload() } }) {
                             Text(if (locked) "Unlock" else "Lock system changes")
@@ -312,6 +357,7 @@ fun NodesScreen(store: Store) {
                 }
             }
         }
+    }
     }
 }
 
@@ -350,6 +396,7 @@ fun UsersScreen(store: Store) {
         }) { Text("Remove") } },
         dismissButton = { TextButton(onClick = { ask = "" }) { Text("Cancel") } })
 
+    Pull(us.value == null && us.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -357,7 +404,7 @@ fun UsersScreen(store: Store) {
                 TextButton(onClick = { adding = !adding }) { Text(if (adding) "Cancel" else "Add") }
                 TextButton(onClick = reload) { Text("Refresh") }
             }
-            if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 0.dp), color = Accent)
+            if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 0.dp), color = Note)
             if (us.error != null) Problem(us.error)
             if (adding) AddAccount(api, roles) { msg -> said = msg; adding = false; reload() }
         }
@@ -367,7 +414,7 @@ fun UsersScreen(store: Store) {
                 Row(Modifier.clickable { open = if (open == name) "" else name },
                     verticalAlignment = Alignment.CenterVertically) {
                     Text(name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Text(u.str("role"), color = if (u.str("role") == "user") MaterialTheme.colorScheme.onSurface else Accent)
+                    Text(u.str("role"), color = if (u.str("role") == "user") MaterialTheme.colorScheme.onSurface else Note)
                 }
                 val pr = u.obj("profile")
                 Dim(listOf(pr.str("full_name"), pr.str("email")).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "no profile yet" })
@@ -382,9 +429,10 @@ fun UsersScreen(store: Store) {
                     onDone = { msg -> said = msg; open = ""; reload() },
                     onRemove = { ask = name })
             }
-            HorizontalDivider()
+            Hairline()
         }
         item { Dim("A user sees only the projects listed for them. Everything here is an administrator's, and the owner cannot be removed or demoted.") }
+    }
     }
 }
 
@@ -568,7 +616,11 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
     var watch by remember { mutableStateOf(store.watch) }
     var poll by remember { mutableStateOf(store.pollSeconds.toString()) }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("More", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Mark(26.dp)
+            Spacer(Modifier.width(10.dp))
+            Text("More", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
+        }
         Spacer(Modifier.height(8.dp))
         // Drift: the dashboard names the API surface it serves; this build
         // names the one it was written against. Ahead means a newer app
@@ -590,26 +642,36 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
                 }
             }
         }
-        TextButton(onClick = { nav.navigate("profile") }) { Text("Profile") }
-        // Not gated on isAdmin: the listing is what a build can use, which is
-        // everybody's question, and the server refuses the two buttons.
-        TextButton(onClick = { nav.navigate("tools") }) { Text("Tools") }
-        if (isAdmin) TextButton(onClick = { nav.navigate("users") }) { Text("Users") }
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        Text("The watch", fontWeight = FontWeight.SemiBold)
-        Dim("A foreground service polls the dashboard and posts what the bell would show, with Approve and Deny on the notification. No push service: the phone reaches your BuilderBot directly.")
+        // The other pages, as rows in one panel: a list of places to go,
+        // in the site's row shape, rather than three coloured words.
+        // Tools is not gated on isAdmin: the listing is what a build can
+        // use, which is everybody's question, and the server refuses the
+        // two buttons.
+        val pages = listOf("Profile" to "profile", "Tools" to "tools") + (if (isAdmin) listOf("Users" to "users") else emptyList())
+        Panel(Modifier.fillMaxWidth()) {
+            pages.forEachIndexed { i, (label, route) ->
+                if (i > 0) Hairline()
+                Row(Modifier.fillMaxWidth().clickable { nav.navigate(route) }.padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, color = Ink, modifier = Modifier.weight(1f))
+                    Text("\u203a", color = Dim, style = MaterialTheme.typography.titleMedium)
+                }
+            }
+        }
+        SectionHead("The watch", inset = false)
+        Dim("The app asks the dashboard what the bell would show and posts it, with Approve and Deny on the notification: on the interval below while the app is open, and about once a minute in the background. Nothing stays in the shade between questions. No push service: the phone reaches your BuilderBot directly.")
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Watch for questions", modifier = Modifier.weight(1f))
             Switch(checked = watch, onCheckedChange = { watch = it; store.watch = it
-                if (it) WatchService.startIfWanted(context) else WatchService.stop(context) })
+                if (it) Watch.startIfWanted(context) else Watch.stop(context) })
         }
         OutlinedTextField(poll, { poll = it; it.toIntOrNull()?.let { n -> store.pollSeconds = n } },
             label = { Text("Poll every (seconds, 10 to 300)") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        Text("About", fontWeight = FontWeight.SemiBold)
-        Dim("App ${BuildConfig.VERSION_NAME}, API ${BuildConfig.TARGET_API}" +
-            (if (m != null) " · dashboard ${m.str("version").ifBlank { "unstamped" }}, API ${m.int("api")}" else ""))
+        SectionHead("About", inset = false)
+        Text("app ${BuildConfig.VERSION_NAME} api ${BuildConfig.TARGET_API}" +
+            (if (m != null) "\ndashboard ${m.str("version").ifBlank { "unstamped" }} api ${m.int("api")}" else ""),
+            color = Dim, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
         Dim("Signed in to ${store.server} as ${store.user}")
         Spacer(Modifier.height(12.dp))
         OutlinedButton(onClick = onSignOut) { Text("Sign out") }
@@ -676,6 +738,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             dismissButton = { TextButton(onClick = { ask = null }) { Text("Cancel") } })
     }
 
+    Pull(pk.value == null && pk.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -693,7 +756,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
                                             onClick = { node = n.str("id") },
                                             label = { Text(n.str("name")) })
             }
-            if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 8.dp), color = Accent)
+            if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 8.dp), color = Note)
             if (pk.error != null) Problem(pk.error)
             pk.value?.let { v ->
                 if (v.str("root").isNotBlank())
@@ -745,8 +808,9 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
                     }
                 }
             }
-            HorizontalDivider()
+            Hairline()
         }
         item { if (!isAdmin) Dim("Installing and removing is an administrator's: these are gigabytes on somebody else's disk.") }
+    }
     }
 }

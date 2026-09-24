@@ -226,17 +226,14 @@ function nbBugsView({$, nb, project}){
               ? `<button type="button" class="bFix">Mark fixed</button>
                  <button type="button" class="bWont">Won't fix</button>
                  <button type="button" class="bNa"
-                   title="it was real and stopped applying: the feature went
-                          away. Not a fix, and not a decision to leave it."
+                   title="it was real and stopped applying: the feature went away"
                    >Not applicable</button>`
               : `<button type="button" class="bReopen">Reopen</button>`}
             <!-- Last, because it is the one that cannot be undone. It used to
                  sit third, between Edit and the closes, where the thumb goes
                  for the verb it is next to. -->
             <button type="button" class="danger bRm"
-              title="for a report that should not exist: mis-filed, a duplicate,
-                     the wrong project. A real one that is dealt with gets
-                     closed instead.">Remove</button>
+              title="for a report that should not exist: mis-filed, a duplicate, the wrong project">Remove</button>
           </div>
         </div>
       </details>`).join("");
