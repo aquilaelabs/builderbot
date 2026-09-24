@@ -2990,7 +2990,7 @@ cmd_tests() {
     # tree; or --files given outright; --dry only prints the plan.
     if [ "${1:-}" = preflight ]; then
         shift
-        local dry="" base="" files=() f suites=() checks=() all_dash=""
+        local dry="" base="" files=() f suites=() checks=() all_dash="" own=() mapped=()
         while [ $# -gt 0 ]; do
             case "$1" in
                 --dry) dry=1; shift ;;
@@ -3019,14 +3019,28 @@ cmd_tests() {
         [ "${#files[@]}" -gt 0 ] || { log "nothing changed: nothing to run"; return 0; }
         # The suites, from the map. Python under the dashboard reaches its
         # suites through the API paths it names; server.py names them all,
-        # so a change there is the whole suite, said as such.
+        # so a change there is the whole suite, said as such, and so do the
+        # harness's own lib.mjs and run.sh, which every suite runs on.
+        # A changed SUITE is itself and nothing more: what it names is what
+        # it asks of the page and the server, which it cannot change, and
+        # the map added every suite naming the same endpoint, 27 for one
+        # change to roles.mjs (B244).
         for f in "${files[@]}"; do
-            case "$f" in scripts/dashboard/server.py) all_dash=1 ;; esac
+            case "$f" in
+                scripts/dashboard/server.py|scripts/dashboard/test/lib.mjs|scripts/dashboard/test/run.sh) all_dash=1 ;;
+                scripts/dashboard/test/*.mjs) own+=("$(basename "$f" .mjs)") ;;
+                *) mapped+=("$f") ;;
+            esac
         done
         if [ -n "$all_dash" ]; then
             suites=(ALL)
         else
-            while IFS= read -r f; do [ -n "$f" ] && suites+=("$f"); done < <(cmd_map suites "${files[@]}" --names)
+            suites=("${own[@]}")
+            if [ "${#mapped[@]}" -gt 0 ]; then
+                while IFS= read -r f; do
+                    [ -n "$f" ] && case " ${suites[*]:-} " in *" $f "*) ;; *) suites+=("$f") ;; esac
+                done < <(cmd_map suites "${mapped[@]}" --names)
+            fi
         fi
         # The checks the house rules ask for before handing back.
         checks=(lint voice)
