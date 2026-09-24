@@ -625,6 +625,11 @@ ok((await row()).down, '...and goes dead after it: there is nothing left to remo
 // no way out except a shell, which is the one thing these buttons are for.
 writeFileSync(`${DIR}/dockerstate/ep-silon.exited`, '1');
 await page.evaluate(() => refresh());
+// Read again, as the steps around this one do: the marker is the daemon's
+// state and moves no revision, and a listing already on its way when it was
+// written would otherwise be the last word (opening the tab does not ask
+// again while one is in flight).
+await dmRefresh();
 await pillIs('stopped');
 r = await row();
 ok(!r.down, 'a crashed instance offers Down: its containers are still there');
