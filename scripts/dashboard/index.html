@@ -1387,8 +1387,9 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .mem[open]>summary::before,.bug[open]>summary::before,
 .fx .grp[open]>summary::before,.veradd[open]>summary::before{content:"\25BE"}
 
-/* The "showing N of M" footer under a long list. Quiet: it is a fact about
-   the list plus the control that changes it, not a section of its own. */
+/* The "N to M of T" footer under a long list, with Previous and Next. Quiet:
+   it is a fact about the list plus the controls that turn its page, not a
+   section of its own. */
 .pagemore{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   padding:10px 0 2px;border-top:1px dashed var(--btn);margin-top:6px}
 .pagemore span{color:var(--dim);font:var(--f-note)}

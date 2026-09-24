@@ -301,24 +301,28 @@ back to, so cancelling it removes it.
 
 A list that can outgrow a screen shows a page at a time, through `paginate`
 and nothing else: one helper applied to the DOM after a list draws, rather
-than each renderer growing its own. It draws a `.pagemore` footer: what is
-shown of the total, then Show N more, Show all and Fewer as each becomes
-worth offering. It is a bar the framework owns, so it is exempt from the
-action-bar rule and its shape is the same on every list.
+than each renderer growing its own. It draws a `.pagemore` footer: which
+rows are on screen of the total ("26 to 50 of 80 bugs"), then Previous and
+Next, each only when there is a page for it to go to. It is a bar the
+framework owns, so it is exempt from the action-bar rule and its shape is
+the same on every list.
 
-Deliberately not numbered pages: these lists are read in an order that means
-something: bugs by severity, jobs newest first, the roadmap by the order
-the work has to happen in, so "page 4" names nothing.
+Pages, not a list that grows. The footer used to add a page below the last
+one, and after two presses it was a screen away from the head: the same
+number of rows is on screen whichever page is open, and turning a page
+brings its top into view. The order still means something (bugs by
+severity, the roadmap in the order the work has to happen in), so a page
+is named by the rows it holds and never by a number.
 
 Two judgements are yours. A list that only just crosses the line is left
 whole, which `paginate` does for you. And a list somebody SCANS for a name
 rather than reads in order (the toolchain catalog) is not paged at all,
-because hiding half of it behind a button is worse than a long page.
+because hiding half of it behind a control is worse than a long page.
 
 The state is per list and per notebook. A notebook is a clone of one
 template, so its ids belong to every open notebook at once; a key that
 forgets which notebook it is in is one bucket shared by all of them, which
-is how Show more came to undo itself.
+is how a page came to turn itself back.
 
 ## The notebook
 

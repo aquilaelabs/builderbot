@@ -262,7 +262,7 @@ for (const kind of kinds){
 // no text, which is what makes a roadmap row's five pictograms legal and a
 // row of Up / Down / Remove not.
 // `pagemore` joins them: it is the framework's own footer for a long list
-// (a count and up to three buttons, drawn by paginate() and nothing else), so
+// (a count and up to two buttons, drawn by paginate() and nothing else), so
 // it is already one bar with one shape everywhere, which is what the rule
 // below is for. It reached this check for the first time when the Jobs tab
 // was paged, because every other paginated list is in a notebook whose

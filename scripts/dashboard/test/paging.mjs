@@ -1,11 +1,12 @@
-// Long lists, shown a page at a time.
+// Long lists, a page at a time.
 //
-// Deliberately not numbered pages: these lists are read in an order that
-// means something (bugs by severity, findings by rule, the roadmap by the
-// order the work has to happen in), so "page 4" names nothing and paging
-// away from the top hides the rows that matter most. What is tested here is
-// that the helper is wired to every list, that a short list is left whole,
-// and that revealing more never drops rows or their behaviour.
+// Pages, not a list that grows: the same number of rows whichever page is
+// open, so the footer never ends up a screen below the head (23 Sep). The
+// lists are read in an order that means something (bugs by severity,
+// findings by rule, the roadmap by the order the work has to happen in), so
+// a page is named by the rows on it and never by a number. What is tested
+// here is that the helper is wired to every list, that a short list is left
+// whole, and that turning a page never drops rows or their behaviour.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, readdirSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 
@@ -42,14 +43,17 @@ const state = () => page.evaluate(() => {
 let st = await state();
 ok(st.total === 40 && st.shown === 25,
    'a list past the threshold shows one page, not all of it');
-ok(/25 of 40 reports/.test(st.text),
-   '...saying how much of it is on screen');
-ok(st.bars === 1, '...with exactly one footer');
+ok(/1 to 25 of 40 reports/.test(st.text),
+   '...saying which of it is on screen');
+ok(st.bars === 1 && !/Previous/.test(st.text), '...with exactly one footer, and no Previous on the first page');
 
-await page.click('#bugList:visible .pagemore .more');
+await page.click('#bugList:visible .pagemore .next');
 st = await state();
-ok(st.shown === 40 && /all 40 reports/.test(st.text) && !/Show \d+ more/.test(st.text),
-   'Show more reveals the rest, and stops offering a page that is not there');
+ok(st.shown === 15 && /26 to 40 of 40 reports/.test(st.text) && !/Next/.test(st.text),
+   'Next turns to the second page, the same rows or fewer, and stops offering a page that is not there');
+ok(await page.$eval('#bugList:visible .bug:nth-of-type(1)', e => e.hidden)
+   && !await page.$eval('#bugList:visible .bug:nth-of-type(26)', e => e.hidden),
+   '...and the first page is off screen, not above the second: the list did not grow');
 
 // The rows revealed are real rows, not decoration: a report opened after
 // paging still opens.
@@ -64,7 +68,10 @@ await page.evaluate(() => {
   paginate(l, ':scope > .bug', { key: 'bugList', noun: 'reports' });
 });
 st = await state();
-ok(st.shown === 40, 'a redraw keeps what was already revealed');
+ok(st.shown === 15 && /26 to 40/.test(st.text), 'a redraw keeps the page that was open');
+await page.click('#bugList:visible .pagemore .prev');
+st = await state();
+ok(st.shown === 25 && /1 to 25 of 40/.test(st.text), 'Previous turns back');
 
 // A short list is left whole: a footer hiding one row is a click for
 // nothing, which is why the threshold has slack in it. Waited on the view
@@ -118,8 +125,8 @@ for (const [what, call] of [
 // every open notebook at once. The paging state was keyed on those ids, which
 // made a single bucket shared by all of them, and the branch that leaves a
 // short list whole DELETES its key. So a short artifacts list in one notebook
-// wiped a long one's expansion in another, and the reported symptom was Show
-// more not working: it expanded, then collapsed on the next redraw, a second
+// wiped a long one's page in another, and the reported symptom was paging
+// not working: it turned, then snapped back on the next redraw, a second
 // or two later.
 {
   mkdirSync(`${DIR}/ws/alpha/dist/pagemany`, { recursive: true });
@@ -139,16 +146,16 @@ for (const [what, call] of [
     return rows.filter(r => !r.hidden).length;
   });
   await page.evaluate(() => document.querySelector(
-    '.nb[data-project="alpha"] .nbview[data-view="artifacts"] .pagemore .more')?.click());
+    '.nb[data-project="alpha"] .nbview[data-view="artifacts"] .pagemore .next')?.click());
   const opened = await shown();
-  ok(opened > 25, `Show more reveals the next page (${opened} rows)`);
+  ok(opened === 9, `Next turns to the second page, 9 of the 34 files (${opened} rows)`);
   // beta's SHORT list redraws, which is all a poll does on a box where
   // another project's view keeps moving.
   await page.evaluate(() => { const n = getNotebook('beta'); n?.view('bugs'); n?.view('artifacts'); });
   await page.evaluate(() => getNotebook('alpha')?.view('artifacts'));
   await page.waitForTimeout(400);
   ok(await shown() === opened,
-     `...and a short list in another notebook does not collapse it again (${await shown()} of ${opened})`);
+     `...and a short list in another notebook does not turn it back (${await shown()} of ${opened})`);
   rmSync(`${DIR}/ws/alpha/dist/pagemany`, { recursive: true, force: true });
   rmSync(`${DIR}/ws/beta/dist`, { recursive: true, force: true });
 }
