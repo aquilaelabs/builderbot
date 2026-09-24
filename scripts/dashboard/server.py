@@ -6776,6 +6776,16 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("create"):
             return None
         body, code = projects.create(req)
+        # Taken on by whoever made it (the operator, 24 Sep), before the
+        # writes below: they ask whether this account may work on the
+        # project, and an administrator's new one was not on their list, so
+        # it came out read-only to them and the node the dialog picked was
+        # quietly not set. A clone's directory exists from here, while the
+        # clone itself runs on; one that fails leaves a name on the list that
+        # matches nothing.
+        me = self._who()
+        if code == 200 and body.get("name") and me and users.uid_of(me):
+            users.take_on(me["name"], body["name"])
         # The node it was made for, when the dialog offered one: the same
         # write the settings dialog makes, so a project is born able to
         # build and start a session rather than needing a second dialog

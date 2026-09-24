@@ -760,6 +760,25 @@ def set_projects(name, projects):
     return {"ok": True, "name": name, "projects": u["projects"]}
 
 
+def take_on(name, project):
+    """Put one project on this account's own list, the way the Users tab
+    does; nothing to do for an account that has it or has every project.
+    What the create paths call for whoever made the project (the operator,
+    24 Sep): an administrator's new project was otherwise one they had not
+    taken on, read-only to them until they added it by hand."""
+    with _lock:
+        d = load()
+        u = d["users"].get(name)
+        if not u:
+            return {"error": f"no account called {name}"}
+        have = list(u.get("projects") or [])
+        if "*" in have or project in have:
+            return {"ok": True, "name": name, "projects": have}
+        u["projects"] = (have + [str(project)[:120]])[:200]
+        _save(d)
+    return {"ok": True, "name": name, "projects": u["projects"]}
+
+
 def rename(name, new):
     new = str(new or "").strip()
     if not NAME_RE.match(new):

@@ -1196,6 +1196,26 @@ ok(!existsSync(`${DIR}/ws/.trash/oldproj`),
 await page.click('#tClose');
 await page.waitForFunction(() => document.getElementById('tmodal').hidden);
 
+// ---- an administrator's new project is theirs to work on ------------------
+// Taken on by whoever made it (the operator, 24 Sep). An administrator sees
+// every project and may change only those on their own list, and a new one
+// was not on it: read-only to the person who had just made it, and the node
+// the dialog picked was dropped for the same reason.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const MAKER = { Authorization: 'Basic ' + Buffer.from('w.maker:w.maker-pass-1').toString('base64'), 'Content-Type': 'application/json' };
+  const call = async (path, body, h) => { const r = await fetch(URL.replace(/\/$/, '') + path,
+    { method: 'POST', headers: h, body: JSON.stringify(body) }); return { status: r.status, ...(await r.json().catch(() => ({}))) }; };
+  await call('/api/users', { action: 'add', name: 'w.maker', password: 'w.maker-pass-1', role: 'admin' }, H);
+  await call('/api/users', { action: 'projects', name: 'w.maker', projects: [] }, H);
+  const madeBy = await call('/api/create', { name: 'maker-made', mode: 'init' }, MAKER);
+  const listed = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.maker'].projects || [];
+  const worked = await call('/api/prefs', { project: 'maker-made', color: 'teal' }, MAKER);
+  ok(madeBy.status === 200 && listed.includes('maker-made') && worked.status === 200,
+     `an administrator's new project goes on their own list, and they may work on it at once (${
+       JSON.stringify(listed)}, ${worked.status}${worked.error ? ': ' + worked.error : ''})`);
+}
+
 const errs = page.errors.filter(e => !/status of (400|500)/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ': ' + errs.join(' | ') : ''}`);
 await done(browser);
