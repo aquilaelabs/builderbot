@@ -8,7 +8,7 @@
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
          tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync, chmodSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -737,6 +737,35 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     ok(two.status === 400 && /One Anthropic account per BuilderBot account/.test(two.error || ''),
        `...so a second Anthropic account is refused rather than recorded (${
          (two.error || '').slice(0, 56)})`);
+
+    // The flow itself finds Claude Code where a SESSION finds it: the session
+    // account's own ~/.local/bin (the provisioner's install) and the pinned
+    // copy, not only the signing-in account's home. The owner's home is the
+    // session account's, so a second account was the one told "not
+    // installed" on a machine whose sessions ran it fine (24 Sep).
+    {
+      const base = `${DIR}/flow-home`;
+      mkdirSync(`${base}/.local/bin`, { recursive: true });
+      writeFileSync(`${base}/.local/bin/claude`, '#!/bin/sh\necho "fake claude $*"\n');
+      chmodSync(`${base}/.local/bin/claude`, 0o755);
+      const run = (uid) => { try {
+        return { code: 0, out: execFileSync('bash', [`${REPO}/scripts/bb`, 'login', '--flow'],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, BUILDERBOT_ROLE: 'node', BUILDER_HOME: base, HOME: base,
+                   BB_ACCOUNT_UID: uid, BB_TOKEN: '', PATH: '/usr/bin:/bin',
+                   BB_CLAUDE_PINNED: `${base}/no-pin` } }) };
+      } catch (e) { return { code: e.status, out: String(e.stdout) + String(e.stderr) }; } };
+      const second = run('u_0badf00d');
+      ok(second.code === 0 && /fake claude auth login/.test(second.out),
+         `the sign-in flow for a second account runs the session account's Claude Code (${
+           second.out.trim().split('\n').pop().slice(0, 70)})`);
+      ok(existsSync(`${base}/users/u_0badf00d/.claude`),
+         "...with the credential's home the second account's own");
+      rmSync(`${base}/.local/bin/claude`);
+      const none = run('u_0badf00d');
+      ok(none.code !== 0 && /Update in the Nodes tab/.test(none.out),
+         '...and with none anywhere the refusal names the Nodes tab as the way out');
+    }
 
     // A token for the project alone (a relayed verb's) is nobody's account,
     // and cannot bind one.

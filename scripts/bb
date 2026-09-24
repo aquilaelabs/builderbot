@@ -593,16 +593,23 @@ LISTPY
     # machine is now signed in as, so the card can name it and a second
     # account on another node is refused.
     if [ "${1:-}" = --flow ]; then
-        local uid="${BB_ACCOUNT_UID:-}"
+        local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}"
+        # The pinned dir is the agent's CLAUDE_DIR; BB_CLAUDE_PINNED is for
+        # the suite, which runs on a machine that may carry a real one.
+        local pinned="${BB_CLAUDE_PINNED:-/usr/local/lib/builderbot/claude}"
         [ -n "$uid" ] && HOME="$(user_home "$uid")" && export HOME
         mkdir -p "$HOME/.claude" 2>/dev/null || true
-        # The agent runs this with its own PATH, and the native installer
-        # the provisioner uses puts claude in the account's ~/.local/bin,
-        # which only a login shell adds. Every provisioned node said "not
-        # installed" here while a session on it ran claude fine (16 Sep).
-        PATH="$HOME/.local/bin:$PATH"; export PATH
+        # Claude Code from where a SESSION finds it (the agent's session
+        # PATH): the pinned copy first, then the session account's own
+        # ~/.local/bin, which is where the provisioner installs it, and only
+        # then this account's. The agent runs this with its own PATH, and
+        # the flow used to look in this account's home alone: the owner's
+        # home IS the session account's, so it worked for them and for
+        # nobody else, and a second account was told Claude Code was not
+        # installed on a machine whose sessions ran it fine (24 Sep).
+        PATH="$pinned:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
         command -v claude >/dev/null 2>&1 \
-            || die "Claude Code is not installed for this account on this machine (looked on PATH and in $HOME/.local/bin)"
+            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Update in the Nodes tab's Claude Code section installs one copy every account runs"
         claude auth login || die "the sign-in did not complete"
         claude_login_check --loud || true
         return 0
