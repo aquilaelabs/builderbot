@@ -171,6 +171,10 @@ BUILTIN = [
              " or it blocks the work: the smallest fix, in its own commit, said"
              " in the reply. Anything else is filed and left. One level deep:"
              " a bug found while fixing one of those is filed, not chased."},
+    {"name": "own-branches",
+     "text": "A branch another account's session works on (claude/<their"
+             " name>) is theirs: merge, rebase or delete it only when asked"
+             " to, after saying whose it is."},
     {"name": "stay-responsive",
      "text": "A test run never holds a reply. Start it in the background;"
              " answer questions while it runs; a change asked for meanwhile is"

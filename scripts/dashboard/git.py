@@ -34,6 +34,9 @@ WORKTREES = None
 STATE = None
 TELL = None               # notify.tell: type a line into a session, injected
 TMUX_NAME = None
+ACCOUNTS = None           # () -> {uid: account name}, injected: whose a branch is
+OWNER_UID = None          # () -> the owner's uid: the project directory is their tree
+WORKING = None            # (project, uid) -> whether that account's Claude session there is mid-prompt
 
 LOG_MAX = 100             # commits the graph shows
 DIFF_MAX = 200_000        # bytes of diff the page is handed
@@ -43,10 +46,12 @@ US = "\x1f"
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
-def configure(*, workspace, worktrees=None, tell=None, tmux_name=None, state=None):
+def configure(*, workspace, worktrees=None, tell=None, tmux_name=None, state=None,
+              accounts=None, owner_uid=None, working=None):
     globals().update(WORKSPACE=Path(workspace),
                      WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
-                     TELL=tell, TMUX_NAME=tmux_name,
+                     TELL=tell, TMUX_NAME=tmux_name, ACCOUNTS=accounts, OWNER_UID=owner_uid,
+                     WORKING=working,
                      STATE=Path(state) if state else None)
 
 
@@ -518,6 +523,8 @@ def branches(repo):
 
         [{"name", "remote": bool, "head": bool, "short", "when", "upstream",
           "ahead", "behind", "main_ahead", "main_behind", "worktree", "who"}]
+
+    `who` is the account the branch belongs to (branch_owner), by name.
     """
     fmt = US.join(["%(refname:short)", "%(refname)", "%(objectname:short)",
                    "%(committerdate:unix)", "%(upstream:short)", "%(upstream:track)",
@@ -528,6 +535,7 @@ def branches(repo):
         return {"error": "not a git repository"}
     main = _main_branch(repo)
     trees = _worktrees(repo)
+    names = ACCOUNTS() if ACCOUNTS else {}
     # Which refs main already contains, in one call rather than one per row,
     # and for the REMOTE refs too (roadmap R69 step 1). Until this the
     # "only on <host>" fold knew nothing about its own rows, so the one safe
@@ -590,7 +598,9 @@ def branches(repo):
                      "merged": bool(main) and name != main and ref in merged_refs,
                      # Commits main lacks that change nothing main lacks.
                      "same": same,
-                     "worktree": wt, "who": _who_of(wt, name)})
+                     "worktree": wt,
+                     "who": "" if remote else names.get(
+                         branch_owner(repo, name, trees, main, names), "")})
     return {"main": main, "branches": rows}
 
 
@@ -653,12 +663,86 @@ def _worktrees(repo):
     return trees
 
 
-def _who_of(worktree, branch):
-    """The account name a worktree or branch belongs to: a session's tree is
-    <worktrees>/<project>/<uid> on a branch named claude/<account>."""
+UID_RE = re.compile(r"^u_[0-9a-f]{8}$")
+
+
+def branch_owner(repo, branch, trees=None, main=None, names=None):
+    """The uid of the account whose session a branch is, or "" for nobody's.
+
+    Checked out in <worktrees>/<project>/<uid>, it is that account's; the
+    branch the project directory itself is on is the owner's, whose session
+    works there; claude/<name> for an account that exists is that account's,
+    so a branch outlives its worktree as its author's. main is everybody's.
+    The names were read off the branch alone once, so the owner's session's
+    claude/<topic> branches were labelled as sessions of accounts called
+    <topic>.
+    """
+    main = _main_branch(repo) if main is None else main
+    if not branch or branch == main:
+        return ""
+    trees = _worktrees(repo) if trees is None else trees
+    at = trees.get(f"refs/heads/{branch}")
+    if at:
+        p = Path(at).resolve()
+        if p == Path(repo).resolve():
+            return (OWNER_UID() if OWNER_UID else "") or ""
+        if WORKTREES and UID_RE.match(p.name) \
+                and p.parent == (WORKTREES / Path(repo).name).resolve():
+            return p.name
     if branch.startswith("claude/"):
-        return branch[len("claude/"):]
+        names = (ACCOUNTS() if ACCOUNTS else {}) if names is None else names
+        want = branch[len("claude/"):]
+        return next((uid for uid, n in names.items() if n == want), "")
     return ""
+
+
+def not_yours(repo, action, args, uid, kind="", admin=False):
+    """What stands between this account and doing this to a branch that is
+    another account's session's (branch_owner): {} for nothing, {"error"} for
+    a refusal, {"confirm"} for the question to put before sending it again
+    with `confirmed`.
+
+    The operator's rule, 24 Sep. A branch's own account does as it likes with
+    it, and main is everybody's. Anybody else who is not an administrator may
+    not merge it, merge into it, have a session merge or rebase it, switch to
+    it or delete it. An administrator may, since an administrator controls
+    everything, with two guards on a merge: never while that account's Claude
+    session on the project is working, because a branch mid-prompt holds
+    whatever half of the change has landed; and only when asked, each time,
+    naming whose it is.
+    """
+    args = args if isinstance(args, dict) else {}
+    if action == "merge":
+        name = str(args.get("name") or "")
+        into = str(args.get("into") or "") or (status(repo).get("branch") or "")
+        ask = f"Merge {name} into {into}?"
+        pairs = [(name, "merges it"), (into, "merges into it")]
+    elif action == "ask" and kind in ("merge", "rebase"):
+        name = str(args.get("branch") or "")
+        ask = f"Ask Claude to {kind} {name} {'into' if kind == 'merge' else 'onto'} {_main_branch(repo)}?"
+        pairs = [(name, f"has Claude {kind} it")]
+    elif action in ("switch", "delete"):
+        ask = ""
+        pairs = [(str(args.get("name") or ""), "switches to it" if action == "switch" else "deletes it")]
+    else:
+        return {}
+    names = ACCOUNTS() if ACCOUNTS else {}
+    main, trees = _main_branch(repo), _worktrees(repo)
+    for b, what in pairs:
+        o = branch_owner(repo, b, trees, main, names)
+        if not o or o == uid:
+            continue
+        who = names.get(o) or "another account"
+        if not admin:
+            return {"error": f"{b} is {who}'s session's branch: only {who} {what}"}
+        if not ask:
+            continue                 # an administrator switches and deletes as git allows
+        if WORKING and WORKING(Path(repo).name, o):
+            return {"error": f"{who}'s Claude session is working right now: "
+                             f"{ask[0].lower()}{ask[1:-1]} when it is waiting"}
+        if not args.get("confirmed"):
+            return {"confirm": f"{ask}\n\n{b} is {who}'s session's branch."}
+    return {}
 
 
 def _cap(text):

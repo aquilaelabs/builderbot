@@ -89,6 +89,11 @@ function nbGitView({$, nb, project}){
       if (j.error){
         if (j.unmerged && confirm(`${j.error}.\n\nDelete it anyway?`))
           return gitAct(action, {...args, force: true}, btn, verb);
+        // A page drawn before the branch became somebody's: the server asks.
+        if (j.confirm){
+          if (confirm(j.confirm)) return gitAct(action, {...args, confirmed: true}, btn, verb);
+          return j;
+        }
         notify(j.error, true);
         return j;
       }
@@ -169,22 +174,32 @@ function nbGitView({$, nb, project}){
     const vsHost = b => !b.upstream ? "" : (b.ahead || b.behind)
       ? `${b.ahead ? b.ahead + " to push" : ""}${b.ahead && b.behind ? ", " : ""}${b.behind ? b.behind + " to pull" : ""} (${host})`
       : `in step with ${host}`;
+    // A branch is its session's (git.py not_yours): another account's is an
+    // administrator's to merge, asked each time with the owner named (data-
+    // gitwho carries the name to the confirm), and nobody else's, whose row
+    // then offers none of it and says whose it is. main is everybody's.
+    const theirs = b => !!b.who && b.who !== state?.me;
+    const admin = !!state?.admin;
+    const barred = b => theirs(b) && !admin;
+    const here_ = local.find(x => x.head) || {};
+    const whoAttr = b => theirs(b) ? ` data-gitwho="${esc(b.who)}"` : "";
+    const whoseLine = b => barred(b) ? `<div class="sub">only ${esc(b.who)} merges it</div>` : "";
     const pills = b => `${b.head ? ` <span class="pill ok">here</span>` : ""}${
-            b.who ? ` <span class="pill">${esc(b.who)}'s session</span>` : ""}${
+            b.who ? ` <span class="pill">${b.who === state?.me ? "your session" : `${esc(b.who)}'s session`}</span>` : ""}${
             b.remote ? ` <span class="pill">only on ${esc(host)}</span>` : ""}`;
     const acts = b => locked ? "" : b.remote ? (b.merged ? `<span class="acts"><button type="button" class="danger"
             data-gitdeleteremote="${esc(b.name)}" title="delete this branch on ${esc(host)}; every commit on it is in ${esc(main)} already">Delete on ${esc(host)}</button></span>` : "")
-      : `<span class="acts">${b.name === main ? "" : `<select data-gitaskkind aria-label="what to ask">
-            <option value="merge">merge into ${esc(main)}</option><option value="rebase">rebase onto ${esc(main)}</option>
+      : `<span class="acts">${b.name === main ? "" : `<select data-gitaskkind aria-label="what to ask">${barred(b) ? "" : `
+            <option value="merge">merge into ${esc(main)}</option><option value="rebase">rebase onto ${esc(main)}</option>`}
             <option value="review">review</option></select><button type="button" data-gitaskbranch="${esc(b.name)}"
-            title="hand this branch to the project's Claude session with the ask picked">Send to Claude</button>`}${
-            b.name === main ? (b.head ? "" : `<button type="button" data-gitmerge="${esc(main)}"
+            title="hand this branch to the project's Claude session with the ask picked"${whoAttr(b)}>Send to Claude</button>`}${
+            b.name === main ? (b.head || barred(here_) ? "" : `<button type="button" data-gitmerge="${esc(main)}"${whoAttr(here_)}
             title="bring ${esc(main)} into ${esc(st.branch || "this branch")}, here, so this branch is up to date with it">Merge ${esc(main)} into here</button>`)
-            : (b.main_ahead || st.branch !== main) && !(b.head && st.branch === main) ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"
+            : !barred(b) && (b.main_ahead || st.branch !== main) && !(b.head && st.branch === main) ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"${whoAttr(b)}
             title="merge ${esc(b.name)} into ${esc(main)} without moving the tree, the way a pull request merges; push ${esc(main)} yourself after">Merge into ${esc(main)}</button>` : ""}${
-            b.head ? "" : `<button type="button"
+            b.head || barred(b) ? "" : `<button type="button"
             data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch</button>`}${
-            b.head || b.name === main ? "" : `<button type="button" class="danger"
+            b.head || b.name === main || barred(b) ? "" : `<button type="button" class="danger"
             data-gitdelete="${esc(b.name)}" title="${b.merged ? "delete the branch; everything on it is in " + esc(main) : "delete the branch: refused while it holds commits no other branch has"}">Delete</button>`}</span>`;
     // A branch with work main lacks is a row you open: its commits and the
     // diff main would take, which is what a pull request page shows before
@@ -194,26 +209,28 @@ function nbGitView({$, nb, project}){
         <summary><span class="t"><code>${esc(b.name)}</code>${pills(b)}</span>
           <span class="sst">${esc(vsMain(b))}</span></summary>
         <div class="body"><div class="sub">${[vsHost(b), `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div>
+          ${whoseLine(b)}
           <div class="gcmpbody"><div class="loading">loading…</div></div>
           ${acts(b)}</div>
       </details>` : `<div class="row gbranch">
         <div class="grow"><div class="name"><code>${esc(b.name)}</code>${pills(b)}</div>
           <div class="sub">${[b.remote ? vsRemote(b) : vsMain(b), vsHost(b),
-            `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div></div>
+            `${esc(b.short)} · ${esc(ago_(b.when))}`].filter(Boolean).join(" · ")}</div>${whoseLine(b)}</div>
         ${acts(b)}
       </div>`;
     const here = local.filter(b => b.head), mainRow = local.filter(b => b.name === main && !b.head);
     const waiting = local.filter(b => !b.head && b.name !== main && !b.merged);
     const finished = local.filter(b => !b.head && b.name !== main && b.merged);
+    const clearable = finished.filter(b => !theirs(b));   // another account's is theirs to delete
     const remoteOnly = remote.filter(r => !local.some(l => r.name.endsWith("/" + l.name)));
     const group = (label, rows) => rows.length ? `<div class="sub dim ggroup">${label}</div>` + rows.map(branchRow).join("") : "";
     const branchRows = `<div class="sub dim">${esc(host)} holds a copy that only Push and Pull touch.</div>`
       + [...here, ...mainRow].map(branchRow).join("")
       + group(`not yet in ${esc(main)}`, waiting)
-      + (finished.length ? group(`already in ${esc(main)}`, finished) + (locked ? "" : `<div class="actbar gmerged">
-          <span class="state">nothing on ${finished.length === 1 ? "this branch" : "these branches"} is missing from ${esc(main)}</span>
-          <button type="button" class="danger" data-gitdeletemerged="${esc(finished.map(b => b.name).join(" "))}"
-            title="delete every branch already in ${esc(main)}">Delete ${finished.length === 1 ? "it" : `all ${finished.length}`}</button>
+      + (finished.length ? group(`already in ${esc(main)}`, finished) + (locked || !clearable.length ? "" : `<div class="actbar gmerged">
+          <span class="state">nothing on ${clearable.length === 1 ? "this branch" : "these branches"} is missing from ${esc(main)}</span>
+          <button type="button" class="danger" data-gitdeletemerged="${esc(clearable.map(b => b.name).join(" "))}"
+            title="delete every branch already in ${esc(main)}">Delete ${clearable.length === 1 ? "it" : `all ${clearable.length}`}</button>
         </div>`) : "")
       + (remoteOnly.length ? `<details class="sect gremote" data-sect="git:remote"${sectOpen["git:remote"] ? " open" : ""}><summary><span class="t">only on ${esc(host)}</span>
           <span class="sst">${remoteOnly.length}</span></summary><div class="body">${remoteOnly.map(branchRow).join("")}</div></details>` : "");
@@ -300,8 +317,15 @@ function nbGitView({$, nb, project}){
     // No confirmation: a merge makes a commit rather than destroying one, and
     // the row says which way round it goes. What it can leave behind is a
     // conflict, and the Changes section is already the place that says so.
-    body.querySelectorAll("[data-gitmerge]").forEach(b => b.onclick = () =>
-      gitAct("merge", {name: b.dataset.gitmerge, ...(b.dataset.gitinto ? {into: b.dataset.gitinto} : {})}, gitBusy(b), "Merging"));
+    // Another account's branch, merged in or merged into, is asked about
+    // every time with the owner named; the answer rides as `confirmed`.
+    body.querySelectorAll("[data-gitmerge]").forEach(b => b.onclick = () => {
+      const name = b.dataset.gitmerge, into = b.dataset.gitinto || st.branch || "this branch";
+      const who = b.dataset.gitwho, their = b.dataset.gitinto ? name : into;
+      if (who && !confirm(`Merge ${name} into ${into}?\n\n${their} is ${who}'s session's branch.`)) return;
+      gitAct("merge", {name, ...(b.dataset.gitinto ? {into: b.dataset.gitinto} : {}), ...(who ? {confirmed: true} : {})},
+             gitBusy(b), "Merging");
+    });
     body.querySelectorAll("[data-gitdeleteremote]").forEach(b => b.onclick = () => {
       const name = b.dataset.gitdeleteremote;
       if (!confirm(`Delete ${name} on ${git.host?.name || "the remote"}? Every commit on it is in ${
@@ -319,7 +343,9 @@ function nbGitView({$, nb, project}){
       gitAsk("diff", {path: b.dataset.gitaskfile}, gitBusy(b)));
     body.querySelectorAll("[data-gitaskbranch]").forEach(b => b.onclick = () => {
       const row = b.closest(".gbranch"), kind = row.querySelector("[data-gitaskkind]")?.value || "merge";
-      gitAsk(kind, {branch: b.dataset.gitaskbranch}, gitBusy(b));
+      const name = b.dataset.gitaskbranch, who = b.dataset.gitwho, moves = kind === "merge" || kind === "rebase";
+      if (who && moves && !confirm(`Ask Claude to ${kind} ${name} ${kind === "merge" ? "into" : "onto"} ${main}?\n\n${name} is ${who}'s session's branch.`)) return;
+      gitAsk(kind, {branch: name, ...(who && moves ? {confirmed: true} : {})}, gitBusy(b));
     });
     body.querySelectorAll("[data-gitdelete]").forEach(b => b.onclick = () => {
       const name = b.dataset.gitdelete;

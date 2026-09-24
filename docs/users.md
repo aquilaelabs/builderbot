@@ -52,6 +52,19 @@ grows a hole every time a feature lands and nobody remembers to add it; a deny
 list fails closed the other way: a new surface is unavailable to users until
 somebody decides it should not be.
 
+**A session, and the branch it works on, are its account's.** Nobody presses
+a key in another person's session or types into it, an admin included: a key
+there answers a question it asked them (B172). An admin may end one, from the
+project's settings, which list every account's sessions on that project. A
+branch belongs to the session that works on it: checked out in that account's
+worktree, or `claude/<name>` for an account that exists, and the project
+directory's branch is the owner's; main is everybody's. A user merges only
+their own. An admin may merge anyone's, is asked each time with the owner
+named, and is refused while that person's Claude session is working, because
+a branch mid-prompt holds half a change. A merge into the project directory
+waits only while the session standing in it is working (git.py `not_yours`,
+projsessions.py; the operator, 24 Sep).
+
 ## Storage
 
 `/config/users.json`, with the load/save/lock the notebook files already use.

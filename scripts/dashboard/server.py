@@ -1793,11 +1793,24 @@ def tmux_sessions():
             info = panes.get(name, {})
             row = {"name": name, "attached": attached.strip() not in ("", "0"),
                    "cwd": info.get("cwd", "")}
-            if name.startswith("claude-"):
+            # By the unprefixed name, the way node rows are read, so another
+            # account's session here says whether it is working too.
+            if tmux_base(name).startswith("claude-"):
                 state, task = claude_state(info.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
+
+
+def claude_working(project, uid):
+    """Whether that account's Claude session on this project is mid-prompt,
+    here or on a node, by its pane title (claude_state). The owner's is the
+    bare name, as everywhere else on the page."""
+    want = claude_session(project)
+    owner = users.uid_of(users.get(users.owner_name() or ""))
+    return any(tmux_base(s["name"]) == want and (tmux_owner(s["name"]) or owner) == uid
+               and (s.get("claude") or {}).get("state") == "working"
+               for s in tmux_sessions() + node_tmux_sessions())
 
 
 def sessions_anywhere():
@@ -2366,7 +2379,10 @@ import workspace                                                 # noqa: E402
 artifacts.configure(workspace=WORKSPACE)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"),
-                  tell=notify.tell, tmux_name=tmux_name, state=STATE)
+                  tell=notify.tell, tmux_name=tmux_name, state=STATE,
+                  accounts=account_names,
+                  owner_uid=lambda: users.uid_of(users.get(users.owner_name() or "")),
+                  working=claude_working)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -6843,6 +6859,16 @@ class Handler(BaseHTTPRequestHandler):
         if name in set(load_locks()):
             return self._json({"error": "locked: the padlock on its row unlocks it"}, 403)
         action = field(req, "action")
+        # A branch is its session's (git.py not_yours): another account's is
+        # an administrator's to merge, asked each time and never while that
+        # session is working, and nobody else's. Before the check below,
+        # which is about the tree a session stands in, not the branch.
+        mine_ = gitview.not_yours(WORKSPACE / name, action, req.get("args") or {},
+                                  users.uid_of(me), field(req, "kind"), admin=users.is_admin(me))
+        if mine_.get("error"):
+            return self._json(mine_, 403)
+        if mine_.get("confirm"):
+            return self._json({"error": mine_["confirm"].split("\n\n")[-1], "confirm": mine_["confirm"]}, 409)
         # Both of these rewrite the working tree. A merge is not a switch, but
         # it lands other people's files in a directory a session is reading
         # and editing right now, which is the same surprise for the same
@@ -6856,14 +6882,25 @@ class Handler(BaseHTTPRequestHandler):
         lands_here = action == "switch" or (
             action == "merge" and str(args_.get("into") or "")
             in ("", gitview.status(WORKSPACE / name).get("branch") or ""))
+        # The project directory is the owner's session's tree. A switch waits
+        # while that session is open at all, since it changes the branch the
+        # session is on; a merge only while it is WORKING, since a session at
+        # its prompt sees the changed files when it next reads them, and it
+        # was one merely open that refused the operator's own merge, 24 Sep.
+        # "your" to the owner: "the owner's" read as somebody else's.
         if lands_here:
-            mine = claude_session(name)
-            if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
-                   for s in tmux_sessions() + node_tmux_sessions()):
-                return self._json({"error": "the owner's Claude session is running in this "
-                                            f"directory; end it before "
-                                            f"{'switching the branch' if action == 'switch' else 'merging'} "
-                                            "under it"}, 409)
+            owner_uid = users.uid_of(users.get(users.owner_name() or ""))
+            whose = "your" if users.uid_of(me) == owner_uid else f"{users.owner_name()}'s"
+            if action == "switch":
+                mine = claude_session(name)
+                if any(tmux_base(s["name"]) == mine and not tmux_owner(s["name"])
+                       for s in tmux_sessions() + node_tmux_sessions()):
+                    return self._json({"error": f"{whose} Claude session is running in this "
+                                                "directory; end it before switching the branch "
+                                                "under it"}, 409)
+            elif claude_working(name, owner_uid):
+                return self._json({"error": f"{whose} Claude session is working in this "
+                                            "directory; merge when it is waiting"}, 409)
         if action == "ask":
             live = sessions_anywhere()
             r = gitview.ask(WORKSPACE / name, name, field(req, "kind"), req.get("args") or {}, live)
