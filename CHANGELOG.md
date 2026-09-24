@@ -111,6 +111,7 @@
 - The Claude Code update pins the version it asked for from the installer's own versions directory, not whatever the launcher points at; a lab node's stand-in launcher had it pin the old one (3475fe7)
 - The About popup closes on Escape and on a click outside it, like every other dialog (ed1a79e)
 - bb rules keeps its columns apart for a long rule name, bb roadmap on a node no longer dies after printing, an attached test run finds the kept fixture's tmux server, and the hand-back hook no longer counts a busy harness as a failed check (ed1a79e)
+- Signing in to Claude from a second account no longer says Claude Code is not installed on a node whose sessions run it, and with more than one node the card asks which with a select on one row (6ea77de)
 
 ### Security
 
