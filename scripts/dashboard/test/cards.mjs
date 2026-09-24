@@ -100,11 +100,14 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
   // is closed here from the block above, so open comes first. Then the end
   // state: the body's inline opacity and the fading class both gone, so a
   // card is never left blank by its own fold.
+  // Script-made animations only (the fold's own), never the stylesheet's
+  // transitions: the card's fill and frame ease on a class in this scheme,
+  // and those are CSSTransition objects in the same list.
   const phaseOf = () => page.evaluate(() => {
+    const made = el => el.getAnimations().filter(a => a.constructor.name === 'Animation').length;
     const c = document.querySelector('.card[data-card="doctor"]');
-    const own = c.getAnimations().length;
-    return { own, body: [...c.children].filter(n => n.tagName !== 'H2')
-               .map(n => n.getAnimations().length).reduce((a, b) => a + b, 0),
+    return { own: made(c), body: [...c.children].filter(n => n.tagName !== 'H2')
+               .map(made).reduce((a, b) => a + b, 0),
              fading: c.classList.contains('fading') };
   });
   const settle = shut => page.waitForFunction(s => {

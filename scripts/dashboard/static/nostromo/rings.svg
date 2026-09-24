@@ -1,23 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="20" height="160" viewBox="0 0 20 160">
-  <!-- Binding rings down the sidebar's left edge, one every 40px repeating
-       at 160, in the page's own gutter (10px on a desktop, 8 on a phone,
-       where the file sits 2px further left). Each is centred on x=10, the
-       line where the cards begin, so a card hides the ring's right half and
-       the gap between two cards shows the rest: they read as going behind
-       the panels. A reticle rather than a plain ring: an outer ring, a
+<svg xmlns="http://www.w3.org/2000/svg" width="26" height="136" viewBox="0 0 26 136">
+  <!-- Binding rings down the sidebar's left edge, one every 34px repeating
+       at 136, in the page's own gutter (10px on a desktop, 8 on a phone,
+       where the file sits 2px further left). Each is centred 3px inside the
+       cards' left edge: the cards are smoked glass in this scheme, so most
+       of a ring shows through a card and the gap between two cards shows
+       it plain, and they read as going behind the panels. Thin and dim,
+       a fixture of the hull rather than a mark on it: an outer ring, a
        dashed inner one and a pip, the way a ship marks a port. -->
   <g fill="none" stroke="#ffb000">
-    <g opacity="0.6" stroke-width="1.6">
-      <circle cx="10" cy="20" r="9"/><circle cx="10" cy="60" r="9"/>
-      <circle cx="10" cy="100" r="9"/><circle cx="10" cy="140" r="9"/>
+    <g opacity="0.38" stroke-width="1.1">
+      <circle cx="13" cy="17" r="12"/><circle cx="13" cy="51" r="12"/>
+      <circle cx="13" cy="85" r="12"/><circle cx="13" cy="119" r="12"/>
     </g>
-    <g opacity="0.45" stroke-width="1.2" stroke-dasharray="2.5 2">
-      <circle cx="10" cy="20" r="5"/><circle cx="10" cy="60" r="5"/>
-      <circle cx="10" cy="100" r="5"/><circle cx="10" cy="140" r="5"/>
+    <g opacity="0.28" stroke-width="0.9" stroke-dasharray="2.5 2.2">
+      <circle cx="13" cy="17" r="7"/><circle cx="13" cy="51" r="7"/>
+      <circle cx="13" cy="85" r="7"/><circle cx="13" cy="119" r="7"/>
     </g>
   </g>
-  <g opacity="0.6" fill="#ffb000">
-    <circle cx="10" cy="20" r="1.5"/><circle cx="10" cy="60" r="1.5"/>
-    <circle cx="10" cy="100" r="1.5"/><circle cx="10" cy="140" r="1.5"/>
+  <g opacity="0.38" fill="#ffb000">
+    <circle cx="13" cy="17" r="1.4"/><circle cx="13" cy="51" r="1.4"/>
+    <circle cx="13" cy="85" r="1.4"/><circle cx="13" cy="119" r="1.4"/>
   </g>
 </svg>
