@@ -137,6 +137,7 @@
 - A New container that compose refuses no longer shows on the Docker tab for a moment before it disappears (7c91cc9)
 - A run attached to a kept test fixture waits its turn like any other run, so the hand-back design check no longer runs beside a session's own suites and fails them both (7c91cc9)
 - bb tests preflight runs a changed suite by itself, rather than every suite that happens to name the same endpoint (be4f2ba)
+- bb map keeps its index out of git in every project it builds in, through the repository's own exclude file, where before only projects the dashboard created had that (f586e27)
 
 ### Security
 

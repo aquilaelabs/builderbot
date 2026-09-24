@@ -667,7 +667,10 @@ markup draws, and which suite names each of those, so `who-calls
 loadDocker` or `draws .dmtab` is one call rather than a hunt. Built with
 nothing installed (python's own parser, a small scanner for the scripts),
 into `.bb-map/` beside the tree, rebuilt by itself when a source is newer.
-It is rough on purpose, braces not scope, and says so where it guesses.
+Every build keeps `.bb-map/` out of git through the repository's own
+exclude file, never the project's `.gitignore`, so a project's commits
+never carry the index. It is rough on purpose, braces not scope, and says
+so where it guesses.
 
 `bb shot` is the container's camera: one URL with an optional output file
 keeps the simple shape, several URLs share one browser and land in a

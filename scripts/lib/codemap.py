@@ -31,6 +31,7 @@ script, tab-*.js, nb-*.js, test/*.mjs) and a line pass for shell.
     bb map covered NAME          which suites ran NAME, and how often: the regression net for touching it
     bb map uncovered [FILE]      the functions no suite reached
     bb map build                 rescan everything now (a changed file is rescanned by itself on any question)
+    bb map exclude               keep .bb-map/ out of git in this tree's repository; every build does it too
 
 The scanner is deliberately rough: it knows nothing of scope beyond braces
 and nothing of types. It answers "where would I look" in one call, which
@@ -38,12 +39,15 @@ is the question a session otherwise spends thirty greps on, and it says so
 in its output where it is guessing (an anonymous callback is attributed to
 the nearest named function around it).
 
-The index lives at .bb-map/map2.json under the tree, ignored by git.
+The index lives at .bb-map/map3.json under the tree, the number being its
+format. Building it keeps .bb-map/ out of git through the repository's own
+exclude file, never the project's .gitignore, which is the project's to write.
 """
 import ast
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -753,6 +757,7 @@ def build(root, prior=None):
            "dropped": len(set(kept) - set(files)), "files": files}
     out = root / INDEX_DIR
     out.mkdir(exist_ok=True)
+    exclude(root)
     tmp = out / (INDEX_FILE + ".tmp")
     tmp.write_text(json.dumps(idx))
     tmp.replace(out / INDEX_FILE)
@@ -762,6 +767,47 @@ def build(root, prior=None):
         if old.name != INDEX_FILE and (old.name == "index.json" or re.fullmatch(r"map\d+\.json", old.name)):
             old.unlink(missing_ok=True)
     return flat(idx)
+
+
+def exclude(root):
+    """`.bb-map/` into the repository's own exclude file, once, for the tree
+    an index is written into. True when git now leaves it alone.
+
+    Here and not only where the dashboard creates a project, which is where
+    it used to be written: a project that predated that, or whose map a
+    session built, showed .bb-map/ untracked, and `git add -A` took a
+    multi-megabyte index into a commit (B247). Found through git, so a
+    worktree writes it to the exclude file its repository shares; a tree
+    with no repository has nothing to write it into, and the Git view's
+    Init runs this when it makes one. Never the project's .gitignore, which
+    is the project's to write.
+    """
+    root = Path(root)
+    path = None
+    try:
+        r = subprocess.run(["git", "-C", str(root), "rev-parse", "--git-path", "info/exclude"],
+                           capture_output=True, text=True, timeout=15)
+        if r.returncode == 0 and r.stdout.strip():
+            path = Path(r.stdout.strip())
+            path = path if path.is_absolute() else root / path
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if path is None:
+        # git itself refused (a tree another account owns, say): the plain
+        # layout still has an answer.
+        if not (root / ".git").is_dir():
+            return False
+        path = root / ".git" / "info" / "exclude"
+    try:
+        have = path.read_text() if path.exists() else ""
+        if f"{INDEX_DIR}/" in have.split("\n"):
+            return True
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a") as fh:
+            fh.write(("" if have.endswith("\n") or not have else "\n") + f"{INDEX_DIR}/\n")
+        return True
+    except OSError:
+        return False               # the map still builds; only the exclude is lost
 
 
 def flat(idx):
@@ -1683,6 +1729,12 @@ def main(argv):
     if verb == "build":
         idx = build(root)
         print("\n".join(summary(idx)))
+        return 0
+    if verb == "exclude":
+        if not exclude(root):
+            print(f"{root} is not in a git repository, so there is nothing to keep .bb-map/ out of",
+                  file=sys.stderr)
+            return 1
         return 0
     if verb == "instrument":
         if not rest:

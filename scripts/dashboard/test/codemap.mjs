@@ -248,4 +248,47 @@ ok(/no verb called nope; bb map -h lists them/.test(said), 'an unknown verb is r
 ok(/nothing defines noSuchFunctionAnywhere/.test(map('find', 'noSuchFunctionAnywhere')),
    'an unknown name gets a sentence, not an empty screen');
 
+// ---- the index stays out of git (B247) --------------------------------------
+// Every build keeps .bb-map/ out of git through the repository's own exclude
+// file, wherever it is built: a repository nothing ignores it in, which is
+// any project the dashboard did not create, and a worktree of one. It used
+// to be written only when the dashboard created the project, and a session's
+// `git add -A` elsewhere took a multi-megabyte index into a commit.
+{
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x.invalid',
+                GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x.invalid' };
+  const g = (cwd, ...a) => execFileSync('git', ['-C', cwd, ...a], { encoding: 'utf8', env }).trim();
+  const build = root => execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, '--root', root, 'build'],
+                                     { encoding: 'utf8' });
+  const ignored = root => { try { g(root, 'check-ignore', '-q', '.bb-map/map3.json'); return true; }
+                            catch { return false; } };
+  const t = mkdtempSync(`${tmpdir()}/bbmap-`);
+  g(t, 'init', '-q', '-b', 'main');
+  writeFileSync(`${t}/a.py`, 'def f():\n    return 1\n');
+  g(t, 'add', '-A');
+  g(t, 'commit', '-qm', 'one');
+  build(t);
+  build(t);
+  const lines = readFileSync(`${t}/.git/info/exclude`, 'utf8').split('\n').filter(l => l === '.bb-map/');
+  ok(ignored(t) && lines.length === 1 && g(t, 'status', '--porcelain') === '',
+     `a map built in a repository that ignores nothing is kept out of git, once however often it is built (${lines.length})`);
+  g(t, 'worktree', 'add', '-q', `${t}-wt`, '-b', 'side');
+  build(`${t}-wt`);
+  ok(ignored(`${t}-wt`) && g(`${t}-wt`, 'status', '--porcelain') === '',
+     '...and one built in a worktree, through the exclude file its repository shares');
+  const plain = mkdtempSync(`${tmpdir()}/bbmap-plain-`);
+  writeFileSync(`${plain}/a.py`, 'def f():\n    return 1\n');
+  build(plain);
+  let why = '';
+  try { execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, '--root', plain, 'exclude'],
+                     { encoding: 'utf8', stdio: 'pipe' }); }
+  catch (e) { why = String(e.stderr || ''); }
+  ok(existsSync(`${plain}/.bb-map/map3.json`) && /not in a git repository/.test(why),
+     '...while a tree with no repository still gets its map, and bb map exclude says why it wrote nothing');
+  g(t, 'worktree', 'remove', '--force', `${t}-wt`);
+  for (const d of [t, plain]) rmSync(d, { recursive: true, force: true });
+}
+
 await done(null);

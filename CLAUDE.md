@@ -181,7 +181,7 @@ by hand cost four commands and still could not see the failed builds.
   what follows is the layout they refer to.
   - Two numbers move by machine and one by hand. `bb version` moves per
     commit; a file two builds may read carries a format it checks
-    (`.bb-map/map2.json`, `.bb-map/coverage.json`) and a reader that meets
+    (`.bb-map/map3.json`, `.bb-map/coverage.json`) and a reader that meets
     another rebuilds; and `AGENT_VERSION` in `scripts/agent/builderbot-agent.py`
     moves by hand, so `bb lint` fails when that file changes against the
     branch's base without its patch moving. A node compares the file and
