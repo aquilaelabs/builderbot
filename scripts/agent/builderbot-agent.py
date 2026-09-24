@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.96"
+AGENT_VERSION = "0.6.97"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1071,6 +1071,41 @@ def sessnet_resolv_text(ns, search):
             + (f"search {search}\n" if search and search != "." else ""))
 
 
+def sessnet_clash(addrs, routes, cidr=SESSNET_CIDR):
+    """What on this node already uses the range sessions are addressed from,
+    or "": an address or a route (from `ip -j -4 addr` and `ip -j -4 route
+    show table all`) other than a session's own link. A session's /30 would
+    hide its addresses from everything on the machine, and the masquerade
+    would rewrite its traffic, which on a machine used for other things is
+    somebody else's network (the operator, 24 Sep)."""
+    net = ipaddress.ip_network(cidr)
+    for a in addrs if isinstance(addrs, list) else []:
+        if not isinstance(a, dict) or str(a.get("ifname") or "").startswith("bbs"):
+            continue
+        for i in a.get("addr_info") or []:
+            if not isinstance(i, dict) or i.get("family") != "inet" or not i.get("local"):
+                continue
+            try:
+                n = ipaddress.ip_network(f"{i['local']}/{i.get('prefixlen', 32)}", strict=False)
+            except ValueError:
+                continue
+            if n.overlaps(net):
+                return f"{i['local']}/{i.get('prefixlen', 32)} on {a.get('ifname')}"
+    for r in routes if isinstance(routes, list) else []:
+        if not isinstance(r, dict) or str(r.get("dev") or "").startswith("bbs"):
+            continue
+        dst = str(r.get("dst") or "")
+        if dst in ("", "default"):
+            continue
+        try:
+            n = ipaddress.ip_network(dst if "/" in dst else dst + "/32", strict=False)
+        except ValueError:
+            continue
+        if n.version == 4 and n.overlaps(net):
+            return f"a route to {dst}" + (f" on {r['dev']}" if r.get("dev") else "")
+    return ""
+
+
 def sessnet_can():
     """Whether this node can keep each session to its own project's network,
     and why not: asked in the order a person would put it right."""
@@ -1103,6 +1138,14 @@ def sessnet_can():
         return False, "iptables is not here to let a session's traffic past Docker's forwarding"
     if not sessnet_resolvers()[0]:
         return False, "the node names no DNS server a session's own network could reach, only its loopback"
+    try:
+        addrs = json.loads(_run(["ip", "-j", "-4", "addr"], timeout=10) or "[]")
+        routes = json.loads(_run(["ip", "-j", "-4", "route", "show", "table", "all"], timeout=10) or "[]")
+    except ValueError:
+        addrs, routes = [], []
+    clash = sessnet_clash(addrs, routes)
+    if clash:
+        return False, f"this node's own network already uses {SESSNET_CIDR}, which sessions are addressed from ({clash})"
     return True, ""
 
 
@@ -1111,7 +1154,9 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
     link, before Docker's own forwarding (priority -10 against its 0); the
     sets are filled by sessnet_fill. What passes is marked, and Docker's
     DOCKER-USER lets through marked traffic from a session and drops the
-    rest, so without this table a session reaches nothing."""
+    rest, so without this table a session reaches nothing. Nothing starts a
+    connection into a session: not from the network (forward) and not from
+    the node itself (output), where every other account's programs are."""
     return f"""table inet {SESSNET_TABLE} {{
 	set ctl {{ type ipv4_addr . inet_service; }}
 	set dns {{ type ipv4_addr; }}
@@ -1141,6 +1186,10 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 		type filter hook input priority -10; policy accept;
 		iifname "bbs*" ct state established,related accept
 		iifname "bbs*" reject with icmpx type admin-prohibited
+	}}
+	chain output {{
+		type filter hook output priority -10; policy accept;
+		oifname "bbs*" meta l4proto {{ tcp, udp }} ct state new reject with icmpx type admin-prohibited
 	}}
 	chain postrouting {{
 		type nat hook postrouting priority 100; policy accept;

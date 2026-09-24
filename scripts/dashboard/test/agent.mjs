@@ -625,7 +625,14 @@ print(json.dumps({
   'pairs': pairs,
   'fill': m.sessnet_fill([('192.168.1.15', 7680)], ['192.168.1.1'], pairs),
   'table': m.sessnet_table(), 'live': live,
-  'rules': rules, 'fresh': fresh, 'kept': kept, 'fixed': fixed, 'off': off.held}))
+  'rules': rules, 'fresh': fresh, 'kept': kept, 'fixed': fixed, 'off': off.held,
+  # What the node's own network already has in the range: a LAN, a VPN or a
+  # VM bridge in 10.231.x.x, from ip -j; a session's own link does not count.
+  'clash': [m.sessnet_clash([{'ifname': 'eth0', 'addr_info': [{'family': 'inet', 'local': '192.168.1.18', 'prefixlen': 24}]},
+                             {'ifname': 'bbs3', 'addr_info': [{'family': 'inet', 'local': '10.231.0.13', 'prefixlen': 30}]}],
+                            [{'dst': 'default', 'dev': 'eth0'}, {'dst': '10.231.0.12/30', 'dev': 'bbs3'}]),
+            m.sessnet_clash([{'ifname': 'virbr0', 'addr_info': [{'family': 'inet', 'local': '10.231.4.1', 'prefixlen': 24}]}], []),
+            m.sessnet_clash([], [{'dst': '10.0.0.0/8', 'dev': 'tun0'}])]}))
 `], { encoding: 'utf8' }).trim().split('\n').pop());
       ok(JSON.stringify(sn.ns) === JSON.stringify([['192.168.1.1'], 'lan']) && sn.none[0].length === 0
          && /nameserver 192\.168\.1\.1\nsearch lan\n$/.test(sn.resolv),
@@ -645,6 +652,10 @@ print(json.dumps({
          '...the table lets through what the sets name before it refuses the rest that is not the internet, marks what it passes, and lets nothing start a connection into a session or at the node');
       ok(sn.live.length === 1 && sn.live[0].project === 'alpha',
          `a session whose link is gone is over, and a file that names no real project is nobody's (${JSON.stringify(sn.live)})`);
+      ok(sn.clash[0] === '' && /10\.231\.4\.1\/24 on virbr0/.test(sn.clash[1]) && /a route to 10\.0\.0\.0\/8 on tun0/.test(sn.clash[2]),
+         `a node whose own network already uses the range is not offered it, and says which address or route (a VM bridge: ${sn.clash[1]}; a VPN: ${sn.clash[2]}), while a session's own link is no clash`);
+      ok(/chain output \{[^}]*oifname "bbs\*" meta l4proto \{ tcp, udp \} ct state new reject/.test(sn.table),
+         '...and nothing on the node itself, any account\'s program, opens a connection into a session either');
       const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
       ok(same(sn.fresh[0], sn.rules) && same(sn.kept, [sn.rules, 0]) && same(sn.fixed[0], sn.rules) && sn.off.length === 0,
          `Docker's forwarding gets its three rules in order (replies in, what the table marked, nothing else from a session), leaves them when they are right, puts a drop that stands alone back behind the other two, and takes all three away (${JSON.stringify(sn.fresh[0].map(r => r[r.length - 1]))})`);

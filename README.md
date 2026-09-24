@@ -3533,7 +3533,10 @@ the DNS servers pass, and so do the containers the session's project owns on
 that node (the project a container belongs to on the Docker tab, the same
 setting that says whose sessions may work on it); everything else that is not
 the internet (every other container, the node's own services, the LAN) is
-refused, and nothing can open a connection into a session. What passes is
+refused, and nothing, on the network or on the node itself, can open a
+connection into a session. Only those sessions are touched: every rule matches
+their links (`bbsN`) or their range, and everybody else's programs on the
+machine keep its network as it was. What passes is
 marked, and Docker's `DOCKER-USER` chain lets through only marked traffic
 from a session, so if the table ever disappears a session loses its network
 rather than gaining the node's. A session reaches its own containers at the
@@ -3542,7 +3545,9 @@ emulator it starts itself runs inside with it. Turning the switch on or off
 applies to sessions started afterwards; one started while it was on keeps
 its network until it ends. The row says, in red, when the switch is on and
 it is not in force: an agent that is not root, a firewalld or ufw firewall,
-no upstream DNS server, or an older `bb-session`. When setting it up fails,
+no upstream DNS server, an older `bb-session`, or a node whose own network
+already uses `10.231.x.x` (a LAN, a VPN or a VM bridge), which a session's
+address would hide from everything on the machine. When setting it up fails,
 no session starts on that node until it works or the switch is turned off.
 A container in Docker's host network mode is not reachable from an isolated
 session, since it has no address of its own to allow.
