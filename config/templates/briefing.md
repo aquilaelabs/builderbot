@@ -37,6 +37,10 @@ refuses too: `bb settings set build|test|outputs "..."` fills the field in
 for the operator, and the project's gate decides whether that lands, waits
 for their approval, or is refused.
 
+A `pkill -f PATTERN` run from a tool call matches the shell running that
+call, because the pattern is on its command line, and kills it: end a
+process by pid, or with `pkill -x NAME`.
+
 ## Finding your way
 
     bb map who-calls NAME      every call of NAME, with the function it is made from
