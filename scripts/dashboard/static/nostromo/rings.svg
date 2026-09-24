@@ -1,24 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="26" height="136" viewBox="0 0 26 136">
-  <!-- Binding rings down the sidebar's left edge, one every 34px repeating
-       at 136, in the page's own gutter (10px on a desktop, 8 on a phone,
-       where the file sits 2px further left). Each is centred 3px inside the
-       cards' left edge: the cards are smoked glass in this scheme, so most
-       of a ring shows through a card and the gap between two cards shows
-       it plain, and they read as going behind the panels. Thin and dim,
-       a fixture of the hull rather than a mark on it: an outer ring, a
-       dashed inner one and a pip, the way a ship marks a port. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="128" viewBox="0 0 80 128">
+  <!-- Binding rings down the sidebar, one every 128px, going behind the
+       cards: centred 18px inside the cards' left edge, so most of a
+       ring shows dimly through the smoked glass, the gaps between cards show
+       it plain, and its left side runs off into the gutter. A port rather
+       than a plain ring: an outer ring with an accent arc, a dial of ticks,
+       a dashed inner ring with four bolts, and a reticle at the centre. Dim
+       on purpose: a fixture of the hull, never a thing to read. -->
   <g fill="none" stroke="#ffb000">
-    <g opacity="0.38" stroke-width="1.1">
-      <circle cx="13" cy="17" r="12"/><circle cx="13" cy="51" r="12"/>
-      <circle cx="13" cy="85" r="12"/><circle cx="13" cy="119" r="12"/>
+    <g opacity="0.22" stroke-width="1">
+      <circle cx="28" cy="64" r="48"/>
+      <circle cx="28" cy="64" r="18"/>
     </g>
-    <g opacity="0.28" stroke-width="0.9" stroke-dasharray="2.5 2.2">
-      <circle cx="13" cy="17" r="7"/><circle cx="13" cy="51" r="7"/>
-      <circle cx="13" cy="85" r="7"/><circle cx="13" cy="119" r="7"/>
-    </g>
+    <path opacity="0.3" stroke-width="2.2" d="M44.4 18.9A48 48 0 0 1 71.5 43.7"/>
+    <path opacity="0.2" stroke-width="1" d="M65.0 64.0L74.0 64.0M28.0 101.0L28.0 110.0M-9.0 64.0L-18.0 64.0M28.0 27.0L28.0 18.0"/>
+    <path opacity="0.12" stroke-width="0.8" d="M69.4 71.3L73.3 72.0M67.5 78.4L71.2 79.7M64.4 85.0L67.8 87.0M60.2 91.0L63.2 93.6M55.0 96.2L57.6 99.2M49.0 100.4L51.0 103.8M42.4 103.5L43.7 107.2M35.3 105.4L36.0 109.3M20.7 105.4L20.0 109.3M13.6 103.5L12.3 107.2M7.0 100.4L5.0 103.8M1.0 96.2L-1.6 99.2M-4.2 91.0L-7.2 93.6M-8.4 85.0L-11.8 87.0M-11.5 78.4L-15.2 79.7M-13.4 71.3L-17.3 72.0M-13.4 56.7L-17.3 56.0M-11.5 49.6L-15.2 48.3M-8.4 43.0L-11.8 41.0M-4.2 37.0L-7.2 34.4M1.0 31.8L-1.6 28.8M7.0 27.6L5.0 24.2M13.6 24.5L12.3 20.8M20.7 22.6L20.0 18.7M35.3 22.6L36.0 18.7M42.4 24.5L43.7 20.8M49.0 27.6L51.0 24.2M55.0 31.8L57.6 28.8M60.2 37.0L63.2 34.4M64.4 43.0L67.8 41.0M67.5 49.6L71.2 48.3M69.4 56.7L73.3 56.0"/>
+    <circle opacity="0.14" stroke-width="0.8" stroke-dasharray="3 3.5" cx="28" cy="64" r="29"/>
+    <path opacity="0.18" stroke-width="0.9" d="M35.0 64.0L43.0 64.0M28.0 71.0L28.0 79.0M21.0 64.0L13.0 64.0M28.0 57.0L28.0 49.0"/>
   </g>
-  <g opacity="0.38" fill="#ffb000">
-    <circle cx="13" cy="17" r="1.4"/><circle cx="13" cy="51" r="1.4"/>
-    <circle cx="13" cy="85" r="1.4"/><circle cx="13" cy="119" r="1.4"/>
+  <g fill="#ffb000">
+    <g opacity="0.16"><circle cx="51.3" cy="87.3" r="1.3"/><circle cx="4.7" cy="87.3" r="1.3"/><circle cx="4.7" cy="40.7" r="1.3"/><circle cx="51.3" cy="40.7" r="1.3"/></g>
+    <circle opacity="0.24" cx="28" cy="64" r="1.6"/>
   </g>
 </svg>
