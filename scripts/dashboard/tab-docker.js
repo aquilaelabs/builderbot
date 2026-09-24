@@ -1150,8 +1150,11 @@ function dmWireRows(el, list = dockerList){
 // (built from a project, written here, or started by somebody else) is said
 // on the row itself, since that is what decides what can be done to it.
 function dmGroupsHtml(ins, cs, job, blind){
-  const head = (t, sub) => `<div class="field dmgroup"><b>${esc(t)}</b>${
-    sub ? ` <span class="dim">${esc(sub)}</span>` : ""}</div>`;
+  // A project's heading wears its own colour when it has one; `null` is
+  // the No project heading, which wears none.
+  const head = (t, sub, tone) => `<div class="field dmgroup${tone === null ? " none" : ""}"${
+    tone ? ` style="--gc:${tone}"` : ""}><b>${esc(t)}</b>${
+    sub ? `<span class="dim">${esc(sub)}</span>` : ""}</div>`;
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
   const owners = [...new Set([...ins, ...cs].map(r => r.owner || ""))]
     .filter(Boolean).sort(byName);
@@ -1160,8 +1163,8 @@ function dmGroupsHtml(ins, cs, job, blind){
     + dmOtherRowsHtml(cs.filter(c => (c.owner || "") === o)
         .sort((a, b) => byName(a.name || a.id, b.name || b.id)));
   const loose = [...ins, ...cs].some(r => !r.owner);
-  return owners.map(o => head(o) + group(o)).join("")
-    + (loose ? head("No project", "no Claude session sees these") + group("") : "");
+  return owners.map(o => head(o, "", colorTone(projectColor(o))) + group(o)).join("")
+    + (loose ? head("No project", "no Claude session sees these", null) + group("") : "");
 }
 
 // A container BuilderBot did not start: what the daemon says about it,

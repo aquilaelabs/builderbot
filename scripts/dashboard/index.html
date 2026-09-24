@@ -2145,8 +2145,20 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The heading over each group of rows: where these came from, which is what
    decides what can be done to them (R68). Quiet, because it is a label on a
    list and not a section of its own. */
-.dmtab .dmgroup{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
-.dmtab .dmgroup b{color:var(--ink);font-weight:600}
+/* A project's heading over its containers, as a band that reads as the
+   start of that project at a glance (the operator, 24 Sep: the label was
+   hard to find): tinted and barred down its left in the project's own
+   colour, or the scheme's accent for one with none, the name heavier than
+   the rows under it, and room above each group but the first. No project
+   is the same shape in the line colour, since it is nobody's. */
+.dmtab .dmgroup{--gc:var(--accent);color:var(--dim);font:var(--f-ui);
+  display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;
+  background:color-mix(in srgb, var(--gc) 16%, transparent);
+  box-shadow:inset 4px 0 0 0 var(--gc);
+  border-bottom:1px solid color-mix(in srgb, var(--gc) 50%, var(--line))}
+.dmtab .dmgroup.none{--gc:var(--line)}
+.dmtab .dmgroup b{color:var(--ink);font-weight:700;font-size:1.1em;letter-spacing:.02em}
+.dmtab .row + .dmgroup{margin-top:14px}
 /* The small text areas in the container form: a few lines each, not the
    full-height editor the compose file gets. */
 #cmodal textarea.csmall{min-height:64px}

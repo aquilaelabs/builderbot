@@ -3160,6 +3160,27 @@ print(json.dumps(out))
   ok(heads[heads.length - 1] === 'No project'
      && JSON.stringify(named) === JSON.stringify([...named].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))),
      `the manager groups rows by project, alphabetically, with no project last (${heads.join(' | ')})`);
+  // Each heading is a band that stands out from the rows under it (the
+  // operator, 24 Sep): tinted and barred down its left, in the project's
+  // own colour when it has one, and plain for No project.
+  const bands = () => page.$$eval('.dmtab .dmgroup', hs => hs.map(h => ({
+    head: h.querySelector('b')?.textContent, none: h.classList.contains('none'),
+    bg: getComputedStyle(h).backgroundColor, bar: getComputedStyle(h).boxShadow })));
+  let b = await bands();
+  const eps = b.find(x => x.head === 'ep.silon');
+  ok(eps && !/rgba\(0, 0, 0, 0\)/.test(eps.bg) && /inset/.test(eps.bar) && b.find(x => x.head === 'No project')?.none,
+     `a project's heading is a tinted band with a bar down its left, and No project is marked plain (${JSON.stringify(eps)})`);
+  await api('/api/prefs', { project: 'ep.silon', color: 'teal' });
+  await refreshUntil(page, () => (state.projects || []).find(p => p.name === 'ep.silon')?.prefs?.color === 'teal',
+                     { timeout: 20000 });
+  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  await page.waitForFunction(() => /57, 181, 176/.test(getComputedStyle(
+    [...document.querySelectorAll('.dmtab .dmgroup')].find(h => h.querySelector('b')?.textContent === 'ep.silon')).boxShadow),
+    null, { timeout: 10000 }).catch(() => {});
+  b = await bands();
+  ok(/57, 181, 176/.test(b.find(x => x.head === 'ep.silon')?.bar || ''),
+     `...in the project's own colour once it has one (${b.find(x => x.head === 'ep.silon')?.bar})`);
+  await api('/api/prefs', { project: 'ep.silon', color: '' });
   const under = h => (g.find(x => x.head === h) || { rows: [] }).rows;
   ok(under('ep.silon').includes('ep.silon|main') && under('ep.silon').includes('helper-for-eps|main')
      && under('No project').includes('ep.silon|loose') && under('No project').includes('someone-elses'),

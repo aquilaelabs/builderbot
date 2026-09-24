@@ -76,6 +76,7 @@
 - The Docker tab groups its rows by the project each container belongs to, in alphabetical order, with the ones that belong to no project last (5a89323)
 - A session told its container's env is missing is told how to set it, and that the env is kept by BuilderBot rather than as a .env file in the project (5a89323)
 - Nostromo: the rings hold still behind the cards as they scroll, the cards are a little more see-through, and the tab side wears the same glass, its tab strip, pane bars and documents alike; a terminal keeps its solid ground (be4f2ba)
+- The Docker tab's project headings stand out: each is a band tinted and barred in the project's own colour, or the scheme's accent for one with none, with room above each group (20b0e23)
 
 ### Removed
 
