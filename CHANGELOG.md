@@ -131,6 +131,9 @@
 - A project an administrator creates goes on their own project list, so they can work on it at once and the node picked in the dialog is kept (d79fc0a)
 - The Docker tab no longer refreshes itself every second or two: each read of its list on a node moved the revision the tab refreshes on (830e90f)
 - The environment filled in when a project is sent to Docker reaches its containers when the compose file reads it with env_file: .env, where Up failed on a missing .env (830e90f)
+- bb test runs a project's tests on its node unless its settings say otherwise. Tests run offers three places: on the node, the default; in the dev instance when it is up; or only in the dev instance. An image built to ship carries no tests, and a run inside one found none and reported success (7c91cc9)
+- A New container that compose refuses no longer shows on the Docker tab for a moment before it disappears (7c91cc9)
+- A run attached to a kept test fixture waits its turn like any other run, so the hand-back design check no longer runs beside a session's own suites and fails them both (7c91cc9)
 
 ### Security
 
