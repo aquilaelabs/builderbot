@@ -1706,7 +1706,9 @@ else:
             f"Reported by {where}" + (f" ({r['node']})" if r.get("node") else "")
             + f", {when}" + (f", on {r['build']}" if r.get("build") else "")
             + f", as report #{r['id']}."] if x)
-        p = subprocess.run([os.environ["BB_R_SELF"], "bug", "add", r.get("text") or "",
+        # --here: filing BuilderBot's report into this tracker is the point,
+        # so bug add is not to ask whether it belongs in bb report.
+        p = subprocess.run([os.environ["BB_R_SELF"], "bug", "add", r.get("text") or "", "--here",
                             "--sev", got.get("sev", "medium"),
                             "--area", r.get("area") or f"reported from {r['project']}",
                             "--repro", repro], capture_output=True, text=True)
@@ -3851,23 +3853,28 @@ elif op == "show":
         sys.exit(1)
     show(b)
 elif op == "add":
-    title, flags = pull_flags(rest)
+    here = "--here" in rest
+    title, flags = pull_flags([a for a in rest if a != "--here"])
     said = " ".join([title] + [str(v) for v in flags.values()])
+    # A bug that names BuilderBot, filed in another project's tracker, is
+    # usually BuilderBot's, which is what bb report is for. Asked before it is
+    # filed rather than said after: said after, a session filed BuilderBot's
+    # bug in its own tracker anyway and the operator had to tell it (24 Sep).
+    # --here is the answer "it is this project's own". Not where the project
+    # has reporting BuilderBot bugs off, BuilderBot's own among them, whose
+    # tracker it is.
+    import re
+    import prefs
+    if not here and prefs.get(proj).get("report") != "deny" \
+            and re.search(r"\bbuilder ?bot\b|(^|[\s`'\"(])bb [a-z]", said, re.I):
+        print(f"[builderbot] not filed: this names BuilderBot. A problem with BuilderBot "
+              "itself goes to bb report \"what happened\" [--area A] [--repro \"...\"], "
+              f"not {proj}'s tracker; if it is {proj}'s own bug, add --here to file it here",
+              file=sys.stderr)
+        sys.exit(1)
     r = bugs.add(proj, title, by="claude",
                  severity=flags.pop("severity", "medium"), **flags)
     bail(r)
-    # A bug that names BuilderBot, filed in another project's tracker, is
-    # usually BuilderBot's, which is what bb report is for (the operator,
-    # 24 Sep). Said, not refused: the words can be the project's own. Not
-    # where the project has reporting BuilderBot bugs off, BuilderBot's own
-    # among them, whose tracker it is.
-    import re
-    import prefs
-    if prefs.get(proj).get("report") != "deny" \
-            and re.search(r"\bbuilder ?bot\b|(^|[\s`'\"(])bb [a-z]", said, re.I):
-        print(f"[builderbot] this names BuilderBot: if it is a problem with BuilderBot itself "
-              f"rather than {proj}, bb report sends it to BuilderBot's maintainers, and "
-              "bb bug rm takes this one back", file=sys.stderr)
     if r.get("held"):
         h = r["held"]
         print(f"held for approval as {B(h['number'])}: it lands in the tracker "
@@ -3987,7 +3994,7 @@ elif op in ("history", "log"):
 elif op == "--prompt":
     sys.stdout.write(bugs.prompt(proj))
 else:
-    print("usage: bb bug [list|all|show N|find TEXT|begin|commit|revert|add TITLE [--sev S] [--area ..] "
+    print("usage: bb bug [list|all|show N|find TEXT|begin|commit|revert|add TITLE [--sev S] [--area ..] [--here] "
           "[--repro ..]|note N TEXT|edit N FIELD TEXT|fix N [NOTE]|"
           "wontfix N [WHY]|na N [WHY]|reopen N|rm N [WHY]|pending|"
           "history [-n N] [--since D] [--find TEXT]]", file=sys.stderr)

@@ -88,11 +88,18 @@ const p = await call('/api/preamble?project=alpha');
 const text = p.text || '';
 ok(text.split('goes to `bb report').length === 2 && /`bb report` alone lists/.test(text),
    'a session is told once, as a rule, to report BuilderBot\'s problems there, and the briefing says what the verb does');
-// ...and nudged when it files one in its own tracker anyway.
+// ...and stopped when it files one in its own tracker anyway: asked, before
+// anything is filed, since a line said afterwards was not enough (24 Sep).
+const bugsNow = () => (JSON.parse(readFileSync(`${DIR}/state/bugs.json`, 'utf8')).projects.alpha || []).length;
+const had = bugsNow();
 const own = bb(['bug', 'add', 'bb devapp status says the env is the operator\'s'],
                { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
-ok(own.status === 0 && /this names BuilderBot: .*bb report sends it/.test(own.stderr),
-   `a bug that names BuilderBot, filed in another project, points at bb report (${own.stderr.trim().slice(0, 100)})`);
+ok(own.status !== 0 && /not filed: this names BuilderBot.*bb report.*add --here/.test(own.stderr) && bugsNow() === had,
+   `a bug that names BuilderBot, filed in another project, is not filed there but sent to bb report (${own.stderr.trim().slice(0, 110)})`);
+const mine2 = bb(['bug', 'add', 'bb build fails because this project pins an old compiler', '--here'],
+                 { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
+ok(mine2.status === 0 && /filed B\d+/.test(mine2.stdout) && bugsNow() === had + 1,
+   `...while --here files one that is the project's own (${mine2.stdout.trim().slice(0, 80)})`);
 // ---- off for a project, in its settings -------------------------------------------
 // Claude may: Report BuilderBot bugs. BuilderBot's own project has it off:
 // its problems go into its own tracker, so its sessions are not sent to
