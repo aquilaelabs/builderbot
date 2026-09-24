@@ -201,6 +201,57 @@ await page.waitForFunction(() => /dist\//.test(
   null, { timeout: 15000 });
 ok(true, 'a project with no dist/ is told the convention, not shown a blank');
 
+// ---- a build on a branch, in an account's own worktree (B237) -------------
+// A second account's session builds in its worktree and its outputs land in
+// that worktree's dist/, where the tab never looked: its first build showed
+// nothing. Listed apart from dist/, with Download and View carrying the tree.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  await fetch(URL.replace(/\/$/, '') + '/api/users', { method: 'POST', headers: H,
+    body: JSON.stringify({ action: 'add', name: 'w.builder', password: 'w.builder-pass-1', role: 'user' }) });
+  const uid = JSON.parse((await import('node:fs')).readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.builder'].uid;
+  const WT = `${DIR}/ws/.worktrees/alpha/${uid}`;
+  mkdirSync(`${DIR}/ws/.worktrees/alpha`, { recursive: true });
+  execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'worktree', 'add', '-q', '-b', 'claude/w.builder', WT]);
+  mkdirSync(`${WT}/dist`, { recursive: true });
+  writeFileSync(`${WT}/dist/app-2.0.tar.gz`, 'the branch build');
+  writeFileSync(`${WT}/dist/run.sh`, '#!/bin/sh\necho from the branch\n');
+  const get = async q => { const r = await fetch(URL.replace(/\/$/, '') + q, { headers: H });
+    return { status: r.status, text: await r.text() }; };
+  const art = JSON.parse((await get('/api/artifacts?project=alpha')).text);
+  const g = (art.branches || [])[0] || {};
+  ok(g.who === 'w.builder' && g.branch === 'claude/w.builder'
+     && (g.artifacts || []).some(a => a.name === 'app-2.0.tar.gz' && a.path === 'dist/app-2.0.tar.gz')
+     && !(art.artifacts || []).some(a => a.name === 'app-2.0.tar.gz'),
+     `a build in an account's worktree is listed under whose it is and its branch, apart from dist/ (${
+       JSON.stringify({ who: g.who, branch: g.branch, n: (g.artifacts || []).length })})`);
+  const dl = await get(`/api/artifact?project=alpha&path=dist/app-2.0.tar.gz&tree=${uid}`);
+  ok(dl.status === 200 && dl.text === 'the branch build', '...and downloads from there');
+  const outs = await Promise.all([
+    `/api/artifact?project=alpha&path=dist/app-2.0.tar.gz&tree=..`,
+    `/api/artifact?project=alpha&path=../README.md&tree=${uid}`,
+    `/api/artifact?project=alpha&path=dist/app-2.0.tar.gz&tree=u_00000000`,
+    `/api/artifact?project=alpha&path=dist/app-2.0.tar.gz`].map(get));
+  ok(outs.every(r => r.status === 404),
+     `...while a tree that is not one, a path out of its dist/, or the wrong tree finds nothing (${outs.map(r => r.status).join(',')})`);
+  await page.evaluate(() => getNotebook('alpha')?.view('artifacts'));
+  await page.waitForFunction(() => {
+    const b = document.querySelector('.nb[data-project="alpha"] #artBranches');
+    return b && !b.hidden && b.querySelectorAll('.artrow').length === 2;
+  }, null, { timeout: 15000 });
+  const drawn = await page.$eval('.nb[data-project="alpha"] #artBranches', b => ({
+    label: b.querySelector('.ggroup')?.textContent || '',
+    href: b.querySelector('a[download]')?.getAttribute('href') || '',
+    view: !!b.querySelector('[data-artbview]') }));
+  ok(/w\.builder's worktree, on claude\/w\.builder/.test(drawn.label) && drawn.href.includes(`tree=${uid}`) && drawn.view,
+     `...and the tab shows it under a line saying whose, with Download and View (${drawn.label})`);
+  execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'worktree', 'remove', '--force', WT]);
+  // The fixture's alpha has no commits, so the worktree's branch was never
+  // born and there is no ref to delete; one that was born goes.
+  try { execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'branch', '-D', 'claude/w.builder'], { stdio: 'ignore' }); }
+  catch { /* unborn */ }
+}
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 // Put alpha back as it was found. fresh() between files resets state and

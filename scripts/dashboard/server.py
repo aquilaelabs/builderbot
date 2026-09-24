@@ -2376,9 +2376,12 @@ import artifacts                                                 # noqa: E402
 import git as gitview                                            # noqa: E402
 import workspace                                                 # noqa: E402
 
-artifacts.configure(workspace=WORKSPACE)
+# Each account's git worktree of a project: <this>/<project>/<uid> (common.sh
+# session_dir). The Git view and the Artifacts tab both read them.
+WORKTREES = Path(os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"))
+artifacts.configure(workspace=WORKSPACE, worktrees=WORKTREES)
 gitview.configure(workspace=WORKSPACE,
-                  worktrees=os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"),
+                  worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
                   accounts=account_names,
                   owner_uid=lambda: users.uid_of(users.get(users.owner_name() or "")),
@@ -2840,7 +2843,12 @@ def revisions(who=None, projects=None):
     }
     # Per project, for the views that are per project.
     for n in names:
-        revs[f"dist:{n}"] = _mtime(WORKSPACE / n / "dist")
+        # ...and each account's worktree's, whose builds the tab lists too
+        # (B237): a stat per worktree, and a project has a handful.
+        wts = WORKTREES / n
+        revs[f"dist:{n}"] = max([_mtime(WORKSPACE / n / "dist")]
+                                + ([_mtime(d / "dist") for d in wts.iterdir()]
+                                   if wts.is_dir() else []))
         # A session may bump while the operator has the tab open, and the
         # policy file moves when they change who may bump. Both are cheap
         # stats; neither shells out to git.
@@ -4128,6 +4136,10 @@ class Handler(BaseHTTPRequestHandler):
         with devapp.read_scope():
             dev = {"devapp": devapp.state(name), "devapps": devapp.states(name)}
         return self._json({"artifacts": artifacts_of(name),
+                           # Each account's own builds, from its worktree
+                           # (B237), apart from dist/, which is what ships.
+                           "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
+                                        for g in artifacts.branches(name)],
                            # What this project can and cannot do off this
                            # box, said on the tab that lists what it built.
                            "build": build_state(name)} | dev
@@ -4145,7 +4157,8 @@ class Handler(BaseHTTPRequestHandler):
         rel = q.get("path", [""])[0]
         if self._not_project(name):
             return
-        f = artifacts.resolve(name, rel)
+        # `tree`: an account's worktree by uid, for a build made there (B237).
+        f = artifacts.resolve(name, rel, q.get("tree", [""])[0])
         if f is None:
             return self._json({"error": "no such artifact"}, 404)
         try:

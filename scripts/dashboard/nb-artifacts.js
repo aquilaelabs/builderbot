@@ -16,6 +16,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     }catch(e){ hint.textContent = "artifacts: " + e; return; }
     if (art.error){ hint.textContent = "artifacts: " + art.error; return; }
     const rows = art.artifacts || [], job = art.push || {}, dev = art.phone;
+    const groups = art.branches || [];
     // The code base itself, as a zip through the browser: a navigation, so
     // the browser's own download handles it, cookie and all.
     const src = $("artSource");
@@ -28,7 +29,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     const inst = art.install || {};
     hint.textContent = rows.length
       ? `${rows.length} in dist/: what this project ships, newest first`
-      : "nothing here yet";
+      : groups.length ? "nothing in dist/ yet; built on a branch, below" : "nothing here yet";
     {
       // Where this project compiles, as a section rather than a loose band:
       // this tab is three subjects stacked, where it builds, what it is
@@ -224,6 +225,42 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           </span>
         </div>`).join(""));
     paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
+    // Builds made on a branch, in each account's worktree (B237): Download
+    // and View, carrying the tree. Install and Push stay with dist/, whose
+    // files the phone's node is sent by their path in the project.
+    const brList = $("artBranches");
+    const brRows = groups.flatMap(g => g.artifacts.map(a => ({...a, tree: g.uid})));
+    if (brList){
+      brList.hidden = !brRows.length;
+      let at = 0;
+      brList.innerHTML = !brRows.length ? "" : `<div class="hint">Built on a branch, in each account's own worktree; merging it to main is what puts its build in dist/.</div>`
+        + groups.map(g => `<div class="sub dim ggroup">${esc(g.who === state?.me ? "your" : `${g.who}'s`)} worktree${
+            g.branch ? `, on ${esc(g.branch)}` : ""}</div>` + g.artifacts.map(a => { const i = at++; return `
+          <div class="artrow">
+            <span class="grow">
+              <span class="top"><span class="pill">${esc(a.kind)}</span> <b>${esc(a.name)}</b></span>
+              <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}</span></span>
+            <span class="acts">
+              ${a.view ? `<button type="button" data-artbview="${i}"
+                  title="read it here, without downloading it">View</button>` : ""}
+              <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
+                }&path=${encodeURIComponent(a.path)}&tree=${encodeURIComponent(g.uid)}" download>Download</a>
+            </span>
+          </div>`; }).join("")).join("");
+      paginate(brList, ":scope > .artrow", {key: "artBranches", noun: "files"});
+      brList.querySelectorAll("[data-artbview]").forEach(b => b.onclick = async () => {
+        const a = brRows[Number(b.dataset.artbview)];
+        const pane = document.createElement("div");
+        pane.className = "verlogpane";
+        nb.openSheet(a.name, [pane]);
+        pane.innerHTML = `<div class="loading">loading…</div>`;
+        try{
+          const r = await fetch(`/api/artifact?project=${encodeURIComponent(project)
+                                }&path=${encodeURIComponent(a.path)}&tree=${encodeURIComponent(a.tree)}`);
+          pane.textContent = r.ok ? await r.text() : `could not read ${a.name}`;
+        }catch(e){ pane.textContent = String(e); }
+      });
+    }
     if (!tcDotsTimer && list.querySelector(".dots"))
       tcDotsTimer = setInterval(tcTickDots, 400);
     const devOpenBtn = $("devOpen");

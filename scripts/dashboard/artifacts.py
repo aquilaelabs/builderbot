@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""What a project has built, found in one place: its dist/ directory.
+"""What a project has built, found in one place: its dist/ directory, and
+each account's worktree's dist/, listed apart as builds made on a branch.
 
 The convention is the feature. Build systems scatter their outputs (gradle
 five directories deep, web-ext into web-ext-artifacts/, cargo into target/)
@@ -31,8 +32,10 @@ import zipfile
 from pathlib import Path
 
 WORKSPACE = None
+WORKTREES = None          # <workspace>/.worktrees: each account's tree, by uid
 
 DIST = "dist"
+UID_RE = re.compile(r"^u_[0-9a-f]{8}$")
 
 # Extension -> kind. A short list on purpose: these are the things this
 # operator's projects actually produce, and an unknown extension still shows
@@ -54,14 +57,29 @@ MAX_VIEW = 256 * 1024
 MAX_DEPTH = 2
 
 
-def configure(*, workspace):
-    globals().update(WORKSPACE=Path(workspace))
+def configure(*, workspace, worktrees=None):
+    globals().update(WORKSPACE=Path(workspace),
+                     WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees")
 
 
-def listing(project):
-    """Everything in the project's dist/, newest first."""
-    root = WORKSPACE / project / DIST
+def _tree(project, tree=""):
+    """The tree whose dist/ is meant: the project directory, or an account's
+    worktree of it by uid, None for a uid that is not one (B237). A second
+    account's session builds in its worktree, and its build lands there."""
+    if not tree:
+        return WORKSPACE / project
+    if not UID_RE.match(str(tree)) or WORKTREES is None:
+        return None
+    return WORKTREES / project / str(tree)
+
+
+def listing(project, tree=""):
+    """Everything in the project's dist/, or a worktree's, newest first."""
+    top = _tree(project, tree)
     out = []
+    if top is None:
+        return out
+    root = top / DIST
     if not root.is_dir():
         return out
     stack = [(root, 0)]
@@ -84,7 +102,7 @@ def listing(project):
                 continue
             kind = KINDS.get(p.suffix.lower()) or _sniff(p)
             out.append({
-                "path": str(p.relative_to(WORKSPACE / project)),
+                "path": str(p.relative_to(top)),
                 "name": p.name,
                 "kind": kind,
                 # What the row may offer beyond Download. Sent rather than
@@ -96,6 +114,39 @@ def listing(project):
                 "at": int(st.st_mtime),
             })
     return sorted(out, key=lambda a: -a["at"])
+
+
+def branches(project):
+    """[{uid, branch, artifacts}] for each account's worktree of this project
+    with something in its dist/ (B237). A second account's build lands in its
+    worktree, where the tab used to never look, so its first build showed
+    nothing. Listed apart from the project's own dist/, which is what ships:
+    a branch's build is that branch's until it is merged."""
+    out = []
+    base = WORKTREES / project if WORKTREES else None
+    if base is None or not base.is_dir():
+        return out
+    for d in sorted(base.iterdir()):
+        if not UID_RE.match(d.name) or not d.is_dir():
+            continue
+        rows = listing(project, d.name)
+        if rows:
+            out.append({"uid": d.name, "branch": _branch_of(d), "artifacts": rows})
+    return out
+
+
+def _branch_of(tree):
+    """The branch a worktree is on, read from its files and nothing run: its
+    .git file names the worktree's git dir, whose HEAD names the branch."""
+    try:
+        g = (tree / ".git").read_text().strip()
+        if not g.startswith("gitdir:"):
+            return ""
+        gd = Path(g[len("gitdir:"):].strip())
+        head = ((gd if gd.is_absolute() else tree / gd) / "HEAD").read_text().strip()
+    except OSError:
+        return ""
+    return head[len("ref: refs/heads/"):] if head.startswith("ref: refs/heads/") else ""
 
 
 def _sniff(p):
@@ -112,18 +163,19 @@ def _sniff(p):
         return "file"
 
 
-def resolve(project, rel):
+def resolve(project, rel, tree=""):
     """The absolute path of one artifact, or None for anything out of bounds.
 
-    Resolved and prefix-checked rather than trusted: `rel` arrives from a
-    browser, and a symlink inside dist/ pointing elsewhere must not turn the
-    download endpoint into a file server for the whole box.
+    Resolved and prefix-checked rather than trusted: `rel` and `tree` arrive
+    from a browser, and a symlink inside dist/ pointing elsewhere must not
+    turn the download endpoint into a file server for the whole box.
     """
-    if not project or not rel:
+    top = _tree(project, tree)
+    if not project or not rel or top is None:
         return None
-    base = (WORKSPACE / project / DIST).resolve()
+    base = (top / DIST).resolve()
     try:
-        p = (WORKSPACE / project / rel).resolve(strict=True)
+        p = (top / rel).resolve(strict=True)
     except OSError:
         return None
     if not str(p).startswith(str(base) + "/") and p.parent != base:

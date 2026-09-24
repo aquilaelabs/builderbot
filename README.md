@@ -3774,8 +3774,10 @@ tree could not have been: `/workspace/<project>` is a single working tree, so
 two sessions in it commit each other's half-finished work and delete it with a
 `checkout`. Separate trees make that impossible and put the conflicts at the
 merge, where git is good at them. A worktree session builds into its own
-`dist/`, so the Artifacts tab will not show it, and the dev instance belongs to
-the project rather than to the session.
+`dist/`, which the Artifacts tab lists apart from the project's, under whose
+worktree and branch it is, with Download and View; Install and Push stay with
+the project's `dist/`. The dev instance belongs to the project rather than to
+the session.
 
 **Chat** is the fourth flyout beside Keys, Commands and Sessions. It lists the
 other accounts (a green dot for whoever is here right now) and, under them,

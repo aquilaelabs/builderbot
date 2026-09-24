@@ -1589,7 +1589,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 /* A hairline where the sections above it end. A section draws its own top
    border and nothing draws a bottom one, so without this the first file in
    dist/ reads as another line of the Version block it happens to follow. */
-#artList{border-top:1px solid var(--line)}
+#artList,#artBranches{border-top:1px solid var(--line)}
 /* The Git view (roadmap R36). The graph is one SVG down the left edge of
    rows of one height, so an edge between two commits is a curve between
    two known points; the picked commit's detail is a band under the list
@@ -3401,6 +3401,9 @@ body.booting .pane>.loading{margin:auto}
            artifacts it stamps are one subject; those filenames carry it. -->
       <div id="verBox"></div>
       <div class="field" id="artList"></div>
+      <!-- Builds made on a branch, in each account's own worktree (B237):
+           listed apart from dist/, which is what the project ships. -->
+      <div class="field" id="artBranches" hidden></div>
     </div>
     <!-- This project's containers: its own dev instances and anything made
          with "show under" naming it, with the manager's rows and controls,
