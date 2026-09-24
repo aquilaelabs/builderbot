@@ -41,6 +41,7 @@
 - The logs section has a Diagnostics download: the controller's diagnostics as one JSON file, with the reports sessions made about BuilderBot (7d92273)
 - Controller settings has Clear reports, which deletes the bug reports sessions made about BuilderBot after saying how many are still unanswered (398c6cc)
 - A node can keep each Claude session to its own project's network: a switch in its Sessions section gives every session started there a network namespace from which it reaches the internet, the controller and its own project's containers, and nothing else on the node or the LAN (d264e76)
+- A session can remove its project's container under the same setting as rebuild: bb devapp remove, refused on deny, waiting for Allow on ask, done on auto; its env and data stay for a remake (1a6c98e)
 
 ### Changed
 

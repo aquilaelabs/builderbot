@@ -448,12 +448,15 @@ bb devapp rebuild [--why "..."]
                    over: Claude may: Run its container, in its settings dialog and
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
-                   command waits for Allow) or auto. Up, Down, removing one and a
-                   container of any other shape stay the operator's
+                   command waits for Allow) or auto. Up, Down and a container of
+                   any other shape stay the operator's
 bb devapp new [--env FILE] [--why "..."]
                    create the project's container from its own compose file when it
                    has none, under the same setting; on ask, Allow creates, writes
                    the env and builds
+bb devapp remove [--why "..."]
+                   take the container out of the manager, under the same setting;
+                   its env and data stay for a remake, as the row's Remove leaves them
 bb devapp env [set FILE|-] [--why "..."]
                    print the container's env, or replace it, under the same setting;
                    on ask, Allow writes it and builds nothing, since the card said

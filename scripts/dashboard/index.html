@@ -3689,10 +3689,10 @@ body.booting .pane>.loading{margin:auto}
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
-             when there is none (devbuild; the Docker row used to carry it,
-             and now says what it is set to). Deny by default. -->
+             when there is none, remove it (devbuild; the Docker row used to
+             carry it, and now says what it is set to). Deny by default. -->
         <label class="pick">Run its container <select id="rnGateDocker"
-          aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
+          aria-label="rebuilding, changing the env of, creating or removing this project's container, from a session"></select></label>
         <!-- bb report, which sends BuilderBot's own problems to its
              maintainers rather than this project's tracker. Off for the
              project that IS BuilderBot, whose tracker they belong in. -->

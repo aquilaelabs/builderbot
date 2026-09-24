@@ -367,8 +367,8 @@ MAX_BODY = 64 * 1024
 # deny, wherever a container verb is refused by it: the sentence names the
 # setting, so a session that tries learns where the decision lives.
 RUN_DENIED = ("running this project's containers is the operator's: rebuilding, "
-              "starting and stopping them, changing their env and creating one are "
-              "handed over in the project's settings, Claude may: Run its container")
+              "starting and stopping them, changing their env, creating one and removing "
+              "one are handed over in the project's settings, Claude may: Run its container")
 
 
 def not_ours(what, sess=""):
@@ -2580,6 +2580,7 @@ phone.container_maker = devapp.create_container
 phone.instance_maker = lambda project, instance: devapp.create_instance(project, instance or devapp.MAIN)
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
 phone.ctl_runner = devapp.ctl_on
+phone.remover = devapp.remove_instance
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -6237,10 +6238,10 @@ class Handler(BaseHTTPRequestHandler):
         # Everything else (new, remove, env, route) is configuration rather
         # than a run of the code, and stays an administrator's: except, for a
         # SESSION, what its project's dial hands over below (its env, and
-        # creating the project's own container), which the dial decides
-        # rather than this gate, since a session never passes this one.
+        # creating and removing the project's own container), which the dial
+        # decides rather than this gate, since a session never passes this one.
         session = bool(sess)
-        dialed = ("env-get", "env-set", "new") if session else ()
+        dialed = ("env-get", "env-set", "new", "remove") if session else ()
         if act not in ("starter", "state", "rebuild", "abort", "test") + dialed \
                 and self._refused("docker-write"):
             return None
@@ -6295,7 +6296,7 @@ class Handler(BaseHTTPRequestHandler):
                                                 "belonging to its own project"}, 403)
                 req.pop("owner", None)
                 req["node"] = ""
-            if mode == "ask" and act in ("rebuild", "env-set", "new"):
+            if mode == "ask" and act in ("rebuild", "env-set", "new", "remove"):
                 # Aborting is not asked about: it stops a build this session
                 # was already allowed to start, and a running build nobody
                 # can stop is worse than one nobody approved. Reading the env
@@ -6321,7 +6322,7 @@ class Handler(BaseHTTPRequestHandler):
                     asker_name=str(acct.get("name") or ""),
                     asker_admin=users.is_admin(acct),
                     env=text if isinstance(text, str) and (act == "env-set" or text.strip()) else None,
-                    create=act == "new", target="" if name == sess else name)
+                    create=act == "new", remove=act == "remove", target="" if name == sess else name)
                 return self._result(r)
         if act not in ("starter", "state") and name in {p["name"] for p
                                                         in project_list(me)} \

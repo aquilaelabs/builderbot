@@ -148,6 +148,9 @@ bb: BuilderBot helper
   bb devapp new [--env FILE] [--why "..."]
                          create the project's container from its own compose
                          file when it has none, under the same setting
+  bb devapp remove [--why "..."]
+                         take it out of the manager, under the same setting;
+                         its env and data stay for a remake
   bb devapp env [set FILE|-] [--why "..."]
                          print its env, or replace it, under the same setting.
                          The env is kept by BuilderBot, not as a file in the
@@ -4482,11 +4485,12 @@ for _ in range(3600):
 sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs tab")
 PY
             ;;
-        new|env)
-            # Creating the project's own container, and its env, under the
-            # same setting as rebuild (Claude may: Run its container). On
-            # `ask` one request carries it all and Allow runs it, the build
-            # included; on `auto` it is done and bb devapp rebuild is next.
+        new|env|remove)
+            # Creating the project's own container, its env, and removing it,
+            # under the same setting as rebuild (Claude may: Run its
+            # container). On `ask` one request carries it all and Allow runs
+            # it, the build included; on `auto` it is done and bb devapp
+            # rebuild is next.
             local verb="$sub" why="" file="" setting=0 tmp=""
             shift || true
             if [ "$verb" = env ] && [ "${1:-}" = set ]; then
@@ -4499,7 +4503,7 @@ PY
                     --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
                     --env) { [ "$verb" = new ] && [ $# -ge 2 ]; } || die "usage: bb devapp new [--env FILE] [--why \"...\"]"
                            file="$2"; shift 2 ;;
-                    *) die "usage: bb devapp new [--env FILE] [--why \"...\"] | env [set FILE|-] [--why \"...\"]" ;;
+                    *) die "usage: bb devapp new [--env FILE] [--why \"...\"] | env [set FILE|-] [--why \"...\"] | remove [--why \"...\"]" ;;
                 esac
             done
             if [ "$file" = - ]; then tmp="$(mktemp)"; cat > "$tmp"; file="$tmp"; fi
@@ -4526,7 +4530,7 @@ if verb == "env" and not setting:
         print("[builderbot] nothing is stored yet: that is the project's .env.example",
               file=sys.stderr)
     raise SystemExit(0)
-body = {"action": "new" if verb == "new" else "env-set", "why": os.environ.get("BB_DEV_WHY", "")}
+body = {"action": {"new": "new", "remove": "remove"}.get(verb, "env-set"), "why": os.environ.get("BB_DEV_WHY", "")}
 if text is not None:
     body["text"] = text
 r = post(body)
@@ -4546,10 +4550,14 @@ if r.get("id"):
         if o["state"] == "done":
             if o.get("code"):
                 sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
-            print("[builderbot] allowed, and building: bb devapp says how far it got")
+            print("[builderbot] allowed, and removed: its env and data stay for a remake" if verb == "remove"
+                  else "[builderbot] allowed, and building: bb devapp says how far it got")
             raise SystemExit(0)
     sys.exit("[builderbot] nobody answered within fifteen minutes")
-if verb == "new" and r.get("needs_ack"):
+if verb == "remove":
+    print("[builderbot] removed" + (": its daemon did not answer, so the row is gone and whatever "
+                                    "ran there still runs" if r.get("forgot") else "; its env and data stay for a remake"))
+elif verb == "new" and r.get("needs_ack"):
     print(f"[builderbot] created {r.get('instance') or 'it'}, and it cannot be built from here yet: "
           f"{r['needs_ack']}")
 else:

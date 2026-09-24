@@ -2691,14 +2691,16 @@ ok(await page.$('#devSend'),
   // the grant cannot reach them however it is set. This is the operator's
   // own line (the user makes them, Claude rebuilds them), and it is checked
   // here rather than trusted to the ordering of two ifs.
-  for (const act of ['remove', 'route']){
+  // (remove joined the dial on 24 Sep; route, which is where the thing is
+  // reached from, stays the operator's.)
+  for (const act of ['route']){
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
     ok(r.status === 403 && /administrator/.test(r.error || ''),
        `...and ${act} is not a session's at any setting (${String(r.error).slice(0, 48)})`);
   }
   // Its env and creating its own container are on the setting now (the
   // operator, 24 Sep), so at deny they are refused by it, naming it.
-  for (const act of ['new', 'env-set', 'env-get']){
+  for (const act of ['new', 'env-set', 'env-get', 'remove']){
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
     ok(r.status === 403 && /Run its container/.test(r.error || ''),
        `...and at deny ${act} is refused by the same setting (${String(r.error).slice(0, 48)})`);
@@ -2801,6 +2803,13 @@ ok(await page.$('#devSend'),
        `...and creates its project's own container (${made.error || made.instance})`);
     const under = await asSession({ project: 'ep.silon', action: 'new', instance: 'elsewhere', owner: 'alpha' });
     ok(under.status === 403, `...but not one belonging to another project (${under.status})`);
+    // ...and removes one, under the same setting (the operator, 24 Sep):
+    // the row goes, its env and data stay, as the tab's Remove leaves them.
+    const gone = await asSession({ project: 'ep.silon', action: 'remove', instance: 'fresh' });
+    await idle();
+    const insts = () => Object.keys(JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['ep.silon'] || {});
+    ok(gone.status === 200 && !insts().includes('fresh'),
+       `...and removes its own container on auto (${gone.error || gone.job || 'removed'}; left: ${insts().join(', ')})`);
     await dial('ask');
     const asks = await asSession({ project: 'ep.silon', action: 'new', instance: 'asked',
                                    text: 'KEY=secret-value\n', why: 'a fresh one to try the branch' });
@@ -2842,6 +2851,17 @@ ok(await page.$('#devSend'),
     ok(envAsk.status === 200 && envOut.state === 'done' && /env written/.test(envOut.out || '')
        && /KEY=changed/.test(envAfter || '') && builds() === b0,
        `...and Allow on an env set writes the env and builds nothing (${envOut.out}, ${builds() - b0} builds)`);
+    // ...and on ask, Allow removes it: the card says remove and nothing else.
+    const rmAsk = await asSession({ project: 'ep.silon', action: 'remove', instance: 'asked', why: 'done with it' });
+    const rmSeen = await page.evaluate(async (id) =>
+      ((await (await fetch('/api/phone')).json()).asks || []).find(a => a.id === id), rmAsk.id);
+    await page.evaluate(async (id) => {
+      await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ action: 'allow', id }) });
+    }, rmAsk.id);
+    await idle();
+    ok(rmAsk.status === 200 && rmAsk.id && /"remove"/.test(JSON.stringify(rmSeen?.cmd)) && !insts().includes('asked'),
+       `on ask a remove waits for a person, and Allow removes it (${JSON.stringify(rmSeen?.cmd)}; left: ${insts().join(', ')})`);
     for (const inst of ['fresh', 'asked']) await page.evaluate(async (i) => {
       await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                    body: JSON.stringify({ project: 'ep.silon', instance: i, action: 'remove' }) });

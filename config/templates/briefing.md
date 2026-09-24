@@ -130,10 +130,11 @@ on another machine.
 
 <!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
 This project has a compose file, so it can have a container built from it.
-Removing one, Up and Down are the operator's; under the same setting you may
-rebuild it, change its env and create it when it has none: `bb devapp` says
+Up and Down are the operator's; under the same setting you may rebuild it,
+change its env, create it when it has none and remove it: `bb devapp` says
 what it was built from and whether it is running, then `bb devapp rebuild`,
-`bb devapp env set FILE` and `bb devapp new`. Its env is kept by BuilderBot,
+`bb devapp env set FILE`, `bb devapp new` and `bb devapp remove`, which
+leaves its env and data for a remake. Its env is kept by BuilderBot,
 not as a file in the tree: `bb devapp env` prints it, and a compose line
 `env_file: .env` is pointed at it when the container runs, so a missing
 `.env` in the project is expected.

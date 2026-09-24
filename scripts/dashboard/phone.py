@@ -51,6 +51,7 @@ rebuilder = None
 instance_maker = None
 env_writer = None
 ctl_runner = None
+remover = None
 # devapp.create_container, injected the same way: what Allow on a container
 # ask calls (R71). None where no docker path is wired up.
 container_maker = None
@@ -767,7 +768,7 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
 
 def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                 asker_admin=False, env=None, create=False, target="", ctl="",
-                node=""):
+                node="", remove=False):
     """A session asking to rebuild its project's dev instance, for a project
     whose dial is on `ask` (Claude may: Run its container, in the project's
     settings).
@@ -796,10 +797,11 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                    else (asker_uid, f"{asker_name or 'you'} (your own account: it is "
                                     "on the Docker tab and your bell)"))
     cmd = (["devapp", ctl, name] if ctl else ["devapp", "new", name] if create
+           else ["devapp", "remove", name] if remove
            else ["devapp", "env", "set", name] if env is not None
            else ["devapp", "rebuild", name])
     return _queue("rebuild", why, cmd, node, "", project, "claude", to, to_name, asker_name,
-                  extra={"instance": str(instance or ""), "create": bool(create),
+                  extra={"instance": str(instance or ""), "create": bool(create), "remove": bool(remove),
                          "env": None if env is None else str(env),
                          "target": str(target or ""), "ctl": str(ctl or ""),
                          "name": str(name or "")})
@@ -892,6 +894,14 @@ def decide(rid, allow, uid, name="", admin=False):
             with _lock:
                 r.update(state="done", code=1 if res.get("error") else 0,
                          out=str(res.get("error") or res.get("out") or r["ctl"]))
+            return {"error": res["error"]} if res.get("error") else {"ok": True}
+        if r.get("remove"):
+            # Taken out of the manager: its env and data stay for a remake.
+            res = (remover(key, r.get("instance") or "") if remover is not None
+                   else {"error": "nothing here removes a container"}) or {}
+            with _lock:
+                r.update(state="done", code=1 if res.get("error") else 0,
+                         out=str(res.get("error") or res.get("job") or "removed"))
             return {"error": res["error"]} if res.get("error") else {"ok": True}
         if r.get("create") and instance_maker is not None:
             res = instance_maker(key, r.get("instance") or "") or {}
