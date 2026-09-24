@@ -2254,9 +2254,13 @@ ok(!existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    '...and nothing is left behind for a name that was refused');
 rmSync(`${DIR}/dockerstate/config.fail`, { force: true });
 await page.click('#cGo');
-await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
+// The dialog closing is the create's own answer. The row is not: the refused
+// attempt above can still be on the tab for a poll (B239), and waiting on it
+// checked the file before this Create had reached the server.
+await page.waitForFunction(() => document.getElementById('cmodal').hidden, null, { timeout: 20000 });
 ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    'one that parses is written to /config, where no project scan can see it');
+await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
 // ---- a row on a phone (R68 step 5) ---------------------------------------
 // A project's row carries its ports, its services, its route and three
 // settings, which at 390px was most of a screen each: the list stopped being
