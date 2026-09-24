@@ -56,6 +56,22 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -f "$KEEPF" ]; then
     . "$KEEPF"
     if kill -0 "${KEEP_PID:-0}" 2>/dev/null; then
         [ $# -gt 0 ] || { printf '[dashboard-test] ERROR: a fixture is kept (%s): name a suite or a probe to run against it, or bb tests keep stop\n' "$KEEP_URL" >&2; exit 1; }
+        # One attached run at a time, as a fresh run is (B240). The keeper
+        # holds the harness's lock, so an attached run keeps its own beside
+        # it: two pages on the test account in one kept world fight over its
+        # tabs, and the hand-back hook's design check, attaching in the
+        # middle of a session's own suites, failed both on waits that had
+        # nothing to do with the change. The sentence is the fresh run's, so
+        # the hook passes it through as a check that could not run (B232).
+        ALOCK="${TMPDIR:-/tmp}/dashboard-test.d/attached"
+        if [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$ALOCK" ]; then
+            other="$(cat "$ALOCK" 2>/dev/null || true)"
+            if [ -n "$other" ] && [ -d "/proc/$other" ]; then
+                die "another dashboard test run is going (pid $other, attached to the kept fixture, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago). One at a time on this box; wait for it, or set BB_TEST_CONCURRENT=1"
+            fi
+        fi
+        ( umask 000; mkdir -p "${ALOCK%/*}"; rm -f "$ALOCK"; printf '%s' "$$" > "$ALOCK" ) 2>/dev/null || true
+        trap '[ "$(cat "$ALOCK" 2>/dev/null)" = "$$" ] && rm -f "$ALOCK"' EXIT
         # the dashboard's page and scripts, as they are now
         cp "$HERE"/../*.js "$HERE"/../*.html "$KEEP_HERE/../" 2>/dev/null || true
         cp "$HERE/lib.mjs" "$KEEP_HERE/lib.mjs"
