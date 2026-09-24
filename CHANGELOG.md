@@ -69,6 +69,7 @@
 - Long lists in the notebook and the histories turn pages with Previous and Next instead of growing down the page under a Show more (40ee65c)
 - Nostromo: the cards are smoked glass with the rings showing through, and a card folds by fading away whole before the cards below close the gap (ed1a79e)
 - A branch belongs to the session that works on it: a user merges only their own, and an administrator may merge anyone's, asked each time with the owner named and refused while that person's Claude session is working (42066ab)
+- Nostromo's rings are larger, dimmer and more detailed, and sit mostly behind the cards (830e90f)
 
 ### Removed
 
@@ -123,6 +124,8 @@
 - Init on the Git view keeps the code map out of the repository it makes, so a first Commit all no longer sweeps it in (4019fc5)
 - Builds made on a branch, in another account's worktree, show on the Artifacts tab under whose they are, with Download and View, apart from dist/ (d79fc0a)
 - A project an administrator creates goes on their own project list, so they can work on it at once and the node picked in the dialog is kept (d79fc0a)
+- The Docker tab no longer refreshes itself every second or two: each read of its list on a node moved the revision the tab refreshes on (830e90f)
+- The environment filled in when a project is sent to Docker reaches its containers when the compose file reads it with env_file: .env, where Up failed on a missing .env (830e90f)
 
 ### Security
 
