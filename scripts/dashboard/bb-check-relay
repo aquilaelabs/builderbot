@@ -98,6 +98,13 @@ def main():
     except (OSError, subprocess.SubprocessError):
         return
     out = (r.stdout or "") + (r.stderr or "")
+    # A check that could not run is not a check that failed (B232): the
+    # harness runs one suite at a time on a box, and a session that has a
+    # suite going in the background, which the stay-responsive rule asks for,
+    # would otherwise be refused its hand-back over the harness's own
+    # refusal. Nothing is stamped, so the next hand-back runs it for real.
+    if r.returncode != 0 and "another dashboard test run is going" in out:
+        return
     if r.returncode == 0:
         try:
             os.makedirs(os.path.dirname(sf), exist_ok=True)
