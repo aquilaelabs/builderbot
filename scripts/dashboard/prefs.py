@@ -49,6 +49,10 @@ GATE_MODES = ("auto", "ask", "deny")
 # project's dev instance. One vocabulary: a person who has set a notebook
 # tab to "ask me" knows what this one does without being told twice.
 DEVBUILD_MODES = ("deny", "ask", "auto")
+# Where `bb test` runs a project's tests (roadmap R48, B241): on the node and
+# never in its dev instance, which is the default; inside the instance when
+# it is up and on the node otherwise; or inside it and nowhere else.
+TESTS_IN = ("node", "up", "only")
 # A colour for the project, worn by its notebook tab and its row so that
 # eight open notebooks can be told apart at a glance. Names, not hex: the
 # page maps each to a tone that sits on its palette, and a name survives a
@@ -238,13 +242,26 @@ def _clean(rec):
             # Creating, removing and Up/Down are not on this dial at all:
             # those are docker-write, which a session never has.
             "devbuild": _devbuild(rec.get("devbuild")),
-            # Whether a session's tests run ONLY inside the project's dev
-            # instance (roadmap R48, step 3). Off, `bb test` runs there when
-            # the instance is up and on the node otherwise; on, a down
-            # instance is a refusal that names it, and nothing runs on the
-            # node. Per project because only a project with a compose file
-            # has a container to run in; global would break every other one.
-            "devtest": bool(rec.get("devtest"))}
+            # Where `bb test` runs the tests, one of TESTS_IN. On the node
+            # unless the project says otherwise: an image built to ship
+            # carries no tests, and a run inside one found none and reported
+            # success (B241). "only" makes a down instance a refusal that
+            # names it, with nothing run on the node. Per project because
+            # only a project with a compose file has a container to run in.
+            "tests_in": _tests_in(rec),
+            # ...and the boolean a node's bb from before tests_in reads
+            # (agent-compat): true for "only", the one meaning it ever had,
+            # which is also how the file keeps "only".
+            "devtest": _tests_in(rec) == "only"}
+
+
+def _tests_in(rec):
+    """One of TESTS_IN, from the file: `devtest: true` is "only", as it has
+    always been stored, and `tests_in: "up"` is "up"; anything else is the
+    default, "node"."""
+    if rec.get("devtest") is True:
+        return "only"
+    return "up" if rec.get("tests_in") == "up" else "node"
 
 
 def _devbuild(v):
@@ -278,7 +295,7 @@ def all_projects(workspace=None):
 
 def set_prefs(project, node=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              devbuild=None, devtest=None, color=None, workspace=None):
+              devbuild=None, tests_in=None, color=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -322,15 +339,18 @@ def set_prefs(project, node=None, build=None, test=None,
                 return {"error": f"devbuild is one of {', '.join(DEVBUILD_MODES)}, "
                                  f"not {devbuild}"}
             cur["devbuild"] = mode
-        if devtest is not None:
-            cur["devtest"] = devtest in (True, 1, "1", "true", "on", "yes")
+        if tests_in is not None:
+            if tests_in not in TESTS_IN:
+                return {"error": f"tests_in is one of {', '.join(TESTS_IN)}, not {tests_in}"}
+            cur["tests_in"] = tests_in
+            cur["devtest"] = tests_in == "only"
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["node"] or cur["color"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
-                or cur["devbuild"] != "deny" or cur["devtest"]
+                or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose; _clean puts the defaults
@@ -342,8 +362,12 @@ def set_prefs(project, node=None, build=None, test=None,
                 rec.pop("gitpol", None)
             if cur["devbuild"] == "deny":
                 rec.pop("devbuild", None)
+            # "only" is `devtest: true` and "up" is `tests_in: "up"`, which
+            # is what _tests_in reads; the default leaves neither.
             if not cur["devtest"]:
                 rec.pop("devtest", None)
+            if cur["tests_in"] != "up":
+                rec.pop("tests_in", None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)

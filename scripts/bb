@@ -135,7 +135,8 @@ bb: BuilderBot helper
   bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node,
                          stream the log back; --out GLOB brings files into dist/
   bb build               the project's build command, on its node (settings dialog)
-  bb test [ARGS]         the project's test command, on its node; ARGS are
+  bb test [ARGS]         the project's test command, on its node or inside its
+                         dev instance as its settings say (Tests run); ARGS are
                          appended to it, to narrow a run to some of it
   bb devapp              this project's dev instance: built from what, running,
                          and whether its daemon answers
@@ -5503,27 +5504,32 @@ try:
     rec = json.load(sys.stdin)
 except ValueError:
     rec = {}
-# Three things, in order: the command, whether the tests run only in the
-# container, then the output globs. What the settings say and nothing else:
-# a command nobody typed must not run as if somebody had.
+# Three things, in order: the command, where the tests run (node, up or
+# only), then the output globs. What the settings say and nothing else: a
+# command nobody typed must not run as if somebody had. A controller from
+# before tests_in sends devtest alone, and there off meant up.
 # No apostrophes in here: the whole block is inside shell single quotes.
 role = os.environ["BB_ROLE_"]
 cmd = rec.get(role) or ""
 print(cmd)
 print("set" if cmd else "none")
-print("only" if rec.get("devtest") else "either")
+print(rec.get("tests_in") or ("only" if rec.get("devtest") else "up"))
 for g in rec.get("outputs") or []:
     print(g)
 ')
-    local cmd="${rec[0]:-}" where="${rec[2]:-either}"
+    local cmd="${rec[0]:-}" where="${rec[2]:-node}"
     [ -n "$cmd" ] || die "no $role command is set for $proj: bb settings set $role '...' fills it in (the operator approves it where the project asks), or the operator does in the settings dialog (Build and test)"
-    # A test runs inside the project's dev instance when it has one that is
-    # UP (roadmap R48): the container is the boundary. Otherwise on the node,
-    # unless the project's Docker row says the tests are the container's
-    # only: then a container that is down is a refusal naming it, and nothing
-    # runs on the node, which is what stops a suite that tests BuilderBot
-    # from running on the BuilderBot it is running on.
-    if [ "$role" = test ]; then
+    # Where the tests run is the project's setting (Tests run, in its settings
+    # dialog). On the node unless it says otherwise, and then the dev
+    # instance is not even asked about: an image built to ship carries no
+    # tests, and a run inside one found none and reported success (B241).
+    # "up" runs them inside the instance when it is up (roadmap R48), and
+    # "only" makes a down instance a refusal naming it, with nothing run on
+    # the node, which is what stops a suite that tests BuilderBot from
+    # running on the BuilderBot it is running on.
+    if [ "$role" = test ] && [ "$where" = node ]; then
+        echo "[builderbot] $proj's tests run on the node, as its settings say (Tests run)" >&2
+    elif [ "$role" = test ]; then
         local inst
         # The refusal kept rather than thrown away. This was `2>/dev/null`,
         # and when the controller did not answer (a relay call that timed out,
@@ -5538,7 +5544,7 @@ for g in rec.get("outputs") or []:
         fi
         rm -f "$inst_err"
         if [ "$(printf '%s\n' "$inst" | awk '$1 == "running" {print $2}')" = yes ]; then
-            echo "[builderbot] $proj's dev instance is up: the tests run inside it" >&2
+            echo "[builderbot] $proj's dev instance is up: the tests run inside it, as its settings say (Tests run)" >&2
             BB_PROJECT="$proj" exec "$0" devapp test "$@"
         elif [ "$where" = only ]; then
             local name; name="$(printf '%s\n' "$inst" | awk '$1 == "instance" {print $2}')"

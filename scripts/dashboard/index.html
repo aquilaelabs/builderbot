@@ -3635,9 +3635,10 @@ body.booting .pane>.loading{margin:auto}
            to visit (R68 step 6). Only for a project that HAS a container to
            run in: rnFill hides it otherwise. -->
       <div id="rnTestWhere" hidden>
-        <label for="rnDevTest">Tests run<span class="help" data-tip="tests can run inside the project's dev instance" tabindex="0">?</span></label>
+        <label for="rnDevTest">Tests run<span class="help" data-tip="inside the dev instance only when its image carries the tests" tabindex="0">?</span></label>
         <select id="rnDevTest">
-          <option value="either">in its dev instance when it is up, else on the node</option>
+          <option value="node">on the node, never in its dev instance</option>
+          <option value="up">in its dev instance when it is up, else on the node</option>
           <option value="only">only in its dev instance, never on the node</option>
         </select>
       </div>
@@ -6134,7 +6135,7 @@ function rnFillPrefs(p){
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
-               devtest: !!p?.prefs?.devtest,
+               tests_in: p?.prefs?.tests_in || "node",
                devbuild: devClaudeMode(rnFor),
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
@@ -6186,9 +6187,9 @@ function rnFillPrefsRest(p){
   // Offered only where there is a container to run in: the Docker tab knows
   // which projects have one, and `has_compose` on the project row is the
   // same answer without asking it.
-  const canDevTest = !!(p?.has_compose || p?.prefs?.devtest);
+  const canDevTest = !!(p?.has_compose || (p?.prefs?.tests_in || "node") !== "node");
   $("rnTestWhere").hidden = !canDevTest;
-  $("rnDevTest").value = p?.prefs?.devtest ? "only" : "either";
+  $("rnDevTest").value = p?.prefs?.tests_in || "node";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
@@ -8842,12 +8843,12 @@ async function rnSubmit(){
   const gate = rnGateNow();
   const color = rnColorNow();
   // With the node's group: nothing here restarts a session.
-  const devtest = $("rnDevTest").value === "only";
+  const tests_in = $("rnDevTest").value || "node";
   const devbuild = $("rnGateDocker").value || "deny";
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
-    || devtest !== rnPrefWas.devtest || devbuild !== rnPrefWas.devbuild;
+    || tests_in !== rnPrefWas.tests_in || devbuild !== rnPrefWas.devbuild;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
   // project's group: the same request, a different store on the server.
@@ -8898,7 +8899,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, build, test, gate, color,
-                              devtest, devbuild,
+                              tests_in, devbuild,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.

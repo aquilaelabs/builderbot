@@ -2811,9 +2811,9 @@ ok(await page.$('#devSend'),
   // setting a project up had to finish on a machine tab. The row still says
   // what it is set to, because this is where a person wonders, and the words
   // link to where it is changed.
-  ok(/Tests run in this container when it is up, else on the node/.test(
+  ok(/Tests run on the node, never in this container/.test(
        await page.$eval('.dmtab .row[data-inst^="ep.silon|"]', r => r.textContent.replace(/\s+/g, ' '))),
-     'the row says where this project\'s tests run, in words');
+     'the row says where this project\'s tests run, in words: on the node unless the project says otherwise (B241)');
   ok(await page.$('.dmtab [data-dmtestgo="ep.silon"]') !== null
      && await page.$('.dmtab [data-dmtest="ep.silon"]') === null,
      '...and links to the project settings rather than carrying the control');
@@ -2824,7 +2824,8 @@ ok(await page.$('#devSend'),
   await page.click('.doc .projtab [data-rn="ep.silon"]');
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   ok(await page.$eval('#rnTestWhere', e => !e.hidden)
-     && await page.$eval('#rnDevTest', e => [...e.options].map(o => o.value).join() === 'either,only'),
+     && await page.$eval('#rnDevTest', e => [...e.options].map(o => o.value).join() === 'node,up,only'
+                                          && e.value === 'node'),
      'the project settings dialog carries where its tests run, beside its node and command');
   await page.selectOption('#rnDevTest', 'only');
   await page.click('#rnGo');
@@ -2886,26 +2887,37 @@ ok(await page.$('#devSend'),
     ok(!keyed.none && keyed.numbers, "a heartbeat's numbers moving does not repaint the Docker tab");
     ok(keyed.state, '...while a node changing state does');
   }
-  await page.evaluate(async () => {
-    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ project: 'ep.silon', devtest: true }) });
-  });
+  const where = v => page.evaluate(async (w) => {
+    const r = await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ project: 'ep.silon', tests_in: w }) });
+    return r.json();
+  }, v);
+  const stored = () => JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'] || {};
+  await where('only');
   await refreshUntil(page, () => ((state.projects || [])
-    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest === true, { timeout: 20000 });
-  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].devtest === true,
-     'it is stored on the project, as the one boolean it is');
+    .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'only', { timeout: 20000 });
+  ok(stored().devtest === true && !('tests_in' in stored())
+     && ((await page.evaluate(() => state.projects.find(p => p.name === 'ep.silon').prefs)).devtest === true),
+     'only is stored as it always was, devtest true, which is what a node from before tests_in reads');
   await page.evaluate(() => { dockerList = null; loadDocker(); });
   await page.waitForFunction(() => /only in this container/.test(
     document.querySelector('.dmtab')?.textContent || ''), null, { timeout: 20000 });
   ok(true, '...and the row says the other thing once it is set');
-  await page.evaluate(async () => {
-    await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ project: 'ep.silon', devtest: false }) });
-  });
-  await refreshUntil(page, () => !((state.projects || [])
-    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest, { timeout: 20000 });
-  ok(!('devtest' in (JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'] || {})),
-     '...and off is absent from the record rather than stored as false');
+  await where('up');
+  await refreshUntil(page, () => ((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'up', { timeout: 20000 });
+  ok(stored().tests_in === 'up' && !('devtest' in stored())
+     && ((await page.evaluate(() => state.projects.find(p => p.name === 'ep.silon').prefs)).devtest === false),
+     '...up is stored as tests_in, and says false to a node that only knows devtest');
+  await where('node');
+  // A project left with nothing but defaults has no record at all, and the
+  // poll then carries {} for its prefs, which the page reads as the default.
+  await refreshUntil(page, () => (((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in || 'node') === 'node', { timeout: 20000 });
+  ok(!('devtest' in stored()) && !('tests_in' in stored()),
+     '...and the default, on the node, leaves neither in the record');
+  ok(/tests_in is one of node, up, only/.test((await where('sometimes')).error || ''),
+     '...and a place that is not one of the three is refused');
 }
 
 
@@ -2970,6 +2982,38 @@ ok(await page.$('#devSend'),
   ok(/-e BB_IN_INSTANCE=1/.test(j1.log || '') && /-e BB_IN_INSTANCE=1/.test(j1b.log || ''),
      '...carrying the mark that says this run is the instance\'s own');
   rmSync(stubCfg, { force: true });
+  // Where bb test runs, from a session on the node, with the instance UP
+  // (B241): on the node by default, never asking about the container, since
+  // an image built to ship carries no tests and a run inside one found none
+  // and passed; inside it only where the project says so.
+  {
+    const nodeEnv = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                      BB_TOKEN: tok, BB_NODE: 'agentbox', BB_PROJECT: 'ep.silon',
+                      BB_TREE: '/workspace/ep.silon' };
+    const { spawnSync } = await import('node:child_process');
+    // Both streams: where bb test says it runs is on stderr, the tests' own
+    // output on stdout.
+    const bbTest = () => {
+      const r = spawnSync('bash', [`${REPO}/scripts/bb`, 'test', 'where'],
+        { encoding: 'utf8', cwd: `${DIR}/ws/ep.silon`, env: nodeEnv, timeout: 120000 });
+      return { code: r.status, out: String(r.stdout || '') + String(r.stderr || '') };
+    };
+    await page.evaluate(async () => fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', tests_in: 'node' }) }));
+    const onNode = bbTest();
+    ok(onNode.code === 0 && /TEST-RAN-where/.test(onNode.out) && !/run inside it/.test(onNode.out)
+       && /tests run on the node, as its settings say \(Tests run\)/.test(onNode.out),
+       `by default bb test runs on the node with the instance up, and says why there (${
+         onNode.out.replace(/\s+/g, ' ').slice(0, 140)})`);
+    await page.evaluate(async () => fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', tests_in: 'up' }) }));
+    const inside = bbTest();
+    ok(inside.code === 0 && /the tests run inside it, as its settings say/.test(inside.out)
+       && /TEST-RAN-where/.test(inside.out),
+       `...and inside the instance where the project says up (${inside.out.replace(/\s+/g, ' ').slice(0, 140)})`);
+    await page.evaluate(async () => fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', tests_in: 'node' }) }));
+  }
   await setTest('false');
   const j2 = await finished((await asSession({ project: 'ep.silon', action: 'test' })).job);
   ok(j2.state === 'failed' && j2.exit_code === 1,
@@ -2996,11 +3040,11 @@ ok(await page.$('#devSend'),
   // on `either` the same call would queue a job on the node, which the
   // fixture has none of, so that half is the routing step 1 already proves.
   {
-    const setWhere = (only) => page.evaluate(async (v) => {
+    const setWhere = (w) => page.evaluate(async (v) => {
       await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ project: 'ep.silon', devtest: v }) });
-    }, only);
-    await setWhere(true);
+                                  body: JSON.stringify({ project: 'ep.silon', tests_in: v }) });
+    }, w);
+    await setWhere('only');
     const nodeEnv = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
                       BB_TOKEN: tok, BB_NODE: 'agentbox', BB_PROJECT: 'ep.silon',
                       BB_TREE: '/workspace/ep.silon' };
@@ -3013,7 +3057,7 @@ ok(await page.$('#devSend'),
        && /Nothing runs on the node/.test(out),
        `with the row on only and the instance down, bb test from a session refuses, naming the instance (${
          code}: ${out.replace(/\s+/g, ' ').slice(0, 120)})`);
-    await setWhere(false);
+    await setWhere('node');
   }
   await setTest('');
 }

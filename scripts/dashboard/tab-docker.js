@@ -341,8 +341,8 @@ async function openDevEnv(project, instance){
 // A route picked and not yet applied, per instance: the tab redraws when
 // the daemon answers, and a pick a redraw put back could never be applied.
 const dmRouteDraft = {};
-const devTestMode = name => ((state?.projects || []).find(p => p.name === name)?.prefs?.devtest
-                             ? "only" : "either");
+const devTestMode = name => (state?.projects || []).find(p => p.name === name)?.prefs?.tests_in
+                             || "node";
 
 function dmRouteLine(d){
   const r = d.route;
@@ -468,10 +468,11 @@ function dmTestLine(d){
   // The row still says what it is set to, because this is where a person
   // wonders about it, and the words are a link to where it is changed.
   if (d.source === "file") return "";
-  const only = devTestMode(d.project) === "only";
+  const mode = devTestMode(d.project);
   return `<div class="sub dmgrant dmtestsays">Tests run ${
-    only ? "only in this container, never on the node"
-         : "in this container when it is up, else on the node"}${
+    mode === "only" ? "only in this container, never on the node"
+    : mode === "up" ? "in this container when it is up, else on the node"
+    : "on the node, never in this container"}${
     ` · <a href="#" data-dmtestgo="${esc(d.project)}"
       title="the project's settings, where its node and its test command are">change</a>`}</div>`;
 }

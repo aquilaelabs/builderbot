@@ -4710,7 +4710,7 @@ class Handler(BaseHTTPRequestHandler):
                             test=req.get("test"), outputs=req.get("outputs"),
                             gate=req.get("gate"), gitpol=req.get("gitpol"),
                             devbuild=req.get("devbuild"),
-                            devtest=req.get("devtest"),
+                            tests_in=req.get("tests_in"),
                             color=req.get("color"),
                             workspace=WORKSPACE)
         # ...and what is the ASKING ACCOUNT's rather than the project's: the

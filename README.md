@@ -436,10 +436,11 @@ bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
 bb build           the project's build command on its node, with the outputs
                    it lists: all set in the project's settings dialog
 bb test [ARGS]     the same for its test command; ARGS are appended to it, so a
-                   suite that takes file names runs only those. Inside the project's
-                   dev instance whenever that is up; and where its Docker row says
-                   the tests are the container's only, a container that is down is
-                   a refusal naming it, and nothing runs on the node
+                   suite that takes file names runs only those. Where it runs is
+                   "Tests run" in the project's settings: on the node, which is the
+                   default; inside its dev instance when that is up, else on the
+                   node; or only inside it, where a container that is down is a
+                   refusal naming it and nothing runs on the node
 bb devapp          this project's dev instance: what it was built from, whether it is
                    running, and whether its daemon answers
 bb devapp rebuild [--why "..."]
@@ -513,11 +514,11 @@ bb tests log [-f]  the last run's output, whole; -f follows a run still going. T
                    Tests view's Open the run's output sends this into the project's shell
 bb devapp test [ARGS]  the project's test command inside its running dev instance, as a compose job on
                    its node: the whole log, and the job's exit code. `bb test` takes this path on its own
-                   whenever the instance is up, so a suite that tests BuilderBot cannot disturb the
-                   BuilderBot it runs on (roadmap R48). "Tests run" in the project's settings
-                   dialog can make the container the only place: a container that is down then
-                   refuses rather than falling back to the node. Claude may: Run its
-                   container is not asked: a test runs in a container that is already up
+                   where "Tests run" in the project's settings says the dev instance, so a suite that
+                   tests BuilderBot cannot disturb the BuilderBot it runs on (roadmap R48). Only for an
+                   image that carries its tests: one built to ship has none, and a run inside it finds
+                   nothing and passes. Claude may: Run its container is not asked: a test runs in a
+                   container that is already up
 bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
                    Each names what it needs and skips in one line without it, so a missing service
                    is never a failure, and nothing records them: a lab run is a proof, not a timing.
