@@ -5,7 +5,7 @@
 // and every notebook view they can, changes the settings that are theirs, is
 // refused the ones that are not, and meets the others' changes. Console
 // errors and server errors are collected per person across the whole walk.
-import { launch, newPage, ok, done, ready, sleep, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, refreshUntil, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
@@ -164,10 +164,20 @@ for (const who of CAST) {
      'everybody on alpha reads the items the others added to its roadmap');
   const colour = await api(owner.page, '/api/prefs', { project: 'alpha', color: 'teal' });
   ok(colour.status === 200, `the owner sets alpha's colour (${colour.status})`);
-  const seen = await user1.page.evaluate(async () => { await refresh(); return (state.projects || []).find(p => p.name === 'alpha')?.prefs?.color; });
+  // Waited for, not read after one refresh(): a poll already on its way when
+  // it is called makes it queue another and return at once, so one call can
+  // read the state from before the write. On a loaded box, the whole run, a
+  // poll is on its way often enough that this read undefined (B238).
+  const colourOf = () => (state.projects || []).find(p => p.name === 'alpha')?.prefs?.color;
+  await refreshUntil(user1.page, () => (state.projects || []).find(p => p.name === 'alpha')?.prefs?.color === 'teal',
+                     { timeout: 20000 }).catch(() => {});
+  const seen = await user1.page.evaluate(colourOf);
   ok(seen === 'teal', `...which is alpha's for everybody (${seen})`);
-  const models = await Promise.all([owner, user1, user2].map(p => p.page.evaluate(async () => {
-    await refresh(); return (state.projects || []).find(p => p.name === 'alpha')?.yours?.model || ''; })));
+  await Promise.all([owner, user1, user2].map(p => refreshUntil(p.page,
+    () => ((state.projects || []).find(p => p.name === 'alpha')?.yours?.model || '') === 'sonnet',
+    { timeout: 20000 }).catch(() => {})));
+  const models = await Promise.all([owner, user1, user2].map(p => p.page.evaluate(() =>
+    (state.projects || []).find(p => p.name === 'alpha')?.yours?.model || '')));
   ok(models.every(m => m === 'sonnet'), `each person's own model on alpha is their own setting (${models.join(', ')})`);
 }
 
