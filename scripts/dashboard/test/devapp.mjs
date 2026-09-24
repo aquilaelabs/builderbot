@@ -2782,6 +2782,25 @@ ok(await page.$('#devSend'),
                                    body: JSON.stringify({ project: 'ep.silon', instance: i, action: 'remove' }) });
     }, inst);
     await dial('auto');
+    // A compose asking for more than its own directory needs a person's
+    // acknowledgement once, whatever the setting (a session's report, 24
+    // Sep): new says so rather than promising that rebuild builds it, and
+    // rebuild's refusal names the way past it instead of inviting the
+    // session to cut the compose down.
+    writeFileSync(`${DIR}/dockerstate/riskynew.config`, JSON.stringify(
+      { services: { app: { build: { context: '.' }, privileged: true } } }));
+    const rn = await asSession({ project: 'ep.silon', action: 'new', instance: 'riskynew' });
+    ok(rn.status === 200 && /asks for more than its own directory/.test(rn.needs_ack || '')
+       && /pressing Build or Rebuild on its row on the Docker tab/.test(rn.needs_ack || ''),
+       `on auto, new says a risky compose waits for a person's acknowledgement (${String(rn.needs_ack).slice(0, 90)})`);
+    const rr = await asSession({ project: 'ep.silon', action: 'rebuild', instance: 'riskynew' });
+    ok(rr.status >= 400 && /Build or Rebuild on its row on the Docker tab/.test(rr.error || ''),
+       `...and rebuild's refusal names the way past it (${String(rr.error).slice(0, 90)})`);
+    await page.evaluate(async () => {
+      await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify({ project: 'ep.silon', instance: 'riskynew', action: 'remove' }) });
+    });
+    rmSync(`${DIR}/dockerstate/riskynew.config`, { force: true });
   }
   // The setting lives in the project's settings with the other Claude may
   // dials (the operator, 24 Sep), because it covers creating the container,

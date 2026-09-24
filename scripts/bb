@@ -4541,8 +4541,12 @@ if r.get("id"):
             print("[builderbot] allowed, and building: bb devapp says how far it got")
             raise SystemExit(0)
     sys.exit("[builderbot] nobody answered within fifteen minutes")
-print(f"[builderbot] created {r.get('instance') or 'it'}; bb devapp rebuild builds and starts it"
-      if verb == "new" else "[builderbot] its env is saved; bb devapp rebuild applies it")
+if verb == "new" and r.get("needs_ack"):
+    print(f"[builderbot] created {r.get('instance') or 'it'}, and it cannot be built from here yet: "
+          f"{r['needs_ack']}")
+else:
+    print(f"[builderbot] created {r.get('instance') or 'it'}; bb devapp rebuild builds and starts it"
+          if verb == "new" else "[builderbot] its env is saved; bb devapp rebuild applies it")
 PY
             [ -z "$tmp" ] || rm -f "$tmp"
             return "$rc"

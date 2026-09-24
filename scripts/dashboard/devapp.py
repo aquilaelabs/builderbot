@@ -3753,8 +3753,22 @@ def _risk_gate(project, instance=MAIN, ack=""):
             _rec(store, project, instance)["risks_ack"] = d
             write_json(FILE, store)
         return ""
+    # With the way past it, which a session met this without: a person
+    # acknowledges the list where it is shown, once, and it holds until the
+    # compose asks for more. Taking the risky lines out of the compose is
+    # the move the bare refusal suggested, and it broke the container it was
+    # for (24 Sep, a PUID/PGID image that needs CHOWN and SETUID).
     return ("this compose asks for more than its own directory: "
-            + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else ""))
+            + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else "")
+            + ". A person acknowledges that once by pressing Build or Rebuild on its row "
+              "on the Docker tab, where the list is shown; after that a rebuild from a "
+              "session works until the compose asks for more")
+
+
+def unacked_risks(project, instance=MAIN):
+    """The risk gate's refusal for this instance as things stand, or "": the
+    gate itself, asked without an acknowledgement, so nothing is written."""
+    return _risk_gate(project, instance, "")
 
 
 def _running(project, instance=MAIN):
@@ -4306,6 +4320,15 @@ def act(project, instance, action, req, *, test_cmd=""):
             w = write_env(project, req["text"], r["instance"])
             if w.get("error"):
                 return r | {"error": w["error"]}, 400
+        if not r.get("error"):
+            # Said now rather than at the first rebuild: a compose that asks
+            # for more than its own directory cannot be built until a person
+            # has acknowledged it, and "rebuild builds it" was untrue (24 Sep).
+            # After the env, which a path in the compose can come from.
+            with contextlib.suppress(Exception):
+                why = unacked_risks(project, r["instance"])
+                if why:
+                    r["needs_ack"] = why
         return r, (400 if r.get("error") else 200)
     if instance not in instances(project):
         return {"error": f"no instance {instance} of {project}"}, 400
