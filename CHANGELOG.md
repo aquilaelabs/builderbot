@@ -33,6 +33,7 @@
 - Each node's row has a Claude Code section: the version it runs against the latest, Check for updates, and Update, which ends the Claude sessions there first and pins the new copy where a session cannot change it; the bell says when a node is behind (6fe8d3f)
 - bb map find and who-calls print what a function says about itself, the comment directly above it or its docstring's first sentence, so an address comes with its reason (3331a36)
 - The companion app notes a node whose Claude Code is behind, the way it notes an agent behind (7e7a0cd)
+- An administrator sees every account's sessions on a project at the foot of its settings and can end one; keys and typing in another person's session stay theirs (42066ab)
 
 ### Changed
 
@@ -67,6 +68,7 @@
 - Nostromo: binding rings down the sidebar's left edge that go behind the cards, in a gutter widened for them, and a card folds by fading its body out before the gap closes, so the plate mark no longer slides into the title bar (12b4f95)
 - Long lists in the notebook and the histories turn pages with Previous and Next instead of growing down the page under a Show more (40ee65c)
 - Nostromo: the cards are smoked glass with the rings showing through, and a card folds by fading away whole before the cards below close the gap (ed1a79e)
+- A branch belongs to the session that works on it: a user merges only their own, and an administrator may merge anyone's, asked each time with the owner named and refused while that person's Claude session is working (42066ab)
 
 ### Removed
 
@@ -114,6 +116,7 @@
 - Signing in to Claude from a second account no longer says Claude Code is not installed on a node whose sessions run it, and with more than one node the card asks which with a select on one row (6ea77de)
 - A project with no git repository can be given one from its Git view (Init); before, such a project could not be versioned, built into dist or pushed and nothing said how to get there (281136c)
 - bb version and bb changelog asked from a session's worktree answer for that tree, so a package built there is named after the commit it holds (a6d39d0)
+- A merge into the project directory waits only while your Claude session there is working, not whenever it is open, and the refusal says it is your session (42066ab)
 
 ### Security
 
