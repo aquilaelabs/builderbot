@@ -36,6 +36,27 @@ scripts/
   lib/git-policy.py              `bb git policy`
   lib/relay.py                   a notebook verb relayed from a node to the controller
   lib/controller-stamp.py        the controller's build, for `bb status` and `bb catchup`
+  lib/dash.py                    the dashboard's modules loaded by path for the notebook verbs, and the account name and "who wrote it" they share
+  lib/roadmap-verbs.py           `bb roadmap`
+  lib/bug-verbs.py               `bb bug`
+  lib/nb-history.py              `bb history`: the notebook's logs merged
+  lib/rules-verbs.py             `bb rules`, except check
+  lib/rules-check.py             `bb rules check`: a rule's check command, run in this tree
+  lib/tests-verbs.py             `bb tests`: the registry verbs
+  lib/tests-verdict.py           what went wrong, from a run's log (bb tests last, the end of a run)
+  lib/preamble-verbs.py          `bb preamble`
+  lib/findings-verbs.py          `bb findings history` and `bb findings sample`
+  lib/settings-verbs.py          `bb settings`: show, and set for build, test and outputs
+  lib/users-verbs.py             `bb users`: list, passwd, add, token
+  lib/nodes-verbs.py             `bb nodes` and `bb ci-labels`
+  lib/jobs-verbs.py              `bb jobs`
+  lib/work-verbs.py              `bb work`
+  lib/version-verbs.py           `bb version`
+  lib/changelog-verbs.py         `bb changelog`
+  lib/token-verbs.py             `bb token keep`
+  lib/login-list.py              `bb login --list`: every account this machine is signed in as
+  lib/doctor-probes.py           egl, project node, commit identity, session-capable node, signed-in account
+  lib/lint-checks.py             bb lint's own checks: runner label pinning, XML well-formedness, settings agreement
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab, one nb-*.js per notebook view
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
