@@ -408,8 +408,7 @@ claude_scope() {
            {permissions: {
               additionalDirectories: [],
               deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
-                     + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)",
-                        "Edit(\($here)/VERSION)",
+                     + ["Edit(\($here)/VERSION)",
                         "Edit(\($here)/**/VERSION)",
                         "Edit(\($state)/rules.json)",
                         "Write(\($state)/rules.json)",

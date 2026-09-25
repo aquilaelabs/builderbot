@@ -105,7 +105,7 @@ is why it must be a `read:packages`-only token.
 ### 2. Create the state directories
 
 ```bash
-mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d,work}
+mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d}
 chown -R 99:100 /mnt/user/appdata/BuilderBot
 ```
 
@@ -122,10 +122,8 @@ it runs, and git columns are blank. All of that corrects itself on the next
 poll. `bb logs` now times each
 hook and prints how far into the boot it started, so "what is the wait" is a
 question the log answers.
-| `work/` | GitHub Actions job checkouts + runner diagnostics |
-
-Keep these on a cache/SSD-backed share: `work/` and `home/` do heavy
-small-file IO. (Logs can be relocated to the array; see step 6.)
+Keep `home/` on a cache/SSD-backed share: it does heavy small-file IO.
+(Logs can be relocated to the array; see step 6.)
 
 ### 3. Create the secrets folder (recommended)
 
@@ -3488,8 +3486,8 @@ which is exactly when the alternative is four or five commands.
 A Claude session started from the dashboard is launched with a generated
 settings file that denies its file tools; `Read`, `Edit`, `Write` and
 `NotebookEdit`, since a deny rule names one tool and Read does not imply the
-rest: access to every *other* project under `/workspace`, plus the runner's
-`_work` checkouts. Siblings are enumerated by name rather than matched by
+rest: access to every *other* project under `/workspace`. Siblings are
+enumerated by name rather than matched by
 pattern, so a project called `app[1]` cannot quietly take its neighbours out of
 the list. That file is passed with
 `--settings`, which ranks as a command-line argument: above the project's own
@@ -4034,7 +4032,7 @@ boot, so a generation number means the same boot in every one of them, and
 | The dashboard server, in full | `config/logs/dashboard.log` |
 | Every compose call the Docker manager made | `config/logs/docker.log` |
 | The terminal server | `config/logs/ttyd.log` |
-| Runner diagnostics | `work/_diag/` |
+| Runner diagnostics | `_diag/` under the runner's directory on its node (`/var/lib/builderbot/runner/<slot>/_work/`) |
 | CI job output | GitHub → Actions → the run |
 | Emulator | `home/.android/emulator.log` |
 

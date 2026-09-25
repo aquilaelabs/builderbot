@@ -102,7 +102,7 @@ echo 'install -D -m 600 /boot/config/ghcr-auth.json /root/.docker/config.json' >
 Create the appdata directories:
 
 ```bash
-mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d,work}
+mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d}
 chown -R 99:100 /mnt/user/appdata/BuilderBot
 
 # The toolchain store: Android platforms/emulator/system images and any toolchain
