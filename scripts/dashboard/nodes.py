@@ -944,6 +944,11 @@ def _census(c):
     # the address it is on. Facts about the machine, drawn against the
     # operator's desired config on the row; never treated as the config.
     out["sandbox"] = bool(c.get("sandbox"))
+    # The GPU (R20): the NVIDIA card by its PCI id, before any driver, and
+    # what the display's unit last said; absent where there is no card.
+    for k in ("gpu_card", "gpu_display"):
+        if c.get(k):
+            out[k] = str(c[k])[:200]
     # Whether the agent may install system packages there: the stamp and
     # root.
     out["administers"] = bool(c.get("administers"))
@@ -1821,6 +1826,34 @@ def node_uninstall(principal, node_id):
                 {"apply": "uninstall", "config": {}, "timeout": 900})
     if r.get("ok"):
         audit(principal, "node-uninstall", node_id, {"job": r["job"]})
+    return r
+
+
+def node_gpu_display(principal, node_id):
+    """Set the GPU display up on a node from its row (R20): a system job
+    the agent answers with bb-sandbox gpu, which installs the NVIDIA driver
+    and a headless X server on the card and says whether a reboot has to
+    follow. The machine's own answer decides: a node with no card gets that
+    said, not refused here."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("kind") != "agent":
+        return {"error": "only an agent node has a GPU display to set up"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "only a node provisioned as a BuilderBot sandbox is set up from here: "
+                         "on the machine, sudo bb-sandbox gpu"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "gpu", "config": {}, "timeout": 1800})
+    if r.get("ok"):
+        audit(principal, "node-gpu-display", node_id, {"job": r["job"]})
     return r
 
 

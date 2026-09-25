@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.105"
+AGENT_VERSION = "0.7.106"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -278,6 +278,9 @@ def dir_bytes(path):
 # `system` job is refused without it. The netplan seams exist so the tests
 # can stand in for both without a root shell.
 SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandbox")
+# What the GPU display's unit last said (bb-sandbox gpu-display, R20): one
+# line, read into the census so the row says it.
+GPU_DISPLAY_STATE = os.environ.get("BUILDERBOT_GPU_DISPLAY_STATE", "/run/builderbot-gpu-display")
 # The session's view (R35): the root helper that builds it, the file that
 # tells it this machine's layout, and the sudo rule that is the session
 # account's only way to it. Installed and kept by this agent from the bundle,
@@ -1723,6 +1726,26 @@ def sdk_versions(state):
     return {}
 
 
+def _gpu_card():
+    """The NVIDIA card by its PCI id, before any driver is on it: what the
+    Nodes tab offers Set up GPU display on (R20). A VM's virtual adapter is
+    not one, and neither is a card of another make, which the verb would
+    refuse."""
+    for line in _run(["lspci", "-nn"], timeout=10).splitlines():
+        low = line.lower()
+        if "nvidia" in low and ("vga compatible" in low or "3d controller" in low):
+            return line.split(": ", 1)[-1].strip()[:120]
+    return ""
+
+
+def _gpu_display():
+    try:
+        with open(GPU_DISPLAY_STATE, encoding="utf-8", errors="replace") as f:
+            return f.readline().strip()[:200]
+    except OSError:
+        return ""
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -1756,6 +1779,8 @@ def census(state):
         "docker_id": _run(["docker", "info", "--format", "{{.ID}}"], timeout=15)
         if shutil.which("docker") else "",
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
+        "gpu_card": _gpu_card(),
+        "gpu_display": _gpu_display(),
         "sshd": _sshd_listening(),
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
@@ -4995,7 +5020,7 @@ class Agent:
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
-        if what in ("storage", "network", "root") and not os.access(SANDBOX_BIN, os.X_OK):
+        if what in ("storage", "network", "root", "gpu") and not os.access(SANDBOX_BIN, os.X_OK):
             job.say(f"refused: {what} edits this machine's own configuration, and this node "
                     f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
             return "failed", 77
@@ -5014,8 +5039,19 @@ class Agent:
             return self._apply_uninstall(job)
         if what in ("reboot", "poweroff"):
             return self._apply_power(job, what)
+        if what == "gpu":
+            return self._apply_gpu(job)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def _apply_gpu(self, job):
+        """The NVIDIA driver and a headless X server on the card, for the
+        emulator's -gpu host (R20): bb-sandbox gpu does it and says whether
+        a reboot has to follow; then a hello, so the row reads the display's
+        state now rather than at the next census."""
+        rc = self._sh(job, [SANDBOX_BIN, "gpu"], timeout=1800)
+        self.hello_at = 0
+        return ("succeeded", 0) if rc == 0 else ("failed", rc)
 
     def _apply_power(self, job, what):
         """Reboot the machine or power it off, a few seconds out, so this

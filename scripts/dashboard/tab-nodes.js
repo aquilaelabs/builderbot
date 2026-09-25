@@ -97,6 +97,27 @@ const TOOL_LABELS = {java: "java", "android-sdk": "android sdk", emulator: "emul
 // owner's, so upgrading it is not the controller's to do. Being able to see
 // it, and to be told when one is too old, is what is owed instead.
 const GIT_FLOOR = [2, 38];
+// The GPU (R20): the NVIDIA card the census names by its PCI id, what the
+// display's unit last said, and the press that sets the display up on a
+// sandbox node. The reason is on the line, in the state's own words.
+function nodeGpu(n){
+  const card = n.reported?.gpu_card;
+  if (!card) return "";
+  const st = n.reported?.gpu_display || "";
+  const up = /^up/.test(st), reboot = /^reboot/.test(st);
+  const busy = (n.jobs || []).some(j => j.apply === "gpu");
+  const word = up ? "display up: an emulator here renders on the card"
+    : reboot ? "driver installed; Reboot under Advanced lets it take the card"
+    : /^down/.test(st) ? st
+    : "no display for it yet: an emulator here renders in software";
+  const cls = up ? "ok" : reboot ? "note" : "warn";
+  return `<div class="actbar ndgpu">
+    <span class="state ${cls}">gpu: ${esc(card)} · ${esc(word)}</span>
+    ${!up && n.reported?.sandbox ? `<button type="button" data-nd="gpu-display" ${busy ? "disabled" : ""}
+      title="install the NVIDIA driver and a headless X server on the card; a reboot follows">${
+      busy ? "Setting up…" : "Set up GPU display"}</button>` : ""}
+  </div>`;
+}
 function nodeGit(n){
   const v = String(n.reported?.git || "").trim();
   if (n.kind !== "agent" || !v) return "";
@@ -973,6 +994,7 @@ function renderNodesInto(i){
         ${nodeMeters(n) || `<div class="empty">nothing measured yet</div>`}
         ${nodeTools(n)}
         ${nodeGit(n)}
+        ${nodeGpu(n)}
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}`,
       {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
     // Every live agent node gets the plane: the runner needs no stamp. What
@@ -1330,6 +1352,11 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                              : "No Claude session is open there; ")
               + "nothing starts again on its own: press Claude on a project's row afterwards.")) return;
       }
+      if (act === "gpu-display"
+          && !confirm(`Set up the GPU display on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
+                      + "This installs the NVIDIA driver and a headless X server on the card, which "
+                      + "takes minutes, and the driver takes the card only after a reboot: the row "
+                      + "says when to press Reboot.")) return;
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
@@ -1338,7 +1365,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", "claude-check": "Checking", "claude-update": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
-               retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down",
+               retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-display": "Setting up",
                paths: "Saving", "check-paths": "Checking",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
       if (act === "claude-check"){

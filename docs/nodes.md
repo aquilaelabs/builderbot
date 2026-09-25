@@ -1479,8 +1479,8 @@ exist, and is left unbuilt. Bug #17 (the headless Xorg dying) stays this
 container's until the local emulator goes with phase 10.
 Job-scoped emulation first: instrumented-test jobs that boot an emulator on a
 GPU node for the life of the job and return results as artifacts: no network
-adb involved. The provisioner learns to install the GPU display arrangement
-on a node that has the card. The interactive `device-host` service (a
+adb involved. The GPU display arrangement is `bb-sandbox gpu` on a node that
+has the card, pressed from its row (R20). The interactive `device-host` service (a
 long-lived emulator a session reaches over network adb) is designed in §2 and
 built only if the job-scoped path proves insufficient.
 

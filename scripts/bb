@@ -788,15 +788,16 @@ cmd_emu() {
                 printf 'ANDROID_EMULATOR_GPU is set: %s (used as given)\n' "$ANDROID_EMULATOR_GPU"
             elif ! x_display_up; then
                 printf 'software (swiftshader_indirect): no X display for the GPU\n'
-                # What the startup hook last said about it. The display dying
-                # hours into a boot used to be silent: the emulator went on
-                # working, slower, and every timing conclusion after it was
-                # wrong. The hook restarts it three times and then stops; this
-                # is where it says which of those happened.
+                # What the display's unit last said about it (bb-sandbox
+                # gpu-display, R20). The display dying hours into a boot used
+                # to be silent: the emulator went on working, slower, and
+                # every timing conclusion after it was wrong. The unit
+                # restarts it three times and then stops; this is where it
+                # says which of those happened.
                 note="$(gpu_display_note)"
-                [ -n "${note:-}" ] && printf '  the startup hook says: %s\n' "$note"
+                [ -n "${note:-}" ] && printf '  the display unit says: %s\n' "$note"
                 command -v Xorg >/dev/null 2>&1 \
-                    || printf '  this machine has no X server; the GPU path needs one\n'
+                    || printf '  this machine has no X server: Set up GPU display on its row in the Nodes tab gives the card one\n'
                 command -v nvidia-smi >/dev/null 2>&1 \
                     && printf '  the card is here: %s\n' \
                        "$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"

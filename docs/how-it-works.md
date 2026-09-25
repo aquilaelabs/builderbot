@@ -466,11 +466,16 @@ NVIDIA GLX, so EGL falls through to Mesa, which has no driver for an NVIDIA
 card and lands on llvmpipe: software by a slower road than the emulator's own
 SwiftShader.
 
-So the card needs a real `Xorg` on the injected `nvidia_drv.so`, started at
-boot, because a session runs unprivileged with no capabilities and cannot
-become DRM master. **Nothing starts one on a node yet**: provisioning the
-display half is roadmap R20, and the controller starts none and claims no
-card, so an emulator renders in software today. `bb emu start` **tests** for
+So the card needs a real `Xorg` on the NVIDIA driver, started by the
+machine, because a session runs unprivileged with no capabilities and cannot
+become DRM master. **Set up GPU display** on the node's row (Nodes tab,
+Health) is that: `bb-sandbox gpu` installs the distribution's NVIDIA driver
+and a headless Xorg on the card as a unit of the machine's own, which writes
+what it found to `/run/builderbot-gpu-display` and restarts a dead server
+three times before saying so. The driver takes the card only after a reboot,
+which the row says and Reboot under Advanced does; bb-session binds the
+server's socket into each session's own `/tmp`, so `bb emu start` inside a
+session finds `:0`. `bb emu start` **tests** for
 the hardware path rather than trusting it: EGL has to answer on an X server
 with a vendor driver, and Mesa answering counts as failure for exactly the
 reason above, and it falls back to software when it does not. `bb emu gpu`

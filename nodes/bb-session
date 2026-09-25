@@ -234,6 +234,12 @@ def plan(c, a, uid):
         steps.append(("bind", data, f"{STAGE}/data"))
     if art and _real_dir(art):
         steps.append(("bind", art, f"{STAGE}/artifacts"))
+    # The GPU display's socket (R20): /tmp is the session's own below, so
+    # the X server's socket directory is staged here and bound back, and a
+    # `bb emu start` inside the session finds :0.
+    x11 = _real_dir("/tmp/.X11-unix")
+    if x11:
+        steps.append(("bind", "/tmp/.X11-unix", f"{STAGE}/x11"))
 
     # The projects share: this project, its worktrees, the account's share,
     # and in that share the other projects' transcripts empty.
@@ -355,6 +361,8 @@ def plan(c, a, uid):
     for t in ("/tmp", "/var/tmp", "/dev/shm"):
         if _real_dir(t):
             steps.append(("tmpfs", t, "mode=1777"))
+    if x11:
+        steps.append(("bind", f"{STAGE}/x11", "/tmp/.X11-unix"))
     # A network of its own (R79): the agent's resolver file over the node's,
     # which names a resolver on the node's loopback that the session's own
     # namespace cannot reach; then the agent's folder out of sight, since it

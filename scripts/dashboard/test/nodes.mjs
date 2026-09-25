@@ -2078,6 +2078,30 @@ ok(page.errors.length === 0,
                           false, () => false)));
     ok(local === false, `...and the controller's own row has neither (${local})`);
   }
+  // The GPU display (R20): a node whose census names an NVIDIA card gets the
+  // line in Health with Set up GPU display where it is a sandbox; a node
+  // that is not one is refused with the command for the machine.
+  {
+    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + shed.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true, sandbox: true,
+                                       gpu_card: 'NVIDIA Corporation GA104 [GeForce RTX 3070 Ti]', gpu_display: '' },
+                             version: shipped.version, digest: shipped.digest }) });
+    const no = await napi('/api/v1/nodes', { action: 'gpu-display', id: plain.id });
+    ok(/sudo bb-sandbox gpu/.test(no.error || ''), `a node that is not a sandbox is refused, and told the command for the machine (${no.error})`);
+    const g = await napi('/api/v1/nodes', { action: 'gpu-display', id: shed.id });
+    ok(g.ok && /^j_/.test(g.job || ''), `a sandbox node with a card queues the set-up as a system job (${g.error || g.job})`);
+    const gj = await napi(`/api/v1/jobs?id=${g.job}`);
+    ok(gj.spec?.apply === 'gpu' && gj.node === shed.id, 'the job asks the agent for bb-sandbox gpu');
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(id => [...document.querySelectorAll('.nodestab #ndPick option')].some(o => o.value === id), shed.id, { timeout: 15000 });
+    await page.selectOption('.nodestab #ndPick', shed.id);
+    await page.waitForSelector(`.ndrow[data-node="${shed.id}"] .ndgpu`, { timeout: 20000 });
+    const line = await page.$eval(`.ndrow[data-node="${shed.id}"] .ndgpu`, e => [e.textContent.replace(/\s+/g, ' ').trim(), !!e.querySelector('[data-nd="gpu-display"]'), e.querySelector('[data-nd="gpu-display"]')?.disabled]);
+    ok(/RTX 3070 Ti/.test(line[0]) && /renders in software/.test(line[0]) && line[1] && line[2] === true,
+       `the row's Health names the card, says the emulator is on software, and offers the set-up, busy while the job runs (${line[0].slice(0, 90)})`);
+    await napi('/api/v1/jobs', { action: 'cancel', id: g.job });
+  }
   const no = await napi('/api/v1/nodes', { action: 'uninstall', id: plain.id });
   ok(/only a node provisioned as a BuilderBot sandbox/.test(no.error || '') && /sudo bb-sandbox uninstall/.test(no.error || ''),
      `a node that is not a sandbox is refused, and told the command to run on the machine (${no.error})`);
