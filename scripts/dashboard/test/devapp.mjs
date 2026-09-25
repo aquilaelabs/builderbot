@@ -128,9 +128,23 @@ const row = async () => ({
 // could as easily be the Down button. The pill says what the row IS: docker,
 // the way the file rows say apk or xpi. It never says what it is doing.
 const pill = () => page.$eval(`${DM} .dmpill`, e => e.textContent.replace(/[()]/g, '').trim());
-const pillIs = async (want) => { await openManager(); return page.waitForFunction(
-  ([w, sel]) => document.querySelector(sel + ' .dmpill')?.textContent.replace(/[()]/g, '').trim() === w,
-  [want, DM], { timeout: 20000 }); };
+// Asked again every few seconds on the way, the way pressing Refresh would:
+// a listing already on its way when the job ended lands after it and is the
+// last word until something asks again (B246).
+const pillIs = async (want) => {
+  await openManager();
+  const t0 = Date.now();
+  for (;;){
+    try{
+      return await page.waitForFunction(
+        ([w, sel]) => document.querySelector(sel + ' .dmpill')?.textContent.replace(/[()]/g, '').trim() === w,
+        [want, DM], { timeout: 5000 });
+    }catch(e){
+      if (Date.now() - t0 > 25000) throw e;
+      await page.evaluate(() => { dockerList = null; loadDocker(); });
+    }
+  }
+};
 
 // The word at the foot is for a fetch that has been slow, not for every
 // fetch: a listing reloads once per revision while a job runs, and a word
