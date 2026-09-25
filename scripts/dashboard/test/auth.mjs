@@ -3,7 +3,7 @@
 // /term proxy that puts the terminals behind the same sign-in. The proxy's
 // upstream is dead in the harness (nothing listens on the ttyd port), which
 // pins the 502 path; the live relay is covered by using the dashboard.
-import { launch, newPage, ok, done, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, URL, DIR } from './lib.mjs';
 import http from 'node:http';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
