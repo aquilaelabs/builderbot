@@ -1242,6 +1242,12 @@ import importlib.util, json, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+# The action layer is devactions.py (25 Sep): loaded by path too, with this
+# devapp registered as the one it imports, so the stubs above and below land.
+import sys; sys.modules['devapp'] = m
+spec = importlib.util.spec_from_file_location('devactions', ${
+  JSON.stringify(new globalThis.URL('../devactions.py', import.meta.url).pathname)})
+a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
 d = tempfile.mkdtemp()
 
 class Queue:
@@ -1273,15 +1279,15 @@ m._load = lambda: {'alpha': {'main': {}, 'staging': {}}}
 m._instance_node = lambda *a: 'n_sandbox'
 
 out = {}
-out['first_up'] = m.up('alpha', 'main')
-out['second_up'] = m.up('alpha', 'main')
-out['rebuild_during_up'] = m.rebuild('alpha', 'main')
-out['down_during_up'] = m.down('alpha', 'main')
-out['other_instance'] = m.up('alpha', 'staging')
+out['first_up'] = a.up('alpha', 'main')
+out['second_up'] = a.up('alpha', 'main')
+out['rebuild_during_up'] = a.rebuild('alpha', 'main')
+out['down_during_up'] = a.down('alpha', 'main')
+out['other_instance'] = a.up('alpha', 'staging')
 out['queued'] = [(r['id'], r['spec']['action'], r['spec']['instance'], r['node'], r['principal']) for r in q.rows]
 out['view'] = m.job_view('alpha', 'main')
 q.rows[-1]['state'] = 'succeeded'
-out['free_now'] = m.up('alpha', 'main')
+out['free_now'] = a.up('alpha', 'main')
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const SL = JSON.parse(slot.trim().split('\n').pop());
@@ -1310,6 +1316,12 @@ import importlib.util, json, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+# The action layer is devactions.py (25 Sep): loaded by path too, with this
+# devapp registered as the one it imports, so the stubs above and below land.
+import sys; sys.modules['devapp'] = m
+spec = importlib.util.spec_from_file_location('devactions', ${
+  JSON.stringify(new globalThis.URL('../devactions.py', import.meta.url).pathname)})
+a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
 d = tempfile.mkdtemp()
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
 m.missing_env = lambda *a, **k: []
@@ -1334,7 +1346,7 @@ def fake(argv, timeout=60, **kw):
     return {'code': 0, 'out': ''}
 m._run = fake
 
-r = m._job_rebuild('alpha', 'main', run)
+r = a._job_rebuild('alpha', 'main', run)
 print(json.dumps({'phases': phases, 'steps': run.steps, 'result': r}))
 `], { encoding: 'utf8' });
 const AB = JSON.parse(ab.trim().split('\n').pop());
@@ -1532,6 +1544,12 @@ import importlib.util, json, os, tempfile, time
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+# The action layer is devactions.py (25 Sep): loaded by path too, with this
+# devapp registered as the one it imports, so the stubs above and below land.
+import sys; sys.modules['devapp'] = m
+spec = importlib.util.spec_from_file_location('devactions', ${
+  JSON.stringify(new globalThis.URL('../devactions.py', import.meta.url).pathname)})
+a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
 
 d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
@@ -1575,7 +1593,7 @@ class Run:
     def line(self, t): pass
     def step(self, s): pass
     def hold(self, p): pass
-m._job_up('p', 'main', Run())
+a._job_up('p', 'main', Run())
 out = {
   # Ordered: every mkdir has to be finished before the compose that needs it.
   'order': [('up' if 'up' in c['argv'] else 'mkdir') for c in seen

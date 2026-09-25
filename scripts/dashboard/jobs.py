@@ -24,14 +24,15 @@ What the executor owns:
     failed as lost at the next start, because it is;
   - /healthz and /metrics, made of nodes.job_counts().
 
-Registered runners by type: "exec" is here, "compose" is devapp's, which
-registers itself through configure(), so the compose code stays in the
+Registered runners by type: "exec" is here, "compose" is devactions',
+which registers itself through configure(), so the compose code stays in the
 compose module and this one knows nothing about compose files.
 """
 
 import os
 import signal
 import subprocess
+import sqlite3
 import sys
 import threading
 import time

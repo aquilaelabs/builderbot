@@ -2091,7 +2091,7 @@ JOB_ACTIVE = ("queued", "assigned", "running")
 SELECT_KEYS = ("capability", "labels", "pool", "os", "arch")
 _jrev = [0]
 # type -> what to run on the controller when a job of that type ends,
-# registered by the module that queues them (devapp for compose).
+# registered by the module that queues them (devactions for compose).
 ON_DONE = {}
 
 

@@ -2525,6 +2525,7 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
 # A project's compose app, built and run on the sandbox VM's daemon. The
 # module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
+import devactions                                                # noqa: E402
 import containers                                                # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
@@ -2575,7 +2576,7 @@ import runners                                                   # noqa: E402
 runners.configure(run=run, nodes=None if NODES_OK else nodes)
 
 # The controller's own runner (docs/nodes.md §2, phase 4): the thread that
-# takes compose and local exec jobs off the queue and runs them here. devapp
+# takes compose and local exec jobs off the queue and runs them here. devactions
 # registers its compose runner through configure(), so the queue is the seam
 # between the two and neither imports the other.
 import jobs                                                      # noqa: E402
@@ -2587,16 +2588,16 @@ if not NODES_OK:
     phone.nodes = nodes            # every adb command is a job on a node
     # A compose action the AGENT ran still has records to write here; this is
     # where the module that queued it finishes it (roadmap #18).
-    nodes.on_done("compose", devapp.compose_done)
+    nodes.on_done("compose", devactions.compose_done)
 # What Allow on a rebuild request actually starts (the Docker row's `ask`).
 # Outside the block above: the ask has nothing to do with the node registry,
 # and a controller without one still has projects whose containers run.
-phone.rebuilder = devapp.rebuild
+phone.rebuilder = devactions.rebuild
 phone.container_maker = containers.create_container
 phone.instance_maker = lambda project, instance: devapp.create_instance(project, instance or devapp.MAIN)
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
 phone.ctl_runner = containers.ctl_on
-phone.remover = devapp.remove_instance
+phone.remover = devactions.remove_instance
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -2605,6 +2606,9 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  runner=jobs if not NODES_OK else None,
                  project_node=lambda p: prefs.get(p)["node"],
                  node_paths=nodes.node_paths if not NODES_OK else None)
+# The layer on top of it: the compose runner is its, so it is the one that
+# hands jobs.py the function.
+devactions.configure(runner=jobs if not NODES_OK else None)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target; the module's docstring says
@@ -4195,7 +4199,7 @@ class Handler(BaseHTTPRequestHandler):
         # One read scope for the row and the manager's list: on an
         # agent node each is a probe job, and both ask the same daemon.
         with devapp.read_scope():
-            dev = {"devapp": devapp.state(name), "devapps": devapp.states(name)}
+            dev = {"devapp": devactions.state(name), "devapps": devactions.states(name)}
         return self._json({"artifacts": artifacts_of(name),
                            # Each account's own builds, from its worktree
                            # (B237), apart from dist/, which is what ships.
@@ -6482,15 +6486,14 @@ class Handler(BaseHTTPRequestHandler):
         if act == "owner" and field(req, "owner") \
                 and field(req, "owner") not in {p["name"] for p in project_list(me)}:
             return self._json({"error": f"no project called {field(req, 'owner')}"}, 400)
-        payload, status = devapp.act(
+        payload, status = devactions.act(
             name, inst, act, req,
             # The command is the project's own, from its settings.
             test_cmd=prefs.get(name)["test"] if act == "test" else "")
         # An instance made, removed or given to another project changes what
         # a project's sessions may reach on its node (R79).
         if status == 200 and act in ("new", "remove", "owner"):
-            with contextlib.suppress(Exception):
-                nodes.session_net_nudge()
+            net_nudge()
         return self._json(payload, status)
 
     def _version(self, req):
@@ -6736,15 +6739,14 @@ class Handler(BaseHTTPRequestHandler):
                                                     req.get("env"), "", under)
                         if r.get("error"):
                             return self._json(r, 400)
-                        with contextlib.suppress(Exception):
-                            nodes.session_net_nudge()
+                        net_nudge()
                         # Built unless the compose asks for more than its own
                         # directory, which a person acknowledges once, as new
                         # says it (B251).
                         why = devapp.unacked_risks(r["project"], r["instance"])
                         if why:
                             return self._json(r | {"needs_ack": why})
-                        built = devapp.rebuild(r["project"], r["instance"]) or {}
+                        built = devactions.rebuild(r["project"], r["instance"]) or {}
                         if built.get("error"):
                             return self._json(r | {"error": f"{r['name']} is registered on the Docker "
                                                             f"tab, and its build did not start: {built['error']}"}, 400)
@@ -7796,13 +7798,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "close its terminals first: "
                                         + ", ".join(held[:3])
                                         + (" …" if len(held) > 3 else "")}, 409)
-        # No daemon, or no compose file: nothing to protect, said by the
-        # suppress rather than by a bare pass.
-        with contextlib.suppress(Exception):
-            if devapp.state(name).get("exists"):
-                return self._json({"error": "its dev instance still has "
-                                            "containers; press Down on the "
-                                            "Artifacts tab first"}, 409)
+        # No daemon, or no compose file: nothing to protect. Broad because
+        # the check reads the daemon, the store and the compose file, and
+        # none of those failing is a reason to keep the project; logged, so
+        # a trash that went past a fault says so.
+        try:
+            holds = devactions.state(name).get("exists")
+        except Exception as e:                          # noqa: BLE001
+            print(f"[dashboard] trash {name}: instance check skipped: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            holds = False
+        if holds:
+            return self._json({"error": "its dev instance still has "
+                                        "containers; press Down on the "
+                                        "Artifacts tab first"}, 409)
         body, code = projects.trash(req)
         return self._json(body, code)
 
@@ -7847,11 +7856,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "close its terminals first: "
                                         + ", ".join(held[:3])
                                         + (" …" if len(held) > 3 else "")}, 409)
-        with contextlib.suppress(Exception):    # no daemon, or no compose file
-            if devapp.state(name).get("exists"):
-                return self._json({"error": "its dev instance still has "
-                                            "containers; press Down on the "
-                                            "Artifacts tab first"}, 409)
+        # No daemon, or no compose file: nothing to protect; as trash says it.
+        try:
+            holds = devactions.state(name).get("exists")
+        except Exception as e:                          # noqa: BLE001
+            print(f"[dashboard] rename {name}: instance check skipped: "
+                  f"{type(e).__name__}: {e}", flush=True)
+            holds = False
+        if holds:
+            return self._json({"error": "its dev instance still has "
+                                        "containers; press Down on the "
+                                        "Artifacts tab first"}, 409)
         body, code = projects.rename(req)
         return self._json(body, code)
 

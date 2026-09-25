@@ -99,6 +99,7 @@
 - project_list is three named steps (the projects on disk, their columns, what the account may see), and the Nodes and agent handlers dispatch their actions through a table instead of a ladder of elifs (cab0d4a)
 - Text in every field and picker is 12px, on a phone as at a desk; the 16px that stops iOS Safari zooming into a typed field applies on iOS alone (6e87337)
 - The notebook's icon is a book, on the project row's button and on its tab (d67c6a0)
+- The layer that runs and reports a dev instance (up, down, rebuild, test, remove, state, act) is devactions.py, cut out of devapp.py, which stays as the base it reads from (f732cfa)
 
 ### Removed
 
