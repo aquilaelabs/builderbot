@@ -69,9 +69,12 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -z "${BB_TEST_WORKER:-}" ] && [ -f "$KEEPF" ]
         # nothing to do with the change. The sentence is the fresh run's, so
         # the hook passes it through as a check that could not run (B232).
         ALOCK="${TMPDIR:-/tmp}/dashboard-test.d/attached"
+        # Not our own pid: on an NFS tree this script takes the lock, then
+        # execs its copy under the same pid, which read the lock back as a
+        # competitor that had started 00:00 ago and refused itself (B263).
         if [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$ALOCK" ]; then
             other="$(cat "$ALOCK" 2>/dev/null || true)"
-            if [ -n "$other" ] && [ -d "/proc/$other" ]; then
+            if [ -n "$other" ] && [ "$other" != "$$" ] && [ -d "/proc/$other" ]; then
                 die "another dashboard test run is going (pid $other, attached to the kept fixture, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago). One at a time on this box; wait for it, or set BB_TEST_CONCURRENT=1"
             fi
         fi

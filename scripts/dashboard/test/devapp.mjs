@@ -1729,10 +1729,12 @@ await openManager();
 // return, on a selector that is still the last paint, while the answer this
 // asks about is briefly gone. Sampling it there fails on the harness's timing
 // rather than on the code: the same shape as bug #13.
-await page.waitForFunction(() => dockerList !== null, null, { timeout: 15000 })
-  .catch(() => {});
-ok(await page.evaluate(() => typeof dockerList?.job !== "undefined"),
-   'the manager is told about the running job with the rest of its page');
+// ...and waited for the key itself, not for any answer: under a full run
+// the answer on screen can be one refetched before the job was told of,
+// and sampling it there failed one full run in three (25 Sep).
+const toldJob = await page.waitForFunction(() => dockerList && typeof dockerList.job !== "undefined", null, { timeout: 15000 })
+  .then(() => true, () => false);
+ok(toldJob, 'the manager is told about the running job with the rest of its page');
 
 // The wiring fold: what the container publishes and what it mounts, fetched
 // when it is opened and not before: parsing the compose file is the one thing
