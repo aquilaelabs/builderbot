@@ -2604,6 +2604,10 @@ def job_next(node_id, wait, runner="node", alive=None):
                                 "(node = ? OR node = '') ORDER BY queued, id",
                                 (node_id,)) if (free or lane) else ()):
                     j = _job_out(j)
+                    # Queued, but its plan is still being prepared
+                    # (devactions._submit): not this poll's.
+                    if (j.get("spec") or {}).get("hold"):
+                        continue
                     if runner_of(j["type"], n["kind"]) != runner or not fits(j, n):
                         continue
                     if not free and not _light(j):
@@ -2892,6 +2896,33 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     with _wake:
         _wake.notify_all()      # the slot is free: a held poll may take the next
     return {"ok": True}
+
+
+def job_release(job_id, spec):
+    """A queued job that was holding for its plan (spec["hold"], which
+    job_next skips) gets the plan and joins the queue. False when the job
+    is no longer queued: cancelled meanwhile, and the plan is dropped."""
+    if not _rows("SELECT 1 FROM jobs WHERE id = ? AND state = 'queued'", (job_id,)):
+        return False
+    _exec("UPDATE jobs SET spec = ? WHERE id = ?",
+          (json.dumps(spec if isinstance(spec, dict) else {}), job_id))
+    if not _quiet(job_id):
+        _jstate_bump()
+    with _wake:
+        _wake.notify_all()
+    return True
+
+
+def job_refuse(job_id, why):
+    """A queued job its preparation refused: failed with the reason, where
+    the row and the Jobs tab show the words (B260). Nothing ran, so no
+    completion hook is owed."""
+    _exec("UPDATE jobs SET state = 'failed', ended = ?, error = ? WHERE id = ? "
+          "AND state = 'queued'", (int(time.time()), str(why)[:500], job_id))
+    if not _quiet(job_id):
+        _jstate_bump()
+    with _wake:
+        _wake.notify_all()
 
 
 def job_cancel(principal, job_id):

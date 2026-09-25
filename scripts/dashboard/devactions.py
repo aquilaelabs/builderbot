@@ -24,6 +24,7 @@ import contextlib
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -301,27 +302,63 @@ def _record_build(project, instance):
         devapp.write_json(devapp.FILE, d)
 
 
-def _submit(project, instance, action, extra=None):
+def _submit(project, instance, action, extra=None, check=None):
     """Queue a compose action for the node this instance is bound to.
 
     On an agent node the spec carries the whole plan and the agent runs it
     with the node's own docker (roadmap #18); on a node with no agent the
     spec names the action and the controller's runner does it over ssh, as
     it always has. Both are one `compose` job on the same queue.
+
+    The job is queued at once, holding (spec["hold"], which job_next skips),
+    and the request answers with it; the slow part, `check` (the risk
+    gate's compose parse on the instance's node over ssh, the plan's own
+    parse), runs on a thread behind that answer and then releases the job
+    with its plan, or fails it with the refusal, where the row and the Jobs
+    tab show the words. Before this a Rebuild answered only after parsing
+    the compose on the node, up to 30s, and a phone dropped the request as
+    a NetworkError with no reason (B260). A second press meanwhile meets
+    BUSY, since the held job is active.
     """
     if devapp.queue is None:
         return {"error": "no job queue is configured here"}
     if _active_job(project, instance):
         return dict(BUSY)
     nid = devapp._instance_node(project, instance)
-    n = devapp.queue.node(nid) if nid else None
-    spec = (_plan_spec(project, instance, action, extra)
-            if n and n["kind"] == "agent"
-            else {"project": project, "instance": instance, "action": action})
-    r = devapp.queue.job_add("operator", {"node": nid}, "compose", spec, project)
+    held = {"project": project, "instance": instance, "action": action, "hold": True}
+    r = devapp.queue.job_add("operator", {"node": nid}, "compose", held, project)
     if r.get("error"):
         return r
     devapp._bump()
+
+    def prepare():
+        try:
+            with devapp.on_node(nid):
+                why = check() if check else ""
+                if why:
+                    devapp.queue.job_refuse(r["job"], why)
+                    return
+                n = devapp.queue.node(nid) if nid else None
+                spec = (_plan_spec(project, instance, action, extra)
+                        if n and n["kind"] == "agent"
+                        else {"project": project, "instance": instance, "action": action})
+                if devapp.queue.job_release(r["job"], spec) and action == "rebuild":
+                    # The started-marker: the row's "building since", cleared
+                    # when the build reaches an end.
+                    with devapp._lock:
+                        d = devapp._load()
+                        devapp._rec(d, project, instance)["building_since"] = int(time.time())
+                        devapp.write_json(devapp.FILE, d)
+        except Exception as e:                                       # noqa: BLE001
+            # A fault preparing is the job's failure, said on its row,
+            # never a thread dying quietly with the job held forever.
+            print(f"[devapp] preparing {action} for {project}/{instance}: {type(e).__name__}: {e}",
+                  flush=True)
+            devapp.queue.job_refuse(r["job"], f"could not prepare the {action}: {e}")
+        finally:
+            devapp._bump()
+
+    threading.Thread(target=prepare, name=f"prepare-{r['job']}", daemon=True).start()
     return {"ok": True, "started": True, "job": r["job"]}
 
 
@@ -604,11 +641,10 @@ def state(project, instance=devapp.MAIN):
 
 @devapp._on_instance
 def up(project, instance=devapp.MAIN, ack=""):
-    # Refusals first, so a request that is going to be turned down does not
-    # flash a job at every other browser on its way to saying no.
-    gate = devapp._risk_gate(project, instance, ack)
-    if gate:
-        return {"error": gate}
+    # The refusals this side can make alone come first, so a request that
+    # is going to be turned down does not flash a job at every other browser
+    # on its way to saying no. The risk gate reads the compose on the node,
+    # and runs behind the answer (B260): its refusal is the job's.
     miss = devapp.missing_env(project, instance)
     if miss:
         return {"error": "the env is missing " + ", ".join(miss[:4])
@@ -756,34 +792,20 @@ def _job_down(project, instance, run):
 @devapp._on_instance
 def rebuild(project, instance=devapp.MAIN, ack=""):
     """Build, then bounce, or stop at the env gate. A job: a build is
-    minutes, and the poll watches it through job_rev."""
+    minutes, and the poll watches it through job_rev. The name and the
+    worktree are this side's and are checked in front of the answer; the
+    risk gate reads the compose on the node and runs behind it (B260), so
+    its refusal is the job's, on the row."""
     if devapp.compose_file(project) is None:
         return {"error": "no compose file here"}
-    # Before the build, not before the `up` inside it: a build runs this
-    # project's Dockerfile, which is the same trust either way.
-    gate = devapp._risk_gate(project, instance, ack)
-    if gate:
-        return {"error": gate}
     clash = devapp.name_clash(project, instance)
     if clash:
         return {"error": clash}
-    # Pinned to a ref: put its build tree there first. Before the job rather
-    # than inside it, because the tree is the CONTROLLER's to write (it holds
-    # the credentials and the share is mounted here) and a node's agent runs
-    # compose against a directory that must already be right.
     moved = sync_work_tree(project, instance)
     if moved:
         return {"error": moved}
-    r = _submit(project, instance, "rebuild")
-    if r.get("error"):
-        return r
-    # On disk before the work starts, so a restart can tell "this build never
-    # finished" from "no build has been asked for" without asking the queue.
-    with devapp._lock:
-        d = devapp._load()
-        devapp._rec(d, project, instance)["building_since"] = int(time.time())
-        devapp.write_json(devapp.FILE, d)
-    return r
+    return _submit(project, instance, "rebuild",
+                   check=lambda: devapp._risk_gate(project, instance, ack))
 
 
 def run_compose_job(job, run):

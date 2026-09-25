@@ -790,6 +790,31 @@ await dmClick('up');
 await pillIs('running');
 ok(page.dialogs.slice(seen).some(d => /runs privileged/.test(d)),
    '...and Up asks first, naming what it found rather than warning in general');
+// The gate's compose parse runs on the instance's node, up to 30s away, and
+// a request that waited on it was dropped by a phone as a NetworkError with
+// no reason (B260). So the request answers with the job at once, and a
+// refusal is the job's failure, on the row. A mount the acknowledgement did
+// not cover is a fresh refusal.
+{
+  writeFileSync(stubCfg, JSON.stringify({ services: { app: {
+    build: { context: '.' }, privileged: true, pid: 'host', volumes: ['/:/host'] } } }));
+  const t0 = Date.now();
+  const r = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', action: 'rebuild', ack: '' }) })).json()));
+  ok(r.ok && r.job && Date.now() - t0 < 5000,
+     `a rebuild answers with its job before the gate has read the compose (${r.job || r.error})`);
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  let job = null;
+  for (let i = 0; i < 60 && !(job && ['failed', 'succeeded', 'canceled'].includes(job.state)); i++){
+    await sleep(500);
+    job = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?id=' + r.job, { headers: H })).json();
+  }
+  ok(job?.state === 'failed' && /asks for more than its own directory/.test(job.error || ''),
+     `...and the gate's refusal is the job's failure, with its words (${job?.state}: ${String(job?.error).slice(0, 60)})`);
+  risky(['/:/host']);
+  await nudge();
+}
 // ...and once it is up, the one port it publishes is a link to it. The stub's
 // risky config publishes nothing, so this reads the earlier shape back.
 writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
@@ -1270,6 +1295,18 @@ class Queue:
                 and (not active or r['state'] in ('queued', 'assigned', 'running'))][:n]
     def jobs_rev(self): return len(self.rows)
     def job_tail(self, jid, n=4000): return ''
+    # What _submit's prepare thread calls once the gate has run (B260): the
+    # plan lands on the row, or the refusal fails it.
+    def job_release(self, jid, spec):
+        for r in self.rows:
+            if r['id'] == jid and r['state'] == 'queued':
+                r['spec'] = spec
+                return True
+        return False
+    def job_refuse(self, jid, why):
+        for r in self.rows:
+            if r['id'] == jid and r['state'] == 'queued':
+                r['state'] = 'failed'; r['error'] = why
 q = Queue()
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None, queue=q)
 m._risk_gate = lambda *a, **k: ''
@@ -2937,9 +2974,17 @@ ok(await page.$('#devSend'),
     ok(rn.status === 200 && /asks for more than its own directory/.test(rn.needs_ack || '')
        && /pressing Build or Rebuild on its row on the Docker tab/.test(rn.needs_ack || ''),
        `on auto, new says a risky compose waits for a person's acknowledgement (${String(rn.needs_ack).slice(0, 90)})`);
+    // The refusal is the job's (B260): the request answers with the job and
+    // the gate's words land on it, which is what bb devapp rebuild prints.
     const rr = await asSession({ project: 'ep.silon', action: 'rebuild', instance: 'riskynew' });
-    ok(rr.status >= 400 && /Build or Rebuild on its row on the Docker tab/.test(rr.error || ''),
-       `...and rebuild's refusal names the way past it (${String(rr.error).slice(0, 90)})`);
+    let rj = null;
+    for (let i = 0; i < 60 && rr.job && !(rj && ['failed', 'succeeded', 'canceled'].includes(rj.state)); i++){
+      await sleep(500);
+      rj = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?id=' + rr.job,
+        { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+    }
+    ok(rr.status === 200 && rj?.state === 'failed' && /Build or Rebuild on its row on the Docker tab/.test(rj.error || ''),
+       `...and rebuild's refusal, on its job, names the way past it (${rj?.state}: ${String(rj?.error).slice(0, 90)})`);
     await page.evaluate(async () => {
       await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                    body: JSON.stringify({ project: 'ep.silon', instance: 'riskynew', action: 'remove' }) });
