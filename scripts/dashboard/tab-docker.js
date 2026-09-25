@@ -180,6 +180,36 @@ async function loadDocker(){
 // is why there is nothing else to fill in here.
 let dnFor = null;
 
+// Where a sent container goes: one of the nodes of the project it will
+// belong to (the one under Project, its own by default), the primary picked,
+// said under the field. A project with no node has nowhere to send, and
+// Create is dead until it is given one (R82, R79: a container elsewhere is
+// out of reach of the project's sessions). Not the node the manager happens
+// to be looking at: this dialog opens from the Artifacts tab too. Filled
+// again when the node list lands if this dialog is still the one open.
+function dnNodeSay(){
+  const project = dnFor;
+  if (!project) return;
+  const whose = $("dnUnder").value || project;
+  const row = state?.projects?.find(p => p.name === whose);
+  const set = (row?.prefs?.nodes || []).filter(Boolean);
+  const say = $("dnNodeHint"), field = $("dnNodeField");
+  if (!set.length){
+    field.hidden = false; $("dnNode").innerHTML = ""; $("dnNode").disabled = true;
+    say.textContent = whose + " has no node: set one in its settings first, and the container goes there.";
+    say.classList.add("bad");
+    $("dnGo").disabled = true;
+    return;
+  }
+  fillNodeSelect($("dnNode"), field, set[0],
+                 () => { if (dnFor === project && !$("dnmodal").hidden) dnNodeSay(); }, set);
+  say.textContent = set.length > 1
+    ? `One of ${whose}'s nodes, its primary unless picked; an instance stays where it was made.`
+    : `${whose}'s node, ${esc(row?.node_name || "")}: where its sessions can reach it.`;
+  say.classList.remove("bad");
+  $("dnGo").disabled = false;
+}
+
 function openSendToDocker(project){
   dnFor = project;
   $("dnTitle").textContent = "New container from " + project;
@@ -195,23 +225,7 @@ function openSendToDocker(project){
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   fillUnderSelect($("dnUnder"), project);
-  // Where it goes: the project's own node, which is where its work runs,
-  // else the default docker host, said under the field so a project with
-  // no node is not sent somewhere by surprise. Not the node the manager
-  // happens to be looking at: this dialog opens from the Artifacts tab too.
-  const ownNode = state?.projects?.find(p => p.name === project)?.prefs?.node || "";
-  // Filled now, and again when the node list lands if this dialog is
-  // still the one open (the modal is shown below, so the guard is on the
-  // second call only).
-  const fillDn = () => {
-    fillNodeSelect($("dnNode"), $("dnNodeField"), ownNode,
-                   () => { if (dnFor === project && !$("dnmodal").hidden) fillDn(); });
-    $("dnNodeHint").textContent = ownNode
-      ? "The project's node unless picked; an instance stays where it was made."
-      : project + " has no node of its own, so this goes to the default docker host unless picked. "
-        + "Set its node in its settings to keep the two together.";
-  };
-  fillDn();
+  dnNodeSay();
   // The branches the manager already knows about for this project; it lists
   // them per project on the answer the tab is drawn from, so the dialog costs
   // nothing to fill.
@@ -244,26 +258,28 @@ const dockerSlug = (s) => (s || "").toLowerCase()
 // an actual choice, because a select with one option is furniture. `prefer`
 // is the project's own binding (its settings dialog), else the manager's
 // current pick, else the default node.
-// `prefer` is the node the caller wants picked; when it is not in the list
-// (a project with none), the pick is the node the server would choose for
-// "" (nodesDefault, the newest enrolled that runs docker), so the dialog
-// shows where the container is going. Before this the browser showed the
-// first name in the list, which was not where "" went, and a project with
-// no node was sent to a node the operator did not mean (25 Sep). `again`
-// is called once the node list lands when it was not here yet, so a dialog
-// opened before the first Nodes fetch (the Artifacts tab's Send) gets its
-// picker instead of hiding it and sending "".
-function fillNodeSelect(sel, wrap, prefer, again){
-  // Every node, not a subset: a node does everything for the projects bound
-  // to it, so there is nothing to narrow by (docs/nodes.md §13).
+// `prefer` is the node the caller wants picked: the project's primary, or
+// the node the manager is looking at. `allow` narrows the list to the
+// project's own node set (R82): a container lives on one of its project's
+// nodes and nowhere else, since a session reaches only those (R79), so
+// nothing outside the set is offered. With one node to offer the picker
+// still shows, disabled, so the dialog says where the container goes.
+// `again` is called once the node list lands when it was not here yet, so
+// a dialog opened before the first Nodes fetch (the Artifacts tab's Send)
+// gets its picker instead of hiding it and sending "".
+function fillNodeSelect(sel, wrap, prefer, again, allow){
+  // Every node when nothing narrows: a node does everything for the
+  // projects bound to it (docs/nodes.md §13).
   const dnodes = (nodesList || []).filter(n =>
-    n.kind !== "local" && n.state !== "retired");
+    n.kind !== "local" && n.state !== "retired" && (!allow || allow.includes(n.id)));
   // ...and drawn again when they land: loadNodes repaints only a Nodes tab,
   // so a draw here during a node-list reload lost the picker until something
   // else moved dockerRev (B69's nodes.mjs sibling).
   if (nodesList === null) loadNodes().then(() => { dockerRev++; drawPanes(); if (again) again(); });
-  wrap.hidden = dnodes.length < 2;
-  const want = dnodes.some(n => n.id === prefer) ? prefer : nodesDefault;
+  const known = dnodes.some(n => n.id === prefer);
+  wrap.hidden = allow ? dnodes.length < 1 : dnodes.length < 2;
+  sel.disabled = dnodes.length < 2;
+  const want = known ? prefer : (dnodes[0]?.id || "");
   // An agent node carries its heartbeat's numbers, and this is the picker
   // the design says they belong beside (docs/nodes.md §9): the choice of
   // where to run a container is made on how busy the machine is.
@@ -293,6 +309,7 @@ async function dnSubmit(){
   const project = dnFor, name = $("dnName").value.trim();
   const fail = m => ($("dnErr").textContent = m, $("dnErrWrap").hidden = false);
   if (!name) return fail("a name is needed");
+  if ($("dnGo").disabled) return;
   $("dnGo").disabled = true; $("dnGo").textContent = "Creating…";
   try{
     const r = await fetch("/api/devapp", {method:"POST",
@@ -717,8 +734,23 @@ function fillUnderSelect(sel, picked){
 // not also asked to know which machine that is. A project with no node
 // leaves the pick where it was.
 function cUnderPicked(){
-  const own = state?.projects?.find(p => p.name === $("cUnder").value)?.prefs?.node || "";
-  if (own && [...$("cNode").options].some(o => o.value === own)) $("cNode").value = own;
+  const whose = $("cUnder").value;
+  const row = state?.projects?.find(p => p.name === whose);
+  const set = whose ? (row?.prefs?.nodes || []).filter(Boolean) : null;
+  const hint = $("cNodeHint");
+  if (whose && !set.length){
+    $("cNodeField").hidden = false; $("cNode").innerHTML = ""; $("cNode").disabled = true;
+    hint.hidden = false; hint.classList.add("bad");
+    hint.textContent = whose + " has no node: set one in its settings first, and the container goes there.";
+    $("cGo").disabled = true;
+    return;
+  }
+  // No project: any node, the one the manager is looking at first. A
+  // project: its nodes only, its primary first (R82).
+  fillNodeSelect($("cNode"), $("cNodeField"), set ? set[0] : dockerNode, null, set);
+  hint.hidden = !set; hint.classList.remove("bad");
+  if (set) hint.textContent = set.length > 1 ? `One of ${whose}'s nodes.` : `${whose}'s node, where its sessions can reach it.`;
+  $("cGo").disabled = false;
 }
 
 function openNewContainer(){
@@ -735,8 +767,9 @@ function openNewContainer(){
   // Created on the node the manager is looking at, unless picked otherwise,
   // or a project is: cUnderPicked moves it to that project's node.
   const fillC = () => fillNodeSelect($("cNode"), $("cNodeField"), dockerNode,
-    () => { if (cEditing === null && !$("cmodal").hidden) fillC(); });
+    () => { if (cEditing === null && !$("cmodal").hidden) cUnderPicked(); });
   fillC();
+  $("cNodeHint").hidden = true;
   $("cErrWrap").hidden = true;
   $("cGo").disabled = false; $("cGo").textContent = "Create";
   for (const id of ["cImage", "cPorts", "cVols", "cEnvLines"]) $(id).value = "";
@@ -822,7 +855,7 @@ async function cSubmit(){
       body: JSON.stringify({action: editing ? "save" : "create",
                             name: editing || $("cName").value,
                             node: editing ? "" : ($("cNodeField").hidden
-                              ? "" : $("cNode").value),
+                              ? (dockerNode || "") : $("cNode").value),
                             owner: editing ? "" : $("cUnder").value,
                             compose: $("cYml").value, env: $("cEnv").value})});
     const j = await r.json();
@@ -996,6 +1029,8 @@ function dmRowsHtml(ins, job, blind){
           `<span class="dmsvc ${c.state === "running" ? "ok" : finished(c) ? "" : "dim"}" title="${esc(c.image || "")}">${
             esc(c.service || c.name)}: ${finished(c) ? `finished (${esc(c.status)})` : esc(c.status || c.state)}</span>`).join("<br>")}</div>` : ""}
         ${dmRouteLine(d)}
+        ${d.astray ? `<div class="sub bad">on this node, but ${esc(d.owner || d.project)} works on ${
+          esc(d.astray)}: its sessions cannot reach it here. Remove it and Send to Docker again to build it there.</div>` : ""}
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${
           dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
@@ -1311,7 +1346,8 @@ function renderDockerInto(i){
   // not talking to, in an address, which reads as proof.
   const src = dockerList?.src || state?.docker || {};
   const srcLine = !note && src.kind
-    ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
+    ? `<div class="dmsrc">${src.agent ? `on ${esc(src.kind)}, through its agent`
+                                       : `on ${esc(src.kind)} at <code>${esc(src.where)}</code>`}${
         // A mapped path this container does not have. Not a fault: it can be a
         // share the daemon mounts and BuilderBot has no business reading. It is
         // said because nothing else here will ever act on it, and a line of

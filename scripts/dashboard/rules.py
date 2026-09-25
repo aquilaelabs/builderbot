@@ -72,7 +72,6 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
 import pending  # noqa: E402
-import prefs  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 write_json = None
@@ -170,15 +169,6 @@ BUILTIN = [
     # Where a problem with BuilderBot goes when it is met on another project
     # (the operator, 24 Sep): its maintainers read reports in the
     # diagnostics, and a project's tracker is for that project.
-    # In front of a project's sessions only while its settings leave Claude
-    # may: Report BuilderBot bugs on (effective(), below).
-    {"name": "report-builderbot",
-     "text": "A problem with BuilderBot itself (a `bb` command, the dashboard,"
-             " a node, this briefing) goes to `bb report \"what happened\""
-             " [--area A] [--repro \"...\"]`, which BuilderBot's maintainers"
-             " read, not to this project's tracker, which is for this project's"
-             " own bugs. `bb report` alone lists what became of this project's"
-             " reports."},
     {"name": "side-quests",
      "text": "A bug met mid-task is fixed only when your own change caused it"
              " or it blocks the work: the smallest fix, in its own commit, said"
@@ -189,18 +179,11 @@ BUILTIN = [
              " name>) is theirs: merge, rebase or delete it only when asked"
              " to, after saying whose it is."},
     {"name": "stay-responsive",
-     "text": "A test run never holds a reply. Start it in the background;"
-             " answer questions while it runs; a change asked for meanwhile is"
-             " queued until it ends, and said so."},
-    {"name": "ask-before-unshelving",
-     "text": "A shelved roadmap item is the operator's decision, whatever a"
-             " request sounds like: do not work on it, read for it or draft for"
-             " it. `bb roadmap unshelve N WHY` asks for it back; wait for the"
-             " approval."},
-    {"name": "ship-to-dist",
-     "text": "Shippable build output goes in this project's dist/, named with"
-             " `bb version --file` and gitignored; nothing else goes there. The"
-             " Artifacts tab lists dist/."},
+     "text": "A test run never holds a reply. Start it in the background and"
+             " answer questions while it runs. What a change asked for"
+             " meanwhile does is the project's setting (Claude settings, During"
+             " a test run), said in the briefing's While tests run section:"
+             " follow that."},
 ]
 
 # What the standing block costs before it is worth saying out loud on the tab.
@@ -271,11 +254,6 @@ def effective(project):
     if project == GLOBAL:
         return globals_now()
     on = [r for r in globals_now() if not r.get("disabled")]
-    # The one shipped rule that follows a project setting: where the project
-    # has reporting BuilderBot bugs off (BuilderBot's own, whose tracker it
-    # is), its sessions are not sent to a verb that would refuse them.
-    if prefs.get(project).get("report") == "deny":
-        on = [r for r in on if r["name"] != "report-builderbot"]
     return on + rules(project)
 
 

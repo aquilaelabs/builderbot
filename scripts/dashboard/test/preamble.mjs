@@ -43,15 +43,53 @@ put('roadmap.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 let p = await pre();
 ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules'
-   && /The toolchain is the store, not the machine/.test(p.text)
+   && /this node carries git, tmux, jq, python3 and curl by itself/.test(p.text)
    && /\(global\)/.test(p.text) && p.capped === false,
    `a project with nothing set still gets the briefing and the shipped global rules (${
      (p.parts || []).map(x => x.name).join(',') || 'none'}, ${p.bytes} bytes)`);
 // The line between the two: the briefing states what is true of the machine,
 // a shipped rule is an obligation, and nothing is said in both. An obligation
 // that was in the briefing too could not be turned off by its switch.
-ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length === 2,
-   'an obligation reaches a session once, as a rule, and not again from the briefing');
+// What a change asked for during a test run does is the project's setting,
+// said in the briefing in the words the session acts on (25 Sep): waits by
+// default, and the other way once the settings say so.
+ok(/a new ask never cuts in\. Finish the ask in hand, run the tests, fix what failed and run them again until they pass/.test(p.text)
+   && !/end that run by the pid/.test(p.text),
+   'the briefing says a new ask waits for the ask in hand to be finished and tested, the default');
+const setChange = mode => page.evaluate(async m => (await (await fetch('/api/prefs', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', test_change: m }) })).json()), mode);
+await setChange('restart');
+ok(/may cut into the final test run only.*end that run by the pid in its lock.*Work still in progress on the ask in hand.*finishes first/s.test((await pre()).text),
+   '...and, set the other way, that only the final run is interrupted and work in hand finishes first');
+// The asker's own reply style rides the block (a per-account setting on
+// the project, 25 Sep), and the project's briefing style drops the filler
+// words of every part but the live line: fewer bytes, code and names kept.
+const setPref = body => page.evaluate(async b => (await (await fetch('/api/prefs', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', ...b }) })).json()), body);
+ok(!/Replies to the person/.test(p.text), 'nothing is said about replies until the person sets it');
+await setPref({ reply: 'minimal' });
+const withReply = await pre();
+ok(/## Replies\n\nReplies to the person: minimal/.test(withReply.text) && (withReply.parts || []).some(x => x.name === 'replies'),
+   'set to minimal, the block says so in its own part');
+await setPref({ reply: '', asks: 'rarely' });
+const asked = await pre();
+ok(/## Replies\n\nQuestions to the person: rarely/.test(asked.text) && !/Replies to the person/.test(asked.text),
+   'how often to ask is the person\'s own pick too, said in the same part, on its own when replies are default');
+await setPref({ asks: 'more' });
+const more = await pre();
+ok(/Questions to the person: more/.test(more.text) && /before a judgment call/.test(more.text),
+   '...and more, for a person who wants the judgment calls put to them (the operator, 25 Sep)');
+await setPref({ asks: '' });
+const full = await pre();
+await setPref({ brief: 'terse' });
+const tersed = await pre();
+ok(tersed.bytes < full.bytes * 0.85 && /Ask map before grepping/.test(tersed.text) && /bb map who-calls NAME/.test(tersed.text)
+   && /never holds reply/.test(tersed.text),
+   `terse drops the filler words and keeps the commands, the names and the words that turn a sentence (${tersed.bytes} of ${full.bytes} bytes)`);
+await setPref({ brief: 'full' });
+await setChange('wait');
+ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length <= 2,
+   'an obligation reaches a session once, as a rule, and not again from the briefing; the shelf is said by the roadmap\'s own note');
 
 // ---- the order, which is the operator's rules first -------------------------
 // How they want this worked on comes before what there is to work on. Asserted

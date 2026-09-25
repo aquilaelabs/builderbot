@@ -385,7 +385,7 @@ bb report "..." [--area A] [--repro "..."]
                    a problem with BuilderBot itself, from a session on any
                    project: it waits on the controller for BuilderBot's own
                    sessions rather than going into the project's tracker (the
-                   shipped rule `report-builderbot`), redacted like the
+                   briefing's notebook section says so), redacted like the
                    diagnostics. `bb report` alone lists the project's reports
                    and what became of each. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
@@ -404,6 +404,7 @@ bb doctor          check everything that usually goes wrong
 bb dashboard test  browser-test the dashboard from this checkout, isolated
 bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reverts)
 bb dashboard status  which copy of the dashboard is serving
+bb dashboard trace [SECONDS]  what the dashboard was asked over the last SECONDS, by endpoint and who asked, with how long each took
 bb drift           what this checkout changed that the container is not serving
 bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
                    draws ID|.class, suites FILE...; a session asks it before grepping

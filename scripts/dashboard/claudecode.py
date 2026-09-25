@@ -98,6 +98,24 @@ def behind(n):
     return bool(i and cur and _tup(i) < _tup(cur))
 
 
+def update_done(job, state):
+    """The census catches up with an update the moment it finishes (B249).
+    The version the controller compares rides the agent's census, which
+    rides its hello every ten minutes, so the bell and the row said an
+    update was out for up to ten minutes after the job installed it. The
+    job's last line names what it measured, and that is what the row says
+    until the next hello replaces the whole record. The agent says hello
+    right after as well; this covers the seconds between, and a hello that
+    did not land."""
+    if state != "succeeded" or nodes is None or not job:
+        return None
+    full = nodes.job(job["id"], with_log=True) or {}
+    m = re.search(r"Claude Code (\S+) is what a session here runs now", full.get("log") or "")
+    if m:
+        nodes.reported_set(job["node"], "session", "claude", m.group(1) + " (Claude Code)")
+    return None
+
+
 def updating(node_id):
     """True while an update job is queued or running on the node: the fact
     the holds and the section read, taken from the job list rather than a

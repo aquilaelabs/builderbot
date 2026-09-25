@@ -21,8 +21,12 @@ function nbRulesView({$, nb, project}){
     // The answer's own revision, not the page's token as of now (B201); an
     // answer that failed carries none, and the token stands in.
     nb.rulesRev = nb.ruleData.rev ?? revs[`rules:${project}`] ?? nb.rulesRev;
-    nb.rulePending = null;
-    nb.ruleClash = null;
+    // A reload that lands on staged work keeps the work: the poll never
+    // asks while the panel is dirty (HALVES), but a load already on its
+    // way when Add or Edit was pressed used to land afterwards and drop the
+    // row under the finger that made it (B255). What is on disk is read
+    // fresh either way; Save's own conflict check is what judges the base.
+    if (!ruleDirty()) nb.ruleClash = null;
     drawRules();
     // Already behind (see nb-tests.js): read once more now, unless somebody
     // is typing, which is the case the poll's own guard keeps.

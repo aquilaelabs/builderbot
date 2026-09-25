@@ -222,8 +222,8 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   const census = async (unit) => {
     const f = `${DIR}/sandboxdata/census-extra.json`;
     if (unit === null) rmSync(f, { force: true });
-    else writeFileSync(f, JSON.stringify({ services: { 'actions-runner': {
-      installed: true, active: true, unit } } }));
+    else writeFileSync(f, JSON.stringify({ services: { runners: [{
+      installed: true, active: true, unit }] } }));
     for (let i = 0; i < 120; i++){
       const n = ((await api('/api/v1/nodes')).body.nodes || []).find(x => x.id === sandbox.id);
       if (((n?.reported?.services?.runners || [])[0]?.unit || '') === (unit || '')) return true;

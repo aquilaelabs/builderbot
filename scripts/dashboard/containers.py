@@ -126,6 +126,14 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
         return {"error": "a compose file is needed"}
     if len(compose_text) > COMPOSE_MAX:
         return {"error": f"that compose file is over {COMPOSE_MAX // 1000}kB"}
+    # On its project's node and nowhere else (devapp.on_project_node); one
+    # for no project lives on the node it was made on, which the dialog
+    # names and a request that did not gets from the block it runs in.
+    if for_project:
+        why, node = devapp.on_project_node(for_project, node)
+        if why:
+            return {"error": why}
+    node = node or devapp._node_here()
     with devapp._lock:
         if slug in devapp._load():
             return {"error": f"{slug} already exists; pick another name"}
@@ -253,6 +261,12 @@ def set_container_owner(name, owner):
                          "project is set on that row"}
     owner = str(owner or "").strip()[:100]
     node = devapp._node_here()
+    if owner:
+        # Only to a project that works on this node: given to one elsewhere
+        # it would be out of reach of that project's sessions (R79).
+        why, own = devapp.on_project_node(owner, node)
+        if why:
+            return {"error": why}
     with devapp._lock:
         d = devapp._owners()
         held = d.setdefault(node, {})

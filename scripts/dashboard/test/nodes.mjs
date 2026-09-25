@@ -114,6 +114,19 @@ m.job_log(older, j.get('job'), ['hello'])
 r2b = m.rev()
 m.job_result(older, j.get('job'), 'succeeded', 0)
 r3 = m.rev()
+# A job handed to a poll whose answer was lost (assigned, and the agent never
+# said a word) goes back to the queue once ASSIGN_LOST_S has passed, rather
+# than holding a lane until the agent's next hello (B245).
+j2 = m.job_add('user:test', {'node': older}, 'exec', {'argv': ['true']})
+took2 = m.job_next(older, 0)
+none = m.job_next(older, 0)
+m._exec("UPDATE jobs SET started = started - 600 WHERE id = ?", (j2.get('job'),))
+again = m.job_next(older, 0)
+out['requeue'] = {'took': bool(took2 and took2.get('id') == j2.get('job')),
+                  'held': not (none and none.get('id')),
+                  'again': bool(again and again.get('id') == j2.get('job')),
+                  'why': m._no_answer('j_nothing', older, 25)}
+m.job_result(older, j2.get('job'), 'succeeded', 0)
 out['revs'] = {'queued': r1 > r0, 'taken': r2 > r1, 'chunk': r2b == r2, 'ended': r3 > r2,
                'job': bool(took and took.get('id') == j.get('job')), 'err': j.get('error')}
 print(json.dumps(out))
@@ -122,6 +135,10 @@ print(json.dumps(out))
      `the default node is one whose census says docker runs there, not the newest with an address (${got.pick})`);
   ok(got.both === got.newer, '...the newest of those when more than one does');
   ok(got.neither === got.newer, '...and the newest with an address when none says so, as before');
+  ok(got.requeue.took && got.requeue.held && got.requeue.again
+     && /was handed exec .* ago and has not started it/.test(got.requeue.why || '') && /last dialed in/.test(got.requeue.why || ''),
+     `a job handed to a poll that never started it goes back to the queue, and a wait behind it says so (${
+        JSON.stringify(got.requeue)})`);
   ok(got.revs.job && got.revs.queued && got.revs.taken && got.revs.ended && got.revs.chunk,
      `a job being queued, taken and finished moves the nodes rev, and a log chunk does not, so an open Nodes tab follows a job without a reload (${JSON.stringify(got.revs)})`);
 }
@@ -259,6 +276,51 @@ print(json.dumps(out))
   });
   ok(added && added.kind === 'agent',
      'a machine is enrolled with a token, and arrives as an agent node');
+  // A project on two nodes (R82): the row carries a chooser row per node,
+  // each saying whether a session can start there, and a terminal asked
+  // for with :n:NODE is judged on that node; a node outside the set falls
+  // to the primary. buildbox reports no session half, so it refuses.
+  {
+    const base = URL.replace(/\/$/, '');
+    const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+                'Content-Type': 'application/json' };
+    const post = async (path, body) => (await fetch(base + path,
+      { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+    const get = async path => (await fetch(base + path, { headers: H })).json();
+    const sb = (await get('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
+    await post('/api/prefs', { project: 'beta', node: sb.id, nodes: [sb.id, added.id] });
+    const rows = (await get('/api/status')).projects.find(p => p.name === 'beta').session_nodes || [];
+    ok(rows.length === 2 && rows[0].id === sb.id && rows[1].id === added.id && rows[1].where === 'refused'
+       && /buildbox/.test(rows[1].why),
+       `a project on two nodes carries a row per node for the chooser, each judged (${JSON.stringify(rows.map(r => [r.name, r.where]))})`);
+    const t = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:beta:n:' + added.id), { headers: H });
+    const body = await t.text();
+    ok(t.status === 503 && /buildbox/.test(body), `...and a terminal asked for on the second node is judged there (${t.status})`);
+    const t2 = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:beta:n:n_notinset'), { headers: H });
+    ok(!/buildbox/.test(await t2.text()), '...while a node outside the set falls to the primary');
+    // A build from the dashboard falls over to a node of the set that is
+    // up (R82 step 6): buildbox's enrolment counted as a heartbeat, so its
+    // last one is aged past the live window first, and put back after, since
+    // the docker tests below want it dialing in; then with it as the primary
+    // the job runs on the sandbox and its spec says which it stood in for.
+    const agentSeen = when => execFileSync('python3', ['-c', `
+import importlib.util, json, sys, time
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+ag = m.node("${added.id}")["agent"]; ag["last_seen"] = ${when} or int(time.time())
+m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}"))`],
+      { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+    agentSeen(1);
+    await post('/api/prefs', { project: 'beta', node: added.id, nodes: [added.id, sb.id] });
+    const ran = await post('/api/v1/jobs', { action: 'run', project: 'beta', argv: ['true'] });
+    const rj = ran.job ? await get('/api/v1/jobs?id=' + ran.job) : {};
+    ok(ran.node === sb.id && rj.spec?.fell_over === added.id,
+       `a build whose primary is not up runs on the next node of the set that is, and says which it stood in for (${ran.node || ran.error}, ${rj.spec?.fell_over})`);
+    if (ran.job) await post('/api/v1/jobs', { action: 'cancel', id: ran.job });
+    await post('/api/prefs', { project: 'beta', node: '', nodes: [] });
+    agentSeen(0);
+  }
   ok(['docker-host', 'package-build', 'deploy-target'].every(c => added.capabilities.includes(c)),
      '...and it does everything, without anybody being asked which');
   // Nothing keeps the nodes and the controller on one git: it is installed
@@ -671,10 +733,10 @@ print(json.dumps(out))
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ census: { ...CENSUS, services: svc },
                            version: shipped.version, digest: shipped.digest }) });
-  // The single key an agent from before the list sends, with no slot: it
-  // joins the record's one runner rather than making a second row.
-  await runnerCensus({ 'actions-runner': { installed: true, active: false, busy: false,
-                                           name: '', labels: ['builderbot', 'shed'] } });
+  // A runner with no slot of its own joins the record's one runner rather
+  // than making a second row.
+  await runnerCensus({ runners: [{ installed: true, active: false, busy: false,
+                                   name: '', labels: ['builderbot', 'shed'] }] });
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
   await page.waitForFunction(sel => /NOT listening/.test(
     document.querySelector(sel + ' .ndrunstate')?.textContent || ''), RUN, { timeout: 10000 });
@@ -1982,6 +2044,40 @@ ok(page.errors.length === 0,
   };
   const plain = await mint('laptop', { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true });
   const shed = await mint('shed2', { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true, sandbox: true });
+  // Reboot and Shut down from the row (the operator, 25 Sep): a system job
+  // the agent runs as root, refused where nothing from here would reach
+  // the machine. The controller's own machine is rebooted from its host.
+  {
+    const lo = await napi('/api/v1/nodes', { action: 'reboot', id: 'local' });
+    ok(/controller's own machine/.test(lo.error || ''), `the controller's own machine is not rebooted from here (${lo.error})`);
+    const rb = await napi('/api/v1/nodes', { action: 'reboot', id: plain.id });
+    ok(rb.ok && /^j_/.test(rb.job || ''), `a live agent node queues the reboot as a system job (${rb.error || rb.job})`);
+    const rj = await napi(`/api/v1/jobs?id=${rb.job}`);
+    ok(rj.spec?.apply === 'reboot' && rj.node === plain.id, 'the job asks the agent for the reboot');
+    const twice = await napi('/api/v1/nodes', { action: 'poweroff', id: plain.id });
+    ok(/one at a time/.test(twice.error || ''), '...and a shutdown pressed meanwhile waits for it');
+    // The tab shows one node at a time, the picker's; laptop is picked
+    // for the row, and the controller's own after it.
+    await page.evaluate(() => openNodesTab());
+    await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(id => [...document.querySelectorAll('.nodestab #ndPick option')].some(o => o.value === id), plain.id, { timeout: 15000 });
+    await page.selectOption('.nodestab #ndPick', plain.id);
+    await page.waitForSelector(`.ndrow[data-node="${plain.id}"]`, { timeout: 20000 });
+    const drawn = await page.evaluate(id => {
+      const box = document.querySelector(`.ndrow[data-node="${CSS.escape(id)}"]`);
+      return box ? [!!box.querySelector('[data-nd="reboot"]'), !!box.querySelector('[data-nd="poweroff"]'),
+                    box.querySelector('[data-nd="reboot"]')?.textContent] : null;
+    }, plain.id);
+    ok(drawn && drawn[0] && drawn[1] && /Rebooting/.test(drawn[2] || ''),
+       `the row carries Reboot and Shut down, and says the reboot is in flight (${JSON.stringify(drawn)})`);
+    await napi('/api/v1/jobs', { action: 'cancel', id: rb.job });
+    // The controller's own row, drawn as the tab draws it: neither verb.
+    const local = await page.evaluate(() => /data-nd="(reboot|poweroff)"/.test(
+      nodeAdvancedSection({ id: 'local', kind: 'local', name: 'controller', state: 'online', config: {}, reported: {} },
+                          false, () => false)));
+    ok(local === false, `...and the controller's own row has neither (${local})`);
+  }
   const no = await napi('/api/v1/nodes', { action: 'uninstall', id: plain.id });
   ok(/only a node provisioned as a BuilderBot sandbox/.test(no.error || '') && /sudo bb-sandbox uninstall/.test(no.error || ''),
      `a node that is not a sandbox is refused, and told the command to run on the machine (${no.error})`);
@@ -2086,9 +2182,33 @@ print(m.mint_session('alpha'))
      '...and the bell row is gone while the update is queued');
   const again = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });
   ok(/already queued/.test(again.error || ''), '...and a second press is refused while one is queued');
-  await napi('/api/v1/jobs', { action: 'cancel', id: up.job });
+  // The fake agent takes the job and finishes it the way the real one does,
+  // naming what it installed on its last line. The row and the bell read
+  // the new version from that line at once: the census only rides hello,
+  // every ten minutes, and the bell kept saying an update was out for that
+  // long after it had landed (B249).
+  {
+    const AH = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+    const work = await fetch(base + '/api/v1/agent/work', { method: 'POST', headers: AH,
+      body: JSON.stringify({ running: [], wait: 0 }) });
+    const got = work.status === 200 ? await work.json() : {};
+    ok((got.job?.id || got.id) === up.job, `the agent is handed the update job (${work.status})`);
+    await napi('/api/v1/agent/log', { job: up.job, chunks: [
+      { seq: 1, chunk: 'installing Claude Code for bb (1.2.0 is out)\n' },
+      { seq: 2, chunk: 'Claude Code 1.2.0 is what a session here runs now\n' }] }, AH);
+    await napi('/api/v1/agent/result', { job: up.job, state: 'succeeded', exit: 0 }, AH);
+  }
   await sleep(300);
   ok(!(await napi('/api/status')).projects.find(p => p.name === 'beta')?.held, 'the hold lifts when the job ends');
+  {
+    const cc = (await napi('/api/status')).claude_code?.nodes?.[en.id] || {};
+    ok(cc.installed === '1.2.0' && cc.behind === false,
+       `...and the row says the version the job installed before the next hello (${cc.installed}, behind ${cc.behind})`);
+    ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
+       '...so the bell does not keep saying an update is out');
+  }
+  // Behind again, by the node's own word, for the switch below.
+  await hello();
   // A refusal is said on the section, not only in a toast (23 Sep): the
   // press that queued nothing read as "it said updating and nothing happened".
   await page.evaluate(id => { nodesClaudeSaid[id] = 'the press was refused for a reason worth reading'; loadNodes(); }, en.id);
@@ -2099,9 +2219,11 @@ print(m.mint_session('alpha'))
   // is pressed. On, a session asked for on a node that is behind updates it
   // first: the terminal is refused with the reason, the job is queued, and
   // no open conversation is ended for it.
+  // Set on the Settings tab, behind its Apply, and nowhere on this row: a
+  // checkbox here wrote the setting on the click (B257, rule apply-not-onchange).
   ok((await napi('/api/status')).settings?.settings?.claude_autoupdate?.value === false
-     && await page.$eval(`${ROWC} [data-nd-auto]`, b => !b.checked),
-     'Update before a session starts is off by default, on the Settings tab and on the section');
+     && !await page.$(`${ROWC} [data-nd-auto]`),
+     'Update before a session starts is off by default, set on the Settings tab and not on the section');
   await napi('/api/settings', { set: { claude_autoupdate: true } });
   await fetch(base + '/api/v1/agent/work', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },

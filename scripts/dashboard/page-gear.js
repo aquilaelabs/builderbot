@@ -150,7 +150,7 @@ function logSection(){
                value="${typeof sdVal === "function" ? sdVal("logDays", L.days) : L.days}" inputmode="numeric">
       </div>
       <div class="actbar">
-        <span class="state">takes now, and anything already past it is cropped</span>
+        <span class="state">applies at once, and anything already past it is cropped</span>
         <button type="button" id="logApply"
           title="save it, and crop anything already past it">Apply</button>
       </div>

@@ -418,7 +418,7 @@ function nbGitView({$, nb, project}){
   }
 
   async function loadGitCommit(sha){
-    const box = $("gitDetail");
+    let box = $("gitDetail");
     if (!box) return;
     box.hidden = false;
     box.innerHTML = `<div class="loading">loading…</div>`;
@@ -426,6 +426,12 @@ function nbGitView({$, nb, project}){
       const r = await fetch("/api/git?project=" + encodeURIComponent(project) + "&what=show&sha=" + encodeURIComponent(sha));
       const c = await r.json();
       if (sha !== gitPick) return;               // moved on meanwhile
+      // The box on the page NOW: a redraw while the answer was on its way
+      // (a commit landing, the poll) replaced it, and writing into the one
+      // resolved above put the detail into a detached element (B256).
+      box = $("gitDetail");
+      if (!box) return;
+      box.hidden = false;
       if (c.error){ box.innerHTML = `<div class="hint bad">${esc(c.error)}</div>`; return; }
       const when = c.when ? fmtTime(c.when * 1000) : "";
       box.innerHTML = `<div class="gcommit">

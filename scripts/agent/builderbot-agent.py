@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.101"
+AGENT_VERSION = "0.7.105"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1166,6 +1166,8 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 	set ctl {{ type ipv4_addr . inet_service; }}
 	set dns {{ type ipv4_addr; }}
 	set own {{ type ipv4_addr . ipv4_addr; }}
+	set peers {{ type ipv4_addr . ipv4_addr . inet_service; }}
+	set hosts {{ type ipv4_addr . ipv4_addr; }}
 	set local {{ type ipv4_addr; flags interval; elements = {{ {", ".join(SESSNET_LOCAL)} }}; }}
 	chain forward {{
 		type filter hook forward priority -10; policy accept;
@@ -1182,6 +1184,9 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 		ip daddr @dns udp dport 53 goto pass
 		ip daddr @dns tcp dport 53 goto pass
 		ip saddr . ip daddr @own goto pass
+		ip saddr . ip daddr . tcp dport @peers goto pass
+		ip saddr . ip daddr . udp dport @peers goto pass
+		ip saddr . ip daddr @hosts goto pass
 		ip daddr @local reject with icmpx type admin-prohibited
 		goto pass
 	}}
@@ -1208,18 +1213,26 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 """
 
 
-def sessnet_fill(ctl, dns, own):
+def sessnet_fill(ctl, dns, own, peers=(), hosts=()):
     """The sets, replaced in one transaction: the controller's address and
-    port, the resolvers, and (session address, container address) for every
-    container each session's project owns here."""
+    port, the resolvers, (session address, container address) for every
+    container each session's project owns here, and (R82) what its project
+    has on its other nodes: (session, node address, published port) for a
+    container there, (session, node address) for a Mac or Windows node,
+    which has no containers to narrow to and is reached whole."""
     t = f"inet {SESSNET_TABLE}"
-    out = [f"flush set {t} ctl", f"flush set {t} dns", f"flush set {t} own"]
+    out = [f"flush set {t} ctl", f"flush set {t} dns", f"flush set {t} own",
+           f"flush set {t} peers", f"flush set {t} hosts"]
     if ctl:
         out.append(f"add element {t} ctl {{ {', '.join(f'{a} . {p}' for a, p in ctl)} }}")
     if dns:
         out.append(f"add element {t} dns {{ {', '.join(dns)} }}")
     if own:
         out.append(f"add element {t} own {{ {', '.join(f'{a} . {b}' for a, b in own)} }}")
+    if peers:
+        out.append(f"add element {t} peers {{ {', '.join(f'{a} . {b} . {p}' for a, b, p in peers)} }}")
+    if hosts:
+        out.append(f"add element {t} hosts {{ {', '.join(f'{a} . {b}' for a, b in hosts)} }}")
     return "\n".join(out) + "\n"
 
 
@@ -1289,6 +1302,36 @@ def sessnet_pairs(sessions, own, containers):
         addrs[project] = {ip for c in containers if c["compose"] in comp or c["name"] in names
                           for ip in c["ips"]}
     return sorted({(s["addr"], ip) for s in sessions for ip in addrs.get(s["project"], ())})
+
+
+def sessnet_peers(sessions, own):
+    """(session address, node address, port) for every session and every
+    published port its project's containers hold on the project's other
+    nodes (R82): the controller names them per project as `peers`."""
+    out = set()
+    for s in sessions:
+        o = (own or {}).get(s["project"])
+        for pair in (o.get("peers") or []) if isinstance(o, dict) else []:
+            try:
+                addr, port = str(ipaddress.IPv4Address(str(pair[0]))), int(pair[1])
+            except (ValueError, TypeError, IndexError):
+                continue
+            if 0 < port < 65536:
+                out.add((s["addr"], addr, port))
+    return sorted(out)
+
+
+def sessnet_hosts(sessions, own):
+    """(session address, node address) for every session and every node of
+    its project that is reached whole (R82): a Mac or Windows node, or a
+    guest, which has no containers to narrow to."""
+    out = set()
+    for s in sessions:
+        o = (own or {}).get(s["project"])
+        for a in (o.get("hosts") or []) if isinstance(o, dict) else []:
+            with contextlib.suppress(ValueError, TypeError):
+                out.add((s["addr"], str(ipaddress.IPv4Address(str(a)))))
+    return sorted(out)
 
 
 def sessnet_ctl(url):
@@ -1835,10 +1878,8 @@ def services_now():
     listener is up. Read from the runner's own files, so a runner installed
     by hand reports the same way one installed from the tab does."""
     out = {}
-    # Every runner on this node, one per git host, and the first of them
-    # under the old single key too, for a controller from before the list.
+    # Every runner on this node, one per git host.
     out["runners"] = [_runner_state(d, rec) for d, rec in runner_dirs()]
-    out["actions-runner"] = out["runners"][0] if out["runners"] else {"installed": False}
     # Tailscale: whether it is here, this node's MagicDNS name (the funnel
     # URL is https://<that>), and which https ports are funnelled to which
     # local ports, read from tailscale's own status, so a funnel set by
@@ -3202,7 +3243,8 @@ class SessionNet:
         if now - self.ctl_at > 60:
             self.ctl_at = now
             self.ctl = sessnet_ctl(self.agent.state.get("controller") or "") or self.ctl
-        fill = sessnet_fill(self.ctl, ns, sessnet_pairs(sessions, own, self.containers))
+        fill = sessnet_fill(self.ctl, ns, sessnet_pairs(sessions, own, self.containers),
+                            sessnet_peers(sessions, own), sessnet_hosts(sessions, own))
         if fill != self.filled:
             p = subprocess.run([NFT_BIN, "-f", "-"], input=fill, capture_output=True, text=True,
                                timeout=30, check=False)
@@ -3614,6 +3656,11 @@ class Agent:
             # so the dashboard's Sessions card lists them beside its own.
             if self.ttyd:
                 sample["sessions"] = self.sessions_now()
+            # ...and the ports its containers publish, for other nodes'
+            # sessions of the same project (R82).
+            pub = self.published_now()
+            if pub is not None:
+                sample["published"] = pub
             # ...and what each account here is signed in to Claude as, on its
             # own slower clock, so the controller's record is true without a
             # session having to run (B104). Absent from most heartbeats,
@@ -4420,7 +4467,37 @@ class Agent:
         # are restarted onto it, tmux sessions untouched (there are none).
         self.session_renew()
         job.say(f"Claude Code {ver} is what a session here runs now\n")
+        # ...and the controller hears it now: the version it compares rides
+        # the census, which rides hello, so without this the bell kept
+        # saying an update was out for up to ten minutes after it landed (B249).
+        self.hello_at = 0
         return "succeeded", 0
+
+    def published_now(self):
+        """The published host ports of every container here, by compose
+        project, for the controller to hand other nodes' sessions of the
+        same project (R82). One docker ps a minute, cached between; None
+        where there is no docker, so the heartbeat says nothing about it."""
+        now = time.time()
+        if now - getattr(self, "published_at", 0) < 60:
+            return getattr(self, "published", None)
+        self.published_at = now
+        if not os.access(DOCKER_BIN, os.X_OK):
+            self.published = None
+            return None
+        out = _run([DOCKER_BIN, "ps", "--format", '{{.Label "com.docker.compose.project"}}\t{{.Names}}\t{{.Ports}}'],
+                   timeout=15)
+        pub = {}
+        for line in out.splitlines():
+            bits = line.split("\t")
+            if len(bits) < 3:
+                continue
+            key = (bits[0] or bits[1]).strip()[:100]
+            ports = {int(p) for p in re.findall(r"(?:\d+\.){3}\d+:(\d+)->", bits[2])}
+            if key and ports:
+                pub.setdefault(key, set()).update(ports)
+        self.published = {k: sorted(v) for k, v in pub.items()}
+        return self.published
 
     def session_renew(self):
         """Ask the loop to restart the ttyds onto the current bundle with a
@@ -4935,8 +5012,34 @@ class Agent:
             return self._apply_funnel(job, cfg)
         if what == "uninstall":
             return self._apply_uninstall(job)
+        if what in ("reboot", "poweroff"):
+            return self._apply_power(job, what)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def _apply_power(self, job, what):
+        """Reboot the machine or power it off, a few seconds out, so this
+        job's result reaches the controller before the agent goes with it.
+        Root's, like a mount: an agent running as an account refuses and
+        names the command for the machine's own console."""
+        verb = "reboot" if what == "reboot" else "power off"
+        if os.geteuid() != 0:
+            job.say(f"refused: a {verb} is root's, and this agent does not run as root: on the "
+                    f"machine, sudo {'reboot' if what == 'reboot' else 'poweroff'}\n")
+            return "failed", 77
+        cmd = ([shutil.which("systemctl"), what] if shutil.which("systemctl")
+               else ["shutdown", "-r" if what == "reboot" else "-h", "now"])
+        try:
+            subprocess.Popen(["sh", "-c", 'sleep 3; exec "$@"', "sh", *cmd],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError as e:
+            job.say(f"could not start the {verb}: {e}\n")
+            return "failed", 69
+        job.say(f"{verb} in 3 seconds; the row reads away until the agent dials in again"
+                + ("" if what == "reboot" else ", which after a power off takes somebody switching the machine on")
+                + "\n")
+        return "succeeded", 0
 
     def refresh_sandbox_tool(self, job):
         """The machine's bb-sandbox brought up to the bundle's copy before a

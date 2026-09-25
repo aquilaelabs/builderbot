@@ -114,8 +114,8 @@ ok(await page.$eval('#setdbgBody [data-dbgset="claude_shared_login"]', e => e.ty
 ok(await page.$eval('#setdbgmodal .box .foot', f => !!f.querySelector('.primary')
      && f.querySelectorAll('button').length === 2),
    '...and the dialog saves or cancels on its own foot, rather than riding the group\'s Apply');
-ok(await page.$eval('.settingstab [data-group="Debugging"] .actbar .state', e => /now/.test(e.textContent)),
-   'the section says a change takes now, since nothing here waits for a boot');
+ok(await page.$eval('.settingstab [data-group="Debugging"] .actbar .state', e => /applies at once/.test(e.textContent)),
+   'the section says a change applies at once, since nothing here waits for a boot');
 
 // ---- saving ----------------------------------------------------------------
 await page.check('#setdbgBody [data-dbgset="claude_shared_login"]');

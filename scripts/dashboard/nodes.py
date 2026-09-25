@@ -399,12 +399,47 @@ def node_paths_set(principal, node_id, text):
     return {"ok": True, "paths": paths}
 
 
+# The bindings the Docker tab's first pick is derived from: {project: node
+# id}, set by the server from the projects' settings.
+project_nodes = None
+
+
+def first_up(nids):
+    """(node id, fell_over_from): the first of a project's node set that is
+    online and live, the primary first (R82 step 6). The primary when it is
+    up, or when none is, so a refusal still names the node the project is
+    set to; else the first that is, with the primary it stood in for."""
+    nids = [n for n in (nids or []) if n]
+    if not nids:
+        return "", ""
+    for nid in nids:
+        n = node(nid)
+        if n and n.get("state") == "online" and (n.get("live") or n.get("kind") != "agent"):
+            return nid, ("" if nid == nids[0] else nids[0])
+    return nids[0], ""
+
+
 def node_for():
-    """The default node for work nobody bound to one: the newest enrolled
-    node that runs docker, else the newest enrolled, else local. There is
-    nothing else to narrow by: a node does everything, what a project can do
-    on its node is what is installed there, and the project names the node."""
+    """The node the Docker tab opens on when nobody has picked one, and
+    nothing more: not a default that work falls to. A project's containers
+    go to the project's node, and a project with no node has nowhere to
+    send, since there is no primary docker manager (the operator, 25 Sep,
+    after every new project landed on the newest enrolled node).
+
+    Derived from the projects: the node most of them are bound to, so the
+    tab opens where the work is. With nothing bound anywhere, the newest
+    enrolled node that runs docker, else the newest enrolled, else local:
+    the first pick on a box with no projects yet."""
     try:
+        bound = {}
+        for nid in (project_nodes() if project_nodes else {}).values():
+            if nid:
+                bound[nid] = bound.get(nid, 0) + 1
+        if bound:
+            have = {n["id"]: n for n in docker_nodes() if n["kind"] != "local"}
+            live = [nid for nid in bound if nid in have]
+            if live:
+                return sorted(live, key=lambda nid: (-bound[nid], have[nid]["created"]))[0]
         # The newest node whose census says docker runs there, else the newest
         # the manager has somewhere to send to (B113). An address is not a
         # daemon: a Mac enrolled as a guest, with ssh and no docker, would
@@ -909,8 +944,8 @@ def _census(c):
     # the address it is on. Facts about the machine, drawn against the
     # operator's desired config on the row; never treated as the config.
     out["sandbox"] = bool(c.get("sandbox"))
-    # Whether the agent may install system packages there (from 0.5.86):
-    # the stamp and root. Absent from an older agent, which reads as no.
+    # Whether the agent may install system packages there: the stamp and
+    # root.
     out["administers"] = bool(c.get("administers"))
     # Whether a session there sees only its own project (R35), in the
     # helper's own answer, and why not. An agent from before it reports
@@ -958,21 +993,16 @@ def _census(c):
             "url": url,
             "slot": re.sub(r"[^a-z0-9.-]", "", str(ar.get("slot") or ""))[:60] or runner_slot(url),
             # Which host's runner it is: GitHub's, or Gitea's act_runner.
-            # Empty from an agent that predates the field.
             "forge": re.sub(r"[^a-z]", "", str(ar.get("forge") or ""))[:16],
             # The systemd unit its output goes to, when it has one: what the
-            # runner log stream journalctls. Empty from an agent that predates
-            # the field and from a node running it in the foreground, and the
-            # stream reads runner.log then.
+            # runner log stream journalctls. Empty from a node running it in
+            # the foreground, and the stream reads runner.log then.
             "unit": re.sub(r"[^A-Za-z0-9._@-]", "", str(ar.get("unit") or ""))[:120],
             "labels": [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40]
                        for x in (ar.get("labels") or [])[:16] if str(x)]}
-    # One runner per git host (R53). An agent that predates the list sends
-    # the single key only, and that becomes a list of one.
-    listed = sv.get("runners") if isinstance(sv.get("runners"), list) else None
-    ar = sv.get("actions-runner") if isinstance(sv.get("actions-runner"), dict) else {}
-    runners = ([one_runner(x) for x in listed[:16] if isinstance(x, dict)] if listed is not None
-               else ([one_runner(ar)] if ar.get("installed") else []))
+    # One runner per git host (R53).
+    listed = sv.get("runners") if isinstance(sv.get("runners"), list) else []
+    runners = [one_runner(x) for x in listed[:16] if isinstance(x, dict)]
     out["services"] = {"runners": runners}
     ts = sv.get("tailscale") if isinstance(sv.get("tailscale"), dict) else {}
     fun = ts.get("funnel") if isinstance(ts.get("funnel"), dict) else {}
@@ -1794,6 +1824,37 @@ def node_uninstall(principal, node_id):
     return r
 
 
+def node_power(principal, node_id, what):
+    """Reboot or shut a node down from its row: a system job the agent
+    answers by scheduling the machine's own reboot or power-off a few
+    seconds out, so the job's result reaches here before the agent goes
+    with it. Refused where nothing from here would reach the machine (its
+    agent away), where the machine is this controller's own (rebooted from
+    its host, not from the dashboard it runs), and on a locked node."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if what not in ("reboot", "poweroff"):
+        return {"error": "power is reboot or poweroff"}
+    verb = "reboot" if what == "reboot" else "shut down"
+    if n.get("kind") != "agent":
+        return {"error": f"{n['name']} is the controller's own machine: {verb} it from its host, "
+                         "not from the dashboard running on it"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the "
+                         f"machine: {verb} it from its console or its hypervisor"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": what, "config": {}, "timeout": 60})
+    if r.get("ok"):
+        audit(principal, "node-" + what, node_id, {"job": r["job"]})
+    return r
+
+
 def system_job_for(node_id):
     """The system job in flight for a node, if any: one at a time, because
     two applies racing on one fstab is not a state anybody wants."""
@@ -1880,6 +1941,28 @@ session_net_for = lambda nid: None  # noqa: E731
 session_tokens_for = lambda nid, sessions: []   # noqa: E731
 
 
+def reported_set(nid, key, sub, value):
+    """One field of a node's census, set by this side between hellos: what a
+    finished job measured (claudecode.update_done, B249). The next hello
+    replaces the whole record, which is right: the node's word is the
+    census, and this is only how the minutes before it are not wrong."""
+    n = node(nid)
+    if not n:
+        return
+    rep = n.get("reported") or {}
+    inner = rep.get(key) if isinstance(rep.get(key), dict) else {}
+    inner[sub] = value
+    rep[key] = inner
+    _exec("UPDATE nodes SET reported = ? WHERE id = ?", (json.dumps(rep), nid))
+    _bump()
+
+
+# Called with the node id when an agent dials in after being unheard: the
+# doctor's cached lines about nodes are wrong the moment this happens, and
+# waited out a half-hour cache after a reboot (the operator, 25 Sep).
+came_back = None
+
+
 def hello(nid, census, addr, version="", digest="", running=None):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it: the
@@ -1894,6 +1977,7 @@ def hello(nid, census, addr, version="", digest="", running=None):
     n = node(nid)
     if not n:
         return {"error": "no such node"}
+    was_live = bool(n.get("live"))
     if isinstance(running, list):
         jobs_reconcile(nid, [str(j) for j in running])
     ag = n.get("agent") or {}
@@ -1919,6 +2003,11 @@ def hello(nid, census, addr, version="", digest="", running=None):
           "WHERE id = ?", (json.dumps(ag), json.dumps(rep), rep["system"],
                            rep["arch"], nid))
     _bump()
+    if not was_live and came_back:
+        try:
+            came_back(nid)
+        except Exception as e:                                       # noqa: BLE001
+            print(f"[nodes] came_back hook: {type(e).__name__}: {e}", flush=True)
     ours = agent_file()
     return {"ok": True, "transports": ["longpoll"],
             "poll": POLL_S, "node": {"id": nid, "name": n["name"],
@@ -1977,6 +2066,20 @@ def heartbeat(nid, sample, addr, running=0):
         ag["addr"] = addr
     rep = n.get("reported") or {}
     rep["sample"] = clean
+    # What the node publishes, by compose project (R82): the ports another
+    # node's session of the same project may reach. A change re-sends every
+    # firewall its allow list, so a container coming up on one node is
+    # reachable from the other within a poll.
+    moved = False
+    if isinstance(s.get("published"), dict):
+        pub = {}
+        for k, v in list(s["published"].items())[:64]:
+            ports = sorted({int(p) for p in (v if isinstance(v, list) else []) if str(p).isdigit()
+                            and 0 < int(p) < 65536})[:32]
+            if ports:
+                pub[str(k)[:100]] = ports
+        moved = pub != (rep.get("published") or {})
+        rep["published"] = pub
     # The node's tmux sessions (roadmap #24), for the Sessions card: name,
     # whether a client is attached, the active pane's directory and title
     # (a Claude session reports its state through the title). Whitelisted
@@ -1994,6 +2097,8 @@ def heartbeat(nid, sample, addr, running=0):
     # Every sample moves the numbers on the row, and the row is the only
     # place they are shown: one repaint per node per poll is the cost.
     _bump()
+    if moved:
+        session_net_nudge()
 
 
 def _session_rows(rows):
@@ -2011,8 +2116,8 @@ def _session_rows(rows):
         out.append({
             "name": name, "attached": bool(row.get("attached")),
             "cwd": str(row.get("cwd") or "")[:300],
-            # When it started (an agent from 0.5.85 on; 0 before), so a
-            # toolchain installed since can say it is not on its PATH.
+            # When it started, so a toolchain installed since can say it is
+            # not on its PATH.
             "created": _mb(row.get("created")) or 0,
             "title": str(row.get("title") or "")[:200]})
     return out
@@ -2330,22 +2435,22 @@ def _no_answer(job_id, node_id, timeout):
         return (f"{name} is busy with {what} ({b['id']}) and runs "
                 f"{n.get('concurrency') or 1} job at a time: this waited {timeout}s for a "
                 "slot and was taken back. The machine is fine; try again when that finishes")
+    # Handed out and never started: the lane it holds is why this one waited
+    # (B245). Named with its age, and with when the agent last dialed in, so
+    # the reader can tell a lost poll from a machine that is off.
+    held = [x for x in jobs_for(node_id=node_id, active=True, n=10)
+            if x.get("id") != job_id and x.get("state") == "assigned"]
+    seen = int((n.get("agent") or {}).get("last_seen") or 0)
+    ago = f"{int(time.time()) - seen}s ago" if seen else "never"
+    if held:
+        h = held[0]
+        age = int(time.time()) - int(h.get("started") or time.time())
+        what = " ".join(str(x) for x in [h.get("type"), h.get("project") or ""] if x)
+        return (f"{name} was handed {what} ({h['id']}) {age}s ago and has not started it, "
+                f"and this one waited {timeout}s behind it; the node is {n.get('state')}, "
+                f"its agent last dialed in {ago}")
     return (f"{name} did not pick the job ({job_id}) up within {timeout}s: "
-            "its agent may not be dialing in")
-
-
-# The first agent build that runs a `tell` job. An older one would fall
-# through to exec with no argv, and the operator would read "exit 1" where
-# the answer is "update the agent".
-TELL_AGENT = (0, 5, 57)
-
-
-def _agent_build(n):
-    v = str((n.get("agent") or {}).get("version") or "")
-    try:
-        return tuple(int(x) for x in v.split(".")[:3])
-    except ValueError:
-        return (0, 0, 0)
+            f"the node is {n.get('state') or 'unknown'} and its agent last dialed in {ago}")
 
 
 def tell_wait(node_id, session, text, timeout=20):
@@ -2357,10 +2462,6 @@ def tell_wait(node_id, session, text, timeout=20):
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
-    if _agent_build(n) < TELL_AGENT:
-        return {"error": f"the agent on {n['name']} is "
-                         f"{(n.get('agent') or {}).get('version') or 'an older build'}, "
-                         f"which cannot hand a line to a session there: Update it on the Nodes tab"}
     r = job_add("dashboard", {"node": node_id}, "tell",
                 {"session": str(session), "text": str(text), "timeout": int(timeout)})
     if r.get("error"):
@@ -2555,6 +2656,24 @@ def _light_running(node_id):
                if _light(_job_out(r)))
 
 
+# How long a job may sit `assigned` with no word from the agent before it
+# goes back to the queue: a poll's answer can be lost (the agent restarted,
+# the socket closed under it), and until now the job held a lane on the node
+# until the agent's next hello, up to ten minutes, unnamed (B245). An agent
+# that took a job says so within seconds (its first step or the keepalive).
+ASSIGN_LOST_S = 2 * POLL_S + 40
+
+
+def _requeue_unclaimed(node_id):
+    cut = int(time.time()) - ASSIGN_LOST_S
+    for r in _rows("SELECT id FROM jobs WHERE node = ? AND state = 'assigned' AND "
+                   "started < ?", (node_id, cut)):
+        _exec("UPDATE jobs SET state = 'queued', started = NULL WHERE id = ? "
+              "AND state = 'assigned'", (r["id"],))
+        if not _quiet(r["id"]):
+            _jstate_bump()
+
+
 def job_next(node_id, wait, runner="node", alive=None):
     """The oldest queued job this node may take, for this runner, else wait
     up to `wait` seconds for one, or for a cancel request, which comes back
@@ -2580,6 +2699,7 @@ def job_next(node_id, wait, runner="node", alive=None):
                 return None
             n = node(node_id)
             if n and n["state"] == "online":
+                _requeue_unclaimed(node_id)
                 # A slot free, or not: with none, a LIGHT job may still go
                 # (see _light). Everything else waits for the slot as before.
                 free = job_running(node_id) < n["concurrency"]
@@ -2588,6 +2708,10 @@ def job_next(node_id, wait, runner="node", alive=None):
                                 "(node = ? OR node = '') ORDER BY queued, id",
                                 (node_id,)) if (free or lane) else ()):
                     j = _job_out(j)
+                    # Queued, but its plan is still being prepared
+                    # (devactions._submit): not this poll's.
+                    if (j.get("spec") or {}).get("hold"):
+                        continue
                     if runner_of(j["type"], n["kind"]) != runner or not fits(j, n):
                         continue
                     if not free and not _light(j):
@@ -2876,6 +3000,33 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     with _wake:
         _wake.notify_all()      # the slot is free: a held poll may take the next
     return {"ok": True}
+
+
+def job_release(job_id, spec):
+    """A queued job that was holding for its plan (spec["hold"], which
+    job_next skips) gets the plan and joins the queue. False when the job
+    is no longer queued: cancelled meanwhile, and the plan is dropped."""
+    if not _rows("SELECT 1 FROM jobs WHERE id = ? AND state = 'queued'", (job_id,)):
+        return False
+    _exec("UPDATE jobs SET spec = ? WHERE id = ?",
+          (json.dumps(spec if isinstance(spec, dict) else {}), job_id))
+    if not _quiet(job_id):
+        _jstate_bump()
+    with _wake:
+        _wake.notify_all()
+    return True
+
+
+def job_refuse(job_id, why):
+    """A queued job its preparation refused: failed with the reason, where
+    the row and the Jobs tab show the words (B260). Nothing ran, so no
+    completion hook is owed."""
+    _exec("UPDATE jobs SET state = 'failed', ended = ?, error = ? WHERE id = ? "
+          "AND state = 'queued'", (int(time.time()), str(why)[:500], job_id))
+    if not _quiet(job_id):
+        _jstate_bump()
+    with _wake:
+        _wake.notify_all()
 
 
 def job_cancel(principal, job_id):

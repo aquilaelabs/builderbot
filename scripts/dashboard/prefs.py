@@ -53,6 +53,14 @@ DEVBUILD_MODES = ("deny", "ask", "auto")
 # never in its dev instance, which is the default; inside the instance when
 # it is up and on the node otherwise; or inside it and nowhere else.
 TESTS_IN = ("node", "up", "only")
+# What a change asked for during a test run does (Claude settings): waits
+# for the run, or ends it, lands, and the run starts again. Two house rules
+# used to disagree about this per project; it is a setting now (25 Sep).
+TEST_CHANGE = ("wait", "restart")
+# How the block a session reads is written: as the notebook has it, or
+# with the filler words dropped (preamble.terse), meaning kept. A project
+# setting, since the block is per project (the operator, 25 Sep).
+BRIEF = ("full", "terse")
 # Whether this project's sessions report BuilderBot's own problems with
 # `bb report` (reports.py): on everywhere by default, and off where the
 # project IS BuilderBot, whose sessions file those in its own tracker (the
@@ -101,7 +109,13 @@ def configure(*, write_json, state):
 # hashes and is not a session's to read, while this one is read by the
 # launcher at exec time so a respawn picks up a change. Nothing here is a
 # secret; a git author is on every commit by design.
-USER_CHOICES = {"model": MODELS, "effort": EFFORTS}
+# `reply`: how wordy Claude's replies to this person are on this project,
+# "" (Claude's own), normal or minimal. Theirs, not the project's: it is what
+# they read, and the notebook, commits and files are written as ever.
+# `asks`: how often Claude puts a question to this person on this project,
+# "" (Claude's own), fewer or rarely. Theirs too: it is their attention.
+USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("minimal",),
+                "asks": ("more", "fewer", "rarely")}
 USER_TEXT = {"git_name": 120, "git_email": 200}
 
 
@@ -223,6 +237,11 @@ def _clean(rec):
             # decision (1 Sep): per-role pickers were more control than
             # anybody wanted. A node id, "" meaning none.
             "node": str(rec.get("node") or "")[:40],
+            # ...and the set it works on (R82): the primary first, then the
+            # others, so a project with a Linux node and a Windows one can be
+            # worked on from either. Everything that reads one node keeps
+            # reading `node`; containers may live on any of these.
+            "nodes": _nodes_of(rec),
             # What `bb build` / `bb test` run there, and the globs whose
             # matches come back into dist/.
             "build": str(rec.get("build") or "")[:500],
@@ -261,6 +280,9 @@ def _clean(rec):
             # names it, with nothing run on the node. Per project because
             # only a project with a compose file has a container to run in.
             "tests_in": _tests_in(rec),
+            # During a test run, a change asked for: one of TEST_CHANGE.
+            "test_change": rec.get("test_change") if rec.get("test_change") in TEST_CHANGE else "wait",
+            "brief": rec.get("brief") if rec.get("brief") in BRIEF else "full",
             # Claude may: Report BuilderBot bugs. Off takes `bb report` and
             # the rule that points at it away from this project's sessions.
             "report": "deny" if rec.get("report") == "deny" else "auto"}
@@ -301,9 +323,23 @@ def all_projects(workspace=None):
     return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
 
 
-def set_prefs(project, node=None, build=None, test=None,
+def _nodes_of(rec):
+    """The project's node set, primary first, from a record that may carry
+    only `node` (from before R82) or a `nodes` list as well."""
+    primary = str(rec.get("node") or "")[:40]
+    more = rec.get("nodes") if isinstance(rec.get("nodes"), list) else []
+    out = [primary] if primary else []
+    for n in more:
+        n = str(n or "")[:40]
+        if n and n not in out:
+            out.append(n)
+    return out[:16]
+
+
+def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              devbuild=None, tests_in=None, report=None, color=None, workspace=None):
+              devbuild=None, tests_in=None, report=None, color=None, workspace=None,
+              test_change=None, brief=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -314,8 +350,16 @@ def set_prefs(project, node=None, build=None, test=None,
             if color not in COLORS and color != "":
                 return {"error": f"color is one of {', '.join(COLORS)}, or none: not {color}"}
             cur["color"] = color
+        if nodes is not None:
+            got = nodes if isinstance(nodes, list) else str(nodes).split(",")
+            cur["nodes"] = [str(n).strip()[:40] for n in got if str(n).strip()][:16]
+            # The primary is the first of the set unless `node` says which.
+            if node is None and cur["nodes"] and cur["node"] not in cur["nodes"]:
+                cur["node"] = cur["nodes"][0]
         if node is not None:
             cur["node"] = str(node)[:40]
+            if cur["node"] and cur["node"] not in cur["nodes"]:
+                cur["nodes"] = [cur["node"]] + cur["nodes"]
         if build is not None:
             cur["build"] = str(build)[:500].strip()
         if test is not None:
@@ -355,6 +399,14 @@ def set_prefs(project, node=None, build=None, test=None,
             if tests_in not in TESTS_IN:
                 return {"error": f"tests_in is one of {', '.join(TESTS_IN)}, not {tests_in}"}
             cur["tests_in"] = tests_in
+        if test_change is not None:
+            if test_change not in TEST_CHANGE:
+                return {"error": f"test_change is one of {', '.join(TEST_CHANGE)}, not {test_change}"}
+            cur["test_change"] = test_change
+        if brief is not None:
+            if brief not in BRIEF:
+                return {"error": f"brief is one of {', '.join(BRIEF)}, not {brief}"}
+            cur["brief"] = brief
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
@@ -362,6 +414,7 @@ def set_prefs(project, node=None, build=None, test=None,
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
+                or cur["test_change"] != "wait" or cur["brief"] != "full"
                 or cur["report"] != "auto"
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the

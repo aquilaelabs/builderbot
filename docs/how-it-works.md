@@ -1172,7 +1172,11 @@ offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog: one
 node for everything it does off this box: containers, builds, tests, CI and
-emulation, and gives its build and test commands and the output globs.
+emulation, and gives its build and test commands and the output globs. It
+can add other nodes it also works on (R82): its containers may live on any
+of those and nowhere else, and a session start asks which node when there
+is more than one. A project with no node has no default to fall to and is
+told to set one.
 **Nothing runs that nobody wrote down**: with a field empty, `bb build` and
 `bb test` refuse and say how to fill it. The person who knows how a tree
 builds is often the session that has just read it, so a session can:
@@ -2314,6 +2318,22 @@ heading and each part's size under it. It is the same string, not a rendering
 of the same idea: the tab and `bb-tty` both ask `bb preamble` for it, so the
 fold cannot quietly stop describing what sessions get. Shut by default, since
 it is a thing to check rather than to read every time.
+
+Two settings shape that string without touching what you read in the
+notebook. A project's **Briefing a session reads** can be *terse*: the filler
+words are dropped from every part but the live line, deterministically and
+never by a model, with code, names, numbers and the words that turn a
+sentence kept, which takes a third off the block. And each person's
+**Replies** pick on a project, beside model and effort, says how wordy
+Claude's replies to them are there, and their **Questions** pick how often
+Claude asks them, more, fewer or rarely; both ride the block as its own part and
+govern the replies and the asks only, so the notebook, commits and files are
+written as ever.
+
+A running session keeps the block it started with. What it hears live: a
+named rule on the turn it applies, whatever a `bb` verb answers, and, on
+its next prompt after the controller was rebuilt to another build, one line
+saying so and pointing at `bb catchup` and `bb preamble`, once per build.
 
 - **Ending a session for good is the ✕ in the Sessions list**, under the
   terminal. That one asks,

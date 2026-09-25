@@ -3237,7 +3237,15 @@ is not running; see bb logs."
                 echo "dashboard: serving a DEV copy from $d; 'bb dashboard dev --off' reverts"
             fi
             ;;
-        *) die "usage: bb dashboard test|dev|status" ;;
+        trace)
+            # What the server was asked over the last N seconds, by endpoint
+            # and by who asked, with how long each took (B245): the one
+            # command that shows a poll that should not be there, a tab that
+            # asks twice, or the request a slow tab is waiting on.
+            local auth; auth="$(bb_auth_or_die)"
+            BB_TRACE_AUTH="$auth" python3 "$BB_LIB/trace-verbs.py" "${1:-60}"
+            ;;
+        *) die "usage: bb dashboard test|dev|status|trace [SECONDS]" ;;
     esac
 }
 
@@ -3883,16 +3891,20 @@ cmd_doctor() {
     # `|| true`: a probe that dies is a skip line, not the end of the
     # doctor. Under set -e a failing substitution here ended the function
     # after the session line, and every check below it went unprinted.
+    # One line per node with a daemon (there is no primary among them), so
+    # every line the probe prints is read, not the first.
     docker_line="$(python3 "$lib" \
-        "$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" 2>/dev/null \
-        | head -1 || true)"
-    read -r dst dmsg <<<"$docker_line"
-    case "$dst" in
-        ok)   printf '  [ok]   %s\n' "$dmsg" ;;
-        FAIL) printf '  [FAIL] %s\n' "$dmsg"; ok=1 ;;
-        skip) printf '  [skip] %s\n' "$dmsg" ;;
-        *)    printf '  [skip] docker daemon: could not be probed\n' ;;
-    esac
+        "$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" 2>/dev/null || true)"
+    [ -n "$docker_line" ] || docker_line="none"
+    while read -r dst dmsg; do
+        case "$dst" in
+            ok)   printf '  [ok]   %s\n' "$dmsg" ;;
+            FAIL) printf '  [FAIL] %s\n' "$dmsg"; ok=1 ;;
+            skip) printf '  [skip] %s\n' "$dmsg" ;;
+            warn) printf '  [warn] %s\n' "$dmsg" ;;
+            *)    printf '  [skip] docker daemon: could not be probed\n' ;;
+        esac
+    done <<<"$docker_line"
     # The GPU is a NODE's concern (roadmap #24, 10c): a controller renders
     # nothing (no emulator, no X server) so on one the card is not checked
     # and not missed. The block below runs in the node role, where the

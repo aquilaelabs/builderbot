@@ -6,7 +6,7 @@
 // spinner a working Claude pane does; the per-file world takes it away after.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const base = URL.replace(/\/$/, '');
@@ -108,6 +108,45 @@ const uids = [owner, make('tn.one'), make('tn.two'), make('tn.three')];
 const toks = uids.map(u => py('users.py', `print(m.mint_session("alpha", uid=${JSON.stringify(u)}))`));
 const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
 
+// A session told the controller moved (R83): the build it began on is
+// kept per session at `started`, and the first `seen` after the build has
+// changed carries one line naming both and where to read, once.
+{
+  const sess = body => call('/api/v1/hook', { kind: 'seen', ...body }, bearer(toks[1]));
+  const began = await call('/api/v1/hook', { kind: 'started', node: 'nodeA' }, bearer(toks[1]));
+  const quiet = await sess({ node: 'nodeA' });
+  ok(began.ok && quiet.ok && !/controller moved/.test(quiet.line || ''),
+     `a session that began on this build hears nothing about it (${quiet.line || 'no line'})`);
+  const f = `${DIR}/state/session-seen.json`;
+  const d = JSON.parse(readFileSync(f, 'utf8'));
+  const key = Object.keys(d).find(k => k.endsWith('|nodeA'));
+  d[key].build = '0.3.9-dev.1+oldrev1';
+  writeFileSync(f, JSON.stringify(d));
+  const moved = await sess({ node: 'nodeA' });
+  ok(/The controller moved to 0\.4\.0-dev\.390\+abc1234 since this session began \(it was on 0\.3\.9-dev\.1\+oldrev1\)/.test(moved.line || '')
+     && /bb catchup/.test(moved.line) && /bb preamble/.test(moved.line),
+     `...and once the build has moved, the next prompt says so, naming both builds and where to read (${(moved.line || '').slice(0, 80)})`);
+  const again = await sess({ node: 'nodeA' });
+  ok(!/controller moved/.test(again.line || ''), '...once: the prompt after it says nothing more');
+  // ...and the notebook and the settings the same way: what somebody else
+  // changed on this project since the last prompt is named with the verb
+  // that reads it, and the session's own writes are not, being seen as
+  // they land (the operator, 25 Sep).
+  await call('/api/bugs', { project: 'alpha', action: 'add', title: 'the operator found one', severity: 'low' });
+  const nb = await sess({ node: 'nodeA' });
+  ok(/somebody else changed this project's bugs: read `bb bug`/.test(nb.line || ''),
+     `a bug the operator filed is named on the next prompt (${(nb.line || 'no line').slice(0, 90)})`);
+  await call('/api/bugs', { project: 'alpha', action: 'add', title: 'the session found one', severity: 'low' }, bearer(toks[1]));
+  const own = await sess({ node: 'nodeA' });
+  ok(!/somebody else changed/.test(own.line || ''), `...and the session's own bug is not (${(own.line || 'no line').slice(0, 90)})`);
+  await call('/api/prefs', { project: 'alpha', build: 'make it' });
+  const st = await sess({ node: 'nodeA' });
+  ok(/somebody else changed this project's settings: read `bb settings`/.test(st.line || ''),
+     `a setting the operator changed is named too (${(st.line || 'no line').slice(0, 90)})`);
+  await call('/api/prefs', { project: 'alpha', build: '' });
+  await sess({ node: 'nodeA' });
+}
+
 {
   const free = await Promise.all([0, 1, 2, 3].map(i => hook(i, 'turn')));
   ok(free.every(r => r.status === 200 && r.go === true), 'with no limit set, four prompts at once all go');
@@ -116,6 +155,8 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   // Refused to anybody but an administrator, and to a session outright.
   let r = await call('/api/v1/nodes', { action: 'turns', id: minted.id, limit: 1 }, bearer(toks[1]));
   ok(r.status === 403, `a session cannot set its own node's limit (${r.status})`);
+  r = await call('/api/v1/nodes', { action: 'reboot', id: minted.id }, bearer(toks[1]));
+  ok(r.status === 403, `...nor reboot or shut down the machine it runs on (${r.status})`);
   r = await call('/api/v1/nodes', { action: 'turns', id: minted.id, limit: 1 },
     { Authorization: 'Basic ' + Buffer.from('tn.one:pw-tn.one-1').toString('base64'), 'Content-Type': 'application/json' });
   ok(r.status === 403, `...nor can a plain account (${r.status})`);

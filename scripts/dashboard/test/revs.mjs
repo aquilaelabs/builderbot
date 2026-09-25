@@ -49,6 +49,12 @@ const OWN = ['boot'];
      "...with a query's keys and never its values");
   ok((tr.rows || []).every(r => ['browser', 'curl', 'app', 'session', '?'].includes(r.agent) || r.agent) && (tr.rows || []).some(r => r.by === 'user'),
      '...and who asked, by principal and user agent');
+  // ...and how long each took (B245): a slow tab is one request that took
+  // seconds, and a count alone could not say which.
+  ok((tr.rows || []).every(r => Number.isInteger(r.ms_max) && Number.isInteger(r.ms_avg) && r.ms_max >= r.ms_avg)
+     && Array.isArray(tr.slow),
+     `...and how long each took, worst and average, with the slowest requests named (${
+        Math.max(0, ...(tr.rows || []).map(r => r.ms_max))}ms at most)`);
 }
 
 const bare = { watched: await watched(), served: await served() };

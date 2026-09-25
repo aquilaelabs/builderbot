@@ -91,13 +91,12 @@ MAIN = "main"
 def _slug(s):
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
 
-# Where a dev instance's data lives, when the node is too old to say. It is
-# a STORE now, reported per node with its path and its headroom and edited on
-# the node's own Storage section (R17 step 2), because where a node keeps a
-# container's databases is a fact about that node. This is the fallback for
-# an agent from before the store existed, and the default an unenrolled
-# controller uses; BB_DEV_DATA_DIR is honoured for the same reason and is on
-# its way out.
+# Where a dev instance's data lives when the node addressed reports no
+# appdata store. It is a STORE, reported per node with its path and its
+# headroom and edited on the node's own Storage section (R17 step 2), because
+# where a node keeps a container's databases is a fact about that node; this
+# is the answer for a node that has not said, and BB_DEV_DATA_DIR is how the
+# test harness points it at a scratch directory.
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # Injected rather than worked out here: three readers already answer "where do
 # the logs live" and a fourth copy of that rule is how they drift. None when
@@ -105,6 +104,8 @@ DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # available(), and a probe should not start writing files.
 log_dir = None
 project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
+project_nodes = None  # ...and the set it works on, primary first (R82)
+all_project_nodes = None  # () -> {project: [node ids]}, every project's set
 node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
 # The daemon is a sandbox VM and nothing else. The node record names the
@@ -154,27 +155,33 @@ def _default_node():
 def _instance_node(project, instance):
     """The node an instance is bound to: its record's, else the project's
     own node (one setting for everything a project does on a node), else
-    the default docker host.
+    nothing.
 
-    Records from before nodes existed have no binding; they belong to the
-    one daemon there was, which is what the default node is, so the last
-    fallback is not a guess.
+    Nothing, not a default: there is no primary docker manager (the
+    operator, 25 Sep). An instance whose record names no node and whose
+    project has none has no daemon, and everything that reaches for one
+    says so rather than landing on whichever node was enrolled last.
     """
     nid = _read_rec(project, instance).get("node") or ""
     if not nid and project_node:
         nid = project_node(project) or ""
-    return nid or (node_for() if node_for else "")
+    if not nid and project_node is None and project_nodes is None and node_for:
+        # No controller wiring (a probe, a test driving this in process): no
+        # projects' settings to read, so the one daemon node_for names is
+        # the arrangement, as it was before nodes had settings at all.
+        nid = node_for() or ""
+    return nid
 
 
 def project_daemon(project):
-    """The node THIS project works on: its own, else the default docker host.
+    """The node THIS project works on: its own, or "" for none.
 
     Which is where its session runs (a project with no node keeps its session
     on the controller), and where a new instance of it would be built. The
     same chain _instance_node ends with, minus the record, so "is this
     instance on the machine this project works on" is one comparison.
     """
-    return (project_node(project) if project_node else "") or _default_node()
+    return (project_node(project) if project_node else "") or ""
 
 
 def instance_node(project, instance):
@@ -518,11 +525,12 @@ def latest_job():
 
 
 def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
-              node_addr=None, queue=None, runner=None, project_node=None,
+              node_addr=None, queue=None, runner=None, project_node=None, project_nodes=None,
               node_paths=None, field=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
                      write_json=write_json, log_dir=log_dir, field=field,
                      node_for=node_for, node_addr=node_addr, project_node=project_node,
+                     project_nodes=project_nodes,
                      node_paths=node_paths,
                      queue=queue, runner=runner)
     # The compose runner itself is devactions', registered by its own
@@ -635,10 +643,14 @@ def source():
     addr = docker_host()
     # Named for what it IS, not for what it was meant to be: calling a tcp://
     # address "the sandbox VM" and then refusing it as not one, in the same
-    # sentence, is how a status line stops being read.
-    kind = ("the sandbox VM" if addr.startswith("ssh://")
+    # sentence, is how a status line stops being read. An agent node's
+    # daemon is reached through its agent and nothing dials the address on
+    # its record, so that one is named by the node (B264).
+    n = _agent_here()
+    kind = (n["name"] if n
+            else "the sandbox VM" if addr.startswith("ssh://")
             else "an unsupported daemon" if addr else "")
-    return {"kind": kind, "where": addr,
+    return {"kind": kind, "where": addr, "agent": bool(n),
             # WHICH node this answer is about, because the page cannot tell.
             # The status poll carries ONE daemon's verdict (the default
             # node's) and the manager may be looking at another, so a page
@@ -833,6 +845,14 @@ def available():
         return _available_agent(n)
     addr = docker_host()
     if not addr:
+        # Two different absences: no node anywhere, or nodes and this
+        # project bound to none of them (there is no primary for it to
+        # fall to), which wants "pick one" rather than "enroll one".
+        have = [n for n in (queue.docker_nodes() if queue else []) if n.get("kind") != "local"]
+        if have:
+            return {"on": False,
+                    "why": "this project has no node, so it has no daemon: pick one in its "
+                           "settings dialog (" + ", ".join(n["name"] for n in have[:3]) + ")"} | source()
         return {"on": False,
                 "why": "no node with a daemon; enroll the sandbox VM on the "
                        "Nodes tab (Enroll node mints a token, then provision-linux.sh "
@@ -1831,8 +1851,7 @@ def appdata_root(node_id=None):
     """Where THIS node keeps its dev instances' data.
 
     The node's own `appdata` store where it reports one, and DEVDATA where it
-    does not: an agent from before the store says nothing about it, and within
-    a compatibility window a missing field is answered rather than refused.
+    does not: a missing field is answered rather than refused.
     """
     nid = node_id or getattr(_node_ctx, "node", None) or _default_node()
     n = queue.node(nid) if (queue is not None and nid) else None
@@ -2289,7 +2308,14 @@ def _overview_here(picked):
             mine = by_proj.get(pn, [])
             rec = _read_rec(project, inst)
             same_daemon = rec.get("daemon") == daemon_id()
+            # Whose sessions can reach it: the project it belongs to works
+            # on a node, and this row is drawn under the daemon of another
+            # (the project moved after this was built, pin_to_current_node)
+            # means out of reach, said on the row (R79, the operator 25 Sep).
+            whose = owner_of(project, inst, rec)
+            own = nodes_of(whose) if whose else []
             out.append({
+                "astray": ", ".join(node_name(n) for n in own) if own and picked and picked not in own else "",
                 "project": project, "instance": inst, "name": pn,
                 # The project it belongs to, or "" for none: whose sessions
                 # may see it and work on it, and the group it is drawn in.
@@ -2427,6 +2453,44 @@ def forget_container(name):
     return gone
 
 
+def node_name(nid):
+    """A node's name for a sentence, or the id when the registry is not here."""
+    n = queue.node(nid) if queue and nid else None
+    return (n or {}).get("name") or nid or "none"
+
+
+def nodes_of(whose):
+    """The node set a project works on, primary first (R82), or []. None
+    when nothing here can say: a module loaded without the controller's
+    wiring (a probe, a test driving it in process) has no projects' settings
+    to read, and the rule that needs them does not apply."""
+    if project_nodes is None and project_node is None:
+        return None
+    got = project_nodes(whose) if project_nodes else None
+    if got is None:
+        own = (project_node(whose) if project_node else "") or ""
+        got = [own] if own else []
+    return [str(n) for n in got if n]
+
+
+def on_project_node(whose, node=""):
+    """(why, node): the node a container for project `whose` goes to, or the
+    reason it cannot go anywhere. One rule, said in one place: a container
+    lives on one of its project's nodes (R79 makes any other unreachable
+    from the project's sessions), so `node` may only be one of those, and
+    nothing means the primary."""
+    own = nodes_of(whose)
+    if own is None:
+        return "", str(node or "")
+    if not own:
+        return (f"{whose} has no node, so there is nowhere to make its container: "
+                "set its node in the project's settings first", "")
+    if node and str(node) not in own:
+        return (f"{whose} works on {', '.join(node_name(n) for n in own)}, and a container "
+                "for it anywhere else is out of reach of its sessions", "")
+    return "", str(node) if node else own[0]
+
+
 def create_instance(project, name, node="", owner=None):
     """Register a new instance of a project. Nothing is built or started.
 
@@ -2448,6 +2512,23 @@ def create_instance(project, name, node="", owner=None):
         return {"error": "an instance needs a name with a letter or digit in it"}
     if compose_file(project) is None:
         return {"error": f"{project} has no compose file to make an instance of"}
+    # A container lives on the node of the project it belongs to and nowhere
+    # else: a session reaches only its own project's containers on its own
+    # node (R79), so one anywhere else is out of reach of the work it is for
+    # (the operator, 25 Sep). The project's node is where it goes; a node
+    # named that differs is refused, and a project with no node has to be
+    # given one first. A container for no project may go where it is asked.
+    whose = project if owner is None else owner
+    picked = str(node or "")
+    if whose:
+        why, node = on_project_node(whose, node)
+        if why:
+            return {"error": why}
+        # Named by the caller: bound to it. Not named: the record carries no
+        # node and follows its project's primary, so a project moved later
+        # takes an instance that was never built along (pin_to_current_node
+        # keeps a built one where it is).
+        node = picked
     # The project's own name IS its own container: the default instance is
     # named after the project, so asking for that name by hand is asking
     # for that container, not a second one beside it. Before this, the name
@@ -2538,6 +2619,16 @@ def set_owner(project, instance, owner):
     project; this stores it the way owner_of reads it, with no `for` at all
     when the answer is the default."""
     owner = str(owner or "").strip()[:100]
+    # Only to a project on the node it is on: given to one that works
+    # elsewhere it would be out of reach of that project's sessions (R79).
+    if owner and owner != project:
+        here = _instance_node(project, instance)
+        own = nodes_of(owner)
+        if own is not None and not own:
+            return {"error": f"{owner} has no node: set one in its settings before giving it a container"}
+        if own and here and here not in own:
+            return {"error": f"{_pname(project, instance)} is on {node_name(here)} and {owner} works on "
+                             f"{', '.join(node_name(n) for n in own)}: its sessions could not reach it"}
     with _lock:
         d = _load()
         if instance not in (d.get(project) or {}):
@@ -2560,13 +2651,45 @@ def session_net_own(node_id):
     The project a container belongs to is the Docker tab's: the same answer
     decides whose sessions may work on it and whose may reach it."""
     out = {}
+    blank = lambda: {"compose": set(), "names": set(), "peers": set(), "hosts": set()}  # noqa: E731
     for project, insts in _load().items():
         for inst, rec in insts.items():
             owner = owner_of(project, inst, rec)
             if owner and _instance_node(project, inst) == node_id:
-                out.setdefault(owner, {"compose": set(), "names": set()})["compose"].add(_pname(project, inst))
+                out.setdefault(owner, blank())["compose"].add(_pname(project, inst))
     for name, owner in (_owners().get(node_id) or {}).items():
-        out.setdefault(owner, {"compose": set(), "names": set()})["names"].add(name)
+        out.setdefault(owner, blank())["names"].add(name)
+    # ...and what each project that can have a session HERE holds on its
+    # other nodes (R82): the published ports of its containers there, from
+    # what those nodes report, and the whole address of a node that is not a
+    # sandbox (a Mac, Windows, a guest), which has no containers to narrow
+    # to. The project's set is the operator's; a node outside it is never
+    # named, so a session reaches its own project's things and no other.
+    sets = all_project_nodes() if all_project_nodes else {}
+    for project, nids in sets.items():
+        if node_id not in (nids or []):
+            continue
+        o = out.setdefault(project, blank())
+        for other in nids:
+            if other == node_id:
+                continue
+            n = queue.node(other) if queue else None
+            if not n:
+                continue
+            addr = str((n.get("agent") or {}).get("addr") or "").strip()
+            if not re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", addr):
+                continue
+            rep = n.get("reported") or {}
+            if not rep.get("sandbox"):
+                o["hosts"].add(addr)
+                continue
+            pub = rep.get("published") or {}
+            mine = {_pname(p, i) for p, insts in _load().items() for i, rec in insts.items()
+                    if owner_of(p, i, rec) == project and _instance_node(p, i) == other}
+            mine |= {name for name, owner in (_owners().get(other) or {}).items() if owner == project}
+            for key in mine:
+                for port in pub.get(key) or []:
+                    o["peers"].add((addr, int(port)))
     return {p: {k: sorted(v) for k, v in o.items()} for p, o in sorted(out.items())}
 
 

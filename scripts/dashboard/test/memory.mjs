@@ -230,7 +230,11 @@ ok(await page.$('#naTitle') === null && await page.$('#memAdd button') !== null,
   await page.click('#memAdd button');
   await page.waitForSelector('#naTitle');
   const seen = await animatedDuring(page, async () => {
-    await page.click('#naCancel');
+    // Pressed in the page: the box is still folding open from the click
+    // above, and a click Playwright retried after its hit-target check
+    // landed on the button that replaced Cancel, opening the form again
+    // (B262, B124's family).
+    await page.$eval('#naCancel', b => b.click());
     await page.waitForFunction(() => !document.getElementById('naTitle'));
   });
   ok(seen.some(n => /\bmemAdd\b/.test(n)),

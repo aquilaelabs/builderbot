@@ -63,7 +63,7 @@ function renderSettingsInto(i){
         <div class="actbar"><button type="button" id="setNodes">Open the Nodes tab</button></div>
       </div>
     </div>`;
-  d.setFoot(`a change takes now, or at the next start: each section says which.`);
+  d.setFoot(`a change applies at once or at the next start: each section says which.`);
   wireLogSection(d.el);
   wireIdleSection(d.el);
   wireSettingsSections(d.el);
@@ -118,7 +118,7 @@ async function clearReports(btn){
 // The settings that used to be environment variables (roadmap R29): what is
 // left of them after the operator asked which needed to exist at all. Each
 // group is one section with one Apply, a field that has never been saved
-// says so beside it, and the bar says whether a change takes now or at the
+// says so beside it, and the bar says whether a change applies at once or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
 const SETTING_GROUPS = [
   {title: "Debugging", fields: [
@@ -251,7 +251,7 @@ function settingsSections(){
         <div class="logset">
           ${g.fields.map(field).join("")}${fold}
           <div class="actbar">
-            <span class="state">takes now</span>
+            <span class="state">applies at once</span>
             <button type="button" class="setApply" title="save">Apply</button>
           </div>
         </div>
@@ -307,7 +307,7 @@ function idleSection(){
                value="${sdVal("idleMin", m)}" inputmode="numeric">
       </div>
       <div class="actbar">
-        <span class="state">takes now, and a node hears on its next poll</span>
+        <span class="state">applies at once; a node hears on its next poll</span>
         <button type="button" id="idleApply" title="save it: a node hears on its next poll">Apply</button>
       </div>
     </div>`;

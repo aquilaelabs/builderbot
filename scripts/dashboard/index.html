@@ -1553,7 +1553,6 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 /* The project's node beside its name: a sibling of .name, so the name
    element stays the name and nothing else. */
 .namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
-.namerow .pnode{font:var(--f-ui);white-space:nowrap}
 /* The Tools card's buttons carry an icon, and the tab each opens carries
    the same one, so a button and its tab are one thing in two places. */
 .macros button svg,.tab .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
@@ -1571,6 +1570,9 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .prefrow .pick{display:flex;flex-direction:column;gap:var(--label-gap);
   font:var(--f-note);color:var(--dim);min-width:0}
 .prefrow .pick select,.prefrow .pick input{width:100%;max-width:100%}
+/* A pick whose words need the row: the test-run setting's options are
+   sentences, and half a row cut them mid-word. */
+.prefrow .pick.wide{grid-column:1 / -1}
 .veradd{margin-top:10px}
 .veradd>summary{color:var(--dim);font:var(--f-note);min-height:var(--tap)}
 @media(hover:hover){ .veradd>summary:hover{color:var(--ink)} }
@@ -3599,6 +3601,8 @@ body.booting .pane>.loading{margin:auto}
       <div class="aline"><span>up</span><code id="aUp"></code></div>
       <p class="hint">The build this BuilderBot is running. An update moves it
         to the newest one.</p>
+      <p class="hint">BuilderBot is licensed under the
+        <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache License 2.0</a>.</p>
     </div>
     <div class="foot"><span class="sp"></span>
       <button type="button" id="aboutClose">Close</button>
@@ -3666,6 +3670,8 @@ body.booting .pane>.loading{margin:auto}
       <label for="rnNode">Node<span class="help" data-tip="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
+      <div id="rnNodesMore" hidden></div>
+      <div class="hint" id="rnNodesMoreHint" hidden>Also works on these: a session can start on any of them, and its containers may live on any of them.</div>
     </div>
     <div class="field" id="rnBuildField">
       <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
@@ -3692,9 +3698,25 @@ body.booting .pane>.loading{margin:auto}
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is
          already on a list a session may still tick, note and reword. -->
+    <!-- Everything Claude may or may not do on this project, in one place
+         (the operator, 25 Sep): what a session enters, what it runs, and
+         what a change asked for does while a test run is going. -->
     <div class="field" id="rnGateField">
-      <label id="rnGateLabel">Claude may</label>
+      <label id="rnGateLabel">Claude settings</label>
       <div class="prefrow" role="group" aria-labelledby="rnGateLabel">
+        <label class="pick wide">During a test run, a change asked for <select id="rnTestChange"
+          aria-label="what a change asked for during a test run does">
+          <option value="wait">waits: the ask in hand is finished and tested first</option>
+          <option value="restart">may interrupt the final test run; work in hand finishes first</option>
+        </select></label>
+        <label class="pick wide">Briefing a session reads <select id="rnBrief"
+          aria-label="how the rules, roadmap and bugs are written for a session">
+          <option value="full">as written</option>
+          <option value="terse">terse: filler words dropped, meaning kept (bb preamble shows it)</option>
+        </select></label>
+      </div>
+      <label id="rnGateMayLabel" class="sub dim">Claude may</label>
+      <div class="prefrow" role="group" aria-labelledby="rnGateMayLabel">
         <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="rnGateBugs"
@@ -3730,6 +3752,18 @@ body.booting .pane>.loading{margin:auto}
           aria-label="model your sessions here start on"></select></label>
         <label class="pick">Effort <select id="rnEffort"
           aria-label="effort your sessions here start on"></select></label>
+        <label class="pick">Replies <select id="rnReply"
+          aria-label="how wordy Claude's replies to you are here">
+          <option value="">Claude's default</option>
+          <option value="minimal">minimal: the answer and what is left</option>
+        </select></label>
+        <label class="pick">Questions <select id="rnAsks"
+          aria-label="how often Claude asks you questions here">
+          <option value="more">more: checked with you before a judgment call</option>
+          <option value="">Claude's default</option>
+          <option value="fewer">fewer: routine calls made, not asked</option>
+          <option value="rarely">rarely: only when going on would be unsafe or useless</option>
+        </select></label>
       </div>
       <div class="hint" id="rnPrefHint"></div>
       <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
@@ -3788,6 +3822,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="cNodeField" hidden>
       <label for="cNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
       <select id="cNode"></select>
+      <div class="hint" id="cNodeHint" hidden></div>
     </div>
     <!-- Which project it belongs to: a dev radarr for a media project is
          that project's, listed in its notebook and reachable by its
@@ -4629,7 +4664,10 @@ function nextShell(proj){
 const bootFor = arg => {
   const proj = arg.startsWith("claude:") ? arg.slice(7).split(":")[0] : "";
   const row = (state?.projects || []).find(p => p.name === proj);
-  return row?.session_boot || state?.boot || "";
+  // The boot of the node the argument names (R82), else the primary's.
+  const picked = (arg.match(/:n:([A-Za-z0-9_-]+)/) || [])[1];
+  const onNode = picked ? (row?.session_nodes || []).find(x => x.id === picked)?.boot : "";
+  return onNode || row?.session_boot || state?.boot || "";
 };
 const ttydUrl = (arg) => `/term/?arg=${encodeURIComponent(
   arg.startsWith("claude:") && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
@@ -5127,7 +5165,7 @@ let soonTimers = [];
 function refreshSoon(){
   soonTimers.forEach(clearTimeout);
   refresh();
-  soonTimers = [1500, 4000].map(ms => setTimeout(refresh, ms));
+  soonTimers = [1500, 4000].map(ms => setTimeout(() => refresh(), ms));
 }
 
 // Take a tab off the strip. Nothing is destroyed and nothing is asked: a
@@ -6132,7 +6170,7 @@ function rnLoadModelNow(name){
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
-                 node: "", build: "", test: "", outputs: "",
+                 node: "", nodes: "", build: "", test: "", outputs: "",
                  gate: "", color: ""};
 // The colours a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
@@ -6172,10 +6210,13 @@ function rnFillPrefs(p){
   rnPrefWas = {model: p?.yours?.model || "", effort: p?.yours?.effort || "",
                git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
                node: p?.prefs?.node || "",
+               nodes: (p?.prefs?.nodes || []).join(","),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
+               test_change: p?.prefs?.test_change || "wait",
+               brief: p?.prefs?.brief || "full", reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
                color: p?.prefs?.color || ""};
@@ -6220,6 +6261,24 @@ function rnFillNode(){
           esc(n.name)} (${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
           tools(n).length ? " · " + esc(tools(n).slice(0, 4).join(", ")) : ""})</option>`).join("");
     sel.value = pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
+    rnFillNodesMore();
+}
+
+// The rest of the set (R82): every node but the primary, a checkbox each,
+// checked for the ones the project also works on. Redrawn when the primary
+// changes, since the primary is never offered twice.
+function rnFillNodesMore(){
+  const box = $("rnNodesMore"), hint = $("rnNodesMoreHint");
+  if (!box) return;
+  const primary = $("rnNode").value;
+  const was = new Set(rnPrefWas.nodes.split(",").filter(Boolean));
+  const checked = new Set([...box.querySelectorAll("input:checked")].map(i => i.value));
+  const first = !box.dataset.drawn;
+  const others = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.id !== primary);
+  box.hidden = hint.hidden = rnMode === "git" || !primary || !others.length;
+  box.innerHTML = others.map(n => `<label class="ndcap"><input type="checkbox" value="${esc(n.id)}"${
+      (first ? was.has(n.id) : checked.has(n.id)) ? " checked" : ""}> ${esc(n.name)}</label>`).join("");
+  box.dataset.drawn = "1";
 }
 
 function rnFillPrefsRest(p){
@@ -6231,6 +6290,10 @@ function rnFillPrefsRest(p){
   const canDevTest = !!(p?.has_compose || (p?.prefs?.tests_in || "node") !== "node");
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.tests_in || "node";
+  $("rnTestChange").value = p?.prefs?.test_change || "wait";
+  $("rnBrief").value = p?.prefs?.brief || "full";
+  $("rnReply").value = p?.yours?.reply || "";
+  $("rnAsks").value = p?.yours?.asks || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
@@ -6862,7 +6925,7 @@ function projectRow(p, live, cls, inTab){
           // it is a different thing: the padlock is the operator keeping a
           // project to themselves, this is a project you have not taken on.
           ? ` <span class="lockmark" aria-label="read-only" data-tip="${esc(NOT_MINE_WHY)}">${LOCK}</span>`
-          : ""}</div><span class="dim pnode">(node: ${esc(p.node_name || "none")})</span></div>
+          : ""}</div></div>
         ${state?.mapping?.[p.name] ? (m => m.running
             ? `<div class="sub">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
             : m.error ? `<div class="sub warn">the code map did not build: ${esc(m.error)}</div>`
@@ -7235,7 +7298,12 @@ async function signIn(node){
     return;
   }
   if (j.error) notify(j.error, true);
-  if (b && document.body.contains(b)){ b.disabled = false; b.textContent = "Sign in"; }
+  // The button on the page now, not the one pressed: a repaint while the
+  // answer was on its way replaced it, and the copy it drew is whatever the
+  // template says, so both are put back (B248).
+  const b2 = $("bSignIn");
+  if (b2 && b2.textContent === "Starting…"){ b2.disabled = false; b2.textContent = "Sign in"; }
+  else if (b && document.body.contains(b)){ b.disabled = false; b.textContent = "Sign in"; }
   refresh();
 }
 
@@ -7246,7 +7314,7 @@ let signinTimer = null;
 function watchSignin(){
   const lg = state?.signin;
   const live = lg?.running || (lg?.done && !lg.ok && !state?.claude_auth?.signed_in);
-  if (live && !signinTimer) signinTimer = setInterval(refresh, 1200);
+  if (live && !signinTimer) signinTimer = setInterval(() => refresh(), 1200);
   if (!live && signinTimer){ clearInterval(signinTimer); signinTimer = null; }
 }
 
@@ -8266,6 +8334,8 @@ for (const id of ["cImage", "cPorts", "cVols", "cEnvLines", "cRestart"])
 $("cYml").oninput = () => { cYmlTouched = true; };
 $("cTabEnv").onclick = () => cSwitch("env");
 $("cUnder").onchange = cUnderPicked;
+$("dnUnder").onchange = dnNodeSay;
+$("rnNode").onchange = rnFillNodesMore;
 $("cGo").onclick = cSubmit;
 $("cCancel").onclick = () => { $("cmodal").hidden = true; };
 $("cmodal").onclick = e => { if (e.target === $("cmodal")) $("cmodal").hidden = true; };
@@ -8525,6 +8595,9 @@ async function pJobAct(action){
 
 // Which project's resume chooser is open, if any.
 let resumeFor = null;
+// Which of a project's nodes a Claude press picked, per project, for the
+// moment between the node stage of the chooser and the resume stage (R82).
+let claudeNodePick = {};
 
 // `ps -o etime=` gives MM:SS under an hour, HH:MM:SS under a day, and
 // D-HH:MM:SS beyond one. Rendered raw in a header with four buttons beside it
@@ -8561,6 +8634,13 @@ const ago = s => {
 function openClaude(name, ev){
   ev?.stopPropagation();
   const p = (state?.projects || []).find(x => x.name === name);
+  // Several nodes to work on: which one comes first, then resume or new
+  // (R82). One node asks nothing, as before.
+  if ((p?.session_nodes || []).length > 1 && !claudeNodePick[name]){
+    resumeFor = resumeFor === name ? null : name;
+    drawProjects(state.projects);
+    return;
+  }
   if (p?.session_why && !liveSessions().has(myClaude(name))){
     // There is nowhere for it to run: the press opens the reason under the
     // row rather than a tab, which is the whole of what it can do.
@@ -8570,31 +8650,55 @@ function openClaude(name, ev){
   }
   if (liveSessions().has(myClaude(name)) || !p?.last_claude){
     resumeFor = null;
-    return startClaude(name, null);
+    return startClaude(name, null, claudeNodePick[name] || "");
   }
   resumeFor = resumeFor === name ? null : name;
   drawProjects(state.projects);
 }
 
-function startClaude(name, sessionId){
+function startClaude(name, sessionId, node){
   resumeFor = null;
+  delete claudeNodePick[name];
   // Redraw the card, not just the tabs: the chooser is a child of it and would
   // otherwise sit there until the next poll, over a choice already made.
   if (state) drawProjects(state.projects);
+  const p = (state?.projects || []).find(x => x.name === name);
+  const nn = node ? (p?.session_nodes || []).find(x => x.id === node)?.name || node : "";
   openTab({kind:"term",
-           arg: sessionId ? `claude:${name}:r:${sessionId}` : `claude:${name}`,
-           label: `Claude: ${name}`});
+           arg: `claude:${name}` + (sessionId ? `:r:${sessionId}` : "") + (node ? `:n:${node}` : ""),
+           label: `Claude: ${name}` + (nn ? ` (${nn})` : "")});
+}
+
+// What a node has and how busy it is, on its button in the chooser: the
+// pick is a read (a card for the emulator, a quiet box), not a name.
+function claudeNodeFacts(n){
+  const s = n.sample || {};
+  const bits = [];
+  if (s.cpu_pct !== undefined) bits.push(`cpu ${s.cpu_pct}%`);
+  if (s.mem_mb) bits.push(`${Math.round((s.mem_used_mb || 0) / 1024 * 10) / 10}/${Math.round(s.mem_mb / 1024)}GB`);
+  if (n.gpu) bits.push(n.gpu);
+  if ((n.tools || []).length) bits.push(n.tools.join(", "));
+  return bits.join(" · ");
 }
 
 function placeResumeMenu(){
   const p = (state?.projects || []).find(x => x.name === resumeFor);
   const anchor = $("projects").querySelector(`[data-c="${CSS.escape(resumeFor)}"]`);
-  if ((!p?.last_claude && !p?.session_why) || !anchor){ resumeFor = null; return; }
+  const nodeStage = (p?.session_nodes || []).length > 1 && !claudeNodePick[p.name];
+  if ((!p?.last_claude && !p?.session_why && !nodeStage) || !anchor){ resumeFor = null; return; }
   const card = anchor.closest(".card");
   const m = document.createElement("div");
   m.className = "pinmenu resumemenu";
   m.id = "resumemenu";
-  m.innerHTML = p.session_why
+  // The node first, when there are several (R82): a button per node with
+  // what it has, dead with its reason where a session cannot start there.
+  m.innerHTML = nodeStage
+    ? `<div class="sub">Which node?</div>` + p.session_nodes.map(n =>
+        `<button data-node="${esc(n.id)}"${n.where === "node" ? "" : " disabled"} title="${
+          esc(n.where === "node" ? "" : n.why)}">${esc(n.name)}${
+          claudeNodeFacts(n) ? ` <span class="dim">${esc(claudeNodeFacts(n))}</span>` : ""}</button>${
+          n.where === "node" ? "" : `<div class="sub bad">${esc(shortWhy(n.why))}</div>`}`).join("")
+    : p.session_why
     // No node, or one that refused, and there is nowhere else: a session
     // runs on a node and this container carries no Claude Code. The reason,
     // and no choice under it: a menu with nothing in it would be a button
@@ -8603,11 +8707,17 @@ function placeResumeMenu(){
     : `<button data-r="1">Resume: ${esc(ago(p.last_claude.when))}</button>` +
       `<button data-n="1">New conversation</button>`;
   card.appendChild(m);
+  m.querySelectorAll("[data-node]").forEach(b => b.onclick = () => {
+    claudeNodePick[p.name] = b.dataset.node;
+    // Straight on when there is nothing to resume; else the second stage.
+    if (!p.last_claude || liveSessions().has(myClaude(p.name))) return startClaude(p.name, null, b.dataset.node);
+    drawProjects(state.projects);
+  });
   const a = anchor.getBoundingClientRect(), c = card.getBoundingClientRect();
   m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
   m.style.top = (a.bottom - c.top + 4) + "px";
-  m.querySelector("[data-r]") && (m.querySelector("[data-r]").onclick = () => startClaude(p.name, p.last_claude.id));
-  m.querySelector("[data-n]") && (m.querySelector("[data-n]").onclick = () => startClaude(p.name, null));
+  m.querySelector("[data-r]") && (m.querySelector("[data-r]").onclick = () => startClaude(p.name, p.last_claude.id, claudeNodePick[p.name] || ""));
+  m.querySelector("[data-n]") && (m.querySelector("[data-n]").onclick = () => startClaude(p.name, null, claudeNodePick[p.name] || ""));
   // ...and brought into the sidebar, which scrolls. Pressing Claude on a
   // project whose session has ENDED opens this chooser instead of a tab;
   // that is the design, and it is the only thing the press does, so a
@@ -8870,18 +8980,22 @@ async function rnSubmit(){
   const clear_token = rnClearToken && !token;
   const model = rnModelPick(), effort = $("rnEffort").value;
   const node = $("rnNode").value;
+  const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const gate = rnGateNow();
   const color = rnColorNow();
   // With the node's group: nothing here restarts a session.
   const tests_in = $("rnDevTest").value || "node";
+  const test_change = $("rnTestChange").value || "wait";
+  const brief = $("rnBrief").value || "full", reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
-  const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
+  const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
-    || tests_in !== rnPrefWas.tests_in || devbuild !== rnPrefWas.devbuild
+    || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change || brief !== rnPrefWas.brief
+    || devbuild !== rnPrefWas.devbuild
     || report !== rnPrefWas.report;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
@@ -8889,7 +9003,7 @@ async function rnSubmit(){
   // Only the launch flags are worth interrupting a session for: the model and
   // the effort are read when claude starts, the author is read per commit.
   const launchChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
-  const prefChanged = launchChanged
+  const prefChanged = launchChanged || reply !== rnPrefWas.reply || asks !== rnPrefWas.asks
     || git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
@@ -8930,8 +9044,8 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
-                              node, build, test, gate, color,
-                              tests_in, devbuild, report,
+                              node, nodes, build, test, gate, color,
+                              tests_in, test_change, brief, reply, asks, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.
@@ -10452,7 +10566,10 @@ document.addEventListener("keydown", e => {
 });
 
 refresh();
-setInterval(refresh, 15000);
+// Through the binding, not the function: the harness holds the poll by
+// replacing `refresh` (lib.mjs holdPoll), and a timer that captured the
+// original kept polling under a planted row (B265).
+setInterval(() => refresh(), 15000);
 </script>
 </body>
 </html>

@@ -86,8 +86,8 @@ ok(fil.status === 0 && bug && /bb map build wrote/.test(bug.title) && /report #\
 // ---- where a session is told --------------------------------------------------------
 const p = await call('/api/preamble?project=alpha');
 const text = p.text || '';
-ok(text.split('goes to `bb report').length === 2 && /`bb report` alone lists/.test(text),
-   'a session is told once, as a rule, to report BuilderBot\'s problems there, and the briefing says what the verb does');
+ok(text.split('goes to `bb report').length === 2 && /`bb report` alone lists/.test(text) && !/report-builderbot/.test(text),
+   'a session is told once, by the briefing\'s own words and not a rule, where BuilderBot\'s problems go and what the verb does');
 // ...and stopped when it files one in its own tracker anyway: asked, before
 // anything is filed, since a line said afterwards was not enough (24 Sep).
 const bugsNow = () => (JSON.parse(readFileSync(`${DIR}/state/bugs.json`, 'utf8')).projects.alpha || []).length;
@@ -114,8 +114,8 @@ const refused = await call('/api/reports', { action: 'add', text: 'something abo
 ok(refused.status === 403 && /Claude may: Report BuilderBot bugs/.test(refused.error || ''),
    `with it off, bb report is refused and says where the setting is (${refused.error})`);
 const quiet = (await call('/api/preamble?project=alpha')).text || '';
-ok(!quiet.includes('goes to `bb report') && !/`bb report` alone lists/.test(quiet),
-   '...its sessions are not told to use it');
+ok(/setting Report BuilderBot bugs is deny/.test(quiet) && /`bb bug add --here` files it here/.test(quiet),
+   '...and its sessions are told what deny means: the verb refuses, and --here files it in this tracker');
 const noNudge = bb(['bug', 'add', 'bb devapp status is wrong about the env'],
                    { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(noNudge.status === 0 && !/this names BuilderBot/.test(noNudge.stderr),

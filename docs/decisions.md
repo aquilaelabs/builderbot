@@ -184,6 +184,20 @@ It was a button for one release, and that was a mistake worth naming: a
 control you have to press before another control is not a step, it is a trap.
 Nothing about it was ever a decision.
 
+**There is no primary docker manager** (25 Sep). For a while the newest
+enrolled node that ran docker was "the default node": the Docker tab opened
+on it, the doctor called its daemon "the docker daemon", and a project with
+no node sent its container there. With two nodes that meant every new
+project landed on the machine enrolled last, which was never the one the
+operator meant. Now a project's containers go to the project's node and
+nowhere else: a project with no node has no daemon, Send to Docker and New
+container make the person pick one and say why, `bb devapp` says the project
+has no node, and New project offers a node rather than none. The one place a
+pick still has to come from nowhere is the Docker tab's first open, and that
+is derived from where the projects are bound (the node most of them use)
+rather than from enrolment order. Doctor reports each node's daemon on its
+own line.
+
 ## Analysis
 
 **The subtraction alone stopped being enough when `/workspace` stopped being

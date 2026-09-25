@@ -60,26 +60,33 @@ def _wire_nodes(m, path):
     m.write_json = lambda *a, **k: None
 
 
-def verdict(m):
-    """(state, sentence). state is ok, FAIL or skip."""
+def verdicts(m):
+    """[(state, sentence)], one per node with a daemon. state is ok, FAIL or skip."""
     # The daemon is a node's (DOCKER_HOST is gone: the sandbox VM is a node
-    # record, docs/nodes.md §11). No node with one is not a fault to report
-    # red on every run of a box that never wanted dev instances (noise is how
-    # a check stops being read), so that is a skip; a node that names one and
-    # does not answer is the failure worth a line.
-    a = m.available_default()
-    why = " ".join((a["why"] or "").split())      # one line, whatever it said
-    if a["on"]:
-        # An agent node's daemon is reached through its agent, never over
-        # the address the record carries, so name the node rather than an
-        # ssh:// nothing dials.
-        n = m.queue.node(a.get("node")) if getattr(m, "queue", None) and a.get("node") else None
-        if n and n.get("kind") == "agent":
-            return "ok", f"docker daemon: {n['name']}'s, through its agent"
-        return "ok", f"docker daemon: {a['kind']} at {a['where']}"
-    if why.startswith("no node with a daemon"):
-        return "skip", "no node with a daemon: dev instances run on a node's docker (Nodes tab)"
-    return "FAIL", f"docker daemon: {a.get('kind') or 'node'} at {a.get('where') or '?'}: {why}"
+    # record, docs/nodes.md §11), and there is no primary among them (the
+    # operator, 25 Sep): each node's daemon gets its own line, named, so a
+    # box with two nodes does not read one machine's silence as "the docker
+    # daemon" being down. No node with one is not a fault to report red on
+    # every run of a box that never wanted dev instances (noise is how a
+    # check stops being read), so that is a skip.
+    q = getattr(m, "queue", None)
+    have = [n for n in (q.docker_nodes() if q else []) if n.get("kind") != "local"]
+    if not have:
+        return [("skip", "no node with a daemon: dev instances run on a node's docker (Nodes tab)")]
+    out = []
+    for n in sorted(have, key=lambda n: n.get("name") or ""):
+        with m.on_node(n["id"]):
+            a = m.available_cached()
+        why = " ".join((a.get("why") or "").split())      # one line, whatever it said
+        if a.get("on"):
+            # An agent node's daemon is reached through its agent, never over
+            # the address the record carries, so name the node rather than an
+            # ssh:// nothing dials.
+            out.append(("ok", f"docker on {n['name']}: answering"
+                              + ("" if n.get("kind") == "agent" else f" at {a.get('where')}")))
+        else:
+            out.append(("FAIL", f"docker on {n['name']}: {why}"))
+    return out
 
 
 def mapping_faults(m):
@@ -109,9 +116,10 @@ def main(argv):
     except Exception as e:                        # noqa: BLE001
         print(f"skip docker daemon: could not be probed ({e})")
         return 0
-    state, line = verdict(m)
-    print(f"{state} {line}")
-    if state != "skip":
+    lines = verdicts(m)
+    for state, line in lines:
+        print(f"{state} {line}")
+    if any(state != "skip" for state, _ in lines):
         for fault in mapping_faults(m):
             print(f"warn host path mapping: {fault}")
     return 0

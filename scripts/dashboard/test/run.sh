@@ -69,9 +69,12 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -z "${BB_TEST_WORKER:-}" ] && [ -f "$KEEPF" ]
         # nothing to do with the change. The sentence is the fresh run's, so
         # the hook passes it through as a check that could not run (B232).
         ALOCK="${TMPDIR:-/tmp}/dashboard-test.d/attached"
+        # Not our own pid: on an NFS tree this script takes the lock, then
+        # execs its copy under the same pid, which read the lock back as a
+        # competitor that had started 00:00 ago and refused itself (B263).
         if [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$ALOCK" ]; then
             other="$(cat "$ALOCK" 2>/dev/null || true)"
-            if [ -n "$other" ] && [ -d "/proc/$other" ]; then
+            if [ -n "$other" ] && [ "$other" != "$$" ] && [ -d "/proc/$other" ]; then
                 die "another dashboard test run is going (pid $other, attached to the kept fixture, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago). One at a time on this box; wait for it, or set BB_TEST_CONCURRENT=1"
             fi
         fi
@@ -1107,6 +1110,15 @@ EOF
 # Each test file starts from the same place: an unwritten layout and both
 # throwaway sessions present: a file that minimizes tabs or ends a session
 # must not hand that state to the next.
+# The compose fixture project's binding to the sandbox node, once the node
+# exists (sandbox_id, set at enrolment); a no-op before that.
+bind_fixture_node() {
+    [ -n "${sandbox_id:-}" ] || return 0
+    curl -fs -u test:test -H 'Content-Type: application/json' \
+        -d "{\"project\":\"ep.silon\",\"node\":\"$sandbox_id\"}" \
+        "http://127.0.0.1:$PORT/api/prefs" >/dev/null || die "could not bind ep.silon to the sandbox node"
+}
+
 fresh() {
     rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/roadmap.json" \
           "$S/state/bugs.json"
@@ -1124,6 +1136,10 @@ fresh() {
     # node is refused, and inherited the binding, a deterministic failure of
     # the pair that neither file showed alone.
     rm -f "$S/state/claude-prefs.json"
+    # ...and then the one binding every file starts from: the compose
+    # fixture project works on the sandbox node, the way an operator binds
+    # one, since a project with none has no Docker row at all (R82).
+    bind_fixture_node
     # ...nor one that built a dev instance. agent.mjs runs a compose action
     # on its node now, which records what was built and on which daemon;
     # devapp.mjs then opened on a project that believed it had been built
@@ -1307,6 +1323,12 @@ sandbox_node=$(curl -fs -H "Authorization: Bearer $sandbox_tok" \
 # and then be reconciled away. agent-stub.py's header says why it is a stub
 # and not the shipped agent.
 stub_token="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+# The compose fixture project works on the sandbox node, the way an operator
+# binds one: there is no default node for a project's containers to fall to
+# (R82, 25 Sep), so a project with none has no Docker row at all. Bound
+# again by fresh() before every file, which wipes the settings first.
+sandbox_id="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("node_id") or d.get("id") or "")')"
+bind_fixture_node
 start_stub() {
     ( STUB_AGENT_URL="http://127.0.0.1:$PORT" \
     STUB_AGENT_DIR="$S/sandboxdata" \

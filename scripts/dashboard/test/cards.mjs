@@ -604,16 +604,17 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
        b => /nowhere else/.test(b.dataset.tip || b.title || '')),
      '...and the whole of it, fix included, is on the ghosted button, a tap on a phone, since these rows are tipified');
-  // A no-node project says so on the line, in red, and "(node: none)" beside
-  // the name. It said nothing there for a week (15 Sep: the fact beside the
-  // name was called enough); the operator asked for the line back on 23 Sep
-  // after three such rows read as dead buttons, and a tooltip is nothing on
-  // a phone. The fix stays on the button, where a paragraph is free.
+  // A no-node project says so on the line, in red. It said nothing there
+  // for a week (15 Sep: the fact beside the name was called enough); the
+  // operator asked for the line back on 23 Sep after three such rows read
+  // as dead buttons, and a tooltip is nothing on a phone. The fix stays on
+  // the button, where a paragraph is free. The row names no node at all
+  // since R82 (25 Sep): a project's nodes are its settings' to show.
   await plant({ session_at: '', locked: false, node_name: '',
                 session_why: "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab" });
   ok(await line() === 'no node to run a Claude session on'
-     && await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: none)',
-     `a project with no node says so under its name, the first clause only (${await line()})`);
+     && await page.$('#projects .row:has(.name:text-is("alpha")) .pnode') === null,
+     `a project with no node says so under its name, the first clause only, and nothing beside the name (${await line()})`);
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline', e => e.classList.contains('bad')),
      '...in red, since it is why the button is dead');
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
@@ -626,8 +627,8 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
      `a node out of window says so under the name too (${await line()})`);
   await plant({ held: '' });
   await plant({ node_name: 'shed' });
-  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: shed)',
-     '...and a project with a node wears its name');
+  ok(await page.$('#projects .row:has(.name:text-is("alpha")) .pnode') === null,
+     '...and a project with a node does not wear its name on the row either');
   // ...and LOCKED is the one case where no session is the point rather than a
   // fault, so it stays quiet.
   await plant({ locked: true });
@@ -1062,9 +1063,15 @@ await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
 ok(await page.$('#bSignOut') === null
    && (await page.$eval('#docAuth', e => e.textContent)).includes('not signed in'),
    'signed out, it says so where the verdict is and offers the way in');
-// ...and nothing offers to start a conversation that cannot start.
-ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => b.disabled)),
-   '...and every project\'s Claude button goes with it');
+// ...and nothing offers to start a conversation that cannot start: every
+// project with no node. One on a node keeps its button, since that node
+// signs in for itself (R47) and this record is not its word; the fixture's
+// ep.silon is on the sandbox (R82).
+ok(await page.$$eval('#projects .row', rs => rs.length > 0 && rs.every(r => {
+     const b = r.querySelector('[data-c]'), name = r.querySelector('.name')?.textContent.trim();
+     return !b || (name === 'ep.silon' ? !b.disabled : b.disabled);
+   })),
+   '...and every Claude button of a project with no node goes with it, while one on a node keeps its own');
 
 // And back. There is no credential here to take away: a machine signs in for
 // itself and keeps the grant it alone refreshes (R47). Signed in, to this
@@ -2165,4 +2172,54 @@ ok((await api('/api/pin', { name: 'alpha', pinned: true })).status === 400,
    'a project name is not a command, and the command pin says so');
 ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 400,
    '...and a command name is not a project');
+
+// ---- a project on several nodes asks which first (R82) --------------------
+// The press opens a chooser with a button per node, what each has and how
+// busy it is, a node that cannot start a session dead with its reason; the
+// pick opens the terminal on that node, named on the tab and stamped with
+// that node's boot. Planted on the row, since the fixture has one node.
+{
+  // The poll held: the rows are planted, and a poll landing between the
+  // plant and the read put the server's rows back, which have one node.
+  await holdPoll(page);
+  const plant = (patch) => page.evaluate(p2 => {
+    Object.assign(state.projects.find(x => x.name === 'alpha'), p2); drawProjects(state.projects); }, patch);
+  await plant({ locked: false, session_at: 'ubu', session_why: '', last_claude: null, held: '',
+    session_nodes: [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu',
+                      sample: { cpu_pct: 7, mem_mb: 8192, mem_used_mb: 2048 }, gpu: 'NVIDIA RTX A2000', tools: ['python'] },
+                    { id: 'n_rh', name: 'rh', where: 'refused', boot: '',
+                      why: 'rh is offline. Sessions run on a node and nowhere else' }] });
+  // Through the function the button calls: by this point in the file the
+  // button's own state (the sign-in record, the pins) is whatever the
+  // blocks above left, and that is not what this block is about.
+  // ...with no chooser already open on the row from a block above: a press
+  // on a row whose chooser is open closes it, which is right, and not what
+  // is under test.
+  await page.evaluate(() => { resumeFor = null; claudeNodePick = {}; openClaude('alpha'); });
+  // Read in the one evaluation that waits for it: the card repaints, and a
+  // read after a separate wait found the menu mid-rebuild.
+  const menu = JSON.parse(await (await page.waitForFunction(() => {
+    const bs = [...document.querySelectorAll('#resumemenu [data-node]')];
+    return bs.length === 2 ? JSON.stringify(bs.map(b => ({
+      id: b.dataset.node, dead: b.disabled, text: b.textContent.replace(/\s+/g, ' ') }))) : null;
+  }, null, { timeout: 10000 })).jsonValue());
+  ok(menu.length === 2 && !menu[0].dead && /cpu 7%/.test(menu[0].text) && /RTX A2000/.test(menu[0].text) && menu[1].dead,
+     `pressing Claude on a project with two nodes asks which, with what each has, and a node that cannot start one is dead (${
+        JSON.stringify(menu).slice(0, 120)})`);
+  await page.waitForFunction(() => { const b = document.querySelector('#resumemenu [data-node="n_ubu"]');
+    if (!b) return false; b.click(); return true; }, null, { timeout: 10000 });
+  await page.waitForFunction(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'), null, { timeout: 10000 });
+  // The row planted again in the same evaluation as the read: a poll that
+  // was already on its way when the hold went on lands whenever it lands.
+  const tab = await page.evaluate(() => {
+    const t = tabs.find(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu');
+    const p = state.projects.find(x => x.name === 'alpha');
+    p.session_nodes = [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu' }, { id: 'n_rh', name: 'rh', where: 'refused', boot: '' }];
+    return { label: t.label, url: ttydUrl(t.arg) }; });
+  ok(tab.label === 'Claude: alpha (ubu)' && /%3Ab%3Ab-ubu/.test(tab.url),
+     `...and the pick opens the terminal on that node, named on the tab and stamped with that node's boot (${tab.label}; ${tab.url})`);
+  await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:'))); drawPanes(); });
+  await freePoll(page);
+  page.errors = [];
+}
 await done(browser);

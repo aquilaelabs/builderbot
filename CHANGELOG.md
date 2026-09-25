@@ -4,6 +4,27 @@
 
 ### Added
 
+- Reboot and Shut down on a node's row, under Advanced: the agent schedules the machine's own reboot or power-off a few seconds out so the job reports first. The press names the sessions it ends; dead with the reason while the agent is away; an administrator's only (0d3a6f0)
+
+### Changed
+
+- BuilderBot is 0.7: the compatibility window moved, so a node whose agent is from 0.6 is held until Update agent on its row, which the bell and the Nodes tab say (a32a0a5)
+- The Questions pick under Yours on this project gains more, for a person who wants the judgment calls put to them, and reads more, Claude's default, fewer, rarely; the Replies pick is Claude's default or minimal, the normal choice having said nothing (0d3a6f0)
+- The Settings tab says a change applies at once or at the next start, in those words, where it said takes now (21462b7)
+- Three shipped rules that explained a helper (report-builderbot, ask-before-unshelving, ship-to-dist) are the briefing's words now, in its notebook, roadmap and versions sections; the rules left are conduct (21462b7)
+
+### Removed
+
+- The paths kept for agents from the 0.5 window: the tell gate that refused an agent older than 0.5.57, and the single actions-runner key beside the runners list. Nothing changes on a node whose agent is current (a32a0a5)
+
+### Fixed
+
+- A session's bb devapp log, start, stop and restart find the project's container on any of its nodes, not only the primary, so the project's own dev instance on its second node is its own again (B268) (21462b7)
+
+## 0.7.0: 2026-09-25
+
+### Added
+
 - A start-here page for somebody given an account rather than running the box, and the welcome panel now says the thing a new person hits first: sign in to Claude with your own account before a session will start. (5537a35)
 - A node can carry FFmpeg: ffmpeg, ffprobe and ffplay with the codecs a recording uses, so a session can turn a video into frames it can actually read, and a build can cut or convert what it produced. (65575b8)
 - New container can be filled in rather than written: an image, its ports, volumes, environment and restart policy, and the compose file it produces is the tab beside it, editable for anything the form does not cover. (d198e99)
@@ -47,6 +68,16 @@
 - A node says how many workers a test run there may use: Test workers on its row, 0 for its cores, handed to every test job as BB_TEST_WORKERS (68a8255)
 - BuilderBot's own test suite runs across BB_TEST_WORKERS workers at once, each with its own server, state and tmux, and the parent reruns any failure alone as before (e616fba)
 - A new project made here is committed as it is made and given a starting version, 0.1.0 unless the dialog says otherwise or is left blank (4b42aca)
+- A project can work on several nodes: its settings pick a primary and the others it also works on; the row says all of them (d5c820c)
+- Starting a Claude session on a project with several nodes asks which node first, with what each has and how busy it is; a node that cannot start one is dead with its reason; the tab names the node (916f086)
+- Each session's firewall reaches its project's containers on the project's other nodes by their published ports, and a Mac, Windows or guest node of the project whole; a container coming up on one node is reachable from the other within a poll (agent 0.6.103) (8b239c5)
+- A project setting says what a change asked for during a test run does: waits until the run ends, or ends the run, lands and starts it again; the briefing tells each session the project's choice, and the settings dialog groups it with everything Claude may do under Claude settings (862b577)
+- A project's briefing can be terse: the rules, roadmap and bugs a session reads with their filler words dropped and meaning kept, off by default; bb preamble shows what is sent (93f856a)
+- Replies: each person picks on a project how wordy Claude's replies to them are, Claude's default, normal or minimal; the notebook, commits and files are written as ever (93f856a)
+- A session on a node hears on its next prompt when the controller moved to another build since it began, with bb catchup and bb preamble named, once per build (284eaa6)
+- Questions: each person picks on a project how often Claude asks them, Claude's default, fewer or rarely; it rides the block beside their reply style and governs only what Claude asks (252dc4f)
+- A session on a node hears on its next prompt when somebody else changed this project's bugs, rules, memories or settings since its last one, with the verb that reads each; its own writes are not news to it (e06b73d)
+- Build and Test from the dashboard, and a compose action on an instance that follows its project, run on the first node of the project's set that is up when the primary is not, and the job's row says which it stood in for (e06b73d)
 
 ### Changed
 
@@ -103,6 +134,14 @@
 - The layer that runs and reports a dev instance (up, down, rebuild, test, remove, state, act) is devactions.py, cut out of devapp.py, which stays as the base it reads from (f732cfa)
 - Every broad exception catch in the dashboard and the agent is narrowed to what the code raises or kept with a log line and its reason, so a fault is seen rather than swallowed (6a4d8e8)
 - Every Python program that lived inside bb is a file under scripts/lib now, the notebook verbs included, with one loader for the dashboard's modules; bb is the shell that dispatches (bd39024)
+- The update-before-a-session switch is set under Controller settings, behind Apply, and no longer written by a checkbox on the node's row (e5f587e)
+- bb root run says before asking when a command names a file under /tmp, which on a sandbox node is the session's own view and not the root command's (e5f587e)
+- Doctor reports each node's docker daemon on its own line instead of one 'docker daemon' line for the newest enrolled node, and a node dialing in after silence re-asks the doctor at once instead of waiting out its half-hour cache (d5c820c)
+- No primary docker manager: containers go to the project's node; a project with no node is told to pick one (Send to Docker, New container, bb devapp), the Docker tab opens on the node most projects use, and New project offers that node rather than none (d5c820c)
+- Containers live on one of their project's nodes only: the pickers offer those, a node outside the set is refused, a project with no node is told to set one, a container is only given to a project working on its node, and one stranded elsewhere is marked unreachable on its row (d5c820c)
+- The project row no longer names its node: a project's nodes are its settings' to show (d5c820c)
+- The shipped rule stay-responsive points at the project's During a test run setting instead of saying a change waits; the briefing's Finding your way says what grep is still for beside the map (284eaa6)
+- The briefing every session reads is rewritten around what to do first, where the project runs, how a change is proven, how an ask reads and the notebook's verbs, so a session uses BuilderBot well from its first turn (284eaa6)
 
 ### Removed
 
@@ -173,6 +212,14 @@
 - Chat no longer snaps to the bottom while you read older messages: the panel repaints only when the conversation changed, and keeps your place unless you were at the end (2146ef8)
 - Send to Docker manager offers the project's own name, which makes the project's own container rather than being refused as a clash with it; when it already has one, the refusal says so and points at its row (4b42aca)
 - Send to Docker and New container preselect the node the container will actually be made on: the project's own, else the default docker host, said under the field, and the picker arrives when the node list does instead of staying hidden; New container's node follows the project picked (4b42aca)
+- A new instance whose ref or env is refused leaves no record behind, so the retry is not told it already exists (e5f587e)
+- A user account's project with no node lists its containers on the default docker host instead of a blind refusal (e5f587e)
+- After Update installs a new Claude Code on a node, the row and the bell say the new version at once rather than after the agent's next hello (e5f587e)
+- Build, Rebuild and Up answer at once with their job; the compose parse on the node runs behind that answer and a refusal is the job's failure on the row, so a phone no longer drops the request as a NetworkError (e5f587e)
+- The request trace keeps how long each request took and names the slowest, and bb dashboard trace prints it; a job handed to a poll that never started it goes back to the queue within about ninety seconds instead of holding a lane until the next hello, and a wait behind one says so (e5f587e)
+- The test-run setting's select takes the whole row of the dialog, so its options read in full (a9305ef)
+- bb devapp rebuild no longer gives up with 'timed out' while the build goes on: a slow node's state read is given the time it needs, and a slow one mid-wait is read again (284eaa6)
+- The Docker tab names the agent node it talks to (on NODE, through its agent) instead of an ssh address nothing dials (e06b73d)
 
 ### Security
 

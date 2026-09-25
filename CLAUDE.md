@@ -107,7 +107,7 @@ by hand cost four commands and still could not see the failed builds.
   and `.html` are copied over before every attached run.
 - **What other projects' sessions say about BuilderBot:** a session on any
   other project reports a problem with BuilderBot itself with `bb report`,
-  never its own tracker (the shipped rule `report-builderbot`), and the
+  never its own tracker (the briefing says so), and the
   reports wait on the controller. This project turns it off in its settings
   (Claude may: Report BuilderBot bugs), so its own problems go into its own
   tracker as ever. `bb diag reports` lists the open ones;

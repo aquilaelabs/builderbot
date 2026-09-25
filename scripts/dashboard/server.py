@@ -1099,6 +1099,27 @@ def _remote_host(remotes):
 IGNORE_MARKER = ".bbignore"
 
 
+def _session_nodes(name):
+    """One row per node the project works on, for the chooser a Claude press
+    opens when there is more than one (R82): where a session there would
+    stand (node or refused, with the why), the node's boot for the tab, and
+    what the machine has and how busy it is, so the pick is a read. [] for
+    a project on one node or none: the poll stays light for the common case."""
+    set_ = (prefs.get(name) or {}).get("nodes") or []
+    if len(set_) < 2:
+        return []
+    out = []
+    for nid in set_:
+        t = session_target(name, claude=True, node=nid)
+        n = nodes.node(nid) or {}
+        rep = n.get("reported") or {}
+        out.append({"id": nid, "name": n.get("name") or t.get("name") or nid,
+                    "where": t["where"], "why": t.get("why") or "", "boot": t.get("boot") or "",
+                    "sample": rep.get("sample") or {}, "gpu": rep.get("gpu") or "",
+                    "tools": sorted((rep.get("toolchains") or {}).keys())[:6]})
+    return out
+
+
 def _session_at(name):
     t = session_target(name, claude=True)
     if t["where"] == "node":
@@ -1339,6 +1360,7 @@ def _project_columns(who, facts):
         # every locked row, forever. It is also not a fault, and the issue list
         # is where faults go.
         sa = _session_at(d.name)
+        sa["session_nodes"] = _session_nodes(d.name)
         mem_census = memory.census(d.name, home=home_for(users.uid_of(who)))
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
@@ -1369,7 +1391,7 @@ def _project_columns(who, facts):
                     # people on one project are two authors on two models.
                     # `yours`, because `mine` on this row is already taken by
                     # may_work: whether the project is this account's to change.
-                    "yours": mine_prefs.get(d.name, {"model": "", "effort": "",
+                    "yours": mine_prefs.get(d.name, {"model": "", "effort": "", "reply": "", "asks": "",
                                                      "git_name": "", "git_email": ""}),
                     # Whether a commit here would carry an author, asked WITH
                     # the override: somebody whose Profile has no email can
@@ -1530,6 +1552,16 @@ def claude_state(title):
 # stripped before the real one is put on. Anchored, so it can only ever take
 # a prefix off the front.
 _ARG_OWNER = re.compile(r"^u:[^:]*:")
+# `:n:NODE` on a claude: argument: which of the project's nodes the person
+# picked for this session (R82). Read here and taken off before the proxy,
+# since bb-tty on the node reads the argument's tail by suffix (:r:, :b:)
+# and would take the node for part of the project's name.
+_ARG_NODE = re.compile(r":n:([A-Za-z0-9_-]+)")
+
+
+def _arg_node(arg):
+    m = _ARG_NODE.search(arg or "")
+    return m.group(1) if m else ""
 
 
 def _arg_project(arg):
@@ -1560,7 +1592,7 @@ def _ask_hello(nid):
         nodes.ask_hello(nid)
 
 
-def session_target(project, claude=False):
+def session_target(project, claude=False, node=""):
     # `claude` is the one thing that changed with R47. A project's SHELL still
     # follows its node (the tree is that machine's mount and its toolchains
     # are what a build there uses), and a project with NO node still gets a
@@ -1597,7 +1629,13 @@ def session_target(project, claude=False):
     carry what to do about it. A SHELL still falls back here, which is what
     keeps the tree, the linters and git reachable while a node is away.
     """
-    nid = (prefs.get(project) or {}).get("node") or "" if project else ""
+    pf = prefs.get(project) if project else None
+    nid = (pf or {}).get("node") or ""
+    # The node the person picked, when it is one the project works on
+    # (R82); any other name falls to the primary rather than to a refusal,
+    # since the pick came off a list this side drew.
+    if node and node in ((pf or {}).get("nodes") or []):
+        nid = node
     # ONE SENTENCE, and not a red one on the page: a project with no node is
     # a normal state, not a fault. `name` is what tells the two apart
     # downstream (empty here, the node's name when a node refused), so the
@@ -2128,7 +2166,7 @@ _TRACE = collections.deque(maxlen=6000)
 _trace_lock = threading.Lock()
 
 
-def trace_note(handler):
+def trace_note(handler, ms=0):
     # A note beside the request, never a fault in it: whatever goes wrong
     # here is swallowed, since the answer has already been sent. Broad
     # because it runs on every request and must never become one's 500;
@@ -2141,7 +2179,7 @@ def trace_note(handler):
         by = ("session" if who.get("session") else "agent" if path.startswith("/api/v1/agent")
               else "user" if who.get("name") else "anon")
         with _trace_lock:
-            _TRACE.append((time.time(), handler.command, path, keys, by, ua))
+            _TRACE.append((time.time(), handler.command, path, keys, by, ua, int(ms)))
     except Exception as e:                                  # noqa: BLE001
         if not _trace_said:
             _trace_said.append(True)
@@ -2156,17 +2194,132 @@ def trace_since(since):
     with _trace_lock:
         rows = [r for r in _TRACE if r[0] >= since]
     groups = {}
-    for t, method, path, keys, by, ua in rows:
+    slow = []
+    for t, method, path, keys, by, ua, ms in rows:
         agent = ("app" if "BuilderBot" in ua else "curl" if ua.startswith("curl")
                  else "browser" if "Mozilla" in ua else (ua.split("/")[0] or "?"))
         key = (method, path + ("?" + keys if keys else ""), by, agent)
-        g = groups.setdefault(key, {"n": 0, "first": t, "last": t})
+        g = groups.setdefault(key, {"n": 0, "first": t, "last": t, "ms_max": 0, "ms_sum": 0})
         g["n"] += 1
         g["first"] = min(g["first"], t)
         g["last"] = max(g["last"], t)
-    out = [{"method": k[0], "path": k[1], "by": k[2], "agent": k[3], **v} for k, v in groups.items()]
+        # How long each took (B245): a tab that loads slowly is one request
+        # that took seconds, and a count alone cannot say which.
+        g["ms_max"] = max(g["ms_max"], ms)
+        g["ms_sum"] += ms
+        slow.append((ms, t, method, key[1], by, agent))
+    out = [{"method": k[0], "path": k[1], "by": k[2], "agent": k[3], "n": v["n"],
+            "first": v["first"], "last": v["last"], "ms_max": v["ms_max"],
+            "ms_avg": v["ms_sum"] // max(1, v["n"])} for k, v in groups.items()]
     out.sort(key=lambda r: -r["n"])
-    return {"since": since, "now": now, "total": len(rows), "rows": out}
+    slow.sort(key=lambda r: -r[0])
+    return {"since": since, "now": now, "total": len(rows), "rows": out,
+            "slow": [{"ms": r[0], "at": r[1], "method": r[2], "path": r[3], "by": r[4], "agent": r[5]}
+                     for r in slow[:8] if r[0] >= 500]}
+
+
+# ---- a session told the controller moved (R83) -----------------------------
+# A session keeps the briefing it was handed at its start, and nothing
+# re-briefs it when the controller is rebuilt within a compatibility window.
+# So the build a session began on is kept, per session, and on its next
+# prompt after a rebuild the hook's line says the controller moved and where
+# to read what changed: once per build, since the file then carries the new
+# one. Persisted, because the rebuild that this is about restarts this
+# process. Node sessions only: the hook posts from a node, and a session
+# runs on one.
+SESSION_SEEN = "session-seen.json"
+# What the operator can change on a project that a session should be told of
+# on its next prompt (the operator, 25 Sep), with the verb that reads it. The
+# roadmap is roadmap.catchup's, which says which item moved; these say the
+# half. A session's own writes through the API are marked seen as they land
+# (session_mark_own), so only somebody else's move is said.
+SEEN_HALVES = (("bug", "bugs", "`bb bug`"), ("rules", "rules", "`bb rules`"),
+               ("mem", "memories", "the notebook's Memory view"),
+               ("prefs", "settings", "`bb settings`"))
+OWN_WRITE_ROUTES = ("/api/roadmap", "/api/rules", "/api/bugs", "/api/memory", "/api/prefs")
+_seen_lock = threading.Lock()
+
+
+def _build_now():
+    st = image_stamp()
+    return st.get("version") or st.get("rev") or ""
+
+
+def _seen_load():
+    path = STATE / SESSION_SEEN
+    try:
+        d = json.loads(path.read_text())
+    except (OSError, ValueError):
+        d = {}
+    return d if isinstance(d, dict) else {}
+
+
+def _seen_now(project, who):
+    """The tokens a session is compared against: the poll's per-project
+    revisions, and a digest of the project's own settings (the poll's prefs
+    token is one mtime for every project)."""
+    r = revisions(who, [project])
+    try:
+        pf = json.dumps(prefs.get(project) or {}, sort_keys=True)
+    except Exception:                                                     # noqa: BLE001
+        pf = ""
+    return {"bug": str(r.get(f"bug:{project}") or ""), "rules": str(r.get(f"rules:{project}") or ""),
+            "mem": str(r.get(f"mem:{project}") or ""),
+            "prefs": hashlib.sha1(pf.encode()).hexdigest()[:12] if pf else ""}
+
+
+def session_mark_own(project, uid, who):
+    """A session's own write to the notebook or the settings is seen by it
+    as it lands, so its next prompt does not read it back as news."""
+    if not project or not uid:
+        return
+    try:
+        now = _seen_now(project, who)
+        with _seen_lock:
+            d = _seen_load()
+            for key, rec in d.items():
+                if key.startswith(f"{project}|{uid}|") and isinstance(rec, dict):
+                    rec["revs"] = now
+            write_json(STATE / SESSION_SEEN, d)
+    except Exception as e:                                                # noqa: BLE001
+        print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
+
+
+def session_seen_note(project, uid, node, who=None, begin=False):
+    """`begin`: record the build and the notebook this session starts from.
+    Otherwise what has moved since, in one line, and the record moved on:
+    the controller's build (R83) and any half of this project's notebook or
+    its settings that somebody else changed."""
+    build = _build_now()
+    key = f"{project}|{uid}|{node or ''}"
+    try:
+        revs_now = _seen_now(project, who) if who is not None else {}
+        with _seen_lock:
+            d = _seen_load()
+            rec = d.get(key) if isinstance(d.get(key), dict) else {}
+            was_build, was_revs = str(rec.get("build") or ""), rec.get("revs") or {}
+            d[key] = {"build": build or was_build, "revs": revs_now or was_revs}
+            write_json(STATE / SESSION_SEEN, d)
+        if begin:
+            return ""
+        said = []
+        if build and was_build and was_build != build:
+            said.append(f"The controller moved to {build} since this session began (it was on {was_build}): "
+                        "`bb catchup` says what changed, and `bb preamble` prints the briefing as "
+                        "it is now; this session still holds the one it started with.")
+        if was_revs and revs_now:
+            # A half with no revision yet (a project with no bug filed) is
+            # "" and its first write is a change like any other.
+            moved = [(name, verb) for k, name, verb in SEEN_HALVES
+                     if k in was_revs and was_revs.get(k, "") != revs_now.get(k, "")]
+            if moved:
+                said.append("Since your last prompt somebody else changed this project's "
+                            + ", ".join(n for n, _ in moved) + ": read "
+                            + ", ".join(v for _, v in moved) + " before going on.")
+        return " ".join(said)
+    except Exception as e:                                                # noqa: BLE001
+        print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
+        return ""
 
 
 def image_stamp():
@@ -2525,6 +2678,10 @@ idle.configure(state=STATE, write_json=write_json,
 logs.prune()
 
 import prefs                                                     # noqa: E402
+# The briefing reads a project's own settings for its "While tests run"
+# section (what a change asked for during a run does); prefs is imported
+# after preamble is configured, so it is handed over here.
+preamble.prefs_mod = prefs
 
 prefs.configure(write_json=write_json, state=STATE)
 # Said again, now that prefs exists: users.git_identity resolves a per-project
@@ -2620,6 +2777,7 @@ if not NODES_OK:
     # A compose action the AGENT ran still has records to write here; this is
     # where the module that queued it finishes it (roadmap #18).
     nodes.on_done("compose", devactions.compose_done)
+    nodes.on_done(claudecode.JOB, claudecode.update_done)
 # What Allow on a rebuild request actually starts (the Docker row's `ask`).
 # Outside the block above: the ask has nothing to do with the node registry,
 # and a controller without one still has projects whose containers run.
@@ -2636,6 +2794,7 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  queue=nodes if not NODES_OK else None,
                  runner=jobs if not NODES_OK else None,
                  project_node=lambda p: prefs.get(p)["node"],
+                 project_nodes=lambda p: prefs.get(p)["nodes"],
                  node_paths=nodes.node_paths if not NODES_OK else None)
 # The layer on top of it: the compose runner is its, so it is the one that
 # hands jobs.py the function.
@@ -2822,6 +2981,16 @@ def client_gone(sock):
 import doctor                                                    # noqa: E402
 
 doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes()))
+# A node dialing in after silence re-asks the doctor now rather than in up
+# to half an hour: after a reboot the card kept saying no node could run a
+# session long after they were all back (the operator, 25 Sep).
+nodes.came_back = lambda nid: threading.Thread(target=doctor.refresh, name="doctor-after-hello",
+                                               daemon=True).start()
+# The Docker tab's first pick is derived from where the projects are bound.
+nodes.project_nodes = lambda: {p: (v or {}).get("node") or ""
+                               for p, v in prefs.all_projects(WORKSPACE).items()}
+devapp.all_project_nodes = lambda: {p: (v or {}).get("nodes") or []
+                                    for p, v in prefs.all_projects(WORKSPACE).items()}
 
 # The controller's diagnostics: read-only, for an administrator and, behind
 # the debug switch and a node's tick, an administrator's session (diag.py).
@@ -3672,7 +3841,7 @@ class Handler(BaseHTTPRequestHandler):
         # The rule is made from the last thing the node said, a few seconds
         # stale, which two people starting in the same instant could slip
         # through, and the alternative is not making it at all.
-        t = session_target(project, claude=True)
+        t = session_target(project, claude=True, node=_arg_node(arg))
         if t["where"] != "node":
             return ""
         # Claude Code on that node first (claudecode.py): an update running
@@ -3760,7 +3929,7 @@ class Handler(BaseHTTPRequestHandler):
         for kv in query.split("&"):
             k, eq, v = kv.partition("=")
             if k == "arg" and eq:
-                want = _ARG_OWNER.sub("", urllib.parse.unquote_plus(v))
+                want = _ARG_NODE.sub("", _ARG_OWNER.sub("", urllib.parse.unquote_plus(v)))
                 v = urllib.parse.quote(f"u:{uid}:{want}" if uid else want,
                                        safe="")
                 out.append(f"{k}{eq}{v}")
@@ -3829,7 +3998,8 @@ class Handler(BaseHTTPRequestHandler):
         # question is asked about a claude: argument and about nothing else.
         arg0 = _term_arg(rest0)
         target = session_target(_arg_project(arg0),
-                                claude=arg0.startswith("claude:"))
+                                claude=arg0.startswith("claude:"),
+                                node=_arg_node(arg0))
         if target["where"] == "refused":
             return self._term_notice(target["why"], 503)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
@@ -3982,11 +4152,12 @@ class Handler(BaseHTTPRequestHandler):
         connection just closes, which the browser reports as a network error,
         the one failure mode that looks identical to the container being gone.
         """
+        t0 = time.monotonic()
         try:
             try:
                 return fn()
             finally:
-                trace_note(self)
+                trace_note(self, (time.monotonic() - t0) * 1000)
         except Exception as e:                          # noqa: BLE001 (last resort)
             # Broad by definition: this is the one place a handler's bug is
             # turned into an answer. The log gets the traceback the answer
@@ -4436,11 +4607,10 @@ class Handler(BaseHTTPRequestHandler):
         for n in rows:
             if n.get("kind") == "agent":
                 n["turns"] = node_turns(n)
-        # ...and which node work nobody bound to one lands on (the newest
-        # enrolled that runs docker), so a picker preselects the node the
-        # server would choose rather than the first name in its list: a
-        # project with no node sent to Docker landed on the node the picker
-        # was not showing (the operator, 25 Sep).
+        # ...and the node the Docker tab opens on and New project offers,
+        # derived from where the projects are bound (nodes.node_for). Not a
+        # default that work falls to: a project with no node has nowhere to
+        # send, and the dialogs make the person pick.
         return self._json({"nodes": rows, "agent": nodes.agent_shipped(),
                            "default": nodes.node_for()})
 
@@ -4500,12 +4670,23 @@ class Handler(BaseHTTPRequestHandler):
         # reads that project's (bb devapp ls outside a session).
         asked = q.get("node", [""])[0]
         proj = q.get("project", [""])[0]
-        if not asked and proj and not sess:
-            if self._not_project(proj):
+        if sess or (not asked and proj):
+            # A named project reads its own node's daemon, allowed by the
+            # project being the account's to see rather than by the node
+            # scope (B258); the filter below still keeps the answer to the
+            # account's projects. A project with no node has no daemon and
+            # no containers anywhere: there is no primary docker manager for
+            # it to fall to (the operator, 25 Sep), so that is said.
+            if not sess and self._not_project(proj):
                 return None
-            asked = devapp.project_daemon(proj)
-        nid, why = ((devapp.project_daemon(sess), None) if sess
-                    else self._node_asked(asked))
+            name = sess or proj
+            nid, why = devapp.project_daemon(name), None
+            if not nid:
+                return self._json({"error": f"{name} has no node, so it has no containers anywhere. "
+                                            + no_node_advice(name),
+                                   "blind": True, "instances": [], "containers": []})
+        else:
+            nid, why = self._node_asked(asked)
         if why:
             return self._json({"error": why, "blind": True,
                                "instances": [], "containers": []})
@@ -4598,7 +4779,10 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        return self._json(preamble.payload(name))
+        # The asker's own reply style rides the block, as it does for the
+        # session bb-tty starts for them.
+        mine = prefs.all_for_user(users.uid_of(self._who())).get(name) or {}
+        return self._json(preamble.payload(name, reply=mine.get("reply") or "", asks=mine.get("asks") or ""))
 
     def _get_codebase(self):
         """GET /api/codebase."""
@@ -4727,7 +4911,16 @@ class Handler(BaseHTTPRequestHandler):
                             or req.get("id") or "")[:120], req)
         for how, route, name in POST_ROUTES:
             if (path == route) if how == "exact" else path.startswith(route):
-                return getattr(self, name)(req)
+                out = getattr(self, name)(req)
+                # A session's own write to its project's notebook or
+                # settings is seen by it as it lands (session_seen_note).
+                # The token's own uid, as the hook reads it: uid_of answers
+                # "" for a session on purpose, and that is the per-account
+                # stores' rule, not this one's.
+                who = self._who() or {}
+                if who.get("session") and any(path.startswith(r) for r in OWN_WRITE_ROUTES):
+                    session_mark_own(who["session"], who.get("uid") or "", who)
+                return out
         self._json({"error": "not found"}, 404)
 
     def _reset(self, req):
@@ -4783,7 +4976,7 @@ class Handler(BaseHTTPRequestHandler):
         # Everything else in this dialog is the project's own; the node is
         # not, because a node is shared and moving a project onto one
         # reaches every other project there.
-        if "node" in req and self._refused("node", name):
+        if ("node" in req or "nodes" in req) and self._refused("node", name):
             return
         # ...nor is the dial that hands a session this project's container:
         # it lets a session create one and set its env, which is Docker
@@ -4806,12 +4999,13 @@ class Handler(BaseHTTPRequestHandler):
         if "node" in req and str(req.get("node") or "") != (prefs.get(name) or {}).get("node", ""):
             moved = devapp.pin_to_current_node(name)
             moved_node = True
-        r = prefs.set_prefs(name, node=req.get("node"),
+        r = prefs.set_prefs(name, node=req.get("node"), nodes=req.get("nodes"),
                             build=req.get("build"),
                             test=req.get("test"), outputs=req.get("outputs"),
                             gate=req.get("gate"), gitpol=req.get("gitpol"),
                             devbuild=req.get("devbuild"),
                             tests_in=req.get("tests_in"),
+                            test_change=req.get("test_change"), brief=req.get("brief"),
                             report=req.get("report"),
                             color=req.get("color"),
                             workspace=WORKSPACE)
@@ -4820,7 +5014,7 @@ class Handler(BaseHTTPRequestHandler):
         # here carry. Same dialog, same request, different store, because two
         # people on one project are two authors on two models and neither
         # should be able to change the other's (17 Sep).
-        mine = {k: req[k] for k in ("model", "effort", "git_name", "git_email") if k in req}
+        mine = {k: req[k] for k in ("model", "effort", "git_name", "git_email", "reply", "asks") if k in req}
         if mine and not r.get("error"):
             r = dict(r) | {"yours": prefs.set_for_user(users.uid_of(self._who()), name, mine)}
         # The restart is asked for by the dialog, which is where the
@@ -4893,6 +5087,9 @@ class Handler(BaseHTTPRequestHandler):
 
         def revoke():
             return nodes.node_revoke(self._principal(), nid)
+
+        def power():
+            return nodes.node_power(self._principal(), nid, act)
 
         def config():
             # The configuration plane (docs/nodes.md §12): what the operator
@@ -5068,6 +5265,7 @@ class Handler(BaseHTTPRequestHandler):
         verbs = {"vm-xml": vm_xml, "add": add, "update": update, "uninstall": uninstall,
                  "drain": state, "online": state, "retire": state,
                  "lock": lock, "unlock": lock, "enroll": enroll, "revoke": revoke,
+                 "reboot": power, "poweroff": power,
                  "config": config, "log-grant": log_grant, "turns": turns,
                  "test-workers": test_workers, "session-net": session_net,
                  "root-asks": root_asks, "apply": apply, "runner": runner,
@@ -5253,6 +5451,7 @@ class Handler(BaseHTTPRequestHandler):
         if kind == "started":
             chat.event(project, uid, f"{name} started a Claude session on {project}"
                                      + (f" ({field(req, 'node')})" if field(req, "node") else ""))
+            session_seen_note(project, uid, field(req, "node"), who=me, begin=True)
             return self._json({"ok": True})
         if kind == "seen":
             # What this session has not been told about the notebook, and
@@ -5261,7 +5460,8 @@ class Handler(BaseHTTPRequestHandler):
             # ...and what the operator decided about anything it had waiting
             # for approval, which is the other half of #27.
             line = " ".join(x for x in (roadmap.catchup(project, uid),
-                                        pending.settled_line(project)) if x)
+                                        pending.settled_line(project),
+                                        session_seen_note(project, uid, field(req, "node"), who=me)) if x)
             return self._json({"ok": True, "line": line})
         if kind in ("turn", "turn-done"):
             # A prompt about to start, or a turn over (turns.py): how many
@@ -5516,7 +5716,12 @@ class Handler(BaseHTTPRequestHandler):
         # what it writes comes back the same way.
         emu = field(req, "action") == "emu"
         pf = prefs.get(name)
-        nid = field(req, "node") or pf["node"]
+        # The node named, else the project's primary, else the first of its
+        # set that is up (R82 step 6): a primary that is offline is a job
+        # that runs elsewhere and says so, not a refusal.
+        nid, fell_over = field(req, "node"), ""
+        if not nid:
+            nid, fell_over = nodes.first_up(pf.get("nodes") or ([pf["node"]] if pf["node"] else []))
         if not nid:
             return {"error": f"{name} has no node, so nothing can be compiled for it. "
                              + no_node_advice(name)}, 400
@@ -5573,6 +5778,8 @@ class Handler(BaseHTTPRequestHandler):
         if snap.get("error"):
             return snap, 400
         spec = {"argv": argv, "timeout": timeout, "outputs": outputs, "project": name}
+        if fell_over:
+            spec["fell_over"] = fell_over      # the primary it stood in for (R82 step 6)
         r = nodes.job_add(who, {"node": nid}, "exec", spec, name,
                           source={"digest": snap["digest"], "project": name,
                                   "files": snap["files"], "bytes": snap["bytes"]})
@@ -6231,9 +6438,17 @@ class Handler(BaseHTTPRequestHandler):
         sess = me.get("session") or ""
         act, name = field(req, "action"), field(req, "container")
         if sess:
-            nid = devapp.project_daemon(sess)
-            with devapp.on_node(nid or None):
-                c, owner = containers.owned_container(name)
+            # Looked for on each of the project's nodes, primary first: its
+            # containers live on any of them (R82), and asking the primary
+            # alone refused the project's own dev instance on its second
+            # node as not its own (B268).
+            c, owner, nid = None, "", devapp.project_daemon(sess)
+            for cand in (devapp.nodes_of(sess) or [nid]):
+                with devapp.on_node(cand or None):
+                    c, owner = containers.owned_container(name)
+                if c:
+                    nid = cand
+                    break
             # A stranger's container and a missing one answer alike.
             if owner != sess:
                 return self._json({"error": not_ours(name, sess)}, 403)
@@ -6773,6 +6988,16 @@ class Handler(BaseHTTPRequestHandler):
                 under = field(req, "for") or (who.get("session") or "")
                 if under and self._not_project(under):
                     return
+                # ...and it lands on that project's node: a node named that
+                # is not the project's is refused now, since a container
+                # anywhere else is out of reach of the project's sessions
+                # (R79, the operator 25 Sep); a project with no node has to
+                # be given one first.
+                if under:
+                    why, un = devapp.on_project_node(under, target["id"] if target else "")
+                    if why:
+                        return self._json({"error": why}, 400)
+                    target = nodes.node(un) if not NODES_OK else None
                 # A session's is under its project's dial, Claude may: Run
                 # its container, like every other container verb (B250, the
                 # operator, 24 Sep: at auto it was still asked). Refused at
