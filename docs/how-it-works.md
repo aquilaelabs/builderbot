@@ -2325,8 +2325,10 @@ words are dropped from every part but the live line, deterministically and
 never by a model, with code, names, numbers and the words that turn a
 sentence kept, which takes a third off the block. And each person's
 **Replies** pick on a project, beside model and effort, says how wordy
-Claude's replies to them are there; it rides the block as its own part and
-governs replies only, so the notebook, commits and files are written as ever.
+Claude's replies to them are there, and their **Questions** pick how often
+Claude asks them, fewer or rarely; both ride the block as its own part and
+govern the replies and the asks only, so the notebook, commits and files are
+written as ever.
 
 A running session keeps the block it started with. What it hears live: a
 named rule on the turn it applies, whatever a `bb` verb answers, and, on

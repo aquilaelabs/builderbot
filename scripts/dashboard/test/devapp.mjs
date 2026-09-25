@@ -3062,6 +3062,7 @@ ok(await page.$('#devSend'),
   await page.selectOption('#rnTestChange', 'restart');
   await page.selectOption('#rnBrief', 'terse');
   await page.selectOption('#rnReply', 'minimal');
+  await page.selectOption('#rnAsks', 'fewer');
   await page.selectOption('#rnGateDocker', 'deny');
   await page.click('#rnGo');
   // Read as the setting, not as the record's absence: a project on a node
@@ -3073,10 +3074,10 @@ ok(await page.$('#devSend'),
   ok(await page.evaluate(() => ((state?.projects || []).find(p => p.name === 'ep.silon') || {}).prefs?.test_change) === 'restart',
      'the test-run setting is saved with it');
   ok(await page.evaluate(() => { const p = (state?.projects || []).find(p => p.name === 'ep.silon') || {};
-       return p.prefs?.brief === 'terse' && p.yours?.reply === 'minimal'; }),
-     '...and the briefing style with the project, the reply style with the person');
+       return p.prefs?.brief === 'terse' && p.yours?.reply === 'minimal' && p.yours?.asks === 'fewer'; }),
+     '...and the briefing style with the project, the reply and question styles with the person');
   await page.evaluate(async () => { await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project: 'ep.silon', brief: 'full', reply: '' }) }); });
+    body: JSON.stringify({ project: 'ep.silon', brief: 'full', reply: '', asks: '' }) }); });
   // ---- where the tests run (R48 step 3, moved by R68 step 6) -------------
   // The setting lives with the project's node and test command now, in its
   // settings dialog: it is the project's, and having it here meant somebody

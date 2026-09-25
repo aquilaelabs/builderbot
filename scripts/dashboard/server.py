@@ -1391,7 +1391,7 @@ def _project_columns(who, facts):
                     # people on one project are two authors on two models.
                     # `yours`, because `mine` on this row is already taken by
                     # may_work: whether the project is this account's to change.
-                    "yours": mine_prefs.get(d.name, {"model": "", "effort": "", "reply": "",
+                    "yours": mine_prefs.get(d.name, {"model": "", "effort": "", "reply": "", "asks": "",
                                                      "git_name": "", "git_email": ""}),
                     # Whether a commit here would carry an author, asked WITH
                     # the override: somebody whose Profile has no email can
@@ -4726,7 +4726,7 @@ class Handler(BaseHTTPRequestHandler):
         # The asker's own reply style rides the block, as it does for the
         # session bb-tty starts for them.
         mine = prefs.all_for_user(users.uid_of(self._who())).get(name) or {}
-        return self._json(preamble.payload(name, reply=mine.get("reply") or ""))
+        return self._json(preamble.payload(name, reply=mine.get("reply") or "", asks=mine.get("asks") or ""))
 
     def _get_codebase(self):
         """GET /api/codebase."""
@@ -4949,7 +4949,7 @@ class Handler(BaseHTTPRequestHandler):
         # here carry. Same dialog, same request, different store, because two
         # people on one project are two authors on two models and neither
         # should be able to change the other's (17 Sep).
-        mine = {k: req[k] for k in ("model", "effort", "git_name", "git_email", "reply") if k in req}
+        mine = {k: req[k] for k in ("model", "effort", "git_name", "git_email", "reply", "asks") if k in req}
         if mine and not r.get("error"):
             r = dict(r) | {"yours": prefs.set_for_user(users.uid_of(self._who()), name, mine)}
         # The restart is asked for by the dialog, which is where the

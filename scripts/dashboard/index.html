@@ -3756,6 +3756,12 @@ body.booting .pane>.loading{margin:auto}
           <option value="normal">normal</option>
           <option value="minimal">minimal: the answer and what is left</option>
         </select></label>
+        <label class="pick">Questions <select id="rnAsks"
+          aria-label="how often Claude asks you questions here">
+          <option value="">Claude's default</option>
+          <option value="fewer">fewer: routine calls made, not asked</option>
+          <option value="rarely">rarely: only when going on would be unsafe or useless</option>
+        </select></label>
       </div>
       <div class="hint" id="rnPrefHint"></div>
       <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
@@ -6208,7 +6214,7 @@ function rnFillPrefs(p){
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
-               brief: p?.prefs?.brief || "full", reply: p?.yours?.reply || "",
+               brief: p?.prefs?.brief || "full", reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
                color: p?.prefs?.color || ""};
@@ -6285,6 +6291,7 @@ function rnFillPrefsRest(p){
   $("rnTestChange").value = p?.prefs?.test_change || "wait";
   $("rnBrief").value = p?.prefs?.brief || "full";
   $("rnReply").value = p?.yours?.reply || "";
+  $("rnAsks").value = p?.yours?.asks || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
@@ -8979,7 +8986,7 @@ async function rnSubmit(){
   // With the node's group: nothing here restarts a session.
   const tests_in = $("rnDevTest").value || "node";
   const test_change = $("rnTestChange").value || "wait";
-  const brief = $("rnBrief").value || "full", reply = $("rnReply").value || "";
+  const brief = $("rnBrief").value || "full", reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
@@ -8994,7 +9001,7 @@ async function rnSubmit(){
   // Only the launch flags are worth interrupting a session for: the model and
   // the effort are read when claude starts, the author is read per commit.
   const launchChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
-  const prefChanged = launchChanged || reply !== rnPrefWas.reply
+  const prefChanged = launchChanged || reply !== rnPrefWas.reply || asks !== rnPrefWas.asks
     || git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
@@ -9036,7 +9043,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, nodes, build, test, gate, color,
-                              tests_in, test_change, brief, reply, devbuild, report,
+                              tests_in, test_change, brief, reply, asks, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.

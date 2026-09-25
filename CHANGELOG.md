@@ -54,6 +54,7 @@
 - A project's briefing can be terse: the rules, roadmap and bugs a session reads with their filler words dropped and meaning kept, off by default; bb preamble shows what is sent (93f856a)
 - Replies: each person picks on a project how wordy Claude's replies to them are, Claude's default, normal or minimal; the notebook, commits and files are written as ever (93f856a)
 - A session on a node hears on its next prompt when the controller moved to another build since it began, with bb catchup and bb preamble named, once per build (284eaa6)
+- Questions: each person picks on a project how often Claude asks them, Claude's default, fewer or rarely; it rides the block beside their reply style and governs only what Claude asks (252dc4f)
 
 ### Changed
 

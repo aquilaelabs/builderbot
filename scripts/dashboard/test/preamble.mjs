@@ -71,7 +71,11 @@ await setPref({ reply: 'minimal' });
 const withReply = await pre();
 ok(/## Replies\n\nReplies to the person: minimal/.test(withReply.text) && (withReply.parts || []).some(x => x.name === 'replies'),
    'set to minimal, the block says so in its own part');
-await setPref({ reply: '' });
+await setPref({ reply: '', asks: 'rarely' });
+const asked = await pre();
+ok(/## Replies\n\nQuestions to the person: rarely/.test(asked.text) && !/Replies to the person/.test(asked.text),
+   'how often to ask is the person\'s own pick too, said in the same part, on its own when replies are default');
+await setPref({ asks: '' });
 const full = await pre();
 await setPref({ brief: 'terse' });
 const tersed = await pre();

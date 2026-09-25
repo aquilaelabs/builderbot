@@ -137,11 +137,26 @@ def terse(text):
 
 
 REPLY_SAID = {
-    "minimal": ("## Replies\n\nReplies to the person: minimal, their setting. Answer in as few "
+    "minimal": ("Replies to the person: minimal, their setting. Answer in as few "
                 "words as carry it: the outcome, what to look at, what is left; no preamble, "
                 "no recap of the work. The notebook, commits, code and files are written as ever."),
     "normal": "",
 }
+ASKS_SAID = {
+    "fewer": ("Questions to the person: fewer, their setting. Make the routine calls "
+              "yourself and say which you made; ask only where two readings of the ask "
+              "would lead to materially different work."),
+    "rarely": ("Questions to the person: rarely, their setting. Ask only when going on "
+               "under any assumption would be unsafe or would make the work useless; "
+               "otherwise state the assumption in the reply and go on."),
+}
+
+
+def person_part(reply, asks):
+    """The part of the block that is this person's own settings: how Claude
+    writes to them and how often it asks them. "" when neither is set."""
+    said = [t for t in (REPLY_SAID.get(reply or "", ""), ASKS_SAID.get(asks or "", "")) if t]
+    return "## Replies\n\n" + "\n\n".join(said) if said else ""
 
 
 def _brief_mode(project):
@@ -234,7 +249,7 @@ def _has(tree, pattern):
         return False
 
 
-def parts(project, reply=""):
+def parts(project, reply="", asks=""):
     """The pieces, in the order a session reads them.
 
     The briefing first, because it is what the rest is said in terms of; then
@@ -250,7 +265,7 @@ def parts(project, reply=""):
                      # What is running, as a fact rather than a guess (R75
                      # step 5): a session argued from a build it assumed once.
                      ("live", lambda: live_fn() if live_fn else ""),
-                     ("replies", lambda: REPLY_SAID.get(reply or "", "")),
+                     ("replies", lambda: person_part(reply, asks)),
                      ("rules", lambda: rules_mod.block(project)),
                      ("roadmap", lambda: roadmap_mod.prompt(project)),
                      ("bugs", lambda: bugs_mod.prompt(project))):
@@ -270,9 +285,9 @@ def parts(project, reply=""):
     return out
 
 
-def block(project, reply=""):
+def block(project, reply="", asks=""):
     """The whole thing, uncapped."""
-    return "\n\n".join(t for _, t in parts(project, reply))
+    return "\n\n".join(t for _, t in parts(project, reply, asks))
 
 
 def fit(text):
@@ -289,10 +304,11 @@ def fit(text):
     return cut + CUT, True, len(raw)
 
 
-def payload(project, reply=""):
+def payload(project, reply="", asks=""):
     """What the Briefing tab draws, and what `bb preamble --json` prints.
-    `reply` is the asker's own reply style on the project (prefs USER_CHOICES)."""
-    ps = parts(project, reply)
+    `reply` and `asks` are the asker's own settings on the project (prefs
+    USER_CHOICES): how Claude writes to them and how often it asks them."""
+    ps = parts(project, reply, asks)
     whole = "\n\n".join(t for _, t in ps)
     text, capped, size = fit(whole)
     return {"text": text, "bytes": size, "max": MAX, "capped": capped,

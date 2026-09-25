@@ -112,7 +112,10 @@ def configure(*, write_json, state):
 # `reply`: how wordy Claude's replies to this person are on this project,
 # "" (Claude's own), normal or minimal. Theirs, not the project's: it is what
 # they read, and the notebook, commits and files are written as ever.
-USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("normal", "minimal")}
+# `asks`: how often Claude puts a question to this person on this project,
+# "" (Claude's own), fewer or rarely. Theirs too: it is their attention.
+USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("normal", "minimal"),
+                "asks": ("fewer", "rarely")}
 USER_TEXT = {"git_name": 120, "git_email": 200}
 
 

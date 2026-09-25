@@ -25,7 +25,7 @@ preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, prefs_mo
 # The account the session is for (bb-tty hands it over as BB_UID): its own
 # reply style on the project rides the block.
 mine = prefs.all_for_user(os.environ.get("BB_UID", "")).get(proj) or {}
-p = preamble.payload(proj, reply=mine.get("reply") or "")
+p = preamble.payload(proj, reply=mine.get("reply") or "", asks=mine.get("asks") or "")
 if op == "--json":
     print(json.dumps(p))
 else:
