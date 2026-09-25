@@ -4500,12 +4500,20 @@ class Handler(BaseHTTPRequestHandler):
         # reads that project's (bb devapp ls outside a session).
         asked = q.get("node", [""])[0]
         proj = q.get("project", [""])[0]
-        if not asked and proj and not sess:
+        if sess:
+            nid, why = devapp.project_daemon(sess), None
+        elif not asked and proj:
+            # The project's daemon (its node, else the default docker host)
+            # is allowed by the project being the account's to see, not by
+            # the node scope: that scope holds only the nodes projects are
+            # SET to, so a user's project with no node was refused as blind
+            # where it should read the default node's listing (B258). The
+            # filter below still keeps the answer to the account's projects.
             if self._not_project(proj):
                 return None
-            asked = devapp.project_daemon(proj)
-        nid, why = ((devapp.project_daemon(sess), None) if sess
-                    else self._node_asked(asked))
+            nid, why = devapp.project_daemon(proj), None
+        else:
+            nid, why = self._node_asked(asked)
         if why:
             return self._json({"error": why, "blind": True,
                                "instances": [], "containers": []})
