@@ -96,6 +96,7 @@
 - The dot beside a session's name follows it within seconds: a node reports its sessions the moment one changes, and the page fetches the two small maps behind the rows when the revs token says they moved, leaving the status poll at fifteen seconds (47c77d1)
 - A test run inside a dev instance carries BB_TEST_WORKERS too, the settings dialog says a run finds it, and every session's briefing says to have the test runner read it (e19feca)
 - bb's verbs that talk to the controller are Python files under scripts/lib, one per verb group, with the wait for Allow and the job-log stream shared once, instead of programs embedded in the shell (8eb2aae)
+- project_list is three named steps (the projects on disk, their columns, what the account may see), and the Nodes and agent handlers dispatch their actions through a table instead of a ladder of elifs (cab0d4a)
 
 ### Removed
 
