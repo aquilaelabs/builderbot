@@ -14,8 +14,11 @@
 #   bb dashboard test            # every *.mjs in this directory
 #   bb dashboard test cards      # just cards.mjs
 #   BB_TEST_TIMING=1 ...         # seconds between results, to find the slow part
+#   BB_TEST_WORKERS=3 ...        # three suites at once, each in a world of its own
 #
-# One run at a time: a second one is refused while the first is alive.
+# One run at a time: a second one is refused while the first is alive. The
+# workers of one run are that run: they share its lock and none of anything
+# else (the section "N workers at once" below).
 #
 # Playwright comes from the image (/usr/lib/node_modules); the browsers live
 # on the toolchain store and are found the way bb finds them. Missing either, the
@@ -51,7 +54,9 @@ fi
 # those per request. The whole suite is refused here: it wants a clean
 # world per file, which is what the ordinary run gives it.
 KEEPF="${TMPDIR:-/tmp}/bb-suite.keep"
-if [ -z "${BB_TEST_HOLD:-}" ] && [ -f "$KEEPF" ]; then
+# A worker never attaches: its parent decided that a fresh world per file is
+# what this run gets, and one kept world cannot be three workers' worlds.
+if [ -z "${BB_TEST_HOLD:-}" ] && [ -z "${BB_TEST_WORKER:-}" ] && [ -f "$KEEPF" ]; then
     # shellcheck source=/dev/null
     . "$KEEPF"
     if kill -0 "${KEEP_PID:-0}" 2>/dev/null; then
@@ -132,7 +137,10 @@ DASH="$(dirname "$HERE")"
 # the tree: with no copy, BB_TEST_INPLACE, it is refused), the server
 # records the functions it enters, and the counts are merged into the
 # tree's .bb-map/coverage.json when the run ends.
-if [ -n "${BB_COVERAGE:-}" ]; then
+#
+# Once: a worker runs from the copy its parent already instrumented, and a
+# counter counted twice is a function that ran twice.
+if [ -n "${BB_COVERAGE:-}" ] && [ -z "${BB_TEST_WORKER:-}" ]; then
     [ -n "${BB_TEST_COPY:-}" ] || { printf '[dashboard-test] ERROR: coverage instruments the run copy and there is none here (BB_TEST_INPLACE)\n' >&2; exit 1; }
     python3 "$DASH/../lib/codemap.py" instrument "$DASH" >&2 || exit 1
 fi
@@ -225,6 +233,11 @@ fi
 LOCKDIR="${TMPDIR:-/tmp}/dashboard-test.d"
 ( umask 000; mkdir -p "$LOCKDIR" ) 2>/dev/null || true
 LOCK="$LOCKDIR/lock"
+# A worker's parent holds this lock for it, and a worker that took it would
+# take it FROM the parent: the pid in the file is what the next run reads,
+# and a worker's is gone before the parent is. It keeps the path for its
+# cleanup, which only ever removes a lock that carries its own pid.
+if [ -z "${BB_TEST_WORKER:-}" ]; then
 # A run still on the previous layout holds the old path; for one release
 # both are read for a LIVE pid, and only the new one is written.
 for l in "$LOCK" "${TMPDIR:-/tmp}/dashboard-test.lock"; do
@@ -240,13 +253,201 @@ done
 rm -f "$LOCK" 2>/dev/null || true
 ( umask 000; printf '%s' "$$" > "$LOCK" ) 2>/dev/null \
     || die "cannot take $LOCK: $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
+fi
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
 if [ -n "${BB_COVERAGE:-}" ]; then
-    export BB_COVERAGE_DIR="$S/coverage"
+    # A worker counts into its parent's directory, which is where the one
+    # merge at the end of the run reads; a directory per worker would be a
+    # merge per worker, and one merge into the tree at a time is the rule.
+    if [ -z "${BB_TEST_WORKER:-}" ] || [ -z "${BB_COVERAGE_DIR:-}" ]; then
+        export BB_COVERAGE_DIR="$S/coverage"
+    fi
     mkdir -p "$BB_COVERAGE_DIR"
     # A counted page is a slower page, and the suites' waits are budgets
     # for the real one (B219): every patience() gets twice the time here.
     export BB_TEST_SLOW="${BB_TEST_SLOW:-2}"
+fi
+coverage_merge() {
+    # Into the tree the copy was made from: the counts name the copy's
+    # paths, which the merge strips.
+    local origin="${BB_TEST_ORIGIN:-$(cd "$HERE/../../.." && pwd)}" n
+    n="$(ls "$BB_COVERAGE_DIR"/*.json 2>/dev/null | wc -l)"
+    [ "$n" -gt 0 ] || { warn "coverage: no counts were written"; return; }
+    python3 "$DASH/../lib/codemap.py" --root "$origin" coverage-ingest \
+        --strip "${BB_TEST_COPY:-$origin}/" "$BB_COVERAGE_DIR"/*.json >&2 || warn "coverage: the merge failed"
+    log "coverage from $n file(s) merged into $origin/.bb-map/coverage.json; bb map coverage reads it"
+}
+# Every suite but the library and the lab's: a lab-*.mjs runs against a
+# real service (roadmap R54) and is asked for by name, `bb tests lab`.
+default_suites() {
+    local t
+    for t in "$HERE"/*.mjs; do
+        case "$(basename "$t")" in lib.mjs|lab-*.mjs|_probe-*) ;; *) printf '%s\n' "$(basename "${t%.mjs}")" ;; esac
+    done
+}
+
+# ---- N workers at once (roadmap R81) ----------------------------------------
+# BB_TEST_WORKERS=N, N above one, runs the suites across N children of this
+# process at once. A worker is this same script with BB_TEST_WORKER set: it
+# skips what the parent did once (the copy to local disk, the coverage
+# instrumentation, the lock, the policy check) and builds everything else
+# for itself, because everything else is what suites collide on: the
+# scratch dir with the server's state and the workspace of fixtures, the
+# docker stub's state and the stub agent's directory under it, the private
+# tmux server on a socket under it, the ssh-agent, and the server on a port
+# the parent picks for it. The parent holds the one-at-a-time lock for all of
+# them, so a worker takes none, and a worker never reruns a failed suite:
+# the parent does that, alone, after every worker is done, so "flaky" means
+# what it means in a single run, failed under load and passed by itself.
+#
+# The buckets: the suites known to be slow land in different buckets first,
+# then the rest go, longest file first, to whichever bucket holds the fewest
+# lines so far. Lines are a fair proxy for minutes here, and the seven named
+# are the ones that are minutes each.
+#
+# The output is the workers' logs in bucket order, each under a header, the
+# one being waited on streamed as it grows, so every suite's banner still
+# sits above its own results and its own total, which is what bb tests
+# ingest, bb tests last and the preflight's flaky verdict read. The one
+# combined tally is prefixed like every other line of this script's own,
+# because a bare "N passed, M failed" is a suite's total to those readers.
+bucket_plan() {
+    # $1 workers; $2 a file of "name<TAB>lines" per suite (a file, since the
+    # heredoc is python's stdin); stdout: "bucket<TAB>name", buckets
+    # numbered from 0, each bucket's names in the order a single run has.
+    python3 - "$1" "$2" <<'PY'
+import sys
+n = int(sys.argv[1])
+SLOW = ["agent", "devapp", "nodes", "cards", "git", "roles", "uniform"]
+size = {}
+for line in open(sys.argv[2]):
+    if line.strip():
+        name, lines = line.rstrip("\n").split("\t")
+        size[name] = int(lines or 0)
+base = lambda k: k.rsplit("/", 1)[-1][:-4] if k.endswith(".mjs") else k.rsplit("/", 1)[-1]
+rank = lambda k: SLOW.index(base(k)) if base(k) in SLOW else len(SLOW)
+order = sorted(size, key=lambda k: (rank(k), -size[k], k))
+buckets, load = [[] for _ in range(n)], [0] * n
+for i, name in enumerate(order):
+    b = i if (rank(name) < len(SLOW) and i < n) else load.index(min(load))
+    buckets[b].append(name)
+    load[b] += size[name]
+for b, names in enumerate(buckets):
+    for name in sorted(names):
+        print(f"{b}\t{name}")
+PY
+}
+free_ports() {
+    # N distinct free ports, one per line. Bound all at once and released
+    # together, so the kernel cannot hand the same number to two of them,
+    # which it could if each worker asked for its own a moment apart.
+    python3 - "$1" <<'PY'
+import socket, sys
+socks = [socket.socket() for _ in range(int(sys.argv[1]))]
+for s in socks:
+    s.bind(("127.0.0.1", 0))
+    print(s.getsockname()[1])
+for s in socks:
+    s.close()
+PY
+}
+stream_log() {
+    # A worker's log as it grows, until the worker ends, then the rest of it.
+    # tail --pid is GNU's and uutils' both; anywhere without it the log is
+    # printed whole once the worker is done.
+    local f="$1" p="$2"
+    if tail --help 2>&1 | grep -q -- '--pid'; then
+        tail -n +1 -f --pid="$p" "$f"
+    else
+        while kill -0 "$p" 2>/dev/null; do sleep 1; done
+        cat "$f"
+    fi
+}
+WORKER_PIDS=()
+workers_cleanup() {
+    local p
+    for p in "${WORKER_PIDS[@]}"; do kill "$p" 2>/dev/null || true; done
+    # The workers' counts were all written by the time each one exited (its
+    # server is stopped and polled dead before it does), so the merge is
+    # one, here, into the tree.
+    if [ -n "${BB_COVERAGE_DIR:-}" ]; then coverage_merge; fi
+    [ -n "${BB_TEST_KEEP:-}" ] && log "workers' logs kept at $S" || rm -rf "$S"
+    [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
+    if [ -n "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_KEEP:-}" ]; then
+        cd / && rm -rf "$BB_TEST_COPY"
+    elif [ -n "${BB_TEST_COPY:-}" ]; then
+        log "the tree it ran from is kept at $BB_TEST_COPY"
+    fi
+}
+run_workers() {
+    local n="$1"; shift
+    local names=("$@") t f plan i rc=0 wrc tp tf
+    local ports=() pids=() logs=() bucket=() failed=() flaky=()
+    [ -z "${DASHBOARD_TEST_PORT:-}" ] \
+        || die "DASHBOARD_TEST_PORT pins one port and BB_TEST_WORKERS=$n asks for $n servers; unset one of them"
+    trap 'workers_cleanup' EXIT
+    trap 'exit 130' TERM INT
+    for t in "${names[@]}"; do
+        case "$t" in /*) f="$t" ;; *) f="$HERE/${t%.mjs}.mjs" ;; esac
+        printf '%s\t%s\n' "$t" "$(wc -l < "$f" 2>/dev/null || echo 0)"
+    done > "$S/sizes"
+    plan="$(bucket_plan "$n" "$S/sizes")"
+    mapfile -t ports < <(free_ports "$n")
+    [ "${#ports[@]}" = "$n" ] || die "could not find $n free ports for the workers' servers"
+    for ((i = 0; i < n; i++)); do
+        mapfile -t bucket < <(printf '%s\n' "$plan" | awk -F'\t' -v b="$i" '$1 == b { print $2 }')
+        logs[i]="$S/worker-$((i + 1)).log"
+        : > "${logs[i]}"
+        # Its own port, its own account of what failed, and the rest of the
+        # environment as this process has it: the copy, the timing flag,
+        # the coverage directory, all inherited.
+        BB_TEST_WORKER="$((i + 1))" DASHBOARD_TEST_PORT="${ports[i]}" \
+        BB_TEST_WORKER_OUT="$S/failed-$((i + 1))" \
+            bash "$0" "${bucket[@]}" > "${logs[i]}" 2>&1 &
+        pids[i]=$!
+        WORKER_PIDS+=("$!")
+        log "worker $((i + 1)) of $n (port ${ports[i]}, pid $!): ${bucket[*]}"
+    done
+    for ((i = 0; i < n; i++)); do
+        printf '[dashboard-test] == worker %s of %s ==\n' "$((i + 1))" "$n"
+        stream_log "${logs[i]}" "${pids[i]}"
+        wrc=0; wait "${pids[i]}" || wrc=$?
+        if [ -f "$S/failed-$((i + 1))" ]; then
+            mapfile -t bucket < "$S/failed-$((i + 1))"
+            failed+=("${bucket[@]}")
+        elif [ "$wrc" != 0 ]; then
+            # Ended before it could say: a die() in its set-up, most
+            # likely, and its log above says which.
+            warn "worker $((i + 1)) ended (status $wrc) without running its suites"
+            rc=1
+        fi
+    done
+    WORKER_PIDS=()
+    read -r tp tf < <(cat "${logs[@]}" \
+        | awk '/^[0-9]+ passed, [0-9]+ failed/ { p += $1; f += $3 } END { print p + 0, f + 0 }')
+    log "workers: $tp passed, $tf failed across $n workers, ${#names[@]} suites${failed[*]:+; failed in the run: ${failed[*]}}"
+    # Once more, alone, for each suite that failed, the way a single run
+    # does it below: a worker of its own, one at a time, on a port of its
+    # own choosing, with the whole box to itself.
+    for t in "${failed[@]}"; do
+        if BB_TEST_WORKER=again BB_TEST_AGAIN=1 bash "$0" "$t"; then
+            flaky+=("$(basename "${t%.mjs}").mjs")
+        else
+            rc=1
+        fi
+    done
+    if [ "${#flaky[@]}" -gt 0 ]; then
+        warn "flaky: ${flaky[*]} failed in the whole run and passed again alone"
+    fi
+    [ "$rc" = 0 ] && log "dashboard tests: all passed" || warn "dashboard tests: FAILURES above"
+    exit "$rc"
+}
+if [ "${BB_TEST_WORKERS:-1}" -gt 1 ] 2>/dev/null && [ -z "${BB_TEST_WORKER:-}" ] && [ -z "${BB_TEST_HOLD:-}" ]; then
+    if [ $# -gt 0 ]; then _names=("$@"); else mapfile -t _names < <(default_suites); fi
+    # No more workers than suites, and one suite is the single path below.
+    _n="$BB_TEST_WORKERS"
+    [ "$_n" -le "${#_names[@]}" ] || _n="${#_names[@]}"
+    [ "$_n" -le 1 ] || run_workers "$_n" "${_names[@]}"
 fi
 # Every tmux call from here on (ours and the server's) talks to a private
 # server whose socket lives in the scratch dir. Nothing reaches the real one.
@@ -282,7 +483,10 @@ unset TMUX
 # And best effort: read through bb, which on a node relays to the controller,
 # so where the policy cannot be read at all (no token, no controller) this says
 # nothing rather than refusing a run it cannot judge.
-if [ -z "${BB_IN_INSTANCE:-}" ] && [ -z "${CI:-}" ] && [ -z "${GITHUB_ACTIONS:-}" ]; then
+#
+# And once: a worker's parent asked, and a worker that asked again would be
+# one relay per worker for an answer that cannot have changed.
+if [ -z "${BB_IN_INSTANCE:-}" ] && [ -z "${CI:-}" ] && [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${BB_TEST_WORKER:-}" ]; then
     _proj="${BB_PROJECT:-$(basename "$(cd "$HERE/../../.." && pwd)")}"
     _only="$(BB_PROJECT="$_proj" BB_SETTINGS_JSON=1 bb settings --json 2>/dev/null         | python3 -c 'import json,sys
 try: print("only" if json.load(sys.stdin).get("devtest") else "")
@@ -328,22 +532,13 @@ probes=()
 pid=""
 agent_pid=""
 stub_pid=""
-coverage_merge() {
-    # Into the tree the copy was made from: the counts name the copy's
-    # paths, which the merge strips.
-    local origin="${BB_TEST_ORIGIN:-$(cd "$HERE/../../.." && pwd)}" n
-    n="$(ls "$BB_COVERAGE_DIR"/*.json 2>/dev/null | wc -l)"
-    [ "$n" -gt 0 ] || { warn "coverage: no counts were written"; return; }
-    python3 "$DASH/../lib/codemap.py" --root "$origin" coverage-ingest \
-        --strip "${BB_TEST_COPY:-$origin}/" "$BB_COVERAGE_DIR"/*.json >&2 || warn "coverage: the merge failed"
-    log "coverage from $n file(s) merged into $origin/.bb-map/coverage.json; bb map coverage reads it"
-}
 cleanup() {
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
     [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
     # The server's counts are written on its way out, so the merge waits for
-    # it before reading the directory.
-    if [ -n "${BB_COVERAGE_DIR:-}" ]; then sleep 1; coverage_merge; fi
+    # it before reading the directory. A worker's parent merges for all of
+    # them, once, when the last of them is done.
+    if [ -n "${BB_COVERAGE_DIR:-}" ] && [ -z "${BB_TEST_WORKER:-}" ]; then sleep 1; coverage_merge; fi
     [ -n "$agent_pid" ] && kill "$agent_pid" 2>/dev/null || true
     [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
     [ -n "${PIDF:-}" ] && rm -f "$PIDF"
@@ -362,7 +557,9 @@ cleanup() {
     # ...and the local copy this run was made from, if it was made from one.
     # cd out of it first: this script is inside what it is removing. Kept with
     # the scratch dir under BB_TEST_KEEP, since a failure in the copy is read
-    # in the copy.
+    # in the copy. A worker leaves it: the others are still running from it,
+    # and it is the parent's to remove.
+    [ -z "${BB_TEST_WORKER:-}" ] || return 0
     if [ -n "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_KEEP:-}" ]; then
         cd / && rm -rf "$BB_TEST_COPY"
     elif [ -n "${BB_TEST_COPY:-}" ]; then
@@ -1196,8 +1393,12 @@ if [ -n "${BB_TEST_HOLD:-}" ]; then
 fi
 
 # ---- tests -----------------------------------------------------------------
+# Each suite as a file to run and as the name it was asked for by, which is
+# what a worker hands back for a failed one: its parent asks for it again
+# by that name, and a probe's copy under $HERE is gone with the worker.
+tests=()
+names=()
 if [ $# -gt 0 ]; then
-    tests=()
     for t in "$@"; do
         case "$t" in
             # A probe (`bb tests probe FILE`): a script from anywhere, copied
@@ -1205,14 +1406,11 @@ if [ $# -gt 0 ]; then
             /*) f="$HERE/_probe-$(basename "${t%.mjs}").mjs"; cp "$t" "$f"; probes+=("$f"); tests+=("$f") ;;
             *)  tests+=("$HERE/${t%.mjs}.mjs") ;;
         esac
+        names+=("$t")
     done
 else
-    # Every suite but the library and the lab's: a lab-*.mjs runs against a
-    # real service (roadmap R54) and is asked for by name, `bb tests lab`.
-    tests=()
-    for t in "$HERE"/*.mjs; do
-        case "$(basename "$t")" in lib.mjs|lab-*.mjs|_probe-*) ;; *) tests+=("$t") ;; esac
-    done
+    mapfile -t names < <(default_suites)
+    for t in "${names[@]}"; do tests+=("$HERE/$t.mjs"); done
 fi
 run_file() {
     # The suite's name, for the server's coverage counts to carry (R76):
@@ -1228,9 +1426,22 @@ run_file() {
 }
 rc=0
 failed=()
-for t in "${tests[@]}"; do
-    run_file "$t" || failed+=("$t")
+failed_names=()
+for i in "${!tests[@]}"; do
+    # A worker sent to run one suite again (BB_TEST_AGAIN) banners it as a
+    # single run's rerun does, so the readers of the log know it for one.
+    run_file "${tests[i]}" ${BB_TEST_AGAIN:+again} \
+        || { failed+=("${tests[i]}"); failed_names+=("${names[i]}"); }
 done
+# A worker stops here: what failed goes to its parent by name, and the
+# parent reruns those alone once every worker is done, so the reruns are
+# one at a time on an otherwise idle box, as a single run's are.
+if [ -n "${BB_TEST_WORKER:-}" ]; then
+    stop_world
+    [ -z "${BB_TEST_WORKER_OUT:-}" ] \
+        || printf '%s\n' "${failed_names[@]}" | sed '/^$/d' > "$BB_TEST_WORKER_OUT"
+    [ "${#failed[@]}" = 0 ] && exit 0 || exit 1
+fi
 # Once more, alone, for each file that failed, in a world of its own like
 # every other. A file that passes then is FLAKY: it failed under the whole
 # run's load and not on its own, and it is named as that, never folded into

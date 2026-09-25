@@ -45,6 +45,7 @@
 - A node's Sessions section can turn off root commands from sessions: bb root run is then refused and says so, without locking storage and network with it (0e13a1c)
 - The four largest files (index.html, server.py, bb, devapp.py) carry a ceiling on their line count that only comes down: the house rule growth, checked before a hand-back and by bb tests preflight (8f78e56)
 - A node says how many workers a test run there may use: Test workers on its row, 0 for its cores, handed to every test job as BB_TEST_WORKERS (68a8255)
+- BuilderBot's own test suite runs across BB_TEST_WORKERS workers at once, each with its own server, state and tmux, and the parent reruns any failure alone as before (e616fba)
 
 ### Changed
 
