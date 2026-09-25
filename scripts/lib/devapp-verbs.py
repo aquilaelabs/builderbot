@@ -57,12 +57,19 @@ def status():
 def rebuild():
     proj = os.environ["BB_DEV_PROJECT"]
     auth = os.environ["BB_DEV_AUTH"]
-    post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),  # noqa: E731
-                                                    "container": os.environ.get("BB_DEV_CONTAINER", "")}, auth=auth)
+    post = lambda b, timeout=30: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),  # noqa: E731
+                                                                 "container": os.environ.get("BB_DEV_CONTAINER", "")}, auth=auth, timeout=timeout)
 
-    def look():
-        d = post({"action": "state"})
+    def look(patient=False):
+        # `state` parses the compose on the instance's node, which on a slow
+        # node is longer than one request's thirty seconds; this verb said
+        # "timed out" and stopped while the rebuild went on to succeed
+        # (B266). Given the time, and in the poll a slow look is a look to
+        # try again rather than the verb's last word.
+        d = post({"action": "state"}, timeout=180)
         if d.get("error"):
+            if patient and "timed out" in str(d["error"]).lower():
+                return None
             sys.exit(f"[builderbot] ERROR: {d['error']}")
         return d.get("state") if isinstance(d.get("state"), dict) else d
 
@@ -95,7 +102,9 @@ def rebuild():
     while waited < 3600:
         time.sleep(3)
         waited += 3
-        st = look()
+        st = look(patient=True)
+        if st is None:
+            continue
         job = st.get("job") or {}
         step = str(job.get("step") or "")
         if step and step != last:
