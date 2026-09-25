@@ -371,9 +371,8 @@ function nodeClaudeSection(n){
                : inst && !me.behind ? "already on the latest known"
                : `install ${latest || "the current Claude Code"} here: ends the ${open} Claude session${open === 1 ? "" : "s"} open on this node first`}">Update</button>
     </div>
-    <label class="ndcap"><input type="checkbox" data-nd-auto="1" ${auto ? "checked" : ""}>
-      update before a session starts, if a newer one is out (every node)</label>
-    <div class="sub dim">Update ends the Claude sessions here; start them again from the project rows.</div>`;
+    <div class="sub dim">Update ends the Claude sessions here; start them again from the project rows.${
+      auto ? " Before a session starts on a node that is behind, Claude Code is updated there first (Controller settings)." : ""}</div>`;
   return docSection("nodes", "claude", "Claude Code", status, body, {cls});
 }
 
@@ -1446,18 +1445,9 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     }
     // The same for the limit on sessions working at once, in the Sessions
     // section: a number is typed across a heartbeat as easily as a path.
-    // The Claude Code section's switch: the Settings tab's own setting,
-    // written the same way, so one box changes it for every node.
-    const ca = box.querySelector("[data-nd-auto]");
-    if (ca) ca.onchange = async () => {
-      try{
-        const j = await (await postJSON("/api/settings", {set: {claude_autoupdate: ca.checked}})).json();
-        if (j.error){ notify(j.error, true); ca.checked = !ca.checked; return; }
-        notify(ca.checked ? "Claude Code is updated before a session starts on a node that is behind"
-                          : "a node stays on the Claude Code it has until Update is pressed");
-        refresh();
-      }catch(e){ notify("could not save the setting: " + e, true); ca.checked = !ca.checked; }
-    };
+    // The update-before-a-session switch is Controller settings' alone:
+    // one setting for every node, behind an Apply there. It used to be a
+    // checkbox on this section too, written on the click (B257).
     // Each session kept to its own project's network (R79): a draft until
     // the section's Save, like the limit beside it.
     const sw = box.querySelector('[data-k="sessnet"]');

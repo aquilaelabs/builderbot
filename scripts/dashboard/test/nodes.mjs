@@ -2099,9 +2099,11 @@ print(m.mint_session('alpha'))
   // is pressed. On, a session asked for on a node that is behind updates it
   // first: the terminal is refused with the reason, the job is queued, and
   // no open conversation is ended for it.
+  // Set on the Settings tab, behind its Apply, and nowhere on this row: a
+  // checkbox here wrote the setting on the click (B257, rule apply-not-onchange).
   ok((await napi('/api/status')).settings?.settings?.claude_autoupdate?.value === false
-     && await page.$eval(`${ROWC} [data-nd-auto]`, b => !b.checked),
-     'Update before a session starts is off by default, on the Settings tab and on the section');
+     && !await page.$(`${ROWC} [data-nd-auto]`),
+     'Update before a session starts is off by default, set on the Settings tab and not on the section');
   await napi('/api/settings', { set: { claude_autoupdate: true } });
   await fetch(base + '/api/v1/agent/work', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
