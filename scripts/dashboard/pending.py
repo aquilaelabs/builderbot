@@ -135,7 +135,7 @@ def mode(project, kind):
         return "auto"
     try:
         return (prefs.get(project).get("gate") or {}).get(kind) or "auto"
-    except Exception:  # noqa: BLE001  (a broken prefs file must not stop a write)
+    except (OSError, ValueError, TypeError):  # a broken prefs file, or prefs not configured (open(None))
         return "auto"
 
 
@@ -277,6 +277,8 @@ def approve(project, ids, by="you"):
                 r = fn(project, rec.get("verb"), dict(rec.get("args") or {}))
             except Exception as e:  # noqa: BLE001  (one bad replay must not strand the rest)
                 r = {"error": f"{type(e).__name__}: {e}"}
+                print(f"dashboard: pending: replay #{rec['id']} on {project} failed: {r['error']}",
+                      file=sys.stderr, flush=True)
             finally:
                 _tl.on = False
             r = r if isinstance(r, dict) else {"error": "no answer"}
@@ -369,7 +371,7 @@ def payload(project):
     """What the notebook's band and the review modal draw from."""
     try:
         gate = dict(prefs.get(project).get("gate") or {})
-    except Exception:  # noqa: BLE001
+    except (OSError, ValueError, TypeError):  # as mode(): a broken prefs file, or prefs not configured
         gate = {}
     rs = listing(project)
     by_kind = {k: sum(1 for r in rs if r.get("kind") == k) for k in KINDS}

@@ -77,8 +77,10 @@ def _build(name):
     except subprocess.TimeoutExpired:
         error = f"gave up after {TIMEOUT // 60} minutes"
     except Exception as e:                                   # noqa: BLE001
-        # A worker that dies silently would leave the gate up forever.
+        # A worker that dies silently would leave the gate up forever, so
+        # broad is right here; the job records it and the log says it once.
         error = f"unexpected failure: {e}"
+        print(f"dashboard: mapping {name}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
     with _lock:
         j = _jobs.get(name)
         if j:

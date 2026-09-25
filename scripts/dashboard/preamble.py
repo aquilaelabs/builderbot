@@ -27,6 +27,7 @@ session is told that it is reading part of a list rather than all of one.
 
 import os
 import re
+import sys
 from pathlib import Path
 
 # The three stores, set by configure(). Named here so the module reads as
@@ -152,10 +153,13 @@ def parts(project):
                      ("bugs", lambda: bugs_mod.prompt(project))):
         try:
             text = (fn() or "").strip("\n")
-        except Exception:
+        except Exception as e:                              # noqa: BLE001
             # One store failing is a smaller thing than no session: bb-tty
             # swallowed each of these separately for exactly this reason.
+            # Broad because each store is its own module; the log names it.
             text = ""
+            print(f"dashboard: preamble: {name} for {project} left out: {type(e).__name__}: {e}",
+                  file=sys.stderr, flush=True)
         if text:
             out.append((name, text))
     return out

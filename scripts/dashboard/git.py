@@ -839,8 +839,8 @@ def _creds(repo):
     try:
         import projects                                     # noqa: PLC0415
         return projects.token_helper(Path(repo).name)
-    except Exception:                                       # noqa: BLE001
-        return ""                       # no record, or projects not configured
+    except (ImportError, TypeError, OSError):
+        return ""                       # no projects module, its STATE unset (TypeError), or the file unreadable
 
 
 def _run(repo, *args, env=None, timeout=30, index=True):

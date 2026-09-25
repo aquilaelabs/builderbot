@@ -92,8 +92,10 @@ def add(project, text, *, by="", node="", area="", repro=""):
         rid = d["seq"]
         try:
             made = build() if build else ""
-        except Exception:                                         # noqa: BLE001
+        except Exception as e:                                    # noqa: BLE001 (the caller's callback; a stamp never stops a report)
             made = ""
+            print(f"dashboard: reports: no build stamp for #{rid}: {type(e).__name__}: {e}",
+                  file=sys.stderr, flush=True)
         d["reports"].append({"id": rid, "at": int(time.time()), "project": str(project)[:100],
                              "by": str(by or "")[:100], "node": str(node or "")[:100],
                              "build": str(made or "")[:80], "text": text,

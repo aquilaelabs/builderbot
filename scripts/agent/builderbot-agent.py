@@ -77,6 +77,7 @@ import sys
 import tarfile
 import threading
 import time
+import traceback
 import urllib.parse
 import urllib.request
 
@@ -95,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.100"
+AGENT_VERSION = "0.6.101"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2777,7 +2778,11 @@ class Job(threading.Thread):
             else:
                 state, code = self.exec(spec)
         except Exception as e:                       # noqa: BLE001 (reported, not raised)
+            # Broad because a runner's bug is this job's failure, not the
+            # agent's: the row carries the sentence, the journal the traceback.
             self.say(f"agent error: {type(e).__name__}: {e}\n")
+            log(f"job {self.job.get('id')}: agent error: {type(e).__name__}: {e}\n"
+                + traceback.format_exc().rstrip())
             state, code, error = "failed", 70, f"agent error: {type(e).__name__}"
         if self.canceled:
             state, error = "canceled", "stopped by the operator"
@@ -3103,7 +3108,7 @@ class SessionNet:
         while True:
             try:
                 self.step()
-            except Exception as e:                                # noqa: BLE001
+            except Exception as e:                                # noqa: BLE001 (the loop must outlive one bad step; said once per message)
                 self.say(f"session network: {e}")
             time.sleep(2)
 
@@ -3252,7 +3257,7 @@ class SessionWatch:
         while not self.off:
             try:
                 self.step()
-            except Exception as e:                                # noqa: BLE001
+            except Exception as e:                                # noqa: BLE001 (the loop must outlive one bad step; the journal has it)
                 log(f"sessions: {e}")
             time.sleep(2)
 

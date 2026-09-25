@@ -21,6 +21,7 @@ look like a fault.
 
 import collections
 import json
+import sys
 import os
 import re
 import subprocess
@@ -224,6 +225,8 @@ def report(sections=None):
     for s in want:
         try:
             out[s] = _BUILD[s]()
-        except Exception as e:                                   # noqa: BLE001
+        except Exception as e:                                   # noqa: BLE001 (each section is another module's; one failing is reported in place)
             out[s] = {"error": redact(f"{type(e).__name__}: {e}")[:200]}
+            print(f"dashboard: diag: section {s} failed: {out[s]['error']}",
+                  file=sys.stderr, flush=True)
     return json.loads(json.dumps(out, default=str))

@@ -26,8 +26,10 @@ import re
 import selectors
 import shlex
 import socket
+import sqlite3
 import subprocess
 import threading
+import traceback
 import time
 
 # Beside this file. Imported up here rather than with the modules below,
@@ -2128,8 +2130,10 @@ _trace_lock = threading.Lock()
 
 def trace_note(handler):
     # A note beside the request, never a fault in it: whatever goes wrong
-    # here is swallowed, since the answer has already been sent.
-    with contextlib.suppress(Exception):
+    # here is swallowed, since the answer has already been sent. Broad
+    # because it runs on every request and must never become one's 500;
+    # the first fault is logged, the rest would only say it again.
+    try:
         path, _, query = handler.path.partition("?")
         keys = "&".join(sorted(k for k in urllib.parse.parse_qs(query, keep_blank_values=True)))
         ua = (handler.headers.get("User-Agent") or "")[:40]
@@ -2138,6 +2142,13 @@ def trace_note(handler):
               else "user" if who.get("name") else "anon")
         with _trace_lock:
             _TRACE.append((time.time(), handler.command, path, keys, by, ua))
+    except Exception as e:                                  # noqa: BLE001
+        if not _trace_said:
+            _trace_said.append(True)
+            print(f"[dashboard] trace: {type(e).__name__}: {e} (said once)", flush=True)
+
+
+_trace_said = []
 
 
 def trace_since(since):
@@ -2568,6 +2579,23 @@ except Exception as e:                                    # noqa: BLE001
     NODES_OK = str(e)
     print(f"[dashboard] node store unavailable: {e}", flush=True)
 
+
+def net_nudge():
+    """Every session-net node says hello again (nodes.session_net_nudge),
+    after a write that already succeeded: a container changing hands, an
+    instance made or removed. What it reads is the store, so that is the
+    one fault it absorbs, logged; the answer the caller sends is unchanged."""
+    try:
+        nodes.session_net_nudge()
+    except sqlite3.Error as e:
+        print(f"[dashboard] session network nudge skipped: {e}", flush=True)
+
+
+# The last fault auto_sysdeps met on each node, by id: hello logs one when
+# it changes, not on every poll.
+_sysdeps_said = {}
+
+
 # ---- a node's CI runners ----------------------------------------------------
 # The root-only helper that keeps each runner's token and mints from it, and
 # the list the Runner card draws: runners.py.
@@ -2705,7 +2733,10 @@ def wait_for_nodes(limit=NODE_WAIT):
                     # that dialed in the same second this started (48 against
                     # 48.6) is back, not owed until its next heartbeat.
                     and STARTED - 900 < float((n.get("agent") or {}).get("last_seen") or 0) < int(STARTED)]
-        except Exception:                                        # noqa: BLE001
+        except Exception as e:                                   # noqa: BLE001
+            # A wait at startup, not a step of it: the store unreadable or a
+            # row malformed means nobody is waited for, said once here.
+            print(f"[dashboard] not waiting for nodes: {type(e).__name__}: {e}", flush=True)
             return
         if not owed:
             return
@@ -3954,6 +3985,11 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 trace_note(self)
         except Exception as e:                          # noqa: BLE001 (last resort)
+            # Broad by definition: this is the one place a handler's bug is
+            # turned into an answer. The log gets the traceback the answer
+            # cannot carry.
+            print(f"[dashboard] {self.command} {self.path.partition('?')[0]}: "
+                  f"{type(e).__name__}: {e}\n{traceback.format_exc()}", flush=True)
             try:
                 self._json({"error": f"{type(e).__name__}: {e}"}, 500)
             except OSError:
@@ -4788,8 +4824,7 @@ class Handler(BaseHTTPRequestHandler):
             r = dict(r) | {"pinned": moved}
         # A project on another node owns its instances somewhere else now (R79).
         if moved_node and not r.get("error"):
-            with contextlib.suppress(Exception):
-                nodes.session_net_nudge()
+            net_nudge()
         return self._result(r)
 
     def _nodes(self, req):
@@ -5742,8 +5777,16 @@ class Handler(BaseHTTPRequestHandler):
                             req.get("running"))
             # A managed node whose store holds a toolchain it lacks the
             # system libraries for installs them itself (toolchains.py).
-            with contextlib.suppress(Exception):
+            # Broad because this rides every hello, and a fault in the
+            # housekeeping must not put every node offline; said once per
+            # node per message, so the log names it without repeating it.
+            try:
                 toolchains.auto_sysdeps(nid)
+            except Exception as e:                      # noqa: BLE001
+                msg = f"{type(e).__name__}: {e}"
+                if _sysdeps_said.get(nid) != msg:
+                    _sysdeps_said[nid] = msg
+                    print(f"[dashboard] auto sysdeps on {nid} skipped: {msg}", flush=True)
             return r
 
         def work():
@@ -6219,8 +6262,7 @@ class Handler(BaseHTTPRequestHandler):
                 r = containers.set_container_owner(name, under)
                 # Whose it is also decides whose sessions may reach it (R79).
                 if not r.get("error"):
-                    with contextlib.suppress(Exception):
-                        nodes.session_net_nudge()
+                    net_nudge()
                 return self._result(r)
             if act == "logs":
                 return self._json(containers.container_logs(name))
@@ -6276,8 +6318,7 @@ class Handler(BaseHTTPRequestHandler):
                                     req.get("env") or "", field(req, "node"), under)
         # Made for a project: its sessions may reach it (R79).
         if not r.get("error") and under:
-            with contextlib.suppress(Exception):
-                nodes.session_net_nudge()
+            net_nudge()
         return self._result(r)
 
     def _logs(self, req):

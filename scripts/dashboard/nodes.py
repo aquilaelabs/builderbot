@@ -2840,8 +2840,11 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     # work is bounded by that project's own history.
     # Housekeeping never loses a result: whatever goes wrong in the sweep, the
     # job that just finished is already recorded above.
-    with contextlib.suppress(Exception):        # noqa: BLE001
+    try:
         prune_job_logs(got[0]["project"] if "project" in got[0].keys() else None)
+    except sqlite3.Error as e:
+        print(f"dashboard: nodes: job log sweep after {job_id} skipped: {e}",
+              file=sys.stderr, flush=True)
     # An uninstall that ran retires the node: the agent is gone with it, so
     # the row leaves every list now rather than after a stale timeout.
     if got[0]["type"] == "system" and state == "succeeded":
@@ -2854,7 +2857,7 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     # land, once, whichever runner served it.
     fn = ON_DONE.get(got[0]["type"] if "type" in got[0].keys() else "")
     if fn:
-        with contextlib.suppress(Exception):     # noqa: BLE001  (a hook must not lose a result)
+        try:
             # A hook may also REWORD the failure. All a node can honestly say
             # is "exit 1" (it ran an argv somebody else composed), while the
             # module that wrote the plan knows the step was "starting" and
@@ -2865,6 +2868,9 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
             if state != "succeeded" and isinstance(better, str) and better.strip():
                 _exec("UPDATE jobs SET error = ? WHERE id = ?",
                       (better.strip()[:500], job_id))
+        except Exception as e:                   # noqa: BLE001 (another module's hook must not lose a result already recorded)
+            print(f"dashboard: nodes: {got[0]['type']} hook after {job_id} failed: "
+                  f"{type(e).__name__}: {e}", file=sys.stderr, flush=True)
     if not quiet:
         _jstate_bump()
     with _wake:

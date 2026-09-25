@@ -26,7 +26,7 @@ No websockets: the page polls, faster while the panel is open. That matches the
 rest of this dashboard, where ttyd's socket is the one exception and everything
 else is a fifteen-second poll.
 """
-import contextlib
+import sys
 import json
 import threading
 import time
@@ -132,9 +132,14 @@ def event(project, actor_uid, text):
     action it is describing. Every caller is a handler that has just done
     something real, and a full disk here must not undo it.
     """
-    # Swallowed on purpose, and said so: see the docstring.
-    with contextlib.suppress(Exception):
+    # Swallowed on purpose, and said so: see the docstring. Broad because
+    # the handler behind it has already acted, and the disk or a bug here
+    # must not undo that; the log carries what was lost.
+    try:
         post(project, actor_uid, text, kind="did")
+    except Exception as e:                                  # noqa: BLE001
+        print(f"dashboard: chat: activity line for {project} lost: {type(e).__name__}: {e}",
+              file=sys.stderr, flush=True)
 
 
 def direct(a, b, since=0):

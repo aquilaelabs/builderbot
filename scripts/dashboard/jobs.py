@@ -359,7 +359,7 @@ def healthz():
     monitor asks, not what an operator reads."""
     try:
         c = nodes.job_counts()
-    except Exception as e:
+    except sqlite3.Error as e:
         return {"ok": False, "error": str(e)[:200]}, 503
     return {"ok": True, "queued": c["jobs"].get("queued", 0),
             "running": c["jobs"].get("running", 0) + c["jobs"].get("assigned", 0),
