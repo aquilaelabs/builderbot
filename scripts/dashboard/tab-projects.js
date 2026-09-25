@@ -155,7 +155,7 @@ const devClaudeMode = name => {
 
 const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
-           fields: ["pSrcField", "pNameField", "pNodeField", "pGateField", "pArchiveField", "pAboutField"] },
+           fields: ["pSrcField", "pNameField", "pVersionField", "pNodeField", "pGateField", "pArchiveField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
            fields: ["pSrcField", "pNameField", "pNodeField", "pGateField", "pUrlField", "pForgeField",
                     "pPushField", "pTokenField", "pKeyField"] },
@@ -195,7 +195,7 @@ function pDraw(){
   $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
-  for (const f of ["pSrcField", "pNameField", "pArchiveField", "pForgeField",
+  for (const f of ["pSrcField", "pNameField", "pVersionField", "pArchiveField", "pForgeField",
                    "pUrlField", "pLinkAuthField", "pPushField",
                    "pTokenField", "pKeyField", "pAboutField", "pGateField"])
     $(f).hidden = !m.fields.includes(f);

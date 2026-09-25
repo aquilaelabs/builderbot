@@ -3995,6 +3995,15 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint" id="pNameHint"></div>
       <div class="hint" id="pNamePreview" hidden></div>
     </div>
+    <!-- A starting version for a fresh tree: what is made is the first
+         commit and VERSION at this number the second, the way the Artifacts
+         tab gives a first version (the operator, 25 Sep). Blank means neither. -->
+    <div class="field" id="pVersionField">
+      <label for="pVersion">Starting version</label>
+      <input id="pVersion" value="0.1.0" maxlength="40" autocomplete="off" spellcheck="false"
+             placeholder="0.1.0" inputmode="decimal">
+      <div class="hint">Committed as the project's first version. Leave it blank to commit nothing yet.</div>
+    </div>
     <!-- Where it runs. A project born with no node has no builds, no
          tests and no Claude session until its settings are opened, which
          every new project on the dev pair went through (16 Sep); when
@@ -8161,7 +8170,7 @@ function makeNotebook(project){
 }
 
 function closeNewProject(){ pGen++; $("pmodal").hidden = true; $("pArchive").value = "";
-  $("pArchiveName").textContent = "none picked"; }
+  $("pArchiveName").textContent = "none picked"; $("pVersion").value = "0.1.0"; }
 $("pArchivePick").onclick = () => $("pArchive").click();
 $("pArchive").onchange = () => { $("pArchiveName").textContent = $("pArchive").files[0]?.name || "none picked"; };
 
@@ -8383,6 +8392,9 @@ $("pCreate").onclick = async () => {
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
                                 node: $("pNodeField").hidden ? "" : $("pNode").value,
+                                // A starting version, for a fresh tree only: a
+                                // clone keeps the history it came with.
+                                version: mode === "init" ? $("pVersion").value.trim() : "",
                                 gate: $("pGateField").hidden ? null : pGateNow(),
                                 devbuild: $("pGateField").hidden ? null : ($("pGateDocker").value || "deny"),
                                 key: mode === "clone" ? key : "",

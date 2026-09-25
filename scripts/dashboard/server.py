@@ -2560,6 +2560,9 @@ try:
     nodes.bundle_digest = lambda: workspace.bundle()["digest"]
     nodes.idle_minutes = idle.minutes
     nodes.session_tokens_for = session_tokens_for
+    # A project born with a starting version commits it the way the
+    # Artifacts tab gives a first version (projects._init).
+    projects.first_version = lambda name, value, env: version.init(name, value, by="operator", env=env)
     # Each session kept to its own project's network (R79): the setting is
     # the node's, what each project owns there is devapp's.
     nodes.session_net_for = lambda nid: ({"on": True, "own": devapp.session_net_own(nid)}
@@ -7154,7 +7157,7 @@ class Handler(BaseHTTPRequestHandler):
         # places a git token is stored (roadmap #27).
         if self._refused("create"):
             return None
-        body, code = projects.create(req)
+        body, code = projects.create(req, env=users.git_env(self._who(), projects.sanitize_name(field(req, "name"))))
         # Taken on by whoever made it (the operator, 24 Sep), before the
         # writes below: they ask whether this account may work on the
         # project, and an administrator's new one was not on their list, so
