@@ -123,6 +123,22 @@ ok(sysjob && sysjob.state === 'succeeded',
      `a node whose system changes are locked refuses the ask outright, with the reason (${(lk.body.error || '').slice(0, 60)})`);
   await api('/api/v1/nodes', { action: 'unlock', id: sandbox.id });
 }
+// ---- ...and a node whose sessions may not ask for root at all ------------------
+// The switch in its Sessions section (the operator, 24 Sep): root asks alone,
+// where the lock above takes storage and network with them.
+{
+  const off = await api('/api/v1/nodes', { action: 'root-asks', id: sandbox.id, on: false });
+  const no = await api('/api/phone', { action: 'ask', kind: 'root', why: 'while off', cmd: ['true'], project: 'alpha' });
+  ok(off.body.ok && off.body.on === false && /root commands from sessions are off on sandbox/.test(no.body.error || ''),
+     `with root asks off for the node, the ask is refused and says where it is turned back on (${(no.body.error || '').slice(0, 70)})`);
+  await page.evaluate(() => loadNodes());
+  await page.waitForFunction(id => document.querySelector(`.nodestab .ndrow[data-node="${id}"] [data-k="rootasks"]`) !== null
+                                   || !document.querySelector('.nodestab'), sandbox.id, { timeout: 15000 }).catch(() => {});
+  const on = await api('/api/v1/nodes', { action: 'root-asks', id: sandbox.id, on: true });
+  const yes = await api('/api/phone', { action: 'ask', kind: 'root', why: 'while on again', cmd: ['true'], project: 'alpha' });
+  ok(on.body.on === true && yes.body.id > 0, '...and on again, the ask goes to a person as before');
+  await api('/api/phone', { action: 'deny', id: yes.body.id });
+}
 
 // ---- Deny says no, once ------------------------------------------------------
 const denied = await api('/api/phone', { action: 'ask', kind: 'root', why: 'reboot it',

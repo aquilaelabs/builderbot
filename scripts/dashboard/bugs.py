@@ -490,7 +490,11 @@ def _stamp(project):
             version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
         v = version.render(project)
         return (v.get("forms") or {}).get("semver") or None
-    except Exception:  # noqa: BLE001  (a stamp must never stop a report)
+    except Exception as e:  # noqa: BLE001  (a stamp must never stop a report)
+        # Anything version.render meets (git missing, a tree it cannot read,
+        # a callback of its own) reads as "unknown" here, said once in the log.
+        print(f"dashboard: bugs: no version stamp for {project}: {type(e).__name__}: {e}",
+              file=sys.stderr, flush=True)
         return None
 
 

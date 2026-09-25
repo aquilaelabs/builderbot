@@ -137,13 +137,9 @@ function renderPhoneInto(i){
        <span class="acts"><button type="button" id="phPair"${off ? " disabled" : ""} title="${offWhy}">Pair</button></span>
        <div class="sub">${ph.you && phIp === ph.you
          ? `<b class="warn">You are reading this on the phone you are pairing.</b>
-            Android closes the pairing dialog the moment you leave it, and the
-            port goes with it, so pair from another device with that dialog
-            open here, or skip it: pairing is once per node, and Connect is
-            all you need after that.`
-         : `Wireless debugging → <b>Pair device with pairing code</b>, and
-            leave that dialog open; it cancels when you navigate away. Its
-            port is not the one the main screen shows.`}</div>
+            Pair from another device: Android closes the pairing dialog when you leave it.`
+         : `On the phone: Wireless debugging, then <b>Pair device with pairing code</b>.
+            Keep that dialog open.`}</div>
      </div>`,
   ];
   // The phones this node has paired or connected, newest first. The pairing

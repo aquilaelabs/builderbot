@@ -14,6 +14,7 @@ let nodesList = null;            // last answer, or null before the first
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
+let nodesDefault = "";           // the node work nobody bound to one lands on
 let nodesPick = "";              // which node the tab is showing, "" until the first draw
 // The configuration plane's editor state, per node (docs/nodes.md §12): the
 // fold's open flag and the DRAFT the operator is typing. Kept here and not in
@@ -36,6 +37,7 @@ async function loadNodes(){
     nodesErr = j.error || "";
     nodesList = j.nodes || [];
     nodesAgent = j.agent || null;
+    nodesDefault = j.default || "";
   }catch(e){
     nodesErr = String(e);
     nodesList = nodesList || [];
@@ -117,9 +119,8 @@ function nodeTools(n){
   // the libraries are each machine's own, and the Tools tab installs them.
   const unmet = Object.entries(n.reported?.sysdeps?.unmet || {});
   const sys = unmet.length
-    ? `<div class="sub ndsys warn">system packages missing here for ${unmet.map(([r, ps]) =>
-        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: the Tools tab installs them on this
-        node without reinstalling the toolchains</div>` : "";
+    ? `<div class="sub ndsys warn">System packages missing for ${unmet.map(([r, ps]) =>
+        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: install them from the Tools tab</div>` : "";
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
       esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>${sys}`;
@@ -255,7 +256,7 @@ function nodeRunnerSection(n, c){
           <div class="setrow col">${lbl("", "Host", "GitHub, or act_runner for Gitea, Forgejo and Codeberg")}
           <select data-k="runner:forge" aria-label="host kind">${[["", "from the address"], ["github", "GitHub"], ["gitea", "Gitea or Forgejo"]].map(([v, t]) =>
             `<option value="${v}"${(d.runner.forge || "") === v ? " selected" : ""}>${t}</option>`).join("")}</select></div>
-          <div class="setrow col">${lbl("", "Token", "a token allowed to register runners there (GitHub: Self-hosted runners or Administration R/W; Gitea: write on the organization or repository). Kept root-only on the controller")}
+          <div class="setrow col">${lbl("", "Token", "a token that may register runners there. Stored on the controller only")}
           <input data-k="runner:token" type="password" value="${esc(d.runner.token || "")}" spellcheck="false" autocomplete="off"
             placeholder="paste a token" aria-label="runner token"></div>
           <div class="setrow col">${lbl("", "Extra labels", `comma-separated. builderbot, self-hosted, linux, the arch and ${n.name} are always on`)}
@@ -301,9 +302,9 @@ function nodeSessionsSection(n){
     if (!se.workspace && wsErr) gaps.push(`the projects share is not mounted at /workspace: ${wsErr}${
       /access denied/i.test(wsErr) ? ": the host's NFS export names another address; change the rule there" : ""}`);
     else if (!se.workspace) gaps.push(se.up_s != null && se.up_s >= 0 && se.up_s < 600
-      ? `the projects share is not mounted at /workspace yet; this machine came up ${se.up_s} seconds ago, and a network mount lands a moment after boot`
+      ? `the projects share is not mounted yet: the machine booted ${se.up_s} seconds ago. Check again in a minute`
       : "the projects share is not mounted at /workspace: add it under Storage");
-    else if (se.writable === false) gaps.push("the projects share is mounted read-only: untick read-only under Storage and apply, or `bb-sandbox readonly /workspace off` on the machine");
+    else if (se.writable === false) gaps.push("the projects share is read-only: untick read-only under Storage and press Apply storage");
     if (!se.boot) gaps.push("the agent reports no boot id: Update agent");
     // Whether a session here is kept to its own project (R35): said on the
     // status itself when it is not, since a folded section shows nothing else.
@@ -365,7 +366,7 @@ function nodeClaudeSection(n){
         title="ask now what the latest Claude Code is">Check for updates</button>
       <button type="button" data-nd="claude-update" ${dead ? "disabled" : ""}
         title="${me.updating ? "an update is queued or running here"
-               : stale ? "update the agent first: a job this controller sends could name something that agent does not know"
+               : stale ? "update the agent first"
                : !se?.up ? "no session account to update it for"
                : inst && !me.behind ? "already on the latest known"
                : `install ${latest || "the current Claude Code"} here: ends the ${open} Claude session${open === 1 ? "" : "s"} open on this node first`}">Update</button>
@@ -388,6 +389,12 @@ function nodeSessNetRow(n){
   if (c.draft.sessnetOn === undefined || c.draft.sessnetFrom !== on){
     c.draft.sessnetOn = on; c.draft.sessnetFrom = on;
   }
+  // ...and whether a session here may ask for a root command at all (the
+  // operator, 24 Sep): the same draft, the same Save.
+  const rootOn = !n.config?.no_root;
+  if (c.draft.rootAsks === undefined || c.draft.rootFrom !== rootOn){
+    c.draft.rootAsks = rootOn; c.draft.rootFrom = rootOn;
+  }
   const sn = n.reported?.session_net || {};
   const told = Object.keys(sn).length > 0;
   const line = !told
@@ -400,7 +407,10 @@ function nodeSessNetRow(n){
     : "";
   return `<label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}>
       keep each session to its own project's network</label>
-    ${line}`;
+    ${line}
+    <label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
+      let a session ask for a root command (bb root run), which a person then allows or denies</label>
+    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}`;
 }
 
 // How many Claude sessions here may work on a prompt at once (turns.py on
@@ -418,10 +428,23 @@ function nodeTurnsRow(n){
   const now = `${t.working || 0} working now${t.limit ? ` of ${t.limit}` : ""}${
     t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
   const inp = `ndTurns-${n.id}`;
+  // ...and how many workers a test run here may use (R81): the node's
+  // cores when 0, handed to every test job as BB_TEST_WORKERS.
+  const tw = String(n.config?.test_workers || 0);
+  if (c.draft.workersText === undefined || c.draft.workersFrom !== tw){
+    c.draft.workersText = tw; c.draft.workersFrom = tw;
+  }
+  const winp = `ndWorkers-${n.id}`;
   return `<div class="logdays setrow col">
       ${lbl(inp, "Claude sessions working at once", "a prompt past it waits for a turn instead of starting. 0 is no limit")}
       <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
         value="${esc(c.draft.turnsText)}">
+    </div>
+    <div class="logdays setrow col">
+      ${lbl(winp, "Test workers", `how many workers a test run here may use, as BB_TEST_WORKERS in its environment. 0 uses every core${
+        n.reported?.cpu ? ` (${n.reported.cpu} here)` : ""}`)}
+      <input id="${esc(winp)}" data-k="workers" type="number" min="0" max="256" step="1" inputmode="numeric"
+        value="${esc(c.draft.workersText)}">
     </div>
     <div class="actbar">
       <span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span>
@@ -527,18 +550,12 @@ function windowGap(n){
 function staleWhy(n){
   const mine = n.agent?.version || "?", ship = nodesAgent?.version;
   return windowGap(n)
-    ? `${n.name} runs agent ${mine} and this controller ships ${ship}: a DIFFERENT `
-      + `compatibility window (${agentWindow(mine)} against ${agentWindow(ship)}). `
-      + `Inside one window any agent works with any controller; across one that was `
-      + `never promised, so update it before relying on this node`
+    ? `${n.name} runs agent ${mine} and this controller needs ${ship}: press Update agent before using this node`
     : mine === ship
     // The same number and a different file: the agent moved without its
     // version constant, and "runs 0.6.92 and ships 0.6.92" read as nonsense.
-    ? `${n.name} runs agent ${mine} (${short(n.agent?.digest)}) and this controller ships `
-      + `the same number as a newer file (${short(nodesAgent?.digest)}): press Update agent `
-      + `first, so nothing is sent that the agent may not know`
-    : `${n.name} runs agent ${mine} and this controller ships ${ship}: press `
-      + `Update agent first, so nothing is sent that the agent may not know`;
+    ? `${n.name} has an older build of agent ${mine} (${short(n.agent?.digest)}, this controller ships ${short(nodesAgent?.digest)}): press Update agent first`
+    : `${n.name} runs agent ${mine} and this controller ships ${ship}: press Update agent first`;
 }
 
 // Which stores a storage apply would move: saved somewhere other than where
@@ -680,16 +697,15 @@ function nodeConfSections(n){
   const failedFor = kind =>
     la && la.state !== "succeeded" && la.what === kind && stillPending[kind]
     && !busyNow && !stale && !c.dirty
-      ? [`the last ${kind} apply ${la.state === "canceled" ? "was canceled" : "failed"}${
-          la.error ? ": " + la.error : ""}: its log is on the Jobs tab. Nothing on the `
-         + "node changed for whatever did not apply; fix it and Apply again.", "bad"]
+      ? [`The last ${kind} apply ${la.state === "canceled" ? "was canceled" : "failed"}${
+          la.error ? ": " + la.error : ""}. Its log is on the Jobs tab; fix it and Apply again.`, "bad"]
       : null;
   // The state line answers one question: is there anything to press Apply
   // for, and names the changes when there is, so the button is not a leap.
   const [status, statusCls] = busyNow
     ? [`applying ${busyNow.what}${busyNow.what === "network" ? ": waiting for it to dial back in" : "…"}`, "note"]
     : stale ? [staleWhy(n), windowGap(n) ? "bad" : "warn"]
-    : c.dirty ? ["unsaved: Save keeps it on the record; Apply makes the node match", "warn"]
+    : c.dirty ? ["Unsaved: press Save, then Apply.", "warn"]
     : !drift ? ["nothing configured yet: the node runs on whatever it was set up with", ""]
     : pending.length ? [`${pending.length} change${pending.length === 1 ? "" : "s"} to apply: ${
         pending.slice(0, 3).join("; ")}${pending.length > 3 ? "; …" : ""}`, "warn"]
@@ -700,7 +716,7 @@ function nodeConfSections(n){
   const [storStatus, storStatusCls] = drift?.network === "unknown" && status.startsWith("the node matches")
     ? ["the node matches what is saved here", "ok"] : [status, statusCls];
   const saveBtn = `<button type="button" data-nsave ${c.dirty ? "" : "disabled"}
-      title="keep this on the node's record: Apply is what makes the node match it">Save</button>`;
+      title="save these settings; Apply puts them on the node">Save</button>`;
   const storage = `
       <div class="sub">Mounts at boot.${
         d.fromNode ? ` <span class="dim">As the node reports them; save to manage them from here.</span>` : ""}</div>
@@ -717,7 +733,7 @@ function nodeConfSections(n){
           title="${locked ? LOCKED_WHY : stale ? esc(staleWhy(n))
             : !drift ? "nothing is saved to apply"
             : !drift.storage.length ? "the node already has the mounts and stores saved here"
-            : "mounts and stores: a system job on the node, through bb-sandbox"}">Apply storage</button>
+            : "apply the mounts and stores to the node"}">Apply storage</button>
       </div>`;
   // The four static fields only when static: five boxes of placeholders
   // under a dhcp node were the wall this section used to be on a phone.
@@ -791,8 +807,7 @@ function nodeConfSections(n){
     ${managed
       ? docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})
         + docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})
-      : `<div class="sub dim ndguest">Storage and Network are the machine's own: it was not
-         provisioned as a sandbox (${rep.system === "darwin" ? "a Mac, enrolled as a guest" : "a container, or somebody's own machine"}).</div>`}
+      : `<div class="sub dim ndguest">Storage and network are managed on the machine itself, not here.</div>`}
   </div></div>`;
 }
 function meter(label, pct, right, title){
@@ -935,14 +950,14 @@ function renderNodesInto(i){
         <div class="actbar ndagent">
           <span class="lead dim${updating ? " note"
                               : stale ? (windowGap(n) ? " bad" : " warn") : ""}">${
-            updating ? `updating to agent ${esc(nodesAgent?.version || "")}; it swaps itself in and dials back; the row follows its next hello`
+            updating ? `Updating to agent ${esc(nodesAgent?.version || "")}. This row refreshes when the node reports back.`
             : stale ? `${windowGap(n) ? "out of window" : "behind"}: ${esc(staleWhy(n))}`
-            : `Test runs uname through the agent: the channel, end to end`}</span>
+            : `Test checks that this node answers.`}</span>
           ${stale ? `<button type="button" data-nd="update-agent" ${updating ? "disabled" : ""}
-            title="${updating ? "the update is queued: the row follows the agent's next hello"
-              : `hand the node the agent this controller ships (${esc(nodesAgent.version)}); it swaps itself in place and re-execs; nothing else restarts, and it waits for its own jobs to finish first`}">${
+            title="${updating ? "Update queued: this row refreshes when the node reports back"
+              : `Update the agent to ${esc(nodesAgent.version)} once its running jobs finish`}">${
             updating ? "Updating…" : "Update agent"}</button>` : ""}
-          <button type="button" data-nd="test" title="run uname on it through the agent: the channel, end to end">Test</button>
+          <button type="button" data-nd="test" title="check that this node answers">Test</button>
         </div>
         <div class="sub ndtest" hidden></div>` : "";
     const health = docSection("nodes", "health", "Health",
@@ -976,16 +991,13 @@ function renderNodesInto(i){
   // picker over an empty page: the Enroll button above is the whole of what
   // there is to do here.
   const none = live.length ? "" :
-    `<div class="empty ndnone">No node is enrolled. A node is the machine the
-      work runs on (builds, tests, CI and the Android emulator) and this
-      container runs none of it. <b>Enroll node…</b> above mints a token and
-      shows the one command to run on that machine.</div>`;
+    `<div class="empty ndnone">No node yet. Press <b>Enroll node</b> to get the command
+      that adds a machine for builds, tests and sessions.</div>`;
   // Enrolling is a dialog now (#ndmodal), not two panels appended here; see
   // the markup's comment. Which means a poll landing while it is open cannot
   // take the name being typed with it, because this list is not where it is.
   d.list.innerHTML = rows + none
-    + (!nodesList.length ? `<div class="empty">no nodes, which cannot happen:
-        local is seeded at boot. If you can read this, the store broke.</div>` : "");
+    + (!nodesList.length ? `<div class="empty">The node list could not be read.</div>` : "");
   d.setFoot(`A node does the work of the projects bound to it: pick one in a project's
     settings. Jobs run as the enrolled account, never root.`);
   wireNodesTab(d.el);
@@ -1265,13 +1277,9 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                       + "its data stay on the machine; the row is kept as "
                       + "history.")) return;
       if (act === "uninstall"
-          && !confirm("Uninstall BuilderBot from this machine?\n\nGoes: its runners "
-                      + "(deregistered on their forges), the agent and its unit, the bb "
-                      + "and builder accounts with their homes, the mounts it used, its "
-                      + "stores on that disk, the firewall rule, bb-sandbox itself.\n\n"
-                      + "Stays: docker, the packages the provisioner installed, the empty "
-                      + "mountpoints, and everything on the shares.\n\nThe row is retired "
-                      + "when it is done. Enrolling it again is a fresh provisioner run.")) return;
+          && !confirm("Uninstall BuilderBot from this machine?\n\nThe agent, its accounts, "
+                      + "mounts and runners are removed. Docker and the shares stay. "
+                      + "Enrolling it again starts from scratch.")) return;
       if (act === "revoke"
           && !confirm("Revoke this node's credential? It will stop being able "
                       + "to dial in, and the only way back is enrolling it "
@@ -1288,11 +1296,10 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         if (here.length && !confirm(
               `Update the agent on ${
                 (nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
-              + `It restarts the agent, which ends the ${here.length} session`
+              + `This ends the ${here.length} session`
               + `${here.length === 1 ? "" : "s"} open there`
               + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}`
-              + `. Their transcripts are kept and the tabs reopen, but whatever `
-              + `they were running stops.`)) return;
+              + `. Transcripts are kept; whatever they were running stops.`)) return;
       }
       if (act === "claude-update"){
         const here = (state?.sessions || []).filter(x => x.node_id === id && tmuxBase(x.name).startsWith("claude-"));
@@ -1331,7 +1338,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
         if (j.current){ delete nodesUpdating[id]; notify(`already on ${j.version}`); }
-        else if (j.ok) notify("update queued: the row follows the agent's next hello");
+        else if (j.ok) notify("Update queued: the row refreshes when the node reports back");
         else delete nodesUpdating[id];
         return;
       }
@@ -1363,6 +1370,24 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           if (c && c.draft) c.draft.sessnetOn = undefined;
           said += sw.checked ? "; sessions started here from now on reach only their own project's containers"
                              : "; sessions started here from now on share its network";
+        }
+        const wi = box.querySelector('[data-k="workers"]');
+        const wWas = String(nodesList.find(x => x.id === id)?.config?.test_workers || 0);
+        if (wi && String(Number(wi.value) || 0) !== wWas){
+          const k = await nodeAct({action: "test-workers", id, workers: Number(wi.value) || 0});
+          if (k.error) return;
+          if (c && c.draft) c.draft.workersText = undefined;
+          said += k.workers ? `; test runs here may use ${k.workers} worker${k.workers === 1 ? "" : "s"}`
+                            : "; test runs here may use every core";
+        }
+        const ra = box.querySelector('[data-k="rootasks"]');
+        const raWas = !nodesList.find(x => x.id === id)?.config?.no_root;
+        if (ra && ra.checked !== raWas){
+          const k = await nodeAct({action: "root-asks", id, on: ra.checked});
+          if (k.error) return;
+          if (c && c.draft) c.draft.rootAsks = undefined;
+          said += ra.checked ? "; a session here may ask for a root command again"
+                             : "; a session here asking for a root command is refused";
         }
         notify(said);
         return;
@@ -1437,11 +1462,19 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     // the section's Save, like the limit beside it.
     const sw = box.querySelector('[data-k="sessnet"]');
     if (sw) sw.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.sessnetOn = sw.checked; };
+    const ra = box.querySelector('[data-k="rootasks"]');
+    if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked; };
     const ti = box.querySelector('[data-k="turns"]');
     if (ti){
       ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };
       ti.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.turnsText = ti.value;
                            nodesFocus = {id, key: "turns"}; };
+    }
+    const wi = box.querySelector('[data-k="workers"]');
+    if (wi){
+      wi.onfocus = () => { nodesFocus = {id, key: "workers"}; };
+      wi.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.workersText = wi.value;
+                           nodesFocus = {id, key: "workers"}; };
     }
   });
   // The field that had the caret before this repaint gets it back: the
@@ -1508,7 +1541,7 @@ function wireNodeConf(row, id){
         fold.querySelectorAll("[data-nsave]").forEach(b => { b.disabled = false; });
         fold.querySelectorAll("[data-napply]").forEach(x => { x.disabled = true; });
         fold.querySelectorAll(".ndconfstate").forEach(st => {
-          st.textContent = "unsaved: Save keeps it on the record; Apply makes the node match";
+          st.textContent = "Unsaved: press Save, then Apply.";
           st.className = "state ndconfstate warn";
         });
       }
@@ -1584,10 +1617,9 @@ function wireNodeConf(row, id){
       // text field losing focus.
       const moving = storeMoves(n);
       if (moving.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis moves `
-          + `${moving.map(m => `${m.role} from ${m.from} to ${m.to}`).join(", and ")}. The `
-          + `contents are copied across first and the job waits for that; nothing is deleted, `
-          + `so the old cop${moving.length === 1 ? "y stays" : "ies stay"} where ${
-              moving.length === 1 ? "it is" : "they are"} for you to remove.`)) return;
+          + `${moving.map(m => `${m.role} from ${m.from} to ${m.to}`).join(", and ")}. `
+          + `The contents are copied first; the old cop${moving.length === 1 ? "y stays" : "ies stay"} `
+          + `for you to remove.`)) return;
     }
     await pressing(b, () => { busy(b, "Applying"); return nodeAct({action: "apply", id, what}); });
   });

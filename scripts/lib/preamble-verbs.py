@@ -1,0 +1,40 @@
+"""Behind `bb preamble` (cmd_preamble in bb): what a session started on this
+project is handed, the house rules, the open roadmap and the open bugs,
+in the order it reads them, assembled once by dashboard/preamble.py so
+the Briefing tab cannot drift from what a session actually gets.
+
+Arguments: the dashboard directory, the project, and --json for the
+payload rather than the text. DASHBOARD_STATE says where the notebook's
+files are.
+"""
+import json
+import os
+import sys
+
+d, proj, op = sys.argv[1], sys.argv[2], sys.argv[3]
+sys.path.insert(0, d)
+import statefile, rules, roadmap, bugs, preamble
+state = os.environ.get("DASHBOARD_STATE", "/config")
+# Reading only: none of the callbacks a write would need are passed, and the
+# three stores take them as optional for exactly this case.
+rules.configure(write_json=statefile.write_json, state=state)
+roadmap.configure(write_json=statefile.write_json, state=state)
+bugs.configure(write_json=statefile.write_json, state=state)
+preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs)
+p = preamble.payload(proj)
+if op == "--json":
+    print(json.dumps(p))
+else:
+    # No trailing newline added: this is handed to `claude` as one argument,
+    # and the caller tests it with [ -z ].
+    sys.stdout.write(p["text"])
+    # Said on stderr so it cannot join the block itself. The launcher shows
+    # this to whoever opened the terminal; a list nobody can afford is a
+    # thing to hear about once rather than to discover as a session that has
+    # not read half of it.
+    if p["capped"]:
+        print(f"WARNING: this project's rules, roadmap and bugs are "
+              f"{p['bytes']} bytes and only the first {p['max']} are in a "
+              f"session's prompt.", file=sys.stderr)
+        print("Trim the list with `bb roadmap`, or the rest of it is invisible "
+              "to every session started here.", file=sys.stderr)

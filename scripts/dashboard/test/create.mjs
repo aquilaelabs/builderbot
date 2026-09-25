@@ -141,6 +141,15 @@ await page.waitForFunction(() => [...document.querySelectorAll('#projects .name'
   .some(n => n.textContent === 'zeta'), { timeout: 15000 });
 ok(true, 'the new project appears in the card');
 ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
+// Born with a starting version (the operator, 25 Sep): the tree as made is
+// the first commit and VERSION at 0.1.0 the second, so the Artifacts tab has
+// a version to move from the moment the project exists.
+{
+  const log = execFileSync('git', ['-C', `${DIR}/ws/zeta`, 'log', '--format=%s'], { encoding: 'utf8' }).trim().split('\n');
+  ok(readFileSync(`${DIR}/ws/zeta/VERSION`, 'utf8').trim() === '0.1.0' && log.length === 2
+     && log[0] === 'Add VERSION at 0.1.0' && log[1] === 'Start zeta',
+     `a new project is committed and given its first version (${log.join(' | ')})`);
+}
 // One file, and it is the project's own (R63 step 3): what a session is told
 // about the environment is assembled per session now, so nothing is rendered
 // into the tree and there is no second file to exclude from git.

@@ -243,7 +243,7 @@ ok(true, 'a project with no dist/ is told the convention, not shown a blank');
     label: b.querySelector('.ggroup')?.textContent || '',
     href: b.querySelector('a[download]')?.getAttribute('href') || '',
     view: !!b.querySelector('[data-artbview]') }));
-  ok(/w\.builder's worktree, on claude\/w\.builder/.test(drawn.label) && drawn.href.includes(`tree=${uid}`) && drawn.view,
+  ok(/w\.builder's branch builds, on claude\/w\.builder/.test(drawn.label) && drawn.href.includes(`tree=${uid}`) && drawn.view,
      `...and the tab shows it under a line saying whose, with Download and View (${drawn.label})`);
   execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'worktree', 'remove', '--force', WT]);
   // The fixture's alpha has no commits, so the worktree's branch was never

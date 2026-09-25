@@ -6,6 +6,7 @@
 
 let chatWith = null;                 // {who} or {project}, or null for the list
 let chatMsgs = [], chatDraft = {}, chatSeenRev = -1, chatTimer = null;
+let chatDrawn = "";                  // what the open conversation was last painted from
 
 const chatKey = w => w?.project ? `p:${w.project}` : w?.who ? `dm:${w.who}` : "";
 
@@ -31,7 +32,7 @@ function chatLoop(){
   chatTimer = showChat ? setInterval(loadChat, 4000) : null;
 }
 
-function chatOpen(w){ chatWith = w; chatMsgs = []; loadChat(); chatLoop(); }
+function chatOpen(w){ chatWith = w; chatMsgs = []; chatDrawn = ""; loadChat(); chatLoop(); }
 
 function drawChat(){
   const el = $("chat");
@@ -80,6 +81,19 @@ function drawChat(){
   }
   const title = chatWith.project ? "#" + chatWith.project : chatWith.who;
   const key = chatKey(chatWith);
+  // Painted only when the conversation changed: the poll every four seconds
+  // repainted the panel whole and pinned the log to its end, and a reader
+  // scrolled up to an older message was dragged back down each time (the
+  // operator, 25 Sep). And when it is painted, the reader keeps their place
+  // unless they were at the end, where the newest message is what they want.
+  // The minute is in it so "3 min ago" still moves, once a minute.
+  const sig = key + "\n" + Math.floor(Date.now() / 60000) + "\n"
+    + chatMsgs.map(m => `${m.at}\t${m.who}\t${m.kind}\t${m.text}`).join("\n");
+  if (sig === chatDrawn && el.querySelector("#chatlog")) return;
+  chatDrawn = sig;
+  const was = el.querySelector("#chatlog");
+  const atEnd = !was || was.scrollTop + was.clientHeight >= was.scrollHeight - 8;
+  const keep = was ? was.scrollTop : 0;
   paint(el, `
     <div class="chathead">
       <button class="link" id="chatBack">‹ all</button>
@@ -113,11 +127,11 @@ function drawChat(){
   };
   inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); send(); } };
   el.querySelector("#chatSend").onclick = send;
-  el.querySelector("#chatBack").onclick = () => { chatWith = null; drawChat(); };
-  // Newest last, and the reader wants the newest: pinned to the bottom the
-  // way the job logs are.
+  el.querySelector("#chatBack").onclick = () => { chatWith = null; chatDrawn = ""; drawChat(); };
+  // Newest last, and a reader at the end wants the newest: pinned to the
+  // bottom the way the job logs are. One who scrolled up stays where they were.
   const log = el.querySelector("#chatlog");
-  if (log) log.scrollTop = log.scrollHeight;
+  if (log) log.scrollTop = atEnd ? log.scrollHeight : keep;
 }
 
 async function sendKey(key){

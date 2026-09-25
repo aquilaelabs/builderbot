@@ -30,7 +30,7 @@ function nbGitView({$, nb, project}){
       const r = await postJSON("/api/git", {project, action: "ask", kind, args: args || {}});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
-      if (!j.sent) notify("typed into the session but not sent; something else has the keyboard there; press Enter in that tab when it is clear", true);
+      if (!j.sent) notify("Not sent: the session is busy. Press Enter in its tab when it is free.", true);
       startClaude(project, null);
     }catch(e){ notify("ask: " + e, true); }
     finally{ if (btn && btn.isConnected) unbusy(btn, btn.dataset.label || btn.textContent); }
@@ -213,7 +213,7 @@ function nbGitView({$, nb, project}){
             b.name === main ? (b.head || barred(here_) ? "" : `<button type="button" data-gitmerge="${esc(main)}"${whoAttr(here_)}
             title="bring ${esc(main)} into ${esc(st.branch || "this branch")}, here, so this branch is up to date with it">Merge ${esc(main)} into here</button>`)
             : !barred(b) && (b.main_ahead || st.branch !== main) && !(b.head && st.branch === main) ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"${whoAttr(b)}
-            title="merge ${esc(b.name)} into ${esc(main)} without moving the tree, the way a pull request merges; push ${esc(main)} yourself after">Merge into ${esc(main)}</button>` : ""}${
+            title="merge ${esc(b.name)} into ${esc(main)}; push ${esc(main)} afterwards">Merge into ${esc(main)}</button>` : ""}${
             b.head || barred(b) || tree.barred ? "" : `<button type="button"
             data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch</button>`}${
             b.head || b.name === main || barred(b) ? "" : `<button type="button" class="danger"
@@ -272,7 +272,7 @@ function nbGitView({$, nb, project}){
             `<option value="${o}"${(pol.main || "deny") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
         </div>
         <div class="actbar">
-          <span class="state">its own branches, one at a time ${helpIcon("The branches this tree has. A tag, a deletion and a branch that is only on the remote stay yours, whatever these say. A commit or a merge here is always the session's.")}</span>
+          <span class="state">its own branches, one at a time ${helpIcon("Applies to pushes only. Tags, deletions and remote-only branches stay yours; commits and merges here are always allowed.")}</span>
           <button type="button" id="gitPolApply"${polDirty ? "" : " disabled"}>Apply</button>
         </div></div></div>`;
     body.innerHTML = docSection("git", "changes", "Changes", files.length ? String(files.length) : "none",
@@ -296,7 +296,7 @@ function nbGitView({$, nb, project}){
         const j = await r.json();
         if (j.error) return notify(j.error, true);
         gitPolDraft = {};
-        notify("saved: a session reads it with bb git policy");
+        notify("saved");
         refresh(); drawGit();
       }catch(e){ notify("policy: " + e, true); }
       finally{ if (pa.isConnected) unbusy(pa, "Apply"); }

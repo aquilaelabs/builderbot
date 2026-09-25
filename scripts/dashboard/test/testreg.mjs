@@ -244,7 +244,7 @@ await nbShown(page);
 await nbTab(page, 'tests');
 await page.waitForSelector('#tstList .tst', { timeout: 15000 });
 const hint = await page.$eval('#tstHint', e => e.textContent.replace(/\s+/g, ' '));
-ok(/projected/.test(hint) && /flagged/.test(hint),
+ok(/in tests/.test(hint) && /flagged/.test(hint),
    `the header carries the projected suite time and what is only waiting (${hint.trim()})`);
 const rows = await page.$$eval('#tstList .tst', es => es.map(e => ({
   ms: e.querySelector('.tstms').textContent.trim(),

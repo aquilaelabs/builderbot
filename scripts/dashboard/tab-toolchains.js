@@ -265,9 +265,8 @@ function renderToolchainsInto(i){
   if (d.nonode){
     surf.setBar(`<span class="sp"></span>
       <button type="button" id="tcRefresh" title="look again for a node">Refresh</button>`);
-    surf.list.innerHTML = `<div class="empty tcnone">Toolchains are installed on a node, and
-        none is enrolled. The Nodes tab's <b>Enroll node</b> makes one; its toolchain store is
-        what shows here. Nothing installs on this container.</div>`;
+    surf.list.innerHTML = `<div class="empty tcnone">No node yet. Toolchains install on a node:
+        enroll one from the Nodes tab.</div>`;
     const pre = el.querySelector("#tcRefresh");
     if (pre) pre.onclick = () => { nodesList = null; toolchains = null; tcRev++; drawPanes(); loadToolchains(); };
     return;
@@ -323,7 +322,7 @@ function renderToolchainsInto(i){
       ? (d.shared
           ? `Installed into <code>${esc(d.root)}</code>: a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code>: the home volume. Map a toolchain store to keep them out of it.`)
-      : "The toolchain store root could not be determined; this image may predate <code>bb toolchains</code>."}</div>
+      : "No toolchain store found."}</div>
     ${pstale ? `<div class="tchead warn tcstale">${esc(staleWhy(
       pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div>` : ""}
     ${(() => {
@@ -461,11 +460,11 @@ async function tcAct(action, only){
       notify(`also installing ${j.added.join(", ")}: needed by what you picked`);
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
     notify(action === "check"
-      ? (tcNode === "local" ? "checking versions: each one asks its own upstream"
-         : "checking versions on " + ((nodesList || []).find(n => n.id === tcNode)?.name
-                                      || "the node") + ": each one asks its own upstream")
+      ? (tcNode === "local" ? "checking for updates"
+         : "checking for updates on " + ((nodesList || []).find(n => n.id === tcNode)?.name
+                                         || "the node"))
       : action === "sysdeps"
-      ? "installing the system packages the held recipes need; the toolchains themselves are left alone"
+      ? "installing the system packages"
       : `${action === "remove" ? "removing" : "installing"} ${names.join(", ")}${
           tcNode !== "local" ? " on " + ((nodesList || []).find(n => n.id === tcNode)?.name || "the node") : ""
         }; this can take minutes`);

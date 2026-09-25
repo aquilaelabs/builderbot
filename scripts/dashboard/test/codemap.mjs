@@ -119,9 +119,9 @@ ok(/ProjectScreen\.kt:\d+  from Roadmap\b/.test(pill) && /Screens\.kt:\d+  from 
   execFileSync('rm', ['-f', dead]);
 }
 
-// ...and in python (B227): devapp.py hands its compose job runner to the
+// ...and in python (B227): devactions.py hands its compose job runner to the
 // jobs module by name, which read as nothing passing it.
-ok(/devapp\.py:\d+  passed by name in configure  \| .*runner\.register\("compose", run_compose_job\)/.test(map('who-calls', 'run_compose_job')),
+ok(/devactions\.py:\d+  passed by name in configure  \| .*runner\.register\("compose", run_compose_job\)/.test(map('who-calls', 'run_compose_job')),
    'a python function passed by name is seen where it is passed, in the function that passes it');
 
 // A plan keeps its words and its addresses move under it (item 7 of the

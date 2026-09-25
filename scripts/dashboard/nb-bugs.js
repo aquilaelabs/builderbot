@@ -185,7 +185,7 @@ function nbBugsView({$, nb, project}){
     const rows = sortedBugs();
     const open = rows.filter(b => b.status === "open").length;
     hint.textContent = rows.length
-      ? `${open} open of ${rows.length}: sessions read these with bb bug`
+      ? `${open} open of ${rows.length}`
       : "Nothing reported. What goes here reaches every Claude session in this project.";
     // A sort over nothing is a control that does nothing: it arrives with
     // the second bug, when there is an order to choose.
@@ -197,7 +197,7 @@ function nbBugsView({$, nb, project}){
       <details class="bug" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
         <summary>
           <span class="sev ${esc(b.severity)}">${esc(b.severity)}</span>
-          <span class="n id" title="this bug is B${b.id}: what bb bug show B${b.id} takes">B${b.id}</span>
+          <span class="n id" title="bug B${b.id}: a session knows it by that number">B${b.id}</span>
           <span class="btitle${b.status !== "open" ? " done" : ""}">${esc(b.title)}</span>
           <span class="bstat ${esc(b.status)}">${esc(
             b.status === "na" ? "n/a" : b.status === "wontfix" ? "won't fix" : b.status)}</span>
@@ -214,12 +214,8 @@ function nbBugsView({$, nb, project}){
               b.status !== "open" && b.fixed_in ? ` · closed in ${esc(b.fixed_in)}` : ""}</span>
             <button type="button" class="bSend"${b.status === "open" ? "" : " disabled"}
               title="${b.status === "open"
-                ? `hand this bug to the session running here; it is sent as a
-                   number and an instruction to look it up, not as a copy of
-                   the report`
-                : `this one is closed: reopen it first. A closed bug is a
-                   record, not work, and sending it would ask a session to
-                   deal with something already dealt with`}"
+                ? `send this bug to the running session`
+                : `closed: reopen it first to send it`}"
               >Send to Claude</button>
             <button type="button" class="bEdit">Edit</button>
             ${b.status === "open"
@@ -276,7 +272,7 @@ function nbBugsView({$, nb, project}){
         }
         const box = nb.sendBoxEl({
           label: `Send bug #${id} to ${nb.roadmapSession}?`,
-          sub: "as a number to look up, not as a copy",
+          sub: "the session looks it up by number",
           placeholder: "anything to send with it (optional)",
           onCancel: nb.shutSendBoxes,
           onSend: async () => {
@@ -287,10 +283,9 @@ function nbBugsView({$, nb, project}){
             if (!j) return;
             if (!j.sent){
               notify(j.switching
-                ? `the /${j.switching} line was typed but not sent; something `
-                  + "else has the keyboard there. The bug has NOT been sent"
-                : "typed into the session but not sent; something else has "
-                  + "the keyboard there; press Enter in that tab when it is clear",
+                ? `Not sent: the session is busy with the /${j.switching} line. `
+                  + "Clear its tab and send the bug again."
+                : "Not sent: the session is busy. Press Enter in its tab when it is free.",
                 true);
               return;
             }
@@ -310,8 +305,8 @@ function nbBugsView({$, nb, project}){
         if (body.querySelector(".dropbox")) return;
         const box = document.createElement("div");
         box.className = "dropbox";
-        box.innerHTML = `<div class="q">Delete this report?<span>: closing keeps
-            a bug and its answer; this takes the row</span></div>
+        box.innerHTML = `<div class="q">Delete this report?<span>: it is gone for good;
+            to keep a record, close it instead</span></div>
           <textarea class="proseline" rows="1" maxlength="300"
             placeholder="why it should not have been filed (optional, kept in the log)"></textarea>
           <div class="actbar">

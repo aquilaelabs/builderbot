@@ -227,7 +227,7 @@ const tripped = await page.evaluate(() => ({
   loading: [...document.querySelectorAll('.card .loading')].map(e => e.textContent),
 }));
 ok(/fails on its answer/.test(tripped.title) && /layout boom/.test(tripped.title)
-   && tripped.loading.length > 0 && tripped.loading.every(t => /fails on its answer/.test(t)),
+   && tripped.loading.length > 0 && tripped.loading.every(t => /could not read the server's answer/.test(t)),
    `a page that fails on the container's answer says that, not "not reaching the container" (${
      tripped.title.slice(0, 70)})`);
 page.errors = [];

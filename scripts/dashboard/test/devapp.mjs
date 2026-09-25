@@ -1242,6 +1242,12 @@ import importlib.util, json, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+# The action layer is devactions.py (25 Sep): loaded by path too, with this
+# devapp registered as the one it imports, so the stubs above and below land.
+import sys; sys.modules['devapp'] = m
+spec = importlib.util.spec_from_file_location('devactions', ${
+  JSON.stringify(new globalThis.URL('../devactions.py', import.meta.url).pathname)})
+a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
 d = tempfile.mkdtemp()
 
 class Queue:
@@ -1273,15 +1279,15 @@ m._load = lambda: {'alpha': {'main': {}, 'staging': {}}}
 m._instance_node = lambda *a: 'n_sandbox'
 
 out = {}
-out['first_up'] = m.up('alpha', 'main')
-out['second_up'] = m.up('alpha', 'main')
-out['rebuild_during_up'] = m.rebuild('alpha', 'main')
-out['down_during_up'] = m.down('alpha', 'main')
-out['other_instance'] = m.up('alpha', 'staging')
+out['first_up'] = a.up('alpha', 'main')
+out['second_up'] = a.up('alpha', 'main')
+out['rebuild_during_up'] = a.rebuild('alpha', 'main')
+out['down_during_up'] = a.down('alpha', 'main')
+out['other_instance'] = a.up('alpha', 'staging')
 out['queued'] = [(r['id'], r['spec']['action'], r['spec']['instance'], r['node'], r['principal']) for r in q.rows]
 out['view'] = m.job_view('alpha', 'main')
 q.rows[-1]['state'] = 'succeeded'
-out['free_now'] = m.up('alpha', 'main')
+out['free_now'] = a.up('alpha', 'main')
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const SL = JSON.parse(slot.trim().split('\n').pop());
@@ -1310,6 +1316,12 @@ import importlib.util, json, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+# The action layer is devactions.py (25 Sep): loaded by path too, with this
+# devapp registered as the one it imports, so the stubs above and below land.
+import sys; sys.modules['devapp'] = m
+spec = importlib.util.spec_from_file_location('devactions', ${
+  JSON.stringify(new globalThis.URL('../devactions.py', import.meta.url).pathname)})
+a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
 d = tempfile.mkdtemp()
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
 m.missing_env = lambda *a, **k: []
@@ -1334,7 +1346,7 @@ def fake(argv, timeout=60, **kw):
     return {'code': 0, 'out': ''}
 m._run = fake
 
-r = m._job_rebuild('alpha', 'main', run)
+r = a._job_rebuild('alpha', 'main', run)
 print(json.dumps({'phases': phases, 'steps': run.steps, 'result': r}))
 `], { encoding: 'utf8' });
 const AB = JSON.parse(ab.trim().split('\n').pop());
@@ -1532,6 +1544,12 @@ import importlib.util, json, os, tempfile, time
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+# The action layer is devactions.py (25 Sep): loaded by path too, with this
+# devapp registered as the one it imports, so the stubs above and below land.
+import sys; sys.modules['devapp'] = m
+spec = importlib.util.spec_from_file_location('devactions', ${
+  JSON.stringify(new globalThis.URL('../devactions.py', import.meta.url).pathname)})
+a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
 
 d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
@@ -1575,7 +1593,7 @@ class Run:
     def line(self, t): pass
     def step(self, s): pass
     def hold(self, p): pass
-m._job_up('p', 'main', Run())
+a._job_up('p', 'main', Run())
 out = {
   # Ordered: every mkdir has to be finished before the compose that needs it.
   'order': [('up' if 'up' in c['argv'] else 'mkdir') for c in seen
@@ -1775,6 +1793,20 @@ ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT'
 await page.waitForSelector('#dnEnvField:not([hidden])', { timeout: 10000 });
 ok(/PORT=8080/.test(await page.$eval('#dnEnv', e => e.value)),
    '...carrying the env seeded from .env.example');
+// The dialog offers the project's own name, and that name means the
+// project's own container: asked for when the project already has one, the
+// answer says so and where it is, rather than "needs another name" (the
+// operator, 25 Sep, on a project sent for the first time).
+ok(await page.$eval('#dnName', e => e.value) === 'ep.silon', 'the send dialog offers the project\'s own name');
+{
+  // Asked from here rather than the page: a 400 the page fetches lands in
+  // its console, and the dev row's check below wants that console clean.
+  const own = await (await fetch(URL.replace(/\/$/, '') + '/api/devapp', { method: 'POST',
+      headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', action: 'new', instance: 'Ep Silon' }) })).json();
+  ok(/already has its own container, ep-silon, on the Docker tab/.test(own.error || ''),
+     `...and that name asked for again names the container it already is (${String(own.error).slice(0, 70)})`);
+}
 await page.fill('#dnName', 'Staging Two');
 ok(/Will be created as staging-two\b/.test(
      await page.$eval('#dnPreview', e => e.textContent)),
@@ -2691,8 +2723,7 @@ ok(await page.$('#devSend'),
   // the grant cannot reach them however it is set. This is the operator's
   // own line (the user makes them, Claude rebuilds them), and it is checked
   // here rather than trusted to the ordering of two ifs.
-  // (remove joined the dial on 24 Sep; route, which is where the thing is
-  // reached from, stays the operator's.)
+  // (Route, where the thing is reached from, stays the operator's.)
   for (const act of ['route']){
     const r = await asSession({ project: 'ep.silon', action: act, instance: 'main' });
     ok(r.status === 403 && /administrator/.test(r.error || ''),
@@ -2935,8 +2966,8 @@ ok(await page.$('#devSend'),
   await page.click('#rnGo');
   await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
   await refreshUntil(page, () => ((state.projects || [])
-    .find(p => p.name === 'ep.silon') || {}).prefs?.devtest === true, { timeout: 20000 });
-  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].devtest === true,
+    .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'only', { timeout: 20000 });
+  ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].tests_in === 'only',
      '...and saving it there is what writes the setting');
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
@@ -3000,9 +3031,8 @@ ok(await page.$('#devSend'),
   await where('only');
   await refreshUntil(page, () => ((state.projects || [])
     .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'only', { timeout: 20000 });
-  ok(stored().devtest === true && !('tests_in' in stored())
-     && ((await page.evaluate(() => state.projects.find(p => p.name === 'ep.silon').prefs)).devtest === true),
-     'only is stored as it always was, devtest true, which is what a node from before tests_in reads');
+  ok(stored().tests_in === 'only' && !('devtest' in stored()),
+     'only is stored as tests_in, and nothing else');
   await page.evaluate(() => { dockerList = null; loadDocker(); });
   await page.waitForFunction(() => /only in this container/.test(
     document.querySelector('.dmtab')?.textContent || ''), null, { timeout: 20000 });
@@ -3010,9 +3040,8 @@ ok(await page.$('#devSend'),
   await where('up');
   await refreshUntil(page, () => ((state.projects || [])
     .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'up', { timeout: 20000 });
-  ok(stored().tests_in === 'up' && !('devtest' in stored())
-     && ((await page.evaluate(() => state.projects.find(p => p.name === 'ep.silon').prefs)).devtest === false),
-     '...up is stored as tests_in, and says false to a node that only knows devtest');
+  ok(stored().tests_in === 'up' && !('devtest' in stored()),
+     '...and so is up');
   await where('node');
   // A project left with nothing but defaults has no record at all, and the
   // poll then carries {} for its prefs, which the page reads as the default.
@@ -3069,7 +3098,7 @@ ok(await page.$('#devSend'),
   const j1 = await finished(nocmd.job);
   ok(j1.state === 'succeeded' && /TEST-RAN-one\n.*TEST-RAN-two/s.test(j1.log || ''),
      `...the recorded command runs there with the arguments as positional parameters (${j1.state}: ${(j1.log || '').replace(/\n/g, ' / ').slice(-160)})`);
-  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 app sh -c printf/.test(j1.log || ''),
+  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 -e BB_TEST_WORKERS app sh -c printf/.test(j1.log || ''),
      '...through compose exec into the service the project builds, with timing on for the registry, and no working directory when nothing mounts the project');
   // A compose that mounts the project (or the whole share it sits in) puts
   // the tests in the project's directory inside the container: the first
@@ -3077,7 +3106,7 @@ ok(await page.$('#devSend'),
   writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
     volumes: [{ type: 'bind', source: `${DIR}/ws`, target: '/workspace' }] } } }));
   const j1b = await finished((await asSession({ project: 'ep.silon', action: 'test', args: ['wd'] })).job);
-  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 -w \/workspace\/ep\.silon app sh -c/.test(j1b.log || ''),
+  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 -e BB_TEST_WORKERS -w \/workspace\/ep\.silon app sh -c/.test(j1b.log || ''),
      `...and in the project's directory inside the container when the compose mounts it (${(j1b.log || '').match(/exec [^\n]*/)?.[0]?.slice(0, 90)})`);
   // BB_IN_INSTANCE is how run.sh tells "these tests ARE the container's" from
   // "these tests were run around it": a dev instance is a container and so is
@@ -3477,10 +3506,16 @@ print(json.dumps({'before': before, 'moved': moved, 'after': m.owner_of('radarr'
 // read it.
 {
   const out = execFileSync('python3', ['-c', `
-import importlib.util, json, tempfile
+import importlib.util, json, sys, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+# containers.py reads the store through import devapp: the copy loaded
+# above is registered under that name so both see one configure().
+sys.modules['devapp'] = m
+cspec = importlib.util.spec_from_file_location('c', ${
+  JSON.stringify(new globalThis.URL('../containers.py', import.meta.url).pathname)})
+c = importlib.util.module_from_spec(cspec); cspec.loader.exec_module(c)
 d = tempfile.mkdtemp()
 def wj(p, o):
     with open(p, 'w') as f:
@@ -3497,9 +3532,9 @@ def fake_run(argv, timeout=60, **k):
     return {'code': 0, 'out': ''}
 m._run = fake_run
 seen['fail'] = 1
-bad = m.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
+bad = c.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
 after_bad = [i['name'] for i in m._overview_here('')['instances']]
-good = m.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
+good = c.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
 print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), 'during': seen['during'],
                   'after_bad': after_bad, 'after_good': [i['name'] for i in m._overview_here('')['instances']]}))
 `], { encoding: 'utf8' });
@@ -3524,6 +3559,77 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   ok(/\(running\)/.test(seeded) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
      `a one-shot that exited 0 leaves the row running and reads finished, while one that failed still reads partly up (${
        (seeded.match(/\([^)]*\)/) || [''])[0]} | ${(broken.match(/partly up: \d of \d/) || [''])[0]})`);
+}
+
+// ---- where a new container goes, said in the dialog -----------------------
+// A project with no node sent to Docker landed on the newest enrolled node,
+// while the dialog's picker showed the first name in its list (the operator,
+// 25 Sep). The picker now preselects the node the server would choose: the
+// project's own, else the default docker host, and says under the field when
+// it is the latter. A second node is enrolled here so the picker has a
+// choice; it reports no docker, so it never becomes the default the rest of
+// this suite was written against.
+{
+  const base = URL.replace(/\/$/, '');
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+              'Content-Type': 'application/json' };
+  const post = async (path, body, headers = H) => (await fetch(base + path,
+    { method: 'POST', headers, body: JSON.stringify(body) })).json();
+  const mint = await post('/api/v1/nodes', { action: 'enroll', name: 'spare' });
+  await post('/api/v1/agent/enroll', {
+    user: 'bb', version: '1', digest: 'sha256:' + '2'.repeat(64),
+    census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', sshd: true } },
+    { Authorization: 'Bearer ' + mint.token, 'Content-Type': 'application/json' });
+  const ids = await page.evaluate(async () => {
+    await loadNodes();
+    return { spare: nodesList.find(n => n.name === 'spare')?.id || '',
+             sandbox: nodesList.find(n => n.name === 'sandbox')?.id || '', dflt: nodesDefault };
+  });
+  ok(ids.spare && ids.dflt === ids.sandbox,
+     `the node listing names the default docker host: the one that runs docker (${ids.dflt})`);
+  const setNode = async n => {
+    await post('/api/prefs', { project: 'ep.silon', node: n });
+    await page.waitForFunction(
+      want => ((state?.projects || []).find(p => p.name === 'ep.silon')?.prefs?.node || '') === want,
+      n, { timeout: 20000 });
+  };
+  const sendDialog = async () => {
+    await page.evaluate(() => openSendToDocker('ep.silon'));
+    await page.waitForSelector('#dnNodeField:not([hidden])', { timeout: 10000 });
+    const got = await page.evaluate(() => ({ node: $('dnNode').value, hint: $('dnNodeHint').textContent }));
+    await page.evaluate(() => closeSendToDocker());
+    return got;
+  };
+  await setNode('');
+  const none = await sendDialog();
+  ok(none.node === ids.sandbox && /ep\.silon has no node of its own, so this goes to the default docker host/.test(none.hint),
+     `a project with no node is sent to the default docker host, picked and said under the field (${none.node}: ${none.hint.slice(0, 50)})`);
+  await setNode(ids.spare);
+  const own = await sendDialog();
+  ok(own.node === ids.spare && /The project's node unless picked/.test(own.hint),
+     `...and one with a node is sent there (${own.node})`);
+  // The New container dialog on the Docker tab: its node is the one the
+  // manager is looking at until a project is picked, and then that project's.
+  const picked = await page.evaluate(() => {
+    openNewContainer();
+    const before = $('cNode').value;
+    $('cUnder').value = 'ep.silon';
+    $('cUnder').dispatchEvent(new Event('change'));
+    const after = $('cNode').value;
+    $('cmodal').hidden = true;
+    return { before, after };
+  });
+  ok(picked.before === ids.sandbox && picked.after === ids.spare,
+     `New container follows the project picked to that project's node (${picked.before} then ${picked.after})`);
+  // Opened before the page has fetched its nodes, the way the Artifacts
+  // tab's Send is: the picker arrives when the list does, filled, rather
+  // than staying hidden and sending "" for the server to resolve unseen.
+  await page.evaluate(() => { nodesList = null; openSendToDocker('ep.silon'); });
+  await page.waitForSelector('#dnNodeField:not([hidden])', { timeout: 10000 });
+  const late = await page.evaluate(() => $('dnNode').value);
+  await page.evaluate(() => closeSendToDocker());
+  ok(late === ids.spare, `...and a dialog opened before the node list landed gets its picker when it does (${late})`);
+  await setNode('');
 }
 
 await done(browser);

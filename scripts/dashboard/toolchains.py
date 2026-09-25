@@ -11,12 +11,13 @@ and remembers the answers; bb decides *how*, out of config/toolchains.json,
 which holds every URL, flag and argument any of it needs. Neither of them has
 a toolchain name written into it.
 """
-import contextlib
 import hashlib
 import json
 import os
 import re
 import signal
+import sqlite3
+import sys
 import threading
 import time
 from pathlib import Path
@@ -1270,10 +1271,13 @@ def start_job(action, names, auto=False):
         # store this container is about to write is the same collision, seen
         # from the other side.
         if nodes:
-            with contextlib.suppress(Exception):
+            try:
                 for other in store_sharers(nodes.LOCAL):
                     if _store_job_on(other["id"]):
                         return False
+            except sqlite3.Error as e:
+                print(f"dashboard: toolchains: store sharers unread, going ahead: {e}",
+                      file=sys.stderr, flush=True)
         if action == "install":
             here = {p["name"] for p in TOOLCHAINS if _tc_path(p["probe"])}
             names, _added = with_requires(list(names), here)

@@ -42,7 +42,7 @@ await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
 await nbShown(page);
 await nbTab(page, 'briefing');
 await page.waitForSelector('#rulesBox .sect', { timeout: 15000 });
-ok(/Nothing set/.test(await page.$eval('#rulesBox', e => e.textContent)),
+ok(/No rules yet/.test(await page.$eval('#rulesBox', e => e.textContent)),
    'a project with no rules says so, and says what a rule is for');
 // ---- the code base, counted, above the rules ---------------------------------
 // What git tracks in the project by language, with the files and the lines:

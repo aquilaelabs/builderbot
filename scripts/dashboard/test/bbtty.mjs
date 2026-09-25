@@ -480,11 +480,6 @@ tmuxKill('claude-alpha');
        '...with the project directory itself denied to it, being another tree');
     ok(!deny.includes(`Edit(${wt}/**)`),
        '...and its own not denied, which a blanket rule on .worktrees would have done');
-    // A runner's checkouts are other people's repositories. Denied by name
-    // and not by listing, so one that appears on the share after the session
-    // started is already behind the wall.
-    ok(deny.includes(`Read(${join(DIR, 'ws')}/_work/**)`) && deny.includes(`Edit(${join(DIR, 'ws')}/_work/**)`),
-       "...and a runner's _work under the share is denied whether or not it is there yet");
     // The scope file also carries the work hook, which is how the finer half
     // of `bb work` gets anything to report.
     ok(JSON.stringify(scope.hooks?.Stop || {}).includes('bb-check-relay'),

@@ -12,8 +12,7 @@ function nbAnalysisView({$, nb, project}){
     if (!findings || findings.loading){ hint.textContent = "loading…"; return; }
     if (findings.error){ hint.textContent = "analysis: " + findings.error; return; }
     if (!findings.available){
-      hint.textContent = "no /reports mount: the scanner runs on the host, "
-        + "and its output directory is not mapped in";
+      hint.textContent = "No scan results: the report folder is not mounted here.";
       list.innerHTML = "";
       return;
     }
@@ -26,9 +25,8 @@ function nbAnalysisView({$, nb, project}){
     const stat = Object.keys(lv).sort((a, b) => (LEVEL_ORDER[a] ?? 9) - (LEVEL_ORDER[b] ?? 9))
       .map(l => `${lv[l]} ${l}${lv[l] === 1 ? "" : "s"}`).join(", ");
     hint.textContent = rows.length
-      ? `${stat}: the scan runs on the host; bb findings reads the same digest`
-      : "nothing attributed to this project in the current reports, which is "
-        + "not the same as passing; SARIF records findings, not coverage";
+      ? `${stat}`
+      : "No findings for this project in the latest scan.";
     // The same two filters the Analysis tab has, project-fixed: one slice of
     // narrowing shared by both surfaces, so learning one is learning the
     // other. The bar only appears when there is something to narrow.

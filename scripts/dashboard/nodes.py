@@ -1292,6 +1292,35 @@ def node_session_net(principal, node_id, on):
     return {"ok": True, "on": bool(on)}
 
 
+def node_root_asks(principal, node_id, on):
+    """Whether a session on this node may ask for a root command (bb root
+    run): on, the ask goes to a person as ever; off, it is refused with the
+    sentence root_refused says. An administrator's, like the rest of the
+    config plane."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    conf = dict(n.get("config") or {})
+    if on:
+        conf.pop("no_root", None)
+    else:
+        conf["no_root"] = True
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-root-asks", {"on": bool(on)})
+    return {"ok": True, "on": bool(on)}
+
+
+def root_refused(n):
+    """The sentence a node whose sessions may not ask for root refuses with,
+    or "" when they may."""
+    if n and (n.get("config") or {}).get("no_root"):
+        return (f"root commands from sessions are off on {n['name']}: the Sessions "
+                "section on its row on the Nodes tab turns them back on")
+    return ""
+
+
 def session_net_on(node_id):
     """Whether that is set on a node."""
     return bool(((node(node_id) or {}).get("config") or {}).get("session_net"))
@@ -1304,6 +1333,40 @@ def session_net_nudge():
     for n in node_list():
         if n.get("kind") == "agent" and ((n.get("config") or {}).get("session_net")):
             ask_hello(n["id"])
+
+
+def node_test_workers(principal, node_id, n):
+    """How many workers a test run on this node may use (R81): 0 means the
+    node's own core count. Handed to every test job there as
+    BB_TEST_WORKERS, for the project's test command and BuilderBot's own
+    harness to read. An administrator's, like the rest of the config plane;
+    the node hears it by a fresh hello."""
+    node_ = node(node_id)
+    if not node_:
+        return {"error": "no such node"}
+    if node_["kind"] != "agent":
+        return {"error": "only an agent node runs tests"}
+    try:
+        want = int(n)
+    except (TypeError, ValueError):
+        return {"error": "test workers is a whole number from 0 (the node's cores) to 256"}
+    if not 0 <= want <= 256:
+        return {"error": "test workers is a whole number from 0 (the node's cores) to 256"}
+    conf = dict(node_.get("config") or {})
+    if want:
+        conf["test_workers"] = want
+    else:
+        conf.pop("test_workers", None)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-test-workers", {"workers": want})
+    ask_hello(node_id)
+    return {"ok": True, "workers": want}
+
+
+def test_workers(node_id):
+    """The setting on a node, 0 when the node's cores are the answer."""
+    v = ((node(node_id) or {}).get("config") or {}).get("test_workers")
+    return v if isinstance(v, int) and v > 0 else 0
 
 
 def turn_limit(node_id):
@@ -1873,6 +1936,9 @@ def hello(nid, census, addr, version="", digest="", running=None):
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
+            # How many workers a test run here may use (R81): 0 for the
+            # node's cores. Into every test job's environment there.
+            "test_workers": test_workers(nid),
             # A fresh token for each Claude session alive on this node (R27).
             # A session's token slides forward while it is TALKING, because
             # every answer it gets carries a renewal; one that sits idle past
@@ -1916,20 +1982,7 @@ def heartbeat(nid, sample, addr, running=0):
     # (a Claude session reports its state through the title). Whitelisted
     # like everything a node says; absent when the agent did not send it.
     if isinstance(s.get("sessions"), list):
-        rep["sessions"] = []
-        for row in s["sessions"][:64]:
-            if not isinstance(row, dict):
-                continue
-            name = re.sub(r"[^A-Za-z0-9_~.:-]", "", str(row.get("name") or ""))[:120]
-            if not name:
-                continue
-            rep["sessions"].append({
-                "name": name, "attached": bool(row.get("attached")),
-                "cwd": str(row.get("cwd") or "")[:300],
-                # When it started (an agent from 0.5.85 on; 0 before), so a
-                # toolchain installed since can say it is not on its PATH.
-                "created": _mb(row.get("created")) or 0,
-                "title": str(row.get("title") or "")[:200]})
+        rep["sessions"] = _session_rows(s["sessions"])
     for role, free in clean["stores"].items():
         if role in rep.get("stores", {}):
             rep["stores"][role]["free_mb"] = free
@@ -1941,6 +1994,46 @@ def heartbeat(nid, sample, addr, running=0):
     # Every sample moves the numbers on the row, and the row is the only
     # place they are shown: one repaint per node per poll is the cost.
     _bump()
+
+
+def _session_rows(rows):
+    """A node's tmux sessions as the row keeps them (roadmap #24): name,
+    whether a client is attached, the active pane's directory and title (a
+    Claude session reports its state through the title). Whitelisted like
+    everything a node says."""
+    out = []
+    for row in rows[:64]:
+        if not isinstance(row, dict):
+            continue
+        name = re.sub(r"[^A-Za-z0-9_~.:-]", "", str(row.get("name") or ""))[:120]
+        if not name:
+            continue
+        out.append({
+            "name": name, "attached": bool(row.get("attached")),
+            "cwd": str(row.get("cwd") or "")[:300],
+            # When it started (an agent from 0.5.85 on; 0 before), so a
+            # toolchain installed since can say it is not on its PATH.
+            "created": _mb(row.get("created")) or 0,
+            "title": str(row.get("title") or "")[:200]})
+    return out
+
+
+def sessions_report(nid, rows):
+    """A node's sessions as they are right now, sent the moment one changes
+    (a session starting, ending, or turning from waiting to working) rather
+    than on the poll's turn: what the dot beside each name on a project's
+    row is drawn from (the operator, 25 Sep). The same rows the heartbeat
+    carries, so nothing reads them two ways."""
+    if not isinstance(rows, list):
+        return {"error": "sessions is a list"}
+    n = node(nid)
+    if not n:
+        return {"error": "no such node"}
+    rep = n.get("reported") or {}
+    rep["sessions"] = _session_rows(rows)
+    _exec("UPDATE nodes SET reported = ? WHERE id = ?", (json.dumps(rep), nid))
+    _bump()
+    return {"ok": True, "sessions": len(rep["sessions"])}
 
 
 def samples(nid):
@@ -1998,7 +2091,7 @@ JOB_ACTIVE = ("queued", "assigned", "running")
 SELECT_KEYS = ("capability", "labels", "pool", "os", "arch")
 _jrev = [0]
 # type -> what to run on the controller when a job of that type ends,
-# registered by the module that queues them (devapp for compose).
+# registered by the module that queues them (devactions for compose).
 ON_DONE = {}
 
 
@@ -2747,8 +2840,11 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     # work is bounded by that project's own history.
     # Housekeeping never loses a result: whatever goes wrong in the sweep, the
     # job that just finished is already recorded above.
-    with contextlib.suppress(Exception):        # noqa: BLE001
+    try:
         prune_job_logs(got[0]["project"] if "project" in got[0].keys() else None)
+    except sqlite3.Error as e:
+        print(f"dashboard: nodes: job log sweep after {job_id} skipped: {e}",
+              file=sys.stderr, flush=True)
     # An uninstall that ran retires the node: the agent is gone with it, so
     # the row leaves every list now rather than after a stale timeout.
     if got[0]["type"] == "system" and state == "succeeded":
@@ -2761,7 +2857,7 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     # land, once, whichever runner served it.
     fn = ON_DONE.get(got[0]["type"] if "type" in got[0].keys() else "")
     if fn:
-        with contextlib.suppress(Exception):     # noqa: BLE001  (a hook must not lose a result)
+        try:
             # A hook may also REWORD the failure. All a node can honestly say
             # is "exit 1" (it ran an argv somebody else composed), while the
             # module that wrote the plan knows the step was "starting" and
@@ -2772,6 +2868,9 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
             if state != "succeeded" and isinstance(better, str) and better.strip():
                 _exec("UPDATE jobs SET error = ? WHERE id = ?",
                       (better.strip()[:500], job_id))
+        except Exception as e:                   # noqa: BLE001 (another module's hook must not lose a result already recorded)
+            print(f"dashboard: nodes: {got[0]['type']} hook after {job_id} failed: "
+                  f"{type(e).__name__}: {e}", file=sys.stderr, flush=True)
     if not quiet:
         _jstate_bump()
     with _wake:

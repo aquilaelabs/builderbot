@@ -200,6 +200,9 @@ STATE = None
 HOME = None
 write_json = None
 after_create = None
+# (name, value, env) -> version.init's answer: the first VERSION, committed,
+# for a project born with a starting version (the operator, 25 Sep).
+first_version = None
 # Moving the dev-instance data is devapp's, whole: the layout is a directory
 # per instance under a derived name, and where it lives depends on the daemon:
 # a mounted /devdata is this box's, a sandbox's is on that machine's disk.
@@ -1175,8 +1178,10 @@ def _aborted():
 
 # ---- creating -------------------------------------------------------------
 
-def create(req):
+def create(req, env=None):
     """Create a project under /workspace, as a (payload, status) pair.
+    `env` is the account's git identity, for the commits a starting version
+    makes.
 
     A fresh local repo is done by the time this returns. A clone is validated
     and claimed here (the name checked, the directory made) and then handed
@@ -1311,11 +1316,11 @@ def create(req):
             if r.get("error"):
                 shutil.rmtree(dest, ignore_errors=True)
                 return r, 400
-            body, code = _init(dest, name, about)
+            body, code = _init(dest, name, about, _field(req, "version"), env)
             if code == 200:
                 body["note"] = f"{r['files']} files from {r['name']}; {body.get('note') or 'ready'}"
             return body, code
-        return _init(dest, name, about)
+        return _init(dest, name, about, _field(req, "version"), env)
     global _dest
     _dest = dest
     cred_scheme = "http" if mode == "clone" and addr["scheme"] == "http" else "https"
@@ -1335,12 +1340,27 @@ def create(req):
 _mkdir_lock = threading.Lock()
 
 
-def _init(dest, name, about):
+def _init(dest, name, about, version="", env=None):
     r = run(["git", "init", "-b", "main", str(dest)], timeout=30)
     if r["code"] != 0:
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
         return {"error": r["out"].strip()[-2000:] or "git init failed"}, 500
     note = _write_md(dest, about)
+    # A starting version (the operator, 25 Sep): the tree as made is the
+    # first commit, and VERSION at that number the second, the way the
+    # Artifacts tab gives a project its first version, so a new project has
+    # a history to count from the moment it exists. Blank asks for neither.
+    version = str(version or "").strip()
+    if version and first_version:
+        r = run(["git", "-C", str(dest), "add", "-A"], timeout=60)
+        if r["code"] == 0:
+            r = run(["git", "-C", str(dest), "commit", "-q", "-m", f"Start {name}"], timeout=60, env=env)
+        if r["code"] != 0:
+            note = f"{note or 'ready'}; not committed: {r['out'].strip()[-300:] or 'git commit failed'}"
+        else:
+            v = first_version(name, version, env)
+            note = (f"{note or 'ready'}; version not set: {v['error']}" if v.get("error")
+                    else f"{note or 'ready'}; committed at {version}")
     if after_create:
         after_create(name)          # the map, in the background, from here on
     return {"ok": True, "name": name, "note": note}, 200

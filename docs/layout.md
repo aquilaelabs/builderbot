@@ -1,0 +1,147 @@
+# Layout
+
+```
+Dockerfile                       image definition
+docker-compose.yml               compose variant of the stack
+.env.example                     annotated compose configuration
+unraid/builderbot.xml            Unraid Docker template (one-click updates)
+scripts/
+  entrypoint.sh                  secrets shield, uid remap, hooks, ssh-agent
+  supervisor.sh                  keeps the box alive; the graceful shutdown
+  mint-runner-token              root-only token helper (the one sudo command)
+  healthcheck.sh                 docker healthcheck
+  bb                             in-container helper CLI
+  as-builder                     privilege-dropping wrapper for docker exec
+  lib/common.sh                  shared shell helpers
+  lib/relay-verbs                the bb verbs a node relays to the controller (bb and server.py both read it)
+  lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
+  lib/preflight.sh               `bb tests preflight`, sourced by bb
+  lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
+  lib/sdkmeta.py                 reads config/toolchains.json for bb: fields, argv, versions
+  lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
+  lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
+  lib/embedded.py                pulls scripts and python out of quoted heredocs so `bb lint` sees them
+  lib/waits.py                   the wait for a person's Allow and the job-log stream, shared by the verbs below
+  lib/devapp-verbs.py            `bb devapp`: status, rebuild, test, new, env, remove, ls, log, start, stop, restart
+  lib/container-verbs.py         `bb container`: status and new
+  lib/phone-verbs.py             `bb phone`: status and run
+  lib/root-verbs.py              `bb root`: status and run
+  lib/report.py                  `bb report`, and file/close from BuilderBot's side
+  lib/diag.py                    `bb diag`
+  lib/node-log.py                `bb logs --node`
+  lib/login-check.py             whether this machine is signed in to Claude, for `bb claude` and the doctor
+  lib/emu-job.py                 `bb emu` as a job on the project's node
+  lib/run-job.py                 `bb run`: the snapshot, the job, the log back
+  lib/build-or-test.py           the command, place and outputs `bb build` and `bb test` read from the settings
+  lib/git-policy.py              `bb git policy`
+  lib/relay.py                   a notebook verb relayed from a node to the controller
+  lib/controller-stamp.py        the controller's build, for `bb status` and `bb catchup`
+  lib/dash.py                    the dashboard's modules loaded by path for the notebook verbs, and the account name and "who wrote it" they share
+  lib/roadmap-verbs.py           `bb roadmap`
+  lib/bug-verbs.py               `bb bug`
+  lib/nb-history.py              `bb history`: the notebook's logs merged
+  lib/rules-verbs.py             `bb rules`, except check
+  lib/rules-check.py             `bb rules check`: a rule's check command, run in this tree
+  lib/tests-verbs.py             `bb tests`: the registry verbs
+  lib/tests-verdict.py           what went wrong, from a run's log (bb tests last, the end of a run)
+  lib/preamble-verbs.py          `bb preamble`
+  lib/findings-verbs.py          `bb findings history` and `bb findings sample`
+  lib/settings-verbs.py          `bb settings`: show, and set for build, test and outputs
+  lib/users-verbs.py             `bb users`: list, passwd, add, token
+  lib/nodes-verbs.py             `bb nodes` and `bb ci-labels`
+  lib/jobs-verbs.py              `bb jobs`
+  lib/work-verbs.py              `bb work`
+  lib/version-verbs.py           `bb version`
+  lib/changelog-verbs.py         `bb changelog`
+  lib/token-verbs.py             `bb token keep`
+  lib/login-list.py              `bb login --list`: every account this machine is signed in as
+  lib/doctor-probes.py           egl, project node, commit identity, session-capable node, signed-in account
+  lib/lint-checks.py             bb lint's own checks: runner label pinning, XML well-formedness, settings agreement
+  startup.d/*.sh                 startup hooks
+  dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab, one nb-*.js per notebook view
+    bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
+    bb-gate                      the hook every tool call asks before it runs, on a node
+    bb-keep-login                keeps a node session's Claude login in step, once per prompt
+    bb-prompt-relay              a node session's prompts and answers, back to the controller
+    bb-work-note                 what a session is changing, for the overlap warning
+    users.py                     who may sign in, and what they are allowed to see (docs/users.md)
+    prefs.py                     which model and effort a project's Claude session runs on
+    settings.py                  controller settings, the things that used to be environment variables
+    statefile.py                 writing a state file, and holding it while you read-modify-write one
+    toolchains.py                everything behind the Toolchains tab: catalog, sizes, the job worker
+    emulator.py                  everything behind the Emulator tab: a node's Android system images
+    memory.py                    everything behind the memory book: what Claude remembers per project
+    rules.py                     house rules: what has been decided about working on a project
+    preamble.py                  what every session on a project starts with, assembled once
+    names.py                     what things are called: a project, a tmux session, a project's Claude session
+    projects.py                  new project / link and unlink a remote, and the worker that clones and pushes
+    forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
+    git.py                       the notebook's Git view: the repository read out, and its writes
+    codebase.py                  the code base counted, by language, for the Briefing tab
+    logs.py                      what is kept, for how long, and the downloads behind the gear menu
+    roadmap.py                   the roadmap; `bb roadmap` drives the same file
+    bugs.py                      the bug tracker; `bb bug` drives the same file
+    notebook.py                  one batch over both of those, so half of one cannot exist
+    pending.py                   what a session wants to add to the notebook, held for the operator
+    ids.py                       one letter per notebook tab, so a number says which list it came from
+    presence.py                  who else has a notebook open, in memory only
+    overlap.py                   what each session is changing, and where two of them collide
+    chat.py                      messages between accounts, and what each project's people are doing
+    version.py                   one version identity per project, rendered for whatever is asking
+    changelog.py                 the user-facing record beside it: categories, and the editor's writes
+    artifacts.py                 what a project built: dist/, and what a row may offer
+    devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
+    devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps
+    containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is
+    phone.py                     a paired handset on a node: install, push, and the asking
+    db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
+    nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md)
+    workspace.py                 snapshots, the node bundle, and the artifact store
+    jobs.py                      the controller's own job runner (exec here or over ssh) plus /healthz and /metrics
+    vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
+    idle.py                      ending Claude sessions nobody has used for a while
+    projsessions.py              every account's sessions on a project, and an administrator ending one
+    reports.py                   problems with BuilderBot reported by any project's session (bb report)
+    doctor.py                    `bb doctor` run on a timer and cached, for the Doctor card
+    runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
+    findings.py                  the scanner's reports read and attributed, and what they used to say
+    gitrelay.py                  a node session's push, fetch and pull, done in a repository of the controller's own
+    migrations/                  numbered schema files for /config/builderbot.db, applied at boot
+    testreg.py                   the test registry: what each test protects, and
+                                 what a run measured it costing
+    notify.py                    getting a line into a running Claude session, and knowing it landed
+    signin.py                    the Claude sign-in, under a pty rather than in a terminal
+    test/                        its Playwright suite: `bb dashboard test`, isolated
+  agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
+android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
+nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
+nodes/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
+nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
+nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes
+nodes/vm/                        the same machine for the other six hypervisors: Proxmox, libvirt, QEMU, VMware, Hyper-V, VirtualBox
+config/skel/                     home directory skeleton
+config/toolchains.json           the toolchains the Toolchains tab offers, and how to install each
+config/templates/                project CLAUDE.md template (shipped in the image)
+tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
+tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
+pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python
+                                 version, with the None checks off, since a module's configure() fills what it declares as None
+tools/version-stamp              this repo's own stamp hook: a bump moves the compatibility
+                                 window in the agent and the template with it, or refuses
+docs/unraid.md                   step-by-step Unraid walkthrough
+docs/install.md                  setup, start to finish: the checklist with the decisions each step needs
+docs/how-it-works.md             the controller, the nodes, the sessions, the dashboard, the notebook: how each works
+docs/decisions.md                the design decisions, with their dates and reasons
+docs/layout.md                   this list
+docs/start-here.md               the one page for somebody given an account on somebody else's BuilderBot
+docs/journeys.md                 what a person does with BuilderBot, walked for real, dated
+docs/sandbox-vm.md               the Docker sandbox VM: why, how, and pointing this at it
+docs/nodes.md                    design: controller + nodes, homelab-default and enterprise-scalable
+docs/users.md                    accounts, roles, and what each one may reach
+docs/design-language.md          what the dashboard's surfaces owe each other: held by the
+                                 house rule `design` and measured by test/uniform.mjs
+.hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint
+.github/actionlint.yaml          this runner's labels, for workflow linting
+.github/workflows/               GHCR publish (hosted, cached from :latest); lint + dashboard
+                                 browser tests (on this runner); runner smoke test (manual)
+```

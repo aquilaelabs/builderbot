@@ -29,6 +29,7 @@ import os
 import re
 import threading
 import time
+import http.client
 import urllib.request
 
 LATEST_URL = (os.environ.get("BB_CLAUDE_LATEST_URL")
@@ -67,7 +68,7 @@ def check():
             version = m.group(1)
         else:
             error = f"unexpected answer from the download service: {text[:40]!r}"
-    except Exception as e:                                          # noqa: BLE001 (reported, not raised)
+    except (OSError, http.client.HTTPException, ValueError) as e:   # URLError and a timeout are OSErrors; a bad URL is a ValueError
         error = f"could not reach the download service: {e}"[:200]
     with _lock:
         _latest.update(checking=False, at=int(time.time()), error=error)

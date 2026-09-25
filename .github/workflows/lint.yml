@@ -49,8 +49,9 @@ jobs:
 
       - name: Open a log this container can read afterwards
         # The runner streams a step's console output to GitHub and keeps none
-        # of it on disk: /workspace/_work/_diag records which step failed and
-        # its exit code, never a line of what it printed. So a session inside
+        # of it on disk: _diag under the runner's directory on its node
+        # records which step failed and its exit code, never a line of what
+        # it printed. So a session inside
         # this container, which has no PAT and cannot ask the API, could see
         # that CI was red and nothing about why, for a job that ran a few
         # inches away. Every check below tees into this file, and `bb ci-log`

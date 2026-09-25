@@ -23,8 +23,9 @@ The grant the flow makes stays on that machine. Nothing is copied anywhere
 (claudegrant.py says why), and this container carries no Claude Code to run a
 flow of its own with.
 """
-import contextlib
 import re
+import sqlite3
+import sys
 import threading
 import time
 
@@ -81,8 +82,11 @@ class NodeFlow:
         return {"ok": True}
 
     def cancel(self):
-        with contextlib.suppress(Exception):
+        try:
             self._nodes.job_cancel("user:signin", self.job)
+        except sqlite3.Error as e:
+            print(f"dashboard: signin: cancel of {self.job} not recorded: {e}",
+                  file=sys.stderr, flush=True)
         return {"ok": True}
 
     def state(self):

@@ -37,6 +37,13 @@ refuses too: `bb settings set build|test|outputs "..."` fills the field in
 for the operator, and the project's gate decides whether that lands, waits
 for their approval, or is refused.
 
+A test run finds `BB_TEST_WORKERS` in its environment, on the node and
+inside a dev instance alike: how many workers this node lets a run use, set
+on its row. When you write tests or set the test command, have the runner
+read it (`pytest -n "$BB_TEST_WORKERS"`, `node --test
+--test-concurrency="$BB_TEST_WORKERS"`, Gradle's `--max-workers`), so a
+suite uses what the machine has without hard-coding a number.
+
 A `pkill -f PATTERN` run from a tool call matches the shell running that
 call, because the pattern is on its command line, and kills it: end a
 process by pid, or with `pkill -x NAME`.
@@ -69,7 +76,8 @@ your own branches and not a tag, a deletion or a branch only the host has.
 When something genuinely needs root, ask for that one command and a person
 decides: `bb root run --why "..." -- CMD`. A phone connected on this node is
 `bb phone run`, the same shape. Both wait on a person, and nothing skips the
-question, so ask for the smallest command that does the job.
+question, so ask for the smallest command that does the job. A node can have
+root asks turned off, and the ask then says so.
 
 ## The notebook
 

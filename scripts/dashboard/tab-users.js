@@ -71,7 +71,7 @@ function userRow(u){
       <div class="uscope">${scope}</div>
       <div class="sub${u.claude_shared_with?.length ? " warn" : " dim"}">${u.claude
         ? `signed in to Claude as ${esc(u.claude)}${u.claude_shared_with?.length
-            ? `: the same Claude account as ${u.claude_shared_with.map(esc).join(", ")}: fine while one person is behind both, since Anthropic's terms allow one person per Claude account`
+            ? `: the same Claude account as ${u.claude_shared_with.map(esc).join(", ")}, allowed only while one person is behind both`
             : ""}`
         : "no Claude login yet: its sessions sign in on first use"}</div>
       ${isOwner ? `<div class="sub dim">The owner cannot be deleted or given another role.</div>` : ""}
@@ -125,9 +125,8 @@ function renderUsersInto(i){
         </div>
         <div class="actbar"><button type="button" class="primary" id="uAdd">Add</button></div>`)}`;
   wireSections(d.list);
-  d.setFoot(`Locked out? <code>bb users passwd &lt;name&gt;</code> in the
-    container resets a password, and <code>bb users add</code> makes an account
-    when there are none. That path exists because this one can fail.`);
+  d.setFoot(`Locked out? Run <code>bb users passwd &lt;name&gt;</code> in the
+    container to reset a password.`);
   wireUsers(d.el);
 }
 

@@ -596,7 +596,7 @@ open(os.path.join(reg, 's0.json'), 'w').write(json.dumps({'project': 'alpha', 'a
 open(os.path.join(reg, 's1.json'), 'w').write(json.dumps({'project': 'beta', 'addr': '10.231.0.6', 'if': 'bbs1'}))
 open(os.path.join(reg, 's2.json'), 'w').write(json.dumps({'project': 'x;id', 'addr': '10.231.0.10', 'if': 'bbs2'}))
 real = m.os.path.exists
-m.os.path.exists = lambda p: p in ('/sys/class/net/bbs0', '/sys/class/net/bbs2') or real(p)
+m.os.path.exists = lambda p: p in ('/sys/class/net/bbs0', '/sys/class/net/bbs2') if p.startswith('/sys/class/net/') else real(p)
 live = m.sessnet_sessions(reg)
 m.os.path.exists = real
 # Docker's rules, against an iptables that records what it was asked and
@@ -942,6 +942,31 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     await beat([{ uid: owner, email: '' }]);
     ok(await onNodes() === before,
        '...and a heartbeat saying that home holds no credential takes it off again');
+    // The node's sessions, sent the moment one changes rather than on the
+    // heartbeat's turn (the operator, 25 Sep): who has a session where and
+    // whether it is working, read back cheaply from /api/live, with the
+    // revs token `live` moving so the page knows to ask.
+    {
+      const tell = (title) => fetch(URL.replace(/\/$/, '') + '/api/v1/agent/sessions',
+        { method: 'POST', headers: { Authorization: 'Bearer ' + nodeTok, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessions: [{ name: `${owner}~claude-alpha`, attached: true, cwd: '/workspace/alpha',
+                                              created: 1, title }] }) });
+      const get = async p => (await fetch(URL.replace(/\/$/, '') + p, { headers: auth })).json();
+      const live = () => get('/api/live');
+      const tok = async () => (await get('/api/revs?p=')).live;
+      const t0 = await tok();
+      await tell('◐ Reading the tests');
+      const busy = await live();
+      ok((busy.claude_with.alpha || []).includes('test') && (busy.claude_busy.alpha || []).includes('test') && await tok() !== t0,
+         `a node says its sessions changed and /api/live shows the session working at once, the revs token moving with it (${JSON.stringify(busy).slice(0, 80)})`);
+      await tell('Claude Code');
+      const idle = await live();
+      ok((idle.claude_with.alpha || []).includes('test') && !(idle.claude_busy.alpha || []).includes('test'),
+         '...and waiting when its title says so');
+      await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/sessions',
+        { method: 'POST', headers: { Authorization: 'Bearer ' + nodeTok, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessions: [] }) });
+    }
     await beat([{ uid: owner, email: 'tester@example.com' }]);
     ok((await api()).email === 'tester@example.com', '...both ways, as the machine changes');
 
@@ -2197,6 +2222,30 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
        '...and the recipe then ran as the job account, where the stub npm stopped it before a download');
   }
 
+  // ---- test workers: the node's setting, in every job's environment (R81) --
+  // Set on the row, it reaches node.json by the next hello and every job
+  // there carries it as BB_TEST_WORKERS; unset, the node's own cores do.
+  {
+    const cores = (await import('node:os')).cpus().length;
+    const runEcho = async () => {
+      const j = await api('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['sh', '-c', 'echo W=$BB_TEST_WORKERS'] });
+      const fin = await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${j.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      return (fin?.log || '').match(/W=(\d+)/)?.[1];
+    };
+    const set = await api('/api/v1/nodes', { action: 'test-workers', id: minted.id, workers: 3 });
+    const kept = await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).test_workers === 3 ? true : null, 30000, 500);
+    ok(set.ok && set.workers === 3 && kept && await runEcho() === '3',
+       'test workers set on the node reach node.json and every job there as BB_TEST_WORKERS');
+    await api('/api/v1/nodes', { action: 'test-workers', id: minted.id, workers: 0 });
+    await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).test_workers === 0 ? true : null, 30000, 500);
+    ok(await runEcho() === String(cores), `...and 0 means the machine's own cores (${cores})`);
+    ok(/whole number/.test((await api('/api/v1/nodes', { action: 'test-workers', id: minted.id, workers: 'lots' })).error || ''),
+       '...and a number that is not one is refused');
+  }
+
   // ---- the idle rule reaches the node and stays there (idle.py) -----------
   // The controller's setting rides the hello reply into node.json, where the
   // agent enforces it on its own tmux, controller up or down. A change is
@@ -2792,6 +2841,17 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
       const cleared = await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).session_net?.on === false ? true : null,
                                   30000, 500);
       ok(cleared, '...and off, saved the same way, reaches the node the same way');
+      // The same Save carries whether a session here may ask for root.
+      const ra = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="rootasks"]`;
+      ok(await page.$eval(ra, e => e.checked), 'root asks are on by default, beside it');
+      await page.click(ra);
+      await page.click(save);
+      const noRoot = await until(async () => (await nodeById(minted.id)).config?.no_root === true ? true : null, 15000, 300);
+      ok(noRoot && await page.$$eval(`.nodestab .ndrow[data-node="${minted.id}"] .sub`, es => es.some(e => /refused and told this is off/.test(e.textContent))),
+         '...and unticking it, then Save, turns them off and says so under the switch');
+      await page.click(ra);
+      await page.click(save);
+      await until(async () => (await nodeById(minted.id)).config?.no_root ? null : true, 15000, 300);
     }
     // Enrolling is a dialog, like New project. It used to be a panel at the
     // foot of the tab, below everything about the machine you were looking at.

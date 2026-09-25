@@ -77,6 +77,7 @@ import sys
 import tarfile
 import threading
 import time
+import traceback
 import urllib.parse
 import urllib.request
 
@@ -95,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.98"
+AGENT_VERSION = "0.6.101"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1611,6 +1612,10 @@ def sdk_env(state, who=None):
     # _apply_runner) names the same path, so the archive and the reader
     # agree without either being configured by hand.
     env["BB_CI_LOG_DIR"] = ci_log_dir(state)
+    # How many workers a test run here may use (R81): the node's setting,
+    # else its cores. A project's test command reads it as it likes;
+    # BuilderBot's own harness shards its suites across it.
+    env["BB_TEST_WORKERS"] = str(state.get("test_workers") or os.cpu_count() or 1)
     return env
 
 
@@ -2773,7 +2778,11 @@ class Job(threading.Thread):
             else:
                 state, code = self.exec(spec)
         except Exception as e:                       # noqa: BLE001 (reported, not raised)
+            # Broad because a runner's bug is this job's failure, not the
+            # agent's: the row carries the sentence, the journal the traceback.
             self.say(f"agent error: {type(e).__name__}: {e}\n")
+            log(f"job {self.job.get('id')}: agent error: {type(e).__name__}: {e}\n"
+                + traceback.format_exc().rstrip())
             state, code, error = "failed", 70, f"agent error: {type(e).__name__}"
         if self.canceled:
             state, error = "canceled", "stopped by the operator"
@@ -3099,7 +3108,7 @@ class SessionNet:
         while True:
             try:
                 self.step()
-            except Exception as e:                                # noqa: BLE001
+            except Exception as e:                                # noqa: BLE001 (the loop must outlive one bad step; said once per message)
                 self.say(f"session network: {e}")
             time.sleep(2)
 
@@ -3228,6 +3237,48 @@ def _write_root(path, text):
     os.replace(tmp, path)
 
 
+class SessionWatch:
+    """The node's sessions reported the moment one changes (a session
+    starting, ending, a Claude pane turning from waiting to working), so
+    the dot beside a name on a project's row follows within seconds (the
+    operator, 25 Sep). The heartbeat carries the same rows on its own turn,
+    every poll; this is the edge in between. A controller from before the
+    verb answers 404 once, and this goes quiet for the rest of the process."""
+
+    def __init__(self, agent):
+        self.agent = agent
+        self.last = None
+        self.off = False
+
+    def start(self):
+        threading.Thread(target=self.run, name="sessions", daemon=True).start()
+
+    def run(self):
+        while not self.off:
+            try:
+                self.step()
+            except Exception as e:                                # noqa: BLE001 (the loop must outlive one bad step; the journal has it)
+                log(f"sessions: {e}")
+            time.sleep(2)
+
+    def step(self):
+        if not self.agent.ttyd:
+            return
+        rows = self.agent.sessions_now() or []
+        key = sorted((r.get("name", ""), r.get("title", "")) for r in rows)
+        if key == self.last:
+            return
+        if self.last is not None:
+            st, r = self.agent.ctl.call("sessions", {"sessions": rows}, timeout=15)
+            if st == 404:
+                self.off = True
+                log("sessions: this controller takes them on the heartbeat only")
+                return
+            if st != 200:
+                return                      # said again on the next change
+        self.last = key
+
+
 class Agent:
     def __init__(self, state):
         self.state = state
@@ -3251,6 +3302,7 @@ class Agent:
         self.fw_checked = 0.0             # when the session ports' firewall rule was last checked
         self.tool_lock = threading.Lock()  # the session tool's files, written from two threads
         self.sessnet = SessionNet(self)    # each session kept to its own project's network (R79)
+        self.sesswatch = SessionWatch(self)  # its sessions reported as they change
         # The runner as a child of this process where there is no systemd:
         # run.sh in the foreground, supervised here.
         self.runner_procs = {}            # runner directory -> its process
@@ -3371,6 +3423,13 @@ class Agent:
                 self.state["session_idle_minutes"] = im
                 save_state(self.state)
                 log(f"sessions: idle rule is {im} minute(s)" if im else "sessions: no idle rule")
+            # How many workers a test run here may use (R81), kept in
+            # node.json the same way; 0 is this machine's cores.
+            tw = r.get("test_workers")
+            if isinstance(tw, int) and tw >= 0 and tw != self.state.get("test_workers", 0):
+                self.state["test_workers"] = tw
+                save_state(self.state)
+                log(f"tests: {tw} worker(s) per run" if tw else "tests: every core per run")
             # Fresh credentials for the Claude sessions alive here (R27). A
             # session that is talking slides its own token forward on every
             # answer it gets; one sitting idle has nothing to slide it, and a
@@ -3521,6 +3580,7 @@ class Agent:
         self.quiet_distro_ttyd()
         self.session_try()
         self.sessnet.start()
+        self.sesswatch.start()
         while True:
             if time.time() - self.hello_at > 600:
                 self.refresh_session_tool()

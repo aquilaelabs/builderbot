@@ -42,6 +42,11 @@
 - Controller settings has Clear reports, which deletes the bug reports sessions made about BuilderBot after saying how many are still unanswered (398c6cc)
 - A node can keep each Claude session to its own project's network: a switch in its Sessions section gives every session started there a network namespace from which it reaches the internet, the controller and its own project's containers, and nothing else on the node or the LAN (d264e76)
 - A session can remove its project's container under the same setting as rebuild: bb devapp remove, refused on deny, waiting for Allow on ask, done on auto; its env and data stay for a remake (1a6c98e)
+- A node's Sessions section can turn off root commands from sessions: bb root run is then refused and says so, without locking storage and network with it (0e13a1c)
+- The four largest files (index.html, server.py, bb, devapp.py) carry a ceiling on their line count that only comes down: the house rule growth, checked before a hand-back and by bb tests preflight (8f78e56)
+- A node says how many workers a test run there may use: Test workers on its row, 0 for its cores, handed to every test job as BB_TEST_WORKERS (68a8255)
+- BuilderBot's own test suite runs across BB_TEST_WORKERS workers at once, each with its own server, state and tmux, and the parent reruns any failure alone as before (e616fba)
+- A new project made here is committed as it is made and given a starting version, 0.1.0 unless the dialog says otherwise or is left blank (4b42aca)
 
 ### Changed
 
@@ -85,11 +90,26 @@
 - The Docker tab's project headings stand out: each is a band tinted and barred in the project's own colour, or the scheme's accent for one with none, with room above each group (20b0e23)
 - bb bug add on another project does not file a bug that names BuilderBot or a bb command: it says to use bb report, and --here files it anyway when it is the project's own (d46dfc9)
 - bb container new (bb container ask, as was) is under the project's Run its container setting: refused at deny, asked at ask, and at auto the project's own container on its own node is made and built at once; one for another project or another node is still asked (45c8a2f)
+- The dashboard's hints, tooltips, confirmations and empty states say what happens when you act, in one line: mechanics, history and internal names are gone from the screen (e50d054)
+- Under a project, who has a Claude session there is a line per name with a dot in front, lit while that session is working on a prompt, instead of one sentence naming them all (0e13a1c)
+- Containers BuilderBot did not build from a project (the daemon's own, ones written on the Docker tab, and whose they are) have a module of their own, containers.py, cut out of devapp.py (8f78e56)
+- The project settings and new-project dialogs lay their Claude may picks, model and effort, and commit name and email out as one grid with labels above, equal widths, two columns at a desk and one on a phone (cc7a116)
+- The dot beside a session's name follows it within seconds: a node reports its sessions the moment one changes, and the page fetches the two small maps behind the rows when the revs token says they moved, leaving the status poll at fifteen seconds (47c77d1)
+- A test run inside a dev instance carries BB_TEST_WORKERS too, the settings dialog says a run finds it, and every session's briefing says to have the test runner read it (e19feca)
+- bb's verbs that talk to the controller are Python files under scripts/lib, one per verb group, with the wait for Allow and the job-log stream shared once, instead of programs embedded in the shell (8eb2aae)
+- project_list is three named steps (the projects on disk, their columns, what the account may see), and the Nodes and agent handlers dispatch their actions through a table instead of a ladder of elifs (cab0d4a)
+- Text in every field and picker is 12px, on a phone as at a desk; the 16px that stops iOS Safari zooming into a typed field applies on iOS alone (6e87337)
+- The notebook's icon is a book, on the project row's button and on its tab (d67c6a0)
+- The layer that runs and reports a dev instance (up, down, rebuild, test, remove, state, act) is devactions.py, cut out of devapp.py, which stays as the base it reads from (f732cfa)
+- Every broad exception catch in the dashboard and the agent is narrowed to what the code raises or kept with a log line and its reason, so a fault is seen rather than swallowed (6a4d8e8)
+- Every Python program that lived inside bb is a file under scripts/lib now, the notebook verbs included, with one loader for the dashboard's modules; bb is the shell that dispatches (bd39024)
 
 ### Removed
 
 - The projects list, the startup log and the container's welcome text no longer skip a directory called _work by name: the retired runner's tree is gone from the share, so there is nothing to skip. (d8c1e87)
 - A clone or an unpacked archive with no CLAUDE.md gets none drafted any more; only notes you typed become one, and a repository's own is kept as it is (2be85ab)
+- Where tests run is stored as tests_in alone; bb container ask is gone, the verb is bb container new (899dc82)
+- The runner's work directory lives under its own directory on the node; the share's old _work is no longer named by the session's file rules or the docs (dc64c5a)
 
 ### Fixed
 
@@ -150,6 +170,9 @@
 - The Docker tab says which container each port belongs to: Ports and mounts is grouped by service, and the ports line under Details and the route's port picker name the service (aff42ca)
 - On a node's row the session network switch is saved by the Sessions section's Save, not by the click, and a node that stops being able to isolate refuses new sessions instead of giving them its network; a controller or DNS server on the node itself is reachable from a session (aa11a12)
 - Allow on a session's env set writes the env and no longer rebuilds the container, and an ask that names no instance means the project's only one; Log in a project's notebook reads from the project's node; bb bug add reads bb however it is written (aa11a12)
+- Chat no longer snaps to the bottom while you read older messages: the panel repaints only when the conversation changed, and keeps your place unless you were at the end (2146ef8)
+- Send to Docker manager offers the project's own name, which makes the project's own container rather than being refused as a clash with it; when it already has one, the refusal says so and points at its row (4b42aca)
+- Send to Docker and New container preselect the node the container will actually be made on: the project's own, else the default docker host, said under the field, and the picker arrives when the node list does instead of staying hidden; New container's node follows the project picked (4b42aca)
 
 ### Security
 

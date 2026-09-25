@@ -177,9 +177,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           job.state === "running" ? "live" : job.error ? "stopped" : "starting"}${
           job.running && job.state !== "running" ? `<span class="dots"></span>` : ""}</span>
         <span class="grow">${esc(job.what)}${job.error ? `: ${esc(job.error)}`
-          : `: a temporary add-on, and a snapshot: changes to the project do
-          <b>not</b> auto-push. Rebuild the .xpi and push again. Gone when
-          Firefox restarts.`}</span>
+          : `: temporary, gone when Firefox restarts; changes do <b>not</b>
+          push themselves, so rebuild the .xpi and push again.`}</span>
         ${job.running ? `<button type="button" id="artStop">Stop</button>` : ""}
       </div>` : "";
     const instHtml = inst.running || inst.state === "failed" ? `
@@ -215,7 +214,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             ${a.kind === "xpi" ? `<button type="button" data-artpush="${i}"${
                 job.running || phoneWhy || !art.webext ? " disabled" : ""} title="${
                 phoneWhy ? esc(phoneWhy)
-                : !art.webext ? `web-ext is not on ${esc(art.node_name || "the node")}: a push is web-ext beside the phone's adb, so install it there`
+                : !art.webext ? `web-ext is not on ${esc(art.node_name || "the node")}: install it there first`
                 : job.running ? "one push at a time"
                 : "install it on the phone, temporarily"}">Push</button>` : ""}
             ${a.view ? `<button type="button" data-artview="${i}"
@@ -233,8 +232,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     if (brList){
       brList.hidden = !brRows.length;
       let at = 0;
-      brList.innerHTML = !brRows.length ? "" : `<div class="hint">Built on a branch, in each account's own worktree; merging it to main is what puts its build in dist/.</div>`
-        + groups.map(g => `<div class="sub dim ggroup">${esc(g.who === state?.me ? "your" : `${g.who}'s`)} worktree${
+      brList.innerHTML = !brRows.length ? "" : `<div class="hint">Built on a branch. Merge it to main to put its build in dist/.</div>`
+        + groups.map(g => `<div class="sub dim ggroup">${esc(g.who === state?.me ? "your" : `${g.who}'s`)} branch builds${
             g.branch ? `, on ${esc(g.branch)}` : ""}</div>` + g.artifacts.map(a => { const i = at++; return `
           <div class="artrow">
             <span class="grow">
@@ -397,9 +396,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const blk = all.find(x => (x.component || "") === comp);
       if (!confirm(`Take ${comp ? comp + "'s" : "this project's"} version back `
                    + `from ${blk?.target} to ${blk?.prev}?\n\n`
-                   + `The code stays; the ${blk?.target} changelog section `
-                   + `goes back to Unreleased, and the next bump dates the `
-                   + `whole group together.`)) return;
+                   + `The code stays; ${blk?.target}'s changelog lines return to Unreleased.`)) return;
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
       await postVersion({action: "unbump", component: comp});
     });
@@ -419,11 +416,9 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const cost = ver?.window_cost;
       const moves = parts.find(([comp, part]) => !comp && windowMove(part, cost));
       if (moves && !confirm(
-            `Bump the ${moves[1]}; this moves the compatibility window.\n\n`
-            + `${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"} `
-            + `(${cost.projects.join(", ")}) will have their Claude sessions ended `
-            + `and held until each one's node has its agent updated, which is one `
-            + `press on the Nodes tab.`)) return "";
+            `Bump the ${moves[1]}? This moves the compatibility window.\n\n`
+            + `Sessions on ${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"} `
+            + `(${cost.projects.join(", ")}) end until each node's agent is updated on the Nodes tab.`)) return "";
       verPending = {}; verPolicyPending = null;
       const done = [];
       if (policy != null){
@@ -490,7 +485,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                        aria-label="what changed">${esc(e.text)}</textarea>
                      <div class="clmeta" title="${esc((e.shas || []).join(", "))}">
                        <select class="clcat" aria-label="category">${opts(g.name)}</select>
-                       <span class="clsha">${esc((e.shas || []).join(", ")) || "—"}</span>
+                       <span class="clsha">${esc((e.shas || []).join(", ")) || "none"}</span>
                        <span class="sp"></span>
                        <button type="button" data-emv="up" title="move up">↑</button>
                        <button type="button" data-emv="down" title="move down">↓</button>
@@ -613,7 +608,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           // No file yet. The first line can be written here as well as by
           // a session's `bb changelog add`: the editor used to sit dead
           // until Claude made the file.
-          pane.innerHTML = `<div class="sub">no CHANGELOG.md yet: write the first line, or a session's first <code>bb changelog add</code> does</div>
+          pane.innerHTML = `<div class="sub">no CHANGELOG.md yet: write the first line, or a session's first entry creates it</div>
             <div class="actbar"><input id="clFirst" maxlength="300" autocomplete="off"
               placeholder="what changed for the person using it, in their words">
               <button type="button" class="primary" id="clFirstGo">Create</button></div>`;
@@ -695,8 +690,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
         const j = await r.json();
         if (j.error){ notify(j.error, true); b.disabled = false; return; }
         if (!j.sent){
-          notify("typed into the session but not sent; something else has the "
-                 + "keyboard there; press Enter in that tab when it is clear",
+          notify("Not sent: the session is busy. Press Enter in its tab when it is free.",
                  true);
         }
         startClaude(project, null);   // opens the tab, or goes to the one there
@@ -724,10 +718,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     if (v.component || !(v.candidates || []).length) return "";
     return `
       <details class="veradd"${sectAttr("artifacts:veradd:" + project)}><summary>ships something else from here?</summary>
-        <p class="verwhy">A directory with its own <code>VERSION</code> is a
-          component and versions itself, for an extension beside an app,
-          which do not share a maturity. Its ordinal counts only the commits
-          that touched it.</p>
+        <p class="verwhy">A directory with its own <code>VERSION</code> file is
+          versioned on its own, like an extension beside an app.</p>
         <div class="verinit">
           <select class="vdir" aria-label="which directory">${
             v.candidates.map(c => `<option>${esc(c)}</option>`).join("")}</select>
@@ -766,11 +758,10 @@ this directory">Send to Claude</button>
     const mine = v.ordinal, theirs = ordOf(v.running);
     const which = !stale ? ""
       : (theirs != null && mine != null && theirs > mine)
-        ? "the box is ahead of this checkout: pull, or you are reading old code"
+        ? "the running build is newer than this checkout: pull"
       : (theirs != null && mine != null && theirs < mine)
-        ? "this checkout is ahead of the box: the box serves whatever image it "
-          + "last pulled, so a merge is not a deploy"
-        : "the box and this checkout are different builds";
+        ? "this checkout is newer than the running build: it is not deployed yet"
+        : "the running build and this checkout are different builds";
     const newest = (art?.artifacts || [])[0];
     const s = v.since || {};
     // Counts, no verdict. Roadmap items finished reads as a minor and fixes
@@ -801,10 +792,8 @@ this directory">Send to Claude</button>
       + (windowMove(staged, cost) ? `<div class="verln"><span></span>
            <span class="vermark bad">this moves the compatibility window from ${
              esc(cost.window)} to ${esc((v.next[staged] || "").split(".").slice(0, 2).join("."))
-             }: ${cost.projects.length} project${cost.projects.length === 1 ? "'s" : "s'"
-             } Claude session${cost.projects.length === 1 ? "" : "s"} end and ${
-             cost.projects.length === 1 ? "it is" : "they are"} held until each
-             CLAUDE.md is updated, which the bell then offers in one press</span></div>` : "")
+             }: sessions on ${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"
+             } end until each is updated from the bell</span></div>` : "")
       + line("a build now", f.semver)
       + (v.running ? line("running here", v.running, stale ? "" : "off") : "")
       + (stale ? `<div class="verln"><span></span><span class="vermark">${
@@ -825,22 +814,17 @@ this directory">Send to Claude</button>
                 : `stage ${esc(v.next[pt] || "")}; nothing is written until Save`}">
               ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
           <button type="button" data-verask="${esc(v.component || "")}"
-            title="ask this project's Claude session whether ${esc(v.target)} is
-still where this should be; it reads the code, the changelog and the roadmap,
-proposes, and asks before touching anything">Send to Claude</button>
+            title="ask the session whether ${esc(v.target)} should move; it proposes and asks first">Send to Claude</button>
           ${v.prev && !v.sealed ? `
           <button type="button" data-verunbump="${esc(v.component || "")}"
-            title="the code stays: the number returns to ${esc(v.prev)} and this
-version's changelog section dissolves back into Unreleased, so the next bump
-dates the whole group together. Only possible while ${esc(v.target)} is
-unreleased.">↩ ${esc(v.prev)}</button>` : ""}
+            title="take the version back to ${esc(v.prev)}; ${esc(v.target)}'s changelog lines return to Unreleased">↩ ${esc(v.prev)}</button>` : ""}
           ${v.released ? "" : `
           <button type="button" data-verrelease="${esc(v.component || "")}"
             ${v.dirty ? "disabled" : ""}
             title="${v.dirty
               ? "there are uncommitted changes: commit or discard them first, so the tag marks what is in the commit"
-              : `tag this commit ${esc(v.component ? v.component + "-v" + v.target : "v" + v.target)} and push it to the remote. `
-                + "Until then every build reads " + esc(v.target) + "-dev.<n>, which sorts BEFORE " + esc(v.target)}"
+              : `tag this commit ${esc(v.component ? v.component + "-v" + v.target : "v" + v.target)} and push the tag: `
+                + "that is what releases " + esc(v.target)}"
             >Release ${esc(v.target)}</button>`}
           <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
             title="what changed, for the people using it; a bump dates the lines so far">Changelog${
@@ -854,7 +838,7 @@ unreleased.">↩ ${esc(v.prev)}</button>` : ""}
              <b>Release</b> tags and pushes it. ${helpIcon(`Two steps. Until the release, a build reads ${
                v.target}-dev.${v.ordinal ?? "n"} rather than ${v.target}: the tag on the commit, pushed, is what says it happened.`)}`}</p>
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save, and is never pushed. ${
-          helpIcon("Save writes VERSION and commits that one path. The policy stops a session's bb version bump and file tools, not Bash.")}</p>
+          helpIcon("Save writes and commits VERSION. Claude access limits what a session may change.")}</p>
         ${verAddFold(v)}`}` : `
         ${v.component ? "" : verPolicyPicker(v)}
         <div class="verln"><span>start at</span>
@@ -867,7 +851,7 @@ unreleased.">↩ ${esc(v.prev)}</button>` : ""}
           </span></div>
         <div class="actbar verbtns">
           <button type="button" data-verask="${esc(v.component || "")}"
-            title="ask this project's Claude session what the version should be; it proposes and asks before doing anything">Send to Claude</button>
+            title="ask the session what the version should be; it proposes and asks first">Send to Claude</button>
           <button type="button" data-verlog="${esc(v.component || "")}"
             title="entries logged before the first version wait here">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>

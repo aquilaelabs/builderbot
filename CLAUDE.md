@@ -73,7 +73,19 @@ by hand cost four commands and still could not see the failed builds.
   result with the seconds since the last one; feed that output to `bb tests
   ingest` and the notebook's Tests tab keeps the numbers. The house rule
   `tests` carries the discipline: one run at a time, no edits under the
-  dashboard during one, kill by pid.
+  dashboard during one, kill by pid. Why each clause is there: three suites
+  side by side is bug 13's reproducer, which is what the lock is for; a
+  lock a cancelled CI job left is taken over on the next run, since the
+  directory is world-writable and not sticky; `pkill -f` and `pgrep -f`
+  match your own prompt's command line, so a run is ended by the pid in
+  its lock; a loop over a log that a dead command was supposed to write
+  never ends (eight such loops were found alive here at once, the oldest at
+  10h54m), so a run is waited on with `run_in_background` and its
+  notification; inside tmux the client ignores `TMUX_TMPDIR`, so a
+  throwaway session made by an ad-hoc harness lands on the real server;
+  and `run.sh` called by hand tested a whole day's work on the node while
+  the container it was meant to prove sat untouched (R65), which is why
+  `bb tests run` goes through `bb test`.
   If the *installed* `bb` predates a subcommand, `bash scripts/bb <cmd>` runs
   the repo copy, and `bb lint` prints `[skip]` for any tool the running image
   does not carry yet, rather than passing by omission. The dashboard's server
@@ -189,6 +201,19 @@ by hand cost four commands and still could not see the failed builds.
   `bb-PY-7.py`, with its line numbers those of the script it sits in.
 - **Conventions** live in the house rules on the Briefing tab (`bb rules`);
   what follows is the layout they refer to.
+  - The agent's compatibility window, behind the house rule `agent-compat`:
+    inside a window nothing is held (a briefing block behind on a feature
+    gets the row's update link and its Claude button stays live; an agent
+    behind gets Update on the Nodes tab and its sessions keep running).
+    Across a window the controller ends the Claude sessions on a project
+    whose block, or whose own node's agent, is from the old window, ghosts
+    that project's button and `bb-tty` refuses, per project, until the block
+    and that node's agent are updated (`server.compat_holds`,
+    `compat_reap_once`, `bb claude-md --out-of-window`). BUILD is the
+    agent's own counter and never resets: 0.5.28 follows 0.4.27. Moving
+    the minor is the one moment superseded paths (an old verb, a fallback
+    for a pre-window agent) are removed, and `test/version.mjs` holds both
+    WINDOWs to the VERSION file.
   - Two numbers move by machine and one by hand. `bb version` moves per
     commit; a file two builds may read carries a format it checks
     (`.bb-map/map3.json`, `.bb-map/coverage.json`) and a reader that meets
@@ -231,5 +256,8 @@ by hand cost four commands and still could not see the failed builds.
   - The weekly Monday build is uncached by design and is always a full pull;
     a manual dispatch is cached unless its `no_cache` box is ticked.
 
-`README.md` holds the full configuration reference and a file-by-file layout;
-`docs/unraid.md` is the host-side walkthrough.
+`README.md` holds the configuration reference and the `bb` command reference;
+`docs/install.md` is the setup checklist, `docs/unraid.md` the host-side
+walkthrough, `docs/how-it-works.md` the explanatory prose, `docs/decisions.md`
+the design decisions with their dates and reasons, and `docs/layout.md` the
+file-by-file layout.

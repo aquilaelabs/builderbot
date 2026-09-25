@@ -41,7 +41,7 @@ STATE = None
 FILE = None
 WORKSPACE = None
 nodes = None          # the node module, set by server.py once it is up: run_wait, phone_nodes, node
-# What an allowed rebuild request actually calls, set by server.py: devapp's
+# What an allowed rebuild request actually calls, set by server.py: devactions'
 # own rebuild(project, instance). Injected rather than imported so this module
 # keeps having one dependency (the node registry), and so the request queue
 # stays a queue rather than growing an opinion about compose.
@@ -52,7 +52,7 @@ instance_maker = None
 env_writer = None
 ctl_runner = None
 remover = None
-# devapp.create_container, injected the same way: what Allow on a container
+# containers.create_container, injected the same way: what Allow on a container
 # ask calls (R71). None where no docker path is wired up.
 container_maker = None
 

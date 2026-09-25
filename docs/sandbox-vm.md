@@ -386,7 +386,8 @@ carrying the script.
 To make the VM a **node** as well: dialing in to the dashboard, taking jobs,
 reporting its numbers on the Nodes tab: add `--controller URL --token bbe_…`
 to that command, with the token **Enroll node** minted. It is single-use and
-lasts a day; the README's Nodes tab section says what the agent then is and
+lasts a day; [the Nodes tab section of how-it-works.md](how-it-works.md#the-nodes-tab)
+says what the agent then is and
 what it may do. A run without the two flags leaves an existing enrollment
 alone, so re-running the provisioner for a mount does not re-enroll.
 
