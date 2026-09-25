@@ -1427,9 +1427,11 @@ def name_clash(project, instance=MAIN):
         for inst in insts:
             if (proj, inst) == (project, instance) or _pname(proj, inst) != want:
                 continue
-            whose = f"{proj}'s " + ("own" if inst == MAIN else f"'{inst}'")
+            whose = f"{proj}'s " + ("own container" if inst == MAIN else f"'{inst}'")
             return (f"{want} is already {whose}, and two of them would drive one "
-                    f"set of containers, so this one needs another name")
+                    f"set of containers"
+                    + (": Build or Rebuild builds it on the Docker tab" if inst == MAIN
+                       else ", so this one needs another name"))
     return ""
 
 
@@ -2446,10 +2448,20 @@ def create_instance(project, name, node="", owner=None):
         return {"error": "an instance needs a name with a letter or digit in it"}
     if compose_file(project) is None:
         return {"error": f"{project} has no compose file to make an instance of"}
+    # The project's own name IS its own container: the default instance is
+    # named after the project, so asking for that name by hand is asking
+    # for that container, not a second one beside it. Before this, the name
+    # a person naturally typed into "New container from X" was refused as a
+    # clash with X's own container, which nobody had built yet (the
+    # operator, 25 Sep).
+    if slug == _slug(project):
+        slug = MAIN
     with _lock:
         d = _load()
         if slug in (d.get(project) or {}):
-            return {"error": f"{project} already has an instance called {slug}"}
+            return {"error": (f"{project} already has its own container, {_pname(project, MAIN)}, "
+                              "on the Docker tab: Build or Rebuild builds it there"
+                              if slug == MAIN else f"{project} already has an instance called {slug}")}
         # And not one that another project has taken. The name no longer
         # carries the project, so two of them asking for `dev` would be one
         # compose project, one env file and one data directory wearing two

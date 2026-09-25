@@ -3864,7 +3864,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="dnNodeField" hidden>
       <label for="dnNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
       <select id="dnNode"></select>
-      <div class="hint">The project's node unless picked; an instance stays where it was made.</div>
+      <div class="hint" id="dnNodeHint">The project's node unless picked; an instance stays where it was made.</div>
     </div>
     <!-- Which branch it builds from. Offered here as well as on the row
          because this is the gesture that makes a SECOND instance, and a
@@ -8265,6 +8265,7 @@ for (const id of ["cImage", "cPorts", "cVols", "cEnvLines", "cRestart"])
   $(id).oninput = $(id).onchange = () => cFormWrote();
 $("cYml").oninput = () => { cYmlTouched = true; };
 $("cTabEnv").onclick = () => cSwitch("env");
+$("cUnder").onchange = cUnderPicked;
 $("cGo").onclick = cSubmit;
 $("cCancel").onclick = () => { $("cmodal").hidden = true; };
 $("cmodal").onclick = e => { if (e.target === $("cmodal")) $("cmodal").hidden = true; };

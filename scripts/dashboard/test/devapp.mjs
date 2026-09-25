@@ -1793,6 +1793,20 @@ ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT'
 await page.waitForSelector('#dnEnvField:not([hidden])', { timeout: 10000 });
 ok(/PORT=8080/.test(await page.$eval('#dnEnv', e => e.value)),
    '...carrying the env seeded from .env.example');
+// The dialog offers the project's own name, and that name means the
+// project's own container: asked for when the project already has one, the
+// answer says so and where it is, rather than "needs another name" (the
+// operator, 25 Sep, on a project sent for the first time).
+ok(await page.$eval('#dnName', e => e.value) === 'ep.silon', 'the send dialog offers the project\'s own name');
+{
+  // Asked from here rather than the page: a 400 the page fetches lands in
+  // its console, and the dev row's check below wants that console clean.
+  const own = await (await fetch(URL.replace(/\/$/, '') + '/api/devapp', { method: 'POST',
+      headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', action: 'new', instance: 'Ep Silon' }) })).json();
+  ok(/already has its own container, ep-silon, on the Docker tab/.test(own.error || ''),
+     `...and that name asked for again names the container it already is (${String(own.error).slice(0, 70)})`);
+}
 await page.fill('#dnName', 'Staging Two');
 ok(/Will be created as staging-two\b/.test(
      await page.$eval('#dnPreview', e => e.textContent)),
@@ -3545,6 +3559,77 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   ok(/\(running\)/.test(seeded) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
      `a one-shot that exited 0 leaves the row running and reads finished, while one that failed still reads partly up (${
        (seeded.match(/\([^)]*\)/) || [''])[0]} | ${(broken.match(/partly up: \d of \d/) || [''])[0]})`);
+}
+
+// ---- where a new container goes, said in the dialog -----------------------
+// A project with no node sent to Docker landed on the newest enrolled node,
+// while the dialog's picker showed the first name in its list (the operator,
+// 25 Sep). The picker now preselects the node the server would choose: the
+// project's own, else the default docker host, and says under the field when
+// it is the latter. A second node is enrolled here so the picker has a
+// choice; it reports no docker, so it never becomes the default the rest of
+// this suite was written against.
+{
+  const base = URL.replace(/\/$/, '');
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+              'Content-Type': 'application/json' };
+  const post = async (path, body, headers = H) => (await fetch(base + path,
+    { method: 'POST', headers, body: JSON.stringify(body) })).json();
+  const mint = await post('/api/v1/nodes', { action: 'enroll', name: 'spare' });
+  await post('/api/v1/agent/enroll', {
+    user: 'bb', version: '1', digest: 'sha256:' + '2'.repeat(64),
+    census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', sshd: true } },
+    { Authorization: 'Bearer ' + mint.token, 'Content-Type': 'application/json' });
+  const ids = await page.evaluate(async () => {
+    await loadNodes();
+    return { spare: nodesList.find(n => n.name === 'spare')?.id || '',
+             sandbox: nodesList.find(n => n.name === 'sandbox')?.id || '', dflt: nodesDefault };
+  });
+  ok(ids.spare && ids.dflt === ids.sandbox,
+     `the node listing names the default docker host: the one that runs docker (${ids.dflt})`);
+  const setNode = async n => {
+    await post('/api/prefs', { project: 'ep.silon', node: n });
+    await page.waitForFunction(
+      want => ((state?.projects || []).find(p => p.name === 'ep.silon')?.prefs?.node || '') === want,
+      n, { timeout: 20000 });
+  };
+  const sendDialog = async () => {
+    await page.evaluate(() => openSendToDocker('ep.silon'));
+    await page.waitForSelector('#dnNodeField:not([hidden])', { timeout: 10000 });
+    const got = await page.evaluate(() => ({ node: $('dnNode').value, hint: $('dnNodeHint').textContent }));
+    await page.evaluate(() => closeSendToDocker());
+    return got;
+  };
+  await setNode('');
+  const none = await sendDialog();
+  ok(none.node === ids.sandbox && /ep\.silon has no node of its own, so this goes to the default docker host/.test(none.hint),
+     `a project with no node is sent to the default docker host, picked and said under the field (${none.node}: ${none.hint.slice(0, 50)})`);
+  await setNode(ids.spare);
+  const own = await sendDialog();
+  ok(own.node === ids.spare && /The project's node unless picked/.test(own.hint),
+     `...and one with a node is sent there (${own.node})`);
+  // The New container dialog on the Docker tab: its node is the one the
+  // manager is looking at until a project is picked, and then that project's.
+  const picked = await page.evaluate(() => {
+    openNewContainer();
+    const before = $('cNode').value;
+    $('cUnder').value = 'ep.silon';
+    $('cUnder').dispatchEvent(new Event('change'));
+    const after = $('cNode').value;
+    $('cmodal').hidden = true;
+    return { before, after };
+  });
+  ok(picked.before === ids.sandbox && picked.after === ids.spare,
+     `New container follows the project picked to that project's node (${picked.before} then ${picked.after})`);
+  // Opened before the page has fetched its nodes, the way the Artifacts
+  // tab's Send is: the picker arrives when the list does, filled, rather
+  // than staying hidden and sending "" for the server to resolve unseen.
+  await page.evaluate(() => { nodesList = null; openSendToDocker('ep.silon'); });
+  await page.waitForSelector('#dnNodeField:not([hidden])', { timeout: 10000 });
+  const late = await page.evaluate(() => $('dnNode').value);
+  await page.evaluate(() => closeSendToDocker());
+  ok(late === ids.spare, `...and a dialog opened before the node list landed gets its picker when it does (${late})`);
+  await setNode('');
 }
 
 await done(browser);

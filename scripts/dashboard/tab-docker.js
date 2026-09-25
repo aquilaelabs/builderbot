@@ -183,18 +183,35 @@ let dnFor = null;
 function openSendToDocker(project){
   dnFor = project;
   $("dnTitle").textContent = "New container from " + project;
-  $("dnName").value = "";
+  // The project's own name, ready to go: that makes the project's own
+  // container, which is what Send means for a project that has none yet;
+  // another name makes a second one beside it.
+  $("dnName").value = project;
   $("dnErrWrap").hidden = true;
   $("dnPreview").hidden = true;
   $("dnGo").disabled = false; $("dnGo").textContent = "Create";
   $("dnHint").textContent =
-    "Built from " + project + "'s codebase. Give it a name no other container has.";
+    "Built from " + project + "'s codebase. Its own name makes its own container; another name makes a second one.";
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   fillUnderSelect($("dnUnder"), project);
-  fillNodeSelect($("dnNode"), $("dnNodeField"),
-                 state?.projects?.find(p => p.name === project)
-                   ?.prefs?.node || dockerNode);
+  // Where it goes: the project's own node, which is where its work runs,
+  // else the default docker host, said under the field so a project with
+  // no node is not sent somewhere by surprise. Not the node the manager
+  // happens to be looking at: this dialog opens from the Artifacts tab too.
+  const ownNode = state?.projects?.find(p => p.name === project)?.prefs?.node || "";
+  // Filled now, and again when the node list lands if this dialog is
+  // still the one open (the modal is shown below, so the guard is on the
+  // second call only).
+  const fillDn = () => {
+    fillNodeSelect($("dnNode"), $("dnNodeField"), ownNode,
+                   () => { if (dnFor === project && !$("dnmodal").hidden) fillDn(); });
+    $("dnNodeHint").textContent = ownNode
+      ? "The project's node unless picked; an instance stays where it was made."
+      : project + " has no node of its own, so this goes to the default docker host unless picked. "
+        + "Set its node in its settings to keep the two together.";
+  };
+  fillDn();
   // The branches the manager already knows about for this project; it lists
   // them per project on the answer the tab is drawn from, so the dialog costs
   // nothing to fill.
@@ -227,7 +244,16 @@ const dockerSlug = (s) => (s || "").toLowerCase()
 // an actual choice, because a select with one option is furniture. `prefer`
 // is the project's own binding (its settings dialog), else the manager's
 // current pick, else the default node.
-function fillNodeSelect(sel, wrap, prefer){
+// `prefer` is the node the caller wants picked; when it is not in the list
+// (a project with none), the pick is the node the server would choose for
+// "" (nodesDefault, the newest enrolled that runs docker), so the dialog
+// shows where the container is going. Before this the browser showed the
+// first name in the list, which was not where "" went, and a project with
+// no node was sent to a node the operator did not mean (25 Sep). `again`
+// is called once the node list lands when it was not here yet, so a dialog
+// opened before the first Nodes fetch (the Artifacts tab's Send) gets its
+// picker instead of hiding it and sending "".
+function fillNodeSelect(sel, wrap, prefer, again){
   // Every node, not a subset: a node does everything for the projects bound
   // to it, so there is nothing to narrow by (docs/nodes.md §13).
   const dnodes = (nodesList || []).filter(n =>
@@ -235,8 +261,9 @@ function fillNodeSelect(sel, wrap, prefer){
   // ...and drawn again when they land: loadNodes repaints only a Nodes tab,
   // so a draw here during a node-list reload lost the picker until something
   // else moved dockerRev (B69's nodes.mjs sibling).
-  if (nodesList === null) loadNodes().then(() => { dockerRev++; drawPanes(); });
+  if (nodesList === null) loadNodes().then(() => { dockerRev++; drawPanes(); if (again) again(); });
   wrap.hidden = dnodes.length < 2;
+  const want = dnodes.some(n => n.id === prefer) ? prefer : nodesDefault;
   // An agent node carries its heartbeat's numbers, and this is the picker
   // the design says they belong beside (docs/nodes.md §9): the choice of
   // where to run a container is made on how busy the machine is.
@@ -244,7 +271,7 @@ function fillNodeSelect(sel, wrap, prefer){
     const s = n.kind === "agent" && n.live && n.reported?.sample;
     const nums = s ? ` · cpu ${s.cpu_pct}% · ${Math.round(s.mem_used_mb / 1024 * 10) / 10}/${
         Math.round(s.mem_mb / 1024)}GB` : n.kind === "agent" ? " · quiet" : "";
-    return `<option value="${esc(n.id)}"${n.id === prefer ? " selected" : ""}>${
+    return `<option value="${esc(n.id)}"${n.id === want ? " selected" : ""}>${
       esc(n.name)}: ${esc(n.state)}${nums}</option>`;
   }).join("");
 }
@@ -685,6 +712,15 @@ function fillUnderSelect(sel, picked){
     `<option value="${esc(n)}"${n === picked ? " selected" : ""}>${esc(n)}</option>`).join("");
 }
 
+// The node follows the project picked: a container of a project belongs on
+// the node that project's work runs on, and a person picking the project is
+// not also asked to know which machine that is. A project with no node
+// leaves the pick where it was.
+function cUnderPicked(){
+  const own = state?.projects?.find(p => p.name === $("cUnder").value)?.prefs?.node || "";
+  if (own && [...$("cNode").options].some(o => o.value === own)) $("cNode").value = own;
+}
+
 function openNewContainer(){
   cEditing = null;
   $("cName").disabled = false;
@@ -696,8 +732,11 @@ function openNewContainer(){
   // as values, an example compose for a radarr nobody asked for was one
   // unread click from being created under whatever name was typed.
   $("cYml").value = $("cEnv").value = "";
-  // Created on the node the manager is looking at, unless picked otherwise.
-  fillNodeSelect($("cNode"), $("cNodeField"), dockerNode);
+  // Created on the node the manager is looking at, unless picked otherwise,
+  // or a project is: cUnderPicked moves it to that project's node.
+  const fillC = () => fillNodeSelect($("cNode"), $("cNodeField"), dockerNode,
+    () => { if (cEditing === null && !$("cmodal").hidden) fillC(); });
+  fillC();
   $("cErrWrap").hidden = true;
   $("cGo").disabled = false; $("cGo").textContent = "Create";
   for (const id of ["cImage", "cPorts", "cVols", "cEnvLines"]) $(id).value = "";

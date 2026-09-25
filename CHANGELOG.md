@@ -171,6 +171,8 @@
 - On a node's row the session network switch is saved by the Sessions section's Save, not by the click, and a node that stops being able to isolate refuses new sessions instead of giving them its network; a controller or DNS server on the node itself is reachable from a session (aa11a12)
 - Allow on a session's env set writes the env and no longer rebuilds the container, and an ask that names no instance means the project's only one; Log in a project's notebook reads from the project's node; bb bug add reads bb however it is written (aa11a12)
 - Chat no longer snaps to the bottom while you read older messages: the panel repaints only when the conversation changed, and keeps your place unless you were at the end (2146ef8)
+- Send to Docker manager offers the project's own name, which makes the project's own container rather than being refused as a clash with it; when it already has one, the refusal says so and points at its row (4b42aca)
+- Send to Docker and New container preselect the node the container will actually be made on: the project's own, else the default docker host, said under the field, and the picker arrives when the node list does instead of staying hidden; New container's node follows the project picked (4b42aca)
 
 ### Security
 

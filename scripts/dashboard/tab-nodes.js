@@ -14,6 +14,7 @@ let nodesList = null;            // last answer, or null before the first
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
+let nodesDefault = "";           // the node work nobody bound to one lands on
 let nodesPick = "";              // which node the tab is showing, "" until the first draw
 // The configuration plane's editor state, per node (docs/nodes.md §12): the
 // fold's open flag and the DRAFT the operator is typing. Kept here and not in
@@ -36,6 +37,7 @@ async function loadNodes(){
     nodesErr = j.error || "";
     nodesList = j.nodes || [];
     nodesAgent = j.agent || null;
+    nodesDefault = j.default || "";
   }catch(e){
     nodesErr = String(e);
     nodesList = nodesList || [];

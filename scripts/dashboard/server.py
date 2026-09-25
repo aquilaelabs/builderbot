@@ -4436,7 +4436,13 @@ class Handler(BaseHTTPRequestHandler):
         for n in rows:
             if n.get("kind") == "agent":
                 n["turns"] = node_turns(n)
-        return self._json({"nodes": rows, "agent": nodes.agent_shipped()})
+        # ...and which node work nobody bound to one lands on (the newest
+        # enrolled that runs docker), so a picker preselects the node the
+        # server would choose rather than the first name in its list: a
+        # project with no node sent to Docker landed on the node the picker
+        # was not showing (the operator, 25 Sep).
+        return self._json({"nodes": rows, "agent": nodes.agent_shipped(),
+                           "default": nodes.node_for()})
 
     def _get_jobs(self):
         """GET /api/v1/jobs."""
