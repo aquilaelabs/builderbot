@@ -5712,7 +5712,12 @@ class Handler(BaseHTTPRequestHandler):
         # what it writes comes back the same way.
         emu = field(req, "action") == "emu"
         pf = prefs.get(name)
-        nid = field(req, "node") or pf["node"]
+        # The node named, else the project's primary, else the first of its
+        # set that is up (R82 step 6): a primary that is offline is a job
+        # that runs elsewhere and says so, not a refusal.
+        nid, fell_over = field(req, "node"), ""
+        if not nid:
+            nid, fell_over = nodes.first_up(pf.get("nodes") or ([pf["node"]] if pf["node"] else []))
         if not nid:
             return {"error": f"{name} has no node, so nothing can be compiled for it. "
                              + no_node_advice(name)}, 400
@@ -5769,6 +5774,8 @@ class Handler(BaseHTTPRequestHandler):
         if snap.get("error"):
             return snap, 400
         spec = {"argv": argv, "timeout": timeout, "outputs": outputs, "project": name}
+        if fell_over:
+            spec["fell_over"] = fell_over      # the primary it stood in for (R82 step 6)
         r = nodes.job_add(who, {"node": nid}, "exec", spec, name,
                           source={"digest": snap["digest"], "project": name,
                                   "files": snap["files"], "bytes": snap["bytes"]})

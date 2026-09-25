@@ -325,7 +325,16 @@ def _submit(project, instance, action, extra=None, check=None):
     if _active_job(project, instance):
         return dict(BUSY)
     nid = devapp._instance_node(project, instance)
+    # An instance that follows its project (no node of its own) runs where
+    # the project's primary is, or on the first of the set that is up when
+    # the primary is not (R82 step 6); a bound instance stays where it is.
+    fell_over = ""
+    if nid and not devapp._read_rec(project, instance).get("node") and hasattr(devapp.queue, "first_up"):
+        up, fell_over = devapp.queue.first_up(devapp.nodes_of(project) or [nid])
+        nid = up or nid
     held = {"project": project, "instance": instance, "action": action, "hold": True}
+    if fell_over:
+        held["fell_over"] = fell_over
     r = devapp.queue.job_add("operator", {"node": nid}, "compose", held, project)
     if r.get("error"):
         return r

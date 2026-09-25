@@ -56,6 +56,7 @@
 - A session on a node hears on its next prompt when the controller moved to another build since it began, with bb catchup and bb preamble named, once per build (284eaa6)
 - Questions: each person picks on a project how often Claude asks them, Claude's default, fewer or rarely; it rides the block beside their reply style and governs only what Claude asks (252dc4f)
 - A session on a node hears on its next prompt when somebody else changed this project's bugs, rules, memories or settings since its last one, with the verb that reads each; its own writes are not news to it (e06b73d)
+- Build and Test from the dashboard, and a compose action on an instance that follows its project, run on the first node of the project's set that is up when the primary is not, and the job's row says which it stood in for (e06b73d)
 
 ### Changed
 

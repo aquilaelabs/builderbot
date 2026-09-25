@@ -404,6 +404,21 @@ def node_paths_set(principal, node_id, text):
 project_nodes = None
 
 
+def first_up(nids):
+    """(node id, fell_over_from): the first of a project's node set that is
+    online and live, the primary first (R82 step 6). The primary when it is
+    up, or when none is, so a refusal still names the node the project is
+    set to; else the first that is, with the primary it stood in for."""
+    nids = [n for n in (nids or []) if n]
+    if not nids:
+        return "", ""
+    for nid in nids:
+        n = node(nid)
+        if n and n.get("state") == "online" and (n.get("live") or n.get("kind") != "agent"):
+            return nid, ("" if nid == nids[0] else nids[0])
+    return nids[0], ""
+
+
 def node_for():
     """The node the Docker tab opens on when nobody has picked one, and
     nothing more: not a default that work falls to. A project's containers

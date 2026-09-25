@@ -298,7 +298,28 @@ print(json.dumps(out))
     ok(t.status === 503 && /buildbox/.test(body), `...and a terminal asked for on the second node is judged there (${t.status})`);
     const t2 = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:beta:n:n_notinset'), { headers: H });
     ok(!/buildbox/.test(await t2.text()), '...while a node outside the set falls to the primary');
+    // A build from the dashboard falls over to a node of the set that is
+    // up (R82 step 6): buildbox's enrolment counted as a heartbeat, so its
+    // last one is aged past the live window first, and put back after, since
+    // the docker tests below want it dialing in; then with it as the primary
+    // the job runs on the sandbox and its spec says which it stood in for.
+    const agentSeen = when => execFileSync('python3', ['-c', `
+import importlib.util, json, sys, time
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+ag = m.node("${added.id}")["agent"]; ag["last_seen"] = ${when} or int(time.time())
+m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}"))`],
+      { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+    agentSeen(1);
+    await post('/api/prefs', { project: 'beta', node: added.id, nodes: [added.id, sb.id] });
+    const ran = await post('/api/v1/jobs', { action: 'run', project: 'beta', argv: ['true'] });
+    const rj = ran.job ? await get('/api/v1/jobs?id=' + ran.job) : {};
+    ok(ran.node === sb.id && rj.spec?.fell_over === added.id,
+       `a build whose primary is not up runs on the next node of the set that is, and says which it stood in for (${ran.node || ran.error}, ${rj.spec?.fell_over})`);
+    if (ran.job) await post('/api/v1/jobs', { action: 'cancel', id: ran.job });
     await post('/api/prefs', { project: 'beta', node: '', nodes: [] });
+    agentSeen(0);
   }
   ok(['docker-host', 'package-build', 'deploy-target'].every(c => added.capabilities.includes(c)),
      '...and it does everything, without anybody being asked which');

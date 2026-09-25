@@ -65,7 +65,10 @@ function jobTitle(j){
   if (j.type === "toolchain") return `${esc(s.action || "install")} ${esc((s.names || []).join(", "))}`;
   if (j.type === "image") return `${esc(s.action || "add")} image ${esc(s.image || "")}`;
   if (j.type === "cache-clear") return `clear ${s.project ? esc(s.project) + "'s caches" : "every cache"}`;
-  const argv = Array.isArray(s.argv) ? s.argv.join(" ") : "";
+  // Run on another node of the project's set because its primary was not
+  // up (R82 step 6): said on the row, since the row is where it is looked for.
+  const stood = s.fell_over ? " (its primary was not up)" : "";
+  const argv = (Array.isArray(s.argv) ? s.argv.join(" ") : "") + stood;
   // A job with a source is a build of that project's tree, and says so
   // before the command (docs/nodes.md §6).
   const src = j.source?.digest ? `${esc(j.project || s.project || "")} · ` : "";
