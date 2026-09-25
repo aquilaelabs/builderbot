@@ -1046,6 +1046,13 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    tab at desktop width, where the row turns back into a line and this has to
    wrap onto its own beneath it. */
 .row.stack2 .sessline{width:100%;flex-basis:100%;min-width:0;overflow-wrap:anywhere;color:var(--accent)}
+/* Who has a session here: a line per name with a dot in front, bright while
+   that session is working and dim while it waits. */
+.row.stack2 .sesslist{width:100%;flex-basis:100%;min-width:0;color:var(--accent)}
+.sessone{display:flex;align-items:center;gap:6px;line-height:1.6}
+.sdot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
+.sdot.on{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){ .sdot.on{animation:none} }
 /* A reason line can carry a token nothing breaks (a node's name, a digest
    from the agent-window sentence), and at phone width that token was the
    21px the Projects tab scrolled sideways by. */
@@ -4465,21 +4472,21 @@ const myTmux = s => (state?.tmux_prefix || "") + s;
 const withMe = p => (state?.claude_with || {})[p] || [];
 // The others, for the places that are about somebody else being here.
 const othersOn = p => withMe(p).filter(n => n !== state?.me);
-// "you", "alice", "you and alice", "alice, bob and you": the row's own words
-// for who has a conversation open here. BuilderBot account names, not the
-// Anthropic logins behind them: whose session it is on this box is the
-// question somebody looking at the row is asking.
-function sessionWord(proj){
+// Who has a conversation open here, one line each with a dot in front:
+// bright while that session is working on a prompt, dim while it waits (the
+// operator, 24 Sep, in place of one sentence naming them all). BuilderBot
+// account names, not the Anthropic logins behind them: whose session it is
+// on this box is the question somebody looking at the row is asking. Your
+// own is last and says so, so the other people, the part that is news, come
+// first.
+function sessionRows(proj){
   const all = withMe(proj);
   if (!all.length) return "";
-  const names = all.map(n => n === state?.me ? "you" : n);
-  // "you" last reads better in every combination, and puts the other people
-  // (the part that is news) at the front.
-  names.sort((a, b) => (a === "you") - (b === "you"));
-  const list = names.length === 1 ? names[0]
-    : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
-  return `${list} ${names.length === 1 && names[0] !== "you" ? "has" : "have"} `
-       + `a Claude session here`;
+  const busy = new Set((state?.claude_busy || {})[proj] || []);
+  const names = [...all].sort((a, b) => (a === state?.me) - (b === state?.me));
+  return names.map(n => `<div class="sessone"><span class="sdot${busy.has(n) ? " on" : ""}" title="${
+    busy.has(n) ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(n)}${
+    n === state?.me ? " (you)" : ""}</div>`).join("");
 }
 // A project this account can see and has not taken on (roadmap #27). An
 // administrator is shown every project: hiding one from somebody who
@@ -6951,12 +6958,7 @@ function projectRow(p, live, cls, inTab){
       <button class="eye rowmore" data-more="${esc(p.name)}" aria-label="more"
         aria-expanded="false" title="the rest of this row's controls">${DOTS}</button>
       </span>
-      ${sessionWord(p.name) ? `<div class="sub sessline">${esc(sessionWord(p.name))}${
-        othersOn(p.name).length
-          // Said once, where somebody would otherwise wonder whether they are
-          // about to walk into each other. They are not: each session works in
-          // a checkout of its own.
-          ? ", each in a checkout of their own" : ""}</div>`
+      ${sessionRows(p.name) ? `<div class="sub sesslist">${sessionRows(p.name)}</div>`
         // WHO is here, or WHY nobody can be. Which machine they are on is
         // neither: it is on the project's settings, it is the same for every
         // session here, and a row that said it had a line spent on something

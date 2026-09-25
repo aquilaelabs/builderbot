@@ -57,7 +57,7 @@ const SURFACE = [
   'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeGit', 'fmtTime', 'userTZ', 'setUserTZ', 'tzOptions', 'profilePlugins', 'nodeDraft', 'mountState', 'nodeStale', 'nodeClaudeSection', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeSessNetRow', 'nodeTurnsRow', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'dmRowsHtml', 'dmLogs', 'dmRefLine', 'dmGrantLine', 'dmOwnerLine', 'dmGroupsHtml', 'dmOtherRowsHtml', 'dmTestLine', 'dmBuilt', 'jobWhy', 'shortWhy', 'dockerTab', 'dockerNodeKeep', 'loadToolchains', 'loadWire', 'logNote', 'logSection',
   'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
-  'sessionWord',
+  'sessionRows',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',
   'openDevEnv', 'openDocker', 'openEditContainer', 'openLinkProject',
