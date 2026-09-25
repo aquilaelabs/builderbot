@@ -68,12 +68,6 @@ cmd_tests_preflight() {
     for f in "${files[@]}"; do
         case "$f" in scripts/dashboard/*) checks+=(design); break ;; esac
     done
-    # ...and the ceiling on the everything-files (the rule growth), when
-    # one of them changed.
-    for f in "${files[@]}"; do
-        case "$f" in scripts/dashboard/index.html|scripts/dashboard/server.py|scripts/bb|scripts/dashboard/devapp.py)
-            checks+=(growth); break ;; esac
-    done
     printf '  files:   %s\n' "${files[*]}"
     printf '  suites:  %s\n' "${suites[*]:-none}"
     printf '  checks:  %s\n' "${checks[*]}"

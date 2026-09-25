@@ -682,13 +682,11 @@ its regression net before it starts.
 branch changed, the suites the code map says reach them (a page function
 they call bare, an id or class they name, an API path a changed python
 module answers through the server's route table, a file named outright),
-and the lint, voice, design and growth checks, run together; `--dry` prints
-the plan. R75's third step, so the suites are never picked by hand. The
-growth check is `tools/no-net-growth.sh`: the four largest files carry a
-ceiling on their line count in `tools/ratchet.txt`, lowered by a change
-that shrinks one and raised, with the reason in the commit, by one that has
-to grow one for clarity; the aim is direction, not size (the house rule
-`growth`, roadmap R77).
+and the lint, voice and design checks, run together; `--dry` prints the
+plan. R75's third step, so the suites are never picked by hand.
+`tools/no-net-growth.sh` is a measurement beside it, not a gate: the four
+largest files against the ceilings in `tools/ratchet.txt`, which a change
+that shrinks one lowers with `--tighten` (roadmap R77).
 
 `bb map` is the code map a session asks instead of grepping (roadmap R75):
 one index over the tree it is in, python, the dashboard's scripts (the

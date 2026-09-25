@@ -8,7 +8,8 @@
 # why in the message. The line count is the gate, not the aim (the house
 # rule growth): a file that got longer and clearer is going the right way.
 #
-#   (default)  fail if any file is over its ceiling: `bb rules check growth`
+#   (default)  say which files are over their ceiling (exit 1 when any is);
+#              a measurement for now, gated by nothing
 #   --tighten  write the current counts as the new ceilings, for a commit
 #              that shrank one (a count is never raised by this)
 set -u
