@@ -682,8 +682,11 @@ its regression net before it starts.
 branch changed, the suites the code map says reach them (a page function
 they call bare, an id or class they name, an API path a changed python
 module answers through the server's route table, a file named outright),
-and the lint, voice and design checks, run together; `--dry` prints the
-plan. R75's third step, so the suites are never picked by hand.
+and the lint, voice, design and growth checks, run together; `--dry` prints
+the plan. R75's third step, so the suites are never picked by hand. The
+growth check is `tools/no-net-growth.sh`: the four largest files carry a
+ceiling on their line count in `tools/ratchet.txt` that a change may lower
+and never raise (the house rule `growth`, roadmap R77).
 
 `bb map` is the code map a session asks instead of grepping (roadmap R75):
 one index over the tree it is in, python, the dashboard's scripts (the
@@ -4173,6 +4176,7 @@ scripts/
   lib/common.sh                  shared shell helpers
   lib/relay-verbs                the bb verbs a node relays to the controller (bb and server.py both read it)
   lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
+  lib/preflight.sh               `bb tests preflight`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
   lib/sdkmeta.py                 reads config/toolchains.json for bb: fields, argv, versions
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
@@ -4212,6 +4216,7 @@ scripts/
     changelog.py                 the user-facing record beside it: categories, and the editor's writes
     artifacts.py                 what a project built: dist/, and what a row may offer
     devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
+    containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is
     phone.py                     a paired handset on a node: install, push, and the asking
     db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
     nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md)

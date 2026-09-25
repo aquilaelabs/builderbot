@@ -1,0 +1,7 @@
+# The most lines each of these files may have. A change that shrinks one
+# lowers its number here in the same commit (tools/no-net-growth.sh --tighten
+# writes the current counts); nothing raises one. Roadmap R77.
+scripts/dashboard/index.html 10452
+scripts/dashboard/server.py 8193
+scripts/bb 7836
+scripts/dashboard/devapp.py 4176
