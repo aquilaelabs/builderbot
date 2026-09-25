@@ -276,6 +276,30 @@ print(json.dumps(out))
   });
   ok(added && added.kind === 'agent',
      'a machine is enrolled with a token, and arrives as an agent node');
+  // A project on two nodes (R82): the row carries a chooser row per node,
+  // each saying whether a session can start there, and a terminal asked
+  // for with :n:NODE is judged on that node; a node outside the set falls
+  // to the primary. buildbox reports no session half, so it refuses.
+  {
+    const base = URL.replace(/\/$/, '');
+    const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+                'Content-Type': 'application/json' };
+    const post = async (path, body) => (await fetch(base + path,
+      { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+    const get = async path => (await fetch(base + path, { headers: H })).json();
+    const sb = (await get('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
+    await post('/api/prefs', { project: 'beta', node: sb.id, nodes: [sb.id, added.id] });
+    const rows = (await get('/api/status')).projects.find(p => p.name === 'beta').session_nodes || [];
+    ok(rows.length === 2 && rows[0].id === sb.id && rows[1].id === added.id && rows[1].where === 'refused'
+       && /buildbox/.test(rows[1].why),
+       `a project on two nodes carries a row per node for the chooser, each judged (${JSON.stringify(rows.map(r => [r.name, r.where]))})`);
+    const t = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:beta:n:' + added.id), { headers: H });
+    const body = await t.text();
+    ok(t.status === 503 && /buildbox/.test(body), `...and a terminal asked for on the second node is judged there (${t.status})`);
+    const t2 = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:beta:n:n_notinset'), { headers: H });
+    ok(!/buildbox/.test(await t2.text()), '...while a node outside the set falls to the primary');
+    await post('/api/prefs', { project: 'beta', node: '', nodes: [] });
+  }
   ok(['docker-host', 'package-build', 'deploy-target'].every(c => added.capabilities.includes(c)),
      '...and it does everything, without anybody being asked which');
   // Nothing keeps the nodes and the controller on one git: it is installed

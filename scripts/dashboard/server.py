@@ -1099,6 +1099,27 @@ def _remote_host(remotes):
 IGNORE_MARKER = ".bbignore"
 
 
+def _session_nodes(name):
+    """One row per node the project works on, for the chooser a Claude press
+    opens when there is more than one (R82): where a session there would
+    stand (node or refused, with the why), the node's boot for the tab, and
+    what the machine has and how busy it is, so the pick is a read. [] for
+    a project on one node or none: the poll stays light for the common case."""
+    set_ = (prefs.get(name) or {}).get("nodes") or []
+    if len(set_) < 2:
+        return []
+    out = []
+    for nid in set_:
+        t = session_target(name, claude=True, node=nid)
+        n = nodes.node(nid) or {}
+        rep = n.get("reported") or {}
+        out.append({"id": nid, "name": n.get("name") or t.get("name") or nid,
+                    "where": t["where"], "why": t.get("why") or "", "boot": t.get("boot") or "",
+                    "sample": rep.get("sample") or {}, "gpu": rep.get("gpu") or "",
+                    "tools": sorted((rep.get("toolchains") or {}).keys())[:6]})
+    return out
+
+
 def _session_at(name):
     t = session_target(name, claude=True)
     if t["where"] == "node":
@@ -1339,6 +1360,7 @@ def _project_columns(who, facts):
         # every locked row, forever. It is also not a fault, and the issue list
         # is where faults go.
         sa = _session_at(d.name)
+        sa["session_nodes"] = _session_nodes(d.name)
         mem_census = memory.census(d.name, home=home_for(users.uid_of(who)))
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
@@ -1530,6 +1552,16 @@ def claude_state(title):
 # stripped before the real one is put on. Anchored, so it can only ever take
 # a prefix off the front.
 _ARG_OWNER = re.compile(r"^u:[^:]*:")
+# `:n:NODE` on a claude: argument: which of the project's nodes the person
+# picked for this session (R82). Read here and taken off before the proxy,
+# since bb-tty on the node reads the argument's tail by suffix (:r:, :b:)
+# and would take the node for part of the project's name.
+_ARG_NODE = re.compile(r":n:([A-Za-z0-9_-]+)")
+
+
+def _arg_node(arg):
+    m = _ARG_NODE.search(arg or "")
+    return m.group(1) if m else ""
 
 
 def _arg_project(arg):
@@ -1560,7 +1592,7 @@ def _ask_hello(nid):
         nodes.ask_hello(nid)
 
 
-def session_target(project, claude=False):
+def session_target(project, claude=False, node=""):
     # `claude` is the one thing that changed with R47. A project's SHELL still
     # follows its node (the tree is that machine's mount and its toolchains
     # are what a build there uses), and a project with NO node still gets a
@@ -1597,7 +1629,13 @@ def session_target(project, claude=False):
     carry what to do about it. A SHELL still falls back here, which is what
     keeps the tree, the linters and git reachable while a node is away.
     """
-    nid = (prefs.get(project) or {}).get("node") or "" if project else ""
+    pf = prefs.get(project) if project else None
+    nid = (pf or {}).get("node") or ""
+    # The node the person picked, when it is one the project works on
+    # (R82); any other name falls to the primary rather than to a refusal,
+    # since the pick came off a list this side drew.
+    if node and node in ((pf or {}).get("nodes") or []):
+        nid = node
     # ONE SENTENCE, and not a red one on the page: a project with no node is
     # a normal state, not a fault. `name` is what tells the two apart
     # downstream (empty here, the node's name when a node refused), so the
@@ -3693,7 +3731,7 @@ class Handler(BaseHTTPRequestHandler):
         # The rule is made from the last thing the node said, a few seconds
         # stale, which two people starting in the same instant could slip
         # through, and the alternative is not making it at all.
-        t = session_target(project, claude=True)
+        t = session_target(project, claude=True, node=_arg_node(arg))
         if t["where"] != "node":
             return ""
         # Claude Code on that node first (claudecode.py): an update running
@@ -3781,7 +3819,7 @@ class Handler(BaseHTTPRequestHandler):
         for kv in query.split("&"):
             k, eq, v = kv.partition("=")
             if k == "arg" and eq:
-                want = _ARG_OWNER.sub("", urllib.parse.unquote_plus(v))
+                want = _ARG_NODE.sub("", _ARG_OWNER.sub("", urllib.parse.unquote_plus(v)))
                 v = urllib.parse.quote(f"u:{uid}:{want}" if uid else want,
                                        safe="")
                 out.append(f"{k}{eq}{v}")
@@ -3850,7 +3888,8 @@ class Handler(BaseHTTPRequestHandler):
         # question is asked about a claude: argument and about nothing else.
         arg0 = _term_arg(rest0)
         target = session_target(_arg_project(arg0),
-                                claude=arg0.startswith("claude:"))
+                                claude=arg0.startswith("claude:"),
+                                node=_arg_node(arg0))
         if target["where"] == "refused":
             return self._term_notice(target["why"], 503)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")

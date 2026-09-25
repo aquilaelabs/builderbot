@@ -48,6 +48,7 @@
 - BuilderBot's own test suite runs across BB_TEST_WORKERS workers at once, each with its own server, state and tmux, and the parent reruns any failure alone as before (e616fba)
 - A new project made here is committed as it is made and given a starting version, 0.1.0 unless the dialog says otherwise or is left blank (4b42aca)
 - A project can work on several nodes: its settings pick a primary and the others it also works on; the row says all of them (d5c820c)
+- Starting a Claude session on a project with several nodes asks which node first, with what each has and how busy it is; a node that cannot start one is dead with its reason; the tab names the node (916f086)
 
 ### Changed
 

@@ -71,7 +71,7 @@ const SURFACE = [
   'phFetch', 'pinTo', 'tcAct', 'tcPick',
   // The Emulator tab (tab-emulator.js).
   'openEmulator', 'emuPick', 'loadEmulator', 'emuAdder', 'emuRow', 'renderEmulatorInto', 'emuAct', 'tcRow', 'tcSystemLine', 'tcNeedsLine', 'tcTickDots', 'placeCard',
-  'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
+  'claudeNodeFacts', 'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'renderPhoneInto', 'wirePhoneTab',

@@ -2172,4 +2172,35 @@ ok((await api('/api/pin', { name: 'alpha', pinned: true })).status === 400,
    'a project name is not a command, and the command pin says so');
 ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 400,
    '...and a command name is not a project');
+
+// ---- a project on several nodes asks which first (R82) --------------------
+// The press opens a chooser with a button per node, what each has and how
+// busy it is, a node that cannot start a session dead with its reason; the
+// pick opens the terminal on that node, named on the tab and stamped with
+// that node's boot. Planted on the row, since the fixture has one node.
+{
+  const plant = (patch) => page.evaluate(p2 => {
+    Object.assign(state.projects.find(x => x.name === 'alpha'), p2); drawProjects(state.projects); }, patch);
+  await plant({ locked: false, session_at: 'ubu', session_why: '', last_claude: null, held: '',
+    session_nodes: [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu',
+                      sample: { cpu_pct: 7, mem_mb: 8192, mem_used_mb: 2048 }, gpu: 'NVIDIA RTX A2000', tools: ['python'] },
+                    { id: 'n_rh', name: 'rh', where: 'refused', boot: '',
+                      why: 'rh is offline. Sessions run on a node and nowhere else' }] });
+  await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]', b => b.click());
+  await page.waitForSelector('#resumemenu [data-node]', { timeout: 10000 });
+  const menu = await page.$$eval('#resumemenu [data-node]', bs => bs.map(b => ({
+    id: b.dataset.node, dead: b.disabled, text: b.textContent.replace(/\s+/g, ' ') })));
+  ok(menu.length === 2 && !menu[0].dead && /cpu 7%/.test(menu[0].text) && /RTX A2000/.test(menu[0].text) && menu[1].dead,
+     `pressing Claude on a project with two nodes asks which, with what each has, and a node that cannot start one is dead (${
+        JSON.stringify(menu).slice(0, 120)})`);
+  await page.$eval('#resumemenu [data-node="n_ubu"]', b => b.click());
+  await page.waitForFunction(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'), null, { timeout: 10000 });
+  const tab = await page.evaluate(() => {
+    const t = tabs.find(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu');
+    return { label: t.label, url: ttydUrl(t.arg) }; });
+  ok(tab.label === 'Claude: alpha (ubu)' && /%3Ab%3Ab-ubu/.test(tab.url),
+     `...and the pick opens the terminal on that node, named on the tab and stamped with that node's boot (${tab.label}; ${tab.url})`);
+  await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:'))); drawPanes(); });
+  page.errors = [];
+}
 await done(browser);
