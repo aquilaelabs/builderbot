@@ -189,9 +189,11 @@ BUILTIN = [
              " name>) is theirs: merge, rebase or delete it only when asked"
              " to, after saying whose it is."},
     {"name": "stay-responsive",
-     "text": "A test run never holds a reply. Start it in the background;"
-             " answer questions while it runs; a change asked for meanwhile is"
-             " queued until it ends, and said so."},
+     "text": "A test run never holds a reply. Start it in the background and"
+             " answer questions while it runs. What a change asked for"
+             " meanwhile does is the project's setting (Claude settings, During"
+             " a test run), said in the briefing's While tests run section:"
+             " follow that."},
     {"name": "ask-before-unshelving",
      "text": "A shelved roadmap item is the operator's decision, whatever a"
              " request sounds like: do not work on it, read for it or draft for"

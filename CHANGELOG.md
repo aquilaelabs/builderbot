@@ -53,6 +53,7 @@
 - A project setting says what a change asked for during a test run does: waits until the run ends, or ends the run, lands and starts it again; the briefing tells each session the project's choice, and the settings dialog groups it with everything Claude may do under Claude settings (862b577)
 - A project's briefing can be terse: the rules, roadmap and bugs a session reads with their filler words dropped and meaning kept, off by default; bb preamble shows what is sent (93f856a)
 - Replies: each person picks on a project how wordy Claude's replies to them are, Claude's default, normal or minimal; the notebook, commits and files are written as ever (93f856a)
+- A session on a node hears on its next prompt when the controller moved to another build since it began, with bb catchup and bb preamble named, once per build (284eaa6)
 
 ### Changed
 
@@ -115,6 +116,8 @@
 - No primary docker manager: containers go to the project's node; a project with no node is told to pick one (Send to Docker, New container, bb devapp), the Docker tab opens on the node most projects use, and New project offers that node rather than none (d5c820c)
 - Containers live on one of their project's nodes only: the pickers offer those, a node outside the set is refused, a project with no node is told to set one, a container is only given to a project working on its node, and one stranded elsewhere is marked unreachable on its row (d5c820c)
 - The project row no longer names its node: a project's nodes are its settings' to show (d5c820c)
+- The shipped rule stay-responsive points at the project's During a test run setting instead of saying a change waits; the briefing's Finding your way says what grep is still for beside the map (284eaa6)
+- The briefing every session reads is rewritten around what to do first, where the project runs, how a change is proven, how an ask reads and the notebook's verbs, so a session uses BuilderBot well from its first turn (284eaa6)
 
 ### Removed
 

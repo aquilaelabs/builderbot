@@ -2218,6 +2218,54 @@ def trace_since(since):
                      for r in slow[:8] if r[0] >= 500]}
 
 
+# ---- a session told the controller moved (R83) -----------------------------
+# A session keeps the briefing it was handed at its start, and nothing
+# re-briefs it when the controller is rebuilt within a compatibility window.
+# So the build a session began on is kept, per session, and on its next
+# prompt after a rebuild the hook's line says the controller moved and where
+# to read what changed: once per build, since the file then carries the new
+# one. Persisted, because the rebuild that this is about restarts this
+# process. Node sessions only: the hook posts from a node, and a session
+# runs on one.
+SESSION_BUILDS = "session-builds.json"
+
+
+def _build_now():
+    st = image_stamp()
+    return st.get("version") or st.get("rev") or ""
+
+
+def session_build_note(project, uid, node, begin=False):
+    """`begin`: record the build this session starts on. Otherwise the line
+    to say when the build has moved since, or "", and the record moved on."""
+    now = _build_now()
+    key = f"{project}|{uid}|{node or ''}"
+    try:
+        path = STATE / SESSION_BUILDS
+        try:
+            d = json.loads(path.read_text())
+        except (OSError, ValueError):
+            d = {}
+        if not isinstance(d, dict):
+            d = {}
+        was = str(d.get(key) or "")
+        if begin or not was or not now:
+            if now:
+                d[key] = now
+                write_json(path, d)
+            return ""
+        if was == now:
+            return ""
+        d[key] = now
+        write_json(path, d)
+        return (f"The controller moved to {now} since this session began (it was on {was}): "
+                "`bb catchup` says what changed, and `bb preamble` prints the briefing as "
+                "it is now; this session still holds the one it started with.")
+    except Exception as e:                                                # noqa: BLE001
+        print(f"[dashboard] session builds: {type(e).__name__}: {e}", flush=True)
+        return ""
+
+
 def image_stamp():
     """Which build of the image this container is running.
 
@@ -5334,6 +5382,7 @@ class Handler(BaseHTTPRequestHandler):
         if kind == "started":
             chat.event(project, uid, f"{name} started a Claude session on {project}"
                                      + (f" ({field(req, 'node')})" if field(req, "node") else ""))
+            session_build_note(project, uid, field(req, "node"), begin=True)
             return self._json({"ok": True})
         if kind == "seen":
             # What this session has not been told about the notebook, and
@@ -5342,7 +5391,8 @@ class Handler(BaseHTTPRequestHandler):
             # ...and what the operator decided about anything it had waiting
             # for approval, which is the other half of #27.
             line = " ".join(x for x in (roadmap.catchup(project, uid),
-                                        pending.settled_line(project)) if x)
+                                        pending.settled_line(project),
+                                        session_build_note(project, uid, field(req, "node"))) if x)
             return self._json({"ok": True, "line": line})
         if kind in ("turn", "turn-done"):
             # A prompt about to start, or a turn over (turns.py): how many

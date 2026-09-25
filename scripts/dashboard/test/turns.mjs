@@ -6,7 +6,7 @@
 // spinner a working Claude pane does; the per-file world takes it away after.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const base = URL.replace(/\/$/, '');
@@ -107,6 +107,28 @@ const owner = py('users.py', 'print(next(r["uid"] for r in m.load()["users"].val
 const uids = [owner, make('tn.one'), make('tn.two'), make('tn.three')];
 const toks = uids.map(u => py('users.py', `print(m.mint_session("alpha", uid=${JSON.stringify(u)}))`));
 const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
+
+// A session told the controller moved (R83): the build it began on is
+// kept per session at `started`, and the first `seen` after the build has
+// changed carries one line naming both and where to read, once.
+{
+  const sess = body => call('/api/v1/hook', { kind: 'seen', ...body }, bearer(toks[1]));
+  const began = await call('/api/v1/hook', { kind: 'started', node: 'nodeA' }, bearer(toks[1]));
+  const quiet = await sess({ node: 'nodeA' });
+  ok(began.ok && quiet.ok && !/controller moved/.test(quiet.line || ''),
+     `a session that began on this build hears nothing about it (${quiet.line || 'no line'})`);
+  const f = `${DIR}/state/session-builds.json`;
+  const d = JSON.parse(readFileSync(f, 'utf8'));
+  const key = Object.keys(d).find(k => k.endsWith('|nodeA'));
+  d[key] = '0.3.9-dev.1+oldrev1';
+  writeFileSync(f, JSON.stringify(d));
+  const moved = await sess({ node: 'nodeA' });
+  ok(/The controller moved to 0\.4\.0-dev\.390\+abc1234 since this session began \(it was on 0\.3\.9-dev\.1\+oldrev1\)/.test(moved.line || '')
+     && /bb catchup/.test(moved.line) && /bb preamble/.test(moved.line),
+     `...and once the build has moved, the next prompt says so, naming both builds and where to read (${(moved.line || '').slice(0, 80)})`);
+  const again = await sess({ node: 'nodeA' });
+  ok(!/controller moved/.test(again.line || ''), '...once: the prompt after it says nothing more');
+}
 
 {
   const free = await Promise.all([0, 1, 2, 3].map(i => hook(i, 'turn')));

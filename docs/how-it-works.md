@@ -2328,6 +2328,11 @@ sentence kept, which takes a third off the block. And each person's
 Claude's replies to them are there; it rides the block as its own part and
 governs replies only, so the notebook, commits and files are written as ever.
 
+A running session keeps the block it started with. What it hears live: a
+named rule on the turn it applies, whatever a `bb` verb answers, and, on
+its next prompt after the controller was rebuilt to another build, one line
+saying so and pointing at `bb catchup` and `bb preamble`, once per build.
+
 - **Ending a session for good is the ✕ in the Sessions list**, under the
   terminal. That one asks,
   because that is where something is actually lost: the shell and everything
