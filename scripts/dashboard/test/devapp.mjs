@@ -5,7 +5,7 @@
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
 import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, URL, DIR, nbShown, nbTab } from './lib.mjs';
-import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -1772,6 +1772,34 @@ ok(!laid.err && laid.own && laid.above,
      JSON.stringify(laid)})`);
 ok(laid.grid === 'grid',
    '...with the name and the ports still a grid beside each other');
+
+// ---- a refused new leaves nothing behind -----------------------------------
+// The env is written after the record is made, so an env the write refuses
+// (over 64KB here) left the instance registered, and the retry that fixed
+// the env was told it already existed (B259).
+{
+  const base = URL.replace(/\/$/, '');
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+              'Content-Type': 'application/json' };
+  const post = async (body) => (await fetch(base + '/api/devapp',
+    { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+  // The env directory made unwritable for one request: the write fails the
+  // way a full or read-only state disk would.
+  const envDir = `${DIR}/state/devenv`;
+  mkdirSync(envDir, { recursive: true });
+  chmodSync(envDir, 0o500);
+  const big = await post({ project: 'ep.silon', action: 'new', instance: 'halfmade', text: 'X=1' });
+  chmodSync(envDir, 0o700);
+  ok(/could not write the env file/.test(big.error || ''), `a new with an env the write refuses is refused (${String(big.error).slice(0, 40)})`);
+  const retry = await post({ project: 'ep.silon', action: 'new', instance: 'halfmade', text: 'X=1' });
+  ok(retry.ok && retry.instance === 'halfmade',
+     `...and the retry with a good env is a new instance, not "already exists" (${retry.error || retry.instance})`);
+  const bad = await post({ project: 'ep.silon', action: 'new', instance: 'halfmade-two', ref: 'no-such-branch-here' });
+  ok(!!bad.error, `a new whose ref is refused is refused (${String(bad.error).slice(0, 50)})`);
+  const again = await post({ project: 'ep.silon', action: 'new', instance: 'halfmade-two' });
+  ok(again.ok, `...and leaves no record for the retry to trip on (${again.error || 'made'})`);
+  for (const i of ['halfmade', 'halfmade-two']) await post({ project: 'ep.silon', action: 'remove', instance: i });
+}
 
 // ---- one button, and a second container from one project ---------------
 // The artifact row's controls moved to the manager; what is left is a button

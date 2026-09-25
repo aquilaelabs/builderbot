@@ -906,6 +906,10 @@ def act(project, instance, action, req, *, test_cmd=""):
             # comes from the project's checkout and the row says otherwise.
             p = devapp.set_ref(project, r["instance"], f(req, "ref"))
             if p.get("error"):
+                # The record goes with the refused request, or the retry
+                # that fixes the ref is told the instance already exists
+                # (B259). Nothing was built, so there is nothing else to undo.
+                _remove_records(project, r["instance"])
                 return p, 400
         if not r.get("error") and isinstance(req.get("text"), str) \
                 and req["text"].strip():
@@ -915,6 +919,7 @@ def act(project, instance, action, req, *, test_cmd=""):
             # the build then ran as if nothing had been typed.
             w = devapp.write_env(project, req["text"], r["instance"])
             if w.get("error"):
+                _remove_records(project, r["instance"])      # as above (B259)
                 return r | {"error": w["error"]}, 400
         if not r.get("error"):
             # Said now rather than at the first rebuild: a compose that asks
