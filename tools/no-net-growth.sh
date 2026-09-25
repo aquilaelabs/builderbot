@@ -1,9 +1,12 @@
 #!/bin/sh
-# The everything-files only get smaller. Four files hold what the one-file
-# rule says should be many (roadmap R77), and every feature that lands in
-# one makes the next land there too. So each carries a ceiling in
-# tools/ratchet.txt: this fails when a file is over its ceiling, and a
-# change that shrinks a file lowers the ceiling in the same commit.
+# The everything-files do not grow by drift. Four files hold what the
+# one-file rule says should be many (roadmap R77), and every feature that
+# lands in one makes the next land there too. So each carries a ceiling in
+# tools/ratchet.txt: this fails when a file is over it, a change that
+# shrinks a file lowers the ceiling in the same commit, and a change that
+# has to grow one for clarity raises it by hand in the same commit and says
+# why in the message. The line count is the gate, not the aim (the house
+# rule growth): a file that got longer and clearer is going the right way.
 #
 #   (default)  fail if any file is over its ceiling: `bb rules check growth`
 #   --tighten  write the current counts as the new ceilings, for a commit
@@ -25,7 +28,7 @@ while IFS= read -r line; do
         continue
     fi
     if [ "$now" -gt "$max" ]; then
-        printf '  %-36s %6s lines, over its ceiling of %s by %s: move something out (bb map sections) rather than raising it\n' \
+        printf '  %-36s %6s lines, over its ceiling of %s by %s: move something out (bb map sections), or raise it in tools/ratchet.txt in this commit and say why\n' \
             "$file" "$now" "$max" "$((now - max))"
         rc=1
     else
