@@ -106,6 +106,7 @@ DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 log_dir = None
 project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
 project_nodes = None  # ...and the set it works on, primary first (R82)
+all_project_nodes = None  # () -> {project: [node ids]}, every project's set
 node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
 # The daemon is a sandbox VM and nothing else. The node record names the
@@ -2648,13 +2649,45 @@ def session_net_own(node_id):
     The project a container belongs to is the Docker tab's: the same answer
     decides whose sessions may work on it and whose may reach it."""
     out = {}
+    blank = lambda: {"compose": set(), "names": set(), "peers": set(), "hosts": set()}  # noqa: E731
     for project, insts in _load().items():
         for inst, rec in insts.items():
             owner = owner_of(project, inst, rec)
             if owner and _instance_node(project, inst) == node_id:
-                out.setdefault(owner, {"compose": set(), "names": set()})["compose"].add(_pname(project, inst))
+                out.setdefault(owner, blank())["compose"].add(_pname(project, inst))
     for name, owner in (_owners().get(node_id) or {}).items():
-        out.setdefault(owner, {"compose": set(), "names": set()})["names"].add(name)
+        out.setdefault(owner, blank())["names"].add(name)
+    # ...and what each project that can have a session HERE holds on its
+    # other nodes (R82): the published ports of its containers there, from
+    # what those nodes report, and the whole address of a node that is not a
+    # sandbox (a Mac, Windows, a guest), which has no containers to narrow
+    # to. The project's set is the operator's; a node outside it is never
+    # named, so a session reaches its own project's things and no other.
+    sets = all_project_nodes() if all_project_nodes else {}
+    for project, nids in sets.items():
+        if node_id not in (nids or []):
+            continue
+        o = out.setdefault(project, blank())
+        for other in nids:
+            if other == node_id:
+                continue
+            n = queue.node(other) if queue else None
+            if not n:
+                continue
+            addr = str((n.get("agent") or {}).get("addr") or "").strip()
+            if not re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", addr):
+                continue
+            rep = n.get("reported") or {}
+            if not rep.get("sandbox"):
+                o["hosts"].add(addr)
+                continue
+            pub = rep.get("published") or {}
+            mine = {_pname(p, i) for p, insts in _load().items() for i, rec in insts.items()
+                    if owner_of(p, i, rec) == project and _instance_node(p, i) == other}
+            mine |= {name for name, owner in (_owners().get(other) or {}).items() if owner == project}
+            for key in mine:
+                for port in pub.get(key) or []:
+                    o["peers"].add((addr, int(port)))
     return {p: {k: sorted(v) for k, v in o.items()} for p, o in sorted(out.items())}
 
 

@@ -2025,6 +2025,20 @@ def heartbeat(nid, sample, addr, running=0):
         ag["addr"] = addr
     rep = n.get("reported") or {}
     rep["sample"] = clean
+    # What the node publishes, by compose project (R82): the ports another
+    # node's session of the same project may reach. A change re-sends every
+    # firewall its allow list, so a container coming up on one node is
+    # reachable from the other within a poll.
+    moved = False
+    if isinstance(s.get("published"), dict):
+        pub = {}
+        for k, v in list(s["published"].items())[:64]:
+            ports = sorted({int(p) for p in (v if isinstance(v, list) else []) if str(p).isdigit()
+                            and 0 < int(p) < 65536})[:32]
+            if ports:
+                pub[str(k)[:100]] = ports
+        moved = pub != (rep.get("published") or {})
+        rep["published"] = pub
     # The node's tmux sessions (roadmap #24), for the Sessions card: name,
     # whether a client is attached, the active pane's directory and title
     # (a Claude session reports its state through the title). Whitelisted
@@ -2042,6 +2056,8 @@ def heartbeat(nid, sample, addr, running=0):
     # Every sample moves the numbers on the row, and the row is the only
     # place they are shown: one repaint per node per poll is the cost.
     _bump()
+    if moved:
+        session_net_nudge()
 
 
 def _session_rows(rows):

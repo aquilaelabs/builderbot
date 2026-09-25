@@ -49,6 +49,7 @@
 - A new project made here is committed as it is made and given a starting version, 0.1.0 unless the dialog says otherwise or is left blank (4b42aca)
 - A project can work on several nodes: its settings pick a primary and the others it also works on; the row says all of them (d5c820c)
 - Starting a Claude session on a project with several nodes asks which node first, with what each has and how busy it is; a node that cannot start one is dead with its reason; the tab names the node (916f086)
+- Each session's firewall reaches its project's containers on the project's other nodes by their published ports, and a Mac, Windows or guest node of the project whole; a container coming up on one node is reachable from the other within a poll (agent 0.6.103) (8b239c5)
 
 ### Changed
 

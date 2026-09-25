@@ -1220,7 +1220,9 @@ containers on its own node, so one elsewhere would be out of reach), the
 pickers offer the set and nothing outside it, a container is only given to
 a project that works on the node it is on, starting a session asks which
 node when there is more than one, and each session's firewall reaches the
-project's containers on the set's other nodes. There is no default node
+project's containers on the set's other nodes by their published ports (a
+Mac, Windows or guest node of the set is reached whole, having no
+containers to narrow to). There is no default node
 for a project with none: it is told to set one. Storage:
 node *bindings* go in the database (they reference node ids, must survive a
 node's rename, and want auditing); the existing model/effort prefs stay where

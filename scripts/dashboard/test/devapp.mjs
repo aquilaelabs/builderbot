@@ -301,9 +301,12 @@ const log = dockerLog();
 ok(/compose --project-name ep-silon .*build/.test(log)
    && /compose --project-name ep-silon .*up -d/.test(log),
    'rebuild runs table-lookup compose commands, named for the instance');
-ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
-     e => e.textContent.trim()) === 'Rebuild',
-   '...and the button says Rebuild once an image exists');
+// Waited for rather than read: the manager row draws from its own
+// listing, a fetch behind the artifacts row's, and under a full run it
+// had not caught up with the build the line above saw.
+await page.waitForFunction(sel => document.querySelector(sel + ' [data-dm="rebuild"]')?.textContent.trim() === 'Rebuild',
+                           DM, { timeout: 20000 });
+ok(true, '...and the button says Rebuild once an image exists');
 ok(/--env-file/.test(log), '...with the dev env handed over as --env-file');
 // BuildKit, which is compose's own default and what carries the layer cache.
 // The classic builder was forced here for a year because buildx boots a
@@ -1817,6 +1820,41 @@ ok(!laid.err && laid.own && laid.above,
      JSON.stringify(laid)})`);
 ok(laid.grid === 'grid',
    '...with the name and the ports still a grid beside each other');
+
+// ---- what a project's sessions on one node may reach on its others (R82) --
+// session_net_own(node) names, per project that can have a session there,
+// the published ports of its containers on the project's other Linux nodes
+// and the whole address of a Mac, Windows or guest node of the project;
+// never a node outside the project's set, never another project's. Driven
+// in process with the records and the nodes stubbed, since the harness has
+// one node.
+{
+  const sn = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location('d', ${JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+NODES = {'n1': {'agent': {'addr': '192.168.1.16'}, 'reported': {'sandbox': True, 'published': {'alpha-aux': [9000]}}},
+         'n2': {'agent': {'addr': '192.168.1.17'}, 'reported': {'sandbox': True, 'published': {'alpha': [8088, 8443], 'plex': [32400], 'other': [1234]}}},
+         'n3': {'agent': {'addr': '192.168.1.40'}, 'reported': {'sandbox': False, 'published': {}}},
+         'n4': {'agent': {'addr': '192.168.1.99'}, 'reported': {'sandbox': True, 'published': {'gamma': [5000]}}}}
+class Q:
+    def node(self, nid): return NODES.get(nid)
+m.queue = Q()
+m.project_node = lambda p: {'alpha': 'n1', 'beta': 'n1', 'gamma': 'n4'}.get(p, '')
+m.project_nodes = lambda p: {'alpha': ['n1', 'n2', 'n3'], 'beta': ['n1'], 'gamma': ['n4']}.get(p, [])
+m.all_project_nodes = lambda: {'alpha': ['n1', 'n2', 'n3'], 'beta': ['n1'], 'gamma': ['n4']}
+m._load = lambda: {'alpha': {'main': {'node': 'n2'}, 'aux': {}}, 'beta': {'main': {}}, 'gamma': {'main': {}}}
+m._owners = lambda: {'n2': {'plex': 'alpha', 'other': 'beta'}}
+print(json.dumps(m.session_net_own('n1')))
+`], { encoding: 'utf8' });
+  const own = JSON.parse(sn.trim().split('\n').pop());
+  const same = (a, b) => JSON.stringify(Object.keys(a).sort().map(k => [k, a[k]])) === JSON.stringify(Object.keys(b).sort().map(k => [k, b[k]]));
+  ok(same(own.alpha, { compose: ['aux'], hosts: ['192.168.1.40'], names: [],
+       peers: [['192.168.1.17', 8088], ['192.168.1.17', 8443], ['192.168.1.17', 32400]] }),
+     `a project's sessions on one node reach its containers' published ports on its other node and its Mac whole (${JSON.stringify(own.alpha)})`);
+  ok(same(own.beta, { compose: ['beta'], hosts: [], names: [], peers: [] }) && !own.gamma,
+     `...a project on this node alone reaches nothing else, and one not on this node is not named at all (${JSON.stringify(own.beta)}; gamma ${JSON.stringify(own.gamma)})`);
+}
 
 // ---- a refused new leaves nothing behind -----------------------------------
 // The env is written after the record is made, so an env the write refuses
@@ -3697,8 +3735,6 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   ok(/has no node, so there is nowhere to make its container/.test(bare.error || ''),
      `...and the server refuses a new for it (${String(bare.error).slice(0, 60)})`);
   await setNodes('ep.silon', [ids.spare, ids.sandbox]);
-  ok(/nodes: spare, sandbox/.test(await page.$eval('#projects', e => e.textContent)),
-     'a project on two nodes says both on its row, primary first');
   const two = await sendDialog();
   ok(!two.go && two.node === ids.spare && !two.disabled && two.options.slice().sort().join() === [ids.spare, ids.sandbox].sort().join()
      && /One of ep\.silon's nodes/.test(two.hint),

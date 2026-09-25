@@ -590,6 +590,12 @@ containers = [{'name': 'alpha-app-1', 'compose': 'alpha', 'ips': ['172.18.0.2']}
               {'name': 'stranger', 'compose': 'other', 'ips': ['172.21.0.9']}]
 own = {'alpha': {'compose': ['alpha'], 'names': ['plex']}, 'beta': {'compose': ['beta'], 'names': []}}
 pairs = m.sessnet_pairs(sessions, own, containers)
+# ...and what alpha holds on its other nodes (R82): a container's published
+# port on a Linux node, and a Mac reached whole.
+own['alpha']['peers'] = [['192.168.1.17', 8088], ['192.168.1.17', 32400], ['bad', 1], ['192.168.1.17', 0]]
+own['alpha']['hosts'] = ['192.168.1.40', 'nope']
+peers = m.sessnet_peers(sessions, own)
+hosts = m.sessnet_hosts(sessions, own)
 # The files bb-session leaves: one live, one whose link is gone, one malformed.
 reg = tempfile.mkdtemp()
 open(os.path.join(reg, 's0.json'), 'w').write(json.dumps({'project': 'alpha', 'addr': '10.231.0.2', 'if': 'bbs0'}))
@@ -623,7 +629,8 @@ print(json.dumps({
   'resolv': m.sessnet_resolv_text(*m.sessnet_resolvers((stub, up))),
   'on': m.session_conf({'stores': {}}, 'builder', True), 'off': m.session_conf({'stores': {}}, 'builder'),
   'pairs': pairs,
-  'fill': m.sessnet_fill([('192.168.1.15', 7680)], ['192.168.1.1'], pairs),
+  'fill': m.sessnet_fill([('192.168.1.15', 7680)], ['192.168.1.1'], pairs, peers, hosts),
+  'peers': peers, 'hosts': hosts,
   'table': m.sessnet_table(), 'live': live,
   'rules': rules, 'fresh': fresh, 'kept': kept, 'fixed': fixed, 'off': off.held,
   # What the node's own network already has in the range: a LAN, a VPN or a
@@ -645,6 +652,14 @@ print(json.dumps({
          && sn.fill.includes('add element inet builderbot_sessnet own { 10.231.0.2 . 172.18.0.2, 10.231.0.2 . 172.19.0.5, 10.231.0.6 . 172.20.0.3 }')
          && sn.fill.includes('ctl { 192.168.1.15 . 7680 }'),
          '...written as one transaction that replaces the sets whole, the controller and the resolvers with them');
+      ok(JSON.stringify(sn.peers) === JSON.stringify([['10.231.0.2', '192.168.1.17', 8088], ['10.231.0.2', '192.168.1.17', 32400]])
+         && JSON.stringify(sn.hosts) === JSON.stringify([['10.231.0.2', '192.168.1.40']]),
+         `a session reaches its project's published ports on the project's other nodes, and a Mac there whole; a bad address or port is dropped (${JSON.stringify(sn.peers)})`);
+      ok(sn.fill.includes('add element inet builderbot_sessnet peers { 10.231.0.2 . 192.168.1.17 . 8088, 10.231.0.2 . 192.168.1.17 . 32400 }')
+         && sn.fill.includes('add element inet builderbot_sessnet hosts { 10.231.0.2 . 192.168.1.40 }')
+         && /@peers goto pass/.test(sn.table) && /ip saddr \. ip daddr @hosts goto pass/.test(sn.table)
+         && sn.table.indexOf('@hosts goto pass') < sn.table.indexOf('@local reject'),
+         '...in two more sets of the same transaction, passed before the private ranges are refused');
       ok(/ip daddr @local reject/.test(sn.table) && /ip saddr \. ip daddr @own goto pass/.test(sn.table)
          && sn.table.indexOf('@own goto pass') < sn.table.indexOf('@local reject')
          && /meta mark set meta mark or 0x10000000 accept/.test(sn.table) && /oifname "bbs\*" drop/.test(sn.table)

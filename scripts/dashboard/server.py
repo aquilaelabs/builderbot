@@ -2881,6 +2881,8 @@ nodes.came_back = lambda nid: threading.Thread(target=doctor.refresh, name="doct
 # The Docker tab's first pick is derived from where the projects are bound.
 nodes.project_nodes = lambda: {p: (v or {}).get("node") or ""
                                for p, v in prefs.all_projects(WORKSPACE).items()}
+devapp.all_project_nodes = lambda: {p: (v or {}).get("nodes") or []
+                                    for p, v in prefs.all_projects(WORKSPACE).items()}
 
 # The controller's diagnostics: read-only, for an administrator and, behind
 # the debug switch and a node's tick, an administrator's session (diag.py).
