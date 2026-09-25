@@ -627,6 +627,11 @@ cmd_emu() {
             [ -d "${ANDROID_HOME:-/opt/android-sdk}/platforms/android-${api}" ] \
                 || sdkmgr --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
             if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
+            # The AVD directory has to exist before avdmanager is asked, or
+            # it ignores ANDROID_AVD_HOME and writes under ~/.android, where
+            # the config line below is not found and the emulator dies with
+            # "Broken AVD system path" (the dev VM, 25 Sep).
+            [ -z "${ANDROID_AVD_HOME:-}" ] || mkdir -p "$ANDROID_AVD_HOME" 2>/dev/null || true
             echo no | avdmanager create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
                 || die "AVD creation failed for ${name}"
             # The image path, written by hand. avdmanager is the android-tools
@@ -636,7 +641,11 @@ cmd_emu() {
             # ANDROID_HOME, and the two disagreed by one directory, so every
             # start died with "Broken AVD system path" (B209). This line is
             # what the emulator wants whatever avdmanager decided.
-            local ini="${ANDROID_AVD_HOME:-$HOME/.android/avd}/${name}.avd/config.ini"
+            # Where avdmanager put it, by its own word, rather than where it
+            # was told to: the two have differed.
+            local ini
+            ini="$(avdmanager list avd 2>/dev/null | awk -v n="$name" '$1 == "Name:" { f = ($2 == n) } f && $1 == "Path:" { print $2; exit }')"
+            ini="${ini:-${ANDROID_AVD_HOME:-$HOME/.android/avd}/${name}.avd}/config.ini"
             if [ -f "$ini" ]; then
                 sed -i "s|^image.sysdir.1=.*|image.sysdir.1=system-images/android-${api}/google_apis/x86_64/|" "$ini"
             else
