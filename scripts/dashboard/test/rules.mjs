@@ -150,7 +150,10 @@ ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
 // A row Add made has nothing to go back to: cancelling it is removing it.
 await page.click('#rlAdd');
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 3, null, { timeout: 10000 });
-await page.click('#rulesBox .rulerow[data-i="2"] .rlCancel');
+// Pressed in the page: the row is a details that is still sliding open,
+// and Playwright's actionability wait saw it detach under a repaint and
+// retried into a timeout (B255, B124's family).
+await page.$eval('#rulesBox .rulerow[data-i="2"] .rlCancel', b => b.click());
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
                                  && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
 ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
