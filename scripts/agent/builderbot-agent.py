@@ -1878,10 +1878,8 @@ def services_now():
     listener is up. Read from the runner's own files, so a runner installed
     by hand reports the same way one installed from the tab does."""
     out = {}
-    # Every runner on this node, one per git host, and the first of them
-    # under the old single key too, for a controller from before the list.
+    # Every runner on this node, one per git host.
     out["runners"] = [_runner_state(d, rec) for d, rec in runner_dirs()]
-    out["actions-runner"] = out["runners"][0] if out["runners"] else {"installed": False}
     # Tailscale: whether it is here, this node's MagicDNS name (the funnel
     # URL is https://<that>), and which https ports are funnelled to which
     # local ports, read from tailscale's own status, so a funnel set by

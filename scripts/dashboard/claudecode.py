@@ -104,9 +104,9 @@ def update_done(job, state):
     rides its hello every ten minutes, so the bell and the row said an
     update was out for up to ten minutes after the job installed it. The
     job's last line names what it measured, and that is what the row says
-    until the next hello replaces the whole record. Agents from 0.6.102 also
-    say hello right after; this covers the ones before, and the minutes
-    between."""
+    until the next hello replaces the whole record. The agent says hello
+    right after as well; this covers the seconds between, and a hello that
+    did not land."""
     if state != "succeeded" or nodes is None or not job:
         return None
     full = nodes.job(job["id"], with_log=True) or {}

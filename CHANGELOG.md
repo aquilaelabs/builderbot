@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- BuilderBot is 0.7: the compatibility window moved, so a node whose agent is from 0.6 is held until Update agent on its row, which the bell and the Nodes tab say (a32a0a5)
+
+### Removed
+
+- The paths kept for agents from the 0.5 window: the tell gate that refused an agent older than 0.5.57, and the single actions-runner key beside the runners list. Nothing changes on a node whose agent is current (a32a0a5)
+
 ## 0.7.0: 2026-09-25
 
 ### Added

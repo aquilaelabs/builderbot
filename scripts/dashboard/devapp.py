@@ -91,13 +91,12 @@ MAIN = "main"
 def _slug(s):
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
 
-# Where a dev instance's data lives, when the node is too old to say. It is
-# a STORE now, reported per node with its path and its headroom and edited on
-# the node's own Storage section (R17 step 2), because where a node keeps a
-# container's databases is a fact about that node. This is the fallback for
-# an agent from before the store existed, and the default an unenrolled
-# controller uses; BB_DEV_DATA_DIR is honoured for the same reason and is on
-# its way out.
+# Where a dev instance's data lives when the node addressed reports no
+# appdata store. It is a STORE, reported per node with its path and its
+# headroom and edited on the node's own Storage section (R17 step 2), because
+# where a node keeps a container's databases is a fact about that node; this
+# is the answer for a node that has not said, and BB_DEV_DATA_DIR is how the
+# test harness points it at a scratch directory.
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # Injected rather than worked out here: three readers already answer "where do
 # the logs live" and a fourth copy of that rule is how they drift. None when
@@ -1852,8 +1851,7 @@ def appdata_root(node_id=None):
     """Where THIS node keeps its dev instances' data.
 
     The node's own `appdata` store where it reports one, and DEVDATA where it
-    does not: an agent from before the store says nothing about it, and within
-    a compatibility window a missing field is answered rather than refused.
+    does not: a missing field is answered rather than refused.
     """
     nid = node_id or getattr(_node_ctx, "node", None) or _default_node()
     n = queue.node(nid) if (queue is not None and nid) else None

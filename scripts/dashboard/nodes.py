@@ -944,8 +944,8 @@ def _census(c):
     # the address it is on. Facts about the machine, drawn against the
     # operator's desired config on the row; never treated as the config.
     out["sandbox"] = bool(c.get("sandbox"))
-    # Whether the agent may install system packages there (from 0.5.86):
-    # the stamp and root. Absent from an older agent, which reads as no.
+    # Whether the agent may install system packages there: the stamp and
+    # root.
     out["administers"] = bool(c.get("administers"))
     # Whether a session there sees only its own project (R35), in the
     # helper's own answer, and why not. An agent from before it reports
@@ -993,21 +993,16 @@ def _census(c):
             "url": url,
             "slot": re.sub(r"[^a-z0-9.-]", "", str(ar.get("slot") or ""))[:60] or runner_slot(url),
             # Which host's runner it is: GitHub's, or Gitea's act_runner.
-            # Empty from an agent that predates the field.
             "forge": re.sub(r"[^a-z]", "", str(ar.get("forge") or ""))[:16],
             # The systemd unit its output goes to, when it has one: what the
-            # runner log stream journalctls. Empty from an agent that predates
-            # the field and from a node running it in the foreground, and the
-            # stream reads runner.log then.
+            # runner log stream journalctls. Empty from a node running it in
+            # the foreground, and the stream reads runner.log then.
             "unit": re.sub(r"[^A-Za-z0-9._@-]", "", str(ar.get("unit") or ""))[:120],
             "labels": [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40]
                        for x in (ar.get("labels") or [])[:16] if str(x)]}
-    # One runner per git host (R53). An agent that predates the list sends
-    # the single key only, and that becomes a list of one.
-    listed = sv.get("runners") if isinstance(sv.get("runners"), list) else None
-    ar = sv.get("actions-runner") if isinstance(sv.get("actions-runner"), dict) else {}
-    runners = ([one_runner(x) for x in listed[:16] if isinstance(x, dict)] if listed is not None
-               else ([one_runner(ar)] if ar.get("installed") else []))
+    # One runner per git host (R53).
+    listed = sv.get("runners") if isinstance(sv.get("runners"), list) else []
+    runners = [one_runner(x) for x in listed[:16] if isinstance(x, dict)]
     out["services"] = {"runners": runners}
     ts = sv.get("tailscale") if isinstance(sv.get("tailscale"), dict) else {}
     fun = ts.get("funnel") if isinstance(ts.get("funnel"), dict) else {}
@@ -2090,8 +2085,8 @@ def _session_rows(rows):
         out.append({
             "name": name, "attached": bool(row.get("attached")),
             "cwd": str(row.get("cwd") or "")[:300],
-            # When it started (an agent from 0.5.85 on; 0 before), so a
-            # toolchain installed since can say it is not on its PATH.
+            # When it started, so a toolchain installed since can say it is
+            # not on its PATH.
             "created": _mb(row.get("created")) or 0,
             "title": str(row.get("title") or "")[:200]})
     return out
@@ -2427,20 +2422,6 @@ def _no_answer(job_id, node_id, timeout):
             f"the node is {n.get('state') or 'unknown'} and its agent last dialed in {ago}")
 
 
-# The first agent build that runs a `tell` job. An older one would fall
-# through to exec with no argv, and the operator would read "exit 1" where
-# the answer is "update the agent".
-TELL_AGENT = (0, 5, 57)
-
-
-def _agent_build(n):
-    v = str((n.get("agent") or {}).get("version") or "")
-    try:
-        return tuple(int(x) for x in v.split(".")[:3])
-    except ValueError:
-        return (0, 0, 0)
-
-
 def tell_wait(node_id, session, text, timeout=20):
     """One line into a Claude session on a node, waited for: a `tell` job
     the agent runs as notify.tell runs here (type, look for the echo, Enter
@@ -2450,10 +2431,6 @@ def tell_wait(node_id, session, text, timeout=20):
     n = node(node_id)
     if not n:
         return {"error": "no such node"}
-    if _agent_build(n) < TELL_AGENT:
-        return {"error": f"the agent on {n['name']} is "
-                         f"{(n.get('agent') or {}).get('version') or 'an older build'}, "
-                         f"which cannot hand a line to a session there: Update it on the Nodes tab"}
     r = job_add("dashboard", {"node": node_id}, "tell",
                 {"session": str(session), "text": str(text), "timeout": int(timeout)})
     if r.get("error"):

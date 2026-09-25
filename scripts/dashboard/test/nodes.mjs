@@ -733,10 +733,10 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ census: { ...CENSUS, services: svc },
                            version: shipped.version, digest: shipped.digest }) });
-  // The single key an agent from before the list sends, with no slot: it
-  // joins the record's one runner rather than making a second row.
-  await runnerCensus({ 'actions-runner': { installed: true, active: false, busy: false,
-                                           name: '', labels: ['builderbot', 'shed'] } });
+  // A runner with no slot of its own joins the record's one runner rather
+  // than making a second row.
+  await runnerCensus({ runners: [{ installed: true, active: false, busy: false,
+                                   name: '', labels: ['builderbot', 'shed'] }] });
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
   await page.waitForFunction(sel => /NOT listening/.test(
     document.querySelector(sel + ' .ndrunstate')?.textContent || ''), RUN, { timeout: 10000 });
