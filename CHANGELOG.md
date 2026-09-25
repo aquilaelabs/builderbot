@@ -188,6 +188,7 @@
 - After Update installs a new Claude Code on a node, the row and the bell say the new version at once rather than after the agent's next hello (e5f587e)
 - Build, Rebuild and Up answer at once with their job; the compose parse on the node runs behind that answer and a refusal is the job's failure on the row, so a phone no longer drops the request as a NetworkError (e5f587e)
 - The request trace keeps how long each request took and names the slowest, and bb dashboard trace prints it; a job handed to a poll that never started it goes back to the queue within about ninety seconds instead of holding a lane until the next hello, and a wait behind one says so (e5f587e)
+- The test-run setting's select takes the whole row of the dialog, so its options read in full (a9305ef)
 
 ### Security
 

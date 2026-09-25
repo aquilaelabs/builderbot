@@ -1570,6 +1570,9 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .prefrow .pick{display:flex;flex-direction:column;gap:var(--label-gap);
   font:var(--f-note);color:var(--dim);min-width:0}
 .prefrow .pick select,.prefrow .pick input{width:100%;max-width:100%}
+/* A pick whose words need the row: the test-run setting's options are
+   sentences, and half a row cut them mid-word. */
+.prefrow .pick.wide{grid-column:1 / -1}
 .veradd{margin-top:10px}
 .veradd>summary{color:var(--dim);font:var(--f-note);min-height:var(--tap)}
 @media(hover:hover){ .veradd>summary:hover{color:var(--ink)} }
@@ -3699,7 +3702,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="rnGateField">
       <label id="rnGateLabel">Claude settings</label>
       <div class="prefrow" role="group" aria-labelledby="rnGateLabel">
-        <label class="pick">During a test run, a change asked for <select id="rnTestChange"
+        <label class="pick wide">During a test run, a change asked for <select id="rnTestChange"
           aria-label="what a change asked for during a test run does">
           <option value="wait">waits: the ask in hand is finished and tested first</option>
           <option value="restart">may interrupt the final test run; work in hand finishes first</option>
