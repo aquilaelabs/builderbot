@@ -1880,6 +1880,22 @@ session_net_for = lambda nid: None  # noqa: E731
 session_tokens_for = lambda nid, sessions: []   # noqa: E731
 
 
+def reported_set(nid, key, sub, value):
+    """One field of a node's census, set by this side between hellos: what a
+    finished job measured (claudecode.update_done, B249). The next hello
+    replaces the whole record, which is right: the node's word is the
+    census, and this is only how the minutes before it are not wrong."""
+    n = node(nid)
+    if not n:
+        return
+    rep = n.get("reported") or {}
+    inner = rep.get(key) if isinstance(rep.get(key), dict) else {}
+    inner[sub] = value
+    rep[key] = inner
+    _exec("UPDATE nodes SET reported = ? WHERE id = ?", (json.dumps(rep), nid))
+    _bump()
+
+
 def hello(nid, census, addr, version="", digest="", running=None):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it: the

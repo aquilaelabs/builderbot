@@ -2086,9 +2086,33 @@ print(m.mint_session('alpha'))
      '...and the bell row is gone while the update is queued');
   const again = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });
   ok(/already queued/.test(again.error || ''), '...and a second press is refused while one is queued');
-  await napi('/api/v1/jobs', { action: 'cancel', id: up.job });
+  // The fake agent takes the job and finishes it the way the real one does,
+  // naming what it installed on its last line. The row and the bell read
+  // the new version from that line at once: the census only rides hello,
+  // every ten minutes, and the bell kept saying an update was out for that
+  // long after it had landed (B249).
+  {
+    const AH = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+    const work = await fetch(base + '/api/v1/agent/work', { method: 'POST', headers: AH,
+      body: JSON.stringify({ running: [], wait: 0 }) });
+    const got = work.status === 200 ? await work.json() : {};
+    ok((got.job?.id || got.id) === up.job, `the agent is handed the update job (${work.status})`);
+    await napi('/api/v1/agent/log', { job: up.job, chunks: [
+      { seq: 1, chunk: 'installing Claude Code for bb (1.2.0 is out)\n' },
+      { seq: 2, chunk: 'Claude Code 1.2.0 is what a session here runs now\n' }] }, AH);
+    await napi('/api/v1/agent/result', { job: up.job, state: 'succeeded', exit: 0 }, AH);
+  }
   await sleep(300);
   ok(!(await napi('/api/status')).projects.find(p => p.name === 'beta')?.held, 'the hold lifts when the job ends');
+  {
+    const cc = (await napi('/api/status')).claude_code?.nodes?.[en.id] || {};
+    ok(cc.installed === '1.2.0' && cc.behind === false,
+       `...and the row says the version the job installed before the next hello (${cc.installed}, behind ${cc.behind})`);
+    ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
+       '...so the bell does not keep saying an update is out');
+  }
+  // Behind again, by the node's own word, for the switch below.
+  await hello();
   // A refusal is said on the section, not only in a toast (23 Sep): the
   // press that queued nothing read as "it said updating and nothing happened".
   await page.evaluate(id => { nodesClaudeSaid[id] = 'the press was refused for a reason worth reading'; loadNodes(); }, en.id);
