@@ -103,6 +103,8 @@
 - The layer that runs and reports a dev instance (up, down, rebuild, test, remove, state, act) is devactions.py, cut out of devapp.py, which stays as the base it reads from (f732cfa)
 - Every broad exception catch in the dashboard and the agent is narrowed to what the code raises or kept with a log line and its reason, so a fault is seen rather than swallowed (6a4d8e8)
 - Every Python program that lived inside bb is a file under scripts/lib now, the notebook verbs included, with one loader for the dashboard's modules; bb is the shell that dispatches (bd39024)
+- The update-before-a-session switch is set under Controller settings, behind Apply, and no longer written by a checkbox on the node's row (e5f587e)
+- bb root run says before asking when a command names a file under /tmp, which on a sandbox node is the session's own view and not the root command's (e5f587e)
 
 ### Removed
 
