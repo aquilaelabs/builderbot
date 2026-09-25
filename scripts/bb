@@ -16,8 +16,9 @@ set -euo pipefail
 . "$(dirname "$(readlink -f "$0")")/lib/sdk.sh"
 # shellcheck source=lib/preflight.sh
 . "$(dirname "$(readlink -f "$0")")/lib/preflight.sh"
-# The API client the network verbs share (lib/bbapi.py), loaded by path from
-# the heredocs so a checkout's bb runs with the checkout's client.
+# The API client the network verbs share (lib/bbapi.py) and the programs
+# behind them (lib/*-verbs.py, lib/report.py and the rest), run by path so
+# a checkout's bb runs with the checkout's library.
 BB_LIB="$(dirname "$(readlink -f "$0")")/lib"
 export BB_LIB
 
@@ -372,165 +373,7 @@ cmd_projects() {
 claude_login_check() {
     on_node || return 0
     [ -n "${BB_TOKEN:-}" ] || return 0
-    BB_LOGIN_AUTH="$(bb_auth_header)" python3 - "${1:-}" <<'PY' || true
-import json, os, shutil, subprocess, sys
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-loud = sys.argv[1] == "--loud"
-why = sys.argv[1] == "--why"
-auth = os.environ["BB_LOGIN_AUTH"]
-GEN = os.path.join(os.environ["HOME"], ".claude", ".bb-gen")
-NODE = os.environ.get("BB_NODE", "this node")
-
-
-def say(msg):
-    print(f"[builderbot] {msg}")
-
-
-def warn(msg):
-    print(f"[builderbot] WARN: {msg}", file=sys.stderr)
-
-
-def refused(msg):
-    """A refusal the next prompt should hear about again, for bb-keep-login.
-    Only what will still be true then: not a restart, not a blip."""
-    if why or loud:
-        print(f"SYNC-REFUSED {msg}", file=sys.stderr)
-
-
-def claude(*args, timeout=30):
-    try:
-        return subprocess.run(["claude", *args], capture_output=True, text=True,
-                              timeout=timeout, check=False)
-    except (OSError, subprocess.SubprocessError):
-        return None
-
-
-def whoami():
-    """Signed in here, and as whom: read from the FILES, not by asking the
-    CLI.
-
-    This runs on every prompt (bb-keep-login), and `claude auth status` put a
-    THIRD process on the one ~/.claude/.credentials.json an account has.
-    Claude Code locks that file to refresh it, because a refresh rotates the
-    refresh token; two sessions of one account already contend, and the loser
-    is told "another Claude Code process is refreshing it" and its turn fails
-    (B112). `bb login --list` has read these same facts out of the files since
-    it was written, for exactly this reason, and this is that reader.
-
-    The rule is --list's: .claude.json carries oauthAccount.emailAddress, and
-    .credentials.json existing is what makes it a login rather than a leftover
-    name. A sign-out keeps the first and removes the second, which is how
-    `claude auth logout` here is still noticed. What this CANNOT see is a
-    credential the server has since refused, because no file records that; it
-    surfaces the moment a session runs, and is a rarer thing than the failed
-    turns asking cost.
-    """
-    # Claude Code being HERE is still part of the question; the old reader
-    # got that for free by running it, and a home kept after an uninstall
-    # would otherwise report a login this machine cannot use.
-    if not shutil.which("claude"):
-        return False, ""
-    home = os.environ.get("HOME") or ""
-    if not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
-        return False, ""
-    try:
-        with open(os.path.join(home, ".claude.json")) as f:
-            d = json.load(f)
-    except (OSError, ValueError):
-        return False, ""
-    email = str(((d.get("oauthAccount") or {}).get("emailAddress")) or "")[:120]
-    return bool(email), email
-
-
-def plan_now():
-    """The subscription, and the one fact no file carries in the form the card
-    shows: `claude auth status` says "max" where .claude.json's oauthAccount
-    says organizationType "claude_max", and those are not the same field: one
-    is the subscription and one is the organization, which coincide for a
-    personal account and need not for a seat.
-
-    So it is still asked of the CLI, but only when the CONTROLLER has none,
-    which is once after a sign-in: sign_out clears the stored plan, so the
-    next sign-in learns it again and every prompt in between touches no
-    credential. An empty plan never overwrites a stored one (claudegrant's
-    `if plan:`), so a failure here loses nothing.
-    """
-    r = claude("auth", "status", "--json", timeout=20)
-    if not r or r.returncode != 0:
-        return ""
-    try:
-        return str(json.loads(r.stdout).get("subscriptionType") or "")[:40]
-    except (ValueError, TypeError):
-        return ""
-
-
-def my_gen():
-    try:
-        with open(GEN) as f:
-            return int(f.read().strip() or 0)
-    except (OSError, ValueError):
-        return 0
-
-
-def keep_gen(n):
-    d = os.path.dirname(GEN)
-    os.makedirs(d, mode=0o700, exist_ok=True)
-    fd = os.open(GEN + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(str(int(n)))
-    os.replace(GEN + ".new", GEN)
-
-
-here, mine = whoami()
-r = bbapi.call("/api/v1/claude-login", auth=auth)
-if r.get("error"):
-    e = str(r["error"])
-    if loud:
-        warn(f"could not ask the controller about this account's login: {e}")
-    if "Error" in e or "500" in e:
-        refused(f"The controller could not answer about your Claude login "
-                f"({e[:120]}). This machine cannot be told about a sign-out.")
-    sys.exit(1 if not here else 0)
-
-gen = int(r.get("gen") or 0)
-# Signed out while this machine was not listening. The generation is the only
-# thing that can carry that: being signed out has no date to compare.
-if gen > my_gen():
-    keep_gen(gen)
-    if here and not r.get("email"):
-        claude("auth", "logout", timeout=60)
-        say(f"signed out on {NODE}: this account was signed out of Claude")
-        sys.exit(0)
-
-if not here:
-    if loud:
-        say(f"not signed in on {NODE}; the Doctor card's sign-in runs the flow here")
-    # Tell the controller this machine is not one of the signed-in ones, so
-    # the card stops naming it.
-    bbapi.call("/api/v1/claude-login", {"signed_in": False}, auth=auth)
-    sys.exit(1)
-
-# Asked of the CLI only when the controller has no plan for this account;
-# see plan_now(). Every other prompt sends "", which leaves the stored one be.
-known = str(r.get("plan") or "")
-plan = known or plan_now()
-w = bbapi.call("/api/v1/claude-login",
-               {"email": mine, "plan": "" if known else plan,
-                "signed_in": True}, auth=auth)
-if w.get("error"):
-    # The one-account rule, and it is the whole reason this call exists.
-    refused(w["error"])
-    if loud:
-        warn(w["error"])
-    sys.exit(1)
-if w.get("gen"):
-    keep_gen(w["gen"])
-if loud:
-    say(f"signed in on {NODE} as {mine}" + (f" · {plan}" if plan else ""))
-sys.exit(0)
-PY
+    BB_LOGIN_AUTH="$(bb_auth_header)" python3 "$BB_LIB/login-check.py" "${1:-}" || true
 }
 
 cmd_login() {
@@ -830,36 +673,7 @@ emu_via_node() {
     auth="$(bb_auth_or_die)"
     local proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
     BB_EMU_FILES="$(printf '%s\n' "${files[@]}")" \
-    python3 - "$auth" "$proj" "${argv[@]}" <<'PY'
-import os, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-auth, proj, *argv = sys.argv[1:]
-files = [f for f in os.environ.get("BB_EMU_FILES", "").split("\n") if f]
-call = lambda path, body=None: bbapi.call(path, body, auth=auth)   # noqa: E731
-r = call("/api/v1/jobs", {"action": "emu", "project": proj, "argv": argv, "files": files,
-                          "outputs": ["*.png", "*.txt"],
-                          "from": "session" if os.environ.get("CLAUDECODE") else "operator"})
-if r.get("error"):
-    sys.exit(f"[builderbot] ERROR: {r['error']}")
-names = {n["id"]: n["name"] for n in (call("/api/v1/nodes").get("nodes") or [])}
-print(f"[builderbot] {r['job']}: bb {' '.join(argv)} on {names.get(r['node'], r['node'])}", flush=True)
-shown, state = 0, ""
-while True:
-    j = call(f"/api/v1/jobs?id={r['job']}")
-    if j.get("error"):
-        sys.exit(f"[builderbot] ERROR: {j['error']}")
-    log = j.get("log") or ""
-    if len(log) > shown:
-        sys.stdout.write(log[shown:]); sys.stdout.flush(); shown = len(log)
-    if j["state"] in ("succeeded", "failed", "canceled"):
-        state = j["state"]; break
-    time.sleep(1)
-arts = [o["path"] for o in (j.get("outputs") or []) if o.get("kind") == "artifact"]
-print(f"[builderbot] {r['job']} {state}" + (f": {j['error']}" if j.get("error") else "")
-      + (", into dist/: " + ", ".join(a[5:] for a in arts) if arts else ""), flush=True)
-sys.exit(0 if state == "succeeded" else (j.get("exit_code") or 1))
-PY
+    python3 "$BB_LIB/emu-job.py" "$auth" "$proj" "${argv[@]}"
 }
 
 cmd_emu() {
@@ -1535,83 +1349,7 @@ cmd_diag() {
     done
     local auth
     auth="$(bb_auth_or_die)"
-    BB_DIAG_AUTH="$auth" BB_DIAG_JSON="$json" python3 - "${sections[@]}" <<'DIAG'
-import json, os, sys
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-body = {"sections": sys.argv[1:]} if sys.argv[1:] else {}
-d = bbapi.call("/api/diag", body, auth=os.environ["BB_DIAG_AUTH"], timeout=60)
-if d.get("error") and len(d) == 1:
-    sys.exit(f"[builderbot] ERROR: {d['error']}")
-if os.environ["BB_DIAG_JSON"] == "1":
-    print(json.dumps(d, indent=2))
-    raise SystemExit(0)
-
-
-def head(t):
-    print(f"\n== {t} ==")
-
-
-for name, v in d.items():
-    if name == "at":
-        continue
-    head(name)
-    if isinstance(v, dict) and set(v) == {"error"}:
-        print(f"  could not read: {v['error']}")
-    elif name == "controller":
-        print(f"  {v.get('version') or v.get('rev')} built {v.get('built')}, up {v.get('uptime')}")
-        print(f"  ships agent {v.get('agent_shipped')}, bundle {v.get('bundle')}, {v.get('git')}")
-    elif name == "images":
-        print("\n".join(f"  {x}" for x in v) or "  none recorded")
-    elif name == "settings":
-        print("\n".join(f"  {k} = {val}" for k, val in v.items()) or "  none")
-    elif name == "doctor":
-        print(f"  ran {v.get('when')}")
-        for c in v.get("checks") or []:
-            print(f"  [{c['level']}] {c['text']}")
-            if c["level"] in ("FAIL", "warn") and c.get("detail"):
-                print("\n".join(f"         {x}" for x in c["detail"].splitlines()))
-    elif name == "nodes":
-        for n in v:
-            se, vw = n["session"], n["views"]
-            print(f"  {n['name']}: {n['state']}{'' if n['live'] else ', not dialing in'}, seen {n['last_seen']}, "
-                  f"agent {n['agent']}{'' if n['agent_current'] else ' (not the shipped one)'}, {n['git'] or 'git ?'}")
-            print(f"    sessions {'up' if se['up'] else 'down: ' + (se['why'] or '?')}, "
-                  f"views {'built' if vw['built'] else 'not built: ' + (vw['why'] or '?')}, bundle {se['bundle'] or '?'}")
-            for e in n.get("mount_errors") or []:
-                print(f"    mount: {e}")
-    elif name == "plugins":
-        for r in v:
-            print(f"  {r['account']} on {r['node']}: {', '.join(r['plugins'])}")
-        if not v:
-            print("  none installed by anybody")
-    elif name == "jobs":
-        print("  last 24h: " + (", ".join(f"{k} {c}" for k, c in sorted(v.get("last_24h", {}).items())) or "none"))
-        for j in v.get("failed") or []:
-            print(f"  {j['when']:>8}  {j['state']:<9} {j['type']:<6} {j['project'] or '-'} on {j['node'] or '-'}"
-                  f"{' exit ' + str(j['exit']) if j['exit'] is not None else ''}{': ' + j['error'] if j['error'] else ''}")
-    elif name == "errors":
-        print("\n".join(f"  {x}" for x in v) or "  nothing that looks like a fault")
-    elif name == "audit":
-        for a in v:
-            print(f"  {a['when']:>8}  {a['who']:<24} {a['action']}  {a['target']}")
-    elif name == "reports":
-        # What sessions on other projects said about BuilderBot, unread:
-        # bb report file N or close N "why" answers one.
-        if not v:
-            print("  none open")
-        for r in v:
-            print(f"  #{r['id']}  {r.get('when') or ''}  {r.get('project')}"
-                  + (f", {r['by']}'s session" if r.get("by") else "")
-                  + (f" on {r['node']}" if r.get("node") else "")
-                  + (f", build {r['build']}" if r.get("build") else ""))
-            print(f"      {r.get('text')}")
-            if r.get("area"):
-                print(f"      area: {r['area']}")
-            if r.get("repro"):
-                print(f"      repro: {r['repro']}")
-DIAG
+    BB_DIAG_AUTH="$auth" BB_DIAG_JSON="$json" python3 "$BB_LIB/diag.py" "${sections[@]}"
 }
 
 # bb report: a problem with BuilderBot itself, from a session on any project
@@ -1636,98 +1374,7 @@ cmd_report() {
         *) sub=add ;;
     esac
     [ "$sub" = add ] || shift || true
-    BB_R_AUTH="$auth" BB_R_PROJECT="$proj" BB_R_SUB="$sub" BB_R_SELF="$0" python3 - "$@" <<'PY'
-import os, re, subprocess, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-auth, proj, sub, args = os.environ["BB_R_AUTH"], os.environ.get("BB_R_PROJECT", ""), os.environ["BB_R_SUB"], sys.argv[1:]
-post = lambda b: bbapi.call("/api/reports", b, auth=auth, timeout=60)  # noqa: E731
-
-
-def flags(names):
-    """Words and --name VALUE pairs, in any order."""
-    words, got, i = [], {}, 0
-    while i < len(args):
-        a = args[i]
-        if a.startswith("--") and a[2:] in names:
-            if i + 1 >= len(args):
-                sys.exit(f"[builderbot] ERROR: {a} needs a value after it")
-            got[a[2:]] = args[i + 1]
-            i += 2
-            continue
-        if a.startswith("--"):
-            sys.exit(f"[builderbot] ERROR: bb report: no such option {a}")
-        words.append(a)
-        i += 1
-    return words, got
-
-
-def fail(d):
-    if d.get("error"):
-        sys.exit(f"[builderbot] ERROR: {d['error']}")
-
-
-if sub == "add":
-    words, got = flags(("area", "repro"))
-    d = post({"action": "add", "project": proj, "text": " ".join(words),
-              "area": got.get("area", ""), "repro": got.get("repro", "")})
-    fail(d)
-    print(f"[builderbot] reported #{d['id']}: it is BuilderBot's to look at now, not this project's; "
-          "bb report says what became of it")
-elif sub == "mine":
-    d = post({"action": "mine", "project": proj})
-    fail(d)
-    rows = d.get("reports") or []
-    if not rows:
-        print(f"no reports from {proj or 'this project'} about BuilderBot")
-    for r in rows:
-        when = time.strftime("%d %b %H:%M", time.localtime(r.get("at") or 0))
-        state = (f"filed as {r['bug']}" if r.get("state") == "filed"
-                 else f"closed: {r.get('why') or ''}" if r.get("state") == "closed" else "open")
-        print(f"  #{r['id']}  {when}  {state}")
-        print(f"      {r.get('text')}")
-elif sub == "close":
-    if len(args) < 2:
-        sys.exit('usage: bb report close N "why"')
-    fail(post({"action": "close", "id": args[0], "why": " ".join(args[1:])}))
-    print(f"[builderbot] report #{args[0]} closed")
-else:
-    words, got = flags(("sev", "as"))
-    if not words:
-        sys.exit("usage: bb report file N [--sev S] [--as BUG]")
-    rid = words[0]
-    r = post({"action": "get", "id": rid})
-    fail(r)
-    bug = got.get("as", "")
-    if not bug:
-        # Through the ordinary path, relayed on a node and held for the
-        # operator where this project's settings say so, so a report filed
-        # is exactly a bug somebody added.
-        when = time.strftime("%d %b %Y", time.localtime(r.get("at") or 0))
-        where = (f"{r['by']}'s session on {r['project']}" if r.get("by") else f"a session on {r['project']}")
-        repro = " ".join(x for x in [
-            r.get("repro") or "",
-            f"Reported by {where}" + (f" ({r['node']})" if r.get("node") else "")
-            + f", {when}" + (f", on {r['build']}" if r.get("build") else "")
-            + f", as report #{r['id']}."] if x)
-        # --here: filing BuilderBot's report into this tracker is the point,
-        # so bug add is not to ask whether it belongs in bb report.
-        p = subprocess.run([os.environ["BB_R_SELF"], "bug", "add", r.get("text") or "", "--here",
-                            "--sev", got.get("sev", "medium"),
-                            "--area", r.get("area") or f"reported from {r['project']}",
-                            "--repro", repro], capture_output=True, text=True)
-        out = (p.stdout or "") + (p.stderr or "")
-        sys.stdout.write(out)
-        # ...or held for approval as one, where the tracker's gate asks.
-        m = re.search(r"\b(?:filed|held for approval as) (B\d+)", out)
-        if p.returncode != 0 or not m:
-            sys.exit(f"[builderbot] report #{rid} stays open: no bug number came back. Once the bug "
-                     f"has one, bb report file {rid} --as BUG marks it")
-        bug = m.group(1)
-    fail(post({"action": "filed", "id": rid, "bug": bug}))
-    print(f"[builderbot] report #{rid} is {bug} now; the session that reported it reads that with bb report")
-PY
+    BB_R_AUTH="$auth" BB_R_PROJECT="$proj" BB_R_SUB="$sub" BB_R_SELF="$0" python3 "$BB_LIB/report.py" "$@"
 }
 
 cmd_logs() {
@@ -1778,22 +1425,7 @@ cmd_logs() {
         local auth
         auth="$(bb_auth_or_die)"
         BB_LOG_AUTH="$auth" BB_LOG_NODE="$want_node" \
-        BB_LOG_STREAM="${stream:-agent}" BB_LOG_LINES="$lines" python3 - <<'NODELOG'
-import os, sys
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-d = bbapi.call("/api/nodelog",
-               {"node": os.environ["BB_LOG_NODE"],
-                "stream": os.environ["BB_LOG_STREAM"],
-                "lines": int(os.environ["BB_LOG_LINES"])},
-               auth=os.environ["BB_LOG_AUTH"], timeout=180)
-if d.get("error"):
-    sys.exit(f"[builderbot] ERROR: {d['error']}")
-sys.stdout.write(d.get("out") or "")
-if d.get("state") and d["state"] != "succeeded":
-    sys.exit(f"[builderbot] ERROR: the read {d['state']} on the node")
-NODELOG
+        BB_LOG_STREAM="${stream:-agent}" BB_LOG_LINES="$lines" python3 "$BB_LIB/node-log.py"
         return
     fi
     if [ -n "$gen" ]; then
@@ -3944,33 +3576,12 @@ cmd_phone() {
     shift || true
     case "$sub" in
         status)
-            # A quoted heredoc, not `python3 -c` inside single quotes: the
-            # escaping that needs is a minefield and this shipped broken once,
-            # with a SyntaxError where the phone's model should have been.
-            # The JSON arrives by environment, not by pipe: `python3 -` takes
-            # its PROGRAM from stdin, so a heredoc and a pipe are competing for
-            # the same channel and the heredoc wins, which is how this came to
-            # be parsing an empty stdin as JSON.
-            BB_PHONE_AUTH="$auth" python3 - <<'PY'
-import os, sys
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-d = bbapi.call("/api/phone", auth=os.environ["BB_PHONE_AUTH"])
-if d.get("error"):
-    sys.exit(f"[builderbot] ERROR: could not reach the dashboard at {bbapi.url()}: {d['error']}")
-rows = d.get("nodes") or []
-if not rows:
-    print("phone:   no node carries adb; a phone is driven from a node")
-for n in rows:
-    p = n.get("phone")
-    who = (n.get("owner") or {}).get("name")
-    print("{:<16} {}".format(n.get("name", "?") + ":",
-          "{} ({}){}".format(p.get("model") or "phone", p.get("serial"), f", connected by {who}" if who else "")
-          if p else ("not dialing in" if not n.get("live") else "no phone connected")))
-for a in d.get("asks") or []:
-    print("waiting: #{} {} ({} on {})".format(a.get("id"), a.get("why"), a.get("project") or "a session", a.get("node_name")))
-PY
+            # A file (lib/phone-verbs.py), and before that a quoted heredoc,
+            # not `python3 -c` inside single quotes: the escaping that needs
+            # is a minefield and this shipped broken once, with a SyntaxError
+            # where the phone's model should have been. What the program needs
+            # arrives by environment, never by pipe.
+            BB_PHONE_AUTH="$auth" python3 "$BB_LIB/phone-verbs.py" status
             ;;
         run)
             # `--why` is required, not polite. The operator is being asked
@@ -3987,38 +3598,7 @@ PY
             [ $# -gt 0 ] || die "nothing to run; put the adb arguments after --"
             BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
             BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
-                python3 - "$@" <<'PY'
-import os, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-post = lambda body: bbapi.call("/api/phone", body, auth=os.environ["BB_PHONE_AUTH"])  # noqa: E731
-
-
-# The project names the node, and the node's phone names who is asked: a
-# session's token carries its project; a person running this names theirs.
-r = post({"action": "ask", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[1:],
-          "project": os.environ.get("BB_PHONE_PROJECT", "")})
-if r.get("error"):
-    print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
-rid = r["id"]
-print(f"[builderbot] asked {r.get('to') or 'the operator'} (#{rid}), waiting up to 15 minutes "
-      "for Allow on the dashboard's Phone tab", file=sys.stderr)
-# Polled rather than pushed: this is a shell command waiting on a person, and
-# a person is slow in a way no callback improves.
-for _ in range(900):
-    time.sleep(1)
-    o = post({"action": "outcome", "id": rid})
-    if o.get("error"):
-        print(f"[builderbot] ERROR: {o['error']}", file=sys.stderr); sys.exit(1)
-    if o["state"] == "denied":
-        print("[builderbot] the operator said no", file=sys.stderr); sys.exit(1)
-    if o["state"] == "done":
-        sys.stdout.write(o.get("out") or "")
-        sys.exit(o.get("code") or 0)
-print("[builderbot] nobody answered within fifteen minutes", file=sys.stderr)
-sys.exit(1)
-PY
+                python3 "$BB_LIB/phone-verbs.py" run "$@"
             ;;
         *) die "usage: bb phone [status|run --why \"...\" -- adb args...]" ;;
     esac
@@ -4034,21 +3614,7 @@ cmd_root() {
     shift || true
     case "$sub" in
         status)
-            BB_PHONE_AUTH="$auth" python3 - <<'PY'
-import os, sys
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-d = bbapi.call("/api/phone", auth=os.environ["BB_PHONE_AUTH"])
-if d.get("error"):
-    sys.exit(f"[builderbot] ERROR: could not reach the dashboard at {bbapi.url()}: {d['error']}")
-asks = [a for a in (d.get("asks") or []) if a.get("kind") == "root"]
-if not asks:
-    print("root:    nothing is waiting")
-for a in asks:
-    print("waiting: #{} {} ({} on {}): {}".format(a.get("id"), a.get("why"), a.get("project") or "a session",
-                                                 a.get("node_name"), " ".join(a.get("cmd") or [])))
-PY
+            BB_PHONE_AUTH="$auth" python3 "$BB_LIB/root-verbs.py" status
             ;;
         run)
             while [ $# -gt 0 ]; do
@@ -4062,33 +3628,7 @@ PY
             [ $# -gt 0 ] || die "nothing to run; put the command after --"
             BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
             BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
-                python3 - "$@" <<'PY'
-import os, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-post = lambda body: bbapi.call("/api/phone", body, auth=os.environ["BB_PHONE_AUTH"])  # noqa: E731
-
-r = post({"action": "ask", "kind": "root", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[1:],
-          "project": os.environ.get("BB_PHONE_PROJECT", "")})
-if r.get("error"):
-    print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
-rid = r["id"]
-print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}), waiting up to 15 minutes "
-      "for Allow on the dashboard's Nodes tab or bell", file=sys.stderr)
-for _ in range(900):
-    time.sleep(1)
-    o = post({"action": "outcome", "id": rid})
-    if o.get("error"):
-        print(f"[builderbot] ERROR: {o['error']}", file=sys.stderr); sys.exit(1)
-    if o["state"] == "denied":
-        print("[builderbot] the administrator said no", file=sys.stderr); sys.exit(1)
-    if o["state"] == "done":
-        sys.stdout.write(o.get("out") or "")
-        sys.exit(o.get("code") or 0)
-print("[builderbot] nobody answered within fifteen minutes", file=sys.stderr)
-sys.exit(1)
-PY
+                python3 "$BB_LIB/root-verbs.py" run "$@"
             ;;
         *) die "usage: bb root [status|run --why \"...\" -- command...]" ;;
     esac
@@ -4104,18 +3644,7 @@ cmd_container() {
     auth="$(bb_auth_or_die)"
     case "$sub" in
         status)
-            BB_PHONE_AUTH="$auth" python3 - <<'PY'
-import os, sys
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-d = bbapi.call("/api/phone", auth=os.environ["BB_PHONE_AUTH"])
-asks = [a for a in d.get("asks") or [] if a.get("kind") == "container"]
-if not asks:
-    print("container: nothing is waiting")
-for a in asks:
-    print("waiting: #{} {} ({}): {}".format(a.get("id"), a.get("name") or "?",
-          a.get("node_name") or "the default node", a.get("why")))
-PY
+            BB_PHONE_AUTH="$auth" python3 "$BB_LIB/container-verbs.py" status
             ;;
         new)
             # One verb, and the project's setting decides (the operator, 24
@@ -4142,44 +3671,7 @@ PY
             BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" BB_C_NAME="$name" BB_C_COMPOSE="$compose" \
             BB_C_ENV="$envf" BB_C_NODE="$node" BB_C_FOR="$forp" \
             BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
-                python3 - <<'PY'
-import os, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-post = lambda body: bbapi.call("/api/phone", body, auth=os.environ["BB_PHONE_AUTH"])  # noqa: E731
-compose = open(os.environ["BB_C_COMPOSE"], encoding="utf-8", errors="replace").read()
-env = open(os.environ["BB_C_ENV"], encoding="utf-8", errors="replace").read() if os.environ.get("BB_C_ENV") else ""
-r = post({"action": "ask", "kind": "container", "why": os.environ["BB_PHONE_WHY"],
-          "name": os.environ["BB_C_NAME"], "compose": compose, "env": env,
-          "node": os.environ.get("BB_C_NODE", ""), "for": os.environ.get("BB_C_FOR", ""),
-          "project": os.environ.get("BB_PHONE_PROJECT", "")})
-if r.get("error"):
-    print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
-if not r.get("id"):
-    # Done at once: the setting is auto and it is this project's own.
-    print(f"[builderbot] created {r.get('name') or 'it'}"
-          + (f", and it cannot be built from here yet: {r['needs_ack']}" if r.get("needs_ack")
-             else "; the build is a job on the Jobs tab"))
-    sys.exit(0)
-rid = r["id"]
-print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}): the compose file is on their "
-      "bell, waiting up to 15 minutes for Allow", file=sys.stderr)
-for _ in range(900):
-    time.sleep(1)
-    o = post({"action": "outcome", "id": rid})
-    if o.get("error"):
-        print(f"[builderbot] ERROR: {o['error']}", file=sys.stderr); sys.exit(1)
-    if o["state"] == "denied":
-        print("[builderbot] the administrator said no", file=sys.stderr); sys.exit(1)
-    if o["state"] == "done":
-        if o.get("code"):
-            print(f"[builderbot] ERROR: {o.get('out') or 'refused'}", file=sys.stderr); sys.exit(1)
-        print(f"[builderbot] allowed: {o.get('out')} (the build is a job on the Jobs tab)")
-        sys.exit(0)
-print("[builderbot] nobody answered within fifteen minutes", file=sys.stderr)
-sys.exit(1)
-PY
+                python3 "$BB_LIB/container-verbs.py" new
             ;;
         *) die "usage: bb container [status|new --why \"...\" --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]]" ;;
     esac
@@ -4228,42 +3720,7 @@ cmd_devapp() {
     fi
     case "$sub" in
         status|state)
-            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - <<'PY'
-import os, sys
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-d = bbapi.call("/api/devapp", {"project": os.environ["BB_DEV_PROJECT"],
-                               "instance": os.environ.get("BB_DEV_INSTANCE", ""),
-                               "container": os.environ.get("BB_DEV_CONTAINER", ""),
-                               "action": "state"},
-               auth=os.environ["BB_DEV_AUTH"])
-if d.get("error"):
-    sys.exit(f"[builderbot] ERROR: {d['error']}")
-st = d.get("state") if isinstance(d.get("state"), dict) else d
-if not st.get("compose"):
-    print("no compose file here, so there is no dev instance")
-    raise SystemExit(0)
-print(f"  {'instance':<12} {st.get('name') or '-'}")
-print(f"  {'running':<12} {'yes' if st.get('running') else 'no'}")
-print(f"  {'daemon':<12} " + ("answering" if st.get("available")
-                              else (st.get("why") or "not reachable")))
-if st.get("built_rev"):
-    print(f"  {'built from':<12} {st['built_rev']}")
-elif st.get("needs_build"):
-    print(f"  {'built from':<12} nothing here yet")
-miss = st.get("missing_env") or []
-if miss:
-    # Kept by BuilderBot for this container, never a file in the project.
-    print(f"  {'env':<12} missing " + ", ".join(miss[:6])
-          + (" …" if len(miss) > 6 else "") + "; bb devapp env prints it and bb devapp env set "
-          "replaces it where the project's settings allow, else the operator's Env on the Docker tab")
-job = st.get("job") or {}
-if job.get("running"):
-    print(f"  {'job':<12} {job.get('step') or 'working'}")
-elif job.get("error"):
-    print(f"  {'job':<12} last one failed: {str(job['error'])[:120]}")
-PY
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 "$BB_LIB/devapp-verbs.py" status
             ;;
         rebuild)
             shift || true
@@ -4275,144 +3732,14 @@ PY
                     *) die "usage: bb devapp rebuild [--why \"what it is for\"]" ;;
                 esac
             done
-            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_WHY="$why" python3 - <<'PY'
-import os, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-proj = os.environ["BB_DEV_PROJECT"]
-auth = os.environ["BB_DEV_AUTH"]
-post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),  # noqa: E731
-                                                "container": os.environ.get("BB_DEV_CONTAINER", "")}, auth=auth)
-
-def look():
-    d = post({"action": "state"})
-    if d.get("error"):
-        sys.exit(f"[builderbot] ERROR: {d['error']}")
-    return d.get("state") if isinstance(d.get("state"), dict) else d
-
-
-# What it was built from before, because that is the only signal that says a
-# build HAPPENED. A job that succeeded is not news to the row (job_view
-# returns nothing for one), so "no job running" reads the same three seconds
-# before it starts and the moment after it finishes, and taking either for
-# success is how this said "rebuilt" over a build that had not begun.
-was = (look().get("built_rev") or "")
-r = post({"action": "rebuild", "why": os.environ.get("BB_DEV_WHY", "")})
-if r.get("error"):
-    # The refusal names the dial, so it is printed as it came.
-    sys.exit(f"[builderbot] ERROR: {r['error']}")
-if r.get("id") and not r.get("started"):
-    # This project is on `ask`: nothing is building yet, a person has the
-    # reason in front of them, and the wait is theirs. Allowing starts the
-    # build, and from there this is the same poll as any other rebuild.
-    rid = r["id"]
-    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}), waiting up "
-          "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
-    for _ in range(900):
-        time.sleep(1)
-        o = bbapi.call("/api/phone", {"action": "outcome", "id": rid}, auth=auth)
-        if o.get("error"):
-            sys.exit(f"[builderbot] ERROR: {o['error']}")
-        if o["state"] == "denied":
-            sys.exit("[builderbot] the rebuild was not allowed")
-        if o["state"] == "done":
-            if o.get("code"):
-                sys.exit(f"[builderbot] ERROR: {o.get('out') or 'the rebuild would not start'}")
-            break
-    else:
-        sys.exit("[builderbot] nobody answered within fifteen minutes")
-print("[builderbot] rebuilding; it runs on the node's daemon and takes minutes",
-      file=sys.stderr)
-# Polled rather than streamed: the job's log belongs to the row, and what a
-# session needs is the step while it waits and the verdict at the end. A
-# build that pulls can take half an hour, which is the cap here.
-last, seen, waited = "", False, 0.0
-while waited < 3600:
-    time.sleep(3)
-    waited += 3
-    st = look()
-    job = st.get("job") or {}
-    step = str(job.get("step") or "")
-    if step and step != last:
-        print(f"  {step}", file=sys.stderr)
-        last = step
-    if job.get("running"):
-        seen = True
-        continue
-    if job.get("error"):
-        tail = str(job.get("log") or "")[-1200:]
-        if tail:
-            print(tail)
-        sys.exit(f"[builderbot] ERROR: the rebuild failed: {str(job['error'])[:200]}")
-    if seen or (st.get("built_rev") or "") != was:
-        print(f"[builderbot] rebuilt {st.get('built_rev') or ''}; "
-              f"{st.get('name') or 'the instance'} is "
-              + ("up" if st.get("running")
-                 else "built and not running" if st.get("await_env")
-                 else "not running"))
-        if st.get("await_env"):
-            print("[builderbot] its env is not filled in: bb devapp env set FILE writes it where "
-                  "the project's settings allow, else the operator's Env on the Docker tab",
-                  file=sys.stderr)
-        raise SystemExit(0)
-    if waited >= 21:
-        sys.exit("[builderbot] ERROR: no build appeared within twenty seconds; "
-                 "this project's row on the Docker tab has what happened")
-sys.exit("[builderbot] ERROR: the rebuild is still going after an hour; its row on the Docker tab has it")
-PY
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_WHY="$why" python3 "$BB_LIB/devapp-verbs.py" rebuild
             ;;
         test)
             # The project's test command inside its running dev instance
             # (roadmap R48): the whole log to stdout, so `bb tests run` can
             # read it, and the job's exit code as this one's.
             shift || true
-            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - "$@" <<'PY'
-import os, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-proj = os.environ["BB_DEV_PROJECT"]
-auth = os.environ["BB_DEV_AUTH"]
-# Two minutes, not the client's default thirty seconds. The controller checks
-# the instance before it answers, and each check is a round trip through the
-# agent to the node; on an unlucky poll cycle that ran past thirty seconds,
-# this gave up saying "timed out", and the controller started the run anyway.
-# So a fifteen-minute suite ran unattended inside the container, its output
-# going to a job nobody was reading, holding the node's one slot, while the
-# caller was told nothing had been timed (B202, four sightings on 21 Sep).
-START_WAIT = 120
-r = bbapi.call("/api/devapp", {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),
-                               "container": os.environ.get("BB_DEV_CONTAINER", ""),
-                               "action": "test", "args": sys.argv[1:]}, auth=auth, timeout=START_WAIT)
-if r.get("error"):
-    # The one refusal that does not mean nothing happened.
-    if "timed out" in str(r["error"]).lower():
-        sys.exit(f"[builderbot] ERROR: the controller did not answer within {START_WAIT}s. The run MAY "
-                 "HAVE STARTED anyway: `bb jobs` lists a `test` job on this project if it did, "
-                 "`bb jobs ID` is its log, and starting another run on top of it breaks both")
-    sys.exit(f"[builderbot] ERROR: {r['error']}")
-jid = r.get("job") or ""
-print(f"[builderbot] testing {proj} inside its dev instance ({jid})", file=sys.stderr)
-shown = 0
-for _ in range(3600):
-    time.sleep(1)
-    j = bbapi.call(f"/api/v1/jobs?id={jid}", auth=auth)
-    # A row has an `error` of its own (the sentence the tab shows for how it
-    # ended); only an answer with no job in it is the API refusing.
-    if j.get("error") and "state" not in j:
-        sys.exit(f"[builderbot] ERROR: {j['error']}")
-    log = j.get("log") or ""
-    if len(log) > shown:
-        sys.stdout.write(log[shown:]); sys.stdout.flush(); shown = len(log)
-    if j.get("state") in ("succeeded", "failed", "canceled"):
-        code = j.get("exit_code")
-        if j["state"] == "succeeded":
-            sys.exit(0)
-        print(f"[builderbot] {j.get('error') or 'the tests failed'} (exit {code})", file=sys.stderr)
-        sys.exit(code if isinstance(code, int) and code else 1)
-sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs tab")
-PY
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 "$BB_LIB/devapp-verbs.py" test "$@"
             ;;
         new|env|remove)
             # Creating the project's own container, its env, and removing it,
@@ -4439,102 +3766,14 @@ PY
             [ -z "$file" ] || [ -f "$file" ] || die "no such file: $file"
             local rc=0
             BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_WHY="$why" BB_DEV_VERB="$verb" \
-            BB_DEV_SET="$setting" BB_DEV_FILE="$file" python3 - <<'PY' || rc=$?
-import os, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-proj, auth = os.environ["BB_DEV_PROJECT"], os.environ["BB_DEV_AUTH"]
-verb, setting = os.environ["BB_DEV_VERB"], os.environ.get("BB_DEV_SET") == "1"
-post = lambda b: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),  # noqa: E731
-                                                "container": os.environ.get("BB_DEV_CONTAINER", "")}, auth=auth)
-path = os.environ.get("BB_DEV_FILE", "")
-text = open(path, encoding="utf-8").read() if path else None
-if verb == "env" and not setting:
-    d = post({"action": "env-get"})
-    if d.get("error"):
-        sys.exit(f"[builderbot] ERROR: {d['error']}")
-    sys.stdout.write(d.get("text") or "")
-    if d.get("seeded"):
-        print("[builderbot] nothing is stored yet: that is the project's .env.example",
-              file=sys.stderr)
-    raise SystemExit(0)
-body = {"action": {"new": "new", "remove": "remove"}.get(verb, "env-set"), "why": os.environ.get("BB_DEV_WHY", "")}
-if text is not None:
-    body["text"] = text
-r = post(body)
-if r.get("error"):
-    sys.exit(f"[builderbot] ERROR: {r['error']}")
-if r.get("id"):
-    # On ask: one request, and Allow runs all of it, the build included.
-    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
-          "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
-    for _ in range(900):
-        time.sleep(1)
-        o = bbapi.call("/api/phone", {"action": "outcome", "id": r["id"]}, auth=auth)
-        if o.get("error"):
-            sys.exit(f"[builderbot] ERROR: {o['error']}")
-        if o["state"] == "denied":
-            sys.exit("[builderbot] it was not allowed")
-        if o["state"] == "done":
-            if o.get("code"):
-                sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
-            print("[builderbot] allowed, and removed: its env and data stay for a remake" if verb == "remove"
-                  else "[builderbot] allowed, and building: bb devapp says how far it got")
-            raise SystemExit(0)
-    sys.exit("[builderbot] nobody answered within fifteen minutes")
-if verb == "remove":
-    print("[builderbot] removed" + (": its daemon did not answer, so the row is gone and whatever "
-                                    "ran there still runs" if r.get("forgot") else "; its env and data stay for a remake"))
-elif verb == "new" and r.get("needs_ack"):
-    print(f"[builderbot] created {r.get('instance') or 'it'}, and it cannot be built from here yet: "
-          f"{r['needs_ack']}")
-else:
-    print(f"[builderbot] created {r.get('instance') or 'it'}; bb devapp rebuild builds and starts it"
-          if verb == "new" else "[builderbot] its env is saved; bb devapp rebuild applies it")
-PY
+            BB_DEV_SET="$setting" BB_DEV_FILE="$file" python3 "$BB_LIB/devapp-verbs.py" edit || rc=$?
             [ -z "$tmp" ] || rm -f "$tmp"
             return "$rc"
             ;;
         ls|list)
             # What belongs to this project on its node, as its group on the
             # Docker tab lists it (the operator, 24 Sep).
-            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 - <<'PY'
-import os, sys, urllib.parse
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-proj = os.environ["BB_DEV_PROJECT"]
-d = bbapi.call("/api/docker?project=" + urllib.parse.quote(proj), auth=os.environ["BB_DEV_AUTH"])
-if d.get("error") and not (d.get("instances") or d.get("containers")):
-    sys.exit(f"[builderbot] ERROR: {d['error']}")
-blind = bool(d.get("blind"))
-rows = []
-for i in d.get("instances") or []:
-    if i.get("owner") != proj:
-        continue
-    kind = ("written here" if i.get("source") == "file" else
-            "its own" if i.get("project") == proj else f"built from {i.get('project')}")
-    state = "?" if blind else "running" if i.get("running") else "stopped" if i.get("exists") else "down"
-    rows.append((i.get("name") or "", kind, state, " ".join(i.get("ports") or [])))
-for c in d.get("containers") or []:
-    if c.get("owner") != proj:
-        continue
-    rows.append((c.get("name") or c.get("id") or "", "not ours", c.get("state") or "?",
-                 " ".join(c.get("ports") or [])))
-if not rows:
-    print(f"nothing belongs to {proj} on its node: the operator puts a container under a "
-          "project on its row on the Docker tab")
-    raise SystemExit(0)
-w = max(len(r[0]) for r in rows)
-for name, kind, state, ports in sorted(rows):
-    print(f"  {name:<{w}}  {kind:<14} {state:<8} {ports}".rstrip())
-if blind:
-    print("[builderbot] the daemon did not answer, so what is running is not known", file=sys.stderr)
-print("[builderbot] bb devapp log NAME reads one; bb devapp start|stop|restart NAME, and "
-      "--container NAME on the other verbs, act on one where the project's settings allow",
-      file=sys.stderr)
-PY
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 "$BB_LIB/devapp-verbs.py" ls
             ;;
         log|logs|start|stop|restart)
             # One container that belongs to this project, by the name bb
@@ -4551,37 +3790,8 @@ PY
                 esac
             done
             [ "$verb" = logs ] && verb=log
-            BB_DEV_AUTH="$auth" BB_DEV_VERB="$verb" BB_DEV_NAME="$name" BB_DEV_WHY="$why" python3 - <<'PY'
-import os, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-
-auth, verb, name = os.environ["BB_DEV_AUTH"], os.environ["BB_DEV_VERB"], os.environ["BB_DEV_NAME"]
-r = bbapi.call("/api/dockerctl", {"action": "logs" if verb == "log" else verb, "container": name,
-                                  "why": os.environ.get("BB_DEV_WHY", "")}, auth=auth)
-if r.get("error"):
-    sys.exit(f"[builderbot] ERROR: {r['error']}")
-if verb == "log":
-    sys.stdout.write(r.get("text") or "")
-    raise SystemExit(0)
-if r.get("id"):
-    print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
-          "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
-    for _ in range(900):
-        time.sleep(1)
-        o = bbapi.call("/api/phone", {"action": "outcome", "id": r["id"]}, auth=auth)
-        if o.get("error"):
-            sys.exit(f"[builderbot] ERROR: {o['error']}")
-        if o["state"] == "denied":
-            sys.exit("[builderbot] it was not allowed")
-        if o["state"] == "done":
-            if o.get("code"):
-                sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it did not happen'}")
-            print(f"[builderbot] allowed: {o.get('out') or verb}")
-            raise SystemExit(0)
-    sys.exit("[builderbot] nobody answered within fifteen minutes")
-print(f"[builderbot] {r.get('out') or verb}")
-PY
+            BB_DEV_AUTH="$auth" BB_DEV_VERB="$verb" BB_DEV_NAME="$name" BB_DEV_WHY="$why" \
+                python3 "$BB_LIB/devapp-verbs.py" ctl
             ;;
         *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
     esac
@@ -4848,41 +4058,8 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 bb_controller_stamp() {
     local auth; auth="$(bb_auth_header)"
     [ -n "$auth" ] || { printf 'unknown: no session token to ask the controller with'; return; }
-    BB_META_AUTH="$auth" python3 - <<'PY' 2>/dev/null || printf 'unreachable: the controller did not answer'
-import os, sys
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-# request() rather than call(), because the two failures want different
-# answers and call() cannot tell them apart: a refusal the server worded and a
-# refused connection both come back as {"error": sentence}. Reporting an
-# expired token as "the controller is down" is the mistake bb-gate already
-# made once, and the first version of this line made it again.
-# Short timeout: bb status is run often, and a controller that is down should
-# cost a line rather than a 30-second wait.
-try:
-    st, m = bbapi.request("/api/meta", auth=os.environ["BB_META_AUTH"], timeout=5)
-except Exception:
-    st, m = None, {}
-if st is None:
-    print("unreachable: the controller did not answer", end="")
-    raise SystemExit(0)
-if st >= 400 or not isinstance(m, dict) or m.get("error"):
-    why = (m or {}).get("error") or f"HTTP {st}"
-    print(f"the controller refused this session: {why}", end="")
-    raise SystemExit(0)
-ver = (m.get("version") or "").strip()
-rev = (m.get("image") or "").strip()
-built = (m.get("built") or "").strip()
-if not ver and not rev:
-    print("unstamped: the controller's image was built outside CI", end="")
-else:
-    out = ver or rev[:7]
-    if rev and rev[:7] not in out:
-        out += f" ({rev[:7]})"
-    if built:
-        out += f" (built {built})"
-    print(out, end="")
-PY
+    BB_META_AUTH="$auth" python3 "$BB_LIB/controller-stamp.py" 2>/dev/null \
+        || printf 'unreachable: the controller did not answer'
 }
 
 # ---- a session on a node (roadmap #24) --------------------------------------
@@ -4935,58 +4112,7 @@ bb_relay() {
     local auth proj rc
     auth="$(bb_auth_or_die)"
     proj="${BB_PROJECT:-${BB_ROADMAP_PROJECT:-${BB_BUG_PROJECT:-${BB_VERSION_PROJECT:-$(project_here || true)}}}}"
-    BB_RELAY_PROJECT="$proj" python3 - "$auth" "$@" <<'PY'
-import os, sys
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-auth, *argv = sys.argv[1:]
-r = bbapi.call("/api/v1/bb", {"argv": argv, "project": os.environ.get("BB_RELAY_PROJECT", ""),
-                              "cwd": os.getcwd(),
-                              "from": "session" if os.environ.get("CLAUDECODE") else "operator"},
-               auth=auth, timeout=200)
-if r.get("error") and "code" not in r:
-    sys.exit(f"[builderbot] ERROR: {r['error']} (relayed to {bbapi.url()})")
-sys.stdout.write(r.get("out") or "")
-sys.stderr.write(r.get("err") or "")
-sys.stdout.flush()
-sys.stderr.flush()
-code = int(r.get("code") or 0)
-ap = r.get("apply") if code == 0 else None
-if isinstance(ap, dict):
-    # git's network half ran on the controller, in a repository of its own
-    # (B148); what this tree needs from it happens here, as this session:
-    # the objects a fetch brought, the refs that moved, an upstream a push -u
-    # set, and the merge or rebase that finishes a pull.
-    import contextlib, subprocess                               # noqa: E401
-    def git(*args, text=None):
-        return subprocess.run(["git", *args], input=text, capture_output=text is not None,
-                              text=True, check=False)
-    bundle = ap.get("bundle") or ""
-    if bundle:
-        u = subprocess.run(["git", "bundle", "unbundle", bundle], capture_output=True, text=True, check=False)
-        with contextlib.suppress(OSError):
-            os.remove(bundle)
-        if u.returncode:
-            sys.exit(f"{u.stderr}[builderbot] ERROR: the objects the controller fetched did not go into this tree")
-    lines = "".join(f"update {n} {v}\n" if v else f"delete {n}\n" for n, v in ap.get("refs") or [])
-    if lines:
-        u = git("update-ref", "--stdin", text=lines)
-        if u.returncode:
-            sys.exit(f"{u.stderr}[builderbot] ERROR: the refs the controller moved did not move here")
-    for branch, remote, merge in ap.get("upstream") or []:
-        git("config", f"branch.{branch}.remote", remote)
-        git("config", f"branch.{branch}.merge", merge)
-    m = ap.get("merge")
-    if isinstance(m, dict) and m.get("ref"):
-        mode = m.get("mode") or ""
-        if not mode:
-            ask = lambda k: git("config", "--type=bool", "--get", k, text="").stdout.strip()  # noqa: E731
-            mode = "rebase" if "true" in (ask(f"branch.{m.get('branch')}.rebase"), ask("pull.rebase")) else "merge"
-        step = (["rebase", m["ref"]] if mode == "rebase"
-                else ["merge", "--no-edit", *(["--ff-only"] if mode == "ff-only" else []), m["ref"]])
-        code = subprocess.run(["git", *step], check=False).returncode
-sys.exit(code)
-PY
+    BB_RELAY_PROJECT="$proj" python3 "$BB_LIB/relay.py" "$auth" "$@"
     rc=$?
     revalidate_tree
     return $rc
@@ -5053,15 +4179,7 @@ cmd_git() {
             # What this project lets a session do with git's network half,
             # from the project's settings: the controller enforces it on the
             # relay, so this is the answer to read before pushing.
-            BB_SETTINGS_JSON=1 cmd_settings --json | python3 -c '
-import json, sys
-p = json.load(sys.stdin).get("gitpol") or {}
-print("push its branch:", p.get("push", "allow"))
-print("push to main:   ", p.get("main", "deny"))
-print("Its branches are the ones this tree has, one at a time: a name that is only on the")
-print("remote, a tag, --all, and deleting a branch there stay with the operator whatever")
-print("these say.")
-print("A local commit or merge is yours; what reaches the remote is what this governs.")'
+            BB_SETTINGS_JSON=1 cmd_settings --json | python3 "$BB_LIB/git-policy.py"
             return 0 ;;
         *) die "bb git takes push, fetch, pull, ls-remote or policy; plain git does everything else" ;;
     esac
@@ -5544,58 +4662,7 @@ cmd_run() {
     fi
     auth="$(bb_auth_or_die)"
     BB_RUN_OUTS="$(printf '%s\n' "${outs[@]}")" \
-    python3 - "$auth" "$proj" "$role" "$node" "$timeout" "$@" <<'PY'
-import os, sys, time
-sys.path.insert(0, os.environ["BB_LIB"])
-import bbapi                                                    # noqa: E402
-auth, proj, role, node, timeout, *argv = sys.argv[1:]
-outs = [o for o in os.environ.get("BB_RUN_OUTS", "").split("\n") if o]
-call = lambda path, body=None: bbapi.call(path, body, auth=auth)   # noqa: E731
-nid = node
-if node:
-    # A node by name is what a person types; the API takes the id.
-    got = call("/api/v1/nodes").get("nodes") or []
-    hit = [n for n in got if n["id"] == node or n["name"] == node]
-    if not hit:
-        sys.exit(f"[builderbot] ERROR: no node called {node}"
-                 + (" that this session may use: a session sees only the nodes its project builds on"
-                    if os.environ.get("CLAUDECODE") else " (bb nodes lists them)"))
-    nid = hit[0]["id"]
-r = call("/api/v1/jobs", {"action": "run", "project": proj, "role": role, "node": nid,
-                          "argv": argv, "outputs": outs, "timeout": int(timeout),
-                          "from": "session" if os.environ.get("CLAUDECODE") else "operator"})
-if r.get("error"):
-    sys.exit(f"[builderbot] ERROR: {r['error']}")
-names = {n["id"]: n["name"] for n in (call("/api/v1/nodes").get("nodes") or [])}
-print(f"[builderbot] {r['job']} queued on {names.get(r['node'], r['node'])}: "
-      f"snapshot {r['snapshot'][7:19]}, {r['files']} files", flush=True)
-shown = 0
-state = ""
-while True:
-    j = call(f"/api/v1/jobs?id={r['job']}")
-    if j.get("error"):
-        sys.exit(f"[builderbot] ERROR: {j['error']}")
-    log = j.get("log") or ""
-    if len(log) > shown:
-        sys.stdout.write(log[shown:])
-        sys.stdout.flush()
-        shown = len(log)
-    if j["state"] in ("succeeded", "failed", "canceled"):
-        state = j["state"]
-        break
-    time.sleep(1)
-arts = [o for o in (j.get("outputs") or []) if o.get("kind") == "artifact"]
-kept = [o for o in (j.get("outputs") or []) if o.get("kind") == "workspace"]
-line = f"[builderbot] {r['job']} {state}"
-if j.get("error"):
-    line += f": {j['error']}"
-if arts:
-    line += ", into dist/: " + ", ".join(a["path"][5:] for a in arts)
-if kept:
-    line += f", workspace kept on the node at {kept[0]['path']}"
-print(line, flush=True)
-sys.exit(0 if state == "succeeded" else (j.get("exit_code") or 1))
-PY
+    python3 "$BB_LIB/run-job.py" "$auth" "$proj" "$role" "$node" "$timeout" "$@"
 }
 
 # The two named shapes: what the project's settings dialog says a build and
@@ -5611,24 +4678,7 @@ cmd_build_or_test() {
     # From the settings dialog's file here; on a node from `bb settings`,
     # which is the same record relayed from the controller.
     mapfile -t rec < <(BB_PROJECT="$proj" "$0" settings --json 2>/dev/null \
-        | BB_ROLE_="$role" python3 -c '
-import json, os, sys
-try:
-    rec = json.load(sys.stdin)
-except ValueError:
-    rec = {}
-# Three things, in order: the command, where the tests run (node, up or
-# only), then the output globs. What the settings say and nothing else: a
-# command nobody typed must not run as if somebody had.
-# No apostrophes in here: the whole block is inside shell single quotes.
-role = os.environ["BB_ROLE_"]
-cmd = rec.get(role) or ""
-print(cmd)
-print("set" if cmd else "none")
-print(rec.get("tests_in") or "node")
-for g in rec.get("outputs") or []:
-    print(g)
-')
+        | BB_ROLE_="$role" python3 "$BB_LIB/build-or-test.py")
     local cmd="${rec[0]:-}" where="${rec[2]:-node}"
     [ -n "$cmd" ] || die "no $role command is set for $proj: bb settings set $role '...' fills it in (the operator approves it where the project asks), or the operator does in the settings dialog (Build and test)"
     # Where the tests run is the project's setting (Tests run, in its settings

@@ -4189,6 +4189,21 @@ scripts/
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
   lib/embedded.py                pulls scripts and python out of quoted heredocs so `bb lint` sees them
+  lib/waits.py                   the wait for a person's Allow and the job-log stream, shared by the verbs below
+  lib/devapp-verbs.py            `bb devapp`: status, rebuild, test, new, env, remove, ls, log, start, stop, restart
+  lib/container-verbs.py         `bb container`: status and new
+  lib/phone-verbs.py             `bb phone`: status and run
+  lib/root-verbs.py              `bb root`: status and run
+  lib/report.py                  `bb report`, and file/close from BuilderBot's side
+  lib/diag.py                    `bb diag`
+  lib/node-log.py                `bb logs --node`
+  lib/login-check.py             whether this machine is signed in to Claude, for `bb claude` and the doctor
+  lib/emu-job.py                 `bb emu` as a job on the project's node
+  lib/run-job.py                 `bb run`: the snapshot, the job, the log back
+  lib/build-or-test.py           the command, place and outputs `bb build` and `bb test` read from the settings
+  lib/git-policy.py              `bb git policy`
+  lib/relay.py                   a notebook verb relayed from a node to the controller
+  lib/controller-stamp.py        the controller's build, for `bb status` and `bb catchup`
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab, one nb-*.js per notebook view
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
