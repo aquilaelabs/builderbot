@@ -653,7 +653,8 @@ def up(project, instance=devapp.MAIN, ack=""):
     clash = devapp.name_clash(project, instance)
     if clash:
         return {"error": clash}
-    return _submit(project, instance, "up")
+    return _submit(project, instance, "up",
+                   check=lambda: devapp._risk_gate(project, instance, ack))
 
 
 def _job_up(project, instance, run):
