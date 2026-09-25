@@ -3707,6 +3707,11 @@ body.booting .pane>.loading{margin:auto}
           <option value="wait">waits: the ask in hand is finished and tested first</option>
           <option value="restart">may interrupt the final test run; work in hand finishes first</option>
         </select></label>
+        <label class="pick wide">Briefing a session reads <select id="rnBrief"
+          aria-label="how the rules, roadmap and bugs are written for a session">
+          <option value="full">as written</option>
+          <option value="terse">terse: filler words dropped, meaning kept (bb preamble shows it)</option>
+        </select></label>
       </div>
       <label id="rnGateMayLabel" class="sub dim">Claude may</label>
       <div class="prefrow" role="group" aria-labelledby="rnGateMayLabel">
@@ -3745,6 +3750,12 @@ body.booting .pane>.loading{margin:auto}
           aria-label="model your sessions here start on"></select></label>
         <label class="pick">Effort <select id="rnEffort"
           aria-label="effort your sessions here start on"></select></label>
+        <label class="pick">Replies <select id="rnReply"
+          aria-label="how wordy Claude's replies to you are here">
+          <option value="">Claude's default</option>
+          <option value="normal">normal</option>
+          <option value="minimal">minimal: the answer and what is left</option>
+        </select></label>
       </div>
       <div class="hint" id="rnPrefHint"></div>
       <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
@@ -6197,6 +6208,7 @@ function rnFillPrefs(p){
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
+               brief: p?.prefs?.brief || "full", reply: p?.yours?.reply || "",
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
                color: p?.prefs?.color || ""};
@@ -6271,6 +6283,8 @@ function rnFillPrefsRest(p){
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.tests_in || "node";
   $("rnTestChange").value = p?.prefs?.test_change || "wait";
+  $("rnBrief").value = p?.prefs?.brief || "full";
+  $("rnReply").value = p?.yours?.reply || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
@@ -8965,12 +8979,14 @@ async function rnSubmit(){
   // With the node's group: nothing here restarts a session.
   const tests_in = $("rnDevTest").value || "node";
   const test_change = $("rnTestChange").value || "wait";
+  const brief = $("rnBrief").value || "full", reply = $("rnReply").value || "";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
-    || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change || devbuild !== rnPrefWas.devbuild
+    || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change || brief !== rnPrefWas.brief
+    || devbuild !== rnPrefWas.devbuild
     || report !== rnPrefWas.report;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
@@ -8978,7 +8994,7 @@ async function rnSubmit(){
   // Only the launch flags are worth interrupting a session for: the model and
   // the effort are read when claude starts, the author is read per commit.
   const launchChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
-  const prefChanged = launchChanged
+  const prefChanged = launchChanged || reply !== rnPrefWas.reply
     || git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
@@ -9020,7 +9036,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, nodes, build, test, gate, color,
-                              tests_in, test_change, devbuild, report,
+                              tests_in, test_change, brief, reply, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.

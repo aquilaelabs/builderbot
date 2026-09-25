@@ -3056,9 +3056,12 @@ ok(await page.$('#devSend'),
   // The Claude section holds the test-run setting too (25 Sep): what a
   // change asked for during a run does, saved with the rest of the dialog.
   ok(await page.$eval('#rnGateLabel', e => e.textContent) === 'Claude settings'
-     && await page.$eval('#rnTestChange', e => e.value === 'wait' && [...e.options].map(o => o.value).join() === 'wait,restart'),
-     'the dialog groups what Claude may do under Claude settings, with what a change does during a test run, waiting by default');
+     && await page.$eval('#rnTestChange', e => e.value === 'wait' && [...e.options].map(o => o.value).join() === 'wait,restart')
+     && await page.$eval('#rnBrief', e => e.value === 'full') && await page.$eval('#rnReply', e => e.value === ''),
+     'the dialog groups what Claude may do under Claude settings, with what a change does during a test run and how the briefing is written; replies are the person\'s own pick');
   await page.selectOption('#rnTestChange', 'restart');
+  await page.selectOption('#rnBrief', 'terse');
+  await page.selectOption('#rnReply', 'minimal');
   await page.selectOption('#rnGateDocker', 'deny');
   await page.click('#rnGo');
   // Read as the setting, not as the record's absence: a project on a node
@@ -3069,6 +3072,11 @@ ok(await page.$('#devSend'),
      '...and turning it back to deny there takes the grant back');
   ok(await page.evaluate(() => ((state?.projects || []).find(p => p.name === 'ep.silon') || {}).prefs?.test_change) === 'restart',
      'the test-run setting is saved with it');
+  ok(await page.evaluate(() => { const p = (state?.projects || []).find(p => p.name === 'ep.silon') || {};
+       return p.prefs?.brief === 'terse' && p.yours?.reply === 'minimal'; }),
+     '...and the briefing style with the project, the reply style with the person');
+  await page.evaluate(async () => { await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', brief: 'full', reply: '' }) }); });
   // ---- where the tests run (R48 step 3, moved by R68 step 6) -------------
   // The setting lives with the project's node and test command now, in its
   // settings dialog: it is the project's, and having it here meant somebody

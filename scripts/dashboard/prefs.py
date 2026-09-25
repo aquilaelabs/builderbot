@@ -57,6 +57,10 @@ TESTS_IN = ("node", "up", "only")
 # for the run, or ends it, lands, and the run starts again. Two house rules
 # used to disagree about this per project; it is a setting now (25 Sep).
 TEST_CHANGE = ("wait", "restart")
+# How the block a session reads is written: as the notebook has it, or
+# with the filler words dropped (preamble.terse), meaning kept. A project
+# setting, since the block is per project (the operator, 25 Sep).
+BRIEF = ("full", "terse")
 # Whether this project's sessions report BuilderBot's own problems with
 # `bb report` (reports.py): on everywhere by default, and off where the
 # project IS BuilderBot, whose sessions file those in its own tracker (the
@@ -105,7 +109,10 @@ def configure(*, write_json, state):
 # hashes and is not a session's to read, while this one is read by the
 # launcher at exec time so a respawn picks up a change. Nothing here is a
 # secret; a git author is on every commit by design.
-USER_CHOICES = {"model": MODELS, "effort": EFFORTS}
+# `reply`: how wordy Claude's replies to this person are on this project,
+# "" (Claude's own), normal or minimal. Theirs, not the project's: it is what
+# they read, and the notebook, commits and files are written as ever.
+USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("normal", "minimal")}
 USER_TEXT = {"git_name": 120, "git_email": 200}
 
 
@@ -272,6 +279,7 @@ def _clean(rec):
             "tests_in": _tests_in(rec),
             # During a test run, a change asked for: one of TEST_CHANGE.
             "test_change": rec.get("test_change") if rec.get("test_change") in TEST_CHANGE else "wait",
+            "brief": rec.get("brief") if rec.get("brief") in BRIEF else "full",
             # Claude may: Report BuilderBot bugs. Off takes `bb report` and
             # the rule that points at it away from this project's sessions.
             "report": "deny" if rec.get("report") == "deny" else "auto"}
@@ -328,7 +336,7 @@ def _nodes_of(rec):
 def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None,
-              test_change=None):
+              test_change=None, brief=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -392,6 +400,10 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if test_change not in TEST_CHANGE:
                 return {"error": f"test_change is one of {', '.join(TEST_CHANGE)}, not {test_change}"}
             cur["test_change"] = test_change
+        if brief is not None:
+            if brief not in BRIEF:
+                return {"error": f"brief is one of {', '.join(BRIEF)}, not {brief}"}
+            cur["brief"] = brief
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
@@ -399,7 +411,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
-                or cur["test_change"] != "wait"
+                or cur["test_change"] != "wait" or cur["brief"] != "full"
                 or cur["report"] != "auto"
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the

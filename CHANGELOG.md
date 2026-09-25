@@ -51,6 +51,8 @@
 - Starting a Claude session on a project with several nodes asks which node first, with what each has and how busy it is; a node that cannot start one is dead with its reason; the tab names the node (916f086)
 - Each session's firewall reaches its project's containers on the project's other nodes by their published ports, and a Mac, Windows or guest node of the project whole; a container coming up on one node is reachable from the other within a poll (agent 0.6.103) (8b239c5)
 - A project setting says what a change asked for during a test run does: waits until the run ends, or ends the run, lands and starts it again; the briefing tells each session the project's choice, and the settings dialog groups it with everything Claude may do under Claude settings (862b577)
+- A project's briefing can be terse: the rules, roadmap and bugs a session reads with their filler words dropped and meaning kept, off by default; bb preamble shows what is sent (93f856a)
+- Replies: each person picks on a project how wordy Claude's replies to them are, Claude's default, normal or minimal; the notebook, commits and files are written as ever (93f856a)
 
 ### Changed
 

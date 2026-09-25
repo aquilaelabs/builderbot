@@ -61,6 +61,24 @@ const setChange = mode => page.evaluate(async m => (await (await fetch('/api/pre
 await setChange('restart');
 ok(/may cut into the final test run only.*end that run by the pid in its lock.*Work still in progress on the ask in hand.*finishes first/s.test((await pre()).text),
    '...and, set the other way, that only the final run is interrupted and work in hand finishes first');
+// The asker's own reply style rides the block (a per-account setting on
+// the project, 25 Sep), and the project's briefing style drops the filler
+// words of every part but the live line: fewer bytes, code and names kept.
+const setPref = body => page.evaluate(async b => (await (await fetch('/api/prefs', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', ...b }) })).json()), body);
+ok(!/Replies to the person/.test(p.text), 'nothing is said about replies until the person sets it');
+await setPref({ reply: 'minimal' });
+const withReply = await pre();
+ok(/## Replies\n\nReplies to the person: minimal/.test(withReply.text) && (withReply.parts || []).some(x => x.name === 'replies'),
+   'set to minimal, the block says so in its own part');
+await setPref({ reply: '' });
+const full = await pre();
+await setPref({ brief: 'terse' });
+const tersed = await pre();
+ok(tersed.bytes < full.bytes * 0.85 && /Ask map before grepping/.test(tersed.text) && /bb map who-calls NAME/.test(tersed.text)
+   && /never holds reply/.test(tersed.text),
+   `terse drops the filler words and keeps the commands, the names and the words that turn a sentence (${tersed.bytes} of ${full.bytes} bytes)`);
+await setPref({ brief: 'full' });
 await setChange('wait');
 ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length === 2,
    'an obligation reaches a session once, as a rule, and not again from the briefing');
