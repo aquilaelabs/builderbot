@@ -1559,9 +1559,18 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .macros button svg,.tab .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
   vertical-align:-2px;margin-right:5px}
-.prefrow{display:flex;gap:10px;flex-wrap:wrap}
-.prefrow .pick{display:flex;gap:6px;align-items:center;
-  font:var(--f-note);color:var(--dim)}
+/* A group of picks (Claude may, Yours on this project, the new-project
+   dialog's): a grid of equal columns, each pick its label above its control
+   (the design language, Controls), so every select starts at the same x and
+   is the same width whatever its label says. The label was beside the
+   control before, and six labels of six lengths put six selects at six
+   positions with one label wrapping to three lines on a phone (the operator,
+   25 Sep). */
+.prefrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(11rem,1fr));
+  gap:var(--field-gap) 14px;max-width:var(--ctl-w)}
+.prefrow .pick{display:flex;flex-direction:column;gap:var(--label-gap);
+  font:var(--f-note);color:var(--dim);min-width:0}
+.prefrow .pick select,.prefrow .pick input{width:100%;max-width:100%}
 .veradd{margin-top:10px}
 .veradd>summary{color:var(--dim);font:var(--f-note);min-height:var(--tap)}
 @media(hover:hover){ .veradd>summary:hover{color:var(--ink)} }
@@ -4479,6 +4488,18 @@ const othersOn = p => withMe(p).filter(n => n !== state?.me);
 // on this box is the question somebody looking at the row is asking. Your
 // own is last and says so, so the other people, the part that is news, come
 // first.
+// The two maps behind those rows, fetched on their own when the revs token
+// `live` moves: a session starting, ending or turning to work shows within
+// a few seconds, where the status poll runs git for every project and
+// stays at fifteen (the operator, 25 Sep).
+async function liveRefresh(){
+  let j;
+  try{ j = await (await fetch("/api/live")).json(); }catch(e){ return; }
+  if (!state || !j || j.error) return;
+  state.claude_with = j.claude_with || {};
+  state.claude_busy = j.claude_busy || {};
+  drawProjects(state.projects);
+}
 function sessionRows(proj){
   const all = withMe(proj);
   if (!all.length) return "";
@@ -10049,6 +10070,9 @@ function setBadge(n){
 // Both are facts this card displays and neither is a fact it owns, which is
 // exactly the shape that used to go stale.
 onRev("prefs", () => refresh());
+// Who has a session where, and whether it is working: the light fetch, so
+// the dot beside a name follows a session within seconds.
+onRev("live", () => liveRefresh());
 // The controller's own settings, which the tab draws out of `state`: another
 // window saved, or `bb` wrote the file. The server has published this token
 // since the store was built and nothing watched it, so the tab that owns the
