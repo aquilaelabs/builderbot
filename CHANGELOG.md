@@ -90,6 +90,8 @@
 - The dashboard's hints, tooltips, confirmations and empty states say what happens when you act, in one line: mechanics, history and internal names are gone from the screen (e50d054)
 - Under a project, who has a Claude session there is a line per name with a dot in front, lit while that session is working on a prompt, instead of one sentence naming them all (0e13a1c)
 - Containers BuilderBot did not build from a project (the daemon's own, ones written on the Docker tab, and whose they are) have a module of their own, containers.py, cut out of devapp.py (8f78e56)
+- The project settings and new-project dialogs lay their Claude may picks, model and effort, and commit name and email out as one grid with labels above, equal widths, two columns at a desk and one on a phone (cc7a116)
+- The dot beside a session's name follows it within seconds: a node reports its sessions the moment one changes, and the page fetches the two small maps behind the rows when the revs token says they moved, leaving the status poll at fifteen seconds (47c77d1)
 
 ### Removed
 

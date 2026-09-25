@@ -642,6 +642,12 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
     es => es.map(e => ({ text: e.textContent.trim(), on: e.querySelector('.sdot').classList.contains('on') })));
   ok(rows.length === 2 && rows[0].text === 'alice' && rows[0].on && rows[1].text === 'test (you)' && !rows[1].on,
      `who has a session here is one line per name, the working one's dot lit, yours last (${JSON.stringify(rows)})`);
+  // ...and the two maps come back on their own light fetch when the revs
+  // token says they moved, without waiting for the status poll.
+  await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; drawProjects(state.projects); });
+  await page.evaluate(() => liveRefresh());
+  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessone', e => /test/.test(e.textContent)),
+     'liveRefresh reads who is here from /api/live and draws the rows again');
   await page.evaluate(w => { state.claude_with = w; state.claude_busy = {}; drawProjects(state.projects); }, were);
   await freePoll(page);
 }

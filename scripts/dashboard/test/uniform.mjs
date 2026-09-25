@@ -1109,7 +1109,7 @@ for (const kind of kinds){
 // polls, the layout save an open makes, and the node list a picker fills
 // are the allowed noise.
 {
-  const POLLS = new Set(['/api/status', '/api/revs', '/api/presence', '/api/layout', '/api/v1/nodes']);
+  const POLLS = new Set(['/api/status', '/api/revs', '/api/presence', '/api/layout', '/api/v1/nodes', '/api/live']);
   await page.evaluate(() => { for (const t of [...tabs]) if (t.kind !== 'term') dropTab(t.id); });
   await page.evaluate(() => { window.__f = {}; const f = window.fetch;
     window.fetch = (...a) => { const u = String(a[0]).split('?')[0]; window.__f[u] = (window.__f[u] || 0) + 1; return f(...a); }; });

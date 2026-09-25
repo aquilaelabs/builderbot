@@ -942,6 +942,31 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     await beat([{ uid: owner, email: '' }]);
     ok(await onNodes() === before,
        '...and a heartbeat saying that home holds no credential takes it off again');
+    // The node's sessions, sent the moment one changes rather than on the
+    // heartbeat's turn (the operator, 25 Sep): who has a session where and
+    // whether it is working, read back cheaply from /api/live, with the
+    // revs token `live` moving so the page knows to ask.
+    {
+      const tell = (title) => fetch(URL.replace(/\/$/, '') + '/api/v1/agent/sessions',
+        { method: 'POST', headers: { Authorization: 'Bearer ' + nodeTok, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessions: [{ name: `${owner}~claude-alpha`, attached: true, cwd: '/workspace/alpha',
+                                              created: 1, title }] }) });
+      const get = async p => (await fetch(URL.replace(/\/$/, '') + p, { headers: auth })).json();
+      const live = () => get('/api/live');
+      const tok = async () => (await get('/api/revs?p=')).live;
+      const t0 = await tok();
+      await tell('◐ Reading the tests');
+      const busy = await live();
+      ok((busy.claude_with.alpha || []).includes('test') && (busy.claude_busy.alpha || []).includes('test') && await tok() !== t0,
+         `a node says its sessions changed and /api/live shows the session working at once, the revs token moving with it (${JSON.stringify(busy).slice(0, 80)})`);
+      await tell('Claude Code');
+      const idle = await live();
+      ok((idle.claude_with.alpha || []).includes('test') && !(idle.claude_busy.alpha || []).includes('test'),
+         '...and waiting when its title says so');
+      await fetch(URL.replace(/\/$/, '') + '/api/v1/agent/sessions',
+        { method: 'POST', headers: { Authorization: 'Bearer ' + nodeTok, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessions: [] }) });
+    }
     await beat([{ uid: owner, email: 'tester@example.com' }]);
     ok((await api()).email === 'tester@example.com', '...both ways, as the machine changes');
 

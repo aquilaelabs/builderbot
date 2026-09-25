@@ -1945,20 +1945,7 @@ def heartbeat(nid, sample, addr, running=0):
     # (a Claude session reports its state through the title). Whitelisted
     # like everything a node says; absent when the agent did not send it.
     if isinstance(s.get("sessions"), list):
-        rep["sessions"] = []
-        for row in s["sessions"][:64]:
-            if not isinstance(row, dict):
-                continue
-            name = re.sub(r"[^A-Za-z0-9_~.:-]", "", str(row.get("name") or ""))[:120]
-            if not name:
-                continue
-            rep["sessions"].append({
-                "name": name, "attached": bool(row.get("attached")),
-                "cwd": str(row.get("cwd") or "")[:300],
-                # When it started (an agent from 0.5.85 on; 0 before), so a
-                # toolchain installed since can say it is not on its PATH.
-                "created": _mb(row.get("created")) or 0,
-                "title": str(row.get("title") or "")[:200]})
+        rep["sessions"] = _session_rows(s["sessions"])
     for role, free in clean["stores"].items():
         if role in rep.get("stores", {}):
             rep["stores"][role]["free_mb"] = free
@@ -1970,6 +1957,46 @@ def heartbeat(nid, sample, addr, running=0):
     # Every sample moves the numbers on the row, and the row is the only
     # place they are shown: one repaint per node per poll is the cost.
     _bump()
+
+
+def _session_rows(rows):
+    """A node's tmux sessions as the row keeps them (roadmap #24): name,
+    whether a client is attached, the active pane's directory and title (a
+    Claude session reports its state through the title). Whitelisted like
+    everything a node says."""
+    out = []
+    for row in rows[:64]:
+        if not isinstance(row, dict):
+            continue
+        name = re.sub(r"[^A-Za-z0-9_~.:-]", "", str(row.get("name") or ""))[:120]
+        if not name:
+            continue
+        out.append({
+            "name": name, "attached": bool(row.get("attached")),
+            "cwd": str(row.get("cwd") or "")[:300],
+            # When it started (an agent from 0.5.85 on; 0 before), so a
+            # toolchain installed since can say it is not on its PATH.
+            "created": _mb(row.get("created")) or 0,
+            "title": str(row.get("title") or "")[:200]})
+    return out
+
+
+def sessions_report(nid, rows):
+    """A node's sessions as they are right now, sent the moment one changes
+    (a session starting, ending, or turning from waiting to working) rather
+    than on the poll's turn: what the dot beside each name on a project's
+    row is drawn from (the operator, 25 Sep). The same rows the heartbeat
+    carries, so nothing reads them two ways."""
+    if not isinstance(rows, list):
+        return {"error": "sessions is a list"}
+    n = node(nid)
+    if not n:
+        return {"error": "no such node"}
+    rep = n.get("reported") or {}
+    rep["sessions"] = _session_rows(rows)
+    _exec("UPDATE nodes SET reported = ? WHERE id = ?", (json.dumps(rep), nid))
+    _bump()
+    return {"ok": True, "sessions": len(rep["sessions"])}
 
 
 def samples(nid):

@@ -1718,6 +1718,17 @@ def claude_busy(sessions):
     return out
 
 
+def live_token():
+    """One short token for who has a Claude session where and whether it
+    is working, so /api/revs can say "changed" and the page fetch /api/live
+    only then: the dot beside a name follows a session within seconds
+    without the status poll, which runs git for every project, going any
+    faster (the operator, 25 Sep)."""
+    rows = sorted((s["name"], (s.get("claude") or {}).get("state") or "")
+                  for s in tmux_sessions() + node_tmux_sessions())
+    return hashlib.sha1(json.dumps(rows).encode()).hexdigest()[:12]
+
+
 def _term_arg(rest):
     """The `arg` a /term request carries, with any owner stamp a browser sent
     taken off. "" when there is none."""
@@ -2883,6 +2894,9 @@ def revisions(who=None, projects=None):
         # §13): the views that show it watch this and fetch their own.
         "nodes": 0 if NODES_OK else nodes.rev(),
         "jobs": 0 if NODES_OK else nodes.jobs_rev(),
+        # Who has a session where, and whether it is working: the project
+        # rows fetch /api/live when this moves.
+        "live": live_token(),
     }
     # Per project, for the views that are per project.
     for n in names:
@@ -3145,6 +3159,7 @@ def snapshot(who):
 # its scripts) stay in _get, in front of the credential check (R60).
 GET_ROUTES = (
     ("prefix", "/api/revs", "_get_revs"),
+    ("exact", "/api/live", "_get_live"),
     ("prefix", "/api/trace", "_get_trace"),
     ("prefix", "/api/status", "_get_status"),
     ("prefix", "/api/findings", "_get_findings"),
@@ -4082,6 +4097,14 @@ class Handler(BaseHTTPRequestHandler):
     def _get_status(self):
         """GET /api/status."""
         return self._json(snapshot(self._who()))
+
+    def _get_live(self):
+        """GET /api/live: who has a Claude session on each project and which
+        of them are working, the two maps the status payload also carries,
+        alone and cheap. Fetched when the revs token `live` moves."""
+        sessions = tmux_sessions() + node_tmux_sessions()
+        return self._json({"claude_with": claude_sessions(sessions),
+                           "claude_busy": claude_busy(sessions)})
 
     def _get_findings(self):
         """GET /api/findings.
@@ -5684,6 +5707,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return None
             return self._json(j)
+        elif verb == "sessions":
+            # The node's sessions as they are now, sent when one changed
+            # rather than on the poll's turn.
+            r = nodes.sessions_report(nid, req.get("sessions"))
         elif verb == "log":
             r = nodes.job_log(nid, field(req, "job"), req.get("chunks"),
                               req.get("step"))
