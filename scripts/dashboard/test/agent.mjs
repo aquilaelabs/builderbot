@@ -2222,6 +2222,30 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
        '...and the recipe then ran as the job account, where the stub npm stopped it before a download');
   }
 
+  // ---- test workers: the node's setting, in every job's environment (R81) --
+  // Set on the row, it reaches node.json by the next hello and every job
+  // there carries it as BB_TEST_WORKERS; unset, the node's own cores do.
+  {
+    const cores = (await import('node:os')).cpus().length;
+    const runEcho = async () => {
+      const j = await api('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['sh', '-c', 'echo W=$BB_TEST_WORKERS'] });
+      const fin = await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${j.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      return (fin?.log || '').match(/W=(\d+)/)?.[1];
+    };
+    const set = await api('/api/v1/nodes', { action: 'test-workers', id: minted.id, workers: 3 });
+    const kept = await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).test_workers === 3 ? true : null, 30000, 500);
+    ok(set.ok && set.workers === 3 && kept && await runEcho() === '3',
+       'test workers set on the node reach node.json and every job there as BB_TEST_WORKERS');
+    await api('/api/v1/nodes', { action: 'test-workers', id: minted.id, workers: 0 });
+    await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).test_workers === 0 ? true : null, 30000, 500);
+    ok(await runEcho() === String(cores), `...and 0 means the machine's own cores (${cores})`);
+    ok(/whole number/.test((await api('/api/v1/nodes', { action: 'test-workers', id: minted.id, workers: 'lots' })).error || ''),
+       '...and a number that is not one is refused');
+  }
+
   // ---- the idle rule reaches the node and stays there (idle.py) -----------
   // The controller's setting rides the hello reply into node.json, where the
   // agent enforces it on its own tmux, controller up or down. A change is

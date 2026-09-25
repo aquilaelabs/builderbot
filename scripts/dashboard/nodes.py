@@ -1335,6 +1335,40 @@ def session_net_nudge():
             ask_hello(n["id"])
 
 
+def node_test_workers(principal, node_id, n):
+    """How many workers a test run on this node may use (R81): 0 means the
+    node's own core count. Handed to every test job there as
+    BB_TEST_WORKERS, for the project's test command and BuilderBot's own
+    harness to read. An administrator's, like the rest of the config plane;
+    the node hears it by a fresh hello."""
+    node_ = node(node_id)
+    if not node_:
+        return {"error": "no such node"}
+    if node_["kind"] != "agent":
+        return {"error": "only an agent node runs tests"}
+    try:
+        want = int(n)
+    except (TypeError, ValueError):
+        return {"error": "test workers is a whole number from 0 (the node's cores) to 256"}
+    if not 0 <= want <= 256:
+        return {"error": "test workers is a whole number from 0 (the node's cores) to 256"}
+    conf = dict(node_.get("config") or {})
+    if want:
+        conf["test_workers"] = want
+    else:
+        conf.pop("test_workers", None)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-test-workers", {"workers": want})
+    ask_hello(node_id)
+    return {"ok": True, "workers": want}
+
+
+def test_workers(node_id):
+    """The setting on a node, 0 when the node's cores are the answer."""
+    v = ((node(node_id) or {}).get("config") or {}).get("test_workers")
+    return v if isinstance(v, int) and v > 0 else 0
+
+
 def turn_limit(node_id):
     """The limit set on a node, 0 when none is."""
     n = node(node_id)
@@ -1902,6 +1936,9 @@ def hello(nid, census, addr, version="", digest="", running=None):
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
+            # How many workers a test run here may use (R81): 0 for the
+            # node's cores. Into every test job's environment there.
+            "test_workers": test_workers(nid),
             # A fresh token for each Claude session alive on this node (R27).
             # A session's token slides forward while it is TALKING, because
             # every answer it gets carries a renewal; one that sits idle past

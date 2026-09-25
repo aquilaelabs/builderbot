@@ -2963,6 +2963,13 @@ BB_TEST_TIMING=1 bb dashboard test 2>&1 | tee /tmp/run.log
 bb tests ingest /tmp/run.log
 ```
 
+How many workers a test run may use on a node is the node's to say: **Test
+workers** in the Sessions section of its row on the Nodes tab, 0 for the
+machine's cores, handed to every test job there as `BB_TEST_WORKERS` for
+the project's own test command to read (`pytest -n`, `--test-concurrency`,
+`--max-workers`) and read by this harness to run its suites across that
+many workers at once (roadmap R81).
+
 Ingesting is the CLI's and deliberately not an endpoint: every body the server
 takes is capped at 64kB and a run log is a couple of hundred, so an action for
 it would answer "body too large" for the only input it was for. It also

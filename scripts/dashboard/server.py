@@ -1675,60 +1675,6 @@ def account_names():
     return {u.get("uid"): n for n, u in users.load()["users"].items() if u.get("uid")}
 
 
-def claude_sessions(sessions):
-    """{project: [account name, ...]} for every Claude session running.
-
-    Derived from the session NAMES rather than kept in a file. It used to be a
-    record, because one conversation per project meant the single name
-    `claude-<proj>` could not say whose it was. More than one is allowed now
-    (roadmap #24) and each carries its account's prefix, so the name answers
-    it, and a record that could go stale, be orphaned by a deleted account,
-    or disagree with tmux stopped being worth keeping.
-
-    The unprefixed name is the OWNER's, by the same rule as their home and
-    their shells.
-    """
-    by_uid = account_names()
-    owner = users.owner_name()
-    out = {}
-    for s in sessions:
-        base = tmux_base(s["name"])
-        if not base.startswith("claude-"):
-            continue
-        stem = base[len("claude-"):]
-        who = by_uid.get(tmux_owner(s["name"]), owner)
-        if who:
-            out.setdefault(stem, []).append(who)
-    return out
-
-
-def claude_busy(sessions):
-    """{project: [account name, ...]} for the Claude sessions mid-prompt, by
-    their pane title (claude_state): the row's dot beside each name."""
-    by_uid = account_names()
-    owner = users.owner_name()
-    out = {}
-    for s in sessions:
-        base = tmux_base(s["name"])
-        if not base.startswith("claude-") or (s.get("claude") or {}).get("state") != "working":
-            continue
-        who = by_uid.get(tmux_owner(s["name"]), owner)
-        if who:
-            out.setdefault(base[len("claude-"):], []).append(who)
-    return out
-
-
-def live_token():
-    """One short token for who has a Claude session where and whether it
-    is working, so /api/revs can say "changed" and the page fetch /api/live
-    only then: the dot beside a name follows a session within seconds
-    without the status poll, which runs git for every project, going any
-    faster (the operator, 25 Sep)."""
-    rows = sorted((s["name"], (s.get("claude") or {}).get("state") or "")
-                  for s in tmux_sessions() + node_tmux_sessions())
-    return hashlib.sha1(json.dumps(rows).encode()).hexdigest()[:12]
-
-
 def _term_arg(rest):
     """The `arg` a /term request carries, with any owner stamp a browser sent
     taken off. "" when there is none."""
@@ -2896,7 +2842,7 @@ def revisions(who=None, projects=None):
         "jobs": 0 if NODES_OK else nodes.jobs_rev(),
         # Who has a session where, and whether it is working: the project
         # rows fetch /api/live when this moves.
-        "live": live_token(),
+        "live": projsessions.live_token(),
     }
     # Per project, for the views that are per project.
     for n in names:
@@ -3120,10 +3066,10 @@ def snapshot(who):
         # in a worktree of their own, so this is a list and it is information
         # rather than a refusal: the row says who is here and nothing is
         # greyed for it. The page decides how to word "you and alice".
-        "claude_with": claude_sessions(sessions),
+        "claude_with": projsessions.with_(sessions),
         # ...and which of them are working on a prompt right now, for the
         # dot beside each name (the operator, 24 Sep).
-        "claude_busy": claude_busy(sessions),
+        "claude_busy": projsessions.busy(sessions),
         # This account's own name, so the row can say "you and alice" rather
         # than reading your own name back at you.
         "me": (who or {}).get("name", ""),
@@ -4103,8 +4049,8 @@ class Handler(BaseHTTPRequestHandler):
         of them are working, the two maps the status payload also carries,
         alone and cheap. Fetched when the revs token `live` moves."""
         sessions = tmux_sessions() + node_tmux_sessions()
-        return self._json({"claude_with": claude_sessions(sessions),
-                           "claude_busy": claude_busy(sessions)})
+        return self._json({"claude_with": projsessions.with_(sessions),
+                           "claude_busy": projsessions.busy(sessions)})
 
     def _get_findings(self):
         """GET /api/findings.
@@ -4858,6 +4804,10 @@ class Handler(BaseHTTPRequestHandler):
             # How many Claude sessions on the node may work at once; 0 for
             # no limit. An administrator's, like the rest of this handler.
             r = nodes.node_turn_limit(self._principal(), nid, req.get("limit"))
+        elif act == "test-workers":
+            # How many workers a test run on the node may use (R81); 0 for
+            # its cores. An administrator's, like the rest.
+            r = nodes.node_test_workers(self._principal(), nid, req.get("workers"))
         elif act == "session-net":
             # Whether each session on the node reaches only its own project's
             # containers (R79). An administrator's, like the rest.

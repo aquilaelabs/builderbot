@@ -4473,42 +4473,6 @@ const myTmux = s => (state?.tmux_prefix || "") + s;
 // The account holding this project's Claude session, when it is not us. The
 // button greys and wears their name; the refusal itself is at the /term proxy,
 // because a rule only the page honors is a suggestion (roadmap #26).
-// Who else has a conversation open on this project. Not a refusal any more
-// (roadmap #24): they each work in a tree of their own, so the row says who is
-// here rather than taking the button away. What IS refused is a second session
-// on one Anthropic account, and that refusal comes from the server when the
-// terminal is opened, in its own words.
-const withMe = p => (state?.claude_with || {})[p] || [];
-// The others, for the places that are about somebody else being here.
-const othersOn = p => withMe(p).filter(n => n !== state?.me);
-// Who has a conversation open here, one line each with a dot in front:
-// bright while that session is working on a prompt, dim while it waits (the
-// operator, 24 Sep, in place of one sentence naming them all). BuilderBot
-// account names, not the Anthropic logins behind them: whose session it is
-// on this box is the question somebody looking at the row is asking. Your
-// own is last and says so, so the other people, the part that is news, come
-// first.
-// The two maps behind those rows, fetched on their own when the revs token
-// `live` moves: a session starting, ending or turning to work shows within
-// a few seconds, where the status poll runs git for every project and
-// stays at fifteen (the operator, 25 Sep).
-async function liveRefresh(){
-  let j;
-  try{ j = await (await fetch("/api/live")).json(); }catch(e){ return; }
-  if (!state || !j || j.error) return;
-  state.claude_with = j.claude_with || {};
-  state.claude_busy = j.claude_busy || {};
-  drawProjects(state.projects);
-}
-function sessionRows(proj){
-  const all = withMe(proj);
-  if (!all.length) return "";
-  const busy = new Set((state?.claude_busy || {})[proj] || []);
-  const names = [...all].sort((a, b) => (a === state?.me) - (b === state?.me));
-  return names.map(n => `<div class="sessone"><span class="sdot${busy.has(n) ? " on" : ""}" title="${
-    busy.has(n) ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(n)}${
-    n === state?.me ? " (you)" : ""}</div>`).join("");
-}
 // A project this account can see and has not taken on (roadmap #27). An
 // administrator is shown every project: hiding one from somebody who
 // administers the box only sends them looking for it, and works on the ones

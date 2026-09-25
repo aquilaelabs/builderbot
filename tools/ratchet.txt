@@ -3,6 +3,6 @@
 # writes the current counts); one that has to grow a file for clarity raises
 # it here and says why in the commit. The house rule growth; roadmap R77.
 scripts/dashboard/index.html 10452
-scripts/dashboard/server.py 8193
+scripts/dashboard/server.py 8170
 scripts/bb 7836
 scripts/dashboard/devapp.py 4176

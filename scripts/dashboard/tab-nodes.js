@@ -426,10 +426,22 @@ function nodeTurnsRow(n){
   const now = `${t.working || 0} working now${t.limit ? ` of ${t.limit}` : ""}${
     t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
   const inp = `ndTurns-${n.id}`;
+  // ...and how many workers a test run here may use (R81): the node's
+  // cores when 0, handed to every test job as BB_TEST_WORKERS.
+  const tw = String(n.config?.test_workers || 0);
+  if (c.draft.workersText === undefined || c.draft.workersFrom !== tw){
+    c.draft.workersText = tw; c.draft.workersFrom = tw;
+  }
+  const winp = `ndWorkers-${n.id}`;
   return `<div class="logdays setrow col">
       ${lbl(inp, "Claude sessions working at once", "a prompt past it waits for a turn instead of starting. 0 is no limit")}
       <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
         value="${esc(c.draft.turnsText)}">
+    </div>
+    <div class="logdays setrow col">
+      ${lbl(winp, "Test workers", "how many workers a test run here may use, as BB_TEST_WORKERS in its environment. 0 is this machine's cores")}
+      <input id="${esc(winp)}" data-k="workers" type="number" min="0" max="256" step="1" inputmode="numeric"
+        value="${esc(c.draft.workersText)}">
     </div>
     <div class="actbar">
       <span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span>
@@ -1356,6 +1368,15 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           said += sw.checked ? "; sessions started here from now on reach only their own project's containers"
                              : "; sessions started here from now on share its network";
         }
+        const wi = box.querySelector('[data-k="workers"]');
+        const wWas = String(nodesList.find(x => x.id === id)?.config?.test_workers || 0);
+        if (wi && String(Number(wi.value) || 0) !== wWas){
+          const k = await nodeAct({action: "test-workers", id, workers: Number(wi.value) || 0});
+          if (k.error) return;
+          if (c && c.draft) c.draft.workersText = undefined;
+          said += k.workers ? `; test runs here may use ${k.workers} worker${k.workers === 1 ? "" : "s"}`
+                            : "; test runs here may use every core";
+        }
         const ra = box.querySelector('[data-k="rootasks"]');
         const raWas = !nodesList.find(x => x.id === id)?.config?.no_root;
         if (ra && ra.checked !== raWas){
@@ -1445,6 +1466,12 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };
       ti.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.turnsText = ti.value;
                            nodesFocus = {id, key: "turns"}; };
+    }
+    const wi = box.querySelector('[data-k="workers"]');
+    if (wi){
+      wi.onfocus = () => { nodesFocus = {id, key: "workers"}; };
+      wi.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.workersText = wi.value;
+                           nodesFocus = {id, key: "workers"}; };
     }
   });
   // The field that had the caret before this repaint gets it back: the

@@ -95,7 +95,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.6.99"
+AGENT_VERSION = "0.6.100"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1611,6 +1611,10 @@ def sdk_env(state, who=None):
     # _apply_runner) names the same path, so the archive and the reader
     # agree without either being configured by hand.
     env["BB_CI_LOG_DIR"] = ci_log_dir(state)
+    # How many workers a test run here may use (R81): the node's setting,
+    # else its cores. A project's test command reads it as it likes;
+    # BuilderBot's own harness shards its suites across it.
+    env["BB_TEST_WORKERS"] = str(state.get("test_workers") or os.cpu_count() or 1)
     return env
 
 
@@ -3414,6 +3418,13 @@ class Agent:
                 self.state["session_idle_minutes"] = im
                 save_state(self.state)
                 log(f"sessions: idle rule is {im} minute(s)" if im else "sessions: no idle rule")
+            # How many workers a test run here may use (R81), kept in
+            # node.json the same way; 0 is this machine's cores.
+            tw = r.get("test_workers")
+            if isinstance(tw, int) and tw >= 0 and tw != self.state.get("test_workers", 0):
+                self.state["test_workers"] = tw
+                save_state(self.state)
+                log(f"tests: {tw} worker(s) per run" if tw else "tests: every core per run")
             # Fresh credentials for the Claude sessions alive here (R27). A
             # session that is talking slides its own token forward on every
             # answer it gets; one sitting idle has nothing to slide it, and a
