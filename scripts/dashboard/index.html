@@ -7235,7 +7235,12 @@ async function signIn(node){
     return;
   }
   if (j.error) notify(j.error, true);
-  if (b && document.body.contains(b)){ b.disabled = false; b.textContent = "Sign in"; }
+  // The button on the page now, not the one pressed: a repaint while the
+  // answer was on its way replaced it, and the copy it drew is whatever the
+  // template says, so both are put back (B248).
+  const b2 = $("bSignIn");
+  if (b2 && b2.textContent === "Starting…"){ b2.disabled = false; b2.textContent = "Sign in"; }
+  else if (b && document.body.contains(b)){ b.disabled = false; b.textContent = "Sign in"; }
   refresh();
 }
 
