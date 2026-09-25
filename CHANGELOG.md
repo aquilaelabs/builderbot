@@ -9,6 +9,7 @@
 ### Changed
 
 - BuilderBot is 0.7: the compatibility window moved, so a node whose agent is from 0.6 is held until Update agent on its row, which the bell and the Nodes tab say (a32a0a5)
+- The Questions pick under Yours on this project gains more, for a person who wants the judgment calls put to them, and reads more, Claude's default, fewer, rarely; the Replies pick is Claude's default or minimal, the normal choice having said nothing (0d3a6f0)
 
 ### Removed
 

@@ -114,8 +114,8 @@ def configure(*, write_json, state):
 # they read, and the notebook, commits and files are written as ever.
 # `asks`: how often Claude puts a question to this person on this project,
 # "" (Claude's own), fewer or rarely. Theirs too: it is their attention.
-USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("normal", "minimal"),
-                "asks": ("fewer", "rarely")}
+USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("minimal",),
+                "asks": ("more", "fewer", "rarely")}
 USER_TEXT = {"git_name": 120, "git_email": 200}
 
 

@@ -75,6 +75,10 @@ await setPref({ reply: '', asks: 'rarely' });
 const asked = await pre();
 ok(/## Replies\n\nQuestions to the person: rarely/.test(asked.text) && !/Replies to the person/.test(asked.text),
    'how often to ask is the person\'s own pick too, said in the same part, on its own when replies are default');
+await setPref({ asks: 'more' });
+const more = await pre();
+ok(/Questions to the person: more/.test(more.text) && /before a judgment call/.test(more.text),
+   '...and more, for a person who wants the judgment calls put to them (the operator, 25 Sep)');
 await setPref({ asks: '' });
 const full = await pre();
 await setPref({ brief: 'terse' });

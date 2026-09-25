@@ -140,9 +140,12 @@ REPLY_SAID = {
     "minimal": ("Replies to the person: minimal, their setting. Answer in as few "
                 "words as carry it: the outcome, what to look at, what is left; no preamble, "
                 "no recap of the work. The notebook, commits, code and files are written as ever."),
-    "normal": "",
 }
 ASKS_SAID = {
+    "more": ("Questions to the person: more, their setting. Check with them before a "
+             "judgment call that shapes the work (which of two readings, which approach, "
+             "whether to widen or narrow what was asked), in one message naming the "
+             "options and which you would take; make only the routine calls yourself."),
     "fewer": ("Questions to the person: fewer, their setting. Make the routine calls "
               "yourself and say which you made; ask only where two readings of the ask "
               "would lead to materially different work."),
