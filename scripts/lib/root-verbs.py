@@ -28,6 +28,15 @@ def status():
 def run():
     post = lambda body: bbapi.call("/api/phone", body, auth=os.environ["BB_PHONE_AUTH"])  # noqa: E731
 
+    # A file under /tmp: on a sandbox node a session's /tmp is its own view
+    # (bb-session), and the root command runs outside it, so the file is not
+    # there and the command failed with a bare exit code (B253). Said before
+    # the ask, since the person allowing it cannot see it either.
+    for a in sys.argv[2:]:
+        if a.startswith(("/tmp/", "/var/tmp/", "/dev/shm/")) and os.path.exists(a):
+            print(f"[builderbot] note: {a} is under a directory that is this session's own view on a "
+                  "sandbox node; the root command runs outside it and will not find the file there. "
+                  "A path under the project tree is seen by both.", file=sys.stderr)
     r = post({"action": "ask", "kind": "root", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[2:],
               "project": os.environ.get("BB_PHONE_PROJECT", "")})
     if r.get("error"):
