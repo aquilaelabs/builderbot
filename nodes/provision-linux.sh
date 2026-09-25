@@ -1832,7 +1832,16 @@ gpu_state() {
     chmod 0644 "$GPU_STATE" 2>/dev/null || true
 }
 gpu_card() {
-    lspci -nn 2>/dev/null | grep -i 'nvidia' | grep -iE 'vga compatible|3d controller' | head -1 | sed 's/^[^:]*: //'
+    local card dev
+    card="$(lspci -nn 2>/dev/null | grep -i 'nvidia' | grep -iE 'vga compatible|3d controller' | head -1 | sed 's/^[^:]*: //')"
+    [ -n "$card" ] && { printf '%s\n' "$card"; return 0; }
+    # No pciutils: sysfs says the same without the name, a display-class
+    # device (0x03) of NVIDIA's vendor id (0x10de).
+    for dev in /sys/bus/pci/devices/*; do
+        [ "$(cat "$dev/vendor" 2>/dev/null)" = "0x10de" ] || continue
+        case "$(cat "$dev/class" 2>/dev/null)" in 0x03*) printf 'NVIDIA device [10de:%s] at %s\n' "$(cut -c3- "$dev/device")" "$(basename "$dev")"; return 0 ;; esac
+    done
+    return 0
 }
 cmd_gpu() {
     local card

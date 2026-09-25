@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.106"
+AGENT_VERSION = "0.7.107"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1735,6 +1735,17 @@ def _gpu_card():
         low = line.lower()
         if "nvidia" in low and ("vga compatible" in low or "3d controller" in low):
             return line.split(": ", 1)[-1].strip()[:120]
+    # No pciutils (a minimal Rocky): sysfs says the same without the name,
+    # a display-class device (0x03) of NVIDIA's vendor id (0x10de).
+    try:
+        for dev in sorted(os.listdir("/sys/bus/pci/devices")):
+            base = f"/sys/bus/pci/devices/{dev}"
+            with open(f"{base}/vendor") as f, open(f"{base}/class") as g, open(f"{base}/device") as h:
+                vendor, cls, did = f.read().strip(), g.read().strip(), h.read().strip()
+            if vendor == "0x10de" and cls.startswith("0x03"):
+                return f"NVIDIA device [10de:{did[2:]}] at {dev}"
+    except OSError:
+        pass
     return ""
 
 
