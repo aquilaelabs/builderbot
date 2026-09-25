@@ -256,5 +256,8 @@ by hand cost four commands and still could not see the failed builds.
   - The weekly Monday build is uncached by design and is always a full pull;
     a manual dispatch is cached unless its `no_cache` box is ticked.
 
-`README.md` holds the full configuration reference and a file-by-file layout;
-`docs/unraid.md` is the host-side walkthrough.
+`README.md` holds the configuration reference and the `bb` command reference;
+`docs/install.md` is the setup checklist, `docs/unraid.md` the host-side
+walkthrough, `docs/how-it-works.md` the explanatory prose, `docs/decisions.md`
+the design decisions with their dates and reasons, and `docs/layout.md` the
+file-by-file layout.

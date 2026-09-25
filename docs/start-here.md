@@ -1,8 +1,8 @@
 # Start here
 
 You have an account on somebody's BuilderBot. This page is the whole of what
-you need to do something useful with it; the README is the reference, and it
-is long because it is a reference.
+you need to do something useful with it; [how-it-works.md](how-it-works.md)
+is the reference, and it is long because it is a reference.
 
 ## What it is
 

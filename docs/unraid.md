@@ -497,33 +497,11 @@ than a gate.
 
 ## First-run checks
 
-```bash
-docker logs -f BuilderBot        # banner → hooks → "registering runner" → ready
-docker exec -it BuilderBot bb doctor
-```
-
-Every line should read `[ok]`. If it warns about no saved login:
-
-```bash
-docker exec -it BuilderBot bb login
-```
-
-Confirm the runner arrived: GitHub → repo → *Settings* → *Actions* →
-*Runners* → **builderbot** shows *Idle*.
+The first boot, what `bb doctor` checks and how each person signs in to Claude: [install.md, step 7](install.md#7-first-boot).
 
 ## Daily use
 
-```bash
-docker exec -it BuilderBot claude                          # Claude Code
-docker exec -it -w /workspace/FreshBoot BuilderBot claude  # in a project
-docker exec -it BuilderBot bb shell                        # shell as builder
-docker exec -it BuilderBot bb status                       # overview
-```
-
-`claude` and `bb` re-exec themselves as the `builder` user, because
-`docker exec` (and the WebUI **Console** button) land you in as root, which
-would lose your saved Claude login and write root-owned files into your
-shares. A bare `docker exec -it BuilderBot bash` *is* root; use `bb shell`.
+Opening a session, a shell and the status line, adding a project, and updating: [install.md, step 8](install.md#8-daily-use-and-updating).
 
 ### Playwright
 
