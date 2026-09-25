@@ -2128,7 +2128,7 @@ _TRACE = collections.deque(maxlen=6000)
 _trace_lock = threading.Lock()
 
 
-def trace_note(handler):
+def trace_note(handler, ms=0):
     # A note beside the request, never a fault in it: whatever goes wrong
     # here is swallowed, since the answer has already been sent. Broad
     # because it runs on every request and must never become one's 500;
@@ -2141,7 +2141,7 @@ def trace_note(handler):
         by = ("session" if who.get("session") else "agent" if path.startswith("/api/v1/agent")
               else "user" if who.get("name") else "anon")
         with _trace_lock:
-            _TRACE.append((time.time(), handler.command, path, keys, by, ua))
+            _TRACE.append((time.time(), handler.command, path, keys, by, ua, int(ms)))
     except Exception as e:                                  # noqa: BLE001
         if not _trace_said:
             _trace_said.append(True)
@@ -2156,17 +2156,28 @@ def trace_since(since):
     with _trace_lock:
         rows = [r for r in _TRACE if r[0] >= since]
     groups = {}
-    for t, method, path, keys, by, ua in rows:
+    slow = []
+    for t, method, path, keys, by, ua, ms in rows:
         agent = ("app" if "BuilderBot" in ua else "curl" if ua.startswith("curl")
                  else "browser" if "Mozilla" in ua else (ua.split("/")[0] or "?"))
         key = (method, path + ("?" + keys if keys else ""), by, agent)
-        g = groups.setdefault(key, {"n": 0, "first": t, "last": t})
+        g = groups.setdefault(key, {"n": 0, "first": t, "last": t, "ms_max": 0, "ms_sum": 0})
         g["n"] += 1
         g["first"] = min(g["first"], t)
         g["last"] = max(g["last"], t)
-    out = [{"method": k[0], "path": k[1], "by": k[2], "agent": k[3], **v} for k, v in groups.items()]
+        # How long each took (B245): a tab that loads slowly is one request
+        # that took seconds, and a count alone cannot say which.
+        g["ms_max"] = max(g["ms_max"], ms)
+        g["ms_sum"] += ms
+        slow.append((ms, t, method, key[1], by, agent))
+    out = [{"method": k[0], "path": k[1], "by": k[2], "agent": k[3], "n": v["n"],
+            "first": v["first"], "last": v["last"], "ms_max": v["ms_max"],
+            "ms_avg": v["ms_sum"] // max(1, v["n"])} for k, v in groups.items()]
     out.sort(key=lambda r: -r["n"])
-    return {"since": since, "now": now, "total": len(rows), "rows": out}
+    slow.sort(key=lambda r: -r[0])
+    return {"since": since, "now": now, "total": len(rows), "rows": out,
+            "slow": [{"ms": r[0], "at": r[1], "method": r[2], "path": r[3], "by": r[4], "agent": r[5]}
+                     for r in slow[:8] if r[0] >= 500]}
 
 
 def image_stamp():
@@ -3983,11 +3994,12 @@ class Handler(BaseHTTPRequestHandler):
         connection just closes, which the browser reports as a network error,
         the one failure mode that looks identical to the container being gone.
         """
+        t0 = time.monotonic()
         try:
             try:
                 return fn()
             finally:
-                trace_note(self)
+                trace_note(self, (time.monotonic() - t0) * 1000)
         except Exception as e:                          # noqa: BLE001 (last resort)
             # Broad by definition: this is the one place a handler's bug is
             # turned into an answer. The log gets the traceback the answer

@@ -3237,7 +3237,15 @@ is not running; see bb logs."
                 echo "dashboard: serving a DEV copy from $d; 'bb dashboard dev --off' reverts"
             fi
             ;;
-        *) die "usage: bb dashboard test|dev|status" ;;
+        trace)
+            # What the server was asked over the last N seconds, by endpoint
+            # and by who asked, with how long each took (B245): the one
+            # command that shows a poll that should not be there, a tab that
+            # asks twice, or the request a slow tab is waiting on.
+            local auth; auth="$(bb_auth_or_die)"
+            BB_TRACE_AUTH="$auth" python3 "$BB_LIB/trace-verbs.py" "${1:-60}"
+            ;;
+        *) die "usage: bb dashboard test|dev|status|trace [SECONDS]" ;;
     esac
 }
 

@@ -114,6 +114,19 @@ m.job_log(older, j.get('job'), ['hello'])
 r2b = m.rev()
 m.job_result(older, j.get('job'), 'succeeded', 0)
 r3 = m.rev()
+# A job handed to a poll whose answer was lost (assigned, and the agent never
+# said a word) goes back to the queue once ASSIGN_LOST_S has passed, rather
+# than holding a lane until the agent's next hello (B245).
+j2 = m.job_add('user:test', {'node': older}, 'exec', {'argv': ['true']})
+took2 = m.job_next(older, 0)
+none = m.job_next(older, 0)
+m._exec("UPDATE jobs SET started = started - 600 WHERE id = ?", (j2.get('job'),))
+again = m.job_next(older, 0)
+out['requeue'] = {'took': bool(took2 and took2.get('id') == j2.get('job')),
+                  'held': not (none and none.get('id')),
+                  'again': bool(again and again.get('id') == j2.get('job')),
+                  'why': m._no_answer('j_nothing', older, 25)}
+m.job_result(older, j2.get('job'), 'succeeded', 0)
 out['revs'] = {'queued': r1 > r0, 'taken': r2 > r1, 'chunk': r2b == r2, 'ended': r3 > r2,
                'job': bool(took and took.get('id') == j.get('job')), 'err': j.get('error')}
 print(json.dumps(out))
@@ -122,6 +135,10 @@ print(json.dumps(out))
      `the default node is one whose census says docker runs there, not the newest with an address (${got.pick})`);
   ok(got.both === got.newer, '...the newest of those when more than one does');
   ok(got.neither === got.newer, '...and the newest with an address when none says so, as before');
+  ok(got.requeue.took && got.requeue.held && got.requeue.again
+     && /was handed exec .* ago and has not started it/.test(got.requeue.why || '') && /last dialed in/.test(got.requeue.why || ''),
+     `a job handed to a poll that never started it goes back to the queue, and a wait behind it says so (${
+        JSON.stringify(got.requeue)})`);
   ok(got.revs.job && got.revs.queued && got.revs.taken && got.revs.ended && got.revs.chunk,
      `a job being queued, taken and finished moves the nodes rev, and a log chunk does not, so an open Nodes tab follows a job without a reload (${JSON.stringify(got.revs)})`);
 }

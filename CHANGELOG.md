@@ -173,6 +173,11 @@
 - Chat no longer snaps to the bottom while you read older messages: the panel repaints only when the conversation changed, and keeps your place unless you were at the end (2146ef8)
 - Send to Docker manager offers the project's own name, which makes the project's own container rather than being refused as a clash with it; when it already has one, the refusal says so and points at its row (4b42aca)
 - Send to Docker and New container preselect the node the container will actually be made on: the project's own, else the default docker host, said under the field, and the picker arrives when the node list does instead of staying hidden; New container's node follows the project picked (4b42aca)
+- A new instance whose ref or env is refused leaves no record behind, so the retry is not told it already exists (e5f587e)
+- A user account's project with no node lists its containers on the default docker host instead of a blind refusal (e5f587e)
+- After Update installs a new Claude Code on a node, the row and the bell say the new version at once rather than after the agent's next hello (e5f587e)
+- Build, Rebuild and Up answer at once with their job; the compose parse on the node runs behind that answer and a refusal is the job's failure on the row, so a phone no longer drops the request as a NetworkError (e5f587e)
+- The request trace keeps how long each request took and names the slowest, and bb dashboard trace prints it; a job handed to a poll that never started it goes back to the queue within about ninety seconds instead of holding a lane until the next hello, and a wait behind one says so (e5f587e)
 
 ### Security
 

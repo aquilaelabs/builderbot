@@ -2346,8 +2346,22 @@ def _no_answer(job_id, node_id, timeout):
         return (f"{name} is busy with {what} ({b['id']}) and runs "
                 f"{n.get('concurrency') or 1} job at a time: this waited {timeout}s for a "
                 "slot and was taken back. The machine is fine; try again when that finishes")
+    # Handed out and never started: the lane it holds is why this one waited
+    # (B245). Named with its age, and with when the agent last dialed in, so
+    # the reader can tell a lost poll from a machine that is off.
+    held = [x for x in jobs_for(node_id=node_id, active=True, n=10)
+            if x.get("id") != job_id and x.get("state") == "assigned"]
+    seen = int((n.get("agent") or {}).get("last_seen") or 0)
+    ago = f"{int(time.time()) - seen}s ago" if seen else "never"
+    if held:
+        h = held[0]
+        age = int(time.time()) - int(h.get("started") or time.time())
+        what = " ".join(str(x) for x in [h.get("type"), h.get("project") or ""] if x)
+        return (f"{name} was handed {what} ({h['id']}) {age}s ago and has not started it, "
+                f"and this one waited {timeout}s behind it; the node is {n.get('state')}, "
+                f"its agent last dialed in {ago}")
     return (f"{name} did not pick the job ({job_id}) up within {timeout}s: "
-            "its agent may not be dialing in")
+            f"the node is {n.get('state') or 'unknown'} and its agent last dialed in {ago}")
 
 
 # The first agent build that runs a `tell` job. An older one would fall
@@ -2571,6 +2585,24 @@ def _light_running(node_id):
                if _light(_job_out(r)))
 
 
+# How long a job may sit `assigned` with no word from the agent before it
+# goes back to the queue: a poll's answer can be lost (the agent restarted,
+# the socket closed under it), and until now the job held a lane on the node
+# until the agent's next hello, up to ten minutes, unnamed (B245). An agent
+# that took a job says so within seconds (its first step or the keepalive).
+ASSIGN_LOST_S = 2 * POLL_S + 40
+
+
+def _requeue_unclaimed(node_id):
+    cut = int(time.time()) - ASSIGN_LOST_S
+    for r in _rows("SELECT id FROM jobs WHERE node = ? AND state = 'assigned' AND "
+                   "started < ?", (node_id, cut)):
+        _exec("UPDATE jobs SET state = 'queued', started = NULL WHERE id = ? "
+              "AND state = 'assigned'", (r["id"],))
+        if not _quiet(r["id"]):
+            _jstate_bump()
+
+
 def job_next(node_id, wait, runner="node", alive=None):
     """The oldest queued job this node may take, for this runner, else wait
     up to `wait` seconds for one, or for a cancel request, which comes back
@@ -2596,6 +2628,7 @@ def job_next(node_id, wait, runner="node", alive=None):
                 return None
             n = node(node_id)
             if n and n["state"] == "online":
+                _requeue_unclaimed(node_id)
                 # A slot free, or not: with none, a LIGHT job may still go
                 # (see _light). Everything else waits for the slot as before.
                 free = job_running(node_id) < n["concurrency"]
