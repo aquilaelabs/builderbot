@@ -162,6 +162,7 @@
 - The Docker tab says which container each port belongs to: Ports and mounts is grouped by service, and the ports line under Details and the route's port picker name the service (aff42ca)
 - On a node's row the session network switch is saved by the Sessions section's Save, not by the click, and a node that stops being able to isolate refuses new sessions instead of giving them its network; a controller or DNS server on the node itself is reachable from a session (aa11a12)
 - Allow on a session's env set writes the env and no longer rebuilds the container, and an ask that names no instance means the project's only one; Log in a project's notebook reads from the project's node; bb bug add reads bb however it is written (aa11a12)
+- Chat no longer snaps to the bottom while you read older messages: the panel repaints only when the conversation changed, and keeps your place unless you were at the end (2146ef8)
 
 ### Security
 

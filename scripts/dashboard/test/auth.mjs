@@ -642,6 +642,29 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     ok(!(after.chat.unread || {})[`dm:${uidOf('test')}`],
        '...and reading a conversation is what marks it seen');
 
+    // The panel keeps a reader's place (the operator, 25 Sep: scrolling up,
+    // something kept snapping it to the bottom): the poll repaints only
+    // when the conversation changed, and pins to the end only for a reader
+    // already there.
+    {
+      for (let i = 0; i < 40; i++) await chat(owner, { action: 'send', who: 'sharer', text: `an older line ${i}` });
+      await page.evaluate(() => { if (!showChat) mobPanel('chat'); chatOpen({ who: 'sharer' }); });
+      await page.waitForFunction(() => document.querySelectorAll('#chatlog .chatmsg').length >= 40, null, { timeout: 15000 });
+      const up = await page.evaluate(() => { const l = document.getElementById('chatlog'); l.scrollTop = 0;
+                                             return { top: l.scrollTop, tall: l.scrollHeight > l.clientHeight }; });
+      await page.evaluate(() => loadChat());
+      await sleep(800);
+      const kept = await page.evaluate(() => document.getElementById('chatlog').scrollTop);
+      ok(up.tall && up.top === 0 && kept === 0, `a reader scrolled up stays where they were across a poll (${kept})`);
+      await page.evaluate(() => { const l = document.getElementById('chatlog'); l.scrollTop = l.scrollHeight; });
+      await chat(other, { action: 'send', who: 'test', text: 'the newest line' });
+      await page.evaluate(() => loadChat());
+      await page.waitForFunction(() => /the newest line/.test(document.getElementById('chatlog')?.textContent || ''), null, { timeout: 10000 });
+      ok(await page.evaluate(() => { const l = document.getElementById('chatlog'); return l.scrollTop + l.clientHeight >= l.scrollHeight - 8; }),
+         '...while one at the end is shown the newest message');
+      await page.evaluate(() => { chatWith = null; mobPanel('chat'); drawChat(); });
+    }
+
     // The prompt relay, driven the way Claude Code drives it.
     const relay = `${REPO}/scripts/dashboard/bb-prompt-relay`;
     execFileSync('python3', [relay, 'beta', uidOf('sharer')], {
