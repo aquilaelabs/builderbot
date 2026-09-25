@@ -37,6 +37,13 @@ refuses too: `bb settings set build|test|outputs "..."` fills the field in
 for the operator, and the project's gate decides whether that lands, waits
 for their approval, or is refused.
 
+A test run finds `BB_TEST_WORKERS` in its environment, on the node and
+inside a dev instance alike: how many workers this node lets a run use, set
+on its row. When you write tests or set the test command, have the runner
+read it (`pytest -n "$BB_TEST_WORKERS"`, `node --test
+--test-concurrency="$BB_TEST_WORKERS"`, Gradle's `--max-workers`), so a
+suite uses what the machine has without hard-coding a number.
+
 A `pkill -f PATTERN` run from a tool call matches the shell running that
 call, because the pattern is on its command line, and kills it: end a
 process by pid, or with `pkill -x NAME`.

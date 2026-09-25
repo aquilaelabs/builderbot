@@ -523,8 +523,11 @@ def _plan(project, instance, action, extra=None):
         # thing a suite cannot work out for itself: the dev instance is a
         # container like any other and the controller is one too. run.sh
         # reads it to tell "tests run here" from "tests were run around me".
+        # BB_TEST_WORKERS, bare, carries the node's test-workers setting
+        # from the job's environment into the container (R81): compose
+        # exec forwards nothing else of the caller's.
         argv = base + ["exec", "-T", "-e", "BB_TEST_TIMING=1",
-                       "-e", "BB_IN_INSTANCE=1", *wd, extra["service"],
+                       "-e", "BB_IN_INSTANCE=1", "-e", "BB_TEST_WORKERS", *wd, extra["service"],
                        "sh", "-c", extra["cmd"] + ' "$@"', "test", *extra.get("args", [])]
         test = [{"name": "testing", "argv": argv, "timeout": 3600, "env": ienv}]
     return {"up": [up], "down": [down], "remove": [down],

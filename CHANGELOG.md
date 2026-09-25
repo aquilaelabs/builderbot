@@ -94,6 +94,7 @@
 - Containers BuilderBot did not build from a project (the daemon's own, ones written on the Docker tab, and whose they are) have a module of their own, containers.py, cut out of devapp.py (8f78e56)
 - The project settings and new-project dialogs lay their Claude may picks, model and effort, and commit name and email out as one grid with labels above, equal widths, two columns at a desk and one on a phone (cc7a116)
 - The dot beside a session's name follows it within seconds: a node reports its sessions the moment one changes, and the page fetches the two small maps behind the rows when the revs token says they moved, leaving the status poll at fifteen seconds (47c77d1)
+- A test run inside a dev instance carries BB_TEST_WORKERS too, the settings dialog says a run finds it, and every session's briefing says to have the test runner read it (e19feca)
 
 ### Removed
 

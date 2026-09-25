@@ -3066,7 +3066,7 @@ ok(await page.$('#devSend'),
   const j1 = await finished(nocmd.job);
   ok(j1.state === 'succeeded' && /TEST-RAN-one\n.*TEST-RAN-two/s.test(j1.log || ''),
      `...the recorded command runs there with the arguments as positional parameters (${j1.state}: ${(j1.log || '').replace(/\n/g, ' / ').slice(-160)})`);
-  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 app sh -c printf/.test(j1.log || ''),
+  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 -e BB_TEST_WORKERS app sh -c printf/.test(j1.log || ''),
      '...through compose exec into the service the project builds, with timing on for the registry, and no working directory when nothing mounts the project');
   // A compose that mounts the project (or the whole share it sits in) puts
   // the tests in the project's directory inside the container: the first
@@ -3074,7 +3074,7 @@ ok(await page.$('#devSend'),
   writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
     volumes: [{ type: 'bind', source: `${DIR}/ws`, target: '/workspace' }] } } }));
   const j1b = await finished((await asSession({ project: 'ep.silon', action: 'test', args: ['wd'] })).job);
-  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 -w \/workspace\/ep\.silon app sh -c/.test(j1b.log || ''),
+  ok(/exec -T -e BB_TEST_TIMING=1 -e BB_IN_INSTANCE=1 -e BB_TEST_WORKERS -w \/workspace\/ep\.silon app sh -c/.test(j1b.log || ''),
      `...and in the project's directory inside the container when the compose mounts it (${(j1b.log || '').match(/exec [^\n]*/)?.[0]?.slice(0, 90)})`);
   // BB_IN_INSTANCE is how run.sh tells "these tests ARE the container's" from
   // "these tests were run around it": a dev instance is a container and so is
