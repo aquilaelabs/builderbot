@@ -450,7 +450,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await refreshUntil(page, () => state?.reports_ok === false, { timeout: 20000 });
   ok(await page.$eval('#bFindings', b => b.disabled),
      'with no readable report the Static analysis button is ghosted');
-  ok(/no \/reports mount/.test(await page.$eval('#bFindings', b => b.title)),
+  ok(/\/reports is not mapped in/.test(await page.$eval('#bFindings', b => b.title)),
      '...carrying which of the three reasons it is');
   // The tab is open from the tests above; the gate closes it on the next load.
   await page.reload();
@@ -633,7 +633,16 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await plant({ locked: true });
   ok(await line() === '', 'a locked project says nothing: no session there is the decision, not a fault');
   await plant({ locked: false, session_at: '', session_why: '' });
-  await page.evaluate(w => { state.claude_with = w; drawProjects(state.projects); }, were);
+  // Who is here is a line per name with a dot in front, bright for a
+  // session working on a prompt and dim for one waiting, yours last and
+  // marked (the operator, 24 Sep).
+  await page.evaluate(() => { state.claude_with = { alpha: ['test', 'alice'] }; state.claude_busy = { alpha: ['alice'] };
+                              drawProjects(state.projects); });
+  const rows = await page.$$eval('#projects .row:has(.name:text-is("alpha")) .sessone',
+    es => es.map(e => ({ text: e.textContent.trim(), on: e.querySelector('.sdot').classList.contains('on') })));
+  ok(rows.length === 2 && rows[0].text === 'alice' && rows[0].on && rows[1].text === 'test (you)' && !rows[1].on,
+     `who has a session here is one line per name, the working one's dot lit, yours last (${JSON.stringify(rows)})`);
+  await page.evaluate(w => { state.claude_with = w; state.claude_busy = {}; drawProjects(state.projects); }, were);
   await freePoll(page);
 }
 
@@ -827,7 +836,7 @@ await page.click('#bAbout');
 await page.waitForSelector('#aboutModal:not([hidden])');
 const about = await page.$eval('#aboutModal', e => e.textContent);
 ok(about.includes('abc1234def5678901234567890abcdef12345678')
-   && about.includes('2026-08-21T19:30Z') && /bb drift/.test(about),
+   && about.includes('2026-08-21T19:30Z') && /An update moves it/.test(about),
    '...and About carries the whole commit, the build time and where to look');
 await page.click('#aboutModal >> text=Close');
 await page.waitForSelector('#aboutModal', { state: 'hidden' });
@@ -1564,7 +1573,7 @@ await page.click('#rnAuthToken');
 ok(await page.$eval('#rnAuthToken', b => b.classList.contains('on'))
    && !await page.$eval('#rnAuthKey', b => b.classList.contains('on')),
    '...and picking it moves the segment without touching either credential');
-ok(/stay where they are|stays stored/.test(await page.$eval('#rnAuthHint', e => e.textContent)),
+ok(/the key stays|stays stored/.test(await page.$eval('#rnAuthHint', e => e.textContent)),
    '...promising in words that switching removes neither');
 await page.fill('#rnToken', '');
 // Clearing, which is the other half of a stored token: it cannot be shown and
@@ -1621,7 +1630,7 @@ await page.click('#rnTokenClear');
 v = await seen();
 ok(v.onToken && v.token,
    'clearing the token leaves the pick where it was, and ghosts it');
-ok(v.bad && /no token to use/.test(v.hint),
+ok(v.bad && /none will be stored/.test(v.hint),
    '...saying in red that there will be nothing to authenticate with');
 await page.click('#rnGo');
 await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 8000 });

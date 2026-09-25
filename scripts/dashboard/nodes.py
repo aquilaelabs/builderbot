@@ -1292,6 +1292,35 @@ def node_session_net(principal, node_id, on):
     return {"ok": True, "on": bool(on)}
 
 
+def node_root_asks(principal, node_id, on):
+    """Whether a session on this node may ask for a root command (bb root
+    run): on, the ask goes to a person as ever; off, it is refused with the
+    sentence root_refused says. An administrator's, like the rest of the
+    config plane."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    conf = dict(n.get("config") or {})
+    if on:
+        conf.pop("no_root", None)
+    else:
+        conf["no_root"] = True
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-root-asks", {"on": bool(on)})
+    return {"ok": True, "on": bool(on)}
+
+
+def root_refused(n):
+    """The sentence a node whose sessions may not ask for root refuses with,
+    or "" when they may."""
+    if n and (n.get("config") or {}).get("no_root"):
+        return (f"root commands from sessions are off on {n['name']}: the Sessions "
+                "section on its row on the Nodes tab turns them back on")
+    return ""
+
+
 def session_net_on(node_id):
     """Whether that is set on a node."""
     return bool(((node(node_id) or {}).get("config") or {}).get("session_net"))

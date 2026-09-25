@@ -596,7 +596,7 @@ open(os.path.join(reg, 's0.json'), 'w').write(json.dumps({'project': 'alpha', 'a
 open(os.path.join(reg, 's1.json'), 'w').write(json.dumps({'project': 'beta', 'addr': '10.231.0.6', 'if': 'bbs1'}))
 open(os.path.join(reg, 's2.json'), 'w').write(json.dumps({'project': 'x;id', 'addr': '10.231.0.10', 'if': 'bbs2'}))
 real = m.os.path.exists
-m.os.path.exists = lambda p: p in ('/sys/class/net/bbs0', '/sys/class/net/bbs2') or real(p)
+m.os.path.exists = lambda p: p in ('/sys/class/net/bbs0', '/sys/class/net/bbs2') if p.startswith('/sys/class/net/') else real(p)
 live = m.sessnet_sessions(reg)
 m.os.path.exists = real
 # Docker's rules, against an iptables that records what it was asked and
@@ -2792,6 +2792,17 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
       const cleared = await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).session_net?.on === false ? true : null,
                                   30000, 500);
       ok(cleared, '...and off, saved the same way, reaches the node the same way');
+      // The same Save carries whether a session here may ask for root.
+      const ra = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="rootasks"]`;
+      ok(await page.$eval(ra, e => e.checked), 'root asks are on by default, beside it');
+      await page.click(ra);
+      await page.click(save);
+      const noRoot = await until(async () => (await nodeById(minted.id)).config?.no_root === true ? true : null, 15000, 300);
+      ok(noRoot && await page.$$eval(`.nodestab .ndrow[data-node="${minted.id}"] .sub`, es => es.some(e => /refused and told this is off/.test(e.textContent))),
+         '...and unticking it, then Save, turns them off and says so under the switch');
+      await page.click(ra);
+      await page.click(save);
+      await until(async () => (await nodeById(minted.id)).config?.no_root ? null : true, 15000, 300);
     }
     // Enrolling is a dialog, like New project. It used to be a panel at the
     // foot of the tab, below everything about the machine you were looking at.

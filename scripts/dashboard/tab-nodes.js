@@ -387,6 +387,12 @@ function nodeSessNetRow(n){
   if (c.draft.sessnetOn === undefined || c.draft.sessnetFrom !== on){
     c.draft.sessnetOn = on; c.draft.sessnetFrom = on;
   }
+  // ...and whether a session here may ask for a root command at all (the
+  // operator, 24 Sep): the same draft, the same Save.
+  const rootOn = !n.config?.no_root;
+  if (c.draft.rootAsks === undefined || c.draft.rootFrom !== rootOn){
+    c.draft.rootAsks = rootOn; c.draft.rootFrom = rootOn;
+  }
   const sn = n.reported?.session_net || {};
   const told = Object.keys(sn).length > 0;
   const line = !told
@@ -399,7 +405,10 @@ function nodeSessNetRow(n){
     : "";
   return `<label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}>
       keep each session to its own project's network</label>
-    ${line}`;
+    ${line}
+    <label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
+      let a session ask for a root command (bb root run), which a person then allows or denies</label>
+    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}`;
 }
 
 // How many Claude sessions here may work on a prompt at once (turns.py on
@@ -1347,6 +1356,15 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           said += sw.checked ? "; sessions started here from now on reach only their own project's containers"
                              : "; sessions started here from now on share its network";
         }
+        const ra = box.querySelector('[data-k="rootasks"]');
+        const raWas = !nodesList.find(x => x.id === id)?.config?.no_root;
+        if (ra && ra.checked !== raWas){
+          const k = await nodeAct({action: "root-asks", id, on: ra.checked});
+          if (k.error) return;
+          if (c && c.draft) c.draft.rootAsks = undefined;
+          said += ra.checked ? "; a session here may ask for a root command again"
+                             : "; a session here asking for a root command is refused";
+        }
         notify(said);
         return;
       }
@@ -1420,6 +1438,8 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     // the section's Save, like the limit beside it.
     const sw = box.querySelector('[data-k="sessnet"]');
     if (sw) sw.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.sessnetOn = sw.checked; };
+    const ra = box.querySelector('[data-k="rootasks"]');
+    if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked; };
     const ti = box.querySelector('[data-k="turns"]');
     if (ti){
       ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };

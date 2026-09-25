@@ -69,7 +69,8 @@ your own branches and not a tag, a deletion or a branch only the host has.
 When something genuinely needs root, ask for that one command and a person
 decides: `bb root run --why "..." -- CMD`. A phone connected on this node is
 `bb phone run`, the same shape. Both wait on a person, and nothing skips the
-question, so ask for the smallest command that does the job.
+question, so ask for the smallest command that does the job. A node can have
+root asks turned off, and the ask then says so.
 
 ## The notebook
 

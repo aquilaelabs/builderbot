@@ -1705,6 +1705,22 @@ def claude_sessions(sessions):
     return out
 
 
+def claude_busy(sessions):
+    """{project: [account name, ...]} for the Claude sessions mid-prompt, by
+    their pane title (claude_state): the row's dot beside each name."""
+    by_uid = account_names()
+    owner = users.owner_name()
+    out = {}
+    for s in sessions:
+        base = tmux_base(s["name"])
+        if not base.startswith("claude-") or (s.get("claude") or {}).get("state") != "working":
+            continue
+        who = by_uid.get(tmux_owner(s["name"]), owner)
+        if who:
+            out.setdefault(base[len("claude-"):], []).append(who)
+    return out
+
+
 def _term_arg(rest):
     """The `arg` a /term request carries, with any owner stamp a browser sent
     taken off. "" when there is none."""
@@ -3093,6 +3109,9 @@ def snapshot(who):
         # rather than a refusal: the row says who is here and nothing is
         # greyed for it. The page decides how to word "you and alice".
         "claude_with": claude_sessions(sessions),
+        # ...and which of them are working on a prompt right now, for the
+        # dot beside each name (the operator, 24 Sep).
+        "claude_busy": claude_busy(sessions),
         # This account's own name, so the row can say "you and alice" rather
         # than reading your own name back at you.
         "me": (who or {}).get("name", ""),
@@ -4822,6 +4841,10 @@ class Handler(BaseHTTPRequestHandler):
             # Whether each session on the node reaches only its own project's
             # containers (R79). An administrator's, like the rest.
             r = nodes.node_session_net(self._principal(), nid, req.get("on") is True)
+        elif act == "root-asks":
+            # Whether a session on the node may ask for a root command at
+            # all. An administrator's, like the rest.
+            r = nodes.node_root_asks(self._principal(), nid, req.get("on") is True)
         elif act == "apply":
             r = nodes.node_apply(self._principal(), nid, field(req, "what"))
         elif act == "runner":
@@ -6645,7 +6668,7 @@ class Handler(BaseHTTPRequestHandler):
                                    bool(((pn or {}).get("reported") or {}).get("sandbox")),
                                    asker_uid=asker_uid, asker_name=asker_name,
                                    asker_admin=users.is_admin(acct),
-                                   locked=nodes.node_locked(pn) if pn else "")
+                                   locked=(nodes.node_locked(pn) or nodes.root_refused(pn)) if pn else "")
             else:
                 r = phone.ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
                               pn["name"] if pn else "", proj, asker=asker_name)

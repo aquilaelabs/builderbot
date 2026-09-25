@@ -576,7 +576,9 @@ bb root run --why "..." -- CMD...
                    ask for ONE command as root on this project's node: an
                    administrator allows or denies it on the Nodes tab or the
                    bell, and the node runs that command and nothing else. Not
-                   sudo: a second command is a second question
+                   sudo: a second command is a second question. A node's
+                   Sessions section can turn root asks off altogether, and
+                   the ask is then refused with that said
 bb catchup         what has happened here lately: commits with the first line
                    of their bodies, what moved in the notebook, the builds this
                    box archived, and which image it is actually running

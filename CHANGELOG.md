@@ -42,6 +42,7 @@
 - Controller settings has Clear reports, which deletes the bug reports sessions made about BuilderBot after saying how many are still unanswered (398c6cc)
 - A node can keep each Claude session to its own project's network: a switch in its Sessions section gives every session started there a network namespace from which it reaches the internet, the controller and its own project's containers, and nothing else on the node or the LAN (d264e76)
 - A session can remove its project's container under the same setting as rebuild: bb devapp remove, refused on deny, waiting for Allow on ask, done on auto; its env and data stay for a remake (1a6c98e)
+- A node's Sessions section can turn off root commands from sessions: bb root run is then refused and says so, without locking storage and network with it (0e13a1c)
 
 ### Changed
 
@@ -86,6 +87,7 @@
 - bb bug add on another project does not file a bug that names BuilderBot or a bb command: it says to use bb report, and --here files it anyway when it is the project's own (d46dfc9)
 - bb container new (bb container ask, as was) is under the project's Run its container setting: refused at deny, asked at ask, and at auto the project's own container on its own node is made and built at once; one for another project or another node is still asked (45c8a2f)
 - The dashboard's hints, tooltips, confirmations and empty states say what happens when you act, in one line: mechanics, history and internal names are gone from the screen (e50d054)
+- Under a project, who has a Claude session there is a line per name with a dot in front, lit while that session is working on a prompt, instead of one sentence naming them all (0e13a1c)
 
 ### Removed
 
