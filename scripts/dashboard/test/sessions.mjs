@@ -208,7 +208,7 @@ ok((await page.$eval('.pane .nb #anaHistBar input', i => i.placeholder)).include
 // than reusing the shared line about a notebook nobody has written in; no
 // one writes this one at all.
 await page.selectOption('.pane .nb #anaHistBar .hwhen', '0');
-await page.waitForFunction(() => /first scan/.test(
+await page.waitForFunction(() => /second scan/.test(
   document.getElementById('anaHist').textContent), null, { timeout: 15000 });
 ok(true, '...and says why it is empty rather than looking broken');
 // Closed by the sheet's own Close, not by the button that opened it: the

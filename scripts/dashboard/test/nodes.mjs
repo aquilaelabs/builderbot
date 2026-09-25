@@ -993,7 +993,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        'a node whose system changes are locked to its console installs nothing by itself');
     await pj('/api/v1/nodes', { action: 'unlock', id: minted.id });
     await page.evaluate(() => openNodesTab());
-    await page.waitForFunction(() => /system packages missing here for dotnet \(libicu\)/
+    await page.waitForFunction(() => /System packages missing for dotnet \(libicu\)/
       .test(document.querySelector('.nodestab')?.textContent || ''), null, { timeout: 15000 });
     ok(true, 'the node\'s row says the same before a build fails on it');
     // Held: the row says which of them are missing here, and who installs them.
@@ -1500,7 +1500,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.click('#bBell');
   await page.waitForSelector('#bellPanel .bnote.ask.bad', { timeout: 10000 });
   ok(await page.$eval('#bellPanel .bnote.ask.bad', e => /agent out of window/i.test(e.textContent)
-                                                        && /alpha cannot build, test or reach the emulator/.test(e.textContent)),
+                                                        && /alpha cannot build, test or use the emulator/.test(e.textContent)),
      'an agent from another window is a red pinned alert naming the projects it stops');
   ok(await page.$eval('#bBell .dot', d => d.classList.contains('bad')), '...and the dot is red');
   await page.keyboard.press('Escape');
