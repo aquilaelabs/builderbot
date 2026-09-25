@@ -43,7 +43,7 @@ put('roadmap.json', { projects: {}, unsaved: {} });
 put('bugs.json', { projects: {} });
 let p = await pre();
 ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules'
-   && /The toolchain is the store, not the machine/.test(p.text)
+   && /this node carries git, tmux, jq, python3 and curl by itself/.test(p.text)
    && /\(global\)/.test(p.text) && p.capped === false,
    `a project with nothing set still gets the briefing and the shipped global rules (${
      (p.parts || []).map(x => x.name).join(',') || 'none'}, ${p.bytes} bytes)`);
