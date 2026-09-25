@@ -52,7 +52,7 @@ instance_maker = None
 env_writer = None
 ctl_runner = None
 remover = None
-# devapp.create_container, injected the same way: what Allow on a container
+# containers.create_container, injected the same way: what Allow on a container
 # ask calls (R71). None where no docker path is wired up.
 container_maker = None
 

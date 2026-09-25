@@ -3474,10 +3474,16 @@ print(json.dumps({'before': before, 'moved': moved, 'after': m.owner_of('radarr'
 // read it.
 {
   const out = execFileSync('python3', ['-c', `
-import importlib.util, json, tempfile
+import importlib.util, json, sys, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+# containers.py reads the store through import devapp: the copy loaded
+# above is registered under that name so both see one configure().
+sys.modules['devapp'] = m
+cspec = importlib.util.spec_from_file_location('c', ${
+  JSON.stringify(new globalThis.URL('../containers.py', import.meta.url).pathname)})
+c = importlib.util.module_from_spec(cspec); cspec.loader.exec_module(c)
 d = tempfile.mkdtemp()
 def wj(p, o):
     with open(p, 'w') as f:
@@ -3494,9 +3500,9 @@ def fake_run(argv, timeout=60, **k):
     return {'code': 0, 'out': ''}
 m._run = fake_run
 seen['fail'] = 1
-bad = m.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
+bad = c.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
 after_bad = [i['name'] for i in m._overview_here('')['instances']]
-good = m.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
+good = c.create_container('probecase', 'services:\\n  app:\\n    image: x\\n')
 print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), 'during': seen['during'],
                   'after_bad': after_bad, 'after_good': [i['name'] for i in m._overview_here('')['instances']]}))
 `], { encoding: 'utf8' });

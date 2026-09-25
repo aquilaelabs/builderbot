@@ -366,9 +366,6 @@ MAX_BODY = 64 * 1024
 # What a session is told when its project's Run its container setting is at
 # deny, wherever a container verb is refused by it: the sentence names the
 # setting, so a session that tries learns where the decision lives.
-RUN_DENIED = ("running this project's containers is the operator's: rebuilding, "
-              "starting and stopping them, changing their env, creating one and removing "
-              "one are handed over in the project's settings, Claude may: Run its container")
 
 
 def not_ours(what, sess=""):
@@ -2526,6 +2523,7 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
 # A project's compose app, built and run on the sandbox VM's daemon. The
 # module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
+import containers                                                # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import claudecode                                                # noqa: E402
@@ -2592,10 +2590,10 @@ if not NODES_OK:
 # Outside the block above: the ask has nothing to do with the node registry,
 # and a controller without one still has projects whose containers run.
 phone.rebuilder = devapp.rebuild
-phone.container_maker = devapp.create_container
+phone.container_maker = containers.create_container
 phone.instance_maker = lambda project, instance: devapp.create_instance(project, instance or devapp.MAIN)
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
-phone.ctl_runner = devapp.ctl_on
+phone.ctl_runner = containers.ctl_on
 phone.remover = devapp.remove_instance
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
@@ -6085,19 +6083,19 @@ class Handler(BaseHTTPRequestHandler):
         if sess:
             nid = devapp.project_daemon(sess)
             with devapp.on_node(nid or None):
-                c, owner = devapp.owned_container(name)
+                c, owner = containers.owned_container(name)
             # A stranger's container and a missing one answer alike.
             if owner != sess:
                 return self._json({"error": not_ours(name, sess)}, 403)
             if act == "logs":
                 with devapp.on_node(nid or None):
-                    return self._json(devapp.container_logs(name))
+                    return self._json(containers.container_logs(name))
             if act not in ("start", "stop", "restart"):
                 return self._json({"error": f"a session starts, stops or restarts a "
                                             f"container, or reads its log, not {act!r}"}, 400)
             mode = prefs.get(sess)["devbuild"]
             if mode == "deny":
-                return self._json({"error": RUN_DENIED}, 403)
+                return self._json({"error": devapp.RUN_DENIED}, 403)
             if mode == "ask":
                 acct = users.account_of(me) or {}
                 return self._result(phone.ask_rebuild(
@@ -6106,7 +6104,7 @@ class Handler(BaseHTTPRequestHandler):
                     asker_name=str(acct.get("name") or ""),
                     asker_admin=users.is_admin(acct), ctl=act, node=nid))
             with devapp.on_node(nid or None):
-                return self._result(devapp.container_ctl(name, act))
+                return self._result(containers.container_ctl(name, act))
         if self._refused("docker-write"):
             return
         nid, why = self._node_asked(field(req, "node"))
@@ -6120,15 +6118,15 @@ class Handler(BaseHTTPRequestHandler):
         # the way the manager's own listing is.
         with devapp.on_node(nid or None):
             if act == "owner":
-                r = devapp.set_container_owner(name, under)
+                r = containers.set_container_owner(name, under)
                 # Whose it is also decides whose sessions may reach it (R79).
                 if not r.get("error"):
                     with contextlib.suppress(Exception):
                         nodes.session_net_nudge()
                 return self._result(r)
             if act == "logs":
-                return self._json(devapp.container_logs(name))
-            return self._result(devapp.container_ctl(name, act))
+                return self._json(containers.container_logs(name))
+            return self._result(containers.container_ctl(name, act))
 
     def _container(self, req):
         """A container from a compose file written here, with no project.
@@ -6148,13 +6146,13 @@ class Handler(BaseHTTPRequestHandler):
         act = field(req, "action")
         name = field(req, "name")
         if act == "read":
-            if name not in devapp.overview_names():
+            if name not in containers.overview_names():
                 return self._json({"error": f"no container {name}"}, 400)
-            return self._json(devapp.read_container(name))
+            return self._json(containers.read_container(name))
         if act == "save":
-            if name not in devapp.overview_names():
+            if name not in containers.overview_names():
                 return self._json({"error": f"no container {name}"}, 400)
-            r = devapp.update_container(name, req.get("compose") or "",
+            r = containers.update_container(name, req.get("compose") or "",
                                         req.get("env") or "")
             return self._result(r)
         if act != "create":
@@ -6176,7 +6174,7 @@ class Handler(BaseHTTPRequestHandler):
         under = field(req, "owner")
         if under and self._not_project(under):
             return
-        r = devapp.create_container(name, req.get("compose") or "",
+        r = containers.create_container(name, req.get("compose") or "",
                                     req.get("env") or "", field(req, "node"), under)
         # Made for a project: its sessions may reach it (R79).
         if not r.get("error") and under:
@@ -6230,7 +6228,7 @@ class Handler(BaseHTTPRequestHandler):
         # against the store rather than waved through: this name reaches a
         # compose call and a data directory either way.
         if name not in {p["name"] for p in project_list(me)} \
-                and name not in devapp.overview_names():
+                and name not in containers.overview_names():
             return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
         # WHOSE IT IS, before anything else is asked: an account that is not
@@ -6312,7 +6310,7 @@ class Handler(BaseHTTPRequestHandler):
             # own: the gate above let nothing else through.
             mode = prefs.get(sess)["devbuild"]
             if mode == "deny":
-                return self._json({"error": RUN_DENIED}, 403)
+                return self._json({"error": devapp.RUN_DENIED}, 403)
             if act == "new":
                 if "owner" in req and field(req, "owner") != name:
                     return self._json({"error": "a session creates its own project's container, "
@@ -6638,9 +6636,9 @@ class Handler(BaseHTTPRequestHandler):
                 if sess:
                     mode = prefs.get(sess)["devbuild"]
                     if mode == "deny":
-                        return self._json({"error": RUN_DENIED}, 403)
+                        return self._json({"error": devapp.RUN_DENIED}, 403)
                     if mode == "auto" and under == sess and not cnode:
-                        r = devapp.create_container(field(req, "name"), req.get("compose"),
+                        r = containers.create_container(field(req, "name"), req.get("compose"),
                                                     req.get("env"), "", under)
                         if r.get("error"):
                             return self._json(r, 400)
