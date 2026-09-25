@@ -57,8 +57,8 @@ A project whose build or test command is not set refuses and says so:
 `bb settings set build|test|outputs "..."` fills the field in for the
 operator, and the project's gate decides whether that lands, waits for
 their approval, or is refused. When the toolchain lacks what a build
-needs, say so plainly and let the operator install it; never install with
-a system package manager. `bb toolchains` says what is installed and where:
+needs, say so; installing is the operator's, from the Tools tab.
+`bb toolchains` says what is installed and where:
 this node carries git, tmux, jq, python3 and curl by itself, and nothing
 else is a given.
 
@@ -109,16 +109,22 @@ route around a refusal.
 ## The notebook
 
 `bb roadmap`, `bb bug`, `bb rules`, `bb tests`, `bb changelog`, and
-`bb <verb> -h` for the rest of any of them. What you notice goes on the
-record as you meet it, not only in the reply: `bb bug add "..." --sev
-medium --area "..." --repro "..."` for a bug, `bb roadmap add "..."` for work
-worth doing, `bb bug note B7 "..."` for what you learn about an open one,
-and `bb bug fix B7 "what fixed it"` or `bb roadmap step done R4 2` as you
-finish. `bb rules add NAME "..."` leaves a note for the next session, marked
+`bb <verb> -h` for the rest of any of them. The record's verbs, as you
+meet things: `bb bug add "..." --sev medium --area "..." --repro "..."` for
+a bug, `bb roadmap add "..."` for work worth doing, `bb bug note B7 "..."`
+for what you learn about an open one, and `bb bug fix B7 "what fixed it"`
+or `bb roadmap step done R4 2` as you finish. A roadmap item the operator
+has shelved is parked: the list below names it without detail, and
+`bb roadmap unshelve N WHY` asks for it back, with the work waiting on
+their approval. `bb rules add NAME "..."` leaves a note for the next session, marked
 as yours; the operator's rules you cannot change, so say in the reply when
 one seems wrong. A problem with BuilderBot itself (a `bb` verb, the
-dashboard, a node, this briefing) is `bb report "what happened"`, read by
-its maintainers, not this project's tracker.
+dashboard, a node, this briefing) goes to `bb report "what happened"
+[--area A] [--repro "..."]`, read by its maintainers, not this project's
+tracker; `bb report` alone lists what became of this project's reports.
+Where the project's setting Report BuilderBot bugs is deny (BuilderBot's
+own tree, whose tracker it is), the verb refuses and names it, and
+`bb bug add --here` files it here.
 
 ## Versions and the changelog
 
@@ -126,8 +132,10 @@ its maintainers, not this project's tracker.
 may move, which is usually nothing. `bb changelog add "..." --cat NAME`
 records what a change means for the person using the product, under Added,
 Changed, Deprecated, Removed, Fixed or Security; run it with no category
-and it says when each applies. Shippable output goes in dist/, named with
-`bb version --file`; scratch goes anywhere else.
+and it says when each applies. Shippable build output goes in this
+project's dist/, named with `bb version --file` and gitignored, and the
+Artifacts tab lists it; nothing else goes there, and scratch goes anywhere
+else.
 
 ## Git
 
@@ -137,8 +145,7 @@ node, pushing is `bb git push` (also `fetch`, `pull`, `ls-remote`): the
 controller holds the keys, so no credential is ever here, and a plain
 `git push` says so and names these instead. `bb git policy` prints what
 you may push, which is your own branches and not a tag, a deletion or a
-branch only the host has. A branch another account's session works on is
-theirs.
+branch only the host has.
 
 <!-- BUILDERBOT:IF android *.gradle *.gradle.kts android AndroidManifest.xml -->
 ## Android

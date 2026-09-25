@@ -1484,8 +1484,9 @@ def prompt(project):
     body = "\n".join(lines)
     if parked:
         body += ("\n\nParked by the operator, which is why they carry no detail "
-                 "here: not to be picked up until `bb roadmap unshelve N WHY` is "
-                 "approved.\n"
+                 "here, and theirs to unpark whatever a request sounds like: not "
+                 "worked on, read for or drafted for until `bb roadmap unshelve N "
+                 "WHY` is approved.\n"
                  + "\n".join(parked))
     return ("The operator keeps a shared to-do list for this project, and this "
             "is what is on it:\n\n" + body + "\n\n"

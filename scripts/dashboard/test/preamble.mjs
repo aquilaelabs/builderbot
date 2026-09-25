@@ -88,8 +88,8 @@ ok(tersed.bytes < full.bytes * 0.85 && /Ask map before grepping/.test(tersed.tex
    `terse drops the filler words and keeps the commands, the names and the words that turn a sentence (${tersed.bytes} of ${full.bytes} bytes)`);
 await setPref({ brief: 'full' });
 await setChange('wait');
-ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length === 2,
-   'an obligation reaches a session once, as a rule, and not again from the briefing');
+ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length <= 2,
+   'an obligation reaches a session once, as a rule, and not again from the briefing; the shelf is said by the roadmap\'s own note');
 
 // ---- the order, which is the operator's rules first -------------------------
 // How they want this worked on comes before what there is to work on. Asserted

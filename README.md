@@ -385,7 +385,7 @@ bb report "..." [--area A] [--repro "..."]
                    a problem with BuilderBot itself, from a session on any
                    project: it waits on the controller for BuilderBot's own
                    sessions rather than going into the project's tracker (the
-                   shipped rule `report-builderbot`), redacted like the
+                   briefing's notebook section says so), redacted like the
                    diagnostics. `bb report` alone lists the project's reports
                    and what became of each. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
