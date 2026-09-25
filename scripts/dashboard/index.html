@@ -3693,9 +3693,20 @@ body.booting .pane>.loading{margin:auto}
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is
          already on a list a session may still tick, note and reword. -->
+    <!-- Everything Claude may or may not do on this project, in one place
+         (the operator, 25 Sep): what a session enters, what it runs, and
+         what a change asked for does while a test run is going. -->
     <div class="field" id="rnGateField">
-      <label id="rnGateLabel">Claude may</label>
+      <label id="rnGateLabel">Claude settings</label>
       <div class="prefrow" role="group" aria-labelledby="rnGateLabel">
+        <label class="pick">During a test run, a change asked for <select id="rnTestChange"
+          aria-label="what a change asked for during a test run does">
+          <option value="wait">waits: the ask in hand is finished and tested first</option>
+          <option value="restart">may interrupt the final test run; work in hand finishes first</option>
+        </select></label>
+      </div>
+      <label id="rnGateMayLabel" class="sub dim">Claude may</label>
+      <div class="prefrow" role="group" aria-labelledby="rnGateMayLabel">
         <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="rnGateBugs"
@@ -6182,6 +6193,7 @@ function rnFillPrefs(p){
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
+               test_change: p?.prefs?.test_change || "wait",
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
                color: p?.prefs?.color || ""};
@@ -6255,6 +6267,7 @@ function rnFillPrefsRest(p){
   const canDevTest = !!(p?.has_compose || (p?.prefs?.tests_in || "node") !== "node");
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.tests_in || "node";
+  $("rnTestChange").value = p?.prefs?.test_change || "wait";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
@@ -8948,12 +8961,13 @@ async function rnSubmit(){
   const color = rnColorNow();
   // With the node's group: nothing here restarts a session.
   const tests_in = $("rnDevTest").value || "node";
+  const test_change = $("rnTestChange").value || "wait";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
-    || tests_in !== rnPrefWas.tests_in || devbuild !== rnPrefWas.devbuild
+    || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change || devbuild !== rnPrefWas.devbuild
     || report !== rnPrefWas.report;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
@@ -9003,7 +9017,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, nodes, build, test, gate, color,
-                              tests_in, devbuild, report,
+                              tests_in, test_change, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.

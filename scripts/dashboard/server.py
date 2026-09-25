@@ -2574,6 +2574,10 @@ idle.configure(state=STATE, write_json=write_json,
 logs.prune()
 
 import prefs                                                     # noqa: E402
+# The briefing reads a project's own settings for its "While tests run"
+# section (what a change asked for during a run does); prefs is imported
+# after preamble is configured, so it is handed over here.
+preamble.prefs_mod = prefs
 
 prefs.configure(write_json=write_json, state=STATE)
 # Said again, now that prefs exists: users.git_identity resolves a per-project
@@ -4885,6 +4889,7 @@ class Handler(BaseHTTPRequestHandler):
                             gate=req.get("gate"), gitpol=req.get("gitpol"),
                             devbuild=req.get("devbuild"),
                             tests_in=req.get("tests_in"),
+                            test_change=req.get("test_change"),
                             report=req.get("report"),
                             color=req.get("color"),
                             workspace=WORKSPACE)

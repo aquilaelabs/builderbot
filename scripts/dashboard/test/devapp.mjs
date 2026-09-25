@@ -3053,6 +3053,12 @@ ok(await page.$('#devSend'),
   ok(await page.$eval('#rnGateDocker', e => e.value === 'auto' && !e.closest('label').hidden
                         && [...e.options].map(o => o.value).join() === 'auto,ask,deny'),
      "the project's settings carry it, on auto, with the other Claude may dials");
+  // The Claude section holds the test-run setting too (25 Sep): what a
+  // change asked for during a run does, saved with the rest of the dialog.
+  ok(await page.$eval('#rnGateLabel', e => e.textContent) === 'Claude settings'
+     && await page.$eval('#rnTestChange', e => e.value === 'wait' && [...e.options].map(o => o.value).join() === 'wait,restart'),
+     'the dialog groups what Claude may do under Claude settings, with what a change does during a test run, waiting by default');
+  await page.selectOption('#rnTestChange', 'restart');
   await page.selectOption('#rnGateDocker', 'deny');
   await page.click('#rnGo');
   // Read as the setting, not as the record's absence: a project on a node
@@ -3061,6 +3067,8 @@ ok(await page.$('#devSend'),
     .find(p => p.name === 'ep.silon') || {}).prefs || {}).devbuild || 'deny') === 'deny', { timeout: 20000 });
   ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
      '...and turning it back to deny there takes the grant back');
+  ok(await page.evaluate(() => ((state?.projects || []).find(p => p.name === 'ep.silon') || {}).prefs?.test_change) === 'restart',
+     'the test-run setting is saved with it');
   // ---- where the tests run (R48 step 3, moved by R68 step 6) -------------
   // The setting lives with the project's node and test command now, in its
   // settings dialog: it is the project's, and having it here meant somebody

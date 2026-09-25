@@ -48,6 +48,13 @@ A `pkill -f PATTERN` run from a tool call matches the shell running that
 call, because the pattern is on its command line, and kills it: end a
 process by pid, or with `pkill -x NAME`.
 
+## While tests run
+
+Start a run in the background and answer while it runs. What a change
+asked for meanwhile does is this project's setting (Claude settings,
+"During a test run, a change asked for"):
+<!-- BUILDERBOT:TESTCHANGE -->
+
 ## Finding your way
 
     bb map who-calls NAME      every call of NAME, with the function it is made from

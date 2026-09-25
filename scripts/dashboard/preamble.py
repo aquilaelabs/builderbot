@@ -49,7 +49,7 @@ CUT = ("[the rest of this list did not fit in the prompt; `bb roadmap`"
 live_fn = None
 
 
-def configure(*, rules_mod, roadmap_mod, bugs_mod, live=None):
+def configure(*, rules_mod, roadmap_mod, bugs_mod, live=None, prefs_mod=None):
     """The three stores, injected rather than imported.
 
     Same shape as every other module here: server.py owns configuring them,
@@ -59,7 +59,35 @@ def configure(*, rules_mod, roadmap_mod, bugs_mod, live=None):
     """
     global live_fn
     live_fn = live
-    globals().update(rules_mod=rules_mod, roadmap_mod=roadmap_mod, bugs_mod=bugs_mod)
+    globals().update(rules_mod=rules_mod, roadmap_mod=roadmap_mod, bugs_mod=bugs_mod,
+                     prefs_mod=prefs_mod)
+
+
+prefs_mod = None
+_TESTCHANGE = "<!-- BUILDERBOT:TESTCHANGE -->"
+# What a change asked for during a test run does, in the words a session
+# reads: the project's setting (prefs.TEST_CHANGE). Two house rules used to
+# say opposite things about this; the setting says it per project now.
+TEST_CHANGE_SAID = {
+    "wait": ("a new ask never cuts in. Finish the ask in hand, run the tests, fix what "
+             "failed and run them again until they pass, then take the next ask; say it "
+             "is queued when it arrives."),
+    "restart": ("a new ask may cut into the final test run only, the gate after the work "
+                "is done and committed: end that run by the pid in its lock (kill its "
+                "process group, never by name), make the change, and start the run again. "
+                "Work still in progress on the ask in hand, including fixing failures from "
+                "a run made in the middle of it, finishes first; the new ask waits until then."),
+}
+
+
+def test_change_line(project):
+    mode = "wait"
+    if prefs_mod is not None:
+        try:
+            mode = (prefs_mod.get(project) or {}).get("test_change") or "wait"
+        except Exception:                                            # noqa: BLE001
+            mode = "wait"
+    return TEST_CHANGE_SAID.get(mode, TEST_CHANGE_SAID["wait"])
 
 
 # Where the environment briefing is written. The image puts config/templates/
@@ -122,7 +150,7 @@ def briefing(project):
             # not both: the template has no double blank of its own.
             if not line.strip() and out and not out[-1].strip():
                 continue
-            out.append(line)
+            out.append(test_change_line(project) if line.strip() == _TESTCHANGE else line)
     return "\n".join(out).strip("\n")
 
 

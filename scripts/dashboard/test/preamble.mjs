@@ -50,6 +50,18 @@ ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules'
 // The line between the two: the briefing states what is true of the machine,
 // a shipped rule is an obligation, and nothing is said in both. An obligation
 // that was in the briefing too could not be turned off by its switch.
+// What a change asked for during a test run does is the project's setting,
+// said in the briefing in the words the session acts on (25 Sep): waits by
+// default, and the other way once the settings say so.
+ok(/a new ask never cuts in\. Finish the ask in hand, run the tests, fix what failed and run them again until they pass/.test(p.text)
+   && !/end that run by the pid/.test(p.text),
+   'the briefing says a new ask waits for the ask in hand to be finished and tested, the default');
+const setChange = mode => page.evaluate(async m => (await (await fetch('/api/prefs', { method: 'POST',
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', test_change: m }) })).json()), mode);
+await setChange('restart');
+ok(/may cut into the final test run only.*end that run by the pid in its lock.*Work still in progress on the ask in hand.*finishes first/s.test((await pre()).text),
+   '...and, set the other way, that only the final run is interrupted and work in hand finishes first');
+await setChange('wait');
 ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length === 2,
    'an obligation reaches a session once, as a rule, and not again from the briefing');
 
