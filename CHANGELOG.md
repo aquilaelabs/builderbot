@@ -97,6 +97,7 @@
 - A test run inside a dev instance carries BB_TEST_WORKERS too, the settings dialog says a run finds it, and every session's briefing says to have the test runner read it (e19feca)
 - bb's verbs that talk to the controller are Python files under scripts/lib, one per verb group, with the wait for Allow and the job-log stream shared once, instead of programs embedded in the shell (8eb2aae)
 - project_list is three named steps (the projects on disk, their columns, what the account may see), and the Nodes and agent handlers dispatch their actions through a table instead of a ladder of elifs (cab0d4a)
+- Text in every field and picker is 12px, on a phone as at a desk; the 16px that stops iOS Safari zooming into a typed field applies on iOS alone (6e87337)
 
 ### Removed
 

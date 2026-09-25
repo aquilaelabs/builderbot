@@ -1186,7 +1186,7 @@ textarea,select{
 .doctab input:where(:not([type="checkbox"],[type="radio"])),
 .doctab select,.doctab textarea,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
-  padding:8px 9px;font:13px/1.5 var(--mono)}
+  padding:8px 9px;font:12px/1.5 var(--mono)}
 /* The sidebar's own selects: the Claude card's pickers. A phone gives them
    the finger height and nothing else: a select does not zoom iOS, so it keeps
    the size of the text beside it. */
@@ -1236,12 +1236,12 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    phone: the fields are mono, and 16px mono beside an 11px label is the
    biggest thing on the tab, so every pulldown read as shouting. They keep the
    field size, which is the size of the text around them. */
-@media(max-width:900px){ .modal input:not([type=checkbox]):not([type=radio]),
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .modal input:not([type=checkbox]):not([type=radio]),
   .modal textarea,
   .row input:not([type=checkbox]):not([type=radio]),
   .uimenu input:not([type=checkbox]):not([type=radio]),.uimenu textarea,
   .doctab input:not([type=checkbox]):not([type=radio]),.doctab textarea,
-  .nb input:not([type=checkbox]):not([type=radio]),.nb textarea{font-size:16px} }
+  .nb input:not([type=checkbox]):not([type=radio]),.nb textarea{font-size:16px} } }
 .modal input:focus,.modal textarea:focus,.modal select:focus,
 .uimenu input:focus,.uimenu textarea:focus,.uimenu select:focus,
 .doctab input:focus,.doctab select:focus,.doctab textarea:focus,
@@ -1447,7 +1447,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    zoomed into a layout that cannot zoom back. Every other control that sets
    its own font says so again here (the chat bar, the code box);
    this one had been forgotten, and uniform.mjs caught it. */
-@media(max-width:900px){ .verinit .vstart{font-size:16px} }
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .verinit .vstart{font-size:16px} } }
 .verinit .vdir{flex:0 1 auto;min-width:0}
 /* The changelog. pre-wrap keeps the file's own line breaks; it is a document
    someone wrote, not data to reflow. Otherwise it is a history: same padding,
@@ -1491,7 +1491,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .clog .clsha{font:11px/1 var(--mono);color:var(--dim);flex:0 1 auto;
   overflow-wrap:anywhere}
 @media(max-width:900px){
-  .clog .clrow textarea.cltext{font-size:16px}
+  @supports (-webkit-touch-callout:none){ .clog .clrow textarea.cltext{font-size:16px} }
   /* The commit is a lookup, not a label: on a phone it is on the row's own
      title and out of the layout, where it was taking the space between the
      category and the buttons. */
@@ -1942,11 +1942,11 @@ pre.diff .d-ctx{color:var(--dim)}
 .dropbox .q span{color:var(--dim)}
 .dropbox input{width:100%;box-sizing:border-box;padding:6px 8px;
   font:var(--f-row);min-height:var(--tap)}
-@media(max-width:900px){ .dropbox input{font-size:16px} }
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .dropbox input{font-size:16px} } }
 .dropbox textarea{width:100%;box-sizing:border-box;padding:7px 8px;
   font:var(--f-row);min-height:86px;resize:vertical;
   white-space:pre-wrap}
-@media(max-width:900px){ .dropbox textarea{font-size:16px} }
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .dropbox textarea{font-size:16px} } }
 /* Rewording is not a deletion; it borrows the box and not the red. */
 .editbox{border-color:var(--line);
   background:color-mix(in srgb, var(--panel), #000000 22%)}
@@ -1961,7 +1961,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .addstep textarea{flex:1;min-width:0;padding:5px 8px;
   font:var(--f-row);min-height:var(--tap)}
 .addstep button{flex:0 0 auto;min-height:var(--tap)}
-@media(max-width:900px){ .addstep textarea{font-size:16px} }
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .addstep textarea{font-size:16px} } }
 /* Moving things about: dim until it can, like every other row control. */
 .roadmap .mv{color:var(--dim)}
 .roadmap .mv[disabled]{opacity:.3}
@@ -2713,7 +2713,7 @@ button[aria-busy="true"]{opacity:.75}
    renders: .dmtab predates the scaffold's groups. Not inflated on a phone: a
    select never zooms iOS, so it keeps the size of the text beside it and
    takes the finger height instead (uniform.mjs measures both ways). */
-.dmpick select{font:13px/1.5 var(--mono);padding:8px 9px}
+.dmpick select{font:12px/1.5 var(--mono);padding:8px 9px}
 @media(max-width:900px){ .dmpick select{min-height:var(--tap)} }
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
@@ -2798,7 +2798,7 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 .codebox input{flex:1;min-width:0;padding:7px 9px;
   font:12px/1.4 var(--mono);min-height:var(--tap)}
 .codebox button{flex:0 0 auto;min-height:var(--tap)}
-@media(max-width:900px){ .codebox input{font-size:16px} }
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .codebox input{font-size:16px} } }
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
 .doctor .docbar+.docbar{border-top:1px solid var(--line)}
 #docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
@@ -3075,7 +3075,7 @@ body.booting .pane>.loading{margin:auto}
 .chatmsg.ev{opacity:.75;font-style:italic}
 .chatbar{display:flex;gap:6px;padding:6px;border-top:1px solid var(--line)}
 .chatbar input{flex:1;min-width:0}
-@media(max-width:900px){ .chatbar input{font-size:16px} }
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .chatbar input{font-size:16px} } }
 /* Something is waiting. The same green the state lights use, as a corner
    rather than a badge: the bar is four buttons wide on a phone. */
 #mChat.unread::after{content:"";position:absolute;top:4px;right:6px;
@@ -3084,7 +3084,7 @@ body.booting .pane>.loading{margin:auto}
 .consbar{display:flex;gap:6px;padding:6px;background:var(--bg);
   border-top:1px solid var(--line);align-items:center}
 .consbar .consin{flex:1;min-width:0}
-@media(max-width:900px){ .consbar .consin{font-size:16px} }
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .consbar .consin{font-size:16px} } }
 /* An opaque cover over the frame until the terminal is really there.
    The frame's own background (below) is enough in Chromium, and is not in
    Firefox on Android, which paints its white document canvas over it anyway,

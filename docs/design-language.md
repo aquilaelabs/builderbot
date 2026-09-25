@@ -78,12 +78,14 @@ the two tokens, so a dialog that invents a third fails rather than shipping.
 
 The field skin (ground, edge, radius) is applied to the elements globally,
 so a new surface's controls match by existing. What a surface adds is
-sizing: full-width 13px mono controls mean joining the `.modal input, …`
-sizing group, its 16px phone rule and its `:focus` group. **That 16px is for
-fields you type into**, because iOS zooms the page into a smaller one when it
-takes focus and this layout cannot zoom back. A `<select>` never zooms, so it
-keeps the field size at every width: a 16px mono picker beside an 11px label
-is the loudest thing on the tab, and it was on every tab. Tap targets are `min-height: var(--tap)`. A row of filters
+sizing: full-width 12px mono controls mean joining the `.modal input, …`
+sizing group, its iOS rule and its `:focus` group. **The 16px is iOS's
+alone**: Safari there zooms the page into a typed field smaller than that
+and this layout cannot zoom back, so fields you type into are 16px under
+`@supports (-webkit-touch-callout: none)`, a property only iOS has, and the
+field size everywhere else. A `<select>` never zooms, so it keeps the field
+size at every width: a 16px mono picker beside an 11px label is the loudest
+thing on the tab, and it was on every tab. Tap targets are `min-height: var(--tap)`. A row of filters
 is `<div class="field histbar">`.
 
 **A field's label sits above it**, as `.lbl` (`lbl(id, text, help)`), two
@@ -351,8 +353,8 @@ that writes through or only reads (Bugs, Tests, Analysis, Git) has no foot.
 
 The phone and the desktop are both first-class. A surface is not done until
 it has been looked at at both widths: sections open on a desktop and shut on
-a phone, no control spans the screen at either, and controls are 16px on a
-phone so iOS does not zoom.
+a phone, no control spans the screen at either, and a typed field is 16px
+on iOS alone, so Safari does not zoom.
 
 A finger is not a pointer. On a coarse pointer (`@media(pointer:coarse)`)
 every button in a dialog and in the notebook is `--tap` high, and the small

@@ -1031,18 +1031,14 @@ const sideways = () => page.evaluate(() => {
     overflow: Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth,
                        box ? box.scrollWidth - box.clientWidth : 0),
     widest,
-    // 16px is for things you TYPE INTO, because iOS zooms the page into a
-    // smaller one when it takes focus and this layout cannot zoom back. A
-    // <select> never zooms, so inflating it bought nothing and cost the
-    // loudest element on every tab: the fields are mono, and a 16px mono
-    // picker beside an 11px label shouts. A select is measured the other
-    // way (it must NOT be inflated), so the rule has a check in both
-    // directions rather than one that only notices half of it.
-    small: controls.filter(e => e.tagName !== 'SELECT'
-                                && parseFloat(getComputedStyle(e).fontSize) < 16)
-      .map(e => e.id || e.className || e.tagName),
-    loud: controls.filter(e => e.tagName === 'SELECT'
-                               && parseFloat(getComputedStyle(e).fontSize) >= 16)
+    // Every control on a phone is the field size (12px mono): a 16px mono
+    // field beside an 11px label is the loudest thing on the tab, and the
+    // operator asked for smaller text in every box (25 Sep). The 16px that
+    // stops iOS Safari zooming the page into a typed field is iOS's alone,
+    // under @supports (-webkit-touch-callout: none), a property only it
+    // has, so this browser never sees it and this measures the rule for
+    // everything else: nothing inflated, pickers included.
+    loud: controls.filter(e => parseFloat(getComputedStyle(e).fontSize) >= 16)
       .map(e => e.id || e.className || e.tagName),
   };
 });
@@ -1066,9 +1062,7 @@ for (const kind of kinds){
     const tag = v ? `${kind}/${v}` : kind;
     ok(m.overflow <= 0 && !m.widest, `[${tag}] no sideways scroll at phone width (${
       m.overflow}px over${m.widest ? `; ${m.widest.what} reaches ${m.widest.right}px` : ''})`);
-    ok(m.small.length === 0, `[${tag}] a phone's typed fields are 16px${
-      m.small.length ? `; not: ${m.small.join(', ')}` : ''}`);
-    ok(m.loud.length === 0, `[${tag}] ...and its pickers are not${
+    ok(m.loud.length === 0, `[${tag}] no control on a phone is inflated past the field size${
       m.loud.length ? `; inflated: ${m.loud.join(', ')}` : ''}`);
   }
 }
