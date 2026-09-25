@@ -197,6 +197,7 @@
 - The request trace keeps how long each request took and names the slowest, and bb dashboard trace prints it; a job handed to a poll that never started it goes back to the queue within about ninety seconds instead of holding a lane until the next hello, and a wait behind one says so (e5f587e)
 - The test-run setting's select takes the whole row of the dialog, so its options read in full (a9305ef)
 - bb devapp rebuild no longer gives up with 'timed out' while the build goes on: a slow node's state read is given the time it needs, and a slow one mid-wait is read again (284eaa6)
+- The Docker tab names the agent node it talks to (on NODE, through its agent) instead of an ssh address nothing dials (e06b73d)
 
 ### Security
 

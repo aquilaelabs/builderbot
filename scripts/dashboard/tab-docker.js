@@ -1346,7 +1346,8 @@ function renderDockerInto(i){
   // not talking to, in an address, which reads as proof.
   const src = dockerList?.src || state?.docker || {};
   const srcLine = !note && src.kind
-    ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
+    ? `<div class="dmsrc">${src.agent ? `on ${esc(src.kind)}, through its agent`
+                                       : `on ${esc(src.kind)} at <code>${esc(src.where)}</code>`}${
         // A mapped path this container does not have. Not a fault: it can be a
         // share the daemon mounts and BuilderBot has no business reading. It is
         // said because nothing else here will ever act on it, and a line of

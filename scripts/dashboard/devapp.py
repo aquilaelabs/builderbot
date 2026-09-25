@@ -644,10 +644,14 @@ def source():
     addr = docker_host()
     # Named for what it IS, not for what it was meant to be: calling a tcp://
     # address "the sandbox VM" and then refusing it as not one, in the same
-    # sentence, is how a status line stops being read.
-    kind = ("the sandbox VM" if addr.startswith("ssh://")
+    # sentence, is how a status line stops being read. An agent node's
+    # daemon is reached through its agent and nothing dials the address on
+    # its record, so that one is named by the node (B264).
+    n = _agent_here()
+    kind = (n["name"] if n
+            else "the sandbox VM" if addr.startswith("ssh://")
             else "an unsupported daemon" if addr else "")
-    return {"kind": kind, "where": addr,
+    return {"kind": kind, "where": addr, "agent": bool(n),
             # WHICH node this answer is about, because the page cannot tell.
             # The status poll carries ONE daemon's verdict (the default
             # node's) and the manager may be looking at another, so a page

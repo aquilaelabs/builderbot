@@ -146,6 +146,16 @@ const pillIs = async (want) => {
   }
 };
 
+// The header names the daemon by its node when the node is an agent one:
+// nothing dials the address on its record, so saying "at ssh://..." there
+// described a path that was not taken (B264).
+{
+  await openManager();
+  const src = await page.$eval('.dmtab .dmsrc', e => e.textContent.replace(/\s+/g, ' ').trim());
+  ok(/^on sandbox, through its agent/.test(src),
+     `the manager's header names an agent node's daemon by the node, through its agent (${src.slice(0, 60)})`);
+}
+
 // The word at the foot is for a fetch that has been slow, not for every
 // fetch: a listing reloads once per revision while a job runs, and a word
 // that came and went with each one blinked through every build.
