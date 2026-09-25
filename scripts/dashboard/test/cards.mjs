@@ -604,16 +604,17 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
        b => /nowhere else/.test(b.dataset.tip || b.title || '')),
      '...and the whole of it, fix included, is on the ghosted button, a tap on a phone, since these rows are tipified');
-  // A no-node project says so on the line, in red, and "(node: none)" beside
-  // the name. It said nothing there for a week (15 Sep: the fact beside the
-  // name was called enough); the operator asked for the line back on 23 Sep
-  // after three such rows read as dead buttons, and a tooltip is nothing on
-  // a phone. The fix stays on the button, where a paragraph is free.
+  // A no-node project says so on the line, in red. It said nothing there
+  // for a week (15 Sep: the fact beside the name was called enough); the
+  // operator asked for the line back on 23 Sep after three such rows read
+  // as dead buttons, and a tooltip is nothing on a phone. The fix stays on
+  // the button, where a paragraph is free. The row names no node at all
+  // since R82 (25 Sep): a project's nodes are its settings' to show.
   await plant({ session_at: '', locked: false, node_name: '',
                 session_why: "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab" });
   ok(await line() === 'no node to run a Claude session on'
-     && await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: none)',
-     `a project with no node says so under its name, the first clause only (${await line()})`);
+     && await page.$('#projects .row:has(.name:text-is("alpha")) .pnode') === null,
+     `a project with no node says so under its name, the first clause only, and nothing beside the name (${await line()})`);
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .sessline', e => e.classList.contains('bad')),
      '...in red, since it is why the button is dead');
   ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]',
@@ -626,8 +627,8 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
      `a node out of window says so under the name too (${await line()})`);
   await plant({ held: '' });
   await plant({ node_name: 'shed' });
-  ok(await page.$eval('#projects .row:has(.name:text-is("alpha")) .pnode', e => e.textContent) === '(node: shed)',
-     '...and a project with a node wears its name');
+  ok(await page.$('#projects .row:has(.name:text-is("alpha")) .pnode') === null,
+     '...and a project with a node does not wear its name on the row either');
   // ...and LOCKED is the one case where no session is the point rather than a
   // fault, so it stays quiet.
   await plant({ locked: true });
@@ -1062,9 +1063,15 @@ await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
 ok(await page.$('#bSignOut') === null
    && (await page.$eval('#docAuth', e => e.textContent)).includes('not signed in'),
    'signed out, it says so where the verdict is and offers the way in');
-// ...and nothing offers to start a conversation that cannot start.
-ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => b.disabled)),
-   '...and every project\'s Claude button goes with it');
+// ...and nothing offers to start a conversation that cannot start: every
+// project with no node. One on a node keeps its button, since that node
+// signs in for itself (R47) and this record is not its word; the fixture's
+// ep.silon is on the sandbox (R82).
+ok(await page.$$eval('#projects .row', rs => rs.length > 0 && rs.every(r => {
+     const b = r.querySelector('[data-c]'), name = r.querySelector('.name')?.textContent.trim();
+     return !b || (name === 'ep.silon' ? !b.disabled : b.disabled);
+   })),
+   '...and every Claude button of a project with no node goes with it, while one on a node keeps its own');
 
 // And back. There is no credential here to take away: a machine signs in for
 // itself and keeps the grant it alone refreshes (R47). Signed in, to this

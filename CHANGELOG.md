@@ -47,6 +47,7 @@
 - A node says how many workers a test run there may use: Test workers on its row, 0 for its cores, handed to every test job as BB_TEST_WORKERS (68a8255)
 - BuilderBot's own test suite runs across BB_TEST_WORKERS workers at once, each with its own server, state and tmux, and the parent reruns any failure alone as before (e616fba)
 - A new project made here is committed as it is made and given a starting version, 0.1.0 unless the dialog says otherwise or is left blank (4b42aca)
+- A project can work on several nodes: its settings pick a primary and the others it also works on; the row says all of them (d5c820c)
 
 ### Changed
 
@@ -105,6 +106,10 @@
 - Every Python program that lived inside bb is a file under scripts/lib now, the notebook verbs included, with one loader for the dashboard's modules; bb is the shell that dispatches (bd39024)
 - The update-before-a-session switch is set under Controller settings, behind Apply, and no longer written by a checkbox on the node's row (e5f587e)
 - bb root run says before asking when a command names a file under /tmp, which on a sandbox node is the session's own view and not the root command's (e5f587e)
+- Doctor reports each node's docker daemon on its own line instead of one 'docker daemon' line for the newest enrolled node, and a node dialing in after silence re-asks the doctor at once instead of waiting out its half-hour cache (d5c820c)
+- No primary docker manager: containers go to the project's node; a project with no node is told to pick one (Send to Docker, New container, bb devapp), the Docker tab opens on the node most projects use, and New project offers that node rather than none (d5c820c)
+- Containers live on one of their project's nodes only: the pickers offer those, a node outside the set is refused, a project with no node is told to set one, a container is only given to a project working on its node, and one stranded elsewhere is marked unreachable on its row (d5c820c)
+- The project row no longer names its node: a project's nodes are its settings' to show (d5c820c)
 
 ### Removed
 

@@ -427,7 +427,12 @@ function pFillNode(){
   sel.innerHTML = pick.map(n => `<option value="${esc(n.id)}">${esc(n.name)}${
       n.live === false ? " (quiet)" : ""}</option>`).join("")
     + `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`;
-  sel.value = pick.some(n => n.id === was) ? was : (pick.length === 1 ? pick[0].id : "");
+  // Several: the node most projects are bound to, not none. A project born
+  // with no node had nowhere to send its container and used to land on the
+  // newest enrolled node instead (the operator, 25 Sep).
+  sel.value = pick.some(n => n.id === was) ? was
+    : pick.length === 1 ? pick[0].id
+    : pick.some(n => n.id === nodesDefault) ? nodesDefault : "";
 }
 
 function openNewProject(){ pLink = null; pOpen("init"); }

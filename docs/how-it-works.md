@@ -1172,7 +1172,11 @@ offered to an ssh node or to local.
 
 **Building there.** A project names its node in its settings dialog: one
 node for everything it does off this box: containers, builds, tests, CI and
-emulation, and gives its build and test commands and the output globs.
+emulation, and gives its build and test commands and the output globs. It
+can add other nodes it also works on (R82): its containers may live on any
+of those and nowhere else, and a session start asks which node when there
+is more than one. A project with no node has no default to fall to and is
+told to set one.
 **Nothing runs that nobody wrote down**: with a field empty, `bb build` and
 `bb test` refuse and say how to fill it. The person who knows how a tree
 builds is often the session that has just read it, so a session can:

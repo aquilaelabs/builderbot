@@ -494,14 +494,13 @@ ${code}`], { encoding: 'utf8' });
                                  { headers: other })).json();
     ok(/not a node one of your projects builds on|none of your projects/.test(pk.error || ''),
        '...and the same for what that node has installed');
-    // ...while a project of theirs with no node reads that project's daemon,
-    // the default docker host, which the scope of set nodes does not hold:
-    // it used to be refused as blind where bb devapp ls outside a session
-    // asks exactly this (B258). Still filtered to their own projects.
+    // ...while a project of theirs with no node is told so in the project's
+    // own words, not refused as a node outside their scope (B258): there is
+    // no primary docker manager for it to have landed on, so what it has is
+    // no containers anywhere, and the way out is its settings.
     const own = await (await bare('/api/docker?project=beta', { headers: other })).json();
-    ok(!own.error && !own.blind && Array.isArray(own.instances),
-       `a user's project with no node lists its daemon, the default node, rather than a blind refusal (${
-          own.error || own.instances.length + ' instances'})`);
+    ok(/beta has no node, so it has no containers anywhere/.test(own.error || '') && own.blind === true,
+       `a user's project with no node is told it has no node, in its own words (${String(own.error).slice(0, 60)})`);
   }
 
   // ---- an admin sees everything and works on what it took on (#27) ---------

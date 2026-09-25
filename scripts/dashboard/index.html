@@ -1553,7 +1553,6 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 /* The project's node beside its name: a sibling of .name, so the name
    element stays the name and nothing else. */
 .namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
-.namerow .pnode{font:var(--f-ui);white-space:nowrap}
 /* The Tools card's buttons carry an icon, and the tab each opens carries
    the same one, so a button and its tab are one thing in two places. */
 .macros button svg,.tab .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
@@ -3666,6 +3665,8 @@ body.booting .pane>.loading{margin:auto}
       <label for="rnNode">Node<span class="help" data-tip="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
+      <div id="rnNodesMore" hidden></div>
+      <div class="hint" id="rnNodesMoreHint" hidden>Also works on these: a session can start on any of them, and its containers may live on any of them.</div>
     </div>
     <div class="field" id="rnBuildField">
       <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
@@ -3788,6 +3789,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="cNodeField" hidden>
       <label for="cNode">Node<span class="help" data-tip="which docker host it runs on" tabindex="0">?</span></label>
       <select id="cNode"></select>
+      <div class="hint" id="cNodeHint" hidden></div>
     </div>
     <!-- Which project it belongs to: a dev radarr for a media project is
          that project's, listed in its notebook and reachable by its
@@ -6132,7 +6134,7 @@ function rnLoadModelNow(name){
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
-                 node: "", build: "", test: "", outputs: "",
+                 node: "", nodes: "", build: "", test: "", outputs: "",
                  gate: "", color: ""};
 // The colours a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
@@ -6172,6 +6174,7 @@ function rnFillPrefs(p){
   rnPrefWas = {model: p?.yours?.model || "", effort: p?.yours?.effort || "",
                git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
                node: p?.prefs?.node || "",
+               nodes: (p?.prefs?.nodes || []).join(","),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                gate: gateKey(p?.prefs?.gate),
@@ -6220,6 +6223,24 @@ function rnFillNode(){
           esc(n.name)} (${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
           tools(n).length ? " · " + esc(tools(n).slice(0, 4).join(", ")) : ""})</option>`).join("");
     sel.value = pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
+    rnFillNodesMore();
+}
+
+// The rest of the set (R82): every node but the primary, a checkbox each,
+// checked for the ones the project also works on. Redrawn when the primary
+// changes, since the primary is never offered twice.
+function rnFillNodesMore(){
+  const box = $("rnNodesMore"), hint = $("rnNodesMoreHint");
+  if (!box) return;
+  const primary = $("rnNode").value;
+  const was = new Set(rnPrefWas.nodes.split(",").filter(Boolean));
+  const checked = new Set([...box.querySelectorAll("input:checked")].map(i => i.value));
+  const first = !box.dataset.drawn;
+  const others = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.id !== primary);
+  box.hidden = hint.hidden = rnMode === "git" || !primary || !others.length;
+  box.innerHTML = others.map(n => `<label class="ndcap"><input type="checkbox" value="${esc(n.id)}"${
+      (first ? was.has(n.id) : checked.has(n.id)) ? " checked" : ""}> ${esc(n.name)}</label>`).join("");
+  box.dataset.drawn = "1";
 }
 
 function rnFillPrefsRest(p){
@@ -6862,7 +6883,7 @@ function projectRow(p, live, cls, inTab){
           // it is a different thing: the padlock is the operator keeping a
           // project to themselves, this is a project you have not taken on.
           ? ` <span class="lockmark" aria-label="read-only" data-tip="${esc(NOT_MINE_WHY)}">${LOCK}</span>`
-          : ""}</div><span class="dim pnode">(node: ${esc(p.node_name || "none")})</span></div>
+          : ""}</div></div>
         ${state?.mapping?.[p.name] ? (m => m.running
             ? `<div class="sub">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
             : m.error ? `<div class="sub warn">the code map did not build: ${esc(m.error)}</div>`
@@ -8271,6 +8292,8 @@ for (const id of ["cImage", "cPorts", "cVols", "cEnvLines", "cRestart"])
 $("cYml").oninput = () => { cYmlTouched = true; };
 $("cTabEnv").onclick = () => cSwitch("env");
 $("cUnder").onchange = cUnderPicked;
+$("dnUnder").onchange = dnNodeSay;
+$("rnNode").onchange = rnFillNodesMore;
 $("cGo").onclick = cSubmit;
 $("cCancel").onclick = () => { $("cmodal").hidden = true; };
 $("cmodal").onclick = e => { if (e.target === $("cmodal")) $("cmodal").hidden = true; };
@@ -8875,6 +8898,7 @@ async function rnSubmit(){
   const clear_token = rnClearToken && !token;
   const model = rnModelPick(), effort = $("rnEffort").value;
   const node = $("rnNode").value;
+  const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const gate = rnGateNow();
@@ -8883,7 +8907,7 @@ async function rnSubmit(){
   const tests_in = $("rnDevTest").value || "node";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
-  const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
+  const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
     || tests_in !== rnPrefWas.tests_in || devbuild !== rnPrefWas.devbuild
@@ -8935,7 +8959,7 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
-                              node, build, test, gate, color,
+                              node, nodes, build, test, gate, color,
                               tests_in, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session;

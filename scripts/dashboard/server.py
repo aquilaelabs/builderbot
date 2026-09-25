@@ -2648,6 +2648,7 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  queue=nodes if not NODES_OK else None,
                  runner=jobs if not NODES_OK else None,
                  project_node=lambda p: prefs.get(p)["node"],
+                 project_nodes=lambda p: prefs.get(p)["nodes"],
                  node_paths=nodes.node_paths if not NODES_OK else None)
 # The layer on top of it: the compose runner is its, so it is the one that
 # hands jobs.py the function.
@@ -2834,6 +2835,14 @@ def client_gone(sock):
 import doctor                                                    # noqa: E402
 
 doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes()))
+# A node dialing in after silence re-asks the doctor now rather than in up
+# to half an hour: after a reboot the card kept saying no node could run a
+# session long after they were all back (the operator, 25 Sep).
+nodes.came_back = lambda nid: threading.Thread(target=doctor.refresh, name="doctor-after-hello",
+                                               daemon=True).start()
+# The Docker tab's first pick is derived from where the projects are bound.
+nodes.project_nodes = lambda: {p: (v or {}).get("node") or ""
+                               for p, v in prefs.all_projects(WORKSPACE).items()}
 
 # The controller's diagnostics: read-only, for an administrator and, behind
 # the debug switch and a node's tick, an administrator's session (diag.py).
@@ -4449,11 +4458,10 @@ class Handler(BaseHTTPRequestHandler):
         for n in rows:
             if n.get("kind") == "agent":
                 n["turns"] = node_turns(n)
-        # ...and which node work nobody bound to one lands on (the newest
-        # enrolled that runs docker), so a picker preselects the node the
-        # server would choose rather than the first name in its list: a
-        # project with no node sent to Docker landed on the node the picker
-        # was not showing (the operator, 25 Sep).
+        # ...and the node the Docker tab opens on and New project offers,
+        # derived from where the projects are bound (nodes.node_for). Not a
+        # default that work falls to: a project with no node has nowhere to
+        # send, and the dialogs make the person pick.
         return self._json({"nodes": rows, "agent": nodes.agent_shipped(),
                            "default": nodes.node_for()})
 
@@ -4513,18 +4521,21 @@ class Handler(BaseHTTPRequestHandler):
         # reads that project's (bb devapp ls outside a session).
         asked = q.get("node", [""])[0]
         proj = q.get("project", [""])[0]
-        if sess:
-            nid, why = devapp.project_daemon(sess), None
-        elif not asked and proj:
-            # The project's daemon (its node, else the default docker host)
-            # is allowed by the project being the account's to see, not by
-            # the node scope: that scope holds only the nodes projects are
-            # SET to, so a user's project with no node was refused as blind
-            # where it should read the default node's listing (B258). The
-            # filter below still keeps the answer to the account's projects.
-            if self._not_project(proj):
+        if sess or (not asked and proj):
+            # A named project reads its own node's daemon, allowed by the
+            # project being the account's to see rather than by the node
+            # scope (B258); the filter below still keeps the answer to the
+            # account's projects. A project with no node has no daemon and
+            # no containers anywhere: there is no primary docker manager for
+            # it to fall to (the operator, 25 Sep), so that is said.
+            if not sess and self._not_project(proj):
                 return None
-            nid, why = devapp.project_daemon(proj), None
+            name = sess or proj
+            nid, why = devapp.project_daemon(name), None
+            if not nid:
+                return self._json({"error": f"{name} has no node, so it has no containers anywhere. "
+                                            + no_node_advice(name),
+                                   "blind": True, "instances": [], "containers": []})
         else:
             nid, why = self._node_asked(asked)
         if why:
@@ -4804,7 +4815,7 @@ class Handler(BaseHTTPRequestHandler):
         # Everything else in this dialog is the project's own; the node is
         # not, because a node is shared and moving a project onto one
         # reaches every other project there.
-        if "node" in req and self._refused("node", name):
+        if ("node" in req or "nodes" in req) and self._refused("node", name):
             return
         # ...nor is the dial that hands a session this project's container:
         # it lets a session create one and set its env, which is Docker
@@ -4827,7 +4838,7 @@ class Handler(BaseHTTPRequestHandler):
         if "node" in req and str(req.get("node") or "") != (prefs.get(name) or {}).get("node", ""):
             moved = devapp.pin_to_current_node(name)
             moved_node = True
-        r = prefs.set_prefs(name, node=req.get("node"),
+        r = prefs.set_prefs(name, node=req.get("node"), nodes=req.get("nodes"),
                             build=req.get("build"),
                             test=req.get("test"), outputs=req.get("outputs"),
                             gate=req.get("gate"), gitpol=req.get("gitpol"),
@@ -6794,6 +6805,16 @@ class Handler(BaseHTTPRequestHandler):
                 under = field(req, "for") or (who.get("session") or "")
                 if under and self._not_project(under):
                     return
+                # ...and it lands on that project's node: a node named that
+                # is not the project's is refused now, since a container
+                # anywhere else is out of reach of the project's sessions
+                # (R79, the operator 25 Sep); a project with no node has to
+                # be given one first.
+                if under:
+                    why, un = devapp.on_project_node(under, target["id"] if target else "")
+                    if why:
+                        return self._json({"error": why}, 400)
+                    target = nodes.node(un) if not NODES_OK else None
                 # A session's is under its project's dial, Claude may: Run
                 # its container, like every other container verb (B250, the
                 # operator, 24 Sep: at auto it was still asked). Refused at

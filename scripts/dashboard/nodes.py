@@ -399,12 +399,32 @@ def node_paths_set(principal, node_id, text):
     return {"ok": True, "paths": paths}
 
 
+# The bindings the Docker tab's first pick is derived from: {project: node
+# id}, set by the server from the projects' settings.
+project_nodes = None
+
+
 def node_for():
-    """The default node for work nobody bound to one: the newest enrolled
-    node that runs docker, else the newest enrolled, else local. There is
-    nothing else to narrow by: a node does everything, what a project can do
-    on its node is what is installed there, and the project names the node."""
+    """The node the Docker tab opens on when nobody has picked one, and
+    nothing more: not a default that work falls to. A project's containers
+    go to the project's node, and a project with no node has nowhere to
+    send, since there is no primary docker manager (the operator, 25 Sep,
+    after every new project landed on the newest enrolled node).
+
+    Derived from the projects: the node most of them are bound to, so the
+    tab opens where the work is. With nothing bound anywhere, the newest
+    enrolled node that runs docker, else the newest enrolled, else local:
+    the first pick on a box with no projects yet."""
     try:
+        bound = {}
+        for nid in (project_nodes() if project_nodes else {}).values():
+            if nid:
+                bound[nid] = bound.get(nid, 0) + 1
+        if bound:
+            have = {n["id"]: n for n in docker_nodes() if n["kind"] != "local"}
+            live = [nid for nid in bound if nid in have]
+            if live:
+                return sorted(live, key=lambda nid: (-bound[nid], have[nid]["created"]))[0]
         # The newest node whose census says docker runs there, else the newest
         # the manager has somewhere to send to (B113). An address is not a
         # daemon: a Mac enrolled as a guest, with ssh and no docker, would
@@ -1896,6 +1916,12 @@ def reported_set(nid, key, sub, value):
     _bump()
 
 
+# Called with the node id when an agent dials in after being unheard: the
+# doctor's cached lines about nodes are wrong the moment this happens, and
+# waited out a half-hour cache after a reboot (the operator, 25 Sep).
+came_back = None
+
+
 def hello(nid, census, addr, version="", digest="", running=None):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it: the
@@ -1910,6 +1936,7 @@ def hello(nid, census, addr, version="", digest="", running=None):
     n = node(nid)
     if not n:
         return {"error": "no such node"}
+    was_live = bool(n.get("live"))
     if isinstance(running, list):
         jobs_reconcile(nid, [str(j) for j in running])
     ag = n.get("agent") or {}
@@ -1935,6 +1962,11 @@ def hello(nid, census, addr, version="", digest="", running=None):
           "WHERE id = ?", (json.dumps(ag), json.dumps(rep), rep["system"],
                            rep["arch"], nid))
     _bump()
+    if not was_live and came_back:
+        try:
+            came_back(nid)
+        except Exception as e:                                       # noqa: BLE001
+            print(f"[nodes] came_back hook: {type(e).__name__}: {e}", flush=True)
     ours = agent_file()
     return {"ok": True, "transports": ["longpoll"],
             "poll": POLL_S, "node": {"id": nid, "name": n["name"],

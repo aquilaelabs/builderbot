@@ -432,11 +432,6 @@ ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
   const elsewhere = await list('n_notanodehere');
   ok(!elsewhere.some(x => x === 'ep.silon|main'),
      `...and nowhere else (${elsewhere.join(', ') || 'no rows'})`);
-  await page.evaluate(async () => {
-    await fetch('/api/prefs', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project: 'ep.silon', node: '' }) });
-  });
 }
 
 // ---- moving the project leaves a built instance where it is running -------
@@ -462,18 +457,10 @@ ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
   const sandboxId = await page.evaluate(
     () => (nodesList || []).find(n => n.name === 'sandbox')?.id || '');
 
-  // From a known baseline: blocks above this one move the node too, and a
-  // node change is exactly what pins, so the fixture arrives here already
-  // pinned by them.
-  {
-    const d = JSON.parse(readFileSync(store, 'utf8'));
-    delete d['ep.silon'].main.node;
-    writeFileSync(store, JSON.stringify(d));
-  }
-  await setNode('ep.silon', sandboxId);
-  ok(nodeOf('ep.silon', 'main') === sandboxId,
-     `the first node a project is given pins what is already built on the daemon it was built on (${
-       nodeOf('ep.silon', 'main') || 'unpinned'})`);
+  // From a known baseline: the fixture binds ep.silon to the sandbox from
+  // the start (R82: a project's containers live on its nodes, so there is
+  // no "first node given" with something already built elsewhere), and the
+  // record follows the project until a move pins it.
   {
     const d = JSON.parse(readFileSync(store, 'utf8'));
     delete d['ep.silon'].main.node;
@@ -508,12 +495,19 @@ ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
   ok(nodeOf('ep.silon', 'fresh') === '',
      `an instance that was never built is left to move with the project (${
        nodeOf('ep.silon', 'fresh') || 'unpinned'})`);
-  // Put the fixture back, and in this order: clearing the node is itself a
-  // change, so it pins all over again. The store is tidied after the last one.
+  // Put the fixture back, and in this order: a node change is itself a
+  // pin, so the store is tidied after the last one, and the project ends on
+  // the sandbox again, which is the fixture's baseline (R82).
   await setNode('ep.silon', '');
   {
     const d = JSON.parse(readFileSync(store, 'utf8'));
     delete d['ep.silon'].fresh;
+    delete d['ep.silon'].main.node;
+    writeFileSync(store, JSON.stringify(d));
+  }
+  await setNode('ep.silon', sandboxId);
+  {
+    const d = JSON.parse(readFileSync(store, 'utf8'));
     delete d['ep.silon'].main.node;
     writeFileSync(store, JSON.stringify(d));
   }
@@ -3023,8 +3017,10 @@ ok(await page.$('#devSend'),
      "the project's settings carry it, on auto, with the other Claude may dials");
   await page.selectOption('#rnGateDocker', 'deny');
   await page.click('#rnGo');
-  await refreshUntil(page, () => !((state.projects || [])
-    .find(p => p.name === 'ep.silon') || {}).prefs?.devbuild, { timeout: 20000 });
+  // Read as the setting, not as the record's absence: a project on a node
+  // keeps its record even with every gate at its default (R82).
+  await refreshUntil(page, () => ((((state.projects || [])
+    .find(p => p.name === 'ep.silon') || {}).prefs || {}).devbuild || 'deny') === 'deny', { timeout: 20000 });
   ok((await asSession({ project: 'ep.silon', action: 'rebuild' })).status === 403,
      '...and turning it back to deny there takes the grant back');
   // ---- where the tests run (R48 step 3, moved by R68 step 6) -------------
@@ -3648,20 +3644,24 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
        (seeded.match(/\([^)]*\)/) || [''])[0]} | ${(broken.match(/partly up: \d of \d/) || [''])[0]})`);
 }
 
-// ---- where a new container goes, said in the dialog -----------------------
-// A project with no node sent to Docker landed on the newest enrolled node,
-// while the dialog's picker showed the first name in its list (the operator,
-// 25 Sep). The picker now preselects the node the server would choose: the
-// project's own, else the default docker host, and says under the field when
-// it is the latter. A second node is enrolled here so the picker has a
-// choice; it reports no docker, so it never becomes the default the rest of
-// this suite was written against.
+// ---- where a new container goes: one of its project's nodes -------------
+// A project works on a set of nodes (R82), and a container of it lives on
+// one of them and nowhere else, since a session reaches only its own
+// project's containers on its own node (R79). The pickers offer the set with
+// the primary picked, a node outside it is refused, a project with no node
+// has nowhere to send, and a container given to a project that does not
+// work on its node is refused. A second node is enrolled here so there is a
+// set to have; it reports no docker, so the Docker tab's first pick (the
+// node most projects use, else the one that runs docker) stays the sandbox.
 {
   const base = URL.replace(/\/$/, '');
   const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
               'Content-Type': 'application/json' };
   const post = async (path, body, headers = H) => (await fetch(base + path,
     { method: 'POST', headers, body: JSON.stringify(body) })).json();
+  // The compose fixture, put back for this block: the suite tidied it away
+  // above, and a project with none has no container to send.
+  writeFileSync(`${D}/docker-compose.yml`, 'services:\n  app:\n    image: delta-dev\n    build: .\n');
   const mint = await post('/api/v1/nodes', { action: 'enroll', name: 'spare' });
   await post('/api/v1/agent/enroll', {
     user: 'bb', version: '1', digest: 'sha256:' + '2'.repeat(64),
@@ -3673,50 +3673,76 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
              sandbox: nodesList.find(n => n.name === 'sandbox')?.id || '', dflt: nodesDefault };
   });
   ok(ids.spare && ids.dflt === ids.sandbox,
-     `the node listing names the default docker host: the one that runs docker (${ids.dflt})`);
-  const setNode = async n => {
-    await post('/api/prefs', { project: 'ep.silon', node: n });
-    await page.waitForFunction(
-      want => ((state?.projects || []).find(p => p.name === 'ep.silon')?.prefs?.node || '') === want,
-      n, { timeout: 20000 });
+     `the node listing names the node the Docker tab opens on, derived from the projects (${ids.dflt})`);
+  const setNodes = async (proj, list) => {
+    await post('/api/prefs', { project: proj, nodes: list, node: list[0] || '' });
+    await page.waitForFunction(([p, want]) =>
+      ((state?.projects || []).find(x => x.name === p)?.prefs?.nodes || []).join(',') === want,
+      [proj, list.join(',')], { timeout: 20000 });
   };
   const sendDialog = async () => {
     await page.evaluate(() => openSendToDocker('ep.silon'));
     await page.waitForSelector('#dnNodeField:not([hidden])', { timeout: 10000 });
-    const got = await page.evaluate(() => ({ node: $('dnNode').value, hint: $('dnNodeHint').textContent }));
+    const got = await page.evaluate(() => ({ node: $('dnNode').value, disabled: $('dnNode').disabled,
+      options: [...$('dnNode').options].map(o => o.value), hint: $('dnNodeHint').textContent,
+      go: $('dnGo').disabled }));
     await page.evaluate(() => closeSendToDocker());
     return got;
   };
-  await setNode('');
+  await setNodes('ep.silon', []);
   const none = await sendDialog();
-  ok(none.node === ids.sandbox && /ep\.silon has no node of its own, so this goes to the default docker host/.test(none.hint),
-     `a project with no node is sent to the default docker host, picked and said under the field (${none.node}: ${none.hint.slice(0, 50)})`);
-  await setNode(ids.spare);
-  const own = await sendDialog();
-  ok(own.node === ids.spare && /The project's node unless picked/.test(own.hint),
-     `...and one with a node is sent there (${own.node})`);
-  // The New container dialog on the Docker tab: its node is the one the
-  // manager is looking at until a project is picked, and then that project's.
+  ok(none.go && /ep\.silon has no node: set one in its settings first/.test(none.hint),
+     `a project with no node has nowhere to send: Create is dead and the field says why (${none.hint.slice(0, 50)})`);
+  const bare = await post('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'nowhere' });
+  ok(/has no node, so there is nowhere to make its container/.test(bare.error || ''),
+     `...and the server refuses a new for it (${String(bare.error).slice(0, 60)})`);
+  await setNodes('ep.silon', [ids.spare, ids.sandbox]);
+  ok(/nodes: spare, sandbox/.test(await page.$eval('#projects', e => e.textContent)),
+     'a project on two nodes says both on its row, primary first');
+  const two = await sendDialog();
+  ok(!two.go && two.node === ids.spare && !two.disabled && two.options.slice().sort().join() === [ids.spare, ids.sandbox].sort().join()
+     && /One of ep\.silon's nodes/.test(two.hint),
+     `...and Send offers exactly its nodes, primary picked (${two.options.length} offered, ${two.node} picked)`);
+  const off = await post('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'elsewhere', node: 'n_notanode' });
+  ok(/ep\.silon works on spare, sandbox, and a container for it anywhere else/.test(off.error || ''),
+     `a node outside the set is refused, naming the set (${String(off.error).slice(0, 70)})`);
+  const on = await post('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'reach', node: ids.sandbox });
+  const store = JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'));
+  ok(on.ok && store['ep.silon']?.reach?.node === ids.sandbox,
+     `...and one inside it lands there (${on.error || store['ep.silon']?.reach?.node})`);
+  // Given to another project: only one that works on the node it is on.
+  await setNodes('alpha', [ids.spare]);
+  const give = await post('/api/devapp', { project: 'ep.silon', instance: 'reach', action: 'owner', owner: 'alpha' });
+  ok(/reach is on sandbox and alpha works on spare: its sessions could not reach it/.test(give.error || ''),
+     `a container is not given to a project that works elsewhere (${String(give.error).slice(0, 70)})`);
+  await setNodes('alpha', [ids.spare, ids.sandbox]);
+  const given = await post('/api/devapp', { project: 'ep.silon', instance: 'reach', action: 'owner', owner: 'alpha' });
+  ok(given.ok, `...and is, once that project works there too (${given.error || 'given'})`);
+  await post('/api/devapp', { project: 'ep.silon', instance: 'reach', action: 'remove' });
+  // The New container dialog on the Docker tab: any node until a project is
+  // picked, and then that project's nodes only, its primary first.
   const picked = await page.evaluate(() => {
     openNewContainer();
-    const before = $('cNode').value;
+    const before = { node: $('cNode').value, n: $('cNode').options.length };
     $('cUnder').value = 'ep.silon';
     $('cUnder').dispatchEvent(new Event('change'));
-    const after = $('cNode').value;
+    const after = { node: $('cNode').value, n: $('cNode').options.length, hint: $('cNodeHint').textContent };
     $('cmodal').hidden = true;
     return { before, after };
   });
-  ok(picked.before === ids.sandbox && picked.after === ids.spare,
-     `New container follows the project picked to that project's node (${picked.before} then ${picked.after})`);
+  ok(picked.before.node === ids.sandbox && picked.before.n >= 2 && picked.after.node === ids.spare && picked.after.n === 2
+     && /One of ep\.silon's nodes/.test(picked.after.hint),
+     `New container follows the project picked to that project's nodes (${picked.before.n} then ${picked.after.n}, ${picked.after.node})`);
   // Opened before the page has fetched its nodes, the way the Artifacts
-  // tab's Send is: the picker arrives when the list does, filled, rather
-  // than staying hidden and sending "" for the server to resolve unseen.
+  // tab's Send is: the picker arrives when the list does, filled.
   await page.evaluate(() => { nodesList = null; openSendToDocker('ep.silon'); });
-  await page.waitForSelector('#dnNodeField:not([hidden])', { timeout: 10000 });
+  await page.waitForFunction(() => $('dnNode').options.length === 2, null, { timeout: 10000 });
   const late = await page.evaluate(() => $('dnNode').value);
   await page.evaluate(() => closeSendToDocker());
   ok(late === ids.spare, `...and a dialog opened before the node list landed gets its picker when it does (${late})`);
-  await setNode('');
+  await setNodes('alpha', []);
+  await setNodes('ep.silon', [ids.sandbox]);
+  rmSync(`${D}/docker-compose.yml`, { force: true });
 }
 
 await done(browser);

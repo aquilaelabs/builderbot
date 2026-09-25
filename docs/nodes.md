@@ -1209,7 +1209,19 @@ second surface for per-project settings would be a second place to look).
 Not a selector and not per-role: the operator dropped both, on 1 and 2
 September respectively: a project picks a machine, and that machine does its
 containers, builds, tests, CI and emulation. A project that never opens the
-dialog has no node, and is told so where it matters. Storage:
+dialog has no node, and is told so where it matters.
+
+Since 25 Sep (R82) the one node is the **primary**, and the dialog can add
+others the project also works on: a Linux node and a Windows one for a
+tree with both halves. Everything that reads one node keeps reading the
+primary. What the set changes: a container of the project may live on any
+node of the set and on no other (a session reaches only its own project's
+containers on its own node, so one elsewhere would be out of reach), the
+pickers offer the set and nothing outside it, a container is only given to
+a project that works on the node it is on, starting a session asks which
+node when there is more than one, and each session's firewall reaches the
+project's containers on the set's other nodes. There is no default node
+for a project with none: it is told to set one. Storage:
 node *bindings* go in the database (they reference node ids, must survive a
 node's rename, and want auditing); the existing model/effort prefs stay where
 they are: no churn for its own sake.

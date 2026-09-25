@@ -223,6 +223,11 @@ def _clean(rec):
             # decision (1 Sep): per-role pickers were more control than
             # anybody wanted. A node id, "" meaning none.
             "node": str(rec.get("node") or "")[:40],
+            # ...and the set it works on (R82): the primary first, then the
+            # others, so a project with a Linux node and a Windows one can be
+            # worked on from either. Everything that reads one node keeps
+            # reading `node`; containers may live on any of these.
+            "nodes": _nodes_of(rec),
             # What `bb build` / `bb test` run there, and the globs whose
             # matches come back into dist/.
             "build": str(rec.get("build") or "")[:500],
@@ -301,7 +306,20 @@ def all_projects(workspace=None):
     return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
 
 
-def set_prefs(project, node=None, build=None, test=None,
+def _nodes_of(rec):
+    """The project's node set, primary first, from a record that may carry
+    only `node` (from before R82) or a `nodes` list as well."""
+    primary = str(rec.get("node") or "")[:40]
+    more = rec.get("nodes") if isinstance(rec.get("nodes"), list) else []
+    out = [primary] if primary else []
+    for n in more:
+        n = str(n or "")[:40]
+        if n and n not in out:
+            out.append(n)
+    return out[:16]
+
+
+def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
@@ -314,8 +332,16 @@ def set_prefs(project, node=None, build=None, test=None,
             if color not in COLORS and color != "":
                 return {"error": f"color is one of {', '.join(COLORS)}, or none: not {color}"}
             cur["color"] = color
+        if nodes is not None:
+            got = nodes if isinstance(nodes, list) else str(nodes).split(",")
+            cur["nodes"] = [str(n).strip()[:40] for n in got if str(n).strip()][:16]
+            # The primary is the first of the set unless `node` says which.
+            if node is None and cur["nodes"] and cur["node"] not in cur["nodes"]:
+                cur["node"] = cur["nodes"][0]
         if node is not None:
             cur["node"] = str(node)[:40]
+            if cur["node"] and cur["node"] not in cur["nodes"]:
+                cur["nodes"] = [cur["node"]] + cur["nodes"]
         if build is not None:
             cur["build"] = str(build)[:500].strip()
         if test is not None:
