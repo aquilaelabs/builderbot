@@ -15,6 +15,10 @@
 
 - The paths kept for agents from the 0.5 window: the tell gate that refused an agent older than 0.5.57, and the single actions-runner key beside the runners list. Nothing changes on a node whose agent is current (a32a0a5)
 
+### Fixed
+
+- A session's bb devapp log, start, stop and restart find the project's container on any of its nodes, not only the primary, so the project's own dev instance on its second node is its own again (B268) (21462b7)
+
 ## 0.7.0: 2026-09-25
 
 ### Added

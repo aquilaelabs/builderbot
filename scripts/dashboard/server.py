@@ -6438,9 +6438,17 @@ class Handler(BaseHTTPRequestHandler):
         sess = me.get("session") or ""
         act, name = field(req, "action"), field(req, "container")
         if sess:
-            nid = devapp.project_daemon(sess)
-            with devapp.on_node(nid or None):
-                c, owner = containers.owned_container(name)
+            # Looked for on each of the project's nodes, primary first: its
+            # containers live on any of them (R82), and asking the primary
+            # alone refused the project's own dev instance on its second
+            # node as not its own (B268).
+            c, owner, nid = None, "", devapp.project_daemon(sess)
+            for cand in (devapp.nodes_of(sess) or [nid]):
+                with devapp.on_node(cand or None):
+                    c, owner = containers.owned_container(name)
+                if c:
+                    nid = cand
+                    break
             # A stranger's container and a missing one answer alike.
             if owner != sess:
                 return self._json({"error": not_ours(name, sess)}, 403)
