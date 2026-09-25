@@ -2179,6 +2179,9 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
 // pick opens the terminal on that node, named on the tab and stamped with
 // that node's boot. Planted on the row, since the fixture has one node.
 {
+  // The poll held: the rows are planted, and a poll landing between the
+  // plant and the read put the server's rows back, which have one node.
+  await holdPoll(page);
   const plant = (patch) => page.evaluate(p2 => {
     Object.assign(state.projects.find(x => x.name === 'alpha'), p2); drawProjects(state.projects); }, patch);
   await plant({ locked: false, session_at: 'ubu', session_why: '', last_claude: null, held: '',
@@ -2186,21 +2189,37 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
                       sample: { cpu_pct: 7, mem_mb: 8192, mem_used_mb: 2048 }, gpu: 'NVIDIA RTX A2000', tools: ['python'] },
                     { id: 'n_rh', name: 'rh', where: 'refused', boot: '',
                       why: 'rh is offline. Sessions run on a node and nowhere else' }] });
-  await page.$eval('#projects .row:has(.name:text-is("alpha")) [data-c]', b => b.click());
-  await page.waitForSelector('#resumemenu [data-node]', { timeout: 10000 });
-  const menu = await page.$$eval('#resumemenu [data-node]', bs => bs.map(b => ({
-    id: b.dataset.node, dead: b.disabled, text: b.textContent.replace(/\s+/g, ' ') })));
+  // Through the function the button calls: by this point in the file the
+  // button's own state (the sign-in record, the pins) is whatever the
+  // blocks above left, and that is not what this block is about.
+  // ...with no chooser already open on the row from a block above: a press
+  // on a row whose chooser is open closes it, which is right, and not what
+  // is under test.
+  await page.evaluate(() => { resumeFor = null; claudeNodePick = {}; openClaude('alpha'); });
+  // Read in the one evaluation that waits for it: the card repaints, and a
+  // read after a separate wait found the menu mid-rebuild.
+  const menu = JSON.parse(await (await page.waitForFunction(() => {
+    const bs = [...document.querySelectorAll('#resumemenu [data-node]')];
+    return bs.length === 2 ? JSON.stringify(bs.map(b => ({
+      id: b.dataset.node, dead: b.disabled, text: b.textContent.replace(/\s+/g, ' ') }))) : null;
+  }, null, { timeout: 10000 })).jsonValue());
   ok(menu.length === 2 && !menu[0].dead && /cpu 7%/.test(menu[0].text) && /RTX A2000/.test(menu[0].text) && menu[1].dead,
      `pressing Claude on a project with two nodes asks which, with what each has, and a node that cannot start one is dead (${
         JSON.stringify(menu).slice(0, 120)})`);
-  await page.$eval('#resumemenu [data-node="n_ubu"]', b => b.click());
+  await page.waitForFunction(() => { const b = document.querySelector('#resumemenu [data-node="n_ubu"]');
+    if (!b) return false; b.click(); return true; }, null, { timeout: 10000 });
   await page.waitForFunction(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'), null, { timeout: 10000 });
+  // The row planted again in the same evaluation as the read: a poll that
+  // was already on its way when the hold went on lands whenever it lands.
   const tab = await page.evaluate(() => {
     const t = tabs.find(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu');
+    const p = state.projects.find(x => x.name === 'alpha');
+    p.session_nodes = [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu' }, { id: 'n_rh', name: 'rh', where: 'refused', boot: '' }];
     return { label: t.label, url: ttydUrl(t.arg) }; });
   ok(tab.label === 'Claude: alpha (ubu)' && /%3Ab%3Ab-ubu/.test(tab.url),
      `...and the pick opens the terminal on that node, named on the tab and stamped with that node's boot (${tab.label}; ${tab.url})`);
   await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:'))); drawPanes(); });
+  await freePoll(page);
   page.errors = [];
 }
 await done(browser);

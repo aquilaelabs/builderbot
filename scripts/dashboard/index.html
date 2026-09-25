@@ -5132,7 +5132,7 @@ let soonTimers = [];
 function refreshSoon(){
   soonTimers.forEach(clearTimeout);
   refresh();
-  soonTimers = [1500, 4000].map(ms => setTimeout(refresh, ms));
+  soonTimers = [1500, 4000].map(ms => setTimeout(() => refresh(), ms));
 }
 
 // Take a tab off the strip. Nothing is destroyed and nothing is asked: a
@@ -7275,7 +7275,7 @@ let signinTimer = null;
 function watchSignin(){
   const lg = state?.signin;
   const live = lg?.running || (lg?.done && !lg.ok && !state?.claude_auth?.signed_in);
-  if (live && !signinTimer) signinTimer = setInterval(refresh, 1200);
+  if (live && !signinTimer) signinTimer = setInterval(() => refresh(), 1200);
   if (!live && signinTimer){ clearInterval(signinTimer); signinTimer = null; }
 }
 
@@ -10524,7 +10524,10 @@ document.addEventListener("keydown", e => {
 });
 
 refresh();
-setInterval(refresh, 15000);
+// Through the binding, not the function: the harness holds the poll by
+// replacing `refresh` (lib.mjs holdPoll), and a timer that captured the
+// original kept polling under a planted row (B265).
+setInterval(() => refresh(), 15000);
 </script>
 </body>
 </html>
