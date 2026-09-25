@@ -1297,9 +1297,15 @@ await page.evaluate(() => setLocked('alpha', false));
 // the reason. The button stays dead here for a different one (alpha has no
 // node in this fixture and a Claude session runs on one), and that is the
 // row saying one thing at a time rather than two.
+// Read title OR data-tip here as the check below does: tipify() moves the
+// native title onto data-tip, so a wait on title alone clears on an empty
+// string while the tip still says locked, and the check reads the old words.
 await page.waitForFunction(
-  () => !document.querySelector('#projects .row:has([data-k="alpha"]) .lockmark')
-        && !/locked/.test(document.querySelector('#projects [data-c="alpha"]')?.title || ''),
+  () => {
+    const b = document.querySelector('#projects [data-c="alpha"]');
+    return !document.querySelector('#projects .row:has([data-k="alpha"]) .lockmark')
+      && !/locked/.test(b?.title || b?.dataset.tip || '');
+  },
   { timeout: 15000 });
 // Not the disabled state: this fixture has a live claude-alpha session, and
 // a button that would take you to a running conversation stays usable
