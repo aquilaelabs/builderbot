@@ -117,10 +117,10 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   const quiet = await sess({ node: 'nodeA' });
   ok(began.ok && quiet.ok && !/controller moved/.test(quiet.line || ''),
      `a session that began on this build hears nothing about it (${quiet.line || 'no line'})`);
-  const f = `${DIR}/state/session-builds.json`;
+  const f = `${DIR}/state/session-seen.json`;
   const d = JSON.parse(readFileSync(f, 'utf8'));
   const key = Object.keys(d).find(k => k.endsWith('|nodeA'));
-  d[key] = '0.3.9-dev.1+oldrev1';
+  d[key].build = '0.3.9-dev.1+oldrev1';
   writeFileSync(f, JSON.stringify(d));
   const moved = await sess({ node: 'nodeA' });
   ok(/The controller moved to 0\.4\.0-dev\.390\+abc1234 since this session began \(it was on 0\.3\.9-dev\.1\+oldrev1\)/.test(moved.line || '')
@@ -128,6 +128,23 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
      `...and once the build has moved, the next prompt says so, naming both builds and where to read (${(moved.line || '').slice(0, 80)})`);
   const again = await sess({ node: 'nodeA' });
   ok(!/controller moved/.test(again.line || ''), '...once: the prompt after it says nothing more');
+  // ...and the notebook and the settings the same way: what somebody else
+  // changed on this project since the last prompt is named with the verb
+  // that reads it, and the session's own writes are not, being seen as
+  // they land (the operator, 25 Sep).
+  await call('/api/bugs', { project: 'alpha', action: 'add', title: 'the operator found one', severity: 'low' });
+  const nb = await sess({ node: 'nodeA' });
+  ok(/somebody else changed this project's bugs: read `bb bug`/.test(nb.line || ''),
+     `a bug the operator filed is named on the next prompt (${(nb.line || 'no line').slice(0, 90)})`);
+  await call('/api/bugs', { project: 'alpha', action: 'add', title: 'the session found one', severity: 'low' }, bearer(toks[1]));
+  const own = await sess({ node: 'nodeA' });
+  ok(!/somebody else changed/.test(own.line || ''), `...and the session's own bug is not (${(own.line || 'no line').slice(0, 90)})`);
+  await call('/api/prefs', { project: 'alpha', build: 'make it' });
+  const st = await sess({ node: 'nodeA' });
+  ok(/somebody else changed this project's settings: read `bb settings`/.test(st.line || ''),
+     `a setting the operator changed is named too (${(st.line || 'no line').slice(0, 90)})`);
+  await call('/api/prefs', { project: 'alpha', build: '' });
+  await sess({ node: 'nodeA' });
 }
 
 {

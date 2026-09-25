@@ -2227,7 +2227,17 @@ def trace_since(since):
 # one. Persisted, because the rebuild that this is about restarts this
 # process. Node sessions only: the hook posts from a node, and a session
 # runs on one.
-SESSION_BUILDS = "session-builds.json"
+SESSION_SEEN = "session-seen.json"
+# What the operator can change on a project that a session should be told of
+# on its next prompt (the operator, 25 Sep), with the verb that reads it. The
+# roadmap is roadmap.catchup's, which says which item moved; these say the
+# half. A session's own writes through the API are marked seen as they land
+# (session_mark_own), so only somebody else's move is said.
+SEEN_HALVES = (("bug", "bugs", "`bb bug`"), ("rules", "rules", "`bb rules`"),
+               ("mem", "memories", "the notebook's Memory view"),
+               ("prefs", "settings", "`bb settings`"))
+OWN_WRITE_ROUTES = ("/api/roadmap", "/api/rules", "/api/bugs", "/api/memory", "/api/prefs")
+_seen_lock = threading.Lock()
 
 
 def _build_now():
@@ -2235,34 +2245,80 @@ def _build_now():
     return st.get("version") or st.get("rev") or ""
 
 
-def session_build_note(project, uid, node, begin=False):
-    """`begin`: record the build this session starts on. Otherwise the line
-    to say when the build has moved since, or "", and the record moved on."""
-    now = _build_now()
+def _seen_load():
+    path = STATE / SESSION_SEEN
+    try:
+        d = json.loads(path.read_text())
+    except (OSError, ValueError):
+        d = {}
+    return d if isinstance(d, dict) else {}
+
+
+def _seen_now(project, who):
+    """The tokens a session is compared against: the poll's per-project
+    revisions, and a digest of the project's own settings (the poll's prefs
+    token is one mtime for every project)."""
+    r = revisions(who, [project])
+    try:
+        pf = json.dumps(prefs.get(project) or {}, sort_keys=True)
+    except Exception:                                                     # noqa: BLE001
+        pf = ""
+    return {"bug": str(r.get(f"bug:{project}") or ""), "rules": str(r.get(f"rules:{project}") or ""),
+            "mem": str(r.get(f"mem:{project}") or ""),
+            "prefs": hashlib.sha1(pf.encode()).hexdigest()[:12] if pf else ""}
+
+
+def session_mark_own(project, uid, who):
+    """A session's own write to the notebook or the settings is seen by it
+    as it lands, so its next prompt does not read it back as news."""
+    if not project or not uid:
+        return
+    try:
+        now = _seen_now(project, who)
+        with _seen_lock:
+            d = _seen_load()
+            for key, rec in d.items():
+                if key.startswith(f"{project}|{uid}|") and isinstance(rec, dict):
+                    rec["revs"] = now
+            write_json(STATE / SESSION_SEEN, d)
+    except Exception as e:                                                # noqa: BLE001
+        print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
+
+
+def session_seen_note(project, uid, node, who=None, begin=False):
+    """`begin`: record the build and the notebook this session starts from.
+    Otherwise what has moved since, in one line, and the record moved on:
+    the controller's build (R83) and any half of this project's notebook or
+    its settings that somebody else changed."""
+    build = _build_now()
     key = f"{project}|{uid}|{node or ''}"
     try:
-        path = STATE / SESSION_BUILDS
-        try:
-            d = json.loads(path.read_text())
-        except (OSError, ValueError):
-            d = {}
-        if not isinstance(d, dict):
-            d = {}
-        was = str(d.get(key) or "")
-        if begin or not was or not now:
-            if now:
-                d[key] = now
-                write_json(path, d)
+        revs_now = _seen_now(project, who) if who is not None else {}
+        with _seen_lock:
+            d = _seen_load()
+            rec = d.get(key) if isinstance(d.get(key), dict) else {}
+            was_build, was_revs = str(rec.get("build") or ""), rec.get("revs") or {}
+            d[key] = {"build": build or was_build, "revs": revs_now or was_revs}
+            write_json(STATE / SESSION_SEEN, d)
+        if begin:
             return ""
-        if was == now:
-            return ""
-        d[key] = now
-        write_json(path, d)
-        return (f"The controller moved to {now} since this session began (it was on {was}): "
-                "`bb catchup` says what changed, and `bb preamble` prints the briefing as "
-                "it is now; this session still holds the one it started with.")
+        said = []
+        if build and was_build and was_build != build:
+            said.append(f"The controller moved to {build} since this session began (it was on {was_build}): "
+                        "`bb catchup` says what changed, and `bb preamble` prints the briefing as "
+                        "it is now; this session still holds the one it started with.")
+        if was_revs and revs_now:
+            # A half with no revision yet (a project with no bug filed) is
+            # "" and its first write is a change like any other.
+            moved = [(name, verb) for k, name, verb in SEEN_HALVES
+                     if k in was_revs and was_revs.get(k, "") != revs_now.get(k, "")]
+            if moved:
+                said.append("Since your last prompt somebody else changed this project's "
+                            + ", ".join(n for n, _ in moved) + ": read "
+                            + ", ".join(v for _, v in moved) + " before going on.")
+        return " ".join(said)
     except Exception as e:                                                # noqa: BLE001
-        print(f"[dashboard] session builds: {type(e).__name__}: {e}", flush=True)
+        print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
         return ""
 
 
@@ -4855,7 +4911,16 @@ class Handler(BaseHTTPRequestHandler):
                             or req.get("id") or "")[:120], req)
         for how, route, name in POST_ROUTES:
             if (path == route) if how == "exact" else path.startswith(route):
-                return getattr(self, name)(req)
+                out = getattr(self, name)(req)
+                # A session's own write to its project's notebook or
+                # settings is seen by it as it lands (session_seen_note).
+                # The token's own uid, as the hook reads it: uid_of answers
+                # "" for a session on purpose, and that is the per-account
+                # stores' rule, not this one's.
+                who = self._who() or {}
+                if who.get("session") and any(path.startswith(r) for r in OWN_WRITE_ROUTES):
+                    session_mark_own(who["session"], who.get("uid") or "", who)
+                return out
         self._json({"error": "not found"}, 404)
 
     def _reset(self, req):
@@ -5382,7 +5447,7 @@ class Handler(BaseHTTPRequestHandler):
         if kind == "started":
             chat.event(project, uid, f"{name} started a Claude session on {project}"
                                      + (f" ({field(req, 'node')})" if field(req, "node") else ""))
-            session_build_note(project, uid, field(req, "node"), begin=True)
+            session_seen_note(project, uid, field(req, "node"), who=me, begin=True)
             return self._json({"ok": True})
         if kind == "seen":
             # What this session has not been told about the notebook, and
@@ -5392,7 +5457,7 @@ class Handler(BaseHTTPRequestHandler):
             # for approval, which is the other half of #27.
             line = " ".join(x for x in (roadmap.catchup(project, uid),
                                         pending.settled_line(project),
-                                        session_build_note(project, uid, field(req, "node"))) if x)
+                                        session_seen_note(project, uid, field(req, "node"), who=me)) if x)
             return self._json({"ok": True, "line": line})
         if kind in ("turn", "turn-done"):
             # A prompt about to start, or a turn over (turns.py): how many
