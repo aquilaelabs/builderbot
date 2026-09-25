@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.104"
+AGENT_VERSION = "0.7.105"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -5012,8 +5012,34 @@ class Agent:
             return self._apply_funnel(job, cfg)
         if what == "uninstall":
             return self._apply_uninstall(job)
+        if what in ("reboot", "poweroff"):
+            return self._apply_power(job, what)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def _apply_power(self, job, what):
+        """Reboot the machine or power it off, a few seconds out, so this
+        job's result reaches the controller before the agent goes with it.
+        Root's, like a mount: an agent running as an account refuses and
+        names the command for the machine's own console."""
+        verb = "reboot" if what == "reboot" else "power off"
+        if os.geteuid() != 0:
+            job.say(f"refused: a {verb} is root's, and this agent does not run as root: on the "
+                    f"machine, sudo {'reboot' if what == 'reboot' else 'poweroff'}\n")
+            return "failed", 77
+        cmd = ([shutil.which("systemctl"), what] if shutil.which("systemctl")
+               else ["shutdown", "-r" if what == "reboot" else "-h", "now"])
+        try:
+            subprocess.Popen(["sh", "-c", 'sleep 3; exec "$@"', "sh", *cmd],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError as e:
+            job.say(f"could not start the {verb}: {e}\n")
+            return "failed", 69
+        job.say(f"{verb} in 3 seconds; the row reads away until the agent dials in again"
+                + ("" if what == "reboot" else ", which after a power off takes somebody switching the machine on")
+                + "\n")
+        return "succeeded", 0
 
     def refresh_sandbox_tool(self, job):
         """The machine's bb-sandbox brought up to the bundle's copy before a

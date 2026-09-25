@@ -893,9 +893,17 @@ engines is a one-way door for a cosmetic gain.
 
 **Tools → Nodes** is the screen: a row per node with state, capability
 toggles, services, labels, pool, concurrency, last seen, and Enroll, Test,
-Drain, Remove, plus the approval queue when a bulk token is in play. Drain
-means "finish what you are running, accept nothing new", and it is what makes
-a node safe to patch, at home and in a fleet alike.
+Drain, Remove, Reboot and Shut down, plus the approval queue when a bulk
+token is in play. Drain means "finish what you are running, accept nothing
+new", and it is what makes a node safe to patch, at home and in a fleet alike.
+Reboot and Shut down are the machine's own, asked for from its row: a system
+job the agent answers by scheduling `systemctl reboot` or `poweroff` a few
+seconds out, so the job reports before the agent goes with it. The press
+names the sessions open there, since a reboot ends them; the buttons are
+dead, with the reason under them, while the agent is away (nothing from the
+controller reaches the machine then: its console or its hypervisor does),
+and refused on the controller's own machine and on a locked node. After a
+power-off the row reads away until somebody switches the machine on.
 
 Profiles rather than knobs: the config surface stays one file/env-set, and the
 **defaults are the homelab** (SQLite, single-use tokens auto-approved, local

@@ -2044,6 +2044,40 @@ ok(page.errors.length === 0,
   };
   const plain = await mint('laptop', { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true });
   const shed = await mint('shed2', { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true, sandbox: true });
+  // Reboot and Shut down from the row (the operator, 25 Sep): a system job
+  // the agent runs as root, refused where nothing from here would reach
+  // the machine. The controller's own machine is rebooted from its host.
+  {
+    const lo = await napi('/api/v1/nodes', { action: 'reboot', id: 'local' });
+    ok(/controller's own machine/.test(lo.error || ''), `the controller's own machine is not rebooted from here (${lo.error})`);
+    const rb = await napi('/api/v1/nodes', { action: 'reboot', id: plain.id });
+    ok(rb.ok && /^j_/.test(rb.job || ''), `a live agent node queues the reboot as a system job (${rb.error || rb.job})`);
+    const rj = await napi(`/api/v1/jobs?id=${rb.job}`);
+    ok(rj.spec?.apply === 'reboot' && rj.node === plain.id, 'the job asks the agent for the reboot');
+    const twice = await napi('/api/v1/nodes', { action: 'poweroff', id: plain.id });
+    ok(/one at a time/.test(twice.error || ''), '...and a shutdown pressed meanwhile waits for it');
+    // The tab shows one node at a time, the picker's; laptop is picked
+    // for the row, and the controller's own after it.
+    await page.evaluate(() => openNodesTab());
+    await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(id => [...document.querySelectorAll('.nodestab #ndPick option')].some(o => o.value === id), plain.id, { timeout: 15000 });
+    await page.selectOption('.nodestab #ndPick', plain.id);
+    await page.waitForSelector(`.ndrow[data-node="${plain.id}"]`, { timeout: 20000 });
+    const drawn = await page.evaluate(id => {
+      const box = document.querySelector(`.ndrow[data-node="${CSS.escape(id)}"]`);
+      return box ? [!!box.querySelector('[data-nd="reboot"]'), !!box.querySelector('[data-nd="poweroff"]'),
+                    box.querySelector('[data-nd="reboot"]')?.textContent] : null;
+    }, plain.id);
+    ok(drawn && drawn[0] && drawn[1] && /Rebooting/.test(drawn[2] || ''),
+       `the row carries Reboot and Shut down, and says the reboot is in flight (${JSON.stringify(drawn)})`);
+    await napi('/api/v1/jobs', { action: 'cancel', id: rb.job });
+    // The controller's own row, drawn as the tab draws it: neither verb.
+    const local = await page.evaluate(() => /data-nd="(reboot|poweroff)"/.test(
+      nodeAdvancedSection({ id: 'local', kind: 'local', name: 'controller', state: 'online', config: {}, reported: {} },
+                          false, () => false)));
+    ok(local === false, `...and the controller's own row has neither (${local})`);
+  }
   const no = await napi('/api/v1/nodes', { action: 'uninstall', id: plain.id });
   ok(/only a node provisioned as a BuilderBot sandbox/.test(no.error || '') && /sudo bb-sandbox uninstall/.test(no.error || ''),
      `a node that is not a sandbox is refused, and told the command to run on the machine (${no.error})`);

@@ -155,6 +155,8 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   // Refused to anybody but an administrator, and to a session outright.
   let r = await call('/api/v1/nodes', { action: 'turns', id: minted.id, limit: 1 }, bearer(toks[1]));
   ok(r.status === 403, `a session cannot set its own node's limit (${r.status})`);
+  r = await call('/api/v1/nodes', { action: 'reboot', id: minted.id }, bearer(toks[1]));
+  ok(r.status === 403, `...nor reboot or shut down the machine it runs on (${r.status})`);
   r = await call('/api/v1/nodes', { action: 'turns', id: minted.id, limit: 1 },
     { Authorization: 'Basic ' + Buffer.from('tn.one:pw-tn.one-1').toString('base64'), 'Content-Type': 'application/json' });
   ok(r.status === 403, `...nor can a plain account (${r.status})`);

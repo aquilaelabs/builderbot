@@ -1431,6 +1431,19 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        && after.reported.stores.cache.path === `${DIR}/agentcache`,
        'the census reports the applied mounts and the moved store right away, not at the next hello');
     ok(after && after.applying === null, '...and the row is no longer applying');
+    // A reboot from the row is root's: this agent runs as an account, so it
+    // refuses and names the command, and nothing here reboots the box. Not
+    // asked of an agent that IS root, since that one would do it.
+    if (process.getuid && process.getuid() !== 0){
+      const pw = await api('/api/v1/nodes', { action: 'reboot', id: minted.id });
+      ok(pw.ok && /^j_/.test(pw.job), `reboot queues a system job (${pw.job || pw.error})`);
+      const fin = await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${pw.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      ok(fin?.state === 'failed' && /refused: a reboot is root's/.test(fin.log || '') && /sudo reboot/.test(fin.log || ''),
+         `...which an agent that is not root refuses, naming the command (${fin?.state}: ${(fin?.log || '').trim().slice(0, 80)})`);
+    }
 
     // ---- a store under a share that is not mounted ------------------------
     // The silent failure this refuses: a share in fstab but not mounted

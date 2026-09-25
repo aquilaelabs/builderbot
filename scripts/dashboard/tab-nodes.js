@@ -521,7 +521,16 @@ function nodeAdvancedSection(n, stale, inflight){
         ${inflight("uninstall") ? "disabled" : ""}
         title="remove BuilderBot from the machine: the agent, its accounts, mounts and files; docker and the shares stay">${
         inflight("uninstall") ? "Uninstalling…" : "Uninstall"}</button>` : ""}
-    </div>`;
+    </div>
+    ${n.kind === "agent" && !n.agent?.revoked ? `<div class="actbar">
+      <span class="state${n.live ? "" : " bad"}">${n.live
+        ? "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on."
+        : "Reboot and Shut down need the agent dialing in, and it is away: power the machine from its console or its hypervisor."}</span>
+      ${["reboot", "poweroff"].map(w =>
+        `<button type="button" class="danger" data-nd="${w}" ${!n.live || inflight(w) ? "disabled" : ""}>${
+          inflight(w) ? (w === "reboot" ? "Rebooting…" : "Shutting down…")
+                      : (w === "reboot" ? "Reboot" : "Shut down")}</button>`).join("")}
+    </div>` : ""}`;
   return docSection("nodes", "advanced", "Advanced",
                     n.state === "draining" ? "draining" : n.config?.lock ? "locked" : "",
                     body, {cls: n.state === "draining" ? "warn" : ""});
@@ -1283,6 +1292,20 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           && !confirm("Revoke this node's credential? It will stop being able "
                       + "to dial in, and the only way back is enrolling it "
                       + "again with a new token.")) return;
+      // A reboot ends every session on the node, so the press names them,
+      // as Update agent's does; a shutdown also does not come back by itself.
+      if (act === "reboot" || act === "poweroff"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        const here = (state?.sessions || []).filter(x => x.node_id === id);
+        const mine = here.filter(x => tmuxBase(x.name).startsWith("claude-"));
+        const open = here.length
+          ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open there`
+            + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}; transcripts are kept. `
+          : "";
+        if (!confirm(act === "reboot"
+              ? `Reboot ${name}?\n\n${open}Whatever is running there stops; the agent dials in again when the machine is back up.`
+              : `Shut down ${name}?\n\n${open}It does not come back on its own: switch it on from its console or its hypervisor.`)) return;
+      }
       // An agent update RESTARTS the agent, and until B107 is fixed that
       // takes every session on the node with it: the ttyds, their tmux
       // servers and the Claude processes inside them are all in the agent's
@@ -1315,7 +1338,8 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", "claude-check": "Checking", "claude-update": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
-               retire: "Removing", uninstall: "Uninstalling", paths: "Saving", "check-paths": "Checking",
+               retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down",
+               paths: "Saving", "check-paths": "Checking",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
       if (act === "claude-check"){
         const j = await nodeAct({action: "claude-check", id});

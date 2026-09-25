@@ -5088,6 +5088,9 @@ class Handler(BaseHTTPRequestHandler):
         def revoke():
             return nodes.node_revoke(self._principal(), nid)
 
+        def power():
+            return nodes.node_power(self._principal(), nid, act)
+
         def config():
             # The configuration plane (docs/nodes.md §12): what the operator
             # wants the node to mount and be addressed as. Stored here,
@@ -5262,6 +5265,7 @@ class Handler(BaseHTTPRequestHandler):
         verbs = {"vm-xml": vm_xml, "add": add, "update": update, "uninstall": uninstall,
                  "drain": state, "online": state, "retire": state,
                  "lock": lock, "unlock": lock, "enroll": enroll, "revoke": revoke,
+                 "reboot": power, "poweroff": power,
                  "config": config, "log-grant": log_grant, "turns": turns,
                  "test-workers": test_workers, "session-net": session_net,
                  "root-asks": root_asks, "apply": apply, "runner": runner,

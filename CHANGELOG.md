@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Reboot and Shut down on a node's row, under Advanced: the agent schedules the machine's own reboot or power-off a few seconds out so the job reports first. The press names the sessions it ends; dead with the reason while the agent is away; an administrator's only (0d3a6f0)
+
 ### Changed
 
 - BuilderBot is 0.7: the compatibility window moved, so a node whose agent is from 0.6 is held until Update agent on its row, which the bell and the Nodes tab say (a32a0a5)

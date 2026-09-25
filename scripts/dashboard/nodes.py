@@ -1824,6 +1824,37 @@ def node_uninstall(principal, node_id):
     return r
 
 
+def node_power(principal, node_id, what):
+    """Reboot or shut a node down from its row: a system job the agent
+    answers by scheduling the machine's own reboot or power-off a few
+    seconds out, so the job's result reaches here before the agent goes
+    with it. Refused where nothing from here would reach the machine (its
+    agent away), where the machine is this controller's own (rebooted from
+    its host, not from the dashboard it runs), and on a locked node."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if what not in ("reboot", "poweroff"):
+        return {"error": "power is reboot or poweroff"}
+    verb = "reboot" if what == "reboot" else "shut down"
+    if n.get("kind") != "agent":
+        return {"error": f"{n['name']} is the controller's own machine: {verb} it from its host, "
+                         "not from the dashboard running on it"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the "
+                         f"machine: {verb} it from its console or its hypervisor"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": what, "config": {}, "timeout": 60})
+    if r.get("ok"):
+        audit(principal, "node-" + what, node_id, {"job": r["job"]})
+    return r
+
+
 def system_job_for(node_id):
     """The system job in flight for a node, if any: one at a time, because
     two applies racing on one fstab is not a state anybody wants."""
