@@ -3286,7 +3286,10 @@ cmd_map() {
     # `addresses` with nothing to read reads the roadmap: the plan is where
     # a session writes `file ~line`, and where those go stale (item 7).
     if [ "${1:-}" = addresses ] && [ $# -eq 1 ]; then
-        cmd_roadmap | python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" addresses -
+        # As a command of its own rather than cmd_roadmap in this process:
+        # on a node the roadmap is the controller's, and only the dispatch a
+        # command starts with relays it there (B293).
+        "$0" roadmap | python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" addresses -
         return
     fi
     python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" "$@"
