@@ -329,10 +329,15 @@ export async function refreshUntil(page, fn, { timeout = 60000, every = 1000 } =
 //
 // So: plant, assert, release. `refresh` is a top-level function declaration,
 // so the binding can be swapped and put back; nothing in the page has to
-// know about this.
-export const holdPoll = page => page.evaluate(() => {
-  if (!window.__heldRefresh){ window.__heldRefresh = refresh; refresh = async () => {}; }
-});
+// know about this. A poll already out when the hold goes on still lands, so
+// the hold waits for it: landing after the caller planted its rows, it put
+// the server's back over them (B295).
+export const holdPoll = async page => {
+  await page.evaluate(() => {
+    if (!window.__heldRefresh){ window.__heldRefresh = refresh; refresh = async () => {}; }
+  });
+  await page.waitForFunction(() => !refreshBusy, null, { timeout: 30000 });
+};
 export const freePoll = page => page.evaluate(() => {
   if (window.__heldRefresh){ refresh = window.__heldRefresh; window.__heldRefresh = null; }
 });
