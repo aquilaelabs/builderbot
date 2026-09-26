@@ -476,3 +476,36 @@ project and read off the dev share. On `builderbot-dev` at e559a4a, then
   settings, on a real node with a real session.
 - Still dev: `bb container new` from a session was not walked; nor was a
   session's `start`, `stop` or `restart` by an instance's name.
+
+## 26 September, late: the operator's scanner stack on the dev pair
+
+The three scanners the operator runs on the host (semgrep, trivy,
+mobsfscan, one-shot services under a `scan` profile) were made as a
+container of no project on the dev VM from the Docker tab's own path, with
+the paths moved to what the pair shares: `/workspace` scanned read-only,
+reports and caches under `/workspace/.scanners` on the same share, which
+this box mounts at `/workspace-dev`, and `COMPOSE_PROFILES=scan` in its
+env. Build asked about the binds outside its directory, as it should, and
+Up ran the three to completion in about a minute: semgrep (441 rules, no
+finding on these fixtures), trivy (none), mobsfscan (one error on `droid`'s
+manifest, six notes it places at the share's root).
+
+`builderbot-dev` could not read them: the `/reports` volume was a
+commented line in the compose, so a dev instance built from the compose as
+it is had no way to a scan. The line is live now, from
+`SCANNER_REPORTS_PATH` with the documented default (8bdeafa), and the dev
+instance names `/workspace-dev/.scanners/reports` in its env. *Snag, mine
+and filed (B314):* `bb devapp env` printed the env without a final newline,
+so the line I appended joined the one before it and the default path was
+mounted; fixed on the same day. After the rebuild: `droid`'s Analysis view
+shows the StrandHogg error with its remedy; the Static analysis tab is live
+with a project picker, seven findings, the six unattributed ones under
+their own heading; and the Haiku session on `web` ran `bb findings` (no
+findings for web, one line per report) and was refused `--all`, as a
+session should be.
+
+- Alpha, new evidence: a real scanner's SARIF, written on a node, read by
+  a dev instance through the mount every install has; the tab, the view
+  and the verb agree on it.
+- Still dev: the findings log across two scans (nothing has changed yet),
+  and the card's counts.
