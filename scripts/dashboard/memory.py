@@ -704,6 +704,11 @@ def delete(project, file, home=None):
 # flag the list does (roadmap.mark_unsaved).
 mark_unsaved = None
 
+# The actions of verb() that write. The server counts a person's edit for
+# the sessions' catch-up by these, and a history read is not one of them
+# (B296).
+WRITES = ("save", "index", "create", "delete")
+
 
 def verb(proj, act, req, home):
     """Edit, delete or create one of this project's memories, rewrite the

@@ -1825,6 +1825,18 @@ def _seen_now(project, who):
             "prefs": hashlib.sha1(pf.encode()).hexdigest()[:12] if pf else ""}
 
 
+def _memory_written(req, held):
+    """Whether a POST to /api/memory wrote a memory: one of memory.verb's
+    writes, answered without an error. A history read writes nothing, and
+    counting it told a project's sessions its memories had changed when a
+    person had only read the log (B296); a refusal or a conflict writes
+    nothing either. `held` is the reply _post is holding."""
+    if field(req, "action") not in memory.WRITES or not held:
+        return False
+    obj, code, _cookie = held[-1]
+    return code == 200 and isinstance(obj, dict) and not obj.get("error")
+
+
 def _mem_edited(project):
     """One more memory edit on this project through the notebook, by
     somebody who is not a session: the seen note's memory half."""
@@ -4419,7 +4431,7 @@ class Handler(BaseHTTPRequestHandler):
                         who = self._who() or {}
                         if who.get("session"):
                             session_mark_own(who["session"], who.get("uid") or "", who)
-                        elif path.startswith("/api/memory"):
+                        elif path.startswith("/api/memory") and _memory_written(req, self._held):
                             _mem_edited(field(req, "project"))
                 finally:
                     held, self._held = self._held, None
