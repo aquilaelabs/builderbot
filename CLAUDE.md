@@ -223,16 +223,17 @@ by hand cost four commands and still could not see the failed builds.
     the row names the number, and when they disagreed three tabs said
     "runs 0.6.92 and ships 0.6.92" (B221).
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
-    `index.html` is vanilla JS and CSS with one classic `tab-*.js` script per
-    document tab, one `nb-*.js` per notebook view, and one `page-*.js` per
-    part of the page that is neither (the welcome panel, chat, motion, the
-    sidebar cards, the gear menu, doctor, the command cards, paged lists, a
-    project's sessions),
-    all loaded before the page's own script and all pure declarations:
+    `index.html` is the markup, the stylesheet and the wiring that runs at
+    load, with one classic `tab-*.js` script per document tab, one
+    `nb-*.js` per notebook view (`nb-core.js` is the notebook itself), and
+    one `page-*.js` per part of the page that is neither (the state and its
+    helpers, the tabs and the strip, the panes, the sidebar, a project's
+    settings, the polls, the bell and the rest), all loaded before the
+    page's own script, all pure declarations and all `"use strict"`:
     wiring that must run at load stays in `index.html` under the section's
-    header, and the server serves a script only by name (the allow-list in
-    `server.py`). No framework, no build step. `bb map sections index.html`
-    says which section moves next, and R77 is the rest of that migration.
+    header, and the server serves a script only by name, from the list the
+    page's own script tags make (`server.page_scripts`). No framework, no
+    build step. `bb map sections FILE` reads any of them by its headers.
   - **The dashboard's design language is `docs/design-language.md`**, held
     by the house rule `design`, which names it and runs `test/uniform.mjs`
     as its check. A new tab kind declares `multi` (a notebook is per

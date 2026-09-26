@@ -4,6 +4,8 @@
 // moved out of the page's own script with bb map sections in hand: pure
 // declarations, nothing runs at load.
 
+"use strict";
+
 async function postTrash(path, body){
   try{
     const r = await postJSON(path, body);
@@ -153,6 +155,11 @@ const devClaudeMode = name => {
 // dialog is the Projects feature's. Its fields, its submit and the name
 // that follows the address are wired from index.html.
 
+// No cursor is put in a field here, on open or on a tab switch. A dialog that
+// focuses something raises the on-screen keyboard with it, which covers half
+// of what it just opened, so the field is chosen by the person who wants to
+// type in it. `focus` stays in PMODES because it is also the name of the
+// field that mode leads with, which pDraw uses.
 const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pVersionField", "pNodeField", "pGateField", "pArchiveField", "pAboutField"] },
@@ -438,3 +445,156 @@ function pFillNode(){
 function openNewProject(){ pLink = null; pOpen("init"); }
 
 function openLinkProject(name){ pLink = name; pOpen("link"); }
+
+function closeNewProject(){ pGen++; $("pmodal").hidden = true; $("pArchive").value = "";
+  $("pArchiveName").textContent = "none picked"; $("pVersion").value = "0.1.0"; }
+
+// A stale error must not survive a mode switch: "a name is required" makes
+// no sense over a form that no longer asks for one.
+const pSwitch = m => { if (pMode === m) return;
+  pMode = m; $("pErrWrap").hidden = true; pDraw(); pSlide(); };
+
+// What a typed name becomes. The server sanitizes for real; this is the same
+// rule in the other language, so the operator can see the answer before
+// pressing anything, and the two agreeing is checked by a test rather than
+// hoped for. If they ever disagree the server wins, and the row that appears
+// carries the name it actually made.
+const projName = (raw) => (raw || "").trim()
+  .replace(/[^A-Za-z0-9._-]/g, "-")
+  .replace(/-{2,}/g, "-")
+  .replace(/^[._-]+/, "").replace(/-+$/, "").slice(0, 100);
+
+function pNameShow(){
+  const raw = $("pName").value, clean = projName(raw);
+  // Cloning with the field left empty still takes the repository's name, so
+  // the collision has to be checked against THAT and not against an empty
+  // string: otherwise the one case that needs the warning most is the one
+  // that never gets it.
+  const eff = clean || (pMode === "clone" ? projName(repoOfUrl($("pUrl").value)) : "");
+  const taken = eff && (state?.projects || []).some(p => p.name === eff);
+  $("pName").classList.toggle("bad", !!taken);
+  $("pNamePreview").classList.toggle("bad", !!taken);
+  // Shown when it differs from what was typed, when it is taken, or when
+  // there is nothing left of it, and quiet otherwise, because repeating a
+  // name back unchanged is noise on a dialog that already carries three hints.
+  $("pNamePreview").hidden = !taken && (!raw.trim() || clean === raw.trim());
+  $("pNamePreview").textContent = taken
+    ? `${eff} already exists under /workspace: give this one another name`
+    : clean ? `Will be created as ${clean}`
+    : "That leaves nothing to name a directory after";
+}
+
+// The repository's own name out of a clone URL: the same rule the server
+// falls back to when the name field is empty.
+function repoOfUrl(url){
+  const last = (url || "").trim().replace(/\/+$/, "").split(/[/:]/).pop() || "";
+  return last.endsWith(".git") ? last.slice(0, -4) : last;
+}
+
+// The name follows the address until somebody types one. Tracked rather than
+// guessed from emptiness: clearing the field is itself a choice, and refilling
+// it on the next keystroke of the URL would fight whoever did it.
+let pNameTyped = false;
+
+// Create, clone or link: the dialog's one submit, wired to #pCreate in index.html.
+async function createProject() {
+  // Captured at the click: the dialog can be closed, reopened and switched
+  // to another mode while this request runs, and everything below must keep
+  // talking about the flow the operator actually submitted.
+  const mode = pMode, linkName = pLink, gen = pGen;
+  const name = $("pName").value.trim();
+  let url = $("pUrl").value.trim();
+  const key = $("pKey").value;          // "" until this open's fetch offered any
+  const file = mode === "init" ? $("pArchive").files[0] : null;
+  const fail = m => gen === pGen
+    ? ($("pErr").textContent = m, $("pErrWrap").hidden = false)
+    : notify(`${mode === "link" ? linkName : name || mode}: ${m}`, true);
+  if (mode === "init"){ if (!name) return fail("a name is required"); }
+  else if (!url) return fail("a repository address is required");
+  $("pErrWrap").hidden = true;
+  const b = $("pCreate");
+  b.disabled = true;
+  b.textContent = { init: "Creating…", clone: "Starting…", link: "Starting…" }[mode];
+  try{
+    // A push has to authenticate somehow; catching this before the round-trip
+    // spares typing a URL into a flow that cannot finish. Judged on the
+    // pubkeys answer itself: awaited, so an early Create is not judged on
+    // the pre-fetch defaults. (The server refuses it too; this is just the
+    // earlier of the two answers.)
+    const linkToken = mode === "link" && pLinkAuth === "token" ? $("pToken").value.trim() : "";
+    const fg = pForge();
+    if (mode === "link" && !fg.fixed && !pHost())
+      return fail(`the address you reach ${fg.name} on, e.g. git.example.com`);
+    // owner/repo alone, with the host already named beside it, is an address
+    // on that host: the placeholder shows the long form, and typing only the
+    // half the host box does not already know is the natural thing to do.
+    if (mode === "link" && /^[A-Za-z0-9][A-Za-z0-9._-]*(\/[A-Za-z0-9][A-Za-z0-9._-]*)+$/.test(url) && pHost())
+      url = `https://${pHost()}/${url}`;
+    if (mode === "link" && pLinkAuth === "token" && !linkToken)
+      return fail("an access token for this project: a push has to authenticate somehow");
+    if (mode === "link" && pLinkAuth === "key" && !key){
+      const auth = await pFetch;
+      // The container's PAT is GitHub's and covers nothing else, so it is not
+      // an answer for a host it was never minted for.
+      if (!(auth && auth.pat && fg.id === "github"))
+        return fail((auth && auth.keys || []).length
+          ? `no credential is configured for ${fg.name}: pick a deploy key, or switch to an access token`
+          : `no deploy key is available for ${fg.name}: switch to an access token, or add a deploy key and try again`);
+    }
+    // The archive goes first, on its own: the create request is a small
+    // JSON body and the upload is not, so the server spools the bytes and
+    // hands back an id the create quotes.
+    let archive = "";
+    if (file){
+      b.textContent = "Uploading…";
+      const u = await fetch("/api/upload-archive?name=" + encodeURIComponent(file.name),
+                            {method: "POST", body: file});
+      const uj = await u.json().catch(() => ({}));
+      if (!u.ok) return fail(uj.error || `upload failed (HTTP ${u.status})`);
+      archive = uj.id;
+      b.textContent = "Creating…";
+    }
+    const r = mode === "link"
+      ? await fetch("/api/link", {method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({name: linkName, url, forge: pForgeId,
+                                key: pLinkAuth === "key" ? key : "",
+                                token: linkToken})})
+      : await fetch("/api/create", {method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
+                                node: $("pNodeField").hidden ? "" : $("pNode").value,
+                                // A starting version, for a fresh tree only: a
+                                // clone keeps the history it came with.
+                                version: mode === "init" ? $("pVersion").value.trim() : "",
+                                gate: $("pGateField").hidden ? null : pGateNow(),
+                                devbuild: $("pGateField").hidden ? null : ($("pGateDocker").value || "deny"),
+                                key: mode === "clone" ? key : "",
+                                // Only ever consulted for a host that does not
+                                // name itself: the server prefers the host.
+                                forge: mode === "clone" ? pForgeId : "",
+                                token: mode === "clone" ? $("pToken").value.trim() : "",
+                                push: mode === "clone" && $("pPush").checked})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return fail(j.error || `${mode} failed (HTTP ${r.status})`);
+    if (gen === pGen) closeNewProject();
+    // Everything that touches the network is a background job now, and it is
+    // accepted, not finished. The dialog gets out of the way and the Projects
+    // card carries it from here, which is also what happens if this page is
+    // closed a second later.
+    if (j.started){
+      pJobSeen({running: true, kind: mode === "link" ? "link" : "clone",
+                name: j.name || linkName, step: "starting", for: 0});
+      pJobPoll();
+    } else {
+      notify(`${j.name || name || linkName} ${mode === "link" ? "linked" : "created"}: ${j.note || "ready"}`);
+      refresh();                        // the new state, without waiting a poll
+    }
+  }catch(e){
+    // The request may still be running server-side (a big clone or push
+    // outlives a dropped connection), so say to look rather than blindly retry.
+    fail("lost the connection; check the Projects card before trying again");
+  }finally{
+    if (gen === pGen){ b.disabled = false; b.textContent = PMODES[pMode].btn; }
+  }
+}

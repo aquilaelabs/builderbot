@@ -8,6 +8,8 @@
 // headers wired from index.html, under the sidebar cards header, and the
 // phone's own fold set (localStorage) is read there too.
 
+"use strict";
+
 let cards = {order: [], closed: []};   // filled from the markup once it exists, in index.html
 
 const cardShut = key => cards.closed.includes(key)
@@ -215,3 +217,7 @@ function sessionRows(proj){
     busy.has(n) ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(n)}${
     n === state?.me ? " (you)" : ""}</div>`).join("");
 }
+
+// ---- sidebar cards ---------------------------------------------------
+
+const keepPhoneOpen = () => { try{ localStorage.setItem("bb.phoneOpen", JSON.stringify([...phoneOpen])); }catch{} };

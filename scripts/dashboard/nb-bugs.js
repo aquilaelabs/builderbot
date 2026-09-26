@@ -1,6 +1,9 @@
 // The notebook's Bugs view: the tracker, its form, its sorts and Send to
 // Claude. One classic script beside index.html (docs/nodes.md §13): one file
 // per notebook view (R60). A factory makeNotebook calls per notebook.
+
+"use strict";
+
 function nbBugsView({$, nb, project}){
   // ---- bugs ----------------------------------------------------------------
   // Write-through, unlike the roadmap: a bug report is a form submitted once,

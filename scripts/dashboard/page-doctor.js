@@ -6,6 +6,8 @@
 // declarations, nothing runs at load. Its two buttons are wired from
 // index.html, under the doctor header.
 
+"use strict";
+
 let docOpen  = null;   // the operator's toggle; null = follow the verdict
 
 let docLevel = null;   // last verdict, so a change can override that toggle

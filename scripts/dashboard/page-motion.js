@@ -8,6 +8,8 @@
 // declarations, nothing runs at load. The modals are armed and the Tools
 // icons put on from index.html, under the motion header.
 
+"use strict";
+
 const noMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // Every modal leaves the way it arrived. Closing one is `hidden = true` at a

@@ -9,7 +9,7 @@
 // Same size matters as much as staying loaded: a hidden frame is still an
 // attached tmux client, and tmux sizes a window to its smallest client.
 import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -142,7 +142,10 @@ ok(await kindCount('notebook') >= 2,
 // happened, and is invisible until somebody reloads. Compared against the
 // files rather than trusted, because the two are in different languages and
 // nothing else makes them agree.
-const html = readFileSync(new globalThis.URL('../index.html', import.meta.url).pathname, 'utf8');
+// Every script the page is made of: TABKINDS is page-tabs.js's since R77.
+const html = ['index.html', ...readdirSync(new globalThis.URL('..', import.meta.url))
+    .filter(f => /^(page|tab|nb)-.*\.js$/.test(f))]
+  .map(f => readFileSync(new globalThis.URL('../' + f, import.meta.url).pathname, 'utf8')).join('\n');
 const py = readFileSync(new globalThis.URL('../server.py', import.meta.url).pathname, 'utf8');
 const inPage = [...html.matchAll(/^ {2}([a-z]+):\s*\{ multi:/gm)].map(m => m[1]).sort();
 const inServer = (py.match(/^TAB_KINDS = \{([^}]*)\}/m) || [, ''])[1]

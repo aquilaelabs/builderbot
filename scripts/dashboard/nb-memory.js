@@ -2,6 +2,9 @@
 // edited, written by hand and forgotten, and the refusal when a memory moved
 // on disk. One classic script beside index.html (docs/nodes.md §13): one file
 // per notebook view (R60). A factory makeNotebook calls per notebook.
+
+"use strict";
+
 function nbMemoryView({$, nb}){
   async function loadMemory(gen){
     let j;

@@ -2,6 +2,9 @@
 // project built, the dev instance, the version, the changelog. One classic
 // script beside index.html (docs/nodes.md §13): one file per notebook view
 // (R60). A factory makeNotebook calls per notebook.
+
+"use strict";
+
 function nbArtifactsView({$, nb, project, root, sheet}){
   // ---- artifacts -----------------------------------------------------------
   // What this project has built. Fetched on open like Analysis, and polled

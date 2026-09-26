@@ -10,6 +10,8 @@
 // /api/emulator (emulator.py). Loaded BEFORE the page's own script, so
 // everything here is a declaration and nothing runs at load.
 
+"use strict";
+
 let emu = null, emuRev = 0, emuPoll = null, emuLoadSeq = 0;
 // Which node the tab shows, remembered in this browser, and which flavor the
 // picker is on: a question being asked, not a fact about the node.

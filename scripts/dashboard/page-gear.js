@@ -7,6 +7,8 @@
 // declarations, nothing runs at load. The gear button and the listeners
 // that close the menu are wired from index.html, under the logs header.
 
+"use strict";
+
 const THEMES = [
   ["default",  "Default"],
   ["abyss",    "Abyss"],    ["carbon",   "Carbon"],   ["ember", "Ember"],
@@ -233,7 +235,9 @@ function toggleUiMenu(open){
   }
 }
 
-// The gear's oldest job, now one item in the menu it opens.
+// The gear's oldest job, one item in the menu it opens: back to the default
+// order, everything open. Confirmed because an arrangement is minutes of
+// fiddling and one stray tap.
 async function resetCards(){
   if (!confirm("Reset the sidebar cards to their default order, all expanded?")) return;
   toggleUiMenu(false);

@@ -18,6 +18,9 @@
 // The one answer, from the poll. `on` absent (an older server, a payload that
 // has not landed yet) is not "off": a control the page has no opinion about
 // should behave as it always did rather than switch itself off on a hunch.
+
+"use strict";
+
 const dockerWhy = () =>
   state?.docker && state.docker.on === false
     ? (state.docker.why || "no docker daemon is reachable from here") : "";
@@ -1450,3 +1453,23 @@ function renderDockerInto(i){
 // through branches. The server re-validates everything; this side only
 // catches the obvious before a round-trip, and keeps the dialog open on
 // failure so nothing typed is lost.
+
+// ---- no daemon, no Docker buttons ---------------------------------------
+
+// The controls that act on the daemon, in one list. Not the ones that only
+// read or explain: Refresh is how you retry after wiring one up, Edit and Env
+// open a compose file that is a file whether or not anything can run it, and
+// the manager tab itself is where the reason is written in words: disabling
+// the way to READ a diagnosis is how you get a dashboard that has gone quiet
+// for no visible cause.
+//
+// REMOVE IS NOT ONE OF THEM, and that is the correction: removing is this
+// side's own record, with a `down` in front of it as a courtesy. Gating it on
+// the daemon left a row on a machine that had gone away removable by nobody:
+// the one state a list must not have, since the row is the only control over
+// the thing it names. It stays live, the server takes the record either way,
+// and the confirmation says which of the two halves will happen.
+// The new-project dialog that followed this list is tab-projects.js now; its fields and its submit are wired further down.
+const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],'
+                  + '[data-dm="rebuild"],'
+                  + '#devSend,#bDockerNew';

@@ -2,6 +2,9 @@
 // session is handed. One classic script beside index.html, the shape tab-*.js
 // has (docs/nodes.md §13): one file per notebook view (R60). A factory
 // makeNotebook calls per notebook.
+
+"use strict";
+
 function nbAnalysisView({$, nb, project}){
   const anaFx = {level: "", find: ""};
 

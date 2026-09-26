@@ -6,6 +6,8 @@
 // moved out of the page's own script with bb map sections in hand: pure
 // declarations, nothing runs at load.
 
+"use strict";
+
 const COMMANDS_SHOWN = 8;
 
 let showAllCommands = false;
@@ -116,3 +118,28 @@ function editCustom(id){
 }
 
 function closeEditor(){ $("modal").hidden = true; editing = null; }
+
+// ---- saved and pinned commands ------------------------------------------
+
+async function postCustom(body){
+  try{
+    const r = await postJSON("/api/custom", body);
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return false; }
+    if (state) state.custom = j.custom;
+    drawCustom();
+    return true;
+  }catch(e){ notify("could not save it: " + e, true); return false; }
+}
+
+async function setPinned(name, on){
+  try{
+    const r = await postJSON("/api/pin", {name, pinned:on});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    // The server's answer is the truth, so two browsers cannot disagree about
+    // what is pinned until the next poll.
+    if (state) state.pinned = j.pinned;
+    drawCommands();
+  }catch(e){ notify("could not save the pin: " + e, true); }
+}

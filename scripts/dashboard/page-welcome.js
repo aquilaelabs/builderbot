@@ -6,6 +6,9 @@
 // declarations: the wiring that runs at load (the About button, the
 // modal's own close, the welcome on the first poll) stays in index.html
 // under the section's header, since it needs the page and its helpers.
+
+"use strict";
+
 const GUIDE_USER = `
   <h4>What this is</h4>
   <p>A Claude Code workstation in a browser. Each project on the left is a
@@ -166,4 +169,39 @@ function closeAbout(){
   w.seen = true; w.image_seen = rev || w.image_seen;
   fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
                        body: JSON.stringify({action: "prefs", prefs: patch})}).catch(() => {});
+}
+
+// ---- the build this container runs --------------------------------------
+
+// Which build of the image this container is running, beside how long it has
+// been running it. The pair is the point: an Unraid container keeps serving
+// whatever it last pulled, so "how long has this been up" and "what is this"
+// are different questions, and only one of them used to be answerable. The
+// stamp is what /opt is serving; bb drift is what a checkout has changed since.
+function drawBuild(img){
+  const el = $("build"), rev = img?.rev || "", ver = img?.version || "";
+  // The version when there is one, because it is the half that can be
+  // ordered: two shas do not say which came first, which is the question
+  // being asked whenever anybody looks at this. The rest moved from a hover
+  // tooltip into the About popup: a phone cannot hover, and the truncated
+  // string it showed instead answered nothing.
+  el.textContent = ver || (rev ? rev.slice(0, 7) : "unstamped");
+  $("aVer").textContent = ver || "(no version stamp)";
+  $("aRev").textContent = rev
+    || "unstamped: built outside CI, or older than the stamp itself";
+  $("aBuilt").textContent = img?.built || "unknown";
+}
+
+// ---- the welcome panel: the guide, and the changelog ----------------------
+
+// Opened by itself, once each: on the guide for an account that has not
+// read it, else on the changelog for an image this account has not seen.
+// Decided on the first poll, when the account and the image are known.
+let welcomed = false;
+function welcomeOnce(){
+  if (welcomed || !state?.me || !state.welcome) return;
+  welcomed = true;
+  const w = state.welcome, rev = state.image?.rev || "";
+  if (!w.seen) openAbout("guide");
+  else if (rev && w.image_seen !== rev) openAbout("log");
 }

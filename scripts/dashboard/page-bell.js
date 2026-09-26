@@ -1,0 +1,218 @@
+// What the page has said: a toast for the moment, and the bell, which
+// keeps the last fifty and what waits on this account (a session's ask, a
+// held change).
+//
+// One classic script beside index.html (docs/design-language.md, Files),
+// moved out of the page's own script with bb map sections in hand (R77):
+// pure declarations, nothing runs at load. What runs at load stays in
+// index.html under the section's header.
+
+"use strict";
+
+// ---- toasts -------------------------------------------------------------
+
+let toastTimer = null;
+// How bad is it: "info", "warn" or "bad". The second argument was a boolean
+// and sixty-odd callers pass `true` for a failure, so `true` still means what
+// it always did and "warn" is the new middle: a caller that never learns
+// about it keeps working and keeps meaning the same thing.
+function level(v){
+  return v === true || v === "bad" ? "bad" : v === "warn" ? "warn" : "info";
+}
+
+function notify(msg, bad){
+  const lv = level(bad);
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.toggle("bad", lv === "bad");
+  el.classList.toggle("warn", lv === "warn");
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"),
+                          lv === "info" ? 4000 : 7000);
+  logNote(msg, bad);
+}
+
+// ---- what the page has said, and what is waiting on you ----------------
+
+// A toast says a thing once, for four seconds, to whoever happened to be
+// looking. That is the right deal for "saved" and the wrong one for every
+// message that matters: a failure you were not at the screen for did not
+// happen, as far as you can tell afterwards. So every notify() lands here as
+// well and stays until it is cleared.
+//
+// It is a page-lifetime log, deliberately: these are things this tab said,
+// and a reload is a fair line to draw under them. What is NOT from here is
+// the asks: a session blocked on the phone is the server's fact, read live,
+// so it leaves the list the moment it is answered or times out rather than
+// sitting there as a record of a decision already made.
+const NOTE_CAP = 50;
+let notes = [], notesSeen = 0, bellOpen = false;
+
+function logNote(msg, bad){
+  // `bad` is kept beside `lv` because the row's own styling and every test
+  // that reads it predate the third level; lv is what the dot is chosen from.
+  notes.unshift({msg: String(msg), bad: level(bad) === "bad",
+                 lv: level(bad), at: Date.now()});
+  if (notes.length > NOTE_CAP) notes.length = NOTE_CAP;
+  drawBell();
+}
+
+function drawBell(){
+  const bell = $("bBell"), panel = $("bellPanel");
+  if (!bell) return;
+  const asks = ph?.asks || [];
+  // What sessions have waiting for approval, per project (roadmap #27):
+  // the server's fact like an ask, so it leaves the moment it is answered.
+  const waiting = (state?.projects || []).filter(p => p.pending > 0);
+  // What the nodes need: an agent behind, or from another window. From the
+  // poll, never stored here, so a row leaves the moment it stops being true.
+  const att = state?.attention || [];
+  const unread = Math.max(0, notes.length - notesSeen);
+  // The WORST of what is unread, not the newest. notes are unshifted, so the
+  // first `unread` of them are the new ones. A failure followed by three
+  // "saved"s is still a failure nobody has looked at.
+  const fresh = notes.slice(0, unread);
+  const worst = fresh.some(n => n.lv === "bad") ? "bad"
+              : fresh.some(n => n.lv === "warn") ? "warn"
+              : fresh.length ? "info" : "";
+  const dot = bell.querySelector(".dot");
+  const pendingOn = asks.length + waiting.length;
+  const attOn = att.some(a => a.window) ? "bad" : att.length ? "warn" : "";
+  dot.hidden = !(pendingOn || att.length || unread);
+  // An ask outranks every level of record: one is a thing that happened, the
+  // other is a thing that has not happened yet because it is waiting on you.
+  // A node alert sits between: red when work is stopped, amber when an
+  // update merely waits.
+  dot.className = "dot" + (pendingOn ? " ask" : attOn ? " " + attOn : worst ? " " + worst : "");
+  bell.classList.toggle("has", !!(pendingOn || att.length || unread));
+  bell.classList.toggle("waiting", pendingOn > 0);
+  bell.title = pendingOn
+    ? `${pendingOn} waiting on an answer`
+    : att.length ? `${att.length} need${att.length === 1 ? "s" : ""} attention`
+    : unread ? `${unread} new` : "notifications";
+  // Drawn whenever it is ON SCREEN, which is the question that matters, and
+  // not when a flag says it is open; those two disagreed and the panel a
+  // reader was looking at stopped updating.
+  if (panel.hidden) return;
+  const when = t => fmtTime(t, {hour: "2-digit", minute: "2-digit"});
+  const rows = [
+    // Above everything the page merely said: somebody is blocked on these.
+    // A root ask (roadmap R38) is the same row with the stakes said: which
+    // machine, and that it is root there. `#` is the prompt root gets.
+    ...asks.map(a => `<div class="bnote ask${a.kind === "root" ? " bad" : ""}">
+        <div class="btag">${
+          a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
+          : a.kind === "rebuild" ? `${esc(a.ctl || "rebuild")} in ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
+          : "needs your answer"}</div>
+        <div class="bwhy">${esc(a.why)}</div>
+        <div class="bcmd">${a.kind === "root" ? "#" : a.kind === "rebuild" || a.kind === "container" ? "bb" : "adb"} ${esc(a.cmd.join(" "))}</div>${
+        // A container is approved by reading its compose file, the way root
+        // is approved by reading its argv (R71): the file is the request, so
+        // it is here whole, folded, with the env file's keys and never its
+        // values, which is where a token would be.
+        a.kind === "container" ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the compose file${
+            a.env_keys?.length ? `, and an env file setting ${a.env_keys.map(esc).join(", ")}` : ""}${
+            a.for ? `, for ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}
+        <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
+          ? `${Math.floor(a.left / 60)} min left to answer`
+          : `${a.left}s left to answer`}</span>
+          <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>
+            <a href="#" data-ballow="${a.id}">Approve</a></span></div></div>`),
+    // ...and beside them, what a session has waiting in each project's
+    // notebook. One row per project, not per change: the notebook is where
+    // the changes are read, so the row's only job is to take you there.
+    ...waiting.map(p => `<div class="bnote ask">
+        <div class="btag">waiting for your approval</div>
+        <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(p.name)}</div>
+        <div class="bfoot"><span>on the notebook</span>
+          <span class="acts"><a href="#" data-bpend="${esc(p.name)}">Review</a></span></div></div>`),
+    // ...and the nodes. Out of window is red and names the projects it
+    // stops; behind is amber and waits for a press on the Nodes tab.
+    // A window move holds every project at once, so several of these is the
+    // normal case after a minor bump and one row per project was six rows
+    // saying one thing. Collapsed into one, with one press behind it (B93).
+    ...att.map(a => a.kind === "claude"
+      // Claude Code behind on a node (claudecode.py): amber, one press on
+      // the Nodes tab behind it, which ends the sessions there first.
+      ? `<div class="bnote ask">
+        <div class="btag">Claude Code update available</div>
+        <div class="bwhy">${esc(a.node)} runs Claude Code ${esc(a.from)} and ${esc(a.to)} is out${
+          a.projects.length ? `; ${a.projects.map(esc).join(", ")} run${a.projects.length === 1 ? "s" : ""} sessions there` : ""}</div>
+        <div class="bfoot"><span>on the Nodes tab: Update ends the Claude sessions there first</span>
+          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`
+      : `<div class="bnote ask${a.window ? " bad" : ""}">
+        <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
+        <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
+          a.window
+            ? `.${a.projects.length
+                ? ` ${a.projects.map(esc).join(", ")} cannot build, test or use the emulator there` : " Nothing works there"} until it is updated`
+            : ""}</div>
+        <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
+          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`),
+    ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
+        <div class="bwhy">${esc(n.msg)}</div>
+        <div class="bfoot"><span>${when(n.at)}</span></div></div>`),
+  ];
+  panel.innerHTML = rows.length
+    ? rows.join("") + (notes.length
+        ? `<div class="bfootbar"><button type="button" id="bellClear">Clear</button></div>` : "")
+    : `<div class="bempty">nothing to report</div>`;
+  const clear = $("bellClear");
+  // Only the page's own log clears: an ask is not this button's to dismiss.
+  if (clear) clear.onclick = () => { notes = []; notesSeen = 0; drawBell(); };
+  panel.querySelectorAll("[data-ballow]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    phBusy = "running it"; phRev++; drawPanes();
+    phFetch({action: "allow", id: Number(a.dataset.ballow)});
+  });
+  panel.querySelectorAll("[data-bdeny]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    phFetch({action: "deny", id: Number(a.dataset.bdeny)});
+  });
+  panel.querySelectorAll("[data-bpend]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    openNotebook(a.dataset.bpend);
+    openPending(a.dataset.bpend);
+  });
+  // To the node's row, where Update agent is: the press itself stays there,
+  // beside the state line that says what it does.
+  panel.querySelectorAll("[data-bnode]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    openNodesTab();
+  });
+}
+
+function toggleBell(open){
+  const panel = $("bellPanel"), bell = $("bBell");
+  bellOpen = open === undefined ? !bellOpen : open;
+  bell.setAttribute("aria-expanded", bellOpen ? "true" : "false");
+  if (bellOpen){
+    notesSeen = notes.length;          // opening it is reading it
+    panel.hidden = false;
+    drawBell();
+    if (!noMotion())
+      panel.animate([{opacity: 0, transform: "translateY(-10px)"},
+                     {opacity: 1, transform: "none"}], {duration: 160, easing: "ease"});
+  } else if (!panel.hidden){
+    const hide = () => { panel.hidden = true; };
+    if (noMotion()) hide();
+    else {
+      // oncancel as well as onfinish. Whether the panel is actually gone was
+      // decided by an animation finishing, so an animation interrupted, by a
+      // second toggle, by anything that animates this element: left bellOpen
+      // false with the panel still on screen. drawBell then returned early on
+      // the flag while the thing was in front of somebody, and it sat there
+      // showing whatever it last drew.
+      const out = panel.animate([{opacity: 1, transform: "none"},
+                                 {opacity: 0, transform: "translateY(-10px)"}],
+                                {duration: 120, easing: "ease"});
+      out.onfinish = hide;
+      out.oncancel = hide;
+    }
+  }
+  drawBell();
+}

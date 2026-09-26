@@ -2,6 +2,9 @@
 // read, edited, staged and saved with the rest of the notebook. One classic
 // script beside index.html (docs/nodes.md §13): one file per notebook view
 // (R60). A factory makeNotebook calls per notebook.
+
+"use strict";
+
 function nbRulesView({$, nb, project}){
   // One answer for the several askers of a first show (B218): the view
   // switch, the view shown again before the first answer landed, and the

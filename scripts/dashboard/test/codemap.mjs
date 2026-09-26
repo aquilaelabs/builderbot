@@ -23,7 +23,7 @@ ok(/^scripts\/dashboard\/tab-docker\.js:\d+ to \d+  function$/m.test(def),
 
 // Callers, with the function each call is made from, page and suites apart.
 const callers = map('who-calls', 'loadDocker');
-ok(/tab-docker\.js:\d+  from openDocker/.test(callers) && /index\.html:\d+  from open/.test(callers),
+ok(/tab-docker\.js:\d+  from openDocker/.test(callers) && /page-tabs\.js:\d+  from open/.test(callers),
    'who-calls attributes a call to the function it is made from, through a parameter list with commas');
 ok(/^test scripts\/dashboard\/test\/devapp\.mjs/m.test(callers),
    '...and marks the suites among the callers');
@@ -130,10 +130,10 @@ ok(/devactions\.py:\d+  passed by name in configure  \| .*runner\.register\("com
 {
   const txt = `${REPO}/.bb-map/probe-addresses.txt`;
   const at = map('find', 'openDocker').match(/:(\d+)/)[1];      // a true address, wherever it is today
-  writeFileSync(txt, ['  R2  a plan', '       details: The picker is pinTo() in scripts/dashboard/index.html (~4634), and',
+  writeFileSync(txt, ['  R2  a plan', '       details: The picker is pinTo() in scripts/dashboard/page-tabs.js (~4634), and',
                       '~ R3  another, shelved', `       details: imgAdder() in index.html (~8093); openDocker (tab-docker.js ~${at}) draws it.`, ''].join('\n'));
   const adr = map('addresses', txt);
-  ok(/^  R2: ~4634  pinTo is scripts\/dashboard\/index\.html:\d+ now$/m.test(adr),
+  ok(/^  R2: ~4634  pinTo is scripts\/dashboard\/page-tabs\.js:\d+ now$/m.test(adr),
      'an address more than twenty lines from its name is reported with where the name is now, under its item');
   ok(/^  R3: ~8093  imgAdder is defined nowhere the map looks now \(was index\.html;/m.test(adr),
      '...a name that is gone is said to be gone, under a shelved item too');
@@ -147,7 +147,7 @@ ok(/devactions\.py:\d+  passed by name in configure  \| .*runner\.register\("com
 // refactor read it as nothing. Found, and seen passed by name.
 ok(/^scripts\/dashboard\/page-commands\.js:\d+  arrow$/m.test(map('find', 'drawLinux')),
    'an expression-bodied arrow is a definition');
-ok(/index\.html:\d+  passed by name in refresh  \| .*drawCard\("linux", drawLinux\)/.test(map('who-calls', 'drawLinux')),
+ok(/page-poll\.js:\d+  passed by name in refresh  \| .*drawCard\("linux", drawLinux\)/.test(map('who-calls', 'drawLinux')),
    '...and who-calls sees it handed to the card draw');
 
 // The page's mutable state (B223): every page-level `let`, where it is

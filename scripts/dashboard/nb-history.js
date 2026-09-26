@@ -2,6 +2,9 @@
 // the one pane the memory, bug and analysis views share. One classic script
 // beside index.html (docs/nodes.md §13): one file per notebook view (R60). A
 // factory makeNotebook calls per notebook.
+
+"use strict";
+
 function nbHistoryView({$, nb, project}){
   // ---- what happened to this list ----------------------------------------
   // The list shows the present tense and two people write it, so until this

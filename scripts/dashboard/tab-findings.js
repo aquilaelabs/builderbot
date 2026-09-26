@@ -4,6 +4,8 @@
 // moved out of the page's own script with bb map sections in hand: pure
 // declarations, nothing runs at load.
 
+"use strict";
+
 let fxRev = 0;                  // bumped when the filters change, so the pane
 let fxProject = "";             // repaints without waiting for a poll
 const fxState = {level: "", find: ""};
@@ -81,4 +83,161 @@ function openFindingsTab(){
   if (off){ notify(off, true); return; }
   openTab({kind: "findings", arg: "__findings", label: "Analysis"});
   loadFindings();
+}
+
+// ---- findings --------------------------------------------------------
+
+const LEVEL_ORDER = {error:0, warning:1, note:2, info:2, none:3};
+const levelClass = l => l === "error" ? "bad" : l === "warning" ? "warn"
+                      : (l === "note" || l === "info") ? "note" : "";
+
+// The reports' mtime as of the last load, so a scan re-run on the host shows
+// up on its own: the status poll carries the current mtime, and a mismatch
+// while a findings tab is open triggers a reload. Only then: reloading on a
+// timer would fight the reader for the page (their collapsed sections do
+// survive, but their scroll position does not).
+let findingsMtime = null;
+
+async function loadFindings(force){
+  if (findings && !force) return;
+  findingsMtime = state?.reports_mtime ?? null;
+  findings = {loading: true};
+  try{
+    const r = await fetch("/api/findings");
+    findings = await r.json();
+  }catch(e){ findings = {error: String(e)}; }
+  // The Analysis tab repaints if one is open: it draws "loading…" while the
+  // fetch is in flight, and a fetch that completes without saying so leaves
+  // that word on the pane until some unrelated revision moves. Only then:
+  // notebooks call this too, and an unconditional drawPanes() from THEIR
+  // fetches landed mid pane-swap in flows that had nothing to do with
+  // findings, which is how the Resume test started failing on a tab this
+  // never touches.
+  if (tabs.some(t => t.kind === "findings")){
+    fxRev++;
+    drawPanes();
+  }
+}
+
+// Every project section starts collapsed: the summary line of pills is the
+// overview, and the reader opens what they mean to triage. Which sections they
+// have opened is kept across re-renders so a reload does not undo it.
+const opened = new Set();
+
+// The per-rule rendering the notebook's Analysis view uses: worst level
+// first, each rule one block with its hits. What used to be the whole-report
+// tab, scoped to one project: the grouping by project became the notebook.
+function findingsRulesHtml(rows){
+  const by = (xs, k) => xs.reduce((m, x) => ((m[x[k] ?? "none"] ??= []).push(x), m), {});
+  const rules = by(rows, "rule");
+  for (const k of Object.keys(rules))
+    rules[k].sort((a, b) => (LEVEL_ORDER[a.level] ?? 9) - (LEVEL_ORDER[b.level] ?? 9));
+  const order = Object.keys(rules).sort((a, b) =>
+    (LEVEL_ORDER[rules[a][0].level] ?? 9) - (LEVEL_ORDER[rules[b][0].level] ?? 9)
+    || rules[b].length - rules[a].length);
+  let html = "";
+  for (const rid of order){
+    const hits = rules[rid];
+    const f = hits[0];
+    const cves = [...new Set(hits.flatMap(h => h.cves))];
+    html += `<div class="rule">
+      <div class="rid">
+        <span class="pill ${levelClass(f.level)}">${esc(f.level)}</span>
+        ${f.uri ? `<a href="${esc(f.uri)}" target="_blank" rel="noopener">${esc(rid)}</a>`
+                : esc(rid)} · ${hits.length}
+      </div>
+      <div class="desc">${esc(f.desc || "(no description)")}</div>
+      ${cves.map(c => `<a class="cve" target="_blank" rel="noopener"
+          href="https://nvd.nist.gov/vuln/detail/${esc(c)}">${esc(c)}</a>`).join("")}
+      <div>${hits.map(h => `<div class="loc">${esc(h.path)}:${h.line}</div>`).join("")}</div>
+      ${f.message && f.message !== f.desc
+          ? `<div class="msg">${esc(f.message.slice(0, 600))}</div>` : ""}
+    </div>`;
+  }
+  return html;
+}
+
+// ---- the findings tab, drawn --------------------------------------------
+
+// A finding that places in no project still places somewhere on the page.
+// The name cannot collide: a real project cannot contain a space.
+const fxProj = f => f.project || "unattributed paths";
+
+function fxRows(){
+  const all = (findings?.reports || []).flatMap(r => r.findings || []);
+  return fxFilter(all.filter(f => !fxProject || fxProj(f) === fxProject), fxState);
+}
+
+function renderFindingsInto(i){
+  // Chrome from the scaffold, content from here: the shape every document
+  // tab renders in now, so the bands cannot drift per tab (see docSurface).
+  const d = docSurface(i, "fx");
+  if (!d) return;
+  d.bar.classList.add("fxbar");
+  if (!findings){
+    // The status poll drops the cache when a scan re-runs on the host, and a
+    // repaint is not a fetch, so an open tab has to start one itself.
+    // loadFindings repaints on completion for every caller.
+    loadFindings();
+  }
+  if (!findings || findings.loading){
+    d.list.innerHTML = `<div class="loading">loading…</div>`;
+    return;
+  }
+  if (findings.error){
+    d.list.innerHTML = `<div class="hint bad">${esc(findings.error)}</div>`;
+    return;
+  }
+  if (findings.available === false){
+    d.list.innerHTML = `<div class="empty">no scanner reports: the reports
+      folder is not connected. Static analysis in the README says how to set
+      it up.</div>`;
+    return;
+  }
+  const rows = fxRows();
+  const all = (findings.reports || []).flatMap(r => r.findings || []);
+  const perProject = {};
+  for (const f of all) perProject[fxProj(f)] = (perProject[fxProj(f)] || 0) + 1;
+  // Real projects alphabetical, the unplaceable bucket last; it is a note
+  // about the report, not a project to pick among them.
+  const projects = Object.keys(perProject).sort((a, b) =>
+    (a === "unattributed paths") - (b === "unattributed paths") || a.localeCompare(b));
+  const projSelect = `<select id="fxProject" aria-label="project">
+      <option value="">all projects · ${all.length}</option>
+      ${projects.map(pn => `<option value="${esc(pn)}"${pn === fxProject ? " selected" : ""}>${
+        esc(pn)} · ${perProject[pn]}</option>`).join("")}
+    </select>`;
+  // Grouped by project when looking across them, flat when one is chosen:
+  // a heading repeating the selector's own value is noise.
+  const by = {};
+  for (const f of rows) (by[fxProj(f)] ??= []).push(f);
+  const groups = fxProject ? [["", rows]] : Object.entries(by).sort((a, b) =>
+    (a[0] === "unattributed paths") - (b[0] === "unattributed paths")
+    || a[0].localeCompare(b[0]));
+  // Inside .fx, because that is the container the notebook's Analysis view
+  // renders rules into and every .rule style is scoped to it: same data,
+  // same rendering, one implementation and one stylesheet for both.
+  const body = rows.length
+    ? groups.map(([name, fs]) => (name
+        ? `<div class="fxproj"><span class="name">${esc(name)}</span>
+             <span class="dim">${fs.length}</span></div>` : "")
+        + `<div class="fx">${findingsRulesHtml(fs)}</div>`).join("")
+    : `<div class="empty">${all.length
+        ? "nothing matches the filters"
+        : "no findings in the current reports. A report lists what it found, "
+          + "not what it checked."}</div>`;
+  d.setBar(fxBarHtml(all.filter(f => !fxProject || fxProj(f) === fxProject),
+                     fxState, projSelect));
+  d.list.innerHTML = body;
+  const aside = findings.aside ? `${findings.aside} finding(s) are
+      against paths that are no project's and are counted aside rather than
+      listed${(state?.findings_heads || []).length
+        ? ": " + (state.findings_heads || []).map(h =>
+            `${esc(h.head)} <span class="dim">× ${h.n}</span>`).join(" · ")
+        : ""}` : "";
+  const ages = reportAges();
+  d.setFoot([aside, ages].filter(Boolean).join("<br>"));
+  const redraw = () => { fxRev++; drawPanes(); };
+  $("fxProject").onchange = e => { fxProject = e.target.value; redraw(); };
+  fxWireBar(d.el, fxState, redraw);
 }

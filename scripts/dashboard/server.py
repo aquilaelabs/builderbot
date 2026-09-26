@@ -2150,7 +2150,25 @@ def app_apk_sha():
 # copy of the file before it. The version is the script's size and mtime,
 # the same thing its ETag is; the page's own tag covers them all, so a change
 # to one script alone is still a new page.
-_SCRIPT_TAG = re.compile(rb'<script src="((?:tab|nb)-[a-z-]+\.js)">')
+_SCRIPT_TAG = re.compile(rb'<script src="((?:tab|nb|page)-[a-z-]+\.js)">')
+_page_scripts = {"mtime": None, "names": frozenset()}
+
+
+def page_scripts():
+    """The companion scripts index.html loads, by name: the allow-list the
+    server serves them from, read off the page's own script tags so a new
+    file is added in one place, the page, and nothing else is served. Read
+    again when index.html changes. The page-*.js files were missing from the
+    versioning pattern above until this read it the same way (R77)."""
+    p = HERE / "index.html"
+    try:
+        m = p.stat().st_mtime_ns
+    except OSError:
+        return frozenset()
+    if _page_scripts["mtime"] != m:
+        names = {n.decode() for n in _SCRIPT_TAG.findall(p.read_bytes())}
+        _page_scripts.update(mtime=m, names=frozenset(names))
+    return _page_scripts["names"]
 
 
 def _versioned_page(raw, tag):
@@ -4264,19 +4282,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/term" or path.startswith("/term/"):
             return self._term_proxy()
         # The page's companion scripts: a new surface is a new classic-script
-        # file beside index.html (docs/nodes.md §13), and this allowlist is
-        # how they are served: full paths, same shape as the favicons, so it
-        # never grows into a general file server by accident.
-        if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
-                    "/tab-users.js", "/tab-phone.js", "/tab-profile.js",
-                    "/tab-toolchains.js", "/tab-emulator.js", "/tab-docker.js",
-                    "/page-welcome.js", "/page-chat.js", "/page-motion.js", "/page-lists.js",
-                    "/page-cards.js", "/page-gear.js", "/page-doctor.js", "/page-commands.js",
-                    "/page-projsessions.js",
-                    "/tab-findings.js", "/tab-projects.js",
-                    "/nb-git.js", "/nb-artifacts.js", "/nb-analysis.js", "/nb-rules.js",
-                    "/nb-tests.js", "/nb-bugs.js", "/nb-pending.js", "/nb-roadmap.js",
-                    "/nb-memory.js", "/nb-history.js"):
+        # file beside index.html (docs/nodes.md §13), served by name from the
+        # list the page's own script tags make (page_scripts), so it never
+        # grows into a general file server by accident.
+        if path.startswith("/") and path[1:] in page_scripts():
             return self._static(path[1:], "text/javascript; charset=utf-8")
         if self.path.split("?")[0] in ("/", "/index.html"):
             return self._static("index.html", "text/html; charset=utf-8")

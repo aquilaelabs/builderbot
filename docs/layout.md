@@ -60,7 +60,10 @@ scripts/
   lib/doctor-probes.py           egl, project node, commit identity, session-capable node, signed-in account
   lib/lint-checks.py             bb lint's own checks: runner label pinning, XML well-formedness, settings agreement
   startup.d/*.sh                 startup hooks
-  dashboard/                     web dashboard: server.py, index.html, one tab-*.js per document tab, one nb-*.js per notebook view
+  dashboard/                     web dashboard: server.py; index.html (markup, stylesheet, the wiring that runs at load);
+                                 one tab-*.js per document tab, one nb-*.js per notebook view (nb-core.js is the
+                                 notebook itself), one page-*.js per part of the page that is neither, all strict,
+                                 all pure declarations, served by name from the page's own script tags (R77)
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
     bb-gate                      the hook every tool call asks before it runs, on a node
     bb-keep-login                keeps a node session's Claude login in step, once per prompt

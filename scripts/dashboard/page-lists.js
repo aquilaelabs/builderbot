@@ -9,6 +9,8 @@
 // moved out of the page's own script with bb map sections in hand: pure
 // declarations, nothing runs at load.
 
+"use strict";
+
 const PAGE = 25;
 
 const pageState = {};      // list id -> the page that is open, from 1

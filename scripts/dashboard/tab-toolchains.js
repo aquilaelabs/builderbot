@@ -19,6 +19,9 @@
 //
 // Installs are queued by the server and polled from here, so the list keeps
 // reporting progress instead of freezing on a request that cannot return.
+
+"use strict";
+
 let toolchains = null, tcRev = 0, tcPoll = null;
 const tcTicked = new Set();     // survives a redraw; a poll must not untick
 

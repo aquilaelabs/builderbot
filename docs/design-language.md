@@ -209,19 +209,24 @@ are actions, not settings, and act on the press.
 
 ## Files
 
-The page is `index.html` and classic scripts beside it, loaded before its
-own script: `tab-*.js` for a document tab, `nb-*.js` for a notebook view,
-`page-*.js` for a part of the page that is neither (the welcome panel,
-chat, motion, the sidebar cards, the gear menu, doctor, the command
-cards, paged lists).
-Each is pure declarations, since it runs before the page and its helpers
-exist; wiring that must run at load stays in `index.html` under the
-section's `// ---- name ----` header, with a line saying where the
-functions went. The server serves a script only by name: a new file goes
-on the allow-list in `server.py` beside the others, or the page 404s on it. `bb map sections index.html` reads the page by those
+The page is `index.html` (the markup, the stylesheet, and the wiring that
+runs at load) and classic scripts beside it, loaded before its own
+script: `tab-*.js` for a document tab, `nb-*.js` for a notebook view
+(`nb-core.js` is the notebook itself, the frame the views draw into), and
+`page-*.js` for a part of the page that is neither: the state and the
+helpers everything reaches for, the tabs and their strip, the panes, the
+sidebar, a project's settings, the polls, the bell, and so on.
+Each is pure declarations and starts with `"use strict"`, as the page's
+own script does, since it runs before the page and its helpers exist;
+wiring that must run at load stays in `index.html` under the section's
+`// ---- name ----` header, with a line saying which file holds its
+declarations. A declaration whose initializer reads the page at load
+(the favicon's element, a set kept in localStorage) stays there too. The
+server serves a script only by name: the list is the page's own script
+tags (`page_scripts` in `server.py`), so a new file is added once, as a
+tag in `index.html`. `bb map sections FILE` reads a file by its
 headers, with each section's outside callers, what runs at load and what
-the suite covers, and a section with few outside callers and nothing at
-load is the next to move.
+the suite covers.
 
 ## Document tabs
 
