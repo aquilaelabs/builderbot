@@ -39,18 +39,39 @@ ask_rebuild = None
 net_nudge = None
 
 
-def _known_container(name):
-    """The container the daemon just reported under this name, or None.
+def _targets(name):
+    """The containers `name` means, as the daemon reports them now: the one
+    it lists under that name or id, else every container of the instance or
+    written container the Docker tab lists as `name`.
 
     The rule every executing surface here follows: what reaches a command
     line is a string this server handed out. A name typed by somebody, or
     remembered by a page from a listing five minutes old, is not that, so it
     is looked up again before it is used (R68 step 1).
+
+    The second half is what `bb devapp ls` prints: an instance under its
+    compose name, whose containers are named for it and its services
+    (mediareducer-dev-mediareducer-1). Looked up by container name alone, that
+    name found nothing, and a project's own dev instance was refused to its
+    session as not its own, its log with it (reports #4, #6 and #9).
     """
-    for c in (devapp.containers().get("containers") or []):
-        if name and (c.get("name") == name or c.get("id") == name):
-            return c
-    return None
+    got = devapp.containers().get("containers") or []
+    one = [c for c in got if name and (c.get("name") == name or c.get("id") == name)]
+    if one:
+        return one[:1]
+    row = devapp.row_named(name)
+    if not row:
+        return []
+    pn = devapp._pname(*row)
+    return [c for c in got if c.get("project") == pn]
+
+
+def _known_container(name):
+    """The container the daemon just reported under this name, or None: the
+    first of what the name means, which for an instance is one of its
+    services (its project is the instance's, so a row's owner is read off
+    it the same)."""
+    return (_targets(name) or [None])[0]
 
 
 def container_ctl(name, what):
@@ -64,15 +85,16 @@ def container_ctl(name, what):
     """
     if what not in devapp._CTL_OK:
         return {"error": f"a container is started, stopped or restarted, not {what!r}"}
-    c = _known_container(name)
-    if not c:
+    cs = _targets(name)
+    if not cs:
         return {"error": f"no container called {name} on this daemon now: the list is "
                          "read again before anything is acted on, and it has moved"}
-    r = devapp._run([devapp.DOCKER, what, c.get("name") or c.get("id")], timeout=60)
+    # Every container the name means: an instance's services together.
+    r = devapp._run([devapp.DOCKER, what, *[c.get("name") or c.get("id") for c in cs]], timeout=60)
     if r["code"] != 0:
         return {"error": devapp._why_not(r["out"]) or f"{what} failed"}
-    return {"ok": True, "out": f"{what}ped {c.get('name')}" if what == "stop"
-                               else f"{what}ed {c.get('name')}"}
+    did = ", ".join(c.get("name") or c.get("id") for c in cs)
+    return {"ok": True, "out": f"{what}ped {did}" if what == "stop" else f"{what}ed {did}"}
 
 
 def owned_container(name):
@@ -98,19 +120,25 @@ def container_logs(name, lines=None):
     page is not a download: LOG_LINES is what a restart loop needs to be
     legible.
     """
-    c = _known_container(name)
-    if not c:
+    cs = _targets(name)
+    if not cs:
         return {"error": f"no container called {name} on this daemon now"}
     n = str(int(lines or devapp.LOG_LINES))
-    r = devapp._run([devapp.DOCKER, "logs", "--tail", n, "--timestamps",
-                     c.get("name") or c.get("id")], timeout=30)
-    # A container that has said nothing is not an error, and neither is one
-    # whose log the daemon answered on stderr: docker writes a container's
-    # own stderr there, which for most images is most of the log.
-    if r["code"] != 0 and not (r["out"] or "").strip():
-        return {"error": devapp._why_not(r["out"]) or "could not read the log"}
-    return {"ok": True, "name": c.get("name") or c.get("id"),
-            "text": (r["out"] or "")[-60000:]}
+    parts = []
+    for c in cs:
+        r = devapp._run([devapp.DOCKER, "logs", "--tail", n, "--timestamps",
+                         c.get("name") or c.get("id")], timeout=30)
+        # A container that has said nothing is not an error, and neither is
+        # one whose log the daemon answered on stderr: docker writes a
+        # container's own stderr there, which for most images is most of
+        # the log.
+        if r["code"] != 0 and not (r["out"] or "").strip():
+            return {"error": devapp._why_not(r["out"]) or "could not read the log"}
+        # An instance's services, each under its name; one container, as it is.
+        parts.append((f"== {c.get('name') or c.get('id')} ==\n" if len(cs) > 1 else "")
+                     + (r["out"] or ""))
+    return {"ok": True, "name": name if len(cs) > 1 else (cs[0].get("name") or cs[0].get("id")),
+            "text": "\n".join(parts)[-60000:]}
 
 
 COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
@@ -324,8 +352,13 @@ def session_verb(sess, me, act, name, req):
         if c:
             nid = cand
             break
-    # A stranger's container and a missing one answer alike.
+    # A stranger's container and a missing one answer alike; one of the
+    # project's own with nothing running under it is said as that.
     if owner != sess:
+        row = devapp.row_named(name)
+        if row and devapp.owner_of(*row) == sess:
+            return {"error": f"{name} has no containers on its node now: bb devapp says "
+                             "whether it is built and up"}, 400
         return {"error": not_ours(name, sess)}, 403
     if act == "logs":
         with devapp.on_node(nid or None):

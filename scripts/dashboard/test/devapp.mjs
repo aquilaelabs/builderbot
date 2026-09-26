@@ -3632,6 +3632,27 @@ print(json.dumps(out))
      `...reads one written for it by name, and not its own project's container sent to no project (${st.status}, ${theirs.error})`);
   const log = await as('/api/dockerctl', { action: 'logs', container: 'someone-elses' });
   ok(/hello from someone-elses/.test(log.text || ''), `...reads the log of one somebody else started, put under it (${log.status})`);
+  // ...and one of its own by the name bb devapp ls prints, which is the
+  // compose name: its containers are named for it and its services, and
+  // looked up by container name alone the name found nothing and the
+  // project's own instance was refused to its session as not its own, its
+  // log with it (B307). The log is each service's, under its name.
+  const bare = await as('/api/dockerctl', { action: 'logs', container: 'helper-for-eps' });
+  ok(bare.status === 400 && /has no containers on its node now/.test(bare.error || ''),
+     `one of its own with nothing running under it is said as that, not refused as a stranger's (${
+        bare.status}: ${String(bare.error).slice(0, 50)})`);
+  const wasUp = existsSync(`${DIR}/dockerstate/helper-for-eps.up`);
+  writeFileSync(`${DIR}/dockerstate/helper-for-eps.up`, '');
+  const own = await as('/api/dockerctl', { action: 'logs', container: 'helper-for-eps' });
+  ok(own.status === 200 && /hello from helper-for-eps-app-1/.test(own.text || ''),
+     `...and the log of its own container by the name ls prints, which is its services' (${own.status}: ${
+        String(own.error || own.text).trim().slice(0, 60)})`);
+  await dial('auto');
+  const ctlWas = readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').length;
+  const ownRestart = await as('/api/dockerctl', { action: 'restart', container: 'helper-for-eps' });
+  ok(ownRestart.ok && readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').slice(ctlWas).includes('helper-for-eps-app-1'),
+     `...and restarts it by that name, which restarts its services (${JSON.stringify(ownRestart).slice(0, 70)})`);
+  if (!wasUp) rmSync(`${DIR}/dockerstate/helper-for-eps.up`, { force: true });
   await dial('deny');
   const denied = await as('/api/dockerctl', { action: 'restart', container: 'someone-elses' });
   ok(denied.status === 403 && /Claude may: Run its container/.test(denied.error || ''),

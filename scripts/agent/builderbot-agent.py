@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.109"
+AGENT_VERSION = "0.7.110"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2888,6 +2888,15 @@ class Job(threading.Thread):
             state, error = "canceled", "stopped by the operator"
         elif state == "failed" and not error:
             error = f"exit {code}"
+        # A container came, went or moved: the session network's sets are
+        # rebuilt from `docker ps` every ten seconds, and a session told by
+        # its rebuild that the instance was up curled its port inside that
+        # window and was refused, the pair not yet in the set (B307). Read
+        # again now, before the controller hears the job is done, so what
+        # it reports up is reachable by the time anybody is told.
+        if self.job.get("type") == "compose" \
+                or os.path.basename(str((spec.get("argv") or [""])[0] or "")) == "docker":
+            self.agent.sessnet.containers_at = 0.0
         # Door 5: keep trying. The controller may be gone for a while; the
         # answer waits here, with backoff, until it is taken.
         delay = 1
