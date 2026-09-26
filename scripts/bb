@@ -585,9 +585,9 @@ emu_via_node() {
     local auth
     auth="$(bb_auth_or_die)"
     local proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
-    BB_EMU_FILES="$(printf '%s\n' "${files[@]}")" \
     # The credential rides the environment, never argv: ps shows argv to
     # every account on the box, and this is the person's own header.
+    BB_EMU_FILES="$(printf '%s\n' "${files[@]}")" \
     BB_AUTH_HEADER="$auth" python3 "$BB_LIB/emu-job.py" "" "$proj" "${argv[@]}"
 }
 
