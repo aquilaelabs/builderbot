@@ -24,6 +24,7 @@ import sys as _sys
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from names import claude_session   # noqa: E402
+from fields import field   # noqa: E402
 import functools
 import hashlib
 import inspect
@@ -695,3 +696,46 @@ def delete(project, file, home=None):
     _unindex(d, file)
     _log(project, "you", {"act": "forgot", "text": file})
     return {"ok": True}
+
+
+# ---- the Memory panel's verbs, one call from the dashboard -------------------
+
+# The roadmap's unsaved mark, set by server.py: a memory edit marks the same
+# flag the list does (roadmap.mark_unsaved).
+mark_unsaved = None
+
+
+def verb(proj, act, req, home):
+    """Edit, delete or create one of this project's memories, rewrite the
+    index, or read the history, once server.py has let this account at the
+    project. `home` is whose memories: the reader's own home, never the
+    owner's (B67). The project and file names go through untouched because
+    this module is the thing that checks them against what is on disk.
+    (payload, status)."""
+    file = field(req, "file")
+    if act == "save":
+        r = save(proj, file, field(req, "text"), rev=field(req, "rev"), home=home)
+    elif act == "index":
+        r = save_index(proj, [e for e in (req.get("lines") or []) if isinstance(e, dict)],
+                       rev=field(req, "rev"), home=home)
+    elif act == "create":
+        r = create(proj, field(req, "name"), field(req, "title"),
+                   field(req, "hook"), field(req, "type"),
+                   field(req, "body"), home=home)
+    elif act == "delete":
+        r = delete(proj, file, home=home)
+    elif act == "history":
+        return {"history": history(
+            proj, limit=req.get("limit"), since=req.get("since"),
+            find=field(req, "find"))}, 200
+    else:
+        return {"error": f"unknown action: {act}"}, 400
+    # One Save for the project, not one per thing in the panel: a memory
+    # edit marks the same flag the list does, and the one button spends the
+    # one line telling a session about all of it.
+    if not r.get("error"):
+        mark_unsaved(proj, "memory")
+    # A conflict answers 200 (see the roadmap's). The whole file as it now
+    # stands rides back in it, which is what lets the editor show both
+    # versions instead of just losing the typing.
+    return r, (400 if r.get("error") and not r.get("conflict") else 200)

@@ -49,6 +49,7 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
 import ids  # noqa: E402
+from fields import field, field_list  # noqa: E402
 import pending  # noqa: E402
 import time
 from pathlib import Path
@@ -1516,3 +1517,169 @@ def prompt(project):
             "can read it, so correct the list rather than working around it. "
             "Do not restate the list "
             "back to the operator; they can see it.")
+
+
+# ---------------------------------------------------------------------------
+# the Roadmap tab's verbs, one call from the dashboard's /api/roadmap
+
+# The bug list whose open batch a batch-close commits beside this one's.
+bugs_mod = None
+_VERB_PARTS = ("bugs_mod",)
+
+
+def configure_verbs(**parts):
+    """Join what verb() needs from the server (the bug list). Only that
+    name: a misspelt one would otherwise overwrite something of this
+    module's own."""
+    unknown = set(parts) - set(_VERB_PARTS)
+    if unknown:
+        raise TypeError(f"configure_verbs: nothing called {', '.join(sorted(unknown))}")
+    globals().update(parts)
+
+
+def panel(name, live, prefix):
+    """What the panel needs after any change: the list, whether there is
+    anywhere to send, and whether a session has been told about it yet.
+    `prefix` is the asking account's session prefix (users.tmux_prefix)."""
+    # The session THIS ACCOUNT would be sending into, which is the one the
+    # arrows have to answer for: every session a node starts wears the
+    # account's prefix, and the owner's prefix is empty (B194). Read with
+    # the bare name, a second person's arrows said "no Claude session is
+    # running here" with their own session open in the next tab.
+    session = prefix + claude_session(name)
+    return {"items": items(name),
+            # How many are finished, for the toggle's label (R78): the
+            # items themselves come when it is pressed.
+            "finished_n": len(finished(name)),
+            # What the poll compares against, handed back with every read
+            # AND every write, so this panel's own change never reads as
+            # somebody else's on the next poll, and a change that lands
+            # between opening the tab and the first poll is not missed
+            # (roadmap #26).
+            "rev": (revisions().get(name) or {}).get("roadmap", 0),
+            "session": session if session in set(live) else None,
+            "unsaved": unsaved(name),
+            # A session part-way through a batch. The panel refuses to save
+            # over one: the list on screen is a copy taken before the
+            # session started, and replaying edits onto a list that has
+            # moved underneath is how two people writing one file lose
+            # each other's work.
+            "batch": batch(name)}
+
+
+def verb(name, act, req, me, *, live, prefix):
+    """One change to a project's list from the Roadmap tab or `bb roadmap`
+    (add, send, edit, move, the details, a step, cross, remove, restore,
+    shelve, a stale batch closed, the panel's Save) or one of its reads
+    (the finished items, the history), once server.py has let this account
+    work on the project. (payload, status); a change answers with panel(),
+    so nothing on screen is stale. `live` is every session running, and
+    `prefix` the asking account's session prefix."""
+    # What the caller believes it is replacing, for the verbs that
+    # replace something (roadmap #26). A field's own words rather than a
+    # version for the row: a session attaching details while the operator
+    # rewords the same line is not a conflict. Absent from a client that
+    # has not been taught to send it, which is then unchecked.
+    was = req.get("was")
+    # And who is writing, but only when a SESSION is: its own change must
+    # not come back to it as news on its next prompt (#27's watermark),
+    # while the operator's must, which is the whole point of that channel.
+    # A browser's cookie names the same account and is deliberately not
+    # credited.
+    who = me.get("uid", "") if me.get("session") else ""
+    if act == "batch-close":
+        # A batch its session will never close: killed mid-way, or the
+        # container restarted under it (B198). The only way out was a
+        # shell running `bb roadmap commit`, which a user account does
+        # not have. Committed rather than reverted: what the session
+        # wrote is already on the list in front of everybody, and folding
+        # its log in loses nothing, where a revert would take work away
+        # on the say-so of somebody who did not do it. An
+        # administrator's, like the other decisions about other
+        # people's work: the server asks that before this.
+        closed = 0
+        for batch_of, commit_of in ((batch, commit), (bugs_mod.batch, bugs_mod.commit)):
+            if batch_of(name) is not None:
+                r = commit_of(name)
+                if r.get("error"):
+                    return r, 400
+                closed += 1
+        return {"ok": True, "closed": closed} | panel(name, live, prefix), 200
+    if act == "save":
+        # The panel's one Save: settle the marker, say nothing. A session
+        # is told by itself, on the next prompt it is given (roadmap #27),
+        # so the panel has one button and this has one action: nothing
+        # here types the change into a running session.
+        # `announce` is still live: the send path below carries
+        # the same line on a message that was going anyway.
+        mark_told(name)
+        return {"ok": True} | panel(name, live, prefix), 200
+    if act == "add":
+        r = add(name, field(req, "text"), steps=field_list(req, "steps"), who=who)
+    elif act == "send":
+        r = send(name, req.get("id"), req.get("step"), live,
+                 also_told=unsaved(name) if req.get("tell") else False,
+                 note=field(req, "note"), prefix=prefix)
+        if r.get("sent") and req.get("tell"):
+            mark_told(name)
+    elif act == "edit":
+        r = edit(name, req.get("id"), field(req, "text"), req.get("step"),
+                 was=was, who=who)
+    elif act == "move":
+        r = move(name, req.get("id"), req.get("step"), req.get("dir"))
+    elif act == "info":
+        r = set_info(name, req.get("id"), field(req, "text"),
+                     step=req.get("step"), was=was, who=who)
+    elif act == "add-step":
+        r = add_step(name, req.get("id"), field(req, "text"))
+    elif act == "cross":
+        r = cross(name, req.get("id"), req.get("step"), bool(req.get("on", True)))
+    elif act == "remove":
+        r = remove(name, req.get("id"), req.get("step"),
+                   why=field(req, "why"), was=was, who=who)
+    elif act == "restore":
+        r = restore(name, req.get("id"), at=req.get("at"), who=who)
+    elif act == "shelve":
+        # One direction for a session, the way `bb roadmap shelve` is on
+        # the command line: parking something is a thing a session knows
+        # (it is blocked, it is waiting on somebody, the design moved
+        # under it) and it is loud, with the row dark at the foot of the
+        # list and the log saying who did it. Taking one OFF reverses a
+        # decision the operator made for reasons the session was not told,
+        # so it is theirs. The CLI only ever passed on=True; this door
+        # took whatever it was handed.
+        # A session asking for one back is held for a person on the
+        # project (R78): roadmap.shelve holds it with its reason.
+        on = bool(req.get("on", True))
+        r = shelve(name, req.get("id"), on,
+                   by="claude" if me.get("session") else "you", who=who,
+                   why=field(req, "why"))
+        if r.get("held"):
+            return r | panel(name, live, prefix), 200
+    elif act == "finished":
+        # The ticked-off items, with their plans, for the Roadmap tab's
+        # toggle (R78): fetched when it is turned on, never in the poll.
+        return {"finished": finished(name, limit=req.get("limit"))}, 200
+    elif act == "history":
+        # Fetched only when the panel is showing it. It rides in no poll:
+        # a log nobody has opened is bytes on every status request for
+        # every project, forever. Narrowed server-side for the same
+        # reason: the panel asks for a window, not for everything.
+        return {"history": history(
+            name, limit=req.get("limit"), since=req.get("since"),
+            find=field(req, "find"))}, 200
+    else:
+        return {"error": f"unknown action: {act}"}, 400
+    if r.get("error"):
+        # A conflict answers 200. Not because it is a success (the write
+        # was refused) but because the only client is this page, which
+        # branches on `conflict` before `error`, and a 4xx here would put
+        # "Failed to load resource" in the browser console for an outcome
+        # the page handles. The suite holds every tab to zero console
+        # errors, and that rule is worth more than the status code.
+        # It answers with the item as it now stands so the panel can show
+        # both, and with the fresh list so nothing else on screen is stale.
+        if r.get("conflict"):
+            return r | panel(name, live, prefix), 200
+        return r, 400
+    return r | panel(name, live, prefix), 200

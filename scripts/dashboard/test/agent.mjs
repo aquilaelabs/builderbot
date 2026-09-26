@@ -1310,7 +1310,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     const verbs = readFileSync(`${REPO}/scripts/lib/relay-verbs`, 'utf8').split(/\s+/).filter(Boolean);
     ok(verbs.includes('roadmap') && verbs.includes('git')
        && /lib\/relay-verbs/.test(readFileSync(`${REPO}/scripts/bb`, 'utf8'))
-       && /"lib" \/ "relay-verbs"/.test(readFileSync(`${REPO}/scripts/dashboard/server.py`, 'utf8')),
+       && /"lib" \/ "relay-verbs"/.test(readFileSync(`${REPO}/scripts/dashboard/bbrelay.py`, 'utf8')),
        `bb and the server read the relay verbs from one file (${verbs.length} verbs)`);
     await relay({ argv: ['roadmap', 'rm', String(((added.out || '').match(/added R(\d+)/) || [])[1]), 'test'] });
   }

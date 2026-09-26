@@ -39,6 +39,10 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import statefile   # noqa: E402
 
+# The directory a project's component keeps its changelog in, from version.py
+# (its _sub), set by server.py for editor_verb(); bb never calls that.
+component_dir = None
+
 FILE = "CHANGELOG.md"
 
 HEADER = "# Changelog\n"
@@ -728,3 +732,39 @@ def sections(text):
                                    "shas": m.group(1).split(", ") if m else [],
                                    "cat": cat})
     return out
+
+
+# ---- the editor's writes, one call from the dashboard's /api/changelog -----
+
+def editor_verb(name, req):
+    """Write back the Unreleased section a person rearranged, or the first
+    line of a changelog there is none of yet, once server.py has let a
+    PERSON at it (a session has the CLI verbs, each saying what it does to
+    one entry).
+
+    The WHOLE section at once, which is what the editor holds: somebody
+    moving three lines and renaming a category is not making five edits,
+    and applying it as a sequence would let a refusal halfway leave a
+    shape nobody asked for. (payload, status)."""
+    d = component_dir(name, str(req.get("component") or ""))
+    if d is None:
+        return {"error": "no such component"}, 400
+    if req.get("action") == "first":
+        # The first line, from the page: the editor was dead until a
+        # session's `bb changelog add` made the file, and the operator
+        # is as entitled to the first entry as to every arrangement
+        # after it (16 Sep). Only the first: a file that exists is
+        # edited through the editor, whole.
+        if read(d) is not None:
+            return {"error": "there is a changelog here already; edit it below"}, 409
+        r = add(d, str(req.get("text") or ""))
+        if r.get("error"):
+            return r, 400
+        return r | {"text": read(d), "groups": groups(d)}, 200
+    gs = req.get("groups")
+    if not isinstance(gs, list):
+        return {"error": "groups is a list of {name, entries}"}, 400
+    r = put(d, gs)
+    if r.get("error"):
+        return r, 400
+    return r | {"text": read(d), "groups": groups(d)}, 200

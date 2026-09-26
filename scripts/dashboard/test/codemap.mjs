@@ -33,7 +33,7 @@ ok(!/from \(top level\)  \| async function loadDocker/.test(callers),
 // What a definition says about itself rides with its address: the comment
 // directly above it, or a docstring's first sentence, and nothing where
 // nothing sits there. The notes live in the code; the map reads them out.
-ok(/^    says: What the panel needs after any change: the list, whether there is anywhere to send, and whether a session has been told about it yet\.$/m.test(map('find', '_roadmap_state')),
+ok(/^    says: Node ids this account may look at, or None for "no restriction"\.$/m.test(map('find', '_node_scope')),
    "find hands over a python method's docstring, its first sentence whole");
 ok(/^    says: gfx_tool RECIPE NAME: /m.test(map('find', 'gfx_tool')), "...and a shell function's comment");
 ok(/^    says: Each terminal tab is an iframe running a full xterm\.js over its own websocket\.$/m.test(map('find', 'roomForTab')),
@@ -41,10 +41,10 @@ ok(/^    says: Each terminal tab is an iframe running a full xterm\.js over its 
 ok(!/says:/.test(map('find', 'pinTo')), '...and says nothing for a function with nothing directly above it');
 
 // Python: a method's callers carry the class.
-const py = map('who-calls', '_roadmap_state');
-ok(/^_roadmap_state: What the panel needs after any change/m.test(py) && /from Handler\._get_todo \(GET \/api\/roadmap\.\)/.test(py),
+const py = map('who-calls', '_node_scope');
+ok(/^_node_scope: Node ids this account may look at/m.test(py) && /from Handler\._node_asked \(Resolve and check a `\?node=` for this account\.\)/.test(py),
    "who-calls opens with the callee's sentence and gives each caller its first clause");
-ok(/server\.py:\d+  from Handler\._roadmap\b/.test(py), 'a python method is attributed to its class and method');
+ok(/server\.py:\d+  from Handler\._nodes_for\b/.test(py), 'a python method is attributed to its class and method');
 
 // Shell: bb's own functions.
 const sh = map('who-calls', 'gfx_tool');

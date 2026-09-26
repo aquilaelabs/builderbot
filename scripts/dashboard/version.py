@@ -82,6 +82,7 @@ import sys as _sys
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from names import claude_session   # noqa: E402
+from fields import field   # noqa: E402
 import json
 import os
 import re
@@ -1194,3 +1195,80 @@ def since_bump(project, comp=""):
     n = _git(project, "rev-list", "--count", f"{last}..HEAD",
              *(["--", spec] if spec else [])) if last else None
     return {"at": int(at), "commits": int(n) if (n or "").isdigit() else None}
+
+
+# ---- the Artifacts tab's version controls, one call from the dashboard ------
+
+# What verb() needs from the server, set by configure_verbs: the tab's
+# version block as the server draws it (payload() plus what a window move
+# would cost the nodes), the environment git runs under for an account (its
+# author) and for the project (its credentials), whether it was cloned with
+# push rights, every session running, and the audit row.
+PANEL = None
+GIT_ENV = None
+CREDS_ENV = None
+MAY_PUSH = None
+SESSIONS = None
+AUDIT = None
+_VERB_PARTS = ("PANEL", "GIT_ENV", "CREDS_ENV", "MAY_PUSH", "SESSIONS", "AUDIT")
+
+
+def configure_verbs(**parts):
+    """Join what verb() needs. Only those names: a misspelt one would
+    otherwise overwrite something of this module's own."""
+    unknown = set(parts) - set(_VERB_PARTS)
+    if unknown:
+        raise TypeError(f"configure_verbs: nothing called {', '.join(sorted(unknown))}")
+    globals().update(parts)
+
+
+def verb(name, act, req, who, principal):
+    """Move a project's version, or change who is allowed to, from the
+    panel, once server.py has let this person at it: bump, release, init,
+    unbump, policy, and ask, which puts the question to the project's own
+    session. `by` is a ROLE here, "operator": may() compares it against
+    "operator" to tell a person at the panel from a session, and passing the
+    account's name turned the operator into a session and a locked project
+    refused its own bump (version.mjs). Which PERSON it was belongs in the
+    audit row. (payload, status)."""
+    comp = field(req, "component") or ""
+    if act == "bump":
+        r = bump(name, field(req, "part"), by="operator", env=GIT_ENV(who, name), comp=comp)
+        if r.get("error"):
+            return r, 400
+        return PANEL(name) | {"bumped": r}, 200
+    if act == "release":
+        # The other half of a release, and the outward-facing one: the
+        # bump decided the number, this says it happened and pushes the
+        # tag. The operator's alone: a policy governs moving the
+        # number, and publishing a marker other people fetch is not
+        # the same decision.
+        r = release(name, comp=comp, env={**CREDS_ENV(), **GIT_ENV(who, name)},
+                    may_push=MAY_PUSH(name))
+        if r.get("error"):
+            return r, 400
+        AUDIT(principal, "version-release", name,
+              {"tag": r.get("tag"), "pushed": bool(r.get("pushed"))})
+        return PANEL(name) | {"released": r}, 200
+    if act == "init":
+        r = init(name, field(req, "value"), by="operator", env=GIT_ENV(who, name), comp=comp)
+        if r.get("error"):
+            return r, 400
+        return PANEL(name) | {"created": r}, 200
+    if act == "unbump":
+        r = unbump(name, by="operator", env=GIT_ENV(who, name), comp=comp)
+        if r.get("error"):
+            return r, 400
+        return PANEL(name) | {"unbumped": r}, 200
+    if act == "ask":
+        # Put to the project's own session rather than answered here: it
+        # can read the code and be argued with, and neither is true of a
+        # function counting commits.
+        r = ask(name, SESSIONS(), comp=comp)
+        return r, (400 if r.get("error") else 200)
+    if act == "policy":
+        r = set_policy(name, field(req, "policy"))
+        if r.get("error"):
+            return r, 400
+        return PANEL(name), 200
+    return {"error": f"unknown action: {act}"}, 400

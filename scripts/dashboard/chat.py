@@ -34,6 +34,9 @@ from pathlib import Path
 
 STATE = Path("/config")
 write_json = None
+# The account store, set by server.py: a conversation read is marked seen in
+# the reader's own prefs (converse()).
+users = None
 _lock = threading.RLock()
 _rev = 0
 
@@ -186,3 +189,23 @@ def online(polls, now=None):
     """
     now = now or time.time()
     return sorted(n for n, at in (polls or {}).items() if now - at < ONLINE_S)
+
+
+def converse(act, me, uid, box, key, text, names):
+    """Send into a conversation, mark it seen, and read it, once the server
+    has decided this account may: `box` is ("project", name) or ("dm",
+    the other's uid), `key` its seen mark, and `names` uid -> account name
+    for the lines' authors. (payload, status)."""
+    if act == "send":
+        r = (post(box[1], uid, text) if box[0] == "project"
+             else say(uid, box[1], text))
+        if r.get("error"):
+            return r, 400
+    if act in ("send", "seen", "read"):
+        # Reading it IS seeing it: the panel only asks for a conversation
+        # somebody is looking at.
+        users.prefs_set(me["name"], {"chat_seen":
+                                     users.prefs(me).get("chat_seen", {}) | {key: now()}})
+    msgs = (feed(box[1]) if box[0] == "project" else direct(uid, box[1]))
+    return {"messages": [m | {"who": names.get(m.get("from"), "")} for m in msgs[-200:]],
+            "rev": rev()}, 200

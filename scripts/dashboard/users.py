@@ -26,9 +26,16 @@ import json
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 from pathlib import Path
+
+# The request-field reader verb() shares with the server (fields.py), found
+# beside this file however it was loaded: the login path and bb load it by
+# path, where a plain sibling import finds nothing.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fields import field  # noqa: E402
 
 STATE = Path("/config")
 write_json = None
@@ -810,3 +817,76 @@ def remove(name):
         d["users"].pop(name)
         _save(d)
     return {"ok": True, "name": name}
+
+
+# ---------------------------------------------------------------------------
+# the Users tab's verbs, one call from the dashboard's /api/users
+
+def own_prefs(name, want):
+    """An account setting its OWN appearance, which is nobody else's
+    business: the theme, and the welcome panel's two marks. (payload,
+    status)."""
+    if not isinstance(want, dict):
+        return {"error": "prefs is an object"}, 400
+    # Named, not merged wholesale. This file is read on the login path
+    # and holds password hashes; an unbounded dict here would be a
+    # place to park arbitrary data in it.
+    keep = {}
+    theme = str(want.get("theme") or "")
+    if re.fullmatch(r"[a-z]{2,12}", theme):
+        keep["theme"] = theme
+    # The welcome panel's two marks: the getting-started guide has
+    # been read, and which image's changelog was acknowledged.
+    if isinstance(want.get("welcome_seen"), bool):
+        keep["welcome_seen"] = want["welcome_seen"]
+    if isinstance(want.get("image_seen"), str) and re.fullmatch(r"[0-9a-f]{0,40}", want["image_seen"]):
+        keep["image_seen"] = want["image_seen"]
+    if not keep:
+        return {"error": "nothing here is a setting"}, 400
+    return prefs_set(name, keep), 200
+
+
+def verb(act, req, seen):
+    """One of the Users tab's verbs on an account, an administrator's (the
+    server holds that gate): add, a password, a role, the projects, a
+    rename, the modal's one Save, remove. The store's own functions above
+    hold the owner's protections. `seen()` is the projects this
+    administrator sees. {ok} or {error}."""
+    name = field(req, "name")
+    pw = req.get("password") or ""
+    if act == "add":
+        r = add(name, pw, role=field(req, "role") or "user",
+                projects=req.get("projects") or [])
+    elif act == "passwd":
+        r = set_password(name, pw)
+    elif act == "role":
+        r = set_role(name, field(req, "role"))
+    elif act == "projects":
+        # Only projects this admin can see; otherwise the tab becomes a
+        # way to learn what exists by handing it out.
+        mine = seen()
+        r = set_projects(name, [p for p in (req.get("projects") or []) if p in mine])
+    elif act == "rename":
+        r = rename(name, field(req, "to"))
+    elif act == "edit":
+        # The Users tab's modal: everything about one account in one
+        # Save. Each part is the same store function the single verbs
+        # use, so the owner protections hold here too; the rename goes
+        # last so every other part lands under the name it was asked for.
+        r = {"ok": True, "name": name}
+        if isinstance(req.get("profile"), dict) and req["profile"]:
+            r = profile_set(name, req["profile"])
+        if not r.get("error") and field(req, "role"):
+            r = set_role(name, field(req, "role")) if (get(name) or {}).get("role") != field(req, "role") else r
+        if not r.get("error") and isinstance(req.get("projects"), list):
+            mine = seen()
+            r = set_projects(name, [p for p in req["projects"] if p in mine])
+        if not r.get("error") and pw:
+            r = set_password(name, pw)
+        if not r.get("error") and field(req, "to").strip() and field(req, "to").strip() != name:
+            r = rename(name, field(req, "to").strip())
+    elif act == "remove":
+        r = remove(name)
+    else:
+        return {"error": "unknown action"}
+    return r

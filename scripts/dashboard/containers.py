@@ -27,6 +27,16 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import devapp  # noqa: E402
+from fields import field  # noqa: E402
+
+# What the verbs at the foot need from the rest of the server, set by
+# server.py: a project's Run its container dial, the account store, the
+# asking (phone.ask_rebuild), and the sessions' networks told when a
+# container changes hands (R79).
+dial = None
+users = None
+ask_rebuild = None
+net_nudge = None
 
 
 def _known_container(name):
@@ -279,3 +289,116 @@ def set_container_owner(name, owner):
         devapp.write_json(devapp.OWNERS, d)
     devapp._bump()
     return {"ok": True, "owner": owner}
+
+
+# ---- the Docker tab's verbs, one call from the dashboard -----------------------
+
+def not_ours(what, sess=""):
+    """The refusal for a container that does not belong to the caller's
+    project. The owner is not named: to a session that would be another
+    project's name, which is the thing it may not read."""
+    return (f"{what} does not belong to {sess}: a session reaches its own project's "
+            "containers, and an administrator sets which project each belongs to on "
+            "the Docker tab" if sess else
+            f"{what} does not belong to one of your projects: an administrator sets "
+            "which project each container belongs to on the Docker tab")
+
+
+def _answer(r):
+    return r, (400 if r.get("error") else 200)
+
+
+def session_verb(sess, me, act, name, req):
+    """A SESSION's word on one container that belongs to its project (the
+    operator, 24 Sep): on its project's nodes, its log when it asks, since
+    that is reading it, and start, stop or restart as the project's Run its
+    container setting allows. (payload, status)."""
+    # Looked for on each of the project's nodes, primary first: its
+    # containers live on any of them (R82), and asking the primary
+    # alone refused the project's own dev instance on its second
+    # node as not its own (B268).
+    c, owner, nid = None, "", devapp.project_daemon(sess)
+    for cand in (devapp.nodes_of(sess) or [nid]):
+        with devapp.on_node(cand or None):
+            c, owner = owned_container(name)
+        if c:
+            nid = cand
+            break
+    # A stranger's container and a missing one answer alike.
+    if owner != sess:
+        return {"error": not_ours(name, sess)}, 403
+    if act == "logs":
+        with devapp.on_node(nid or None):
+            return container_logs(name), 200
+    if act not in ("start", "stop", "restart"):
+        return {"error": f"a session starts, stops or restarts a "
+                         f"container, or reads its log, not {act!r}"}, 400
+    mode = dial(sess)
+    if mode == "deny":
+        return {"error": devapp.RUN_DENIED}, 403
+    if mode == "ask":
+        acct = users.account_of(me) or {}
+        return _answer(ask_rebuild(
+            field(req, "why"), sess, "", c["name"],
+            asker_uid=str(acct.get("uid") or ""),
+            asker_name=str(acct.get("name") or ""),
+            asker_admin=users.is_admin(acct), ctl=act, node=nid))
+    with devapp.on_node(nid or None):
+        return _answer(container_ctl(name, act))
+
+
+def admin_verb(act, name, nid, under):
+    """An administrator's word on one container on node `nid`: which project
+    it belongs to (`under`, one the server has checked, or none), its log,
+    or start, stop and restart. Every docker call is addressed at that
+    node's daemon, the way the manager's own listing is. (payload,
+    status)."""
+    with devapp.on_node(nid or None):
+        if act == "owner":
+            r = set_container_owner(name, under)
+            # Whose it is also decides whose sessions may reach it (R79).
+            if not r.get("error"):
+                net_nudge()
+            return _answer(r)
+        if act == "logs":
+            return container_logs(name), 200
+        return _answer(container_ctl(name, act))
+
+
+def tab_verb(act, name, req, seen):
+    """A container from a compose file written on the Docker tab, with no
+    project behind it: read or save one, or create one. `seen()` is the
+    projects this account sees. (payload, status)."""
+    if act == "read":
+        if name not in overview_names():
+            return {"error": f"no container {name}"}, 400
+        return read_container(name), 200
+    if act == "save":
+        if name not in overview_names():
+            return {"error": f"no container {name}"}, 400
+        return _answer(update_container(name, req.get("compose") or "", req.get("env") or ""))
+    if act != "create":
+        return {"error": f"unknown action: {act}"}, 400
+    # A name that is also a project would collide in the store, which is
+    # keyed by one namespace for both kinds, and the collision is on the
+    # SLUG, not the typing. `builderbot` is not the project `BuilderBot`
+    # by string comparison and is exactly it by the time _pname has run:
+    # same compose project name, same env file, same data directory, with
+    # nothing anywhere saying the two had met.
+    mine = seen()
+    clash = next((p for p in mine if devapp._slug(p) == devapp._slug(name)), "")
+    if name and clash:
+        return {"error": f"that is the project {clash}: a "
+                         f"container written here needs a name "
+                         f"of its own"}, 400
+    # The project it belongs to, when one is picked: only a project this
+    # account can see, or none.
+    under = field(req, "owner")
+    if under and under not in mine:
+        return {"error": f"not a project: {under}"}, 400
+    r = create_container(name, req.get("compose") or "",
+                         req.get("env") or "", field(req, "node"), under)
+    # Made for a project: its sessions may reach it (R79).
+    if not r.get("error") and under:
+        net_nudge()
+    return _answer(r)

@@ -31,6 +31,7 @@ import sys as _sys
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from names import claude_session   # noqa: E402
+from fields import field   # noqa: E402
 import json
 import os
 import sys
@@ -748,3 +749,50 @@ def prompt(project):
             "only mentioning it. Add what you learn about an open one to its "
             "notes with `bb bug note B7 \"...\"`. The tracker is where the "
             "next session looks first.")
+
+
+# ---- the Bugs tab's verbs, one call from the dashboard's /api/bugs ----------
+
+def verb(name, act, req, *, sessions, prefix):
+    """Report, edit, close, send or drop one bug, or read the history, once
+    server.py has let this account work on the project. The fields go
+    through this module's own cleaner; a change answers with the fresh
+    list, so the tab never has to guess what the write left behind.
+    `sessions()` is every session running, asked only for a send, and
+    `prefix` the asking account's session prefix. (payload, status)."""
+    parts = {k: field(req, k) for k in ("title", "area", "repro",
+                                        "expected", "actual", "notes")}
+    if act == "add":
+        r = add(name, parts.pop("title"),
+                severity=field(req, "severity", "medium"), **parts)
+    elif act == "edit":
+        r = edit(name, req.get("id"), rev=req.get("rev"),
+                 severity=field(req, "severity", "medium"), **parts)
+    elif act == "status":
+        r = set_status(name, req.get("id"), field(req, "status"),
+                       note=field(req, "note"))
+    elif act == "remove":
+        r = remove(name, req.get("id"), why=field(req, "why"))
+    elif act == "send":
+        r = send(name, req.get("id"), sessions(), prefix=prefix, note=field(req, "note"))
+        if r.get("error"):
+            return r, 400
+        # The send's own answer rides along with the fresh list: whether
+        # the line landed is the whole question, and the tab has to be
+        # able to say so rather than quietly redrawing as if it had.
+        return r | payload(name), 200
+    elif act == "history":
+        return {"history": history(
+            name, limit=req.get("limit"), since=req.get("since"),
+            find=field(req, "find"))}, 200
+    else:
+        return {"error": f"unknown action: {act}"}, 400
+    if r.get("error"):
+        # Somebody else edited this report first: answered with what it
+        # now says and the fresh tracker, so the tab can offer the choice
+        # rather than only refusing (roadmap #26). 200 for the same
+        # reason as the roadmap's: the page branches on `conflict` first.
+        if r.get("conflict"):
+            return r | payload(name), 200
+        return r, 400
+    return payload(name), 200

@@ -31,10 +31,13 @@ one that can disconnect it, and the only one asked when a session wants to
 touch it: a request from a session goes to the owner's bell and Phone tab and
 nobody else's. Everybody else sees the connection and cannot drive it.
 """
+import ipaddress
 import re
 import threading
 import time
 from pathlib import Path
+
+from fields import field
 
 write_json = None
 STATE = None
@@ -55,6 +58,24 @@ remover = None
 # containers.create_container, injected the same way: what Allow on a container
 # ask calls (R71). None where no docker path is wired up.
 container_maker = None
+# ...and what verb() needs to know about the one asking, set by server.py
+# beside the rest: the account store, the projects an account sees, the
+# node a project builds on and its Run its container dial, a container's
+# node held to its project's (R79) and what its compose asks for beyond
+# its own directory (B251), the dial's refusal, and the sessions' networks
+# told when a container is made (R79).
+users = None
+project_names = None
+project_node = None
+dial = None
+on_project_node = None
+unacked_risks = None
+run_denied = ""
+net_nudge = None
+# ...and what artifact_verb() needs: a path in a project's dist/ resolved the
+# safe way (artifacts.resolve), and the Artifacts tab's list to answer with.
+resolve_artifact = None
+artifact_list = None
 
 # The phone's own adb server on the node, apart from the default one the
 # emulator and a session's plain adb use.
@@ -1081,3 +1102,228 @@ def install_apk(nid, node, rel, size, project, label="", by="phone"):
                      args=(nid, dev["serial"], rel, size, project, dest, by),
                      daemon=True).start()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# the Phone tab's verbs and the asking, one call from the dashboard
+
+def tab_view(uid, *, admin, project, node="", probe=False, scope=None, ua="", addr=""):
+    """The tab's data for this account, plus this browser's own address when
+    it is a phone.
+
+    The whole point of the IP field is a number the operator has to go and
+    read off the device, and when the dashboard is being viewed ON that
+    device, the server already has it: the client address of this very
+    request. Docker's bridge does not masquerade it, so what arrives is the
+    real LAN address rather than the gateway's.
+
+    Only offered for an Android client. From a desktop the client address
+    is the desktop's, which is emphatically not the phone, and filling the
+    field with it would be a confident wrong answer, the worst kind.
+    """
+    out = payload(uid, node=node, probe=probe, admin=admin, project=project)
+    # The rows are the nodes this account's projects build on, as every
+    # node-shaped surface is (the server's _node_scope, handed in as scope):
+    # the list carried every phone node's name, address and handset to a
+    # session (the probe of 26 Sep).
+    if scope is not None and isinstance(out.get("nodes"), list):
+        out["nodes"] = [r for r in out["nodes"] if r.get("node") in scope]
+    if "Android" in ua:
+        try:
+            ip = ipaddress.ip_address(addr)
+            if ip.is_private and not ip.is_loopback:
+                out["you"] = str(ip)
+        except ValueError:
+            pass
+    return out
+
+
+def verb(action, req, who, fresh):
+    """Pair, connect, disconnect or forget a phone, a session's ask (adb,
+    root, a container) and a person's answer, once server.py has said which
+    of these this caller may use at all. Every argument is checked against
+    something already known rather than taken as given. (payload, status);
+    a change that succeeds carries the tab's fresh data, fresh(), which the
+    server reads with this request's own address."""
+    act = action
+    uid, me = users.uid_of(who), who.get("name") or "somebody"
+    nid = field(req, "node")
+    if act in ("pair", "connect", "disconnect", "forget"):
+        if nodes is None or not nid or not nodes.node(nid):
+            return {"error": "pick a node: a phone is driven from "
+                             "a node that has adb"}, 400
+        if act != "forget" and not nodes.node(nid).get("live"):
+            return {"error": f"{nodes.node(nid)['name']} is not dialing "
+                             "in; nothing reaches its adb right now"}, 400
+    if act == "pair":
+        r = pair(nid, field(req, "ip"), field(req, "port"), field(req, "code"), uid, me)
+    elif act == "connect":
+        r = connect(nid, field(req, "ip"), field(req, "port") or None, uid, me)
+    elif act == "disconnect":
+        r = disconnect(nid, uid, me)
+    elif act == "forget":
+        r = forget(nid, field(req, "ip"))
+    elif act == "ask":
+        # A session asking to reach the phone on its project's node,
+        # or, with kind "root", for one command as root there (roadmap
+        # R38). It runs nothing itself; the account that connected that
+        # phone, or an administrator, is asked, and on Allow the node
+        # runs it. The project is the session's own; a person asking
+        # through the API names one they may see.
+        proj = who.get("session") or field(req, "project")
+        if proj and not who.get("session") and not users.may_see(who, proj):
+            proj = ""
+        pnid = project_node(proj) if proj else ""
+        pn = nodes.node(pnid) if pnid and nodes is not None else None
+        # Whose session asks: the account behind the token (a session on
+        # a node is minted for one), or the person calling the API. The
+        # answer is routed to them where it can be: their own phone,
+        # or root when they are an administrator.
+        acct = users.account_of(who) or {}
+        asker_uid = str(acct.get("uid") or "")
+        asker_name = str(acct.get("name") or "")
+        if field(req, "kind") == "container":
+            # A container asked for (roadmap R71): the compose file the
+            # session wrote, on the node it names or the project's own.
+            # Always the administrators', whoever asks. The node is
+            # resolved here so the row can say where, and so a name that
+            # is not a node is refused before anybody is asked.
+            cnode = field(req, "node")
+            target = None
+            if cnode and nodes is not None:
+                target = nodes.node(cnode) or next(
+                    (n for n in nodes.node_list() if n.get("name") == cnode), None)
+                if not target:
+                    return {"error": f"no node called {cnode}"}, 400
+            elif pn:
+                target = pn
+            # The same check the New container form gets: a project
+            # that exists and this account may see. A session's ask
+            # belongs to its own project unless it names another, so the
+            # session that asked can see what it asked for.
+            under = field(req, "for") or (who.get("session") or "")
+            if under and under not in project_names(who):
+                return {"error": f"not a project: {under}"}, 400
+            # ...and it lands on that project's node: a node named that
+            # is not the project's is refused now, since a container
+            # anywhere else is out of reach of the project's sessions
+            # (R79, the operator 25 Sep); a project with no node has to
+            # be given one first.
+            if under:
+                why, un = on_project_node(under, target["id"] if target else "")
+                if why:
+                    return {"error": why}, 400
+                target = nodes.node(un) if nodes is not None else None
+            # A session's is under its project's dial, Claude may: Run
+            # its container, like every other container verb (B250, the
+            # operator, 24 Sep: at auto it was still asked). Refused at
+            # deny; at auto, its own project's on its own node is made
+            # now and built, the way Allow would; one for another project
+            # or on a node it names is always a person's.
+            sess = who.get("session") or ""
+            if sess:
+                mode = dial(sess)
+                if mode == "deny":
+                    return {"error": run_denied}, 403
+                if mode == "auto" and under == sess and not cnode:
+                    r = container_maker(field(req, "name"), req.get("compose"),
+                                        req.get("env"), "", under)
+                    if r.get("error"):
+                        return r, 400
+                    net_nudge()
+                    # Built unless the compose asks for more than its own
+                    # directory, which a person acknowledges once, as new
+                    # says it (B251).
+                    why = unacked_risks(r["project"], r["instance"])
+                    if why:
+                        return r | {"needs_ack": why}, 200
+                    built = rebuilder(r["project"], r["instance"]) or {}
+                    if built.get("error"):
+                        return r | {"error": f"{r['name']} is registered on the Docker "
+                                             f"tab, and its build did not start: {built['error']}"}, 400
+                    return r | {"job": built.get("job")}, 200
+            r = ask_container(field(req, "why"), field(req, "name"),
+                              req.get("compose"), req.get("env"),
+                              target["id"] if target else "",
+                              target["name"] if target else "", proj,
+                              for_project=under, asker_name=asker_name)
+        elif field(req, "kind") == "root":
+            r = ask_root(field(req, "why"), req.get("cmd"), pnid if pn else "",
+                         pn["name"] if pn else "", proj,
+                         bool(((pn or {}).get("reported") or {}).get("sandbox")),
+                         asker_uid=asker_uid, asker_name=asker_name,
+                         asker_admin=users.is_admin(acct),
+                         locked=(nodes.node_locked(pn) or nodes.root_refused(pn)) if pn else "")
+        else:
+            r = ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
+                    pn["name"] if pn else "", proj, asker=asker_name)
+    elif act == "allow" or act == "deny":
+        r = decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who))
+    elif act == "outcome":
+        r = outcome(req.get("id"), project=who.get("session") or "")
+        if not r.get("error"):
+            return r, 200
+    else:
+        return {"error": f"unknown action: {act}"}, 400
+    if r.get("error"):
+        return r, 400
+    return r | fresh(), 200
+
+
+def artifact_verb(project, act, req, *, uid, me, by):
+    """The Artifacts tab's phone buttons: push an .xpi from the project's
+    dist/ to the phone on its node, install an .apk there, or stop a push,
+    once server.py has let this person (never a session) work on the
+    project. The path is resolved against dist/ and unpacked before
+    anything runs; push_dir never sees a caller-supplied path. (payload,
+    status)."""
+    nid = project_node(project)
+    node = nodes.node(nid) if nid and nodes is not None else None
+    # Both verbs touch the phone, so both are the connection owner's:
+    # the phone is on somebody's desk, and they are the one who said
+    # yes to it. The tab ghosts the buttons for anybody else; this is
+    # the line that holds.
+    if act in ("push", "install"):
+        if not node:
+            return {"error": f"{project} has no node, and a phone is "
+                             "driven from the project's node"}, 400
+        if not phone_on(nid):
+            return {"error": f"no phone is connected on {node['name']}: "
+                             "connect one on the Phone tab with that "
+                             "node picked"}, 400
+        held = owner_of(nid)
+        if held and held["uid"] != uid:
+            return {"error": f"the phone on {node['name']} was connected "
+                             f"by {held['name']}; only they can push to "
+                             "it or install on it"}, 400
+        if not held:
+            return {"error": f"the phone on {node['name']} has no owner: "
+                             "connect it on the Phone tab first"}, 400
+    if act == "push":
+        # A temporary add-on, through web-ext on the phone's node. A push
+        # is a decision, made each time; nothing auto-pushes on a change.
+        rel = field(req, "path")
+        f = resolve_artifact(project, rel)
+        if f is None or f.suffix.lower() != ".xpi":
+            return {"error": "not an .xpi in this project's dist/"}, 400
+        r = push(nid, node, rel, f.stat().st_size, project, field(req, "apk"),
+                 uid, me, by=by)
+    elif act == "install":
+        # An APK, installed for real and kept, unlike the extension push,
+        # which is a temporary add-on. `adb install -r` replaces an
+        # existing copy in place and keeps its data, so this is the update
+        # path too and there is no second verb.
+        rel = field(req, "path")
+        f = resolve_artifact(project, rel)
+        if f is None or f.suffix.lower() not in (".apk",):
+            return {"error": "not an .apk in this project's "
+                             "dist/"}, 400
+        r = install_apk(nid, {"stores": (node.get("reported") or {}).get("stores") or {}},
+                        rel, f.stat().st_size, project, label=rel, by=by)
+    elif act == "stop":
+        r = stop_push(uid, by=by)
+    else:
+        return {"error": f"unknown action: {act}"}, 400
+    if r.get("error"):
+        return r, 400
+    return r | {"artifacts": artifact_list(project)} | summary(nid, uid, node), 200

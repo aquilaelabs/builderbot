@@ -33,6 +33,8 @@ from pathlib import Path
 # does) and still find statefile beside it.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import statefile  # noqa: E402
+from fields import field  # noqa: E402
+from names import claude_session  # noqa: E402
 
 WORKSPACE = None
 WORKTREES = None
@@ -42,6 +44,14 @@ TMUX_NAME = None
 ACCOUNTS = None           # () -> {uid: account name}, injected: whose a branch is
 OWNER_UID = None          # () -> the owner's uid: the project directory is their tree
 WORKING = None            # (project, uid) -> whether that account's Claude session there is mid-prompt
+# ...and what in_use() and verb() need from the server:
+OWNER_NAME = None         # () -> the owner's account name, for "your" or theirs
+SESSION_OPEN = None       # project -> whether the owner's Claude session is open in its directory
+SESSIONS = None           # () -> every session running, for the ask
+GIT_ENV = None            # (account, project) -> what git runs under: the author, the credentials
+MAY_PUSH = None           # project -> whether it was cloned with push rights
+EXCLUDE = None            # tree -> the code map kept out of a new repository
+AUDIT = None              # (principal, action, project, detail) -> the audit row
 
 LOG_MAX = 100             # commits the graph shows
 DIFF_MAX = 200_000        # bytes of diff the page is handed
@@ -52,11 +62,14 @@ EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
 def configure(*, workspace, worktrees=None, tell=None, tmux_name=None, state=None,
-              accounts=None, owner_uid=None, working=None):
+              accounts=None, owner_uid=None, working=None, owner_name=None, session_open=None,
+              sessions=None, git_env=None, may_push=None, exclude=None, audit=None):
     globals().update(WORKSPACE=Path(workspace),
                      WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
                      TELL=tell, TMUX_NAME=tmux_name, ACCOUNTS=accounts, OWNER_UID=owner_uid,
-                     WORKING=working,
+                     WORKING=working, OWNER_NAME=owner_name, SESSION_OPEN=session_open,
+                     SESSIONS=sessions, GIT_ENV=git_env, MAY_PUSH=may_push, EXCLUDE=exclude,
+                     AUDIT=audit,
                      STATE=Path(state) if state else None)
 
 
@@ -1321,3 +1334,60 @@ def ask(repo, project, kind, args, sessions=(), session=""):
     if r.get("error"):
         return r
     return {"ok": True, "sent": bool(r.get("sent")), "session": session, "text": line}
+
+
+# ---- the Git view's actions, one call from the dashboard's /api/git ----------
+
+def in_use(project, action, args, uid):
+    """Why the project directory's own Claude session keeps this action off
+    it right now, or "". Both a switch and a merge rewrite the working tree.
+    A merge is not a switch, but it lands other people's files in a
+    directory a session is reading and editing right now, which is the same
+    surprise for the same reason, so it waits for the same moment.
+
+    A merge INTO ANOTHER branch (into: main, from wherever the tree stands)
+    is done with plumbing and checks nothing out, so it moves nothing here
+    and the session is no reason to refuse it: that is the merge the
+    operator makes to accept a session's work while it keeps working."""
+    lands_here = action == "switch" or (
+        action == "merge" and str(args.get("into") or "")
+        in ("", status(WORKSPACE / project).get("branch") or ""))
+    if not lands_here:
+        return ""
+    # The project directory is the owner's session's tree. A switch waits
+    # while that session is open at all, since it changes the branch the
+    # session is on; a merge only while it is WORKING, since a session at
+    # its prompt sees the changed files when it next reads them, and it
+    # was one merely open that refused the operator's own merge, 24 Sep.
+    # "your" to the owner: "the owner's" read as somebody else's.
+    owner_uid = OWNER_UID()
+    whose = "your" if uid == owner_uid else f"{OWNER_NAME()}'s"
+    if action == "switch":
+        if SESSION_OPEN(project):
+            return (f"{whose} Claude session is running in this directory; end it "
+                    "before switching the branch under it")
+    elif WORKING(project, owner_uid):
+        return f"{whose} Claude session is working in this directory; merge when it is waiting"
+    return ""
+
+
+def verb(project, action, req, me, *, prefix, principal):
+    """One of the Git view's actions (roadmap R36 step 2), once server.py
+    has let this account act on the project and in_use() has said the tree
+    is free: `ask` puts a question to the presser's own session, and
+    anything else is act() under the account's author and the project's
+    own credentials, audited. {ok} or {error}."""
+    if action == "ask":
+        # The presser's own session, by the name the roadmap's send uses
+        # (B235): the bare name alone was the owner's.
+        return ask(WORKSPACE / project, project, field(req, "kind"), req.get("args") or {},
+                   SESSIONS(), session=prefix + claude_session(project))
+    r = act(WORKSPACE / project, action, req.get("args") or {}, env=GIT_ENV(me, project),
+            may_push=MAY_PUSH(project))
+    if action == "init" and r.get("ok"):
+        EXCLUDE(WORKSPACE / project)      # the code map is never the project's
+    if r.get("ok"):
+        AUDIT(principal, "git-" + action, project,
+              {k: v for k, v in (req.get("args") or {}).items()
+               if k in ("name", "sha", "path", "at")})
+    return r

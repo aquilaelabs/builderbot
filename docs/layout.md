@@ -100,7 +100,7 @@ scripts/
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is
     phone.py                     a paired handset on a node: install, push, and the asking
     db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
-    nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md)
+    nodes.py                     the node registry, the job queue, the agent's channel and the Nodes tab's verbs (docs/nodes.md)
     claudecode.py                Claude Code on each node: which version, checking for and installing an update
     claudegrant.py               a session's Claude login handed to the node it runs on, and taken back
     mapping.py                   a new project's code map built in the background as it is created
@@ -116,6 +116,11 @@ scripts/
     runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
     findings.py                  the scanner's reports read and attributed, and what they used to say
     gitrelay.py                  a node session's push, fetch and pull, done in a repository of the controller's own
+    bbrelay.py                   a bb verb from a node's session, run here: which verbs travel, and what a session may push
+    hooks.py                     what a node session's hooks post: overlap notes, the chat feed, the catch-up, the turn queue
+    macros.py                    what the page may type into a terminal: the command and key tables, the pins, custom lists
+    profiletab.py                an account's own settings, the Profile tab
+    fields.py                    one field out of a request body, read one way by the server and the modules it calls
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing

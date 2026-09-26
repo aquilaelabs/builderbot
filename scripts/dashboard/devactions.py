@@ -41,6 +41,17 @@ def configure(*, runner=None):
         runner.register("compose", run_compose_job)
 
 
+# What request() needs from the rest of the server, set by server.py: the
+# account store (who is asking, and whether they administer), the asking
+# (phone.ask_rebuild), a line in the project's chat (chat.event), and the
+# sessions' networks told when a container is made, removed or given to
+# another project (R79).
+users = None
+ask_rebuild = None
+say = None
+net_nudge = None
+
+
 # One action per INSTANCE at a time. Two clicks on one row are two compose
 # calls on one project; two rows are two jobs, and the queue orders those.
 BUSY = {"error": "something is already running on this instance: one at a time"}
@@ -1016,3 +1027,55 @@ def act(project, instance, action, req, *, test_cmd=""):
     if r.get("error"):
         return r, 400
     return r | {"state": state(project, instance)}, 200
+
+
+def request(project, instance, action, req, *, me, principal, dial="", test_cmd=""):
+    """One dev-instance verb as the Docker tab and `bb devapp` send it, once
+    server.py has decided this caller may: a session whose project's Run
+    its container dial is at `ask` puts a change in front of a person
+    instead (a rebuild, the env, making or removing the container); any
+    other is act(), with a line in the project's chat first for what the
+    others sharing it would want to know, and the sessions' networks told
+    after a container is made, removed or given away. (payload, status)."""
+    sess = me.get("session") or ""
+    if sess and dial == "ask" and action in ("rebuild", "env-set", "new", "remove"):
+        # Aborting is not asked about: it stops a build this session
+        # was already allowed to start, and a running build nobody
+        # can stop is worse than one nobody approved. Reading the env
+        # is not either: a session cannot propose a change to what it
+        # cannot see, and the change is what is asked about.
+        acct = users.account_of(me) or {}
+        # The instance a request means when it names none: the
+        # project's only one, as the auto path reads it. `main`
+        # here made Allow write an env for, and build, an instance
+        # the project did not have (the review of 24 Sep).
+        want = devapp.field(req, "instance") or (devapp.MAIN if action == "new"
+                                                 else devapp.only_instance(project))
+        text = req.get("text") if action in ("env-set", "new") else None
+        # env-set means the env, whatever was sent as it: a missing
+        # text is an empty env, as the auto path writes one.
+        if action == "env-set" and not isinstance(text, str):
+            text = ""
+        # Asked by, and answered to, the session's project; acting on
+        # the container named, which may be one written here.
+        r = ask_rebuild(
+            devapp.field(req, "why"), sess, want, devapp.pname(project, want),
+            asker_uid=str(acct.get("uid") or ""),
+            asker_name=str(acct.get("name") or ""),
+            asker_admin=users.is_admin(acct),
+            env=text if isinstance(text, str) and (action == "env-set" or text.strip()) else None,
+            create=action == "new", remove=action == "remove", target="" if project == sess else project)
+        return r, (400 if r.get("error") else 200)
+    # What the others sharing this project would want to know before they
+    # press the same button, naming the instance the server resolved. Reads
+    # and the env editor are not news, so they are not on this list.
+    if action in ("up", "down", "rebuild", "remove", "abort"):
+        say(project, users.uid_of(me),
+            f"{principal[len('user:'):]} ran {action} on "
+            f"{project}" + (f" ({instance})" if instance != devapp.MAIN else ""))
+    payload, status = act(project, instance, action, req, test_cmd=test_cmd)
+    # An instance made, removed or given to another project changes what
+    # a project's sessions may reach on its node (R79).
+    if status == 200 and action in ("new", "remove", "owner"):
+        net_nudge()
+    return payload, status

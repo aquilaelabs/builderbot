@@ -35,6 +35,7 @@ import sys
 # doctor's probe load this module by path.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import names   # noqa: E402
+from fields import field   # noqa: E402
 import db   # noqa: E402
 import turns   # noqa: E402
 from db import _exec, _lock, _rows, audit, mint   # noqa: E402
@@ -3242,3 +3243,422 @@ def agent_file():
             "digest": "sha256:" + hashlib.sha256(body).hexdigest(),
             "version": m.group(1).decode() if m else "?"})
     return dict(_agent_cache)
+
+
+# ---------------------------------------------------------------------------
+# the Nodes tab's verbs, one call from the dashboard's /api/v1/nodes
+
+# What the verbs compose with, handed over by server.py (configure_verbs),
+# which configures each of them in its own order. Not imported: bb loads
+# this file by path with none of them beside it.
+vmtemplate = None        # what a new sandbox VM is made from
+forges = None            # the git hosts' catalog, for a runner's forge
+devapp = None            # a node's daemon, for the path check and the test
+claudecode = None        # the Claude Code check and update
+runner_store = None      # runners.py: each runner's token, root-only
+workspace = None         # a project's tree snapshotted, a file in its dist/
+project_prefs = None     # a project -> its settings (its node and node set)
+may_push = None          # a project -> whether it was cloned with push rights
+no_node_advice = None    # a project with no node -> what it can still do
+_VERB_PARTS = ("vmtemplate", "forges", "devapp", "claudecode", "runner_store",
+               "workspace", "project_prefs", "may_push", "no_node_advice")
+
+
+def configure_verbs(**parts):
+    """Join what verb() composes with. Only those names: a misspelt one
+    would otherwise overwrite something of this module's own."""
+    unknown = set(parts) - set(_VERB_PARTS)
+    if unknown:
+        raise TypeError(f"configure_verbs: nothing called {', '.join(sorted(unknown))}")
+    globals().update(parts)
+
+
+def agent_test(principal, n):
+    """Test on an agent node: an exec job, waited for. The channel is
+    the thing being tested, so the proof is a round trip through it
+    (queued here, picked up by the next poll, run there, logged back),
+    and a node that is not dialing in says so rather than timing out."""
+    if not n.get("live"):
+        return {"on": False, "why": ("waiting for enrollment"
+                                     if n["state"] == "pending"
+                                     else "not connected: the agent has "
+                                     "not dialed in lately")}
+    r = job_add(principal, {"node": n["id"]}, "exec",
+                      {"argv": ["uname", "-srm"], "timeout": 20})
+    if r.get("error"):
+        return {"on": False, "why": r["error"]}
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        j = job(r["job"])
+        if j and j["state"] in JOB_END:
+            out = (j.get("log") or "").strip()
+            db.audit(principal, "node-test", n["id"],
+                     {"on": j["state"] == "succeeded"})
+            return {"on": j["state"] == "succeeded",
+                    "why": out or f"{j['state']} (exit {j['exit_code']})"}
+        time.sleep(0.3)
+    return {"on": False, "why": "the agent took the job but did not "
+                                "report back within 15s"}
+
+
+def verb(principal, req):
+    """One of the Nodes tab's verbs, asked by an administrator: server.py
+    holds that gate and this says what the verb means. The answer is
+    (payload, status), a {ok} or {error} with 400 on the error unless the
+    verb names its own status."""
+    act = field(req, "action")
+    nid = field(req, "id")
+    # One closure per verb, in the table below; each answers with {ok} or
+    # {error}, or with (payload, status) when its status is its own.
+
+    def vm_xml():
+        # What a new sandbox VM is made from, for whichever hypervisor is
+        # picked. No node exists yet and nothing is written: a render of
+        # a shipped machine with an identity of its own, which the
+        # operator pastes into their manager or runs on its host.
+        return vmtemplate.render(
+            name=field(req, "name"), cores=req.get("cores"),
+            memory_gb=req.get("memory_gb"), iso=field(req, "iso"),
+            uid=field(req, "uuid"), hw=field(req, "mac"),
+            hv=field(req, "hv"), disk_gb=req.get("disk_gb"),
+            vmid=req.get("vmid")) | {"catalog": vmtemplate.catalog()}, 200
+
+    def add():
+        return node_add(principal, field(req, "name"),
+                        field(req, "addr"),
+                        req.get("capabilities"),
+                        field(req, "pool") or "default")
+
+    def update():
+        return node_update(principal, nid, req.get("fields") or {})
+
+    def uninstall():
+        return node_uninstall(principal, nid)
+
+    def state():
+        return node_state(principal, nid,
+                          {"drain": "draining", "online": "online",
+                           "retire": "retired"}[act])
+
+    def lock():
+        # System changes locked to the node's own console: Apply
+        # storage, Apply network and a root command refused while on.
+        return node_lock(principal, nid, act == "lock")
+
+    def enroll():
+        return enroll_mint(principal, field(req, "name"),
+                           req.get("capabilities"),
+                           field(req, "user") or "bb")
+
+    def power():
+        return node_power(principal, nid, act)
+
+    def gpu_display():
+        return node_gpu_display(principal, nid)
+
+    def config():
+        # The configuration plane (docs/nodes.md §12): what the operator
+        # wants the node to mount and be addressed as. Stored here,
+        # applied by the next action as a system job the agent runs.
+        return node_config_set(principal, nid, req.get("config"))
+
+    def log_grant():
+        # Which nodes' machine logs a session on this node may read. An
+        # administrator's, like the rest of this handler: a session that
+        # could grant itself the journal is not a boundary.
+        return node_log_grant(principal, nid,
+                              req.get("from") if isinstance(req.get("from"), list) else [],
+                              diag=req["diag"] if isinstance(req.get("diag"), bool) else None)
+
+    def turns():
+        # How many Claude sessions on the node may work at once; 0 for
+        # no limit. An administrator's, like the rest of this handler.
+        return node_turn_limit(principal, nid, req.get("limit"))
+
+    def test_workers():
+        # How many workers a test run on the node may use (R81); 0 for
+        # its cores. An administrator's, like the rest.
+        return node_test_workers(principal, nid, req.get("workers"))
+
+    def session_net():
+        # Whether each session on the node reaches only its own project's
+        # containers (R79). An administrator's, like the rest.
+        return node_session_net(principal, nid, req.get("on") is True)
+
+    def root_asks():
+        # Whether a session on the node may ask for a root command at
+        # all. An administrator's, like the rest.
+        return node_root_asks(principal, nid, req.get("on") is True)
+
+    def apply():
+        return node_apply(principal, nid, field(req, "what"))
+
+    def runner():
+        # One of the node's runners (phase 7, one per git host): a system
+        # job, minting from the token stored for that runner. The URL is
+        # the record's, written when the token was, so the token and the
+        # address it was made for cannot come apart.
+        slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
+        return node_runner(principal, nid, slot, bool(req.get("want", True)),
+                           req.get("labels"),
+                           token=slot in runner_store.tokens().get(nid, set()))
+
+    def runner_token():
+        # The node's runner token: forge and URL onto the record, the
+        # token itself into the root-only store through the helper.
+        # Not forges.parse: that wants owner/repo, and a runner's address
+        # is as often an organization, one segment deep.
+        url = field(req, "url").strip()
+        # http as well as https: a Gitea on the LAN, the docker-compose
+        # shape, serves plain http, and the enrollment already makes the
+        # same trade with a note. GitHub is https whatever is typed.
+        at = re.fullmatch(r"https?://([A-Za-z0-9.-]+(?::[0-9]{1,5})?)/[A-Za-z0-9._/-]+", url)
+        if not at:
+            return {"error": "the URL is the https address of the repository or "
+                             "organization the runner registers with (http is "
+                             "accepted for a forge on your own network)"}
+        if not node(nid):
+            return {"error": "no such node"}
+        # The forge from the picker when it says, else from the host:
+        # a private Gitea nobody has linked a project to yet is
+        # "another git host" to the catalog, and the picker is how
+        # the operator says otherwise.
+        forge = field(req, "forge")
+        if forge not in ("github", "gitea"):
+            forge = forges.forge_of(at.group(1)).get("kind") or "git"
+        slot = runner_slot(url)
+        r = runner_store.store(nid, slot, url, forge, str(req.get("token") or "").strip())
+        if not r.get("error"):
+            r = node_runner_url(principal, nid, slot, url, forge,
+                                req.get("labels") if isinstance(req.get("labels"), list) else None)
+            r["slot"] = slot
+        return r
+
+    def runner_forget():
+        slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
+        r = runner_store.forget(nid, slot)
+        if not r.get("error"):
+            r = node_runner_forget(principal, nid, slot)
+        return r
+
+    def paths():
+        # What this container's paths are called on the node's machine
+        # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
+        return node_paths_set(principal, nid, field(req, "paths"))
+
+    def check_paths():
+        # Whether the two machines mean the same directory by the
+        # projects share (roadmap #13): a marker made here, looked for
+        # through the node's daemon. Off the poll, on purpose.
+        return ({"error": "no such node"} if not node(nid)
+                else devapp.check_paths(nid))
+
+    def funnel():
+        # Tailscale Funnel for a port on the node, raw: the manager's
+        # route picker goes through the instance's record; this is the
+        # same job by hand, for a port that is not an instance's.
+        return node_funnel(principal, nid, req.get("port"), bool(req.get("on", True)))
+
+    def update_agent():
+        return node_update_agent(principal, nid)
+
+    def claude_check():
+        # What the latest Claude Code is, asked now: the same question
+        # the controller asks on its own after a start and every six
+        # hours, with the automatic update behind it where the setting
+        # asks for one. Nothing else is changed by it.
+        return claudecode.check() | {"ok": True}
+
+    def claude_update():
+        # An administrator's, like every action here, and so never a
+        # session's: it ends the Claude sessions on the node and queues
+        # the installer as a job the agent runs (claudecode.py).
+        return claudecode.update(principal, nid)
+
+    def cache_clear():
+        # Drop a node's build caches, one project's or all (docs/nodes.md
+        # §6): a job the agent runs, so it is logged and audited like
+        # everything else that touches a node's disk.
+        n = node(nid)
+        if not n or n["kind"] != "agent":
+            return {"error": "only an agent node keeps caches to clear"}
+        return job_add(principal, {"node": nid}, "cache-clear",
+                       {"project": field(req, "project")})
+
+    def exec_():
+        # The channel's one job type, from the tab or from curl: run
+        # this argv on that node, as the enrolled account, and read the
+        # log back from /api/v1/jobs. What the Test button sends, and
+        # what a session holding the credential could: the same reach
+        # a session already has over ssh to the sandbox, audited now.
+        argv = [str(a) for a in (req.get("argv") or []) if str(a)][:64]
+        if not argv:
+            return {"error": "argv is empty"}
+        spec = {"argv": argv, "timeout": 600}
+        # What the job needs the node to be enrolled for. The node
+        # checks it, not the row (door 7), and this is how that is exercised.
+        need = [str(c) for c in (req.get("requires") or []) if str(c)][:8]
+        if need:
+            spec["requires"] = need
+        # Placed on the node named, or (with `select` and no id) on
+        # whichever node fits the selector when one asks (phase 4).
+        place = ({"select": req["select"]} if not nid
+                 and isinstance(req.get("select"), dict) else {"node": nid})
+        return job_add(principal, place, "exec", spec, field(req, "project"))
+
+    def test():
+        n = node(nid)
+        if not n:
+            return {"error": "no such node"}
+        if n["kind"] == "local":
+            return {"on": False, "why": "the local node runs no daemon"}
+        if n["kind"] == "agent":
+            return agent_test(principal, n)
+        # The same verdict the Docker manager gates on, asked of THIS
+        # node's daemon right now: drop the memo, probe, answer. The
+        # sandbox-stamp check rides along, because a node that answers
+        # docker but is not a sandbox is the case worth a button.
+        devapp.forget_available()
+        with devapp.on_node(nid):
+            got = devapp.available_cached()
+        db.audit(principal, "node-test", nid, {"on": got.get("on")})
+        return {"on": bool(got.get("on")), "why": got.get("why") or ""}
+
+    verbs = {"vm-xml": vm_xml, "add": add, "update": update, "uninstall": uninstall,
+             "drain": state, "online": state, "retire": state,
+             "lock": lock, "unlock": lock, "enroll": enroll,
+             "reboot": power, "poweroff": power, "gpu-display": gpu_display,
+             "config": config, "log-grant": log_grant, "turns": turns,
+             "test-workers": test_workers, "session-net": session_net,
+             "root-asks": root_asks, "apply": apply, "runner": runner,
+             "runner-token": runner_token, "runner-forget": runner_forget,
+             "paths": paths, "check-paths": check_paths, "funnel": funnel,
+             "update-agent": update_agent, "claude-check": claude_check,
+             "claude-update": claude_update, "cache-clear": cache_clear,
+             "exec": exec_, "test": test}
+    if act not in verbs:
+        return {"error": "unknown action"}, 400
+    r = verbs[act]()
+    return r if isinstance(r, tuple) else (r, 400 if r.get("error") else 200)
+
+def run_job(name, req, principal):
+    """`bb run`, `bb build` and `bb test` from the controller (docs/nodes.md
+    §6), once server.py has let an administrator queue one for this
+    project: snapshot the project's working tree, dirty edits included, and
+    queue an exec on the project's node, or on the node named; `emu` runs a
+    bb verb there from the bundle instead. Outputs are globs; what matches
+    comes back into dist/. The principal is the session when the request
+    says so, which is a label the credential cannot prove (bug #16) but is
+    worth writing down. (payload, status)."""
+    argv = [str(a) for a in (req.get("argv") or []) if str(a)][:64]
+    if not argv:
+        return {"error": "argv is empty"}, 400
+    # `emu` (docs/nodes.md phase 9): a bb verb the node runs from the
+    # bundle with its own toolchain store as the SDK: no snapshot, since
+    # the emulator is not the tree's; inputs come from dist/ by name and
+    # what it writes comes back the same way.
+    emu = field(req, "action") == "emu"
+    pf = project_prefs(name)
+    # The node named, else the project's primary, else the first of its
+    # set that is up (R82 step 6): a primary that is offline is a job
+    # that runs elsewhere and says so, not a refusal.
+    nid, fell_over = field(req, "node"), ""
+    if not nid:
+        nid, fell_over = first_up(pf.get("nodes") or ([pf["node"]] if pf["node"] else []))
+    if not nid:
+        return {"error": f"{name} has no node, so nothing can be compiled for it. "
+                         + no_node_advice(name)}, 400
+    n = node(nid)
+    if not n:
+        return {"error": f"no such node: {nid}"}, 400
+    if n["kind"] != "agent":
+        return {"error": f"{n['name']} runs no agent: a build node is an agent "
+                         "node with a workspace of its own (docs/nodes.md §6)"}, 400
+    # A node that visibly cannot run this is refused before the job is
+    # queued rather than after it fails on "gradlew: not found", and the
+    # two ways out are named. Only fires when the command NAMES a
+    # toolchain the node's census does not report; an unknown build
+    # script is left alone.
+    gap = toolchain_gap(nid, argv)
+    if gap:
+        # How old that answer is, because the census rides hello every
+        # ten minutes and a refusal can be reasoning about the node as
+        # it was nine of them ago. The node has just been asked for a
+        # fresh one, so the sentence says a retry may differ.
+        age = census_age(nid)
+        when = (f", as of what it reported {age // 60}m ago; it has been "
+                "asked for a fresh answer, so a retry shortly may differ"
+                if age and age > 90 else "")
+        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Tools tab "
+                         f"with {n['name']} picked, "
+                         + ("or push and let CI build it."
+                            if may_push(name)
+                            else f"or give {name} push rights and let CI build it; "
+                                 "it has none, so there is no fallback here.")}, 400
+    outputs = [str(g)[:200] for g in (req.get("outputs") or []) if str(g)][:16]
+    try:
+        timeout = min(4 * 3600, max(30, int(req.get("timeout") or 3600)))
+    except (TypeError, ValueError):
+        timeout = 3600
+    who = f"session:{name}" if field(req, "from") == "session" else principal
+    if emu:
+        files, sizes = [], {}
+        for f in (req.get("files") or [])[:8]:
+            p = workspace.file_path(name, str(f))
+            if p is None:
+                return {"error": f"{f} is not a file in {name}'s dist/"}, 400
+            files.append(str(f))
+            # So the node can tell its own copy from a new build without
+            # fetching it again (docs/nodes.md §6, the artifacts store).
+            sizes[str(f)] = p.stat().st_size
+        spec = {"bb": argv, "files": files, "sizes": sizes, "timeout": timeout,
+                "outputs": outputs, "project": name}
+        r = job_add(who, {"node": nid}, "exec", spec, name)
+        if r.get("error"):
+            return r, 400
+        return r | {"node": nid}, 200
+    snap = workspace.snapshot(name)
+    if snap.get("error"):
+        return snap, 400
+    spec = {"argv": argv, "timeout": timeout, "outputs": outputs, "project": name}
+    if fell_over:
+        spec["fell_over"] = fell_over      # the primary it stood in for (R82 step 6)
+    r = job_add(who, {"node": nid}, "exec", spec, name,
+                source={"digest": snap["digest"], "project": name,
+                        "files": snap["files"], "bytes": snap["bytes"]})
+    if r.get("error"):
+        return r, 400
+    return r | {"node": nid, "snapshot": snap["digest"], "files": snap["files"]}, 200
+
+
+def jobs_view(jid, q, mine):
+    """The Jobs tab's whole read surface, and a test's: one job with its log
+    so far, or the recent ones narrowed by the query's node, project, type,
+    active and n. `mine` is None for an administrator, or the projects this
+    account may see: a job and its log are the project's, and a job with no
+    project (a node's own: an update, a store move) is an administrator's,
+    with the same answer as a typo so the listing says nothing about what
+    else is queued on the box. (payload, status)."""
+    if jid:
+        j = job(jid)
+        if j and mine is not None and j.get("project") not in mine:
+            j = None
+        return (j, 200) if j else ({"error": "no such job"}, 404)
+    try:
+        n = min(500, max(1, int(q.get("n", ["100"])[0])))
+    except ValueError:
+        n = 100
+    rows = jobs_for(
+        q.get("node", [""])[0] or None, n=n,
+        project=q.get("project", [""])[0] or None,
+        type=q.get("type", [""])[0] or None,
+        active=q.get("active", [""])[0] == "1")
+    if mine is not None:
+        rows = [j for j in rows if j.get("project") in mine]
+    # The names of the nodes these rows run on, and for an account that
+    # is not an administrator no other: the whole registry rode here
+    # past the scoping the nodes listing keeps (the probe of 26 Sep).
+    names = {x["id"]: x["name"] for x in node_list(all=True)}
+    if mine is not None:
+        names = {k: v for k, v in names.items() if any(j.get("node") == k for j in rows)}
+    return {"jobs": rows, "nodes": names}, 200

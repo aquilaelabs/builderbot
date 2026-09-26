@@ -803,3 +803,43 @@ def revisions():
     for p, v in (d.get("projects") or {}).items():
         out[p] = _rev_of(v.get("rules") or [])
     return out
+
+
+# ---- the Rules tab's saves, one call from the dashboard ----------------------
+
+def verb(name, act, req):
+    """The operator's house rules for one project: the whole list, saved,
+    once server.py has let a PERSON at it (a session is refused there, by
+    name). Whole rather than per-rule because the tab is an editor rather
+    than a form: somebody rewords two rules and drops a third before
+    pressing Save, and replaying that as five operations is five chances to
+    land half of it. (payload, status)."""
+    if act != "save":
+        return {"error": "unknown action"}, 400
+    r = replace(name, req.get("rules") or [], rev=req.get("rev"),
+                force=bool(req.get("force")))
+    if r.get("conflict"):
+        # 200, with what is there now: the roadmap's shape for the same
+        # moment, so the page can put both versions in front of the
+        # person instead of a toast over a form it then has to guess at.
+        return {"conflict": True, "error": r["error"],
+                "current": payload(name) | {"rev": rev(name)}}, 200
+    if r.get("error"):
+        return r, 400
+    return payload(name) | {"rev": rev(name)}, 200
+
+
+def global_verb(act, req):
+    """The rules that apply to EVERY project (R63), saved by an
+    administrator. A shipped rule is read-only and is turned off rather
+    than edited, so the only thing this writes for one is whether it is
+    on. (payload, status)."""
+    if act != "save":
+        return {"error": "unknown action"}, 400
+    # `disabled` only when the caller sent one: absent means leave the
+    # shipped rules as they are rather than switching them all back on.
+    off = req.get("disabled")
+    r = save_global(req.get("rules") or [], off if isinstance(off, list) else None)
+    if r.get("error"):
+        return r, 400
+    return {"rules": globals_now()}, 200

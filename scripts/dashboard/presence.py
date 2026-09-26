@@ -21,6 +21,13 @@ per page load, which is what lets "your other window" be told from "you".
 import threading
 import time
 
+# What heartbeat() answers with beyond the seats, set by server.py: the
+# account names by uid, since the answer is read by a person and a uid on
+# screen is a question rather than an answer, and when each session last
+# read the project's roadmap (roadmap.readers).
+account_names = None
+readers = None
+
 # Three polls. The panel heartbeats on its fifteen-second status poll, so one
 # missed request must not make somebody vanish and come back: a line that
 # flickers is worse than no line, because it reads as two people arriving.
@@ -73,3 +80,28 @@ def gone(project, uid, client):
 def _prune(now):
     for k in [k for k, v in _seats.items() if now - v["at"] > TTL]:
         del _seats[k]
+
+
+def heartbeat(project, uid, client, where="", leave=False):
+    """This browser is in a project's notebook, and who else is (roadmap
+    #26): a heartbeat ridden on the panel's own poll, answered with the
+    others in the same breath so that asking and being told cost one
+    request. `leave` is the same call saying the tab has gone, which a seat
+    would work out for itself in fifty seconds; sending it is what stops
+    the panel claiming somebody is here who has just closed the window."""
+    if leave:
+        gone(project, uid, client)
+        return {"ok": True, "here": []}
+    others = mark(project, uid, client, where)
+    by_uid = account_names()
+    return {
+        "ok": True,
+        "here": [{"who": by_uid.get(o["uid"], "somebody"),
+                  "mine": o["uid"] == uid,
+                  "where": o["where"], "at": o["at"]} for o in others],
+        # ...and when a SESSION here last read the roadmap, which is the
+        # other half of "is anybody else in this". Being told is #27's
+        # channel and arrives on the session's next prompt; this is the
+        # act of going and reading, which is what the operator is
+        # actually asking about after changing something.
+        "read": max(readers(project).values(), default=0)}
