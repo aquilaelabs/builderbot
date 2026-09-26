@@ -629,25 +629,6 @@ def node_locked(n):
     return ""
 
 
-def node_revoke(principal, node_id):
-    """Cut an agent node's credential without retiring it. The row stays,
-    the agent's next call fails closed with 'credential revoked', and the
-    way back is a fresh enrollment token, which is to say a new row: a
-    node whose secret was compromised is a node whose identity was, and
-    the id is not reissued."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node holds a credential to revoke"}
-    revoke_tokens(node_id)
-    ag = n.get("agent") or {}
-    ag["revoked"] = int(time.time())
-    _exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), node_id))
-    _touch(node_id, principal, "node-revoke", {})
-    return {"ok": True}
-
-
 def docker_nodes():
     """The docker-host nodes, for every picker: active ones with somewhere
     to send docker to. An agent node that has never dialed in has no known
@@ -1928,8 +1909,6 @@ def node_apply(principal, node_id, what):
                          "(no bb-sandbox on it), so system jobs are not offered to it"}
     if n["state"] != "online":
         return {"error": f"the node is {n['state']}; system jobs go to an online node"}
-    if (n.get("agent") or {}).get("revoked"):
-        return {"error": "this node's credential was revoked"}
     if node_locked(n):
         return {"error": node_locked(n)}
     desired = (n.get("config") or {}).get("desired") or {}
@@ -2289,7 +2268,7 @@ def fits(job, n):
     node is exact; a selector is every key it names, all of which must hold.
     Nothing here about load: first free slot wins, which is the whole
     scheduling policy a single operator needs (docs/nodes.md §2)."""
-    if n["state"] != "online" or (n.get("agent") or {}).get("revoked"):
+    if n["state"] != "online":
         return False
     # An agent that is behind takes nothing but its own update. Here as well
     # as in job_add, because job_add only sees the explicitly-placed case:
@@ -2367,9 +2346,6 @@ def job_add(principal, placement, type, spec, project="", source=None):
             return {"error": "no such node"}
         if n["state"] != "online":
             return {"error": f"node is {n['state']}; it takes no new work"}
-        if (n.get("agent") or {}).get("revoked"):
-            return {"error": "this node's credential was revoked; enroll it "
-                             "again to give it work"}
         if n["kind"] == "agent" and type != "compose" and not n.get("live"):
             return {"error": "the agent on this node is not dialing in; the "
                              "job would wait until it does"}

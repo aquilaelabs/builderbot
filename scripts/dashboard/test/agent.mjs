@@ -2849,8 +2849,6 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     ok(/agentbox/.test(row) && /live/.test(row) && /cpu/.test(row) && /data/.test(row)
        && new RegExp(`jobs run as ${process.env.USER || 'builder'}`).test(row),
        `the row shows the agent live, its numbers and the account jobs run as (${row.slice(0, 160)}…)`);
-    ok(await page.$(`.nodestab .ndrow[data-node="${minted.id}"] [data-nd="revoke"]`) !== null,
-       '...and offers Revoke, which an ssh node does not have');
     // Each session kept to its own project's network (R79): a switch in the
     // row's Sessions section, a draft until the section's Save (the rule
     // apply-not-onchange: it wrote itself on the click at first, the
@@ -2953,25 +2951,10 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
        '...through bb-sandbox uninstall --yes, detached from the agent');
     const gone = await until(async () => (await api('/api/v1/nodes')).nodes.some(n => n.id === minted.id) ? null : true, 20000);
     ok(!!gone, 'and the controller retires the node when the job lands, so the row leaves every list');
-    // Back to online for the revoke below: the stub uninstall took nothing
-    // off this machine, so the agent is still here to be revoked.
+    // Back to online for what follows: the stub uninstall took nothing
+    // off this machine, so the agent is still here.
     await api('/api/v1/nodes', { action: 'online', id: minted.id });
     ok((await api('/api/v1/nodes')).nodes.some(n => n.id === minted.id), '...and Undrain brings a retired row back, for what follows');
-  }
-  
-  
-
-  // revoke: the credential stops working, the agent says so, the row goes quiet
-  {
-    const r = await api('/api/v1/nodes', { action: 'revoke', id: minted.id });
-    ok(r.ok, 'Revoke cuts the credential');
-    const said = await until(() => /credential|re-enroll/i.test(agentLog()) ? true : null, 40000);
-    ok(said, 'the agent is told its credential is gone and says so in its log');
-    const n = await nodeById(minted.id);
-    ok(n.agent.revoked && n.state === 'online',
-       'the row keeps its history; the state is the operator\'s, the liveness is derived');
-    const q = await api('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['true'] });
-    ok(q.error, 'a revoked node takes no job');
   }
 } finally {
   agent.kill('SIGTERM');

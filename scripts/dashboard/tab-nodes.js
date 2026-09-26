@@ -152,7 +152,6 @@ function nodeStatePill(n){
     return `<span class="pill note">waiting for enrollment</span>`;
   const cls = {online: "ok", draining: "warn"}[n.state] || "";
   const live = n.kind !== "agent" ? ""
-    : n.agent?.revoked ? ` <span class="pill bad ndlive">revoked</span>`
     : n.live ? ` <span class="pill ok ndlive">live</span>`
     : ` <span class="pill ndlive">quiet</span>`;
   return `<span class="pill ${cls}">${esc(n.state)}</span>${live}`;
@@ -529,21 +528,19 @@ function nodeAdvancedSection(n, stale, inflight){
         title="${n.state === "draining" ? "take new work again"
           : "finish what is running and take nothing new, so the machine can reboot"}">${
         n.state === "draining" ? "Undrain" : "Drain"}</button>
-      ${!n.agent?.revoked ? `<button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}
+      <button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}
         title="${stale ? esc(staleWhy(n))
           : inflight("cache-clear") ? "already clearing"
           : "drop every project's build cache here; the next build refetches"}">${
-        inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>` : ""}
-      ${!n.agent?.revoked ? `<button type="button" class="danger" data-nd="revoke"
-        title="cut its credential; it cannot dial in until enrolled again">Revoke</button>` : ""}
+        inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>
       <button type="button" class="danger" data-nd="retire"
         title="take it off every list; its history stays">Remove</button>
-      ${n.reported?.sandbox && !n.agent?.revoked ? `<button type="button" class="danger" data-nd="uninstall"
+      ${n.reported?.sandbox ? `<button type="button" class="danger" data-nd="uninstall"
         ${inflight("uninstall") ? "disabled" : ""}
         title="remove BuilderBot from the machine: the agent, its accounts, mounts and files; docker and the shares stay">${
         inflight("uninstall") ? "Uninstalling…" : "Uninstall"}</button>` : ""}
     </div>
-    ${n.kind === "agent" && !n.agent?.revoked ? `<div class="actbar">
+    ${n.kind === "agent" ? `<div class="actbar">
       <span class="state${n.live ? "" : " bad"}">${n.live
         ? "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on."
         : "Reboot and Shut down need the agent dialing in, and it is away: power the machine from its console or its hypervisor."}</span>
@@ -558,7 +555,7 @@ function nodeAdvancedSection(n, stale, inflight){
 }
 function nodeStale(n){
   return n.kind === "agent" && n.agent?.digest && nodesAgent?.digest
-    && n.agent.digest !== nodesAgent.digest && !n.agent?.revoked;
+    && n.agent.digest !== nodesAgent.digest;
 }
 
 // The window a version promises: "0.4" of "0.4.27", empty for anything that
@@ -1310,10 +1307,6 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
           && !confirm("Uninstall BuilderBot from this machine?\n\nThe agent, its accounts, "
                       + "mounts and runners are removed. Docker and the shares stay. "
                       + "Enrolling it again starts from scratch.")) return;
-      if (act === "revoke"
-          && !confirm("Revoke this node's credential? It will stop being able "
-                      + "to dial in, and the only way back is enrolling it "
-                      + "again with a new token.")) return;
       // A reboot ends every session on the node, so the press names them,
       // as Update agent's does; a shutdown also does not come back by itself.
       if (act === "reboot" || act === "poweroff"){
@@ -1364,7 +1357,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       // The verb, said on the button for the round trip and, for the
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", "claude-check": "Checking", "claude-update": "Updating", test: "Asking", drain: "Draining",
-               online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
+               online: "Undraining", "cache-clear": "Clearing",
                retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-display": "Setting up",
                paths: "Saving", "check-paths": "Checking",
                rename: "Renaming", turns: "Saving"}[act] || "Working");

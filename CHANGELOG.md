@@ -18,6 +18,7 @@
 ### Removed
 
 - The paths kept for agents from the 0.5 window: the tell gate that refused an agent older than 0.5.57, and the single actions-runner key beside the runners list. Nothing changes on a node whose agent is current (a32a0a5)
+- Revoke is gone from a node's row: Remove already cuts the credential as it takes the row off the lists, and Uninstall takes BuilderBot off the machine; a leaked secret is re-enrolled either way (08ec700)
 
 ### Fixed
 

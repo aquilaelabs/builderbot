@@ -1121,7 +1121,7 @@ set to `dhcp` keeps Apply network live and says so.
 An agent node's row is *live* when a poll has arrived within the last 75
 seconds, and the poll carries the numbers: CPU, memory, jobs running and
 free space per store (`data`, `toolchains`, `cache`), so the row shows them
-and `bb nodes` marks liveness (`●` live, `○` quiet, `✗` revoked). Test runs
+and `bb nodes` marks liveness (`●` live, `○` quiet). Test runs
 `uname` there through the channel and shows the answer. Jobs run as the
 account the node enrolled (`bb`, the docker account), never as root, and a
 job needing a capability the node was not enrolled with is refused **on the

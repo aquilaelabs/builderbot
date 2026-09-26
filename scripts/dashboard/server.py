@@ -2912,7 +2912,7 @@ def wait_for_nodes(limit=NODE_WAIT):
     while time.time() < end:
         try:
             owed = [n for n in nodes.node_list()
-                    if n.get("kind") == "agent" and not (n.get("agent") or {}).get("revoked")
+                    if n.get("kind") == "agent"
                     # Whole seconds: last_seen is stamped as an int, so a node
                     # that dialed in the same second this started (48 against
                     # 48.6) is back, not owed until its next heartbeat.
@@ -5110,9 +5110,6 @@ class Handler(BaseHTTPRequestHandler):
                                      req.get("capabilities"),
                                      field(req, "user") or "bb")
 
-        def revoke():
-            return nodes.node_revoke(self._principal(), nid)
-
         def power():
             return nodes.node_power(self._principal(), nid, act)
 
@@ -5292,7 +5289,7 @@ class Handler(BaseHTTPRequestHandler):
 
         verbs = {"vm-xml": vm_xml, "add": add, "update": update, "uninstall": uninstall,
                  "drain": state, "online": state, "retire": state,
-                 "lock": lock, "unlock": lock, "enroll": enroll, "revoke": revoke,
+                 "lock": lock, "unlock": lock, "enroll": enroll,
                  "reboot": power, "poweroff": power, "gpu-display": gpu_display,
                  "config": config, "log-grant": log_grant, "turns": turns,
                  "test-workers": test_workers, "session-net": session_net,
