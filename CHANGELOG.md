@@ -42,6 +42,7 @@
 - A snapshot carries the symlinks that stay inside the tree, and a normalised mode (B281) (df92882)
 - bb tests preflight says when the map placed a changed script in no suite and does not call that clean (B280); the code map reads function name braces, one-line functions and a hash inside an expansion (B279), and a property assigned an arrow is not named unused (B271) (df92882)
 - android:platform-tools and android:emulator claim x86_64 Linux only, which is what Google ships (B278) (df92882)
+- bb emu create 37 installs android-37.0: a level given as a whole number is looked up against Google's index, which names some levels with a point (b26cae6)
 
 ### Security
 

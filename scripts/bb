@@ -620,6 +620,16 @@ cmd_emu() {
             local api="${2:-}" pkg name
             [ -n "$api" ] || die "bb emu create <api>: the API level to build the AVD for"
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this node's toolchain store: say so in your reply; the operator adds android-tools on the Toolchains tab with this node picked"
+            # Google names a level "37.0" or "36.1" in its index some years,
+            # and a person says 37: the level given is looked up against what
+            # the index offers, so `bb emu create 37` installs android-37.0
+            # rather than failing on a package that does not exist.
+            if [ ! -d "${ANDROID_HOME:-/opt/android-sdk}/system-images/android-${api}/google_apis/x86_64" ]; then
+                local found
+                found="$(cmd_emu images --available 2>/dev/null \
+                    | awk -F'\t' -v a="$api" '$3 == "google_apis" && ($2 == a || $2 == a ".0") { print $2; exit }')"
+                [ -z "$found" ] || api="$found"
+            fi
             pkg="system-images;android-${api};google_apis;x86_64"
             name="$(emu_avd "$api")"
             if [ ! -d "${ANDROID_HOME:-/opt/android-sdk}/system-images/android-${api}/google_apis/x86_64" ]; then
