@@ -486,11 +486,11 @@ def payload(ps):
                 keep.append(r)
         rep["findings"] = keep
         reports.append(rep)
-    # One number rather than the two this used to keep. They were never shown
-    # anywhere, and the distinction they drew (shut out on purpose vs. not a
-    # project) stopped being one this code could make once attribution became
-    # "valid projects only": a broken project and a vendored toolchain now
-    # leave by the same door, which is the point.
+    # One number, not one per reason. Two were never shown anywhere, and the
+    # distinction they would draw (shut out on purpose vs. not a project) is
+    # not one this code can make with attribution being "valid projects
+    # only": a broken project and a vendored toolchain leave by the same
+    # door, which is the point.
     return {"available": True, "projects": sorted(known),
             "aside": aside, "reports": reports}
 

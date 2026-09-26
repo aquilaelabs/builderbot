@@ -28,9 +28,7 @@ import functools
 import hashlib
 import inspect
 import json
-import os
 import re
-import tempfile
 import threading
 import time
 from pathlib import Path
@@ -188,11 +186,12 @@ LINK_RE = re.compile(r"\]\(([^)\s]+)")
 # (the instructions Claude writes them under say so). Unlike the index line
 # it is checked only against the memories that exist here (roadmap #4).
 WIKI_RE = re.compile(r"\[\[([^\]\n]+)\]\]")
-# One index line: `- [Title](file.md) — hook`. The separator is written as an
+# One index line: `- [Title](file.md) <em dash> hook`, the separator Claude Code's
+# own memory index uses, written here as its escape (the house rule voice). It is read as an
 # em dash but arrives as whatever the keyboard produced, so any of the dashes
 # is accepted and only the em dash is written back.
 INDEX_RE = re.compile(r"^\s*[-*]\s*\[(?P<title>[^\]]*)\]\((?P<file>[^)\s]+)\)"
-                      r"\s*(?:[—–-]|:)?\s*(?P<hook>.*?)\s*$")
+                      r"\s*(?:[\u2014\u2013-]|:)?\s*(?P<hook>.*?)\s*$")
 
 # What a memory's `type` is allowed to be: the four Claude Code documents.
 # A select rather than a text field on the page, and checked again here.
@@ -236,7 +235,7 @@ def _line(file, title, hook):
     """
     title = re.sub(r"[\[\]()]", "", (title or "").replace("\n", " ")).strip()
     hook = (hook or "").replace("\n", " ").strip()
-    return f"- [{title or Path(file).stem}]({file})" + (f" — {hook}" if hook else "")
+    return f"- [{title or Path(file).stem}]({file})" + (f" \u2014 {hook}" if hook else "")
 
 
 def _front(text):
@@ -444,29 +443,10 @@ def _target(d, file):
 
 
 def _write(p, text):
-    """Replace a file's contents atomically.
-
-    Through a temporary file in the same directory: a half-written memory is
-    still loaded at the next session start, and a truncated frontmatter block
-    is worse than the text it replaced.
-
-    A name of its OWN per call. It was a fixed `<name>.tmp`, which is the
-    collision statefile.py's docstring records as fixed everywhere else: two
-    saves landing together opened the same temp file, the second truncating
-    what the first was writing, and whichever renamed first published a torn
-    file (B196).
-    """
-    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=p.name + ".", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, p)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    """Replace a memory atomically, through statefile.write_text: a
+    half-written memory is still loaded at the next session start, and a
+    torn frontmatter block is worse than the text it replaced (B196)."""
+    statefile.write_text(p, text)
 
 
 _fallback_lock = threading.RLock()

@@ -659,10 +659,9 @@ echo '{}' > "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/abc123.json
 M="$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/memory"
 seed_memories() {
 rm -rf "$M"; mkdir -p "$M"
-cat > "$M/MEMORY.md" <<'MEOF'
-- [Prefers tabs](tabs.md) — spaces are a fight not worth having
-- [Something else](vanished.md) — a pointer with nothing behind it
-MEOF
+# The index separator is Claude Code's em dash, written as its bytes (the
+# house rule voice): the module parses the real character.
+printf -- '- [Prefers tabs](tabs.md) \xe2\x80\x94 spaces are a fight not worth having\n- [Something else](vanished.md) \xe2\x80\x94 a pointer with nothing behind it\n' > "$M/MEMORY.md"
 cat > "$M/tabs.md" <<'MEOF'
 ---
 name: tabs

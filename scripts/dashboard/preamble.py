@@ -66,8 +66,8 @@ def configure(*, rules_mod, roadmap_mod, bugs_mod, live=None, prefs_mod=None):
 prefs_mod = None
 _TESTCHANGE = "<!-- BUILDERBOT:TESTCHANGE -->"
 # What a change asked for during a test run does, in the words a session
-# reads: the project's setting (prefs.TEST_CHANGE). Two house rules used to
-# say opposite things about this; the setting says it per project now.
+# reads: the project's setting (prefs.TEST_CHANGE), one answer per project
+# where two house rules could say opposite things.
 TEST_CHANGE_SAID = {
     "wait": ("a new ask never cuts in. Finish the ask in hand, run the tests, fix what "
              "failed and run them again until they pass, then take the next ask; say it "

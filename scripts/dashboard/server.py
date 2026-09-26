@@ -46,8 +46,7 @@ HERE = Path(__file__).resolve().parent
 WORKSPACE = Path(os.environ.get("WORKSPACE", "/workspace"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "7680"))
 # Loopback only: the browser reaches terminals through this server's own
-# /term proxy, so there is no second port for the page to be told about,
-# which is what DASHBOARD_TTYD_PUBLIC_PORT used to exist for.
+# /term proxy, so there is no second port for the page to be told about.
 TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
 # The read-only twin (roadmap #27). ttyd is read-only unless started with
 # --writable, so an account that may not have a shell reaches this one and
@@ -107,7 +106,7 @@ def make_token(u):
     """A cookie for this account: name, expiry, and a signature over both plus
     the account's password stamp.
 
-    Stateless, like the one before it: there is no token table to keep. What
+    Stateless: there is no token table to keep. What
     the stamp buys is the revocation such a table would have given: changing a
     password or deleting an account moves it, and every cookie signed against
     the old one stops verifying on the next request.
@@ -453,10 +452,10 @@ CARDS_FILE = STATE / "cards.json"
 # Doctor first: this order is the default an unwritten (or reset) sidebar
 # gets, and the verdict on the whole box outranks any one card below it.
 #
-# The command lists and Sessions are NOT here any more: they live under the
-# terminal, in the bar that used to be the phone's alone, because they are
-# about the shell in front of you rather than about the box, and seven cards
-# is a sidebar you can read where twelve was a list you scrolled past. Their
+# The command lists and Sessions are NOT here: they live under the terminal,
+# in its bar, because they are about the shell in front of you rather than
+# about the box, and seven cards is a sidebar you can read where twelve was a
+# list you scrolled past. Their
 # keys dropping out of this list is also the migration: load_layout filters an
 # existing cards.json against it, so a file still naming them is cleaned on
 # the next read rather than needing anything done to it.
@@ -1593,11 +1592,11 @@ def _ask_hello(nid):
 
 
 def session_target(project, claude=False, node=""):
-    # `claude` is the one thing that changed with R47. A project's SHELL still
-    # follows its node (the tree is that machine's mount and its toolchains
-    # are what a build there uses), and a project with NO node still gets a
-    # shell here, on the same share. What it no longer gets is a Claude
-    # session: this container carries no Claude Code, so the answer is a
+    # `claude` is the question R47 added. A project's SHELL follows its node
+    # (the tree is that machine's mount and its toolchains are what a build
+    # there uses), and a project with NO node still gets a shell here, on the
+    # same share. What it does not get is a Claude session: this container
+    # carries no Claude Code, so the answer is a
     # refusal that says what to do rather than a conversation that cannot
     # build anything.
     """Where a session on this project runs (roadmap #24, phase 10b):
@@ -2494,7 +2493,7 @@ import signin                                                    # noqa: E402
 # The dashboard's own accounts (docs/users.md, roadmap #22). Imported here so
 # that everything it needs (STATE, write_json) is already built; nothing in
 # it reaches back. The FIRST account is made on the first-run screen: there
-# is no environment variable behind it any more.
+# is no environment variable behind it.
 import users                                                     # noqa: E402
 
 users.configure(state=STATE, write_json=write_json)
@@ -2567,8 +2566,9 @@ codebase.configure(workspace=WORKSPACE)
 # The three stores above configure this one too; done here as well so the
 # endpoint works even if none of them has been touched yet this process.
 pending.configure(write_json=write_json, state=STATE)
-# The Settings tab's own store (roadmap R29): what used to be fourteen
-# environment variables. The builder home is where the commit identity lands.
+# The Settings tab's own store (roadmap R29): the knobs the operator sets from
+# the page rather than the environment. The builder home is where the commit
+# identity lands.
 settings.configure(write_json=write_json, state=STATE)
 # What may be offered: the catalogues gate their unvetted entries on this
 # one switch (roadmap R54, step 6), read live so a save takes at once.
@@ -2681,9 +2681,9 @@ roadmap.configure(write_json=write_json, state=STATE, tell=notify.tell,
                tmux_name=tmux_name, settle=notify.settle, actor=writer_name)
 
 # ---- what a session is handed ----------------------------------------------
-# The three above, assembled in the order a session reads them. bb-tty used to
-# join them itself in shell; it asks for this now, and the Briefing tab draws
-# the same string rather than its own idea of it.
+# The three above, assembled in the order a session reads them. bb-tty asks
+# for this rather than joining them itself, and the Briefing tab draws the
+# same string rather than its own idea of it.
 import preamble                                                  # noqa: E402
 def live_block():
     """The build this controller is running, for the briefing every session
@@ -3584,10 +3584,9 @@ class Handler(BaseHTTPRequestHandler):
         """True, with the 403 already written, when this account may see the
         project but has not taken it on.
 
-        The counterpart to _refused for the handlers whose only check was "is
-        this a project you can see". That was the whole authorization while
-        seeing and working were the same question; they are not any more, so
-        every write that names a project asks this too.
+        The counterpart to _refused for the handlers whose other check is "is
+        this a project you can see". Seeing and working are separate
+        questions, so every write that names a project asks this too.
         """
         why = users.may(self._who(), "write", name)
         if not why:
@@ -4002,10 +4001,8 @@ class Handler(BaseHTTPRequestHandler):
         ever talks to this origin, so the session cookie (or basic auth)
         checked before this call is the whole story, and ttyd's own port
         stays unpublished. The /term prefix is stripped because ttyd's
-        client asks for everything relative to the page, so the same relay
-        serves an old image's ttyd (rooted at /, with its own credential,
-        injected here, never from the browser) and the new loopback-only
-        one alike.
+        client asks for everything relative to the page while ttyd itself,
+        here or on a node, is rooted at /.
 
         For a websocket the handshake is forwarded and then the two sockets
         are spliced until either side closes. The client sends nothing
@@ -4032,7 +4029,7 @@ class Handler(BaseHTTPRequestHandler):
         rest0 = self.path[len("/term"):]
         # A SHELL is this container's own and always has been: a tree to look
         # at, the linters, git. Only a CLAUDE session needs a node, because
-        # only Claude is the thing this container no longer carries, so the
+        # only Claude is the thing this container does not carry, so the
         # question is asked about a claude: argument and about nothing else.
         arg0 = _term_arg(rest0)
         target = session_target(_arg_project(arg0),
@@ -4632,7 +4629,7 @@ class Handler(BaseHTTPRequestHandler):
         """GET /api/v1/nodes."""
         # The versioned surface starts here (docs/nodes.md §3): new
         # endpoints land under /api/v1 with their shapes written down;
-        # the legacy paths above migrate later, never both at once.
+        # the unversioned paths above migrate later, never both at once.
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
@@ -6352,12 +6349,11 @@ class Handler(BaseHTTPRequestHandler):
                     closed += 1
             return self._json({"ok": True, "closed": closed} | self._roadmap_state(name, live))
         if act == "save":
-            # The panel's one Save: settle the marker, say nothing. There used
-            # to be a second action here that typed the change into a running
-            # session, back when that was the only way anything reached one.
-            # A session is told by itself now, on the next prompt it is given
-            # (roadmap #27), so the panel has one button and this has one
-            # action. `announce` is still live: the send path below carries
+            # The panel's one Save: settle the marker, say nothing. A session
+            # is told by itself, on the next prompt it is given (roadmap #27),
+            # so the panel has one button and this has one action: nothing
+            # here types the change into a running session.
+            # `announce` is still live: the send path below carries
             # the same line on a message that was going anyway.
             roadmap.mark_told(name)
             return self._json({"ok": True} | self._roadmap_state(name, live))

@@ -1545,7 +1545,7 @@ own address, so closing the dashboard leaves it working.
   is (no mount, nothing in it, or nothing in it that parses) and a tab
   restored from a saved layout is closed once, on the load that finds out,
   rather than left open to say "nothing here"
-- **`—` on a tab minimizes it**, and asks nothing. The terminal keeps running
+- **`&mdash;` on a tab minimizes it**, and asks nothing. The terminal keeps running
   and is listed under Sessions, where **Open** brings it back; a **Claude** tab
   is the same, the conversation carries on without a tab. Nothing is lost, so
   nothing is asked. **Middle-clicking** a terminal tab is the stronger thing,

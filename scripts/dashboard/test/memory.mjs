@@ -178,7 +178,7 @@ await page.click('#roadmapSaveQuiet');
 await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
                              .getAttribute('aria-busy') !== 'true',
                            { timeout: 15000 });
-ok(read('MEMORY.md').includes('- [Loose ends](loose.md) — only recall ever surfaced this one'),
+ok(read('MEMORY.md').includes('- [Loose ends](loose.md) \u2014 only recall ever surfaced this one'),
    'saving writes the line, in the shape Claude wrote the others in');
 ok(!read('MEMORY.md').includes('vanished.md'),
    '...and the line pointing at a file that is not there comes out with it');
@@ -219,7 +219,7 @@ ok(born.startsWith('---\nname: no-parsed-progress\n')
    && born.includes('metadata:\n  type: feedback\n')
    && born.trimEnd().endsWith('Report what it is doing in a word.'),
    'a memory written by hand comes out in the shape Claude writes them in');
-ok(read('MEMORY.md').includes('- [No parsed progress here](no-parsed-progress.md) — '
+ok(read('MEMORY.md').includes('- [No parsed progress here](no-parsed-progress.md) \u2014 '
                               + 'a word and an ellipsis, never a bar'),
    '...and gets its line in the index in the same act, never one without the other');
 ok(await page.$('#naTitle') === null && await page.$('#memAdd button') !== null,

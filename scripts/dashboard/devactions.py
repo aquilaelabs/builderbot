@@ -17,7 +17,7 @@ direction: everything this layer does is BUILT ON those, so a module for
 them would have had devapp importing it back, a cycle. The cut that holds
 is the other way round: the layer on top leaves, the base stays, and the
 base knows nothing of this file. server.py holds only the routes and hands
-the compose runner to jobs.py through configure() here, as devapp used to.
+the compose runner to jobs.py through configure() here.
 """
 
 import contextlib

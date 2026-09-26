@@ -2142,12 +2142,12 @@ ago() {
 #
 # BB_TOKEN first: a Claude session is given one of those (scoped to its own
 # project, `user` rights, an expiry) instead of the operator's password,
-# which is what it used to inherit (bug #16). DASHBOARD_AUTH is no longer a
+# which is what it used to inherit (bug #16). DASHBOARD_AUTH is not a
 # container setting (the owner is made on the first-run screen) but it is
 # still read here, so an operator in a plain `docker exec` shell can pass one
-# for a single command rather than being unable to reach the API at all. The
-# operator's
-# own shell, and a session no longer has it in its environment at all.
+# for a single command rather than being unable to reach the API at all. It
+# reaches the operator's own shell that way and nowhere else: a session has
+# no DASHBOARD_AUTH in its environment at all.
 # When a session token stops being good, as a unix time, or nothing for
 # anything that is not one. The body is base64url of `project|exp|uid|sig`.
 bb_token_exp() {
@@ -3355,7 +3355,7 @@ find_chromium() {
 # bb shot: headless screenshots, for showing the operator visual state from
 # a box with no display. Playwright's Chromium from the image.
 #
-# One URL keeps the old shape (bb shot URL [FILE]). Several URLs share one
+# One URL takes an optional file (bb shot URL [FILE]). Several URLs share one
 # browser and land in a directory, each named from its path (/ -> index.png).
 # --full and --scale exist because README screenshots need the whole page at
 # 2x, and capabilities MediaReducer's tools/screenshots grew privately before

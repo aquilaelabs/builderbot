@@ -1227,7 +1227,7 @@ def create(req, env=None):
         # checkouts of it. Deploying an app from a public repo is exactly that
         # case: three Radarrs are three directories and one repository. So the
         # field is optional and defaults to this, and typing nothing still
-        # gets the old behaviour. Notes are not asked for either way: they
+        # gets the derived name. Notes are not asked for either way: they
         # are drafted from the code after the clone.
         name = sanitize_name(_field(req, "name"))
         if not name:

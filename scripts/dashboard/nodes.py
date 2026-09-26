@@ -310,9 +310,9 @@ def _seed_local():
     Re-seeded shallowly on every boot: the row survives, but the reported
     census is refreshed because it describes this container, and this boot is
     the authority on this container. No capabilities at all (roadmap #24,
-    10c): the image carries no JDK and no Android SDK, so package-build
-    (which this box used to demonstrably do) is a node's; docker-host was
-    never here (the local node is not a sandbox, docs/nodes.md §12). The row
+    10c): the image carries no JDK and no Android SDK, so package-build is a
+    node's; docker-host was never here (the local node is not a sandbox,
+    docs/nodes.md §12). The row
     stays so the controller is recognized as sharing a store with a node,
     and so a selector job can still be placed here on purpose.
     """
@@ -657,8 +657,8 @@ def _addr(n):
     address is data), so it changes without anything on this side being
     edited.
 
-    It is no longer how a compose action reaches the node (that is a job
-    on the agent), but a row still shows where the node answered from.
+    A compose action reaches the node as a job on the agent, not through
+    this; a row still shows where the node answered from.
     """
     if n["kind"] == "agent":
         addr = (n.get("agent") or {}).get("addr") or ""

@@ -793,8 +793,8 @@ def _available_agent(n):
     question the ssh has no part in was the whole mistake.
 
     The daemon's own id comes with them, from the same census. It is how two
-    VMs wearing one address are told apart (adopt), and it used to be read
-    over ssh with `docker info`, the reader this replaces. An agent too old
+    VMs wearing one address are told apart (adopt), and the census is the
+    only place it is read from: never `docker info` over ssh. An agent too old
     to report it sends nothing, and a record with no id is judged on its
     address alone, which is what every record written before the field is
     judged on and is documented as safe.

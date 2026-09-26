@@ -71,9 +71,9 @@ def whoami():
     surfaces the moment a session runs, and is a rarer thing than the failed
     turns asking cost.
     """
-    # Claude Code being HERE is still part of the question; the old reader
-    # got that for free by running it, and a home kept after an uninstall
-    # would otherwise report a login this machine cannot use.
+    # Claude Code being HERE is part of the question, and reading files
+    # rather than running it does not answer that by itself: a home kept
+    # after an uninstall would otherwise report a login this machine cannot use.
     if not shutil.which("claude"):
         return False, ""
     home = os.environ.get("HOME") or ""

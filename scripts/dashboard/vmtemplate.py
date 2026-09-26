@@ -224,9 +224,9 @@ def catalog():
     """What the dialog's picker offers: every hypervisor, with what each one
     hands back and which fields it takes.
 
-    ALPHABETICAL by label. It used to be the order they were written in, which
-    was this box's own hypervisor first and then whatever was added next,
-    an order only the person who wrote it could predict.
+    ALPHABETICAL by label, not the order they were written in (this box's own
+    hypervisor first, then whatever was added next), which only the person
+    who wrote it could predict.
     """
     return sorted(
         [{"id": k, "label": v["label"], "artifact": v["artifact"],

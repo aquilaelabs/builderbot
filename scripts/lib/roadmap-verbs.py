@@ -133,8 +133,8 @@ def bail(r):
 
 # Which seat this session sits in, for the two questions roadmap #26 and #27
 # both need answered: has this list moved since I last looked at it, and was
-# it me who moved it. Empty for a bb run from a plain shell, which then gets
-# the old behaviour: no check, because there is nothing to check against.
+# it me who moved it. Empty for a bb run from a plain shell, which then does
+# no check, because there is nothing to check against.
 _who = os.environ.get("BB_ACCOUNT_UID", "")
 
 

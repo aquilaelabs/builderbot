@@ -73,21 +73,9 @@ def _held(fn):
 
 
 def _write(d, text):
-    """The file replaced whole: a temp beside it, renamed over it, so a reader
-    never meets it half-written."""
-    p = path(d)
-    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=f".{FILE}.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, p)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    """The file replaced whole, through statefile.write_text: a reader never
+    meets it half-written."""
+    statefile.write_text(path(d), text)
 
 
 def read(d):

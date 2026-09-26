@@ -5,9 +5,7 @@ those three are the whole of this file:
 
   * **what an address may look like.** `git clone` accepts transports a web
     form must never reach (`ext::` runs a command), so a URL typed into the
-    dashboard is matched against the shapes below and refused otherwise. That
-    check used to be "is it github.com", which is why nothing else could be
-    linked.
+    dashboard is matched against the shapes below and refused otherwise.
   * **whether a token is real**, asked before the network work starts, so a
     wrong paste fails in the dialog rather than half-way through a job.
   * **creating the repository** when it does not exist yet. Only ever an

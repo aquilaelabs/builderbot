@@ -310,7 +310,7 @@ it. Tabs are named for where they are (`sh: <directory>`, following a `cd`;
 reorder (on a phone, hold for half a second first) and pinned to a left or
 right pane for a side-by-side view. A pane's ✕ only collapses the split.
 
-A tab's **`—`** minimizes it: the terminal or Claude session keeps running and is
+A tab's **`&mdash;`** minimizes it: the terminal or Claude session keeps running and is
 listed under Sessions, where clicking the name brings its tab back. Ending a
 session for good is the ✕ in the Sessions card (or a middle-click on its tab),
 and that is the only thing that asks. The sidebar cards collapse on a click of

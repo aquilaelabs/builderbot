@@ -2547,7 +2547,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
    Terminals and logs are not controls and are not here. */
-:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname,.ndrunner,.ndconfacts){
+:is(.doctab,.nb,.side .card) :is(.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname){
   max-width:min(var(--ctl-w),88%)}
 /* A prose editor in the notebook (a memory's body, a rule, a bug's repro)
    is a page, not a control: it keeps the reading width. */
@@ -2567,7 +2567,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    control the rule above forbids everywhere else. */
 .doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
-:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.ndrunner,.ndconfacts,.dropbox,.sendbox) *){
+:is(.doctab,.nb,.side .card) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -2581,7 +2581,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    its stretch. uniform.mjs measures every line on every tab.  */
 :is(.doctab,.nb,.side .card,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
   .dmroute,.dmgrant,.dmref,.dmowner,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
-  .ndrunner,.ndconfacts,.ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
+  .ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line: the Phone tab's Connect and
    Pair sit beside one. A row of prose keeps its centred cluster.
@@ -2661,7 +2661,6 @@ button[aria-busy="true"]{opacity:.75}
 .ndstore{display:grid;grid-template-columns:minmax(0,7em) minmax(0,1fr);gap:6px;align-items:center}
 .ndstore label{font:var(--f-ui);color:var(--ink)}
 .ndstore .sub{grid-column:2}
-.ndconfacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ndconfstate.note{color:var(--note)}
 /* The mapping's row is an action bar (its field, then Save and Check), so
    it lays out like every other bar; the input takes the room before them. */
@@ -2687,9 +2686,6 @@ button[aria-busy="true"]{opacity:.75}
 .dmsettings{display:flex;flex-wrap:wrap;gap:2px 18px;align-items:flex-start}
 .dmsettings:empty{display:none}
 .dmsettings>.sub{margin-top:4px}
-.ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
-.ndrunstate.warn{color:var(--warn)}
-@media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
 .jbouts a{color:var(--accent)}
 /* A kept workspace is a long path, and .row code is nowrap; on a phone it
    wraps here rather than running off the row. Written with the row in the
