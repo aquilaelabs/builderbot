@@ -278,7 +278,10 @@ def edit():
         d = post({"action": "env-get"})
         if d.get("error"):
             sys.exit(f"[builderbot] ERROR: {d['error']}")
-        sys.stdout.write(d.get("text") or "")
+        # Ended with a newline whatever was stored, so a line appended to
+        # this output stands on its own (B314).
+        text = d.get("text") or ""
+        sys.stdout.write(text if not text or text.endswith("\n") else text + "\n")
         if d.get("seeded"):
             print("[builderbot] nothing is stored yet: that is the project's .env.example",
                   file=sys.stderr)

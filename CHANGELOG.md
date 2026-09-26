@@ -48,6 +48,7 @@
 - bb emu create 37 installs android-37.0: a level given as a whole number is looked up against Google's index, which names some levels with a point (b26cae6)
 - A session reads and controls its own instance by the name bb devapp ls prints (bb devapp log NAME, start, stop, restart), which was refused as not its own; and a node's session network takes in a rebuilt container the moment its build ends, not ten seconds later (9d225e2)
 - A container's log, start, stop and restart run through the node's agent, so bb devapp log and the Docker tab's Log work on a node that is not the controller's machine; and bb devapp rebuild follows its job, so a quick rebuild of the same commit reads as built (e559a4a)
+- A container's row names its node rather than an ssh address in brackets after a refusal on an agent node; and bb devapp env ends its output with a newline, so a line appended to it stands on its own (8bdeafa)
 
 ### Security
 

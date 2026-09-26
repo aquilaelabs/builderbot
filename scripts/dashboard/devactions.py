@@ -566,6 +566,10 @@ def state(project, instance=devapp.MAIN):
            # machine this actually asked are not always the same one, and
            # when the answer is a refusal, that is the first thing to know.
            "where": a.get("where", ""),
+           # ...and what to call it: the node's name for an agent node, whose
+           # ssh address `where` still carries for the page's port links and
+           # nobody dials (B313). The row prints this one after a refusal.
+           "daemon": a.get("kind", ""),
            # The compose project name, which is what actually groups the
            # containers, the network and the volumes. Not the container name:
            # a compose file may set container_name to anything it likes, and

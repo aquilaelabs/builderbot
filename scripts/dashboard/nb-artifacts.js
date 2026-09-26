@@ -123,7 +123,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           // was made on: "it could not find the daemon on the node I pointed
           // it at" is the same sentence whether it looked there or somewhere
           // else, and only this tells the two apart.
-          da.where ? ` <span class="dim">(${esc(da.where)})</span>` : ""}</span>
+          da.daemon || da.where ? ` <span class="dim">(${esc(da.daemon || da.where)})</span>` : ""}</span>
       </div>` : `
       <div class="artrow" id="devRow">
         <div class="grow">
