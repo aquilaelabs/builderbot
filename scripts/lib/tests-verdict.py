@@ -51,7 +51,8 @@ for ln in lines:
     if m:
         cur["totals"] = (int(m.group(1)), int(m.group(2)),
                          float(m.group(3) or 0))
-    if not ln.startswith("PASS"):
+    # The harness's own lines are not the suite's last words.
+    if not ln.startswith("PASS") and not ln.startswith("[dashboard-test]"):
         cur["tail"].append(ln)
         del cur["tail"][:-40]
 
