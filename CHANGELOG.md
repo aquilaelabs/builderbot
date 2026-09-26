@@ -22,6 +22,7 @@
 
 - A session's bb devapp log, start, stop and restart find the project's container on any of its nodes, not only the primary, so the project's own dev instance on its second node is its own again (B268) (21462b7)
 - bb emu create on a node makes the AVD directory before asking avdmanager, and fixes the image path where avdmanager put the AVD rather than where it was told to; without that the first emulator on a node died with Broken AVD system path (2fd40db)
+- A session's next prompt names the memories only when somebody else edited them through the notebook; its own memory files, written with its own tools, are not news to it (B269) (1753a83)
 
 ## 0.7.0: 2026-09-25
 

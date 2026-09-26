@@ -2256,16 +2256,38 @@ def _seen_load():
 
 def _seen_now(project, who):
     """The tokens a session is compared against: the poll's per-project
-    revisions, and a digest of the project's own settings (the poll's prefs
-    token is one mtime for every project)."""
+    revisions, a digest of the project's own settings (the poll's prefs
+    token is one mtime for every project), and the count of memory edits
+    made through the notebook by somebody who is not a session. Not the
+    memory files' mtimes, which the poll's token is: a session's own memory
+    tool writes those files without passing through here, and read as
+    news to the session that wrote them (B269)."""
     r = revisions(who, [project])
     try:
         pf = json.dumps(prefs.get(project) or {}, sort_keys=True)
     except Exception:                                                     # noqa: BLE001
         pf = ""
+    edits = _seen_load().get("_mem_edits")
+    edits = edits if isinstance(edits, dict) else {}
     return {"bug": str(r.get(f"bug:{project}") or ""), "rules": str(r.get(f"rules:{project}") or ""),
-            "mem": str(r.get(f"mem:{project}") or ""),
+            "mem": str(edits.get(project) or 0),
             "prefs": hashlib.sha1(pf.encode()).hexdigest()[:12] if pf else ""}
+
+
+def _mem_edited(project):
+    """One more memory edit on this project through the notebook, by
+    somebody who is not a session: the seen note's memory half."""
+    if not project:
+        return
+    try:
+        with _seen_lock:
+            d = _seen_load()
+            edits = d.get("_mem_edits") if isinstance(d.get("_mem_edits"), dict) else {}
+            edits[project] = int(edits.get(project) or 0) + 1
+            d["_mem_edits"] = edits
+            write_json(STATE / SESSION_SEEN, d)
+    except Exception as e:                                                # noqa: BLE001
+        print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
 
 
 def session_mark_own(project, uid, who):
@@ -4918,8 +4940,11 @@ class Handler(BaseHTTPRequestHandler):
                 # "" for a session on purpose, and that is the per-account
                 # stores' rule, not this one's.
                 who = self._who() or {}
-                if who.get("session") and any(path.startswith(r) for r in OWN_WRITE_ROUTES):
-                    session_mark_own(who["session"], who.get("uid") or "", who)
+                if any(path.startswith(r) for r in OWN_WRITE_ROUTES):
+                    if who.get("session"):
+                        session_mark_own(who["session"], who.get("uid") or "", who)
+                    elif path.startswith("/api/memory"):
+                        _mem_edited(field(req, "project"))
                 return out
         self._json({"error": "not found"}, 404)
 

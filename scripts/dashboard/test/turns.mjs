@@ -145,6 +145,16 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
      `a setting the operator changed is named too (${(st.line || 'no line').slice(0, 90)})`);
   await call('/api/prefs', { project: 'alpha', build: '' });
   await sess({ node: 'nodeA' });
+  // Memories: an edit through the notebook by somebody else is news; the
+  // session's own, through the API or its own memory tool on the files,
+  // is not, since the half counts notebook edits rather than mtimes (B269).
+  await call('/api/memory', { project: 'alpha', action: 'create', name: 'op-note', title: 'the operator wrote one', hook: 'h', type: 'project', body: 'x' });
+  const mem = await sess({ node: 'nodeA' });
+  ok(/somebody else changed this project's memories: read the notebook's Memory view/.test(mem.line || ''),
+     `a memory the operator wrote is named on the next prompt (${(mem.line || 'no line').slice(0, 90)})`);
+  await call('/api/memory', { project: 'alpha', action: 'create', name: 'own-note', title: 'the session wrote one', hook: 'h', type: 'project', body: 'x' }, bearer(toks[1]));
+  const ownMem = await sess({ node: 'nodeA' });
+  ok(!/memories/.test(ownMem.line || ''), `...and the session's own is not (${(ownMem.line || 'no line').slice(0, 90)})`);
 }
 
 {
