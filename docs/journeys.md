@@ -435,3 +435,44 @@ holding one container, `web-dev`, on `bb-dev-sandbox`.
   harness instead: run as a session against the fixture server on auto and
   on ask (made, pinned, built; the card naming the container and its
   branch) and driven in process on both dials.
+
+## 26 September, later: the first real Claude session on the dev pair
+
+The stub `claude` that had stood in on the VM was replaced by pressing
+Update Claude Code on its row (the real 2.1.283, pinned root-owned), the
+operator signed in, and a Haiku session opened on `web` from the dashboard's
+Claude button, in manual mode, at 10.231.0.2 on its own network. It was
+driven as a person would: prompts typed through the dashboard, each bash
+command approved at its prompt, its outputs appended to a file in the
+project and read off the dev share. On `builderbot-dev` at e559a4a, then
+1e03bde; `web`'s compose given `cap_add: CHOWN, SETUID` for the walk.
+
+1. **`bb devapp ls`** listed `web` and `web-dev` as the project's own.
+   **`bb devapp log web-dev`** resolved to `web-dev-web-1` (B307's fix)
+   and then failed: `docker logs` went out over `ssh://bb@192.168.1.18`,
+   "Host key verification failed". Only the bare reads ran through the
+   agent; the container verbs took the retired ssh path (B312, fixed in
+   1e03bde). Walked again after the rebuild: nginx's log came back.
+2. **Rebuild, then curl at once.** `bb devapp --instance web-dev rebuild`
+   at e559a4a said "no build appeared within twenty seconds" over a build
+   that succeeded: the same commit, finished between two looks at the row
+   (B312's other half). At 1e03bde it said "rebuilt 58e7e92; web-dev is
+   up", and `curl http://192.168.1.18:8088/` on the next line answered
+   200: the port reachable the moment the verb returns, from inside the
+   session's network, which is what the agent's refresh after a compose
+   job is for. The compose carried capabilities and the setting was auto,
+   so the build was not stopped at the confirmation.
+3. **Send from a session.** `bb devapp new --env /tmp/e2` (WEB_PORT=8090)
+   printed "created web-2", "built 58e7e92; web-2 is up", and `curl
+   :8090` answered 200 straight after; `ls` then listed three.
+4. **Ask.** With the setting at ask, `bb devapp --instance web-2 rebuild
+   --why askwalk` printed "asked stencil (#1), waiting up to 15 minutes";
+   Allow on the dev bell built it and the verb reported "rebuilt".
+5. **Deny.** The same command was refused with the sentence naming
+   Claude may: Run its container.
+
+- Alpha, new evidence: a session sends its project to Docker, rebuilds
+  it, reads its log and reaches its port, under each of the three
+  settings, on a real node with a real session.
+- Still dev: `bb container new` from a session was not walked; nor was a
+  session's `start`, `stop` or `restart` by an instance's name.
