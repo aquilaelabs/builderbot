@@ -3107,6 +3107,13 @@ def jobs_for(node_id=None, n=50, project=None, type=None, active=False):
 LOST_S = LIVE_S + 30
 
 
+# When this controller process started: a node's last_seen is from before
+# a restart, so a restart longer than the grace window read as every agent
+# gone at the first tick, and failed every running job on every node as
+# "node lost" while the agents were fine (the review of 26 Sep).
+_BOOT = int(time.time())
+
+
 def jobs_lost():
     """Fail every job assigned to an agent that has gone quiet: "node lost"
     after a grace window (docs/nodes.md §10). The agent is the durable side:
@@ -3120,7 +3127,7 @@ def jobs_lost():
                    "j.node WHERE j.state IN ('assigned', 'running') AND "
                    "k.kind = 'agent'"):
         nd = node(j["node"])
-        seen = (nd.get("agent") or {}).get("last_seen") or 0
+        seen = max((nd.get("agent") or {}).get("last_seen") or 0, _BOOT)
         if now - seen > LOST_S:
             _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', "
                   "error = 'node lost: the agent stopped answering' WHERE "

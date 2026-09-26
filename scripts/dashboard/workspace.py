@@ -38,6 +38,8 @@ import threading
 import time
 from pathlib import Path
 
+import artifacts  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 WORKSPACE = None
@@ -228,7 +230,9 @@ def file_path(project, rel):
     safe = _safe_name(rel)
     if safe is None or WORKSPACE is None:
         return None
-    root = (WORKSPACE / project / "dist").resolve()
+    root = artifacts.dist_dir(WORKSPACE / project)
+    if root is None:
+        return None
     p = (root / safe).resolve()
     try:
         p.relative_to(root)

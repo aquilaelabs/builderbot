@@ -97,6 +97,18 @@ def show():
         if v in (None, "", [], False):
             continue
         print(f"  {k:<8} {', '.join(v) if isinstance(v, list) else v}")
+    # The Claude settings as the dialog names them, so a session can read
+    # its own dials (the review of 26 Sep: the briefing said the refusal
+    # names the setting, and nothing here showed it).
+    print("  Claude settings:")
+    print(f"    During a test run, a change asked for   {rec.get('test_change') or 'wait'}")
+    print(f"    Briefing a session reads                {rec.get('brief') or 'full'}")
+    print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
+    for label, key in (("Add to roadmap", "roadmap"), ("File bugs", "bugs"), ("Add rules", "rules"),
+                       ("Fill in build and test", "settings"), ("Run its container", "devbuild"),
+                       ("Report BuilderBot bugs", "report")):
+        if rec.get(key) not in (None, ""):
+            print(f"    Claude may: {label:<28} {rec.get(key)}")
 
 
 {"set": set_field, "show": show}[verb]()

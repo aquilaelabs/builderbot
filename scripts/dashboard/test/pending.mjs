@@ -121,7 +121,7 @@ ok(waiting().some(r => r.kind === 'settings' && /test: echo held-test/.test(r.su
 
 // ---- deny: refused with a sentence to quote ---------------------------------
 const refused = bbErr('rules', 'add', 'no-em-dashes', 'No em dashes.');
-ok(/does not take new rules from a session/.test(refused) && /say it in your reply/.test(refused),
+ok(/setting Claude may: Add rules is deny/.test(refused) && /say it in your reply/.test(refused),
    'under deny the add is refused with a sentence the session can quote');
 ok(!waiting().some(r => r.kind === 'rules'),
    '...and nothing is held for it');

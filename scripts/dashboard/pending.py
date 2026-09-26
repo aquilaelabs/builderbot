@@ -142,8 +142,10 @@ def mode(project, kind):
 def refusal(kind):
     """The sentence a session gets under deny: quotable, and it says what
     to do instead."""
-    return (f"this project does not take new {NOUN.get(kind, 'entries')} from a "
-            "session: say it in your reply instead, and the operator adds it "
+    label = {"roadmap": "Add to roadmap", "bugs": "File bugs", "rules": "Add rules",
+             "settings": "Fill in build and test"}.get(kind, kind)
+    return (f"this project's setting Claude may: {label} is deny, so this "
+            f"was not filed: say it in your reply instead, and the operator adds it "
             "if they agree")
 
 

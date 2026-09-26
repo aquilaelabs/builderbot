@@ -1392,10 +1392,12 @@ def compose_file(project, instance=MAIN):
     """
     if _read_rec(project, instance).get("source") == "file":
         f = containers_dir(project) / "docker-compose.yml"
-        return f if f.is_file() else None
+        return f if f.is_file() and not f.is_symlink() else None
+    # A real file, never a link: a compose file symlinked to a controller
+    # file went into the job spec and onto the node (the audit of 26 Sep).
     for n in COMPOSE_NAMES:
         p = WORKSPACE / project / n
-        if p.is_file():
+        if p.is_file() and not p.is_symlink():
             return p
     return None
 

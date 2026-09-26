@@ -73,14 +73,28 @@ def _tree(project, tree=""):
     return WORKTREES / project / str(tree)
 
 
+def dist_dir(top):
+    """The tree's dist/ as a real path, or None when it is not inside the
+    tree: a dist that is a symlink to /config made the artifact download a
+    file server for the controller (the audit of 26 Sep), since the base
+    every check measured against was wherever the link pointed."""
+    try:
+        real, base = top.resolve(), (top / DIST).resolve()
+    except OSError:
+        return None
+    if base != real / DIST and real not in base.parents:
+        return None
+    return base
+
+
 def listing(project, tree=""):
     """Everything in the project's dist/, or a worktree's, newest first."""
     top = _tree(project, tree)
     out = []
     if top is None:
         return out
-    root = top / DIST
-    if not root.is_dir():
+    root = dist_dir(top)
+    if root is None or not root.is_dir():
         return out
     stack = [(root, 0)]
     while stack:
@@ -173,7 +187,9 @@ def resolve(project, rel, tree=""):
     top = _tree(project, tree)
     if not project or not rel or top is None:
         return None
-    base = (top / DIST).resolve()
+    base = dist_dir(top)
+    if base is None:
+        return None
     try:
         p = (top / rel).resolve(strict=True)
     except OSError:

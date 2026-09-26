@@ -603,7 +603,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
   flex:0 0 auto;min-height:var(--tap);padding:0 10px;border-radius:var(--r-surface);
   border:1px solid var(--line);background:var(--btn);color:var(--ink);
-  text-decoration:none;font:var(--f-body);cursor:pointer}
+  text-decoration:none;font:var(--f-ui);cursor:pointer}
 .logacts button{flex:0 0 auto;min-height:var(--tap)}
 @media(hover:hover){ .logacts .btnish:hover{background:var(--btn-hi)} }
 /* A swatch renders in its own scheme: the tokens above are defined for
@@ -664,7 +664,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    is not waiting on an answer, it is stopping work until it is updated. */
 .bnote.ask.bad{border-left-color:var(--bad);border-bottom-color:var(--bad);
   background:color-mix(in srgb, var(--bad) 13%, var(--panel))}
-.bnote.ask.bad .btag{background:var(--bad);color:#fff}
+.bnote.ask.bad .btag{background:var(--bad);color:var(--bg)}
 .bnote.ask.bad .bwhy{color:var(--bad)}
 .bempty{padding:14px 10px;color:var(--dim);font:var(--f-note);text-align:center}
 .bfootbar{display:flex;justify-content:flex-end;padding:6px 8px;
@@ -691,7 +691,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .about>.abpage{flex:0 1 auto;min-height:0}
 .abpage{overflow:auto;padding-right:4px}
 .abpage h4{margin:12px 0 4px;font:var(--f-ui);font-weight:600}
-.abpage p,.abpage li{font:var(--f-ui);color:var(--fg);line-height:1.5}
+.abpage p,.abpage li{font:var(--f-ui);color:var(--ink);line-height:1.5}
 .abpage ul{margin:4px 0 8px 18px;padding:0}
 .abpage .dim{color:var(--dim)}
 .ablog h4{display:flex;gap:8px;align-items:baseline}
@@ -1025,6 +1025,8 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    four possible). Together they either fit beside the name or drop below it
    whole, which reads as a layout, not an accident. */
 .row .acts{display:flex;gap:6px;align-items:center;margin-left:auto}
+/* A branch row carries five controls: on a phone they wrap rather than run off the notebook. */
+.row.gbranch .acts{flex-wrap:wrap;margin-left:0}
 /* A project row stacks: name and its notes first, the buttons on their own
    line under them. Side by side, "Notebook" as a word did not fit beside a
    long project name on a phone, and the count it used to carry is the
@@ -1828,7 +1830,8 @@ pre.diff .d-ctx{color:var(--dim)}
    rather than struck: struck already means "this went", and a shelf is the
    opposite claim. The whole row dims, steps included, because a shelved plan
    is shelved entire. */
-.grp.shelved{opacity:.45}
+.grp.shelved{color:var(--dim)}
+.grp.shelved .acts,.grp.shelved button{opacity:.6}
 /* Finished items (R78): below the shelved ones, behind the Finished toggle,
    struck through and quiet, with no arrows: there is nothing left to send. */
 .grp.done{opacity:.55}
@@ -2217,13 +2220,13 @@ pre.diff .d-ctx{color:var(--dim)}
 #nbPending div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #nbPending div span{flex:1 1 200px}
 .nbtabs .pcount{display:inline-block;margin-left:5px;padding:0 6px;border-radius:9px;
-  background:var(--warn);color:var(--bg);font:var(--f-mono);font-size:11px;line-height:16px}
+  background:var(--warn);color:var(--bg);font-family:var(--mono);font-size:11px;line-height:16px}
 /* The review modal: one row per held change, its checkbox first, the full
    text under a fold, and the two verbs at the foot with Approve first. */
 #pendList{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:var(--r-surface)}
 #pendList .pkind{padding:6px 10px;color:var(--dim);font:var(--f-ui);font-size:12px;
   text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line);
-  background:var(--panel2,transparent)}
+  background:transparent}
 #pendList .prow{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;padding:8px 10px;
   border-bottom:1px solid var(--line);align-items:start}
 #pendList .prow:last-child{border-bottom:0}
@@ -2232,7 +2235,7 @@ pre.diff .d-ctx{color:var(--dim)}
 #pendList .prow .psum{overflow-wrap:anywhere}
 #pendList .prow .pwhen{color:var(--dim);font:var(--f-ui);font-size:12px;margin-top:2px}
 #pendList .prow details{margin-top:4px}
-#pendList .prow pre{white-space:pre-wrap;font:var(--f-mono);font-size:12px;margin:4px 0 0;
+#pendList .prow pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;margin:4px 0 0;
   color:var(--dim)}
 #pendAll{display:flex;align-items:center;justify-content:flex-start;gap:8px;font:var(--f-ui)}
 #pendAll input{margin:0;flex:0 0 auto}

@@ -15,6 +15,7 @@
 - Three shipped rules that explained a helper (report-builderbot, ask-before-unshelving, ship-to-dist) are the briefing's words now, in its notebook, roadmap and versions sections; the rules left are conduct (21462b7)
 - The test report quotes a suite's last lines when it ended without a total, so a run that dies quietly leaves evidence (B267) (1753a83)
 - The container's healthcheck asks the dashboard for an answer rather than only whether the supervisor's sleep loop is alive, so a container whose dashboard died reads unhealthy (f9ca487)
+- A deny refusal names the setting; bb settings shows the Claude settings and every dial; the briefing says how a question reaches a person, and that bb status says whether this machine is a node or the controller (35b6970)
 
 ### Removed
 
@@ -29,6 +30,9 @@
 - CHOWN_HOME, the switch for the home volume's chown at startup, is in compose, .env.example and the Unraid template as well as the README, so the settings check covers it (b65bb5e)
 - The image builds on a push that changes nodes/, CHANGELOG.md or VERSION, which the Dockerfile copies in and the build stamps from; those shipped nothing until the weekly rebuild (f9ca487)
 - Cancelling a queued job that a node claims in the same instant now flags it rather than calling it canceled while it runs; an enrolment token burns in one step so a retry cannot enrol twice; a job result's retry runs the hooks once; users.json is private from the instant it is written (f9ca487)
+- A controller restart longer than the grace window no longer fails every running job on every node as node lost: a node's last word is measured from the controller's own start (35b6970)
+- The terse briefing keeps or, rather than, by, be, then and so, the words that turn a sentence, leaves quoted labels whole and never drops a bracket; a code span wrapped over a line is read as one (35b6970)
+- Four tokens the stylesheet used were never defined, so a held change's text and the About page lost their font and colour; the bell's root tag reads bg on bad as the other tags do; a branch row's five controls wrap on a phone; a shelved item is dim rather than faded (35b6970)
 
 ### Security
 
@@ -40,6 +44,8 @@
 - A session does not push to or install on a phone by itself: bb phone run asks and a person answers; the artifacts verb answered a session as the phone's owner before (f9ca487)
 - A project's memory history is read only by an account that sees the project; the Git view pushes with the project's own token rather than the image's shared gh credential, and a forge's token stays home when its API redirects off the host (f9ca487)
 - A compose that binds a host path outside the project, the docker socket, a dropped security profile or the host's user namespace is a risk a person acknowledges before it runs; a session whose project may run its container could mount the node's root before (f9ca487)
+- The phone tab's rows, the jobs listing's node names and the node listing's shipped agent and first pick are scoped to what the account may see, and re-running the doctor is an administrator's; each carried the machines' names to a session before (35b6970)
+- A dist/ that is a symlink serves nothing outside the project's own tree, for the artifact listing and download and a node's fetch of a job's inputs; a compose file that is a symlink is not read; a local git remote is the project's own repository or a worktree of it, never another project's (35b6970)
 
 ## 0.7.0: 2026-09-25
 

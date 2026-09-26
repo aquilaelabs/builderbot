@@ -4464,8 +4464,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": str(e)}, 500)
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
+        # A name with a quote or a line break would end the header early.
         self.send_header("Content-Disposition",
-                         f'attachment; filename="{f.name}"')
+                         f'attachment; filename="{re.sub(r"[^A-Za-z0-9._ -]", "_", f.name)[:200]}"')
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -4633,8 +4634,11 @@ class Handler(BaseHTTPRequestHandler):
         # derived from where the projects are bound (nodes.node_for). Not a
         # default that work falls to: a project with no node has nowhere to
         # send, and the dialogs make the person pick.
-        return self._json({"nodes": rows, "agent": nodes.agent_shipped(),
-                           "default": nodes.node_for()})
+        # The shipped agent and the tab's first pick are the registry's
+        # facts: an administrator's, like the registry.
+        admin = users.may(self._who(), "admin") == ""
+        return self._json({"nodes": rows, "agent": nodes.agent_shipped() if admin else {},
+                           "default": nodes.node_for() if admin else ""})
 
     def _get_jobs(self):
         """GET /api/v1/jobs."""
@@ -4671,8 +4675,13 @@ class Handler(BaseHTTPRequestHandler):
             active=q.get("active", [""])[0] == "1")
         if mine is not None:
             rows = [j for j in rows if j.get("project") in mine]
-        return self._json({"jobs": rows,
-            "nodes": {x["id"]: x["name"] for x in nodes.node_list(all=True)}})
+        # The names of the nodes these rows run on, and for an account that
+        # is not an administrator no other: the whole registry rode here
+        # past the scoping the nodes listing keeps (the probe of 26 Sep).
+        names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
+        if mine is not None:
+            names = {k: v for k, v in names.items() if any(j.get("node") == k for j in rows)}
+        return self._json({"jobs": rows, "nodes": names})
 
     def _get_docker(self):
         """GET /api/docker."""
@@ -6453,6 +6462,12 @@ class Handler(BaseHTTPRequestHandler):
         out = phone.payload(users.uid_of(self._who()), node=node, probe=probe,
                             admin=users.is_admin(self._who()),
                             project=(self._who() or {}).get("session") or "")
+        # The rows are the nodes this account's projects build on, as every
+        # node-shaped surface is (_node_scope): the list carried every phone
+        # node's name, address and handset to a session (the probe of 26 Sep).
+        scope = self._node_scope()
+        if scope is not None and isinstance(out.get("nodes"), list):
+            out["nodes"] = [r for r in out["nodes"] if r.get("node") in scope]
         ua = self.headers.get("User-Agent", "")
         if "Android" in ua:
             try:
@@ -8008,6 +8023,8 @@ class Handler(BaseHTTPRequestHandler):
         answer, and the threading server keeps everything else responsive
         while this one connection waits the half-minute a bad network takes.
         """
+        if self._refused("admin"):
+            return None
         if not doctor.refresh():
             return self._json({"error": "doctor is already running"}, 409)
         return self._json(doctor.payload())

@@ -246,8 +246,24 @@ def address(project, name, url):
     path = url[len("file://"):] if url.startswith("file://") else url
     if path.startswith("/"):
         p = Path(path).resolve()
-        if WORKSPACE.resolve() in p.parents and ((p / "HEAD").is_file() or (p / ".git").exists()):
+        # The caller's own project or a worktree of it, and no other: a
+        # local remote naming another project fetched its history into this
+        # one and pushed refs into it, as the controller, around the rule
+        # that a session sees its own project only (the audit of 26 Sep).
+        own = [(WORKSPACE / project).resolve(), (WORKSPACE / ".worktrees" / project).resolve()]
+        mine = any(p == o or o in p.parents for o in own)
+        root = WORKSPACE.resolve()
+        on_share = root in p.parents
+        bare = (p / "HEAD").is_file() and not (p / ".git").exists()
+        # A bare repository the share hosts (a project's origin with no
+        # forge) is anybody's to push to; a working tree is a project's,
+        # and so is anything inside one.
+        inside_tree = any((a / ".git").exists() for a in [p, *p.parents] if root in a.parents)
+        if on_share and (mine or (bare and not inside_tree)):
             return "local", str(p)
+        if on_share and inside_tree:
+            raise Refused(f"remote {name} is another project's repository on the share: a session reaches "
+                          f"its own project and its worktrees only")
         raise Refused(f"remote {name} is a local path that is not a repository on the projects share")
     raise Refused(f"remote {name}'s address is not https, ssh or a repository on the projects share")
 

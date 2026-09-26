@@ -830,7 +830,7 @@ case "$target" in
         dir="$WORKSPACE/$proj"
         git_identity "$proj"
         need_author "a shell"
-        [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
+        [ "$proj" = "$(basename -- "$proj")" ] && [ "$proj" != "." ] && [ "$proj" != ".." ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
         in_view "$proj" "$dir"
         start "$(sess "shell-${proj}-${num}")" "$dir" "${RUN[@]}"
@@ -855,7 +855,7 @@ case "$target" in
         # workspace: no traversal, no absolute paths, no invented names.
         # Checked against the PROJECT, before session_dir may answer with a
         # worktree: the name is what has to be real.
-        if [ "$proj" != "$(basename -- "$proj")" ] || [ ! -d "$dir" ]; then
+        if [ "$proj" != "$(basename -- "$proj")" ] || [ "$proj" = "." ] || [ "$proj" = ".." ] || [ ! -d "$dir" ]; then
             echo "No such project: ${proj}" >&2
             echo "Available:" >&2
             # Same rule the dashboard lists by: a directory holding
@@ -1124,7 +1124,7 @@ case "$target" in
         proj="${target#shell:}"
         dir="$WORKSPACE/$proj"
         git_identity "$proj"
-        [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
+        [ "$proj" = "$(basename -- "$proj")" ] && [ "$proj" != "." ] && [ "$proj" != ".." ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
         in_view "$proj" "$dir"
         start "$(sess "shell-${proj}")" "$dir" "${RUN[@]}"

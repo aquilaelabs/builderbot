@@ -619,7 +619,7 @@ cmd_emu() {
             # arrives besides the Emulator tab, since the baseline hook went.
             local api="${2:-}" pkg name
             [ -n "$api" ] || die "bb emu create <api>: the API level to build the AVD for"
-            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here; install android-tools first"
+            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this node's toolchain store: say so in your reply; the operator adds android-tools on the Toolchains tab with this node picked"
             pkg="system-images;android-${api};google_apis;x86_64"
             name="$(emu_avd "$api")"
             if [ ! -d "${ANDROID_HOME:-/opt/android-sdk}/system-images/android-${api}/google_apis/x86_64" ]; then
@@ -884,8 +884,12 @@ cmd_ci_log() {
         # already built) rather than a share or a second credential.
         if [ -n "$(project_node 2>/dev/null)" ]; then
             log "nothing kept here; asking ${proj}'s node"
-            local remote='d="${BB_CI_LOG_DIR:-}"; [ -n "$d" ] || { [ -w /config ] \
-                && d=/config/ci-logs || d="$HOME/ci-logs"; }; d="$d/'"$proj"'"'
+            # The project and the run name go into a shell string the node
+            # runs: quoted for it, and a run is named by its id, not a path.
+            case "$want" in */*|.*) die "bb ci-log RUN: a run is named by its id, not a path" ;; esac
+            local remote
+            remote='d="${BB_CI_LOG_DIR:-}"; [ -n "$d" ] || { [ -w /config ] \
+                && d=/config/ci-logs || d="$HOME/ci-logs"; }; d="$d/"'"$(printf %q "$proj")"
             if [ "$list" = 1 ]; then
                 cmd_run --timeout 300 -- sh -c "$remote"'
                     [ -d "$d" ] || { echo "no CI logs kept on this node either"; exit 0; }
@@ -895,7 +899,7 @@ cmd_ci_log() {
             else
                 cmd_run --timeout 300 -- sh -c "$remote"'
                     [ -d "$d" ] || { echo "no CI logs kept on this node either"; exit 0; }
-                    want="'"$want"'"
+                    want='"$(printf %q "$want")"'
                     if [ -n "$want" ]; then f="$(ls -1 "$d"/"$want"*.log 2>/dev/null | head -1)"
                     else f="$(ls -1t "$d"/*.log 2>/dev/null | head -1)"; fi
                     [ -n "$f" ] || { echo "no kept log for that run"; exit 0; }
@@ -2248,7 +2252,7 @@ bb_auth_or_die() {
     # tab mints a fresh one, which bb-tty writes where bb_token_now reads it.
     if [ -n "${BB_TOKEN:-}" ] && bb_token_dead "$(bb_token_now)"; then
         local e; e="$(bb_token_exp "$BB_TOKEN")"
-        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null). They last 12 hours and a conversation can outlast one. Open this session's tab from the dashboard again and the next command works: that mints a fresh token and leaves it where bb looks."
+        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null). They last 12 hours and a conversation can outlast one. ask the person to reopen this session's tab on the dashboard, which mints a fresh token; the next command then works and the next command works: that mints a fresh token and leaves it where bb looks."
     fi
     if [ -z "$h" ]; then
         # Which of the two is actually wrong. Everything that reaches a node
