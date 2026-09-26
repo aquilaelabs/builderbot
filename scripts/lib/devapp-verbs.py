@@ -116,13 +116,18 @@ def rebuild():
         o = waits.outcome(auth, rid, "the rebuild was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'the rebuild would not start'}")
-    _watch(look, was)
+        r = {"job": o.get("out")}
+    _watch(look, was, auth, r.get("job") or "")
 
 
-def _watch(look, was):
+def _watch(look, was, auth, job_id=""):
     """Follow a build that has been asked for to its verdict: the step while
     it runs, then built, failed, or that none appeared. `was` is what the
-    container was built from before, "" for one never built."""
+    container was built from before, "" for one never built. `job_id` is
+    the build's job when the answer named one, and is what is followed
+    then: the row alone missed a rebuild of an unchanged commit that ended
+    between two looks, since it saw neither a running job nor a new
+    revision, and said no build appeared over one that had (B312)."""
     what = "rebuild" if was else "build"
     print(f"[builderbot] {what}ing; it runs on the node's daemon and takes minutes",
           file=sys.stderr)
@@ -133,6 +138,22 @@ def _watch(look, was):
     while waited < 3600:
         time.sleep(3)
         waited += 3
+        if job_id:
+            j = bbapi.call(f"/api/v1/jobs?id={job_id}", auth=auth)
+            if j.get("error") and "state" not in j:
+                sys.exit(f"[builderbot] ERROR: {j['error']}")
+            step = str(j.get("step") or "")
+            if step and step != last:
+                print(f"  {step}", file=sys.stderr)
+                last = step
+            if j.get("state") not in ("succeeded", "failed", "canceled"):
+                continue
+            if j["state"] != "succeeded":
+                tail = str(j.get("log") or "")[-1200:]
+                if tail:
+                    print(tail)
+                sys.exit(f"[builderbot] ERROR: the {what} {j['state']}: {str(j.get('error') or '')[:200]}")
+            seen, job_id = True, ""
         st = look(patient=True)
         if st is None:
             continue
@@ -194,7 +215,7 @@ def new():
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
-        _watch(_client(inst)[1], "")
+        _watch(_client(inst)[1], "", auth, str(o.get("out") or ""))
         return
     print(f"[builderbot] created {name}", file=sys.stderr)
     # The rebuild verb as it is, aimed at the container just made: the same

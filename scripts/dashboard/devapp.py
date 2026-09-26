@@ -720,6 +720,20 @@ def _forget_reads(node_id):
             del _last_reads[k]
 
 
+def _agent_exec(n, argv, timeout):
+    """One docker verb on one container, run on the agent node as a probe
+    job the Jobs tab never keeps, in _run's own {"code", "out"} shape. Not
+    _agent_read: a start is not a read, so nothing is memoised and a busy
+    node is not answered from what it said before."""
+    _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
+    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
+                       forget=True)
+    out = ({"code": 1, "out": r["error"]} if r.get("error")
+           else {"code": int(r.get("code") or 0), "out": r.get("out") or ""})
+    _docker_result(argv, out["code"], out["out"])
+    return out
+
+
 def _agent_read(n, argv, timeout):
     """One bare docker read, run on the agent node as a probe job the Jobs
     tab never keeps, in _run's own {"code", "out"} shape."""
@@ -1165,6 +1179,17 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
         n = _agent_here()
         if n:
             return _agent_read(n, argv, timeout)
+    # ...and the verbs addressed at one container by name (its log, start,
+    # stop, restart) run there the same way, as one exec and never from a
+    # kept answer: they fell through to DOCKER_HOST=ssh:// below, which on
+    # an agent node is the path R85 names and no controller holds a key
+    # for, so a session's bb devapp log on the dev pair met "Host key
+    # verification failed" from the VM (B312).
+    if sink is None and hold is None and argv[:1] == [DOCKER] \
+            and len(argv) > 1 and argv[1] in _CTL_OK | {"logs"}:
+        n = _agent_here()
+        if n:
+            return _agent_exec(n, argv, timeout)
     _docker_log("$ " + " ".join(argv))
     env = dict(os.environ)
     # The resolved address, so `auto` never reaches the docker CLI, which does

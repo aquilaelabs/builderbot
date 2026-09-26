@@ -3960,6 +3960,67 @@ print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
        JSON.stringify(got).slice(0, 90)} ${(run.stderr || '').split('\n').filter(Boolean).pop() || ''})`);
 }
 
+// bb devapp rebuild follows the job its answer names (B312): a rebuild of an
+// unchanged commit that ended between two looks showed the row neither a
+// running job nor a new revision, and the verb said no build appeared over
+// one that had. Driven in process: the row never changes, the job says
+// succeeded, and the verb reports it rebuilt.
+{
+  const LIB = new globalThis.URL('../../lib', import.meta.url).pathname;
+  const run = spawnSync('python3', ['-c', `
+import importlib.util, json, os, sys, time
+sys.path.insert(0, ${JSON.stringify(LIB)})
+spec = importlib.util.spec_from_file_location("dv", ${JSON.stringify(LIB + '/devapp-verbs.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+asked = []
+def call(path, body=None, auth="", method="", timeout=30):
+    if body is None:
+        asked.append(path); return {"state": "succeeded"}
+    asked.append(body.get("action"))
+    if body.get("action") == "rebuild":
+        return {"ok": True, "started": True, "job": "j9"}
+    return {"state": {"built_rev": "aaa", "running": True, "name": "alpha-dev"}}
+m.bbapi.call = call
+time.sleep = lambda s: None
+os.environ.update(BB_DEV_PROJECT="alpha", BB_DEV_AUTH="x", BB_DEV_INSTANCE="", BB_DEV_CONTAINER="")
+code = 0
+try:
+    m.rebuild()
+except SystemExit as e:
+    code = e.code
+print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
+  const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
+  ok(got.code === 0 && (got.asked || []).includes('/api/v1/jobs?id=j9') && /rebuilt aaa; alpha-dev is up/.test(run.stdout || ''),
+     `bb devapp rebuild follows the job its answer names, so a fast rebuild of the same commit is reported built (${
+        JSON.stringify(got).slice(0, 80)})`);
+}
+
+// A container's log, start, stop and restart on an agent node run on that
+// node through its agent, as the bare reads do (B312): every other docker
+// verb fell to DOCKER_HOST=ssh://, the path R85 names, which no controller
+// holds a key for. Driven in process with the node and the queue replaced.
+{
+  const DASH = new globalThis.URL('../', import.meta.url).pathname.replace(/\/$/, '');
+  const run = spawnSync('python3', ['-c', `
+import importlib.util, json, os, sys, types
+sys.path.insert(0, ${JSON.stringify(DASH)})
+spec = importlib.util.spec_from_file_location("dvp", ${JSON.stringify(DASH + '/devapp.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+ran = []
+m._agent_here = lambda: {"id": "n1", "name": "box"}
+m.queue = types.SimpleNamespace(run_wait=lambda who, nid, argv, timeout=0, forget=False: (ran.append([nid, list(argv)]), {"code": 0, "out": "hello"})[1],
+                                job_running=lambda nid: 0)
+m._docker_log = lambda *a, **k: None
+m._docker_result = lambda *a, **k: None
+m.docker_host = lambda: (_ for _ in ()).throw(AssertionError("went to DOCKER_HOST"))
+out = [m._run([m.DOCKER, "logs", "--tail", "5", "--timestamps", "c1"]), m._run([m.DOCKER, "restart", "c1"])]
+print(json.dumps({"ran": ran, "out": out}))`], { encoding: 'utf8' });
+  const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
+  ok(JSON.stringify((got.ran || []).map(r => r[1][1])) === '["logs","restart"]' && (got.out || []).every(o => o.out === 'hello'),
+     `a container's log and restart on an agent node run through its agent, never over ssh (${
+        (run.stderr || '').split('\n').filter(Boolean).pop() || JSON.stringify(got).slice(0, 80)})`);
+}
+
 // bb devapp new sends the project to Docker the way Send does (the operator,
 // 26 Sep): on auto it makes the container, then builds that one and waits
 // for the verdict; on ask the one request carries the branch, Allow makes
@@ -3978,9 +4039,11 @@ out = {}
 for dial in ("auto", "ask"):
     bodies = []
     looks = iter(([{"built_rev": ""}] if dial == "auto" else [])
-                 + [{"job": {"running": True, "step": "building"}},
-                    {"built_rev": "ccc", "running": True, "name": "alpha-2"}])
+                 + [{"built_rev": "ccc", "running": True, "name": "alpha-2"}])
     def call(path, body=None, auth="", method="", timeout=30, dial=dial, bodies=bodies, looks=looks):
+        if body is None:
+            bodies.append({"action": "job", "instance": path.split("=")[-1], "ref": None})
+            return {"state": "succeeded"}
         bodies.append({k: body.get(k) for k in ("action", "instance", "ref")})
         if body.get("action") == "new":
             return ({"ok": True, "instance": "alpha-2", "name": "alpha-2"} if dial == "auto"
@@ -4001,10 +4064,10 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
   const acts = d => (got[d]?.bodies || []).map(b => b.action + (b.instance ? ':' + b.instance : '')).join(' ');
   ok(got.auto?.code === 0 && got.auto.bodies[0].action === 'new' && !got.auto.bodies[0].instance
-     && got.auto.bodies[0].ref === 'sendbranch' && acts('auto') === 'new state:alpha-2 rebuild:alpha-2 state:alpha-2 state:alpha-2'
+     && got.auto.bodies[0].ref === 'sendbranch' && acts('auto') === 'new state:alpha-2 rebuild:alpha-2 job:j1 state:alpha-2'
      && /created alpha-2/.test(run.stderr || '') && /built ccc; alpha-2 is up/.test(run.stdout || ''),
      `bb devapp new on auto makes the container and builds that one, waiting for the verdict (${acts('auto')})`);
-  ok(got.ask?.code === 0 && acts('ask') === 'new state:alpha-2 state:alpha-2'
+  ok(got.ask?.code === 0 && acts('ask') === 'new job:j1 state:alpha-2'
      && /asked the administrators \(#7\) to send it to Docker as alpha-2/.test(run.stderr || ''),
      `...and on ask it follows the build Allow starts instead of asking for another (${acts('ask')})`);
 }
