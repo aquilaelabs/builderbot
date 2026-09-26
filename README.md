@@ -217,10 +217,16 @@ bb devapp rebuild [--why "..."]
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Allow) or auto. Up, Down and a container of
                    any other shape stay the operator's
-bb devapp new [--env FILE] [--why "..."]
-                   create the project's container from its own compose file when it
-                   has none, under the same setting; on ask, Allow creates, writes
-                   the env and builds
+bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
+                   send the project to Docker, as the Artifacts tab's Send to Docker
+                   manager does, under the same setting: a container made from its
+                   own compose file on its node, then built and started, and this
+                   waits for the verdict. Unnamed, it is the project's own container
+                   while it has none, then another beside it named for the project
+                   with -2, -3 and on; a second needs ports of its own, so give it
+                   an env that sets them with --env. --branch builds it
+                   from that branch. On ask, one request carries all of it and
+                   Allow makes and builds it
 bb devapp remove [--why "..."]
                    take the container out of the manager, under the same setting;
                    its env and data stay for a remake, as the row's Remove leaves them

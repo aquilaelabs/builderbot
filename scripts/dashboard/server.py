@@ -2371,7 +2371,7 @@ if not NODES_OK:
 # and a controller without one still has projects whose containers run.
 phone.rebuilder = devactions.rebuild
 phone.container_maker = containers.create_container
-phone.instance_maker = lambda project, instance: devapp.create_instance(project, instance or devapp.MAIN)
+phone.instance_maker = devactions.make_instance
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
 phone.ctl_runner = containers.ctl_on
 # ---- what the page may type into a terminal -------------------------------------
@@ -4939,7 +4939,8 @@ class Handler(BaseHTTPRequestHandler):
         # same answer a stranger's container gets, whatever the verb, so a
         # session cannot learn by asking what another project runs.
         if not users.is_admin(me):
-            want = field(req, "instance") or devapp.only_instance(name)
+            want = field(req, "instance") or (devapp.send_name(name) if act == "new"
+                                              else devapp.only_instance(name))
             owner = devapp.owner_of(name, want)
             if owner not in ({sess} if sess else {p["name"] for p in project_list(me)}):
                 return self._json({"error": containers.not_ours(devapp.pname(name, want), sess)}, 403)
@@ -5002,12 +5003,13 @@ class Handler(BaseHTTPRequestHandler):
         if act not in ("starter", "state", "test") and session:
             # The dial is the project's (Claude may: Run its container, in its
             # settings) and covers rebuilding its containers, changing their
-            # env and creating its own when it has none: the operator's
-            # widening, 24 Sep, so a session can bring a fresh container up
-            # by request. What a container IS stays out of reach: `new` from
-            # a session is the project's own compose file on its own node,
-            # never another project's and never a file it wrote, which is
-            # `bb container ask` and an administrator's.
+            # env and sending the project to Docker, its own container or
+            # another beside it: the operator's widenings of 24 and 26 Sep, so
+            # a session can bring a container up by request. What a container
+            # IS stays out of reach: `new` from a session is the project's own
+            # compose file on its own node, never another project's and never
+            # a file it wrote, which is `bb container ask` and an
+            # administrator's.
             # The dial of the project it belongs to, which is the session's
             # own: the gate above let nothing else through.
             mode = prefs.get(sess)["devbuild"]
@@ -5050,9 +5052,11 @@ class Handler(BaseHTTPRequestHandler):
         # A request naming no instance means the project's only one, when
         # it has exactly one: BuilderBot's own is called builderbot-dev, and
         # bb devapp from a session was answering for a `main` that did not
-        # exist (15 Sep). With several, `main` as before; bb takes
-        # --instance for that.
-        inst = field(req, "instance") or devapp.only_instance(name)
+        # exist (15 Sep). With several, `main`; bb takes --instance for that.
+        # A NEW one named by nobody takes the name Send would offer: the
+        # project's own while it has none, then one beside it.
+        inst = field(req, "instance") or (devapp.send_name(name) if act == "new"
+                                          else devapp.only_instance(name))
         # A session at `ask` puts the change in front of a person instead;
         # devactions.request says which changes those are.
         return self._json(*devactions.request(

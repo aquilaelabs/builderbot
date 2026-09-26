@@ -893,7 +893,10 @@ containers are built, started, stopped and given their env. A project can have
 several: the Artifacts tab's dev row is one button now, **Send to Docker
 manager…**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
-that codebase says at the time.
+that codebase says at the time. It opens on the project's own name while the
+project has no container and on `<project>-2`, `-3` after, so another one is
+the same press, and a Claude session sends its project the same way with `bb
+devapp new`, under the project's **Run its container** setting.
 
 **The daemon is a node.** The sandbox VM is added on the Nodes tab: its
 address, with `ssh://` and the `bb` account filled in, and what this

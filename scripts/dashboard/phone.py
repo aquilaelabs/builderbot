@@ -49,8 +49,9 @@ nodes = None          # the node module, set by server.py once it is up: run_wai
 # keeps having one dependency (the node registry), and so the request queue
 # stays a queue rather than growing an opinion about compose.
 rebuilder = None
-# ...and what a rebuild request may do first (ask_rebuild): make the project's
-# own container, write its env. devapp.create_instance and devapp.write_env.
+# ...and what a rebuild request may do first (ask_rebuild): make a container
+# of the project, pinned to a branch when it asked for one, and write its env.
+# devactions.make_instance and devapp.write_env.
 instance_maker = None
 env_writer = None
 ctl_runner = None
@@ -789,16 +790,18 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
 
 def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                 asker_admin=False, env=None, create=False, target="", ctl="",
-                node="", remove=False):
+                node="", remove=False, ref=""):
     """A session asking to rebuild its project's dev instance, for a project
     whose dial is on `ask` (Claude may: Run its container, in the project's
     settings).
 
     The phone's shape applied to a build: the reason and what it would do go
     to a person, they allow or deny, and allowing starts the build. The same
-    request may also carry, in the order Allow runs them, creating the
-    project's own container when it has none (`create`) and the env to write
-    first (`env`): the operator's widening of the dial, 24 Sep. What a
+    request may also carry, in the order Allow runs them, creating a
+    container of the project (`create`: its own, or another beside it) and
+    the env to write first (`env`): the operator's widenings of the dial, 24
+    and 26 Sep. A container it creates may be pinned to a branch (`ref`)
+    before that build, as Send to Docker's Build from pins one. What a
     container IS stays out of the session's hands: it is the project's own
     compose file on the project's node, never one the session names.
 
@@ -817,7 +820,9 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
     to, to_name = (("admins", "the administrators") if not (asker_admin and asker_uid)
                    else (asker_uid, f"{asker_name or 'you'} (your own account: it is "
                                     "on the Docker tab and your bell)"))
-    cmd = (["devapp", ctl, name] if ctl else ["devapp", "new", name] if create
+    ref = str(ref or "") if create else ""
+    cmd = (["devapp", ctl, name] if ctl
+           else ["devapp", "new", name] + (["--branch", ref] if ref else []) if create
            else ["devapp", "remove", name] if remove
            else ["devapp", "env", "set", name] if env is not None
            else ["devapp", "rebuild", name])
@@ -825,7 +830,7 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                   extra={"instance": str(instance or ""), "create": bool(create), "remove": bool(remove),
                          "env": None if env is None else str(env),
                          "target": str(target or ""), "ctl": str(ctl or ""),
-                         "name": str(name or "")})
+                         "name": str(name or ""), "ref": ref})
 
 
 def ask_container(why, name, compose, env, nid, node_name, project, for_project="",
@@ -925,7 +930,7 @@ def decide(rid, allow, uid, name="", admin=False):
                          out=str(res.get("error") or res.get("job") or "removed"))
             return {"error": res["error"]} if res.get("error") else {"ok": True}
         if r.get("create") and instance_maker is not None:
-            res = instance_maker(key, r.get("instance") or "") or {}
+            res = instance_maker(key, r.get("instance") or "", ref=r.get("ref") or "") or {}
         if not res.get("error") and r.get("env") is not None and env_writer is not None:
             res = env_writer(key, r["env"], r.get("instance") or "") or {}
         # Allow does what the card said: a fresh container is created,

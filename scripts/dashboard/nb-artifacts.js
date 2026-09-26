@@ -277,7 +277,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       nb.openSheet("Open which port?", [box]);
     };
     const send = list.querySelector("#devSend");
-    if (send) send.onclick = () => openSendToDocker(project);
+    if (send) send.onclick = () => openSendToDocker(project, art.send_as, (art.devapps || []).length);
     // THIS project's daemon, which is its node's and need not be the default
     // one the poll asked about. The row above already draws the reason when
     // there is one, so what is passed here is the same answer the row is

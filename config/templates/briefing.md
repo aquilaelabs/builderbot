@@ -189,11 +189,16 @@ is always asked.
 <!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
 This project has a compose file, so it can have a container built from it:
 its dev instance, the place to prove a change. Up and Down are the
-operator's; under the same dial you may rebuild it, change its env, create
-it when it has none and remove it: `bb devapp` says what it was built from
-and whether it is running, then `bb devapp rebuild`, `bb devapp env set
-FILE`, `bb devapp new` and `bb devapp remove`, which leaves its env and data
-for a remake. Its env is kept by BuilderBot, not as a file in the tree:
+operator's; under the same dial you may send the project to Docker and
+rebuild, change the env of and remove its containers. `bb devapp new [NAME]
+[--branch REF]` is the Artifacts tab's Send to Docker done from here: a
+container made from this project's compose file (its own while it has
+none, then another beside it, which needs ports of its own from `--env
+FILE`), built and started. That, not `bb container new`, is how this
+project's own code goes into Docker. `bb devapp` says what one was built
+from and whether it is running, then `bb devapp rebuild`, `bb devapp env
+set FILE` and `bb devapp remove`, which leaves its env and data for a
+remake. Its env is kept by BuilderBot, not as a file in the tree:
 `bb devapp env` prints it, and a compose line `env_file: .env` is pointed
 at it when the container runs, so a missing `.env` in the project is
 expected. The project's Tests run setting decides whether `bb test` runs

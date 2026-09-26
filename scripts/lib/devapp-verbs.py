@@ -4,13 +4,14 @@ Run its container). Everything here goes through the controller's API like
 `bb root` and `bb phone`, because the daemon is the controller's connection
 to the node; nothing runs docker anywhere.
 
-The first argument is the verb: status, rebuild, test (the test command's
-arguments after it), edit (new, env and remove, which BB_DEV_VERB names),
-ls, or ctl (log, start, stop and restart, which BB_DEV_VERB names).
+The first argument is the verb: status, rebuild, new, test (the test
+command's arguments after it), edit (env and remove, which BB_DEV_VERB
+names), ls, or ctl (log, start, stop and restart, which BB_DEV_VERB names).
 BB_DEV_AUTH is the auth header, BB_DEV_PROJECT the project, BB_DEV_INSTANCE
 and BB_DEV_CONTAINER which of its containers, BB_DEV_WHY the reason a person
 reads, BB_DEV_FILE and BB_DEV_SET the env file and whether it is being set,
-BB_DEV_NAME the container a ctl verb acts on.
+BB_DEV_REF the branch a new container builds from, BB_DEV_NAME the container
+a ctl verb acts on.
 """
 import os
 import sys
@@ -54,11 +55,17 @@ def status():
         print(f"  {'job':<12} last one failed: {str(job['error'])[:120]}")
 
 
-def rebuild():
-    proj = os.environ["BB_DEV_PROJECT"]
-    auth = os.environ["BB_DEV_AUTH"]
-    post = lambda b, timeout=30: bbapi.call("/api/devapp", b | {"project": proj, "instance": os.environ.get("BB_DEV_INSTANCE", ""),  # noqa: E731
-                                                                 "container": os.environ.get("BB_DEV_CONTAINER", "")}, auth=auth, timeout=timeout)
+def _client(instance=None):
+    """post and look for one of this project's containers: the one
+    BB_DEV_INSTANCE or BB_DEV_CONTAINER names, or `instance` when given (a
+    container `new` just made)."""
+    proj, auth = os.environ["BB_DEV_PROJECT"], os.environ["BB_DEV_AUTH"]
+    which = ({"instance": os.environ.get("BB_DEV_INSTANCE", ""),
+              "container": os.environ.get("BB_DEV_CONTAINER", "")}
+             if instance is None else {"instance": instance, "container": ""})
+
+    def post(b, timeout=30):
+        return bbapi.call("/api/devapp", b | {"project": proj} | which, auth=auth, timeout=timeout)
 
     def look(patient=False):
         # `state` parses the compose on the instance's node, which on a slow
@@ -73,6 +80,12 @@ def rebuild():
             sys.exit(f"[builderbot] ERROR: {d['error']}")
         return d.get("state") if isinstance(d.get("state"), dict) else d
 
+    return post, look
+
+
+def rebuild():
+    auth = os.environ["BB_DEV_AUTH"]
+    post, look = _client()
     # What it was built from before, because that is the only signal that says a
     # build HAPPENED. A job that succeeded is not news to the row (job_view
     # returns nothing for one), so "no job running" reads the same three seconds
@@ -103,7 +116,15 @@ def rebuild():
         o = waits.outcome(auth, rid, "the rebuild was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'the rebuild would not start'}")
-    print("[builderbot] rebuilding; it runs on the node's daemon and takes minutes",
+    _watch(look, was)
+
+
+def _watch(look, was):
+    """Follow a build that has been asked for to its verdict: the step while
+    it runs, then built, failed, or that none appeared. `was` is what the
+    container was built from before, "" for one never built."""
+    what = "rebuild" if was else "build"
+    print(f"[builderbot] {what}ing; it runs on the node's daemon and takes minutes",
           file=sys.stderr)
     # Polled rather than streamed: the job's log belongs to the row, and what a
     # session needs is the step while it waits and the verdict at the end. A
@@ -127,9 +148,9 @@ def rebuild():
             tail = str(job.get("log") or "")[-1200:]
             if tail:
                 print(tail)
-            sys.exit(f"[builderbot] ERROR: the rebuild failed: {str(job['error'])[:200]}")
+            sys.exit(f"[builderbot] ERROR: the {what} failed: {str(job['error'])[:200]}")
         if seen or (st.get("built_rev") or "") != was:
-            print(f"[builderbot] rebuilt {st.get('built_rev') or ''}; "
+            print(f"[builderbot] {'rebuilt' if was else 'built'} {st.get('built_rev') or ''}; "
                   f"{st.get('name') or 'the instance'} is "
                   + ("up" if st.get("running")
                      else "built and not running" if st.get("await_env")
@@ -142,7 +163,48 @@ def rebuild():
         if waited >= 21:
             sys.exit("[builderbot] ERROR: no build appeared within twenty seconds; "
                      "this project's row on the Docker tab has what happened")
-    sys.exit("[builderbot] ERROR: the rebuild is still going after an hour; its row on the Docker tab has it")
+    sys.exit(f"[builderbot] ERROR: the {what} is still going after an hour; its row on the Docker tab has it")
+
+
+def new():
+    """This project sent to Docker, the way the Artifacts tab's Send does: a
+    container made from its own compose file on its own node, then built and
+    started, with this waiting for the verdict. BB_DEV_INSTANCE names it;
+    unnamed, the controller gives it the project's own name while it has
+    none and one beside it after. BB_DEV_REF pins the branch it builds from
+    and BB_DEV_FILE is its env. On `ask` one request carries all of it and
+    Allow makes and builds it; on `auto` it is made, then built as `bb
+    devapp rebuild` builds."""
+    auth = os.environ["BB_DEV_AUTH"]
+    post, _ = _client()
+    body = {"action": "new", "why": os.environ.get("BB_DEV_WHY", ""),
+            "ref": os.environ.get("BB_DEV_REF", "")}
+    path = os.environ.get("BB_DEV_FILE", "")
+    if path:
+        body["text"] = open(path, encoding="utf-8").read()
+    r = post(body)
+    if r.get("error"):
+        sys.exit(f"[builderbot] ERROR: {r['error']}")
+    inst = r.get("instance") or ""
+    name = r.get("name") or inst
+    if r.get("id"):
+        print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}) to send it to "
+              f"Docker as {name}, waiting up to 15 minutes for Allow on the dashboard's Docker tab "
+              "or bell", file=sys.stderr)
+        o = waits.outcome(auth, r["id"], "it was not allowed")
+        if o.get("code"):
+            sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
+        _watch(_client(inst)[1], "")
+        return
+    if r.get("needs_ack"):
+        # Made, and not buildable by a session: the compose asks for more than
+        # its own directory, which a person acknowledges on the row first.
+        sys.exit(f"[builderbot] created {name}, and it is not built: {r['needs_ack']}")
+    print(f"[builderbot] created {name}", file=sys.stderr)
+    # The rebuild verb as it is, aimed at the container just made: the same
+    # request, the same patience with a slow controller and the same watch.
+    os.environ["BB_DEV_INSTANCE"], os.environ["BB_DEV_CONTAINER"] = inst, ""
+    rebuild()
 
 
 def test():
@@ -204,31 +266,28 @@ def edit():
             print("[builderbot] nothing is stored yet: that is the project's .env.example",
                   file=sys.stderr)
         raise SystemExit(0)
-    body = {"action": {"new": "new", "remove": "remove"}.get(verb, "env-set"), "why": os.environ.get("BB_DEV_WHY", "")}
+    body = {"action": "remove" if verb == "remove" else "env-set", "why": os.environ.get("BB_DEV_WHY", "")}
     if text is not None:
         body["text"] = text
     r = post(body)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
     if r.get("id"):
-        # On ask: one request, and Allow runs all of it, the build included.
+        # On ask: Allow removes it, or writes the env and builds nothing,
+        # since the card said env set and the rebuild is the next ask.
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
               "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
         print("[builderbot] allowed, and removed: its env and data stay for a remake" if verb == "remove"
-              else "[builderbot] allowed, and building: bb devapp says how far it got")
+              else "[builderbot] allowed, and its env is saved; bb devapp rebuild applies it")
         raise SystemExit(0)
     if verb == "remove":
         print("[builderbot] removed" + (": its daemon did not answer, so the row is gone and whatever "
                                         "ran there still runs" if r.get("forgot") else "; its env and data stay for a remake"))
-    elif verb == "new" and r.get("needs_ack"):
-        print(f"[builderbot] created {r.get('instance') or 'it'}, and it cannot be built from here yet: "
-              f"{r['needs_ack']}")
     else:
-        print(f"[builderbot] created {r.get('instance') or 'it'}; bb devapp rebuild builds and starts it"
-              if verb == "new" else "[builderbot] its env is saved; bb devapp rebuild applies it")
+        print("[builderbot] its env is saved; bb devapp rebuild applies it")
 
 
 def ls():
@@ -284,7 +343,7 @@ def ctl():
     print(f"[builderbot] {r.get('out') or verb}")
 
 
-VERBS = {"status": status, "rebuild": rebuild, "test": test, "edit": edit, "ls": ls, "ctl": ctl}
+VERBS = {"status": status, "rebuild": rebuild, "new": new, "test": test, "edit": edit, "ls": ls, "ctl": ctl}
 
 if __name__ == "__main__":
     VERBS[sys.argv[1]]()

@@ -2493,6 +2493,43 @@ def on_project_node(whose, node=""):
     return "", str(node) if node else own[0]
 
 
+def instance_key(project, name):
+    """The key a typed container name is recorded under: its slug, or MAIN
+    for the project's own name. The default instance is named after the
+    project, so asking for that name by hand is asking for that container,
+    not a second one beside it; before this, the name a person naturally
+    typed into "New container from X" was refused as a clash with X's own
+    container, which nobody had built yet (the operator, 25 Sep)."""
+    slug = _slug(name) or ""
+    return MAIN if slug and slug == _slug(project) else slug
+
+
+def _taken(project, slug, d):
+    """Why the key `slug` is not free for a new container of `project` in
+    the store `d`, or "". Not one the project has, and not one that another
+    project has taken: the name no longer carries the project, so two of
+    them asking for `dev` would be one compose project, one env file and one
+    data directory wearing two rows, which is the collision the old
+    spelling prevented by being long, and this prevents by asking."""
+    if slug in (d.get(project) or {}):
+        return (f"{project} already has its own container, {_pname(project, MAIN)}, "
+                "on the Docker tab: Build or Rebuild builds it there"
+                if slug == MAIN else f"{project} already has an instance called {slug}")
+    return name_clash(project, slug)
+
+
+def new_refusal(project, key):
+    """Why a new container keyed `key` (instance_key's answer) cannot be
+    made for this project, or "": said before a session's asked one goes to
+    a person, who would otherwise be answering a request no answer can
+    build, and again by create_instance itself."""
+    if not key:
+        return "an instance needs a name with a letter or digit in it"
+    if compose_file(project) is None:
+        return f"{project} has no compose file to make an instance of"
+    return _taken(project, key, _load())
+
+
 def create_instance(project, name, node="", owner=None):
     """Register a new instance of a project. Nothing is built or started.
 
@@ -2509,11 +2546,10 @@ def create_instance(project, name, node="", owner=None):
     `My App` and `my-app` are the same instance and the second should be
     refused rather than silently becoming the first.
     """
-    slug = _slug(name) or ""
-    if not slug:
-        return {"error": "an instance needs a name with a letter or digit in it"}
-    if compose_file(project) is None:
-        return {"error": f"{project} has no compose file to make an instance of"}
+    slug = instance_key(project, name)
+    why = new_refusal(project, slug)
+    if why:
+        return {"error": why}
     # A container lives on the node of the project it belongs to and nowhere
     # else: a session reaches only its own project's containers on its own
     # node (R79), so one anywhere else is out of reach of the work it is for
@@ -2531,28 +2567,12 @@ def create_instance(project, name, node="", owner=None):
         # takes an instance that was never built along (pin_to_current_node
         # keeps a built one where it is).
         node = picked
-    # The project's own name IS its own container: the default instance is
-    # named after the project, so asking for that name by hand is asking
-    # for that container, not a second one beside it. Before this, the name
-    # a person naturally typed into "New container from X" was refused as a
-    # clash with X's own container, which nobody had built yet (the
-    # operator, 25 Sep).
-    if slug == _slug(project):
-        slug = MAIN
     with _lock:
         d = _load()
-        if slug in (d.get(project) or {}):
-            return {"error": (f"{project} already has its own container, {_pname(project, MAIN)}, "
-                              "on the Docker tab: Build or Rebuild builds it there"
-                              if slug == MAIN else f"{project} already has an instance called {slug}")}
-        # And not one that another project has taken. The name no longer
-        # carries the project, so two of them asking for `dev` would be one
-        # compose project, one env file and one data directory wearing two
-        # rows, which is the collision the old spelling prevented by being
-        # long, and this prevents by asking.
-        clash = name_clash(project, slug)
-        if clash:
-            return {"error": clash}
+        # Asked again under the lock that writes it: two sends at once.
+        why = _taken(project, slug, d)
+        if why:
+            return {"error": why}
         rec = _rec(d, project, slug)
         if node:
             rec["node"] = str(node)
@@ -2786,6 +2806,22 @@ def only_instance(project):
     recorded one, else `main`."""
     have = list((_load().get(project) or {}).keys())
     return have[0] if len(have) == 1 else MAIN
+
+
+def send_name(project):
+    """The name a new container of a project gets when nobody typed one: the
+    project's own while it has none, then <project>-2, -3 and on, the first
+    that no container here holds. Send to Docker opens on it and `bb devapp
+    new` takes it, so sending a project again makes another container beside
+    the first rather than a refusal naming the one it already has (the
+    operator, 26 Sep)."""
+    d = _load()
+    if not _taken(project, MAIN, d):
+        return project
+    base, n = _slug(project) or "container", 2
+    while _taken(project, f"{base}-{n}", d):
+        n += 1
+    return f"{base}-{n}"
 
 
 def _rec(d, project, instance):

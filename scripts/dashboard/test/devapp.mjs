@@ -1916,11 +1916,28 @@ ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT'
 await page.waitForSelector('#dnEnvField:not([hidden])', { timeout: 10000 });
 ok(/PORT=8080/.test(await page.$eval('#dnEnv', e => e.value)),
    '...carrying the env seeded from .env.example');
-// The dialog offers the project's own name, and that name means the
-// project's own container: asked for when the project already has one, the
-// answer says so and where it is, rather than "needs another name" (the
-// operator, 25 Sep, on a project sent for the first time).
-ok(await page.$eval('#dnName', e => e.value) === 'ep.silon', 'the send dialog offers the project\'s own name');
+// The dialog offers the name the next container takes: the project's own
+// while it has none, and once it has that, one beside it, so pressing Send
+// again makes another container rather than a refusal naming the first (the
+// operator, 26 Sep). Its hint says a second needs ports of its own. How many
+// it counts is what the tab had when it loaded, which may still include one
+// the block above is removing: a remove is a job, and the record goes when
+// the job finishes.
+{
+  const offer = await page.evaluate(() => ({ name: $('dnName').value, hint: $('dnHint').textContent }));
+  const have = Object.keys(JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['ep.silon'] || {});
+  ok(have.includes('main') && offer.name === 'ep-silon-2'
+     && /beside the (one|\d+) it already has: give it ports of its own/.test(offer.hint),
+     `with its own container made, the send dialog offers one beside it and says so (${offer.name}; ${
+        offer.hint.slice(0, 70)}; has ${have.join(', ')})`);
+  const fresh = await (await fetch(URL.replace(/\/$/, '') + '/api/artifacts?project=beta',
+    { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  ok(fresh.send_as === 'beta', `...and a project with none is offered its own name (${fresh.send_as})`);
+}
+// The project's own name still means the project's own container: asked for
+// when the project already has one, the answer says so and where it is,
+// rather than "needs another name" (the operator, 25 Sep, on a project sent
+// for the first time).
 {
   // Asked from here rather than the page: a 400 the page fetches lands in
   // its console, and the dev row's check below wants that console clean.
@@ -3048,6 +3065,56 @@ ok(await page.$('#devSend'),
                                    body: JSON.stringify({ project: 'ep.silon', instance: 'riskynew', action: 'remove' }) });
     });
     rmSync(`${DIR}/dockerstate/riskynew.config`, { force: true });
+    // ---- sending it again: another container beside the first (26 Sep) --
+    // A session sends its project to Docker the way the Artifacts tab's Send
+    // does, and sending again makes another container rather than a refusal
+    // naming the first: unnamed, a new one is the project's own while it has
+    // none and <project>-2, -3 after, which is also the name Send opens on.
+    // On ask a name nothing could make is refused before anybody is asked,
+    // the card names the container and the branch it builds from, and Allow
+    // makes it, pins it and builds it from there.
+    {
+      const G = (...a) => execFileSync('git', ['-C', D, ...a], { env, encoding: 'utf8' });
+      ok(insts().includes('main'), `the project has its own container to send another beside (${insts().join(', ')})`);
+      const second = await asSession({ project: 'ep.silon', action: 'new' });
+      const third = await asSession({ project: 'ep.silon', action: 'new' });
+      ok(second.status === 200 && second.instance === 'ep-silon-2' && third.instance === 'ep-silon-3',
+         `unnamed, a session's new makes another container beside the one it has, then another (${
+            second.error || second.instance}, ${third.error || third.instance})`);
+      const offered = await page.evaluate(async () =>
+        (await (await fetch('/api/artifacts?project=ep.silon')).json()).send_as);
+      ok(offered === 'ep-silon-4', `...and Send offers the name after them (${offered})`);
+      await dial('ask');
+      const taken = await asSession({ project: 'ep.silon', action: 'new', instance: 'ep-silon-2', why: 'another' });
+      ok(taken.status === 400 && /already has an instance called ep-silon-2/.test(taken.error || '') && !taken.id,
+         `on ask a name that is taken is refused before anybody is asked (${String(taken.error).slice(0, 60)})`);
+      G('branch', 'sendbranch');
+      const sent = await asSession({ project: 'ep.silon', action: 'new', ref: 'sendbranch',
+                                     why: 'the branch beside main' });
+      const card = await page.evaluate(async (id) =>
+        ((await (await fetch('/api/phone')).json()).asks || []).find(a => a.id === id), sent.id);
+      ok(sent.status === 200 && sent.instance === 'ep-silon-4' && sent.name === 'ep-silon-4'
+         && JSON.stringify(card?.cmd) === '["devapp","new","ep-silon-4","--branch","sendbranch"]',
+         `...and a send's card names the container it makes and its branch (${
+            sent.error || sent.instance}: ${JSON.stringify(card?.cmd)})`);
+      await page.evaluate(async (id) => {
+        await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ action: 'allow', id }) });
+      }, sent.id);
+      await idle();
+      const made4 = (await asSession({ project: 'ep.silon', instance: 'ep-silon-4', action: 'state' })).state || {};
+      ok(made4.ref === 'sendbranch' && made4.built_ref === 'sendbranch',
+         `...and Allow makes it, pins it to that branch and builds it from there (${
+            JSON.stringify([made4.ref, made4.built_ref])})`);
+      await dial('auto');
+      for (const i of ['ep-silon-2', 'ep-silon-3', 'ep-silon-4'])
+        await asSession({ project: 'ep.silon', instance: i, action: 'remove' });
+      await idle();
+      try { G('worktree', 'remove', '--force', `${DIR}/ws/ep-silon-ep-silon-4-build`); }
+      catch (e) { rmSync(`${DIR}/ws/ep-silon-ep-silon-4-build`, { recursive: true, force: true });
+                  try { G('worktree', 'prune'); } catch (e2) { /* nothing to prune */ } }
+      G('branch', '-D', 'sendbranch');
+    }
   }
   // The setting lives in the project's settings with the other Claude may
   // dials (the operator, 24 Sep), because it covers creating the container,
@@ -3845,6 +3912,55 @@ print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
      && /rebuilt bbb; alpha-dev is up/.test(run.stdout || ''),
      `bb devapp rebuild waits three minutes for the controller, and a timeout there watches for the build rather than giving up (${
        JSON.stringify(got).slice(0, 90)} ${(run.stderr || '').split('\n').filter(Boolean).pop() || ''})`);
+}
+
+// bb devapp new sends the project to Docker the way Send does (the operator,
+// 26 Sep): on auto it makes the container, then builds that one and waits
+// for the verdict; on ask the one request carries the branch, Allow makes
+// and builds it, and the verb follows that build rather than asking for
+// another. Driven in process the same way, once per dial.
+{
+  const LIB = new globalThis.URL('../../lib', import.meta.url).pathname;
+  const run = spawnSync('python3', ['-c', `
+import importlib.util, json, os, sys, time
+sys.path.insert(0, ${JSON.stringify(LIB)})
+spec = importlib.util.spec_from_file_location("dv", ${JSON.stringify(LIB + '/devapp-verbs.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+time.sleep = lambda s: None
+m.waits.outcome = lambda auth, rid, no: {"code": 0, "out": "j1"}
+out = {}
+for dial in ("auto", "ask"):
+    bodies = []
+    looks = iter(([{"built_rev": ""}] if dial == "auto" else [])
+                 + [{"job": {"running": True, "step": "building"}},
+                    {"built_rev": "ccc", "running": True, "name": "alpha-2"}])
+    def call(path, body=None, auth="", method="", timeout=30, dial=dial, bodies=bodies, looks=looks):
+        bodies.append({k: body.get(k) for k in ("action", "instance", "ref")})
+        if body.get("action") == "new":
+            return ({"ok": True, "instance": "alpha-2", "name": "alpha-2"} if dial == "auto"
+                    else {"ok": True, "id": 7, "to": "the administrators", "instance": "alpha-2", "name": "alpha-2"})
+        if body.get("action") == "rebuild":
+            return {"ok": True, "started": True, "job": "j1"}
+        return {"state": next(looks)}
+    m.bbapi.call = call
+    os.environ.update(BB_DEV_PROJECT="alpha", BB_DEV_AUTH="x", BB_DEV_REF="sendbranch",
+                      BB_DEV_INSTANCE="", BB_DEV_CONTAINER="")
+    code = 0
+    try:
+        m.new()
+    except SystemExit as e:
+        code = e.code
+    out[dial] = {"code": code, "bodies": bodies}
+print(json.dumps(out))`], { encoding: 'utf8' });
+  const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
+  const acts = d => (got[d]?.bodies || []).map(b => b.action + (b.instance ? ':' + b.instance : '')).join(' ');
+  ok(got.auto?.code === 0 && got.auto.bodies[0].action === 'new' && !got.auto.bodies[0].instance
+     && got.auto.bodies[0].ref === 'sendbranch' && acts('auto') === 'new state:alpha-2 rebuild:alpha-2 state:alpha-2 state:alpha-2'
+     && /created alpha-2/.test(run.stderr || '') && /built ccc; alpha-2 is up/.test(run.stdout || ''),
+     `bb devapp new on auto makes the container and builds that one, waiting for the verdict (${acts('auto')})`);
+  ok(got.ask?.code === 0 && acts('ask') === 'new state:alpha-2 state:alpha-2'
+     && /asked the administrators \(#7\) to send it to Docker as alpha-2/.test(run.stderr || ''),
+     `...and on ask it follows the build Allow starts instead of asking for another (${acts('ask')})`);
 }
 
 await done(browser);

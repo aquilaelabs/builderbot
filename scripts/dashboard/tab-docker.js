@@ -213,18 +213,21 @@ function dnNodeSay(){
   $("dnGo").disabled = false;
 }
 
-function openSendToDocker(project){
+// `sendAs` is the name the server offers (send_name): the project's own
+// while it has none, which is what Send means then, and after that one
+// beside it, so pressing Send again makes another container rather than a
+// refusal naming the first (the operator, 26 Sep). `have` is how many it
+// has already, whose ports a second one must not take.
+function openSendToDocker(project, sendAs, have){
   dnFor = project;
   $("dnTitle").textContent = "New container from " + project;
-  // The project's own name, ready to go: that makes the project's own
-  // container, which is what Send means for a project that has none yet;
-  // another name makes a second one beside it.
-  $("dnName").value = project;
+  $("dnName").value = sendAs || project;
   $("dnErrWrap").hidden = true;
   $("dnPreview").hidden = true;
   $("dnGo").disabled = false; $("dnGo").textContent = "Create";
-  $("dnHint").textContent =
-    "Built from " + project + "'s codebase. Its own name makes its own container; another name makes a second one.";
+  $("dnHint").textContent = have
+    ? `Built from ${project}'s codebase, beside the ${have === 1 ? "one" : have} it already has: give it ports of its own.`
+    : `Built from ${project}'s codebase. Its own name makes its own container; another name makes a second one.`;
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   fillUnderSelect($("dnUnder"), project);

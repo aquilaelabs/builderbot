@@ -913,6 +913,26 @@ def _job_rebuild(project, instance, run):
         devapp._bump()
 
 
+def make_instance(project, instance, node="", owner=None, ref=""):
+    """A new container of a project, pinned to the branch it is to build
+    from when one is named: `new` from the dialog or a session, and Allow on
+    a session's asked one, which is the same making. Nothing is built.
+
+    The pin comes before the first build, or that build comes from the
+    project's checkout and the row says otherwise. A pin that is refused
+    takes the record with it, or the retry that fixes the branch is told the
+    container already exists (B259); nothing was built, so there is nothing
+    else to undo.
+    """
+    r = devapp.create_instance(project, instance or devapp.MAIN, node, owner)
+    if not r.get("error") and ref:
+        p = devapp.set_ref(project, r["instance"], ref)
+        if p.get("error"):
+            _remove_records(project, r["instance"])
+            return p
+    return r
+
+
 def act(project, instance, action, req, *, test_cmd=""):
     """One dev-instance verb, as the dashboard and `bb devapp` name them,
     once server.py has decided who may ask (docker-write, the per-project
@@ -942,18 +962,8 @@ def act(project, instance, action, req, *, test_cmd=""):
         # string decides a compose project and a data directory and is not
         # somewhere an arbitrary one should reach.
         # The project it belongs to when the request says, "" being none.
-        r = devapp.create_instance(project, instance, f(req, "node"),
-                                   f(req, "owner") if "owner" in req else None)
-        if not r.get("error") and f(req, "ref"):
-            # Pinned before the build the dialog starts, or the first one
-            # comes from the project's checkout and the row says otherwise.
-            p = devapp.set_ref(project, r["instance"], f(req, "ref"))
-            if p.get("error"):
-                # The record goes with the refused request, or the retry
-                # that fixes the ref is told the instance already exists
-                # (B259). Nothing was built, so there is nothing else to undo.
-                _remove_records(project, r["instance"])
-                return p, 400
+        r = make_instance(project, instance, f(req, "node"),
+                          f(req, "owner") if "owner" in req else None, f(req, "ref"))
         if not r.get("error") and isinstance(req.get("text"), str) \
                 and req["text"].strip():
             # Written before the build that follows, so the first one has
@@ -1045,12 +1055,17 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
         # is not either: a session cannot propose a change to what it
         # cannot see, and the change is what is asked about.
         acct = users.account_of(me) or {}
-        # The instance a request means when it names none: the
-        # project's only one, as the auto path reads it. `main`
-        # here made Allow write an env for, and build, an instance
+        # The instance the handler resolved, as the auto path acts on it:
+        # for a change, the project's only one when the request names
+        # none; for a new one, the name Send would offer. Deriving it
+        # again here made Allow write an env for, and build, an instance
         # the project did not have (the review of 24 Sep).
-        want = devapp.field(req, "instance") or (devapp.MAIN if action == "new"
-                                                 else devapp.only_instance(project))
+        want = devapp.instance_key(project, instance) if action == "new" else instance
+        # A name no answer could make is refused here rather than put in
+        # front of a person first.
+        why = devapp.new_refusal(project, want) if action == "new" else ""
+        if why:
+            return {"error": why}, 400
         text = req.get("text") if action in ("env-set", "new") else None
         # env-set means the env, whatever was sent as it: a missing
         # text is an empty env, as the auto path writes one.
@@ -1064,8 +1079,13 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
             asker_name=str(acct.get("name") or ""),
             asker_admin=users.is_admin(acct),
             env=text if isinstance(text, str) and (action == "env-set" or text.strip()) else None,
-            create=action == "new", remove=action == "remove", target="" if project == sess else project)
-        return r, (400 if r.get("error") else 200)
+            create=action == "new", remove=action == "remove", target="" if project == sess else project,
+            ref=devapp.field(req, "ref") if action == "new" else "")
+        # Which container it will be, which the session did not necessarily
+        # choose, keyed and named as the auto path answers: it follows that
+        # container's build once Allow starts it.
+        return (r | {"instance": want, "name": devapp.pname(project, want)} if not r.get("error") else r), \
+            (400 if r.get("error") else 200)
     # What the others sharing this project would want to know before they
     # press the same button, naming the instance the server resolved. Reads
     # and the env editor are not news, so they are not on this list.
@@ -1089,4 +1109,7 @@ def row_states(name):
     list: on an agent node each is a probe job, and both ask the same
     daemon."""
     with devapp.read_scope():
-        return {"devapp": state(name), "devapps": states(name)}
+        return {"devapp": state(name), "devapps": states(name),
+                # The name Send opens on: its own for a project with none,
+                # another beside it for one that has it.
+                "send_as": devapp.send_name(name)}

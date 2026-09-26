@@ -148,9 +148,11 @@ bb: BuilderBot helper
                          settings hand that over (Claude may: Run its
                          container). On `ask` the reason goes to a person and
                          this waits for their answer
-  bb devapp new [--env FILE] [--why "..."]
-                         create the project's container from its own compose
-                         file when it has none, under the same setting
+  bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
+                         send the project to Docker, as the Send button does:
+                         a container from its own compose file (its own, or
+                         another beside it), built and started, under the
+                         same setting
   bb devapp remove [--why "..."]
                          take it out of the manager, under the same setting;
                          its env and data stay for a remake
@@ -1984,16 +1986,16 @@ cmd_container() {
 # bb devapp: this project's dev instance, and what a session may be given
 # over it.
 #
-# Up, Down, removing one and a container of any other shape are the
-# operator's. What a project can hand over, with one setting in its settings
-# dialog (Claude may: Run its container), is rebuilding its container,
-# changing its env and creating its own when it has none (24 Sep), because
-# a project whose work IS the container has a loop that a session cannot
-# close otherwise: change it, rebuild it, look at what it did. Three settings and
-# `deny` is the default: `auto` is the loop, `ask` puts the reason in front
-# of a person and starts the build when they allow it, `deny` refuses with
-# the sentence that names the dial, so a session that tries learns where the
-# decision lives rather than guessing.
+# Up, Down and a container of any other shape are the operator's. What a
+# project can hand over, with one setting in its settings dialog (Claude may:
+# Run its container), is sending it to Docker (its own container, or another
+# beside it: 24 and 26 Sep), rebuilding its containers, changing their env
+# and removing one, because a project whose work IS the container has a loop
+# that a session cannot close otherwise: change it, rebuild it, look at what
+# it did. Three settings and `deny` is the default: `auto` is the loop, `ask`
+# puts the reason in front of a person and starts the build when they allow
+# it, `deny` refuses with the sentence that names the dial, so a session that
+# tries learns where the decision lives rather than guessing.
 #
 # The daemon is the controller's connection to the node, so this goes through
 # the API like `bb root` and `bb phone` rather than running docker anywhere.
@@ -2045,12 +2047,41 @@ cmd_devapp() {
             shift || true
             BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 "$BB_LIB/devapp-verbs.py" test "$@"
             ;;
-        new|env|remove)
-            # Creating the project's own container, its env, and removing it,
-            # under the same setting as rebuild (Claude may: Run its
-            # container). On `ask` one request carries it all and Allow runs
-            # it, the build included; on `auto` it is done and bb devapp
-            # rebuild is next.
+        new)
+            # This project sent to Docker, as the Artifacts tab's Send does: a
+            # container made from its own compose file, named NAME or, unnamed,
+            # its own while it has none and one beside it after; pinned to a
+            # branch with --branch; then built and started, with this waiting
+            # for the verdict. Under the same setting as rebuild (Claude may:
+            # Run its container): on `ask` one request carries it all and
+            # Allow makes and builds it.
+            local why="" file="" ref="" tmp="" rc=0
+            local usage="usage: bb devapp new [NAME] [--branch REF] [--env FILE|-] [--why \"...\"]"
+            shift || true
+            if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then
+                [ -z "$inst" ] || die "name it once: bb devapp new NAME, or --instance NAME"
+                BB_DEV_INSTANCE="$1"; shift
+            fi
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    --branch) [ $# -ge 2 ] || die "$usage"; ref="$2"; shift 2 ;;
+                    --env) [ $# -ge 2 ] || die "$usage"; file="$2"; shift 2 ;;
+                    *) die "$usage" ;;
+                esac
+            done
+            if [ "$file" = - ]; then tmp="$(mktemp)"; cat > "$tmp"; file="$tmp"; fi
+            [ -z "$file" ] || [ -f "$file" ] || die "no such file: $file"
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_WHY="$why" BB_DEV_REF="$ref" \
+            BB_DEV_FILE="$file" python3 "$BB_LIB/devapp-verbs.py" new || rc=$?
+            [ -z "$tmp" ] || rm -f "$tmp"
+            return "$rc"
+            ;;
+        env|remove)
+            # Its env, and removing it, under the same setting as rebuild
+            # (Claude may: Run its container). On `ask` Allow removes it, or
+            # writes the env and builds nothing; on `auto` it is done, and bb
+            # devapp rebuild applies an env.
             local verb="$sub" why="" file="" setting=0 tmp=""
             shift || true
             if [ "$verb" = env ] && [ "${1:-}" = set ]; then
@@ -2061,9 +2092,7 @@ cmd_devapp() {
             while [ $# -gt 0 ]; do
                 case "$1" in
                     --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
-                    --env) { [ "$verb" = new ] && [ $# -ge 2 ]; } || die "usage: bb devapp new [--env FILE] [--why \"...\"]"
-                           file="$2"; shift 2 ;;
-                    *) die "usage: bb devapp new [--env FILE] [--why \"...\"] | env [set FILE|-] [--why \"...\"] | remove [--why \"...\"]" ;;
+                    *) die "usage: bb devapp env [set FILE|-] [--why \"...\"] | remove [--why \"...\"]" ;;
                 esac
             done
             if [ "$file" = - ]; then tmp="$(mktemp)"; cat > "$tmp"; file="$tmp"; fi
@@ -2097,7 +2126,7 @@ cmd_devapp() {
             BB_DEV_AUTH="$auth" BB_DEV_VERB="$verb" BB_DEV_NAME="$name" BB_DEV_WHY="$why" \
                 python3 "$BB_LIB/devapp-verbs.py" ctl
             ;;
-        *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
+        *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [NAME] [--branch REF] [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
     esac
 }
 
