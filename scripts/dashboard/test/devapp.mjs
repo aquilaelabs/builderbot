@@ -3038,32 +3038,57 @@ ok(await page.$('#devSend'),
                                    body: JSON.stringify({ project: 'ep.silon', instance: i, action: 'remove' }) });
     }, inst);
     await dial('auto');
-    // A compose asking for more than its own directory needs a person's
-    // acknowledgement once, whatever the setting (a session's report, 24
-    // Sep): new says so rather than promising that rebuild builds it, and
-    // rebuild's refusal names the way past it instead of inviting the
-    // session to cut the compose down.
+    // A compose asking for more than its own directory is confirmed by a
+    // person pressing Build; a session's build follows its project's Run its
+    // container setting instead, like every other container (the operator,
+    // 26 Sep, after a session on auto was stopped there): auto builds it,
+    // and at ask the person's Allow is the confirmation. A person's own
+    // rebuild without it is still refused, on its job.
     writeFileSync(`${DIR}/dockerstate/riskynew.config`, JSON.stringify(
       { services: { app: { build: { context: '.' }, privileged: true } } }));
+    const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+    const jobEnd = async id => {
+      let j = null;
+      for (let i = 0; i < 60 && id && !(j && ['failed', 'succeeded', 'canceled'].includes(j.state)); i++){
+        await sleep(500);
+        j = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?id=' + id, { headers: H })).json();
+      }
+      return j || {};
+    };
     const rn = await asSession({ project: 'ep.silon', action: 'new', instance: 'riskynew' });
-    ok(rn.status === 200 && /asks for more than its own directory/.test(rn.needs_ack || '')
-       && /pressing Build or Rebuild on its row on the Docker tab/.test(rn.needs_ack || ''),
-       `on auto, new says a risky compose waits for a person's acknowledgement (${String(rn.needs_ack).slice(0, 90)})`);
-    // The refusal is the job's (B260): the request answers with the job and
-    // the gate's words land on it, which is what bb devapp rebuild prints.
     const rr = await asSession({ project: 'ep.silon', action: 'rebuild', instance: 'riskynew' });
-    let rj = null;
-    for (let i = 0; i < 60 && rr.job && !(rj && ['failed', 'succeeded', 'canceled'].includes(rj.state)); i++){
-      await sleep(500);
-      rj = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?id=' + rr.job,
-        { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
-    }
-    ok(rr.status === 200 && rj?.state === 'failed' && /Build or Rebuild on its row on the Docker tab/.test(rj.error || ''),
-       `...and rebuild's refusal, on its job, names the way past it (${rj?.state}: ${String(rj?.error).slice(0, 90)})`);
+    const rj = await jobEnd(rr.job);
+    ok(rn.status === 200 && !rn.needs_ack && rr.status === 200 && rj.state === 'succeeded',
+       `on auto a session makes and builds a compose that asks for more than its own directory (${
+          rn.error || 'made'}; ${rj.state}: ${String(rj.error || '').slice(0, 80)})`);
+    const mine = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', instance: 'riskynew', action: 'rebuild', ack: '' }) })).json()));
+    const mj = await jobEnd(mine.job);
+    ok(mj.state === 'failed' && /Build or Rebuild on its row on the Docker tab/.test(mj.error || ''),
+       `...while a person's own rebuild without the confirmation is still refused, on its job (${mj.state}: ${
+          String(mj.error || '').slice(0, 60)})`);
+    await dial('ask');
+    const ra = await asSession({ project: 'ep.silon', action: 'rebuild', instance: 'riskynew',
+                                 why: 'the privileged one again' });
+    await page.evaluate(async (id) => {
+      await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ action: 'allow', id }) });
+    }, ra.id);
+    const out = await (await fetch(URL.replace(/\/$/, '') + '/api/phone', { method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+      body: JSON.stringify({ action: 'outcome', id: ra.id }) })).json();
+    const aj = await jobEnd(out.out);
+    ok(ra.status === 200 && ra.id && out.state === 'done' && aj.state === 'succeeded',
+       `...and at ask the person's Allow is the confirmation: the build it starts goes through (${
+          out.state}; ${aj.state}: ${String(aj.error || out.out || '').slice(0, 80)})`);
+    await dial('auto');
+    await idle();
     await page.evaluate(async () => {
       await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                    body: JSON.stringify({ project: 'ep.silon', instance: 'riskynew', action: 'remove' }) });
     });
+    await idle();
     rmSync(`${DIR}/dockerstate/riskynew.config`, { force: true });
     // ---- sending it again: another container beside the first (26 Sep) --
     // A session sends its project to Docker the way the Artifacts tab's Send

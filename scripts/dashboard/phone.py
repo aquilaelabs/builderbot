@@ -62,15 +62,13 @@ container_maker = None
 # ...and what verb() needs to know about the one asking, set by server.py
 # beside the rest: the account store, the projects an account sees, the
 # node a project builds on and its Run its container dial, a container's
-# node held to its project's (R79) and what its compose asks for beyond
-# its own directory (B251), the dial's refusal, and the sessions' networks
-# told when a container is made (R79).
+# node held to its project's (R79), the dial's refusal, and the sessions'
+# networks told when a container is made (R79).
 users = None
 project_names = None
 project_node = None
 dial = None
 on_project_node = None
-unacked_risks = None
 run_denied = ""
 net_nudge = None
 # ...and what artifact_verb() needs: a path in a project's dist/ resolved the
@@ -940,7 +938,10 @@ def decide(rid, allow, uid, name="", admin=False):
         # Allow on "env set" bounced a running container nobody was told
         # would move).
         if not res.get("error") and (r.get("create") or r.get("env") is None):
-            res = rebuilder(key, r.get("instance") or "") or {}
+            # Allow is the answer the project's `ask` puts a person in front
+            # of, so the build does not stop again at the confirmation a
+            # person's own Build on the row gives (the operator, 26 Sep).
+            res = rebuilder(key, r.get("instance") or "", gate=False) or {}
         elif not res.get("error"):
             res = {"job": "env written"}
         with _lock:
@@ -969,7 +970,8 @@ def decide(rid, allow, uid, name="", admin=False):
         res = container_maker(r.get("name") or "", r.get("compose") or "",
                               r.get("env") or "", r.get("node") or "", r.get("for") or "") or {}
         if not res.get("error") and rebuilder is not None:
-            built = rebuilder(res.get("project") or "", res.get("instance") or "") or {}
+            # The administrator read the compose file itself to allow this.
+            built = rebuilder(res.get("project") or "", res.get("instance") or "", gate=False) or {}
             if built.get("error"):
                 res = {"error": f"{res.get('name') or r.get('name')} is registered on the "
                                 f"Docker tab, and its build did not start: {built['error']}"}
@@ -1236,13 +1238,9 @@ def verb(action, req, who, fresh):
                     if r.get("error"):
                         return r, 400
                     net_nudge()
-                    # Built unless the compose asks for more than its own
-                    # directory, which a person acknowledges once, as new
-                    # says it (B251).
-                    why = unacked_risks(r["project"], r["instance"])
-                    if why:
-                        return r | {"needs_ack": why}, 200
-                    built = rebuilder(r["project"], r["instance"]) or {}
+                    # Built whatever the compose asks for: auto is the
+                    # project's answer (the operator, 26 Sep).
+                    built = rebuilder(r["project"], r["instance"], gate=False) or {}
                     if built.get("error"):
                         return r | {"error": f"{r['name']} is registered on the Docker "
                                              f"tab, and its build did not start: {built['error']}"}, 400

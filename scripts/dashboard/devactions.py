@@ -20,7 +20,6 @@ base knows nothing of this file. server.py holds only the routes and hands
 the compose runner to jobs.py through configure() here.
 """
 
-import contextlib
 import os
 import re
 import sys
@@ -811,12 +810,19 @@ def _job_down(project, instance, run):
 
 
 @devapp._on_instance
-def rebuild(project, instance=devapp.MAIN, ack=""):
+def rebuild(project, instance=devapp.MAIN, ack="", gate=True):
     """Build, then bounce, or stop at the env gate. A job: a build is
     minutes, and the poll watches it through job_rev. The name and the
     worktree are this side's and are checked in front of the answer; the
     risk gate reads the compose on the node and runs behind it (B260), so
-    its refusal is the job's, on the row."""
+    its refusal is the job's, on the row.
+
+    `gate` is False for a build its project's setting has already answered
+    for: a session's on auto, or a person's Allow on a session's question.
+    The confirmation of what a compose asks for is a person's own press of
+    Build; a session's build follows Claude may: Run its container like
+    every other (the operator, 26 Sep: auto does it, ask asks, deny
+    refuses)."""
     if devapp.compose_file(project) is None:
         return {"error": "no compose file here"}
     clash = devapp.name_clash(project, instance)
@@ -826,7 +832,7 @@ def rebuild(project, instance=devapp.MAIN, ack=""):
     if moved:
         return {"error": moved}
     return _submit(project, instance, "rebuild",
-                   check=lambda: devapp._risk_gate(project, instance, ack))
+                   check=lambda: devapp._risk_gate(project, instance, ack) if gate else "")
 
 
 def run_compose_job(job, run):
@@ -933,7 +939,7 @@ def make_instance(project, instance, node="", owner=None, ref=""):
     return r
 
 
-def act(project, instance, action, req, *, test_cmd=""):
+def act(project, instance, action, req, *, test_cmd="", gate=True):
     """One dev-instance verb, as the dashboard and `bb devapp` name them,
     once server.py has decided who may ask (docker-write, the per-project
     dial, a session's own node) and which instance is meant.
@@ -943,6 +949,9 @@ def act(project, instance, action, req, *, test_cmd=""):
     state riding on every change so nothing on screen is stale. Here rather
     than in the handler because what a verb means is this module's to say
     (the one-file rule); the handler holds the gate and nothing else.
+    `gate` is rebuild()'s: False for a session's, since a session's rebuild
+    reaches here only on its project's `auto` (at `ask` it is a question to
+    a person first, and at `deny` it is refused before this).
     """
     f = devapp.field
     if action == "abort":
@@ -974,15 +983,6 @@ def act(project, instance, action, req, *, test_cmd=""):
             if w.get("error"):
                 _remove_records(project, r["instance"])      # as above (B259)
                 return r | {"error": w["error"]}, 400
-        if not r.get("error"):
-            # Said now rather than at the first rebuild: a compose that asks
-            # for more than its own directory cannot be built until a person
-            # has acknowledged it, and "rebuild builds it" was untrue (24 Sep).
-            # After the env, which a path in the compose can come from.
-            with contextlib.suppress(Exception):
-                why = devapp.unacked_risks(project, r["instance"])
-                if why:
-                    r["needs_ack"] = why
         return r, (400 if r.get("error") else 200)
     if instance not in devapp.instances(project):
         return {"error": f"no instance {instance} of {project}"}, 400
@@ -1017,7 +1017,7 @@ def act(project, instance, action, req, *, test_cmd=""):
         r = test(project, instance, test_cmd,
                  [str(a) for a in (req.get("args") or [])][:32])
     elif action == "rebuild":
-        r = rebuild(project, instance, f(req, "ack"))
+        r = rebuild(project, instance, f(req, "ack"), gate=gate)
     elif action == "env-get":
         # An empty env opens on the example rather than on nothing. The
         # `missing` list still answers about what is STORED, so the hint
@@ -1093,7 +1093,7 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
         say(project, users.uid_of(me),
             f"{principal[len('user:'):]} ran {action} on "
             f"{project}" + (f" ({instance})" if instance != devapp.MAIN else ""))
-    payload, status = act(project, instance, action, req, test_cmd=test_cmd)
+    payload, status = act(project, instance, action, req, test_cmd=test_cmd, gate=not sess)
     # An instance made, removed or given to another project changes what
     # a project's sessions may reach on its node (R79).
     if status == 200 and action in ("new", "remove", "owner"):

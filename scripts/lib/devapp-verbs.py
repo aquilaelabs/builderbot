@@ -196,10 +196,6 @@ def new():
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
         _watch(_client(inst)[1], "")
         return
-    if r.get("needs_ack"):
-        # Made, and not buildable by a session: the compose asks for more than
-        # its own directory, which a person acknowledges on the row first.
-        sys.exit(f"[builderbot] created {name}, and it is not built: {r['needs_ack']}")
     print(f"[builderbot] created {name}", file=sys.stderr)
     # The rebuild verb as it is, aimed at the container just made: the same
     # request, the same patience with a slow controller and the same watch.

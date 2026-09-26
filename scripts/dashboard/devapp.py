@@ -3353,22 +3353,16 @@ def _risk_gate(project, instance=MAIN, ack=""):
             _rec(store, project, instance)["risks_ack"] = d
             write_json(FILE, store)
         return ""
-    # With the way past it, which a session met this without: a person
-    # acknowledges the list where it is shown, once, and it holds until the
-    # compose asks for more. Taking the risky lines out of the compose is
-    # the move the bare refusal suggested, and it broke the container it was
-    # for (24 Sep, a PUID/PGID image that needs CHOWN and SETUID).
+    # With the way past it: a person acknowledges the list where it is
+    # shown, once, and it holds until the compose asks for more. Taking the
+    # risky lines out of the compose is the move the bare refusal suggested,
+    # and it broke the container it was for (24 Sep, a PUID/PGID image that
+    # needs CHOWN and SETUID). A session's build never meets this: its
+    # project's Run its container setting is its answer (rebuild's `gate`).
     return ("this compose asks for more than its own directory: "
             + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else "")
             + ". A person acknowledges that once by pressing Build or Rebuild on its row "
-              "on the Docker tab, where the list is shown; after that a rebuild from a "
-              "session works until the compose asks for more")
-
-
-def unacked_risks(project, instance=MAIN):
-    """The risk gate's refusal for this instance as things stand, or "": the
-    gate itself, asked without an acknowledgement, so nothing is written."""
-    return _risk_gate(project, instance, "")
+              "on the Docker tab, where the list is shown")
 
 
 def is_file_source(project, instance=MAIN):

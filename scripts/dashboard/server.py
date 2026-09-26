@@ -2391,7 +2391,6 @@ phone.project_names = lambda who: {p["name"] for p in project_list(who)}
 phone.project_node = lambda p: prefs.get(p)["node"]
 phone.dial = lambda p: prefs.get(p)["devbuild"]
 phone.on_project_node = devapp.on_project_node
-phone.unacked_risks = devapp.unacked_risks
 phone.run_denied = devapp.RUN_DENIED
 phone.net_nudge = net_nudge
 phone.resolve_artifact = artifacts.resolve
