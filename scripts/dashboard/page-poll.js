@@ -50,6 +50,10 @@ function reapDeadTerminals(){
 
 let refreshBusy = false;     // a poll is out
 let refreshAgain = false;    // ...and somebody asked for another while it was
+// How many action answers applyNow has adopted: a poll sent before the last
+// of them was read before that action, so its reply is older than the rows
+// on screen (B294).
+let adoptSeq = 0;
 
 async function refresh(){
   // One at a time, and never dropped.
@@ -69,6 +73,7 @@ async function refresh(){
   if (refreshBusy){ refreshAgain = true; return; }
   refreshBusy = true;
   const asked = performance.now();
+  const adoptedBefore = adoptSeq;
   let fetched = false;     // the container answered; what failed is this page
   try{
     const r = preStatusUsed ? await fetch("/api/status")
@@ -77,7 +82,13 @@ async function refresh(){
     // login page rather than showing a dead dashboard with a red dot.
     if (r.status === 401){ location.href = "/login?next=%2F"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
-    state = await r.json();
+    const got = await r.json();
+    // An action's own answer was adopted while this poll was out: this
+    // reply was read before that action, and drawing it put the row back
+    // the way it was until the next poll, a locked padlock after an unlock
+    // (B294). Dropped, and a fresh one asked for.
+    if (adoptSeq !== adoptedBefore){ refreshAgain = true; return; }
+    state = got;
     // A new run of the container under this page, noticed here or by the
     // revs poll, whichever answers first: its code is what that run serves,
     // so the page starts again rather than carrying on with the old code.

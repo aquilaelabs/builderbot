@@ -505,6 +505,7 @@ async function setProjectPinned(name, on){
 // poll still runs and still wins in the end; this only removes the wait
 // between a click and the thing it clicked moving.
 function applyNow(fn){
+  adoptSeq++;                      // a poll already out is older than this
   (state?.projects || []).forEach(fn);
   drawProjects(state?.projects || []);
   drawPanes();                     // the Projects tab shows the same rows
