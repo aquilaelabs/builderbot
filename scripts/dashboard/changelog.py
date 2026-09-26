@@ -584,25 +584,37 @@ def unroll(d, version):
         return False
     end = next((i for i in range(start + 1, len(lines))
                 if lines[i].startswith("## ")), len(lines))
-    section = [ln for ln in lines[start + 1:end] if ln.strip().startswith("- ")]
+    # The section as groups, category by category (B277): the entries went
+    # back as bare lines before, under whatever category Unreleased opened
+    # with, so a rolled-back release filed everything under Added.
+    sec, cur = [], {"name": "", "entries": []}
+    for ln in lines[start + 1:end]:
+        if ln.startswith(CATEGORY):
+            if cur["entries"]:
+                sec.append(cur)
+            cur = {"name": ln[len(CATEGORY):].strip(), "entries": []}
+        elif ln.strip().startswith("- "):
+            body = ln.strip()[2:].strip()
+            m = _STAMP.search(body)
+            cur["entries"].append({"text": body[:m.start()] if m else body,
+                                   "shas": m.group(1).split(", ") if m else []})
+    if cur["entries"]:
+        sec.append(cur)
     rest = lines[:start] + lines[end:]
-    # Merge into an existing Unreleased, or the dissolved section becomes it.
-    at = next((i for i, ln in enumerate(rest)
-               if ln.strip() == UNRELEASED), None)
-    if at is None:
-        out = rest[:start] + [UNRELEASED, ""] + section + [""] + rest[start:]
-    else:
-        # Immediately before the first existing entry, so the merged run is
-        # one contiguous list rather than two groups with a seam.
-        j = next((i for i in range(at + 1, len(rest))
-                  if rest[i].strip().startswith("- ")
-                  or rest[i].startswith("## ")), len(rest))
-        out = rest[:j] + section + rest[j:]
+    if not any(ln.strip() == UNRELEASED for ln in rest):
+        rest = rest[:start] + [UNRELEASED, ""] + rest[start:]
     try:
-        _write(d, "\n".join(_tidy(out)) + "\n")
+        _write(d, "\n".join(_tidy(rest)) + "\n")
     except OSError:
         return False
-    return True
+    gs = groups(d)
+    for g in sec:
+        have = next((x for x in gs if x["name"] == g["name"]), None)
+        if have is None:
+            gs.append(g)
+        else:
+            have["entries"] = g["entries"] + have["entries"]
+    return not (put(d, gs) or {}).get("error")
 
 
 def _tidy(lines):
@@ -618,15 +630,29 @@ def _tidy(lines):
 
 
 @_held
-def roll(d, version, date):
+def roll(d, version, date, resolve=None):
     """Date the Unreleased section as `version`, ready to commit with it.
 
     Returns True when there was something to roll. An empty cycle rolls
     nothing rather than writing a section holding only a date. The warning
     about that belongs at the moment of bumping, not in the shipped file.
+
+    `resolve(text)` answers the commits that carry an entry, when the caller
+    has git: add() stamps the HEAD of the moment, which is the commit
+    before the one the entry lands in, so the record cited the wrong
+    commit until the roll fixed it up (B284).
     """
     if not unreleased(d):
         return False
+    if resolve is not None:
+        gs, moved = groups(d), False
+        for g in gs:
+            for e in g["entries"]:
+                got = resolve(e["text"]) or []
+                if got and got != e["shas"]:
+                    e["shas"], moved = got, True
+        if moved:
+            put(d, gs)
     text = read(d)
     out, renamed = [], False
     for ln in text.splitlines():

@@ -3384,7 +3384,7 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
   // responsibility: with control-group systemd killed the job children, and
   // a build left running while the controller re-queues it is the one thing
   // that change could have cost.
-  ok(/def bye\(\*_\):[\s\S]{0,400}?j\.cancel\(\)[\s\S]{0,200}?self\.session_stop\(\)/.test(src),
+  ok(/def bye\(\*_\):[\s\S]{0,400}?j\.cancel\(\)[\s\S]{0,1200}?self\.session_stop\(\)/.test(src),
      'the agent cancels its running jobs on SIGTERM, since systemd no longer does it');
 }
 

@@ -33,6 +33,15 @@
 - A controller restart longer than the grace window no longer fails every running job on every node as node lost: a node's last word is measured from the controller's own start (35b6970)
 - The terse briefing keeps or, rather than, by, be, then and so, the words that turn a sentence, leaves quoted labels whole and never drops a bracket; a code span wrapped over a line is read as one (35b6970)
 - Four tokens the stylesheet used were never defined, so a held change's text and the About page lost their font and colour; the bell's root tag reads bg on bad as the other tags do; a branch row's five controls wrap on a phone; a shelved item is dim rather than faded (35b6970)
+- A job's real end reaches its row after this side called the node lost: the late result is taken and says so, and the module that queued a job lost at hello or by silence still runs its hook, so a Docker row no longer says building for a build the agent never reported (B285, B287) (df92882)
+- The agent says each running job was stopped when it is stopped, its deadlines and hello timer ride the monotonic clock, and a job's unsent output is capped with a line saying how much was dropped (B286, B287) (df92882)
+- The container's supervisor starts the dashboard again when it dies, at most five times an hour, and the hook it runs starts only what is not already listening (B282) (df92882)
+- The recursive chown of the home volume, the log directory and the Playwright store runs only when their top is not the account's yet, and the store is no longer made world-writable (B283) (df92882)
+- A changelog entry cites the commit that carries it: the bump resolves each entry against the file's own history; and unroll keeps every category (B284, B277) (df92882)
+- A release's MSI and quad forms keep the ordinal, so a release no longer ranks below the dev build before it (B276) (df92882)
+- A snapshot carries the symlinks that stay inside the tree, and a normalised mode (B281) (df92882)
+- bb tests preflight says when the map placed a changed script in no suite and does not call that clean (B280); the code map reads function name braces, one-line functions and a hash inside an expansion (B279), and a property assigned an arrow is not named unused (B271) (df92882)
+- android:platform-tools and android:emulator claim x86_64 Linux only, which is what Google ships (B278) (df92882)
 
 ### Security
 
@@ -46,6 +55,8 @@
 - A compose that binds a host path outside the project, the docker socket, a dropped security profile or the host's user namespace is a risk a person acknowledges before it runs; a session whose project may run its container could mount the node's root before (f9ca487)
 - The phone tab's rows, the jobs listing's node names and the node listing's shipped agent and first pick are scoped to what the account may see, and re-running the doctor is an administrator's; each carried the machines' names to a session before (35b6970)
 - A dist/ that is a symlink serves nothing outside the project's own tree, for the artifact listing and download and a node's fetch of a job's inputs; a compose file that is a symlink is not read; a local git remote is the project's own repository or a worktree of it, never another project's (35b6970)
+- The companion app asks for the phone to be unlocked before Approve or Deny on a root ask and keeps the command off the lock screen; it warns at sign-in over http, and checks the self-update APK against the dashboard's sha256 before installing (B272, B273) (df92882)
+- The companion app reads a node's projects and defaults nobody to administrator until the dashboard says so (B275); its CI signs a release when the keystore secrets are set and pins its actions and gradle by checksum (B274) (df92882)
 
 ## 0.7.0: 2026-09-25
 

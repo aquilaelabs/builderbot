@@ -531,6 +531,7 @@ class JSScanner:
                 if name:
                     d = self.sink.add_def(name, self.line, "arrow", self.enclosing_or_blank())
                     d["at"] = self.base + self.i + 1
+                    d["prop"] = getattr(self, "_prop", False)
                     self.stack.append((name, self.depth, d))
                 else:
                     self.stack.append((self.enclosing(), self.depth, None))
@@ -570,6 +571,9 @@ class JSScanner:
                 if m and m.group(1) not in JS_KEYWORDS and self.last_kw != "function":
                     d = self.sink.add_def(m.group(1), self.line, "arrow", self.enclosing_or_blank())
                     d["expr"] = True
+                    # A property (`nb.clashResume = () =>`): the object's to
+                    # call, so nothing here can see its calls (B271).
+                    d["prop"] = m.start(1) > 0 and s[max(0, self.i - 200):self.i][m.start(1) - 1] == "."
             self.i += 1
             self.last_sig = "=>"
             return
@@ -595,6 +599,10 @@ class JSScanner:
         # or the one before.
         head = self.s[max(0, self.i - 200):self.i]
         m = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>\s*$", head)
+        # A property (`nb.clashResume = () =>`) is the object's to call:
+        # kept as a definition for the attribution of what it draws, marked
+        # so `unused` does not name it as never called (B271).
+        self._prop = bool(m) and m.start(1) > 0 and head[m.start(1) - 1] == "."
         if m and m.group(1) not in JS_KEYWORDS:
             return m.group(1)
         # `name: (...) =>` in an object
@@ -653,20 +661,43 @@ def markup_draws(markup, sink, line0):
             sink.add_draw(what, kind, ln, "(markup)")
 
 
-SH_DEF = re.compile(r"^\s*(?:function\s+)?([A-Za-z_][\w-]*)\s*\(\)\s*\{")
+# `name() {`, `function name {` and `function name() {` alike (B279).
+SH_DEF = re.compile(r"^\s*(?:function\s+([A-Za-z_][\w-]*)\s*(?:\(\))?|([A-Za-z_][\w-]*)\s*\(\))\s*\{")
+SH_COMMENT = re.compile(r"(^|\s)#.*$")
+
+
+def _sh_name(m):
+    return m.group(1) or m.group(2)
 
 
 def scan_sh(text, sink):
     scan_sections(text, sink)
     lines = text.split("\n")
-    names = {m.group(1): i + 1 for i, ln in enumerate(lines) if (m := SH_DEF.match(ln))}
+    names = {_sh_name(m): i + 1 for i, ln in enumerate(lines) if (m := SH_DEF.match(ln))}
     cur = "(top level)"
     word = re.compile(r"(?<![\w./-])([A-Za-z_][\w-]*)(?![\w-])")
     for i, ln in enumerate(lines, 1):
+        # A comment starts at a hash at the start or after a space: the
+        # hash of `${#arr[@]}` is not one (B279).
+        code = "" if ln.lstrip().startswith("#") else SH_COMMENT.sub("", ln)
         m = SH_DEF.match(ln)
         if m:
-            cur = m.group(1)
-            sink.add_def(cur, i, "function", "")
+            name = _sh_name(m)
+            sink.add_def(name, i, "function", "")
+            # `f() { ...; }` on one line: its calls are read here and it is
+            # over on this line, so the next brace in column zero is not
+            # its end and the function after it is not inside it.
+            body = code[m.end():]
+            if body.count("}") >= body.count("{") + 1:
+                for d in reversed(sink.defs):
+                    if d["name"] == name:
+                        d["end"] = i
+                        break
+                for w in word.finditer(body):
+                    if w.group(1) in names and w.group(1) != name:
+                        sink.add_call(w.group(1), "", i, name)
+                continue
+            cur = name
             continue
         if ln.startswith("}") and cur != "(top level)":
             for d in reversed(sink.defs):
@@ -675,7 +706,6 @@ def scan_sh(text, sink):
                     break
             cur = "(top level)"
             continue
-        code = ln.split("#", 1)[0] if not ln.lstrip().startswith("#") else ""
         for w in word.finditer(code):
             if w.group(1) in names and w.group(1) != cur:
                 sink.add_call(w.group(1), "", i, cur)
@@ -1168,8 +1198,10 @@ def q_unused(idx, path=None):
             continue
         n = d["name"]
         # A handler assigned to an element (el.onclick = ...) is used by the
-        # browser, which the map cannot see; its name says what it is.
-        if n.startswith("on") and n[2:3].islower():
+        # browser, which the map cannot see; its name says what it is. And
+        # a property of an object (nb.clashResume = ...) is called as the
+        # object's, which the map does not follow either (B271).
+        if (n.startswith("on") and n[2:3].islower()) or d.get("prop"):
             continue
         if called.get(n, 0) == 0 and refs.get(n, 0) - own.get(n, 0) <= 0:
             rows.append(d)

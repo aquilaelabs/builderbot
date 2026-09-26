@@ -2128,6 +2128,22 @@ def app_apk():
     return apks[0].name if apks else ""
 
 
+def app_apk_sha():
+    """The newest companion APK's sha256, for the app to check a download
+    against before it installs (B273); "" when there is none."""
+    name = app_apk()
+    if not name:
+        return ""
+    try:
+        h = hashlib.sha256()
+        with open(WORKSPACE / "BuilderBot" / "dist" / name, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return ""
+
+
 # The page's own scripts, each named with its version as the page is served.
 # `no-cache` makes a browser ask before it uses a copy, but a phone left on
 # the page across an update still met the old Global rules dialog after it
@@ -4478,7 +4494,8 @@ class Handler(BaseHTTPRequestHandler):
         # dashboard serves, the image it is, and where a newer app is.
         return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
                            "image": image_stamp().get("rev") or "",
-                           "built": image_stamp().get("built") or "", "apk": app_apk()})
+                           "built": image_stamp().get("built") or "", "apk": app_apk(),
+                           "apk_sha256": app_apk_sha()})
 
     def _get_welcome(self):
         """GET /api/welcome."""

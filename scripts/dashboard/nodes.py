@@ -2945,10 +2945,15 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     """Terminal. Idempotent by design: the agent retries until it is
     acknowledged, so the second arrival of the same result is a no-op with
     the same answer, not a second audit row."""
-    got = _rows("SELECT node, state, type, project FROM jobs WHERE id = ?", (job_id,))
+    got = _rows("SELECT node, state, type, project, error FROM jobs WHERE id = ?", (job_id,))
     if not got or got[0]["node"] != node_id:
         return {"error": "not this node's job"}
-    if got[0]["state"] in JOB_END:
+    # A row this side failed as lost while the agent kept the job (a
+    # controller restart, a network gap longer than the grace window) takes
+    # the job's real end late rather than dropping it, and says so (B285).
+    late = (got[0]["state"] == "failed"
+            and str(got[0].get("error") or "").startswith(("node lost", "lost:")))
+    if got[0]["state"] in JOB_END and not late:
         return {"ok": True, "already": True}
     if state not in JOB_END:
         return {"error": "a result is succeeded, failed or canceled"}
@@ -2967,9 +2972,13 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     # Guarded on the state, so a retry that overlaps the first arrival is the
     # no-op the docstring promises rather than a second audit row and a
     # second run of the hooks (the review of 26 Sep).
+    err = str(error or "")[:500]
+    if late:
+        err = ("reported late, after this side called the node lost" + (": " + err if err else ""))[:500]
     cur = _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
-                "error = ? WHERE id = ? AND state NOT IN ('succeeded', 'failed', 'canceled')",
-          (state, code, int(time.time()), str(error or "")[:500], job_id))
+                "error = ? WHERE id = ? AND (state NOT IN ('succeeded', 'failed', 'canceled') "
+                "OR (state = 'failed' AND (error LIKE 'node lost%' OR error LIKE 'lost:%')))",
+                (state, code, int(time.time()), err, job_id))
     if cur.rowcount == 0:
         return {"ok": True, "already": True}
     # What the job left behind: the artifacts it uploaded and, for a failed
@@ -3133,10 +3142,25 @@ def jobs_lost():
                   "error = 'node lost: the agent stopped answering' WHERE "
                   "id = ?", (now, j["id"]))
             audit("system", "job-lost", j["id"], {"node": j["node"]})
+            _lost_done(j["id"])
             n += 1
     if n:
         _jstate_bump()
     return n
+
+
+def _lost_done(jid):
+    """The module that queued a job hears that it was lost, as it hears a
+    result: a compose rebuild failed as lost left the Docker row saying
+    building, since only job_result ran the hook (B287)."""
+    j = job(jid, with_log=False)
+    fn = ON_DONE.get((j or {}).get("type") or "")
+    if not fn or not j:
+        return
+    try:
+        fn(j, "failed")
+    except Exception as e:                                                # noqa: BLE001
+        print(f"[dashboard] {jid}: the done hook failed after the job was lost: {type(e).__name__}: {e}", flush=True)
 
 
 def jobs_reconcile(node_id, running):
@@ -3156,6 +3180,7 @@ def jobs_reconcile(node_id, running):
               "= 'lost: the agent restarted without it' WHERE id = ?",
               (int(time.time()), jid))
         audit("system", "job-lost", jid, {"node": node_id, "why": "restart"})
+        _lost_done(jid)
     if gone:
         _jstate_bump()
 

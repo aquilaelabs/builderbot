@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.108"
+AGENT_VERSION = "0.7.109"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2763,6 +2763,11 @@ class Job(threading.Thread):
         with self.lock:
             self.pending_step = str(name)[:60]
 
+    # What a job may hold unsent while the controller is unreachable: past
+    # this the oldest goes, and one line says how much (B286: a chatty build
+    # grew the agent without limit).
+    PENDING_CAP = 8 * 1024 * 1024
+
     def say(self, text):
         # One line that alone exceeds a body would be refused forever, and
         # everything behind it with it; split rather than let that happen.
@@ -2770,6 +2775,16 @@ class Job(threading.Thread):
             for i in range(0, len(text), 32 * 1024):
                 self.seq += 1
                 self.pending.append({"seq": self.seq, "chunk": text[i:i + 32 * 1024]})
+            held = sum(len(c["chunk"]) for c in self.pending)
+            if held > self.PENDING_CAP:
+                dropped = 0
+                while self.pending and held > self.PENDING_CAP // 2:
+                    gone = self.pending.pop(0)
+                    dropped += len(gone["chunk"])
+                    held -= len(gone["chunk"])
+                self.seq += 1
+                self.pending.insert(0, {"seq": self.seq, "chunk": f"[{dropped} bytes of output dropped: "
+                                        "the controller was unreachable and this job kept talking]\n"})
 
     BATCH = 40 * 1024      # under the controller's 64KB body cap, with headroom
 
@@ -2952,11 +2967,11 @@ class Job(threading.Thread):
             return "failed", 70
         os.close(slave)
         self.tty = master
-        deadline = time.time() + int(spec.get("timeout") or 900)
+        deadline = time.monotonic() + int(spec.get("timeout") or 900)
         last_beat = time.time()
         try:
             while True:
-                if time.time() > deadline:
+                if time.monotonic() > deadline:
                     self.say("the sign-in was not finished in time\n")
                     self.cancel()
                     return "failed", 75
@@ -3112,13 +3127,13 @@ class Job(threading.Thread):
                 pass                      # the pipe went with the process
         reader = threading.Thread(target=pump, daemon=True)
         reader.start()
-        deadline = time.time() + timeout
+        deadline = time.monotonic() + timeout
         killed = False
         while reader.is_alive():
             reader.join(0.5)
             if self.pending:
                 self.flush()
-            if time.time() > deadline and not killed:
+            if time.monotonic() > deadline and not killed:
                 self.say(f"timed out after {int(timeout)}s, killing it\n")
                 self._kill(p)
                 killed = True
@@ -3489,7 +3504,7 @@ class Agent:
                                         "digest": own_digest(),
                                         "running": self.running_ids()}, timeout=30)
         if st == 200:
-            self.hello_at = time.time()
+            self.hello_at = time.monotonic()
             self.poll = int(r.get("poll") or 25)
             self.controller_digest = (r.get("agent") or {}).get("digest") or ""
             # Where toolchains land, from the controller's catalog. Kept on the
@@ -3653,6 +3668,18 @@ class Agent:
                 running = list(self.jobs.values())
             for j in running:
                 j.cancel()
+            # Each job's end, said by this process before it goes: the job
+            # threads die with it and the row read "lost: the agent
+            # restarted" for a stop that was ordered (B287). Best effort, a
+            # few seconds each; a controller that is away hears it at the
+            # next hello's reconcile instead.
+            for j in running:
+                try:
+                    self.ctl.call("result", {"job": j.job["id"], "state": "canceled", "exit": None,
+                                             "error": "canceled: the agent was stopped", "outputs": []},
+                                  timeout=5)
+                except Exception as e:                               # noqa: BLE001
+                    log(f"{j.job['id']}: could not say it was stopped: {e}")
             self.session_stop()
             self.runner_stop()
             raise SystemExit(0)
@@ -3668,7 +3695,10 @@ class Agent:
         self.sessnet.start()
         self.sesswatch.start()
         while True:
-            if time.time() - self.hello_at > 600:
+            # The monotonic clock: a clock step killed a running job as timed
+            # out and stopped hello for the size of the step (B286). Zero
+            # means due now, whichever clock.
+            if not self.hello_at or time.monotonic() - self.hello_at > 600:
                 self.refresh_session_tool()
                 self.quiet_distro_ttyd()
                 st, r = self.hello()
@@ -4516,10 +4546,10 @@ class Agent:
         except (OSError, ValueError) as e:
             job.say(f"could not start the installer: {e}\n")
             return "failed", 70
-        deadline = time.time() + int(spec.get("timeout") or 900)
+        deadline = time.monotonic() + int(spec.get("timeout") or 900)
         for line in iter(job.proc.stdout.readline, b""):
             job.say(line.decode("utf-8", "replace"))
-            if time.time() > deadline:
+            if time.monotonic() > deadline:
                 job.say("the installer did not finish in time\n")
                 job.cancel()
                 return "failed", 75
@@ -5390,12 +5420,12 @@ class Agent:
                 pass
         reader = threading.Thread(target=pump, daemon=True)
         reader.start()
-        deadline, killed = time.time() + timeout, False
+        deadline, killed = time.monotonic() + timeout, False
         while reader.is_alive():
             reader.join(0.5)
             if job.pending:
                 job.flush()
-            if time.time() > deadline and not killed:
+            if time.monotonic() > deadline and not killed:
                 job.say(f"timed out after {timeout}s, killing it\n")
                 job._kill(p)
                 killed = True

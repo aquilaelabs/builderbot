@@ -28,7 +28,7 @@ jobs:
     runs-on: [self-hosted, bb-sandbox]
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # v4, pinned by commit (B274)
         with:
           fetch-depth: 0   # bb version counts commits
 
@@ -57,18 +57,40 @@ jobs:
             echo "code=${c:-1}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build the debug APK
+      # A release, signed with the repository's key, where the four secrets
+      # are set; the debug APK, signed with this runner's own debug key,
+      # where they are not, said in the log (B274: a debuggable build let
+      # run-as and a debugger into the credential store, and an update
+      # built on another runner failed with a signature mismatch).
+      - name: Build the APK
+        id: build
         working-directory: android
+        env:
+          BB_APP_KEYSTORE_B64: ${{ secrets.BB_APP_KEYSTORE_B64 }}
+          BB_APP_KEYSTORE_PASSWORD: ${{ secrets.BB_APP_KEYSTORE_PASSWORD }}
+          BB_APP_KEY_ALIAS: ${{ secrets.BB_APP_KEY_ALIAS }}
+          BB_APP_KEY_PASSWORD: ${{ secrets.BB_APP_KEY_PASSWORD }}
         run: |
-          ./gradlew --no-daemon --console=plain assembleDebug \
-            -PbbVersion='${{ steps.v.outputs.semver }}' \
-            -PbbCode='${{ steps.v.outputs.code }}'
+          if [ -n "$BB_APP_KEYSTORE_B64" ] && [ -n "$BB_APP_KEYSTORE_PASSWORD" ] && [ -n "$BB_APP_KEY_ALIAS" ]; then
+            ks="$RUNNER_TEMP/bb-app.keystore"
+            printf '%s' "$BB_APP_KEYSTORE_B64" | base64 -d > "$ks"
+            BB_APP_KEYSTORE_FILE="$ks" ./gradlew --no-daemon --console=plain assembleRelease \
+              -PbbVersion='${{ steps.v.outputs.semver }}' -PbbCode='${{ steps.v.outputs.code }}'
+            rm -f "$ks"
+            echo "apk=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
+            echo "signed release build"
+          else
+            ./gradlew --no-daemon --console=plain assembleDebug \
+              -PbbVersion='${{ steps.v.outputs.semver }}' -PbbCode='${{ steps.v.outputs.code }}'
+            echo "apk=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
+            echo "::warning::no BB_APP_KEYSTORE_B64 secret: this is a DEBUG build signed with this runner's own key; set the four BB_APP_* secrets for a release"
+          fi
 
       - name: Name it by the repository's version
         id: name
         run: |
           echo "file=builderbot-app-${{ steps.v.outputs.file }}.apk" >> "$GITHUB_OUTPUT"
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
+          cp "android/${{ steps.build.outputs.apk }}" \
              "builderbot-app-${{ steps.v.outputs.file }}.apk"
 
       - name: Land it in BuilderBot's dist/ where the share is mounted
@@ -81,7 +103,7 @@ jobs:
             echo "the projects share is not mounted on this runner; the APK is a workflow artifact only"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4, pinned by commit (B274)
         with:
           name: ${{ steps.name.outputs.file }}
           path: ${{ steps.name.outputs.file }}

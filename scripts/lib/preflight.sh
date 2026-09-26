@@ -29,7 +29,7 @@ cmd_tests_preflight() {
         fi
         local mb; mb="$(git merge-base "$base" HEAD 2>/dev/null || echo "$base")"
         while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(
-            { git diff --name-only "$mb" HEAD; git status --porcelain | sed -E 's/^.{3}//; s/.* -> //'; } | sort -u)
+            { git diff --name-only "$mb" HEAD; git status --porcelain -z | tr '\0' '\n' | sed -E 's/^.{3}//'; } | sort -u)
         # The base is the branch's by default, which on a long branch is
         # every file it ever touched and the whole suite every time
         # (B225): said here, with the narrower measure beside it, so
@@ -71,6 +71,18 @@ cmd_tests_preflight() {
     printf '  files:   %s\n' "${files[*]}"
     printf '  suites:  %s\n' "${suites[*]:-none}"
     printf '  checks:  %s\n' "${checks[*]}"
+    # Code the map could place with no suite is a hole in the map, not a
+    # clean change (B280): named, and the verdict is not clean.
+    local unplaced=()
+    if [ "${#suites[@]}" -eq 0 ]; then
+        for f in "${files[@]}"; do
+            case "$f" in
+                *.md|*.txt|*.json|*.png) ;;
+                scripts/*|nodes/*) unplaced+=("$f") ;;
+            esac
+        done
+    fi
+    [ "${#unplaced[@]}" -eq 0 ] || printf '  WARN: no suite reaches %s: the map could not place it, so this is not a clean verdict; bb map suites FILE says what it knows (B280)\n' "${unplaced[*]}"
     [ -z "$dry" ] || return 0
     # Not cmd_dashboard test, which execs the harness and would end this
     # verb before its checks: the harness is run as a child here.
@@ -78,6 +90,7 @@ cmd_tests_preflight() {
     [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
     if [ "${suites[*]:-}" = ALL ]; then bash "$here" || rc=1
     elif [ "${#suites[@]}" -gt 0 ]; then bash "$here" "${suites[@]}" || rc=1; fi
+    [ "${#unplaced[@]}" -eq 0 ] || rc=1
     local c
     for c in "${checks[@]}"; do
         # design is uniform.mjs, already in the run when it is listed

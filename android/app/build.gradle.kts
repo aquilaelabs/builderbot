@@ -55,10 +55,26 @@ android {
         versionName = bbVersion
         buildConfigField("int", "TARGET_API", "3")
     }
+    // A release is signed with the key the workflow is handed in its
+    // environment (B274): without one there is no release signing config,
+    // and the workflow builds the debug APK and says so. The key never sits
+    // in the tree.
+    val ksPath = System.getenv("BB_APP_KEYSTORE_FILE")
+    if (!ksPath.isNullOrBlank()) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("BB_APP_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("BB_APP_KEY_ALIAS")
+                keyPassword = System.getenv("BB_APP_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (!ksPath.isNullOrBlank()) signingConfig = signingConfigs.getByName("release")
         }
     }
     buildFeatures {

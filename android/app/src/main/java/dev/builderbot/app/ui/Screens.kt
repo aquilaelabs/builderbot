@@ -157,13 +157,18 @@ fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
                     val st = api.status()
                     if (st.str("me").isBlank()) throw Exception("that address answers, but not as a BuilderBot")
                     store.server = server; store.user = user; store.password = password
-                    onDone(st.obj("can").optBoolean("admin", true))
+                    onDone(st.obj("can").optBoolean("admin", false))
                 } catch (e: Exception) {
                     error = e.message ?: e.toString()
                 }
                 busy = false
             }
         }) { Text(if (busy) "Signing in" else "Sign in") }
+        // Said before the sign-in, not after (B273): over http the password
+        // travels in the clear on this network, on every poll.
+        if (server.trim().startsWith("http://"))
+            Text("Over http the sign-in and every poll travel in the clear on this network; use https where the dashboard has it",
+                 color = Warn, modifier = Modifier.padding(top = 8.dp))
     }
 }
 
@@ -174,7 +179,7 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
     val api = store.api() ?: return
     val (st, reload) = load("status") { api.status() }
     val s = st.value
-    if (s != null){ onAdmin(s.obj("can").optBoolean("admin", true)); onWaiting(s.int("phone_asks")) }
+    if (s != null){ onAdmin(s.obj("can").optBoolean("admin", false)); onWaiting(s.int("phone_asks")) }
     Pull(st.value == null && st.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -514,7 +519,7 @@ private fun EditAccount(api: Api, u: JSONObject, roles: List<String>, everyProje
 // "install unknown apps" the first time. This cannot and should not install
 // anything quietly. What it removes is the desktop, not the decision.
 @Composable
-private fun InstallNewer(api: Api, apk: String) {
+private fun InstallNewer(api: Api, apk: String, sha: String = "") {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var said by remember { mutableStateOf("") }
@@ -532,6 +537,18 @@ private fun InstallNewer(api: Api, apk: String) {
                     dir.mkdirs()
                     dir.listFiles()?.forEach { it.delete() }
                     val file = api.download(api.apkPath(apk), java.io.File(dir, apk))
+                    // What arrived is what the dashboard named, or it is not
+                    // installed (B273): the download crosses the same network
+                    // as the sign-in, and the installer checks nothing.
+                    if (sha.isNotBlank()) {
+                        val md = java.security.MessageDigest.getInstance("SHA-256")
+                        file.inputStream().use { ins ->
+                            val buf = ByteArray(1 shl 16)
+                            while (true) { val n = ins.read(buf); if (n < 0) break; md.update(buf, 0, n) }
+                        }
+                        val got = md.digest().joinToString("") { "%02x".format(it) }
+                        if (got != sha.lowercase()) { file.delete(); throw Exception("the download did not match the dashboard's checksum; not installed") }
+                    }
                     val uri = androidx.core.content.FileProvider.getUriForFile(
                         context, context.packageName + ".files", file)
                     context.startActivity(
@@ -633,7 +650,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
                     Text("This app is behind the dashboard", color = Warn, fontWeight = FontWeight.SemiBold)
                     Text("The dashboard serves API $serverApi and this build was written for ${BuildConfig.TARGET_API}. Some screens may show blanks until the newer app is installed" +
                         (if (m.str("apk").isNotBlank()) ": ${m.str("apk")}." else "."))
-                    if (m.str("apk").isNotBlank()) InstallNewer(api, m.str("apk"))
+                    if (m.str("apk").isNotBlank()) InstallNewer(api, m.str("apk"), m.str("apk_sha256"))
                 }
             } else if (serverApi < BuildConfig.TARGET_API) Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 Column(Modifier.padding(12.dp)) {

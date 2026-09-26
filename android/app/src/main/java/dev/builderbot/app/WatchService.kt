@@ -75,7 +75,8 @@ object Watch {
         // Nodes that need attention: an agent behind or out of window, or
         // Claude Code behind what is out.
         val att = st.arr("attention")
-        val attKey = att.joinToString(",") { "${it.str("kind")}:${it.str("id")}${it.str("project")}:${it.str("to")}" }
+        // The server names the projects on the node as a list (B275).
+        val attKey = att.joinToString(",") { "${it.str("kind")}:${it.str("id")}${it.strs("projects").joinToString("+")}:${it.str("to")}" }
         if (attKey != store.lastAttention) {
             if (att.isEmpty()) nm.cancel(ID_ATTENTION)
             else {
@@ -122,8 +123,19 @@ object Watch {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setColor(if (kind == "root") 0xFFE5534B.toInt() else 0xFFD29922.toInt())
             .setContentIntent(openApp(context, "approvals"))
-            .addAction(0, "Deny", DecideReceiver.intent(context, id, false))
-            .addAction(0, "Approve", DecideReceiver.intent(context, id, true))
+            // Root on a node is not granted from a locked phone (B272): the
+            // actions need the device unlocked, and the lock screen shows
+            // that an answer is wanted, not the command.
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(NotificationCompat.Builder(context, App.CH_ASK)
+                .setSmallIcon(R.drawable.ic_stat_bb)
+                .setContentTitle("A session needs your answer")
+                .setContentText("Unlock to see what it asks")
+                .build())
+            .addAction(NotificationCompat.Action.Builder(0, "Deny", DecideReceiver.intent(context, id, false))
+                .setAuthenticationRequired(true).build())
+            .addAction(NotificationCompat.Action.Builder(0, "Approve", DecideReceiver.intent(context, id, true))
+                .setAuthenticationRequired(true).build())
             .setAutoCancel(true)
             .build()
     }
