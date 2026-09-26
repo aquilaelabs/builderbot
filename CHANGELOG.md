@@ -26,6 +26,13 @@
 - bb emu create on a node makes the AVD directory before asking avdmanager, and fixes the image path where avdmanager put the AVD rather than where it was told to; without that the first emulator on a node died with Broken AVD system path (2fd40db)
 - A session's next prompt names the memories only when somebody else edited them through the notebook; its own memory files, written with its own tools, are not news to it (B269) (1753a83)
 
+### Security
+
+- Root on a node installs bb-sandbox and the session helper only from its own copy of a bundle, checked against the controller's digest, never from the toolchain store a job can write; a job, and so a session through bb run, could plant root code there before (48be4fa)
+- A job is cancelled only by an account whose project it is, or an administrator; any signed-in principal could cancel any job before (48be4fa)
+- bb passes the person's credential to its python verbs in the environment, where it was on the command line and readable by every account on the node through ps (48be4fa)
+- The controller's Claude sign-in and its code are an account's own or an administrator's: a session's token is refused, and another account's code is not typed into a flow that is not theirs (48be4fa)
+
 ## 0.7.0: 2026-09-25
 
 ### Added

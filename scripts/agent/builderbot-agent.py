@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.107"
+AGENT_VERSION = "0.7.108"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -286,6 +286,14 @@ GPU_DISPLAY_STATE = os.environ.get("BUILDERBOT_GPU_DISPLAY_STATE", "/run/builder
 # account's only way to it. Installed and kept by this agent from the bundle,
 # on a node set up as a sandbox; the seams are for the suite.
 SESSION_BIN = os.environ.get("BUILDERBOT_SESSION_BIN", "/usr/local/sbin/bb-session")
+# Where root keeps its own copy of the two tools it installs from a bundle
+# (bb-sandbox out of the provisioner, and bb-session): root-owned, 0700,
+# written from the tar as it is unpacked and never from the toolchain store,
+# which belongs to the job account. Reading them from the store let any job,
+# and so any session through bb run, plant root code that landed on the
+# next hello (the review of 26 Sep).
+TOOLS_DIR = os.environ.get("BUILDERBOT_TOOLS_DIR", "/var/lib/builderbot/agent/tools")
+ROOT_TOOLS = ("nodes/provision-linux.sh", "nodes/bb-session")
 # Where an updated Claude Code is pinned, root-owned, for the sessions (claude_update).
 CLAUDE_DIR = "/usr/local/lib/builderbot/claude"
 SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
@@ -3910,12 +3918,31 @@ class Agent:
         self.own_dir(store, who)
         bbdir = os.path.join(store, ".bb")
         os.makedirs(bbdir, exist_ok=True)
-        tar_path = os.path.join(bbdir, "bundle.tar")
+        # The tar lands where only root writes when this agent is root: a
+        # path in the job's store is the job's to replace with a symlink.
+        root = os.geteuid() == 0
+        if root:
+            os.makedirs(TOOLS_DIR, mode=0o700, exist_ok=True)
+            os.chmod(TOOLS_DIR, 0o700)
+        tar_path = os.path.join(TOOLS_DIR if root else bbdir, "bundle.tar")
         st, digest = self.ctl.fetch("download?what=bundle", tar_path)
         if st != 200:
             say(f"could not fetch bb from the controller ({st})\n")
             return ""
         hexd = digest.split(":", 1)[-1]
+        # The bytes are what the header says they are, or nothing here runs
+        # them: the digest names the bundle everywhere else.
+        h = hashlib.sha256()
+        with open(tar_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        if not hexd or h.hexdigest() != hexd:
+            say(f"refused: the bundle's bytes do not match the digest the controller named ({hexd[:12]})\n")
+            with contextlib.suppress(OSError):
+                os.unlink(tar_path)
+            return ""
+        if root:
+            self._keep_root_tools(tar_path, hexd[:16] or "bundle", say)
         into = os.path.join(bbdir, hexd[:16] or "bundle")
         if not os.path.isdir(into):
             with tarfile.open(tar_path) as tar:
@@ -3950,6 +3977,38 @@ class Agent:
             self.session_stale = into
         self.session_digest = digest
         return into
+
+    @staticmethod
+    def _keep_root_tools(tar_path, name, say):
+        """Root's own copy of the tools it installs, lifted straight out of
+        the checked tar into TOOLS_DIR/<name>/, and TOOLS_DIR/current pointed
+        at it; the copies of other bundles go."""
+        into = os.path.join(TOOLS_DIR, name)
+        try:
+            with tarfile.open(tar_path) as tar:
+                for m in tar.getmembers():
+                    rel = m.name.lstrip("./")
+                    if rel not in ROOT_TOOLS or not m.isfile():
+                        continue
+                    dest = os.path.join(into, rel)
+                    os.makedirs(os.path.dirname(dest), mode=0o700, exist_ok=True)
+                    src = tar.extractfile(m)
+                    if src is None:
+                        continue
+                    fd = os.open(dest + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+                    with os.fdopen(fd, "wb") as out:
+                        shutil.copyfileobj(src, out)
+                    os.replace(dest + ".new", dest)
+            tmp = os.path.join(TOOLS_DIR, ".current.new")
+            if os.path.lexists(tmp):
+                os.unlink(tmp)
+            os.symlink(name, tmp)
+            os.replace(tmp, os.path.join(TOOLS_DIR, "current"))
+            for other in os.listdir(TOOLS_DIR):
+                if other not in (name, "current", "bundle.tar") and os.path.isdir(os.path.join(TOOLS_DIR, other)):
+                    shutil.rmtree(os.path.join(TOOLS_DIR, other), ignore_errors=True)
+        except (OSError, tarfile.TarError) as e:
+            say(f"could not keep root's copy of the bundle's tools: {e}\n")
 
     @staticmethod
     def prune_bundles(bbdir, keep):
@@ -5098,9 +5157,10 @@ class Agent:
         copy and gets none."""
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN):
             return
-        store = tc_root(self.state)
-        src = os.path.join(store, ".bb", "current", "nodes", "provision-linux.sh") if store else ""
-        if not src or not os.path.isfile(src):
+        # From root's own copy, never the store's: the store is the job
+        # account's to write.
+        src = os.path.join(TOOLS_DIR, "current", "nodes", "provision-linux.sh")
+        if not os.path.isfile(src):
             return
         try:
             with open(src, encoding="utf-8") as f:
@@ -5159,8 +5219,7 @@ class Agent:
         user = self.session_account()
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not user:
             return
-        store = tc_root(self.state)
-        src = os.path.join(store, ".bb", "current", "nodes", "bb-session") if store else ""
+        src = os.path.join(TOOLS_DIR, "current", "nodes", "bb-session")
         try:
             with open(src, encoding="utf-8") as f:
                 tool = f.read()

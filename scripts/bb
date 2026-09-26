@@ -586,7 +586,9 @@ emu_via_node() {
     auth="$(bb_auth_or_die)"
     local proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
     BB_EMU_FILES="$(printf '%s\n' "${files[@]}")" \
-    python3 "$BB_LIB/emu-job.py" "$auth" "$proj" "${argv[@]}"
+    # The credential rides the environment, never argv: ps shows argv to
+    # every account on the box, and this is the person's own header.
+    BB_AUTH_HEADER="$auth" python3 "$BB_LIB/emu-job.py" "" "$proj" "${argv[@]}"
 }
 
 cmd_emu() {
@@ -2329,7 +2331,7 @@ bb_relay() {
     local auth proj rc
     auth="$(bb_auth_or_die)"
     proj="${BB_PROJECT:-${BB_ROADMAP_PROJECT:-${BB_BUG_PROJECT:-${BB_VERSION_PROJECT:-$(project_here || true)}}}}"
-    BB_RELAY_PROJECT="$proj" python3 "$BB_LIB/relay.py" "$auth" "$@"
+    BB_RELAY_PROJECT="$proj" BB_AUTH_HEADER="$auth" python3 "$BB_LIB/relay.py" "" "$@"
     rc=$?
     revalidate_tree
     return $rc
@@ -2595,7 +2597,7 @@ cmd_run() {
     fi
     auth="$(bb_auth_or_die)"
     BB_RUN_OUTS="$(printf '%s\n' "${outs[@]}")" \
-    python3 "$BB_LIB/run-job.py" "$auth" "$proj" "$role" "$node" "$timeout" "$@"
+    BB_AUTH_HEADER="$auth" python3 "$BB_LIB/run-job.py" "" "$proj" "$role" "$node" "$timeout" "$@"
 }
 
 # The two named shapes: what the project's settings dialog says a build and

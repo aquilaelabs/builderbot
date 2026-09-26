@@ -5318,6 +5318,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*self._run_job(req))
         if act != "cancel":
             return self._json({"error": "unknown action"}, 400)
+        # Whose it is, the way the read is scoped: an account cancels the
+        # jobs of its projects and a session its own project's; a stranger's
+        # job and a missing one answer alike.
+        me = self._who()
+        mine = None if users.may(me, "admin") == "" else {p["name"] for p in project_list(me)}
+        if mine is not None:
+            j = nodes.job(field(req, "id"), with_log=False)
+            if not j or j.get("project") not in mine:
+                return self._json({"error": "no such job of yours"}, 403)
         r = jobs.cancel(self._principal(), field(req, "id"))
         return self._result(r)
 
@@ -6120,7 +6129,15 @@ class Handler(BaseHTTPRequestHandler):
             _auth.clear()
 
     def _signin(self, req):
-        """Start a sign-in, or stop the one that is running."""
+        """Start a sign-in, or stop the one that is running. A person's, on
+        the controller: a session on a node has no business here, and
+        another account's flow is not this one's to stop (the review of 26
+        Sep)."""
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "a session does not sign the controller in"}, 403)
+        if users.may(me, "admin") != "" and signin.owner() not in ("", users.uid_of(me)):
+            return self._json({"error": "that sign-in is another account's"}, 403)
         _auth.clear()               # every home: the flow may have changed any
         if field(req, "action") == "cancel":
             return self._json(signin.cancel() | {"signin": signin.state()})
@@ -6171,6 +6188,11 @@ class Handler(BaseHTTPRequestHandler):
         button); the only refusals left are the ones that cannot be wrong:
         nothing left to send, or far too much to be a code.
         """
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "a session does not sign the controller in"}, 403)
+        if users.may(me, "admin") != "" and signin.owner() not in ("", users.uid_of(me)):
+            return self._json({"error": "that sign-in is another account's"}, 403)
         code = field(req, "code")
         # Anything from a URL onward was never part of the code. The page that
         # hands it out sets the authorize URL flush against it, so Copy takes

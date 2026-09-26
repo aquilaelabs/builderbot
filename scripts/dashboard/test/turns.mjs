@@ -167,6 +167,20 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   ok(r.status === 403, `a session cannot set its own node's limit (${r.status})`);
   r = await call('/api/v1/nodes', { action: 'reboot', id: minted.id }, bearer(toks[1]));
   ok(r.status === 403, `...nor reboot or shut down the machine it runs on (${r.status})`);
+  // A job is cancelled by somebody whose project it is (the review of 26
+  // Sep): a session's token for alpha cannot end beta's job, an
+  // administrator can, and the code for the controller's own Claude sign-in
+  // is not a session's to type.
+  await call('/api/prefs', { project: 'beta', node: minted.id });
+  const bj = await call('/api/v1/jobs', { action: 'run', project: 'beta', argv: ['true'] });
+  ok(bj.ok && /^j_/.test(bj.job || ''), `a job on another project is queued for the check (${bj.job || bj.error})`);
+  r = await call('/api/v1/jobs', { action: 'cancel', id: bj.job }, bearer(toks[1]));
+  ok(r.status === 403 && /no such job of yours/.test(r.error || ''), `a session cannot cancel another project's job (${r.status}: ${r.error})`);
+  r = await call('/api/v1/jobs', { action: 'cancel', id: bj.job });
+  ok(r.ok === true || r.status === 200, `...while an administrator can (${JSON.stringify(r).slice(0, 60)})`);
+  await call('/api/prefs', { project: 'beta', node: '' });
+  r = await call('/api/login-code', { code: 'abc#def' }, bearer(toks[1]));
+  ok(r.status === 403, `a session cannot type a code into the controller's sign-in (${r.status})`);
   r = await call('/api/v1/nodes', { action: 'turns', id: minted.id, limit: 1 },
     { Authorization: 'Basic ' + Buffer.from('tn.one:pw-tn.one-1').toString('base64'), 'Content-Type': 'application/json' });
   ok(r.status === 403, `...nor can a plain account (${r.status})`);

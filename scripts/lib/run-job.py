@@ -15,6 +15,7 @@ import waits
 
 
 auth, proj, role, node, timeout, *argv = sys.argv[1:]
+auth = auth or os.environ.get("BB_AUTH_HEADER", "")
 outs = [o for o in os.environ.get("BB_RUN_OUTS", "").split("\n") if o]
 call = lambda path, body=None: bbapi.call(path, body, auth=auth)   # noqa: E731
 nid = node
