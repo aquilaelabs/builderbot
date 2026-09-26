@@ -1,10 +1,14 @@
 # Controller and nodes: a design
 
-BuilderBot today is one container with one remote Docker daemon hard-coded into
-an environment variable. This describes turning it into a **controller** that
-schedules work onto **nodes**, where the controller is itself a node, and where
-a node is any registered host: a VM on the same server, a spare desktop, a
-cloud instance; that can execute something.
+This is the design record for the shape BuilderBot has now: a **controller**
+that keeps the dashboard, the notebook and the record, and schedules work
+onto **nodes**, where a node is any enrolled machine that can execute
+something: a VM on the same server, a spare desktop, a cloud box, a MacBook.
+Sessions, builds, tests, CI and the emulator run on nodes; the controller
+runs none of them. It was written before that was true (the first sections
+describe turning one container with one remote daemon into this) and kept as
+the reasons behind each decision; what is built is in the README and
+docs/how-it-works.md, and where the two differ, the code and those are right.
 
 Second pass. The first version of this document optimized for one operator and
 cut everything an organization would need. The brief has since widened: **the

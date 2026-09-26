@@ -17,6 +17,8 @@ scripts/
   lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
   lib/preflight.sh               `bb tests preflight`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
+  lib/codemap.py                 the code map bb map answers from: an index over the tree, rebuilt when a source is newer (R75)
+  lib/trace-verbs.py             bb dashboard trace: what the server was asked over a window, by endpoint and asker
   lib/sdkmeta.py                 reads config/toolchains.json for bb: fields, argv, versions
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
@@ -96,6 +98,11 @@ scripts/
     phone.py                     a paired handset on a node: install, push, and the asking
     db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
     nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md)
+    claudecode.py                Claude Code on each node: which version, checking for and installing an update
+    claudegrant.py               a session's Claude login handed to the node it runs on, and taken back
+    mapping.py                   a new project's code map built in the background as it is created
+    plugins.py                   the Claude Code plugins a project carries, listed and installed
+    turns.py                     how many prompts a node lets run at once, and the queue when more ask
     workspace.py                 snapshots, the node bundle, and the artifact store
     jobs.py                      the controller's own job runner (exec here or over ssh) plus /healthz and /metrics
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
@@ -121,9 +128,13 @@ nodes/unraid-vm.xml             the node as an Unraid VM: one file for every dis
 nodes/vm/                        the same machine for the other six hypervisors: Proxmox, libvirt, QEMU, VMware, Hyper-V, VirtualBox
 config/skel/                     home directory skeleton
 config/toolchains.json           the toolchains the Toolchains tab offers, and how to install each
-config/templates/                project CLAUDE.md template (shipped in the image)
+config/templates/                briefing.md, assembled per session by preamble.py; nothing is copied into a project
 tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
 tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
+tools/agent-version.sh           the lint check that the agent's version moved with its file
+tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
+tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
+tools/ratchet.txt                those ceilings, one per file
 pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python
                                  version, with the None checks off, since a module's configure() fills what it declares as None
 tools/version-stamp              this repo's own stamp hook: a bump moves the compatibility
@@ -142,6 +153,6 @@ docs/design-language.md          what the dashboard's surfaces owe each other: h
                                  house rule `design` and measured by test/uniform.mjs
 .hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint
 .github/actionlint.yaml          this runner's labels, for workflow linting
-.github/workflows/               GHCR publish (hosted, cached from :latest); lint + dashboard
+.github/workflows/               GHCR publish (hosted, cached from :latest); lint + dashboard tests; the companion app's build (android-app.yml)
                                  browser tests (on this runner); runner smoke test (manual)
 ```
