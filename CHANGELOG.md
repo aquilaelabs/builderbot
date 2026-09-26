@@ -13,6 +13,7 @@
 - The Questions pick under Yours on this project gains more, for a person who wants the judgment calls put to them, and reads more, Claude's default, fewer, rarely; the Replies pick is Claude's default or minimal, the normal choice having said nothing (0d3a6f0)
 - The Settings tab says a change applies at once or at the next start, in those words, where it said takes now (21462b7)
 - Three shipped rules that explained a helper (report-builderbot, ask-before-unshelving, ship-to-dist) are the briefing's words now, in its notebook, roadmap and versions sections; the rules left are conduct (21462b7)
+- The test report quotes a suite's last lines when it ended without a total, so a run that dies quietly leaves evidence (B267) (1753a83)
 
 ### Removed
 

@@ -96,6 +96,11 @@ if flaky:
     for f in flaky:
         first = f["fails"][0] if f["fails"] else (f["why"] or "crashed")
         print(f"  {f['name']}  {first[:140]}")
+        # A file that died with no check failing and no cause matched: its
+        # last words, so the next time has evidence rather than a name (B267).
+        if not f["fails"]:
+            for ln in [x for x in f["tail"] if x.strip()][-3:]:
+                print(f"      | {ln.strip()[:140]}")
 if not bad:
     print(f"all {len(files)} suites passed: {checks} checks"
           + (f", {len(flaky)} of them flaky (above)" if flaky else ""))
