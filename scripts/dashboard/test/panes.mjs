@@ -157,15 +157,26 @@ ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
 // The limit is on terminals, per account (R78): a shell past it is refused
 // with a toast that says so, and a document tab opens past it, because it
 // costs no terminal. The strip counted is this account's own layout.
+// Each in one round trip: a status poll landing between setting the limit
+// and opening the tab put the server's limit back, and the shell opened
+// (B289).
 {
-  await page.evaluate(() => { state.max_tabs = tabs.filter(t => t.kind === 'term').length; });
-  const before = await page.evaluate(() => tabs.length);
-  await page.evaluate(() => openTab({kind: 'term', arg: 'sh:99:alpha', label: 'sh 99'}));
-  ok(await page.evaluate(() => tabs.length) === before
-     && await page.evaluate(() => /Terminal tab limit reached/.test(document.body.textContent)),
+  const shell = await page.evaluate(() => {
+    state.max_tabs = tabs.filter(t => t.kind === 'term').length;
+    const before = tabs.length;
+    openTab({kind: 'term', arg: 'sh:99:alpha', label: 'sh 99'});
+    return { before, after: tabs.length,
+             said: /Terminal tab limit reached/.test(document.body.textContent) };
+  });
+  ok(shell.after === shell.before && shell.said,
      'a shell past the terminal limit is refused, and the toast names the terminal limit');
-  await page.evaluate(() => openNodesTab());
-  ok(await page.evaluate(() => tabs.length) === before + 1 && await page.evaluate(() => tabs.some(t => t.kind === 'nodes')),
+  const doc = await page.evaluate(() => {
+    state.max_tabs = tabs.filter(t => t.kind === 'term').length;
+    const before = tabs.length;
+    openNodesTab();
+    return { before, after: tabs.length, nodes: tabs.some(t => t.kind === 'nodes') };
+  });
+  ok(doc.after === doc.before + 1 && doc.nodes,
      '...while a document tab opens past it: it costs no terminal');
   await page.evaluate(() => { state.max_tabs = 12; });
 }
