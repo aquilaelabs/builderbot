@@ -483,7 +483,8 @@ says which you have and why, in one line.
 
 ## Static analysis reports
 
-If you run a scanner on the host, mount only its **output**, read-only:
+If you run a scanner on the host, only its **output** is mounted, read-only,
+from `SCANNER_REPORTS_PATH`:
 
 ```
 /mnt/user/appdata/scanners/reports:/reports:ro
