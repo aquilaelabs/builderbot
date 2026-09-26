@@ -667,3 +667,30 @@ def heads():
     doing it twice to answer a subtitle would be the expensive half of the poll
     run for a line of text."""
     return list(_counts["heads"])
+
+
+def view(ps, session=""):
+    """payload() for the projects `ps` this account sees, and for a SESSION
+    only its own project's findings.
+
+    Scoped by the projects the server hands over, which for a session's
+    token is the one project it was minted for: a finding in anybody else's
+    code attributes to IGNORED and never reaches the payload. The count of
+    what was attributed away does not go either. For the operator it means
+    "the toolchain store and the vendored trees"; for a session it would be
+    every other project on the share, and a number that moves when somebody
+    else's code changes is a fact about their code.
+    """
+    r = payload(ps)
+    if session:
+        r.pop("aside", None)
+        # Positively its own, rather than "not obviously somebody else's".
+        # Attribution is by path component, so a report whose URIs are
+        # relative to a project root places NOTHING and every row would
+        # arrive here as unattributed: allowing those through would hand a
+        # session the whole box the first time a scanner is configured
+        # that way. A finding it cannot be told is in its own project is
+        # one it does not get.
+        for rep in r.get("reports") or []:
+            rep["findings"] = [f for f in rep["findings"] if f.get("project") == session]
+    return r

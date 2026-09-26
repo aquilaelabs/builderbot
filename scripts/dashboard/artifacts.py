@@ -33,6 +33,16 @@ from pathlib import Path
 
 WORKSPACE = None
 WORKTREES = None          # <workspace>/.worktrees: each account's tree, by uid
+# What tab_view() composes, set by server.py: dist/ as the tab lists it with
+# each file's provenance (the server's artifacts_of), account names by uid,
+# what the project can and cannot do off this box (build_state), its dev
+# instances' state (devactions, read in one scope), and the phone summary
+# for its node and the asking account (phone.summary).
+listing_of = None
+account_names = None
+build_state = None
+instance_states = None
+phone_summary = None
 
 DIST = "dist"
 UID_RE = re.compile(r"^u_[0-9a-f]{8}$")
@@ -254,3 +264,48 @@ def source_zip(project):
 
 
 SOURCE_CAP = 256 << 20
+
+
+# ---- the tab's read and its downloads, one call each from the dashboard --------
+
+def tab_view(name, uid):
+    """The Artifacts tab's whole read for one project, as account `uid`
+    sees it: what it built, each account's own builds from its worktree
+    (B237) apart from dist/, which is what ships, what the project can and
+    cannot do off this box, its dev instances, and the phone."""
+    return ({"artifacts": listing_of(name),
+             "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
+                          for g in branches(name)],
+             "build": build_state(name)}
+            | instance_states(name) | phone_summary(name, uid))
+
+
+def download(name, rel, tree=""):
+    """One file for the download: ((filename, bytes), 200), or an error and
+    its status. Resolved and prefix-checked in resolve(): a symlink inside
+    dist/ must not turn this into a file server for the whole box. `tree`
+    is an account's worktree by uid, for a build made there (B237)."""
+    f = resolve(name, rel, tree)
+    if f is None:
+        return {"error": "no such artifact"}, 404
+    try:
+        data = f.read_bytes()
+    except OSError as e:
+        return {"error": str(e)}, 500
+    # A name with a quote or a line break would end the header early.
+    return (re.sub(r"[^A-Za-z0-9._ -]", "_", f.name)[:200], data), 200
+
+
+def source_download(name):
+    """The code base as a zip for the download: ((filename, bytes), 200), or
+    an error and its status. What git tracks and would track, never .git,
+    dist/ or what .gitignore hides."""
+    try:
+        got = source_zip(name)
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"error": str(e)}, 500
+    if got is None:
+        return {"error": "no such project"}, 404
+    if isinstance(got, dict):
+        return got, 413
+    return got, 200

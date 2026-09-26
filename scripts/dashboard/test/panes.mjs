@@ -146,7 +146,8 @@ ok(await kindCount('notebook') >= 2,
 const html = ['index.html', ...readdirSync(new globalThis.URL('..', import.meta.url))
     .filter(f => /^(page|tab|nb)-.*\.js$/.test(f))]
   .map(f => readFileSync(new globalThis.URL('../' + f, import.meta.url).pathname, 'utf8')).join('\n');
-const py = readFileSync(new globalThis.URL('../server.py', import.meta.url).pathname, 'utf8');
+// The server's half is layout.py's since R77: what a saved layout may carry.
+const py = readFileSync(new globalThis.URL('../layout.py', import.meta.url).pathname, 'utf8');
 const inPage = [...html.matchAll(/^ {2}([a-z]+):\s*\{ multi:/gm)].map(m => m[1]).sort();
 const inServer = (py.match(/^TAB_KINDS = \{([^}]*)\}/m) || [, ''])[1]
   .match(/"([a-z]+)"/g).map(s => s.replace(/"/g, '')).sort();

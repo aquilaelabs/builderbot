@@ -239,20 +239,6 @@ LOGIN_HTML = """<!doctype html>
 # operator's own command lists: macros.py (R77).
 
 
-# How many tabs the page will open. Each terminal tab is an iframe running a
-# full xterm.js with its own websocket, so this is a real ceiling on browser
-# memory rather than a tidiness rule, and a phone hits it far earlier than a
-# desktop does.
-# The tab cap: a constant, because each terminal tab is a live terminal over
-# its own socket and twelve is what a browser on this box takes without
-# falling over. It was a setting for one afternoon (R29) and nobody needed to
-# move it. It counts TERMINAL tabs, per account (the layout is kept per
-# account): a document tab is a draw from state and costs nothing to keep.
-MAX_TABS = 12
-
-
-def max_tabs():
-    return MAX_TABS
 
 # Where Claude Code keeps transcripts: one directory per working directory,
 # with the path's slashes turned into dashes, holding one .jsonl per session.
@@ -269,54 +255,9 @@ MAX_BODY = 64 * 1024
 from fields import field                                         # noqa: E402
 
 
-# Locked projects live on the /config volume so the list survives the image
-# updates this container is built to expect. bb-tty reads the same file; a
-# rule only the dashboard honored would be advice, since the terminal URL is
-# reachable on its own.
-#
-# There used to be two of these. "Excluded" meant "this is not a project, stop
-# showing it work" and locked meant "this one is mine to run", and the operator
-# found the distinction too fine to be worth two buttons that looked alike and
-# sat next to each other. Locked is the survivor and it carries the whole
-# meaning now: no session starts here, the notebook is readable but not
-# writable, and nothing may be created in the project on Claude's behalf. What
-# it does NOT touch is everything the operator does themselves: the artifacts,
-# a dev instance, the findings and their history.
-LOCKS_FILE = STATE / "locked-projects.json"
-# Which projects the sidebar card shows. A THIRD axis, and independent of the
-# other two: pinning says nothing about what may run, only about what is worth
-# looking at from the sidebar. Everything unpinned is still on the Projects
-# tab, whole and with every control.
-#
-# PROJECT_PINS_FILE and not PINS_FILE, which is the command pin's (macros.py),
-# as are load_pins, save_pins, /api/pin and the page's setPinned. Taking
-# all five once split this feature across two files: the constant
-# resolved to theirs, the functions to mine, and project names were written
-# into pinned-commands.json while nothing went red, because the command pin has
-# no test (bug #20).
-PROJECT_PINS_FILE = STATE / "pinned-projects.json"
 
 
 
-TABS_FILE = STATE / "tabs.json"
-
-# How the sidebar is arranged: card order and which cards are collapsed, by
-# the data-card keys the page uses. Validated against this list both ways, so
-# the stored file can never hold a card the page would not know how to place.
-CARDS_FILE = STATE / "cards.json"
-# Doctor first: this order is the default an unwritten (or reset) sidebar
-# gets, and the verdict on the whole box outranks any one card below it.
-#
-# The command lists and Sessions are NOT here: they live under the terminal,
-# in its bar, because they are about the shell in front of you rather than
-# about the box, and seven cards is a sidebar you can read where twelve was a
-# list you scrolled past. Their
-# keys dropping out of this list is also the migration: load_layout filters an
-# existing cards.json against it, so a file still naming them is cleaned on
-# the next read rather than needing anything done to it.
-# Tools between Doctor and Runner: the reach-for-it card next to the
-# health line, ahead of the two that are read rather than pressed.
-CARD_KEYS = ["doctor", "tools", "admin", "runner", "projects"]
 
 
 # The one implementation, in statefile.py, along with the file lock that makes
@@ -333,241 +274,17 @@ write_json = statefile.write_json
 # skipped them. Coarse on purpose: these are tiny files and rare writes.
 _state_lock = threading.Lock()
 
+# ---- what the page keeps here ---------------------------------------------------
+# Each account's tab strip and panes, and the sidebar's cards: layout.py.
+import layout                                                    # noqa: E402
 
-def load_cards():
-    try:
-        v = json.loads(CARDS_FILE.read_text())
-    except (OSError, ValueError):
-        v = {}
-    if not isinstance(v, dict):         # a hand-edited file is not fatal
-        v = {}
-    # Filter before deduping: membership tolerates any junk a hand-edited file
-    # can hold, where hashing it for dict.fromkeys would not.
-    order = v.get("order") if isinstance(v.get("order"), list) else []
-    order = list(dict.fromkeys(k for k in order if k in CARD_KEYS))
-    # A card this image knows about that the stored file predates still has to
-    # land somewhere, and "its default position" means exactly that: inserted
-    # where CARD_KEYS puts it, not appended. Appending is how a new card
-    # arrived at the bottom of an existing sidebar and looked misplaced until
-    # somebody hit reset.
-    for i, k in enumerate(CARD_KEYS):
-        if k not in order:
-            order.insert(min(i, len(order)), k)
-    closed = v.get("closed") if isinstance(v.get("closed"), list) else []
-    closed = list(dict.fromkeys(k for k in closed if k in CARD_KEYS))
-    return {"order": order, "closed": closed}
-
-
-def save_cards(v):
-    write_json(CARDS_FILE, v)
-
-# What a stored tab may contain. Anything else is dropped rather than trusted:
-# this file is written by one browser and handed to every other one, so it is
-# the one place where a bad value could travel between devices.
-# Every kind of tab the saved layout may carry. A kind missing from here is
-# dropped on read without a word, which is how the notebook came back from a
-# refresh as no tab at all: it was written to the file and filtered out of it.
-# "findings" is the Analysis tab the Static analysis button opens, the
-# report as a document tab beside the notebook's own view of it.
-TAB_KINDS = {"term", "toolchains", "emulator", "notebook", "projects", "docker", "findings",
-             "nodes", "settings", "jobs", "users", "phone", "profile"}
-
-
-def _layouts():
-    """The whole file: {"boot": ..., "users": {uid: layout}}.
-
-    One strip per ACCOUNT, keyed by the minted id rather than the name so a
-    rename keeps it (users.mint_uid says why): a layout written by whoever
-    last saved and handed to everybody else is fine for one operator and
-    wrong the moment there are two.
-    """
-    try:
-        v = json.loads(TABS_FILE.read_text())
-    except (OSError, ValueError):
-        v = {}
-    if not isinstance(v, dict):
-        v = {}
-    if not isinstance(v.get("users"), dict):
-        v = {"boot": v.get("boot"), "users": {}}
-    return v
-
-
-def load_layout(uid):
-    """One account's strip, shape-checked. `uid` is users.uid_of(who)."""
-    v = (_layouts().get("users") or {}).get(str(uid or ""))
-    # Shape-checked field by field, not trusted: this runs inside every status
-    # poll and once at startup (prune_claude_tabs), so a file holding
-    # `"tabs": 5` (a hand edit, or a client that posted junk before the
-    # handler checked) must read as "no layout", not raise and take the
-    # whole dashboard down with a 500 per poll and a crash at the next boot.
-    if not isinstance(v, dict):
-        v = {}
-    tabs, ids, terms = [], set(), 0
-    stored = v.get("tabs") if isinstance(v.get("tabs"), list) else []
-    for t in stored[:64]:
-        if not isinstance(t, dict) or t.get("kind") not in TAB_KINDS:
-            continue
-        if t.get("kind") == "term":
-            if terms >= max_tabs():
-                continue              # the cap, on terminals alone
-            terms += 1
-        tid, arg, label = t.get("id"), t.get("arg"), t.get("label")
-        if not all(isinstance(x, str) for x in (tid, arg, label)):
-            continue
-        if len(tid) > 32 or len(arg) > 200 or len(label) > 80:
-            continue
-        # Ids address panes and are how a tab is closed; a duplicate would make
-        # two tabs indistinguishable to everything downstream.
-        if tid in ids:
-            continue
-        ids.add(tid)
-        tabs.append({"id": tid, "kind": t["kind"], "arg": arg, "label": label,
-                     "fixed": bool(t.get("fixed")),
-                     # Popped out into its own window (R8): kept so the page
-                     # that popped it reconciles; another page drops it.
-                     "popped": bool(t.get("popped"))})
-    stored = v.get("panes") if isinstance(v.get("panes"), list) else []
-    panes = [p if isinstance(p, str) and p in ids else None for p in stored[:2]]
-    while len(panes) < 2:
-        panes.append(None)
-    rev = v.get("rev")
-    return {"rev": rev if isinstance(rev, int) and rev >= 0 else 0,
-            "tabs": tabs, "panes": panes,
-            "active": 1 if v.get("active") == 1 and panes[1] else 0}
-
-
-def save_layout(uid, v):
-    """Write one account's strip, leaving every other account's alone."""
-    uid = str(uid or "")
-    if not uid:
-        return                            # not a person: nothing to remember
-    all_of = _layouts()
-    all_of["users"][uid] = v
-    write_json(TABS_FILE, all_of | {"boot": boot_id()})
-
-
-def boot_id():
-    """An identifier for this run of the container.
-
-    PID 1 is the container's init, so when it changes the container was
-    restarted. Pairing its start time with the host's boot time keeps the value
-    from repeating across a host reboot. Restarting only the dashboard leaves
-    both untouched, which is the distinction this is for.
-
-    An unreadable /proc gives "", which compares equal to nothing and so is
-    treated as "cannot tell" by the one caller that acts on a difference.
-    """
-    try:
-        start = Path("/proc/1/stat").read_text().rsplit(")", 1)[1].split()[19]
-        btime = next(l for l in Path("/proc/stat").read_text().splitlines()
-                     if l.startswith("btime "))
-        return f"{btime.split()[1]}.{start}"
-    except (OSError, IndexError, StopIteration):
-        return ""
-
-
-def prune_claude_tabs():
-    """Drop Claude tabs left over from a previous run of the container.
-
-    A shell tab survives a restart because it can: bb-tty recreates the session
-    in the same directory and the operator carries on. A Claude tab cannot: the
-    conversation ended with the container, and restoring the tab would start a
-    brand new session wearing the old one's name. The transcript is still on
-    disk, so the project's Claude button offers to resume it; that is a decision
-    to make, not one to make silently at boot.
-
-    Called once at startup, and once for EVERY account: the strip is per
-    person now (roadmap #25), and a boot that pruned only one of them would
-    leave everyone else's dead Claude tabs on their strip.
-
-    The revision is bumped so a browser left open across the restart adopts
-    the pruned strip instead of saving its stale tabs back.
-    """
-    try:
-        stored = json.loads(TABS_FILE.read_text())
-    except (OSError, ValueError):
-        return
-    here = boot_id()
-    if not here or stored.get("boot") == here:
-        return
-    for uid in list((_layouts().get("users") or {})):
-        v = load_layout(uid)
-        kept = [t for t in v["tabs"] if not t["arg"].startswith("claude:")]
-        if len(kept) == len(v["tabs"]):
-            continue                    # nothing to drop for this one
-        ids = {t["id"] for t in kept}
-        panes = [p if p in ids else None for p in v["panes"]]
-        if panes[0] is None:
-            panes = [panes[1], None]
-        try:
-            save_layout(uid, {"rev": v["rev"] + 1, "tabs": kept, "panes": panes,
-                              "active": 1 if panes[1] else 0})
-        except OSError:
-            return                      # a read-only /config is not fatal here
-    # The boot stamp regardless, so a run that dropped nothing is not asked
-    # again on every restart afterwards.
-    try:
-        write_json(TABS_FILE, _layouts() | {"boot": here})
-    except OSError:
-        pass
+layout.configure(state=STATE, write_json=write_json, lock=_state_lock)
 
 
 
 
-def load_locks():
-    try:
-        v = json.loads(LOCKS_FILE.read_text())
-        return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else []
-    except (OSError, ValueError):
-        return []
 
 
-def save_locks(names):
-    write_json(LOCKS_FILE, sorted(set(names)))
-
-
-def load_project_pins():
-    """The pinned set, or None when nobody has ever pinned anything.
-
-    None is not the same as empty and the difference decides what a fresh
-    install looks like. No file means the operator has not had this thought
-    yet, so every project is pinned and the card is what it always was; an
-    empty LIST means they unpinned the last one on purpose, and a sidebar that
-    quietly refilled itself would be arguing with them.
-    """
-    try:
-        v = json.loads(PROJECT_PINS_FILE.read_text())
-    except (OSError, ValueError):
-        return None
-    return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else None
-
-
-def save_project_pins(names):
-    write_json(PROJECT_PINS_FILE, sorted(set(names)))
-
-
-# What a locked project refuses, in one place.
-#
-# The button being hidden is not the rule; this is. The dashboard's own URLs
-# are reachable without it, so a lock enforced only by a missing control is
-# advice. That is the same reasoning that put the lock file where bb-tty can
-# read it rather than keeping it in the page.
-#
-# READS are never refused, and the list of what stays is the point of the
-# feature: the notebook opens, the findings and their history are there, the
-# artifacts list and a dev instance still work. What goes is everything that
-# writes on Claude's behalf: the notebook's three tabs, and creating or
-# refreshing a CLAUDE.md, which is a file put into somebody else's project.
-LOCKED_REFUSAL = ("{name} is locked: yours to run. Unlock it to change its "
-                  "notebook or its CLAUDE.md; everything you read here still "
-                  "works while it stays locked.")
-
-
-def locked_out(name):
-    """The refusal for a write into a locked project, or None."""
-    if name and name in set(load_locks()):
-        return {"error": LOCKED_REFUSAL.format(name=name)}
-    return None
 
 
 # `bb toolchains install|update|remove` refuses when CLAUDECODE is set, and the
@@ -1081,8 +798,8 @@ def _project_columns(who, facts):
     Every file that serves the whole list is read once here rather than per
     row: this runs on the fifteen-second poll.
     """
-    locked = set(load_locks())
-    pins = load_project_pins()
+    locked = set(projects.load_locks())
+    pins = projects.load_project_pins()
     # One small file for the whole list, read here rather than per row: this
     # runs on the fifteen-second poll and a per-project read would be a dozen
     # opens for a dozen values that came from the same dictionary.
@@ -1578,32 +1295,6 @@ def _session_visible(name, mine, seen, all_of_them):
 _homes = {}
 
 
-def claude_logins(rows):
-    """Which Anthropic account each BuilderBot account is signed in as, and
-    whether two of them share one.
-
-    From the RECORD, not from a credential: no login lives on this container
-    (R47), and what it keeps instead is which Anthropic account each of its
-    accounts is bound to, as the node that signed in reported it.
-
-    Anthropic's consumer terms allow one person per Claude account, so two
-    BuilderBot accounts on one login is the thing the per-account homes exist
-    to avoid, said on the row rather than left for somebody to work out.
-    """
-    out = []
-    for u in rows:
-        home = home_for(u.get("uid", "")) or os.environ.get("BUILDER_HOME", str(Path.home()))
-        out.append(u | {"claude": claudegrant.state(home)["email"]})
-    seen = {}
-    for u in out:
-        if u["claude"]:
-            seen.setdefault(u["claude"], []).append(u["name"])
-    for u in out:
-        others = [n for n in seen.get(u["claude"], []) if n != u["name"]]
-        u["claude_shared_with"] = others
-    return out
-
-
 def home_for(uid):
     """Where that account's home is, from lib/common.sh's user_home.
 
@@ -1743,6 +1434,37 @@ def node_tmux_sessions():
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
+
+
+def project_busy(name, verb):
+    """Why a project cannot be renamed or trashed right now, or "": its own
+    terminals open, since a live session holds the directory as its working
+    directory and would carry on writing wherever it went, or its dev
+    instance's containers up, bound to paths that would stop existing.
+    Refusals rather than things to tidy away: ending either on the
+    operator's behalf is a bigger decision than the one being asked for.
+    Here rather than in projects.py because these are the two that see
+    outside the filesystem: tmux, and the daemon."""
+    live = {s["name"] for s in tmux_sessions()}
+    held = sorted(s for s in live
+                  if tmux_base(s) == claude_session(name)
+                  or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
+    if held:
+        return ("close its terminals first: " + ", ".join(held[:3])
+                + (" …" if len(held) > 3 else ""))
+    # No daemon, or no compose file: nothing to protect. Broad because
+    # the check reads the daemon, the store and the compose file, and
+    # none of those failing is a reason to keep the project; logged, so
+    # a trash that went past a fault says so.
+    try:
+        holds = devactions.state(name).get("exists")
+    except Exception as e:                          # noqa: BLE001
+        print(f"[dashboard] {verb} {name}: instance check skipped: "
+              f"{type(e).__name__}: {e}", flush=True)
+        holds = False
+    if holds:
+        return "its dev instance still has containers; press Down on the Artifacts tab first"
+    return ""
 
 
 def owner_session_open(project):
@@ -2218,17 +1940,6 @@ AUTH_TTL = int(os.environ.get("BB_AUTH_TTL") or 20)
 AUTH_TTL_FAST = 5
 
 
-# What gets removed from a pasted code before it is handed to the flow:
-# whitespace of every kind (a wrapped copy brings line breaks, a phone
-# keyboard adds a trailing space), control characters, and the zero-width
-# marks HTML copy buttons smuggle along. Everything printable stays. This is
-# deliberately a strip-list and not an allow-list: two rounds of guessing the
-# code's alphabet each refused a real code with advice to copy it again, to an
-# operator who had copied it. The code is somebody else's credential format;
-# judging it is the flow's job, and the flow says why in its own words.
-CODE_JUNK = re.compile(r"[^!-~]+")
-
-
 def claude_auth(fresh=False, home=""):
     """{signed_in, email}, or {"unknown": True} on a claude too old to ask.
 
@@ -2384,6 +2095,7 @@ pending.configure(write_json=write_json, state=STATE)
 # the page rather than the environment. The builder home is where the commit
 # identity lands.
 settings.configure(write_json=write_json, state=STATE)
+settings.forget_runners = lambda: runners.reset()
 # What may be offered: the catalogues gate their unvetted entries on this
 # one switch (roadmap R54, step 6), read live so a save takes at once.
 forges.unvetted_ok = lambda: bool(settings.get("offer_unvetted"))
@@ -2440,7 +2152,8 @@ gitview.configure(workspace=WORKSPACE,
                                                               **users.git_env(me, name)}.items()
                                             if k != "DASHBOARD_AUTH"},
                   may_push=projects.may_push, exclude=mapping.exclude,
-                  audit=lambda *row: None if NODES_OK else db.audit(*row))
+                  audit=lambda *row: None if NODES_OK else db.audit(*row),
+                  host_of=forges.host_label)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -2534,6 +2247,8 @@ preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, live=liv
 import logs                                                      # noqa: E402
 import idle                                                      # noqa: E402
 logs.configure(state=STATE, write_json=write_json)
+logs.diag_report = lambda: diag.report()
+logs.audit = lambda *row: db.audit(*row)
 idle.configure(state=STATE, write_json=write_json,
                # A changed rule reaches every node on its next poll rather
                # than its next ten-minute hello.
@@ -2617,11 +2332,6 @@ def net_nudge():
         print(f"[dashboard] session network nudge skipped: {e}", flush=True)
 
 
-# The last fault auto_sysdeps met on each node, by id: hello logs one when
-# it changes, not on every poll.
-_sysdeps_said = {}
-
-
 # ---- a node's CI runners ----------------------------------------------------
 # The root-only helper that keeps each runner's token and mints from it, and
 # the list the Runner card draws: runners.py.
@@ -2674,6 +2384,15 @@ phone.run_denied = devapp.RUN_DENIED
 phone.net_nudge = net_nudge
 phone.resolve_artifact = artifacts.resolve
 phone.artifact_list = artifacts_of
+# ...and what the Artifacts tab's read composes (artifacts.tab_view).
+artifacts.listing_of = artifacts_of
+artifacts.account_names = account_names
+artifacts.build_state = build_state
+
+artifacts.instance_states = devactions.row_states
+artifacts.phone_summary = lambda name, uid: phone.summary(
+    prefs.get(name)["node"], uid,
+    nodes.node(prefs.get(name)["node"]) if prefs.get(name)["node"] and not NODES_OK else None)
 # The settings dialog's save (prefs.dialog_save).
 prefs.configure_dialog(WORKSPACE=WORKSPACE, pin_instances=devapp.pin_to_current_node,
                        end_claude=end_claude, net_nudge=net_nudge)
@@ -2717,6 +2436,24 @@ containers.net_nudge = net_nudge
 # only the roadmap's and the tracker's dated logs know that.
 import changelog                                                 # noqa: E402
 import claudegrant                                              # noqa: E402
+# The Claude sign-in's verbs (signin.py) and the account's identity
+# (claudegrant.py) clear the cached answer to who each home is signed in as
+# whenever they change it.
+signin.nodes = None if NODES_OK else nodes
+signin.mint = users.mint_session
+signin.forget_auth = _auth.clear
+claudegrant.forget_auth = _auth.clear
+claudegrant.node_names = lambda ids: ([] if NODES_OK
+                                      else [(nodes.node(i) or {}).get("name") or i for i in ids])
+claudegrant.claude_auth = claude_auth
+claudegrant.home_for = home_for
+
+# ---- the node agent's channel -----------------------------------------------------
+# The verbs behind /api/v1/agent/: channel.py. What a node reports about each
+# account's Claude login clears the cached answer the way a sign-in does.
+import channel                                                   # noqa: E402
+
+channel.configure(home_for=home_for, forget_auth=_auth.clear)
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
 vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
@@ -2725,7 +2462,7 @@ vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, ste
 nodes.configure_verbs(vmtemplate=vmtemplate, forges=forges, devapp=devapp,
                       claudecode=claudecode, runner_store=runners, workspace=workspace,
                       project_prefs=prefs.get, may_push=projects.may_push,
-                      no_node_advice=no_node_advice)
+                      no_node_advice=no_node_advice, turns_of=node_turns)
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   roadmap_mod=roadmap, bugs_mod=bugs, changelog_mod=changelog,
@@ -2764,6 +2501,11 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    write_json=write_json,
                    rename_project_data=devapp.rename_project_data,
                    after_create=mapping.start)
+# ...and what the create dialog's follow-ups and the sidebar's pins need.
+projects.lock = _state_lock
+projects.take_on = users.take_on
+projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
+projects.live_sessions = tmux_sessions
 
 # ---- a node's git, relayed --------------------------------------------------
 # Push, fetch, pull and ls-remote from a session on a node, done in a
@@ -3016,7 +2758,7 @@ def revisions(who=None, projects=None):
         pend_revs = _cached(STATE / "pending.json", pending.revisions)
     revs = {
         # The container itself. A restart invalidates everything a page holds.
-        "boot": boot_id(),
+        "boot": layout.boot_id(),
         # One file each, so any write through any path moves the token: the
         # CLI's included, which no in-process counter would catch.
         "findings": _mtime(STATE / "findings-log.json"),
@@ -3164,7 +2906,7 @@ def snapshot(who):
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
-        "boot": boot_id(),
+        "boot": layout.boot_id(),
         "image": image_stamp(),
         "projects": ps,
         "sessions": sessions,
@@ -3202,7 +2944,7 @@ def snapshot(who):
         # The code maps being built for new projects, and the ones that just
         # finished: the row says "mapping the code" and then how many files.
         "mapping": mapping.payload(),
-        "max_tabs": max_tabs(),
+        "max_tabs": layout.max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
         "settings": settings.payload(),
         # The command list is built from the table above rather than spelled out
@@ -3211,13 +2953,13 @@ def snapshot(who):
         # The command cards: the bb commands, the Linux and git/GitHub cards,
         # the pins and the operator's own lists.
         **macros.cards(),
-        "cards": load_cards(),
+        "cards": layout.load_cards(),
         # The open tabs, so a phone picks up the desktop's layout rather than
         # starting from scratch. Carried in the status poll because it is small
         # and every client is already asking for that every 15s. THIS
         # account's: the strip follows the person to any browser they sign in
         # on, and stops following them to somebody else's (roadmap #25).
-        "layout": load_layout(users.uid_of(who)),
+        "layout": layout.load_layout(users.uid_of(who)),
         # Who this is, so the page can name a shell session the way bb-tty
         # will (index.html's myTmux). Not a secret: it is this account's own
         # id, and it is already the key to everything the page saves.
@@ -4231,82 +3973,34 @@ class Handler(BaseHTTPRequestHandler):
                            "claude_busy": projsessions.busy(sessions)})
 
     def _get_findings(self):
-        """GET /api/findings.
-
-        Scoped by project_list, which for a session's token is the one project
-        it was minted for: a finding in anybody else's code attributes to
-        IGNORED and never reaches the payload. The count of what was
-        attributed away does not go either. For the operator it means "the
-        toolchain store and the vendored trees"; for a session it would be every
-        other project on the share, and a number that moves when somebody
-        else's code changes is a fact about their code.
-        """
+        """GET /api/findings: findings.view, scoped to the projects this
+        account sees, and for a session to its own."""
         me = self._who() or {}
-        r = findings.payload(project_list(me))
-        mine = me.get("session")
-        if mine:
-            r.pop("aside", None)
-            # Positively its own, rather than "not obviously somebody else's".
-            # Attribution is by path component, so a report whose URIs are
-            # relative to a project root places NOTHING and every row would
-            # arrive here as unattributed: allowing those through would hand a
-            # session the whole box the first time a scanner is configured
-            # that way. A finding it cannot be told is in its own project is
-            # one it does not get.
-            for rep in r.get("reports") or []:
-                rep["findings"] = [f for f in rep["findings"] if f.get("project") == mine]
-        return self._json(r)
+        return self._json(findings.view(project_list(me), me.get("session") or ""))
 
     def _get_git(self):
-        """GET /api/git."""
-        # The notebook's Git view (roadmap R36): plumbing reads on the
-        # project's tree, for a project this account may see. A sha
-        # and a path are checked in git.py against what the repository
-        # itself reports; nothing from the query reaches a command line
-        # as anything else.
+        """GET /api/git: the notebook's Git view (gitview.view), for a
+        project this account may see."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        what = q.get("what", [""])[0]
         try:
             n = int(q.get("n", ["0"])[0])
         except ValueError:
             n = 0
-        r = gitview.payload(name, what, sha=q.get("sha", [""])[0],
-                            path=q.get("path", [""])[0], n=n,
-                            branch=q.get("branch", [""])[0])
-        if what in ("", "all") and not r.get("error"):
-            # What the network bar may offer: a remote to talk to, and
-            # the project's push rights, granted once in the clone dialog.
-            r["remote"] = gitview.has_remote(WORKSPACE / name)
-            r["push"] = projects.may_push(name)
-            # Whose working tree this is (B236): the page says so to anybody
-            # else, and offers them nothing that changes it.
-            r["owner"] = users.owner_name() or ""
-            # The host by its name (GitHub, Gitea, or the machine's own),
-            # so the view can say "in step with GitHub" and not "origin".
-            url = gitview.remote_url(WORKSPACE / name)
-            at = forges.parse(url) if url else None
-            f = forges.forge_of(at["host"]) if at else None
-            r["host"] = {"name": (f["name"] if f and f["id"] != "git" else (at or {}).get("host", "")),
-                         "kind": (f or {}).get("kind", "")}
-        return self._result(r)
+        return self._result(gitview.view(name, q.get("what", [""])[0], sha=q.get("sha", [""])[0],
+                                         path=q.get("path", [""])[0], n=n,
+                                         branch=q.get("branch", [""])[0]))
 
     def _get_changelog(self):
-        """GET /api/changelog."""
+        """GET /api/changelog: changelog.reading, for a project this account
+        sees."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        d = version._sub(name, q.get("component", [""])[0])
-        if d is None:
-            return self._json({"error": "no such component"}, 400)
-        # The text for reading and the same section as structure for
-        # editing: one fetch, because the editor shows both and a second
-        # round trip would let them disagree about what is in the file.
-        return self._json({"text": changelog.read(d),
-                           "groups": changelog.groups(d)})
+        return self._json(*changelog.reading(name, q.get("component", [""])[0]))
 
     def _get_version(self):
         """GET /api/version."""
@@ -4317,57 +4011,25 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(version_payload(name))
 
     def _get_artifacts(self):
-        """GET /api/artifacts."""
+        """GET /api/artifacts: artifacts.tab_view, for a project this account
+        sees."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        # `devapp` is the main instance, which is what the row shows;
-        # `devapps` is every instance, which the manager reads. Both, so
-        # the row keeps working while the manager grows around it.
-        # One read scope for the row and the manager's list: on an
-        # agent node each is a probe job, and both ask the same daemon.
-        with devapp.read_scope():
-            dev = {"devapp": devactions.state(name), "devapps": devactions.states(name)}
-        return self._json({"artifacts": artifacts_of(name),
-                           # Each account's own builds, from its worktree
-                           # (B237), apart from dist/, which is what ships.
-                           "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
-                                        for g in artifacts.branches(name)],
-                           # What this project can and cannot do off this
-                           # box, said on the tab that lists what it built.
-                           "build": build_state(name)} | dev
-                          | phone.summary(prefs.get(name)["node"], users.uid_of(self._who()),
-                                          nodes.node(prefs.get(name)["node"])
-                                          if prefs.get(name)["node"] and not NODES_OK else None))
+        return self._json(artifacts.tab_view(name, users.uid_of(self._who())))
 
     def _get_artifact(self):
-        """GET /api/artifact."""
-        # The download. Resolved and prefix-checked in artifacts.resolve:
-        # a symlink inside dist/ must not turn this into a file server for
-        # the whole box.
+        """GET /api/artifact: one file of a project's, as a download
+        (artifacts.download)."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
-        rel = q.get("path", [""])[0]
         if self._not_project(name):
             return
-        # `tree`: an account's worktree by uid, for a build made there (B237).
-        f = artifacts.resolve(name, rel, q.get("tree", [""])[0])
-        if f is None:
-            return self._json({"error": "no such artifact"}, 404)
-        try:
-            data = f.read_bytes()
-        except OSError as e:
-            return self._json({"error": str(e)}, 500)
-        self.send_response(200)
-        self.send_header("Content-Type", "application/octet-stream")
-        # A name with a quote or a line break would end the header early.
-        self.send_header("Content-Disposition",
-                         f'attachment; filename="{re.sub(r"[^A-Za-z0-9._ -]", "_", f.name)[:200]}"')
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-        return None
+        got, status = artifacts.download(name, q.get("path", [""])[0], q.get("tree", [""])[0])
+        if status != 200:
+            return self._json(got, status)
+        return self._attachment(*got, "application/octet-stream")
 
     def _get_meta(self):
         """GET /api/meta."""
@@ -4379,47 +4041,30 @@ class Handler(BaseHTTPRequestHandler):
                            "apk_sha256": app_apk_sha()})
 
     def _get_welcome(self):
-        """GET /api/welcome."""
-        # BuilderBot's own changelog, for the welcome panel: the file
-        # beside this checkout (CHANGELOG.md two levels up, which is
-        # /opt/builderbot/CHANGELOG.md in the image and the repository's
-        # under bb dashboard dev), and where this account last looked
-        # (the image commit it acknowledged), so the panel can draw a
-        # line under what is new since.
-        text = changelog.read(Path(__file__).resolve().parents[2])
-        seen = str(users.prefs(self._who()).get("image_seen") or "")
-        # Trimmed to what is unreleased plus the newest minor's releases:
-        # this panel answers "what changed in the build in front of me",
-        # and the file behind it grows for the life of the project. What
-        # it left out is counted, not hidden.
-        kept, held, series = changelog.since_minor(
-            changelog.sections(text) if text else [])
-        return self._json({"sections": kept, "held": held, "series": series,
-                           "present": text is not None, "seen": seen})
+        """GET /api/welcome: BuilderBot's own changelog for the welcome panel
+        (changelog.welcome), and where this account last looked."""
+        return self._json(changelog.welcome(str(users.prefs(self._who()).get("image_seen") or "")))
 
     def _get_source(self):
-        """GET /api/source."""
-        # The code base as a zip, from the Artifacts tab: what git
-        # tracks and would track, never .git, dist/ or what .gitignore
-        # hides. A person's download, so a session's token is refused:
-        # a session has the tree already.
+        """GET /api/source: the code base as a zip, from the Artifacts tab
+        (artifacts.source_download). A person's download, so a session's
+        token is refused: a session has the tree already."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
         if (self._who() or {}).get("session"):
             return self._json({"error": "a session has the tree already"}, 403)
         if self._not_project(name):
             return
-        try:
-            got = artifacts.source_zip(name)
-        except (OSError, subprocess.SubprocessError) as e:
-            return self._json({"error": str(e)}, 500)
-        if got is None:
-            return self._json({"error": "no such project"}, 404)
-        if isinstance(got, dict):
-            return self._json(got, 413)
-        fname, data = got
+        got, status = artifacts.source_download(name)
+        if status != 200:
+            return self._json(got, status)
+        return self._attachment(*got, "application/zip")
+
+    def _attachment(self, fname, data, ctype):
+        """Bytes as a download named `fname`, which the caller has made safe
+        for the header."""
         self.send_response(200)
-        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -4427,38 +4072,16 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def _get_logs_download(self):
-        """GET /logs/download."""
-        # The container's own log, every project's traffic in it.
+        """GET /logs/download: the container's own log, every project's
+        traffic in it, or the diagnostics whole (logs.download). An
+        administrator's."""
         if self._refused("admin"):
             return None
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
-        what = (q.get("what") or [""])[0]
-        if what == "diag":
-            # The controller's diagnostics whole, the report bb diag prints
-            # with what sessions have reported about BuilderBot among it, as
-            # one file to keep or hand over (the operator, 24 Sep). Redacted
-            # as they always are, and on the audit trail as a read of them
-            # through the API is.
-            db.audit(self._principal(), "diag-download", "diagnostics", {})
-            data = (json.dumps(diag.report(), indent=2) + "\n").encode()
-            fname = time.strftime("builderbot-diagnostics-%Y%m%d-%H%M.json")
-            ctype = "application/json"
-        elif what == "archive":
-            data, err = logs.archive_bytes()
-            if data is None:
-                return self._json({"error": err}, 500)
-            fname, ctype = "builderbot-logs.tar.gz", "application/gzip"
-        else:
-            data = logs.session_bytes()
-            fname, ctype = "builderbot-session.log", "text/plain; charset=utf-8"
-        self.send_response(200)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Disposition",
-                         f'attachment; filename="{fname}"')
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-        return None
+        got, status = logs.download((q.get("what") or [""])[0], self._principal())
+        if status != 200:
+            return self._json(got, status)
+        return self._attachment(*got)
 
     def _get_phone(self):
         """GET /api/phone."""
@@ -4503,40 +4126,24 @@ class Handler(BaseHTTPRequestHandler):
         # admin cannot hand out what they cannot see themselves.
         if self._refused("admin"):
             return None
-        return self._json({
-            "users": claude_logins(users.all_users()), "owner": users.owner_name(),
-            "me": (self._who() or {}).get("name", ""),
-            "roles": list(users.ROLES),
-            "projects": [p["name"] for p in project_list(self._who())]})
+        return self._json(users.tab_view(self._who(), [p["name"] for p in project_list(self._who())],
+                                         claudegrant.logins_of))
 
     def _get_nodes(self):
-        """GET /api/v1/nodes."""
+        """GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to
+        this account."""
         # The versioned surface starts here (docs/nodes.md §3): new
         # endpoints land under /api/v1 with their shapes written down;
         # the unversioned paths above migrate later, never both at once.
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
-        # The agent this controller ships rides beside the rows, once,
-        # so a row can say when its node's agent is behind.
-        #
         # Scoped for an account that may not change a node: it sees the
         # ones its own projects build on and no others, because the list
         # is otherwise a way to learn what machines exist and what they
         # are called (roadmap #27). An administrator sees the registry.
-        rows = self._nodes_for(nodes.node_list())
-        for n in rows:
-            if n.get("kind") == "agent":
-                n["turns"] = node_turns(n)
-        # ...and the node the Docker tab opens on and New project offers,
-        # derived from where the projects are bound (nodes.node_for). Not a
-        # default that work falls to: a project with no node has nowhere to
-        # send, and the dialogs make the person pick.
-        # The shipped agent and the tab's first pick are the registry's
-        # facts: an administrator's, like the registry.
-        admin = users.may(self._who(), "admin") == ""
-        return self._json({"nodes": rows, "agent": nodes.agent_shipped() if admin else {},
-                           "default": nodes.node_for() if admin else ""})
+        return self._json(nodes.tab_view(self._nodes_for(nodes.node_list()),
+                                         users.may(self._who(), "admin") == ""))
 
     def _get_jobs(self):
         """GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this
@@ -4551,7 +4158,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*nodes.jobs_view(q.get("id", [""])[0], q, mine))
 
     def _get_docker(self):
-        """GET /api/docker: the manager's whole page, devapp.manager_view,
+        """GET /api/docker: the manager's whole page, containers.manager_view,
         for the node this account may read."""
         # No node named means the default, which is the arrangement that
         # predates the picker.
@@ -4588,7 +4195,7 @@ class Handler(BaseHTTPRequestHandler):
         seen = None
         if sess or self._node_scope() is not None:
             seen = {sess} if sess else {p["name"] for p in project_list(me)}
-        return self._json(devapp.manager_view(nid, seen))
+        return self._json(containers.manager_view(nid, seen))
 
     def _get_containers(self):
         """GET /api/containers."""
@@ -4805,29 +4412,21 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
     def _reset(self, req):
-        """POST /api/reset."""
-        # Start over at onboarding: the controller's own state moved
-        # aside (accounts, nodes, project settings, git tokens, the
-        # notebook, memories, logs), project files untouched, and the
-        # dashboard re-executes itself so the next page is Create the
-        # owner. The confirm word is the whole of the safety: this is
-        # an administrator typing "reset" into a red box.
+        """POST /api/reset: start over at onboarding (settings.reset), and the
+        dashboard re-executes itself so the next page is Create the owner.
+        The confirm word is the whole of the safety: this is an
+        administrator typing "reset" into a red box."""
         if self._refused("admin"):
             return None
         if str(req.get("confirm") or "") != "reset":
             return self._json({"error": "type reset to confirm; nothing was changed"}, 400)
-        try:
-            moved = settings.reset_state(STATE)
-        except OSError as e:
-            return self._json({"error": f"could not move the state aside: {e}"}, 500)
-        # The runner tokens are root's, behind the helper: forgotten
-        # there, since the nodes they were for are being forgotten here.
-        forgot = runners.reset()
-        kept = [k for k in moved["kept"] if not (k == "runner-tokens" and forgot)]
+        r, status = settings.reset(STATE)
+        if status != 200:
+            return self._json(r, status)
         print(f"dashboard: {self._principal()} reset this controller; the old state is in "
-              f"{moved['dest']}" + (f"; kept: {', '.join(kept)}" if kept else ""), flush=True)
+              f"{r['moved_to']}" + (f"; kept: {', '.join(r['kept'])}" if r["kept"] else ""), flush=True)
         threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
-        return self._json({"ok": True, "moved_to": str(moved["dest"]), "kept": kept})
+        return self._json(r)
 
     def _settings_post(self, req):
         """POST /api/settings."""
@@ -4951,14 +4550,7 @@ class Handler(BaseHTTPRequestHandler):
         home = home_for(uid)
         if req is not None:
             return self._claude_login_put(req, home)
-        # No credential leaves here, because none is kept here: a machine
-        # signs in for itself and keeps the grant it alone refreshes. What a
-        # node gets is the account's IDENTITY and the generation to compare
-        # its own against; behind means sign yourself out.
-        st = claudegrant.state(home)
-        return self._json({"email": st["email"], "plan": st["plan"],
-                           "gen": st["gen"], "signed_in": st["signed_in"],
-                           "nodes": len(st["nodes"])})
+        return self._json(*claudegrant.identity(home))
 
     def _claude_login_put(self, req, home):
         """A node reporting what it is signed in AS, never the grant itself.
@@ -4977,11 +4569,7 @@ class Handler(BaseHTTPRequestHandler):
         if not nid:
             return self._json({"error": "a sign-in is reported by a session on the "
                                         "node it happened on"}, 400)
-        r = claudegrant.report(home, nid, req.get("email") or "",
-                               req.get("plan") or "",
-                               signed_in=bool(req.get("signed_in", True)))
-        _auth.clear()
-        return self._result(r)
+        return self._json(*claudegrant.report_from(home, nid, req))
 
     def _tty_grant(self, req):
         """Whose terminal a node's bb-tty is about to start, answered here
@@ -5062,12 +4650,11 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return self._json(*bbrelay.run(me, req, project))
 
-    # The agent's verbs (docs/nodes.md §4). Four of the six land in phase 3
-    # (enroll, hello, work, log, result), plus download, which is how a node
-    # gets the agent in the first place and how self-update fetches the next
-    # one. artifact and source are phase 6, when there is a workspace to ship
-    # and an artifact store to land in.
     def _agent(self):
+        """The node agent's door (docs/nodes.md §4): channel.py says what each
+        verb means. What stays here is the HTTP: the node's token from the
+        Authorization header, a file streamed, a body read, and the
+        long-poll's empty answer."""
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
@@ -5076,124 +4663,18 @@ class Handler(BaseHTTPRequestHandler):
         bearer = hdr[7:] if hdr.startswith("Bearer ") else ""
         auth = nodes.authenticate(bearer) if bearer else {"error": "no token"}
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
-        # The verbs that serve or take a FILE, on any method, each writing
-        # its own reply: a table first, and the POST gate below for the rest.
-
-        def source():
-            # A job's workspace snapshot, by digest (docs/nodes.md §6). The
-            # digest is the file name, so nothing else is reachable here.
-            if auth.get("error") or auth.get("kind") != "node":
-                return self._json({"error": auth.get("error") or "a node's token"}, 401)
-            path = workspace.path_for(q.get("digest", [""])[0])
-            if path is None:
-                return self._json({"error": "no such snapshot: the tree has "
-                                            "moved on; queue the job again"}, 404)
-            size = path.stat().st_size
-            self.send_response(200)
-            self.send_header("Content-Type", "application/x-tar")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(size))
-            self.end_headers()
-            with open(path, "rb") as f:
-                shutil.copyfileobj(f, self.wfile)
-            return None
-
-        def file():
-            # A job input from the project's dist/, such as the APK an emulator
-            # job installs (docs/nodes.md phase 9). Only the job's own node,
-            # only while it runs, only dist/.
-            if auth.get("error") or auth.get("kind") != "node":
-                return self._json({"error": auth.get("error") or "a node's token"}, 401)
-            j = nodes.job(q.get("job", [""])[0], with_log=False)
-            if not j or j["node"] != auth["node"] or j["state"] not in nodes.JOB_ACTIVE:
-                return self._json({"error": "not this node's running job"}, 403)
-            path = workspace.file_path(j.get("project") or "", q.get("path", [""])[0])
-            if path is None:
-                return self._json({"error": "no such file in the project's dist/"}, 404)
-            size = path.stat().st_size
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Content-Length", str(size))
-            self.end_headers()
-            with open(path, "rb") as f:
-                shutil.copyfileobj(f, self.wfile)
-            return None
-
-        def artifact():
-            # A file a job produced, raw in the body: into the project's
-            # dist/ with its provenance beside it. Only the job's own node,
-            # only while the job runs; a result already posted closes it.
-            if auth.get("error") or auth.get("kind") != "node":
-                return self._json({"error": auth.get("error") or "a node's token"}, 401)
-            j = nodes.job(q.get("job", [""])[0], with_log=False)
-            if not j or j["node"] != auth["node"]:
-                return self._json({"error": "not this node's job"}, 403)
-            if j["state"] not in nodes.JOB_ACTIVE:
-                return self._json({"error": "the job has ended"}, 409)
+        # The verbs that serve or take a FILE, on any method.
+        if verb in ("source", "file", "download"):
+            got, status = channel.fetch(verb, auth, q, authed=self._authed)
+            if status != 200:
+                return self._json(got, status)
+            return self._send_file(got)
+        if verb == "artifact":
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 length = 0
-            r = workspace.artifact_put(j, q.get("name", [""])[0], self.rfile, length)
-            if not r.get("error"):
-                db.audit(auth["principal"], "artifact", j["id"],
-                            {"path": r["path"], "sha256": r["sha256"]})
-            return self._result(r)
-
-        def download():
-            what = q.get("what", [""])[0]
-            if what == "bundle":
-                # bb, its library and the catalog, for a node installing a
-                # toolchain into its own store (docs/nodes.md §6).
-                if auth.get("error") or auth.get("kind") != "node":
-                    return self._json({"error": auth.get("error") or "a node's token"}, 401)
-                b = workspace.bundle()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/x-tar")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("X-Bundle-Digest", b["digest"])
-                self.send_header("Content-Length", str(len(b["body"])))
-                self.end_headers()
-                self.wfile.write(b["body"])
-                return None
-            # The file itself. Any token gets it: the provisioner fetches
-            # it with the enroll token before there is a node, and so does
-            # the operator's own login, for reading it in a browser.
-            if auth.get("error") and not self._authed():
-                return self._json({"error": auth["error"]}, 401)
-            if what in ("provisioner", "provisioner-macos"):
-                # The provisioner too, from the copy this image carries: the
-                # Enroll dialog's command names it, and a machine with an
-                # enroll token is what has to get it (B133), a Mac's as well
-                # as a Linux machine's (B150).
-                p = workspace.REPO / "nodes" / ("provision-macos.sh" if what == "provisioner-macos"
-                                                else "provision-linux.sh")
-                body = p.read_bytes() if p.is_file() else b""
-                if not body:
-                    return self._json({"error": "this controller ships no provisioner"}, 404)
-                self.send_response(200)
-                self.send_header("Content-Type", "text/x-shellscript; charset=utf-8")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                return None
-            f = nodes.agent_file()
-            if not f["body"]:
-                return self._json({"error": "this controller ships no agent"}, 404)
-            self.send_response(200)
-            self.send_header("Content-Type", "text/x-python; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Agent-Digest", f["digest"])
-            self.send_header("Content-Length", str(len(f["body"])))
-            self.end_headers()
-            self.wfile.write(f["body"])
-            return None
-
-        files = {"source": source, "file": file, "artifact": artifact, "download": download}
-        if verb in files:
-            return files[verb]()
+            return self._json(*channel.artifact(auth, q, self.rfile, length))
         if self.command != "POST":
             return self._json({"error": "POST"}, 405)
         req = self._read_json()
@@ -5206,234 +4687,61 @@ class Handler(BaseHTTPRequestHandler):
         # nodes._addr). A proxy in front says so in the usual header.
         addr = (self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
                 or self.client_address[0])
-        if verb == "enroll":
-            if auth["kind"] != "enroll":
-                return self._json({"error": "an enrollment token is needed "
-                                            "here, not a node's"}, 403)
-            r = nodes.enroll(auth, req.get("census"), addr,
-                             field(req, "version"), field(req, "digest"),
-                             field(req, "user"))
-            return self._result(r)
-        if auth["kind"] != "node":
-            return self._json({"error": "an enrollment token enrolls, and "
-                                        "nothing else"}, 403)
-        nid = auth["node"]
-        # The node's own verbs, behind its token: each answers with the
-        # module's dict for _result, or None when it wrote the reply itself.
-
-        def runner_token():
-            # A registration or removal token for the node's runner, minted
-            # now from the root-only stash and never stored: the PAT stays
-            # here, the hour-long token goes to the node that asked.
-            kind = "remove" if field(req, "kind") == "remove" else "registration"
-            # An agent that predates slots names none: the node's one runner.
-            slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
-            if not slot:
-                only = list(nodes.runners_of(nodes.node(nid) or {}))
-                slot = only[0] if len(only) == 1 else ""
-            r = runners.mint(kind, nid, slot, field(req, "runner_id"))
-            db.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
-            return r
-
-        def hello():
-            r = nodes.hello(nid, req.get("census"), addr,
-                            field(req, "version"), field(req, "digest"),
-                            req.get("running"))
-            # A managed node whose store holds a toolchain it lacks the
-            # system libraries for installs them itself (toolchains.py).
-            # Broad because this rides every hello, and a fault in the
-            # housekeeping must not put every node offline; said once per
-            # node per message, so the log names it without repeating it.
-            try:
-                toolchains.auto_sysdeps(nid)
-            except Exception as e:                      # noqa: BLE001
-                msg = f"{type(e).__name__}: {e}"
-                if _sysdeps_said.get(nid) != msg:
-                    _sysdeps_said[nid] = msg
-                    print(f"[dashboard] auto sysdeps on {nid} skipped: {msg}", flush=True)
-            return r
-
-        def work():
-            # The heartbeat and the long-poll in one: the sample is recorded
-            # first, so a node that is only ever waiting still reads as
-            # alive and its numbers still move; then the request is held.
-            nodes.heartbeat(nid, req.get("sample"), addr, req.get("running"))
-            self._node_logins(nid, (req.get("sample") or {}).get("logins")
-                              if isinstance(req.get("sample"), dict) else None)
-            # ...and the Claude plugins each account there installed, which
-            # ride the same rows (plugins.py).
-            plugins.report(nid, (req.get("sample") or {}).get("logins")
-                           if isinstance(req.get("sample"), dict) else None)
-            try:
-                wait = min(nodes.POLL_S, max(0.0, float(req.get("wait", nodes.POLL_S))))
-            except (TypeError, ValueError):
-                wait = nodes.POLL_S
-            j = nodes.job_next(nid, wait, runner="node",
-                               alive=lambda: not client_gone(self.connection))
-            if j is None:
+        if verb == "work":
+            got = channel.work(auth, req, addr, alive=lambda: not client_gone(self.connection))
+            if got is None:
                 self.send_response(204)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return None
-            return self._json(j)
+            return self._json(*got)
+        return self._json(*channel.verb(verb, auth, req, addr))
 
-        def sessions():
-            # The node's sessions as they are now, sent when one changed
-            # rather than on the poll's turn.
-            return nodes.sessions_report(nid, req.get("sessions"))
-
-        def log():
-            return nodes.job_log(nid, field(req, "job"), req.get("chunks"),
-                                 req.get("step"))
-
-        def result():
-            return nodes.job_result(nid, field(req, "job"), field(req, "state"),
-                                    req.get("exit"), field(req, "error"),
-                                    req.get("outputs"))
-
-        verbs = {"runner-token": runner_token, "hello": hello, "work": work,
-                 "sessions": sessions, "log": log, "result": result}
-        if verb not in verbs:
-            return self._json({"error": "not found"}, 404)
-        r = verbs[verb]()
-        if r is None:
-            return None             # the verb wrote its own reply
-        return self._result(r)
-
-    def _node_logins(self, nid, rows):
-        """What a node's agent says each account on it is signed in to Claude
-        as (B104). Absent from most heartbeats, and then nothing happens.
-
-        This is the ONLY report that does not come from a session's own token,
-        and it is worth being clear about what that means: a node could name
-        an account and an email that are not so. It could also read every
-        session's token and run as those accounts, because it runs them, so
-        the weakening is small, and what it buys is a card that is true when
-        nothing is running, and a way back from a sign-out that does not need
-        the session the sign-out just stopped.
-
-        Written only when it says something new, because a heartbeat must not
-        cost a write per node per poll, and _auth is cleared only then.
-        """
-        if not isinstance(rows, list):
-            return
-        moved = False
-        for r in rows[:64]:
-            if not isinstance(r, dict):
-                continue
-            uid = str(r.get("uid") or "")
-            if not re.fullmatch(r"u_[0-9a-f]{8}", uid):
-                continue
-            home = home_for(uid)
-            if not home:
-                continue
-            email = " ".join(str(r.get("email") or "").split())[:120]
-            was = claudegrant.state(home)
-            on = (was["nodes"] or {}).get(nid) or {}
-            if email:
-                if on.get("email") == email:
-                    continue                       # already what we have
-                claudegrant.report(home, nid, email, str(r.get("plan") or ""))
-            else:
-                if not on:
-                    continue                       # never was on this node
-                claudegrant.report(home, nid, "", signed_in=False)
-            moved = True
-        if moved:
-            _auth.clear()
+    def _send_file(self, got):
+        """A file the agent fetches, from a path or from bytes, never cached:
+        channel.fetch's answer."""
+        self.send_response(200)
+        self.send_header("Content-Type", got["ctype"])
+        self.send_header("Cache-Control", "no-store")
+        for k, v in got["headers"].items():
+            self.send_header(k, v)
+        if "path" in got:
+            self.send_header("Content-Length", str(got["path"].stat().st_size))
+            self.end_headers()
+            with open(got["path"], "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+        else:
+            self.send_header("Content-Length", str(len(got["body"])))
+            self.end_headers()
+            self.wfile.write(got["body"])
+        return None
 
     def _signin(self, req):
-        """Start a sign-in, or stop the one that is running. A person's, on
-        the controller: a session on a node has no business here, and
-        another account's flow is not this one's to stop (the review of 26
-        Sep)."""
+        """Start a sign-in, or stop the one that is running: signin.verb. A
+        person's, on the controller: a session on a node has no business
+        here, and another account's flow is not this one's to stop (the
+        review of 26 Sep)."""
         me = self._who() or {}
         if me.get("session"):
             return self._json({"error": "a session does not sign the controller in"}, 403)
         if users.may(me, "admin") != "" and signin.owner() not in ("", users.uid_of(me)):
             return self._json({"error": "that sign-in is another account's"}, 403)
-        _auth.clear()               # every home: the flow may have changed any
-        if field(req, "action") == "cancel":
-            return self._json(signin.cancel() | {"signin": signin.state()})
-        # WHERE it runs. Claude Code is installed where sessions are, which
-        # is a node, so the flow goes there, on the node the operator picked
-        # or the one node there is. There is no other answer: this container
-        # carries no Claude Code, so with no node the refusal below is it.
-        uid = users.uid_of(self._who())
-        want = field(req, "node")
-        # A node that runs SESSIONS, which is the same test session_target
-        # makes: Claude Code is installed for the session account, the
-        # credential lands in that account's home, and a node with no session
-        # half has neither. Not merely "online": a build node that runs no
-        # sessions has nowhere for a login to live.
-        live = [] if NODES_OK else [
-            n for n in nodes.node_list()
-            if n["kind"] == "agent" and n["state"] == "online"
-            and n.get("live") is not False
-            and ((n.get("reported") or {}).get("session") or {}).get("up")]
-        pick = next((n for n in live if want in (n["id"], n["name"])), None) \
-            if want else (live[0] if len(live) == 1 else None)
-        if pick:
-            tok = users.mint_session(f"node:{pick['id']}", ttl=1800, uid=uid)
-            return self._json(signin.start_on_node(nodes, pick["id"], uid, pick["name"], token=tok)
-                              | {"signin": signin.state()})
-        if live:
-            return self._json({"error": "which node should the sign-in run on? "
-                                        + ", ".join(n["name"] for n in live),
-                               "nodes": [n["name"] for n in live]}, 400)
-        # And nowhere else. Claude Code is installed for the account that runs
-        # sessions, which is a node's; this container carries none, so there
-        # is no flow here to fall back to and saying so is the whole answer.
-        return self._json({"error": "no node is running sessions, and a Claude "
-                                    "sign-in runs on the machine Claude is "
-                                    "installed on. Enroll one on the Nodes tab, or "
-                                    "wait for one to come back"}, 400)
+        return self._json(*signin.verb(field(req, "action"), field(req, "node"), users.uid_of(me)))
 
     def _login_code(self, req):
-        """Hand the code from the browser to the sign-in flow.
-
-        Transport, not judgment. The only property this end owes the pty is
-        that a paste is one line of printable text, so the junk a copy brings
-        along is stripped rather than refused, and whether what remains is a
-        valid code is decided by the flow, whose refusal the card repeats in
-        the flow's own words. Two shape checks in a row each turned out to
-        refuse a real code (an allow-listed alphabet without base64's `+/=`,
-        then the page's own authorize URL glued to the code by its Copy
-        button); the only refusals left are the ones that cannot be wrong:
-        nothing left to send, or far too much to be a code.
-        """
+        """Hand the code from the browser to the sign-in flow: signin.take_code,
+        for the person whose flow it is."""
         me = self._who() or {}
         if me.get("session"):
             return self._json({"error": "a session does not sign the controller in"}, 403)
         if users.may(me, "admin") != "" and signin.owner() not in ("", users.uid_of(me)):
             return self._json({"error": "that sign-in is another account's"}, 403)
-        code = field(req, "code")
-        # Anything from a URL onward was never part of the code. The page that
-        # hands it out sets the authorize URL flush against it, so Copy takes
-        # both. A code is base64url and a `#`, with no colon and no slash, so the
-        # cut cannot land inside a real one.
-        code = re.split(r"https?://", code, maxsplit=1)[0]
-        code = CODE_JUNK.sub("", code)
-        if not code:
-            return self._json({"error": "no code in that paste: copy the "
-                                        "code itself, not the page's link"}, 400)
-        if len(code) > 2048:
-            return self._json({"error": "that is far too long to be a code; "
-                                        "copy just the code"}, 400)
-        r = signin.submit(code)
-        # Whatever the cache is holding is about to be wrong either way.
-        _auth.clear()
-        return self._result(r | {"signin": signin.state()})
+        return self._json(*signin.take_code(field(req, "code")))
 
     def _signout(self, req):
-        """Sign this account out of Claude, on every machine it is on.
-
-        There is nothing here to delete (the credentials are the nodes'),
-        so what this does is move the generation and clear the record. Each
-        node compares generations on its next check and signs ITSELF out
-        when its own is behind, which is what reaches one that is not
-        listening: being signed out has no date, and a counter does.
-        """
+        """Sign this account out of Claude, on every machine it is on
+        (claudegrant.sign_out_verb): being signed out has no date, and a
+        counter does."""
         # Not while a conversation of THIS account's is running. Signing out
         # pulls the ground from under the sessions it started, and a page that
         # has not polled for fifteen seconds can offer a button the answer has
@@ -5463,26 +4771,7 @@ class Handler(BaseHTTPRequestHandler):
                                + ", ".join(projs) + " first (Sessions, or the tab's Close)"}, 409)
         # In the asking account's home, like the sign-in: signing out is
         # signing THIS account out, and the credential is in their ~/.claude.
-        #
-        # The credential goes and the generation moves. That second half is
-        # what makes this reach the NODES: each compares generations on its
-        # next sync (every connection, every prompt) and adopts what the
-        # controller has, which is now nothing. A node that is offline does it
-        # when it comes back, because the node is the one that asks; there is
-        # no queue to drain and nothing to deliver.
-        home = home_for(users.uid_of(self._who()))
-        r = claudegrant.sign_out(home)
-        _auth.clear()
-        if r.get("error"):
-            return self._json(r, 500)
-        return self._json({"ok": True, "gen": r["gen"],
-                           # What it reaches, said rather than assumed: a node
-                           # that is not dialing in signs itself out when it
-                           # comes back, and the sentence should not pretend
-                           # they all go at once.
-                           "nodes": [(nodes.node(i) or {}).get("name") or i
-                                     for i in r["nodes"]] if not NODES_OK else [],
-                           "auth": claude_auth(home=home)})
+        return self._json(*claudegrant.sign_out_verb(home_for(me)))
 
     def _roadmap(self, req):
         """Add, send, edit or drop one item on a project's list: roadmap.verb
@@ -5504,7 +4793,7 @@ class Handler(BaseHTTPRequestHandler):
         act = field(req, "action")
         # "send" is a write to the roadmap (it marks a step sent) and starts a
         # session's turn, so it goes with the rest.
-        if (bad := locked_out(name)):
+        if (bad := projects.locked_out(name)):
             return self._json(bad, 409)
         # Closing a batch its session will never close (B198) is an
         # administrator's, like the other decisions about other people's work.
@@ -5577,21 +4866,11 @@ class Handler(BaseHTTPRequestHandler):
             seen=lambda: [p["name"] for p in project_list(self._who())]))
 
     def _logs(self, req):
-        """The log policy, and the two things that can be done to the pile.
-
-        Reading is a download rather than a view: these are megabytes of
-        plain text, and a browser is better at saving one than this is at
-        paginating it.
-        """
+        """The log policy, and the two things that can be done to the pile:
+        logs.verb. An administrator's."""
         if self._refused("admin"):
             return
-        act = field(req, "action")
-        if act == "days":
-            r = logs.set_days(req.get("days"))
-            return self._result(r)
-        if act == "clear":
-            return self._json(logs.clear())
-        return self._json({"error": f"unknown action: {act}"}, 400)
+        return self._json(*logs.verb(field(req, "action"), req))
 
     def _idle(self, req):
         """The idle rule for Claude sessions (idle.py): minutes, 0 for never.
@@ -5861,7 +5140,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self._refused("rules", name) or self._readonly(name):
             return None
-        if (bad := locked_out(name)):
+        if (bad := projects.locked_out(name)):
             return self._json(bad, 409)
         return self._json(*rules.verb(name, field(req, "action"), req))
 
@@ -5898,7 +5177,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self._readonly(name):
             return None
-        if (bad := locked_out(name)):
+        if (bad := projects.locked_out(name)):
             return self._json(bad, 409)
         return self._json(*testreg.verb(name, field(req, "action"), req))
 
@@ -5927,7 +5206,7 @@ class Handler(BaseHTTPRequestHandler):
         # so an action added later is a write until somebody says otherwise.
         if field(req, "action") not in ("history",) and self._readonly(name):
             return None
-        if (bad := locked_out(name)):
+        if (bad := projects.locked_out(name)):
             return self._json(bad, 409)
         return self._json(*bugs.verb(name, field(req, "action"), req, sessions=sessions_anywhere,
                                      prefix=users.tmux_prefix(self._who())))
@@ -5942,7 +5221,7 @@ class Handler(BaseHTTPRequestHandler):
         # read had no project check at all (the audit of 26 Sep).
         if self._not_project(proj):
             return None
-        if (bad := locked_out(proj)):
+        if (bad := projects.locked_out(proj)):
             return self._json(bad, 409)
         # Seeing a project and being able to change it are different
         # questions now (users.may_work): an administrator is shown every
@@ -5965,64 +5244,19 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*macros.custom_edit(req.get("action"), req))
 
     def _create(self, req):
-        """New project: a fresh local repo, or a clone. See projects.py."""
+        """New project: a fresh local repo, a clone or a link, and what the
+        dialog chose besides (projects.create_from_dialog)."""
         # An administrator's, for two reasons that both matter: a project this
         # account made would not be in the list it was given, so it would be
         # created and then invisible; and the clone dialog is one of the two
         # places a git token is stored (roadmap #27).
         if self._refused("create"):
             return None
-        body, code = projects.create(req, env=users.git_env(self._who(), projects.sanitize_name(field(req, "name"))))
-        # Taken on by whoever made it (the operator, 24 Sep), before the
-        # writes below: they ask whether this account may work on the
-        # project, and an administrator's new one was not on their list, so
-        # it came out read-only to them and the node the dialog picked was
-        # quietly not set. A clone's directory exists from here, while the
-        # clone itself runs on; one that fails leaves a name on the list that
-        # matches nothing.
         me = self._who()
-        if code == 200 and body.get("name") and me and users.uid_of(me):
-            users.take_on(me["name"], body["name"])
-        # The node it was made for, when the dialog offered one: the same
-        # write the settings dialog makes, so a project is born able to
-        # build and start a session rather than needing a second dialog
-        # first (16 Sep). Refused the way the settings dialog refuses it.
-        nid = str(req.get("node") or "").strip()
-        if code == 200 and body.get("name") and nid and not users.may(self._who(), "node", body["name"]):
-            r = prefs.set_prefs(body["name"], node=nid, workspace=WORKSPACE)
-            if r.get("error"):
-                body["note"] = f"{body.get('note') or 'ready'}; node not set: {r['error']}"
-        # ...and the four gates (roadmap #27), when the dialog offered them:
-        # the same write the settings dialog makes, so what a session may
-        # enter into the notebook is decided where the project is made.
-        gate = req.get("gate")
-        if code == 200 and body.get("name") and isinstance(gate, dict) and gate:
-            r = prefs.set_prefs(body["name"], gate=gate, workspace=WORKSPACE)
-            if r.get("error"):
-                body["note"] = f"{body.get('note') or 'ready'}; gates not set: {r['error']}"
-        # ...and whether a session may run its container, the fifth of them
-        # on the dialog, so a session can create the first one by request.
-        devbuild = req.get("devbuild")
-        if code == 200 and body.get("name") and devbuild and devbuild != "deny":
-            r = prefs.set_prefs(body["name"], devbuild=str(devbuild), workspace=WORKSPACE)
-            if r.get("error"):
-                body["note"] = f"{body.get('note') or 'ready'}; Run its container not set: {r['error']}"
-        # Pinned on arrival, once anything has ever been pinned. Without this a
-        # project made while a pins file exists is absent from it, so it lands
-        # on disk and never reaches the sidebar: created, and apparently gone.
-        # No file still means "all of them", so there is nothing to write then
-        # and writing one would turn the first create into an unasked-for
-        # decision about every other project.
-        if code == 200 and body.get("name") and load_project_pins() is not None:
-            with _state_lock:
-                pins = load_project_pins()
-                if pins is not None:
-                    try:
-                        save_project_pins(set(pins) | {body["name"]})
-                    except OSError:
-                        pass          # the project exists; the sidebar is not
-                                      # worth failing the create over
-        return self._json(body, code)
+        return self._json(*projects.create_from_dialog(
+            req, env=users.git_env(me, projects.sanitize_name(field(req, "name"))),
+            account=me["name"] if me and users.uid_of(me) else "",
+            may_node=lambda name: not users.may(self._who(), "node", name)))
 
     def _profile(self, req=None):
         """The signed-in account's own settings (the Profile tab): read on
@@ -6053,7 +5287,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not a project"}, 400)
         if self._readonly(name):
             return None
-        if name in set(load_locks()):
+        if name in set(projects.load_locks()):
             return self._json({"error": "locked: the padlock on its row unlocks it"}, 403)
         action = field(req, "action")
         # A branch is its session's (git.py not_yours): another account's is
@@ -6118,12 +5352,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         if self._refused("create"):
             return None
-        act = req.get("action", "")
-        if act == "abort":
-            return self._json(projects.abort())
-        if act == "dismiss":
-            return self._json(projects.dismiss())
-        return self._json({"error": f"unknown action: {act}"}, 400)
+        return self._json(*projects.job_verb(req.get("action", "")))
 
     def _users(self, req):
         """The Users tab's verbs. Thin, like _nodes: users.py owns the rules
@@ -6187,7 +5416,7 @@ class Handler(BaseHTTPRequestHandler):
         name = req.get("project", "")
         if self._not_project(name):
             return
-        if (bad := locked_out(name)):
+        if (bad := projects.locked_out(name)):
             return self._json(bad, 409)
         return self._json(*changelog.editor_verb(name, req))
 
@@ -6207,15 +5436,9 @@ class Handler(BaseHTTPRequestHandler):
         if proj and not who.get("session") and not users.may_see(who, proj):
             return self._json({"error": "not a project"}, 400)
         asking = prefs.get(proj)["node"] if proj else ""
-        want = field(req, "node")
-        tgt = nodes.node(want) or next(
-            (n for n in nodes.node_list() if n["name"] == want), None)
-        r = nodes.node_log_read(self._principal(), asking,
-                                (tgt or {}).get("id") or want,
-                                field(req, "stream") or "agent",
-                                req.get("lines") or 200,
-                                debug_on=bool(settings.get("debug_mode")))
-        return self._result(r, 403)
+        return self._result(nodes.log_read_named(self._principal(), asking, field(req, "node"),
+                                                 field(req, "stream"), req.get("lines"),
+                                                 bool(settings.get("debug_mode"))), 403)
 
     def _diag(self, req):
         """The controller's diagnostics (diag.py). An administrator's, and a
@@ -6300,18 +5523,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(doctor.payload())
 
     def _cards(self, req):
-        """Store the sidebar card arrangement. Last write wins, like the pins:
-        this only changes on an explicit gesture, so two browsers cannot fight
-        over it the way their fifteen-second layout saves would."""
-        if not isinstance(req.get("order"), list) or not isinstance(req.get("closed"), list):
-            return self._json({"error": "bad request"}, 400)
-        v = {"order": [k for k in req["order"] if k in CARD_KEYS],
-             "closed": [k for k in req["closed"] if k in CARD_KEYS]}
-        try:
-            save_cards(v)
-        except OSError as e:
-            return self._json({"error": f"could not save: {e}"}, 500)
-        return self._json({"cards": load_cards()})
+        """Store the sidebar card arrangement: layout.save_card_order."""
+        return self._json(*layout.save_card_order(req))
 
     def _pin(self, req):
         """Pin or unpin a command: macros.pin."""
@@ -6320,38 +5533,12 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*macros.pin(req.get("name", ""), bool(req.get("pinned"))))
 
     def _layout(self, req):
-        """Store the open tabs, bumping a revision so other clients notice.
-
-        The revision is what keeps two browsers from fighting: each polls, sees
-        a number it did not write, and adopts. Without it they would take turns
-        overwriting each other every fifteen seconds.
-        """
-        # The lists are validated entry by entry when read back, but they have
-        # to BE lists: a stored non-list is what load_layout would otherwise
-        # have to survive on every poll from then on.
-        if not isinstance(req.get("tabs", []), list) or not isinstance(req.get("panes", []), list):
-            return self._json({"error": "bad request"}, 400)
-        uid = users.uid_of(self._who())
-        with _state_lock:
-            cur = load_layout(uid)
-            v = {"rev": cur["rev"] + 1,
-                 "tabs": req.get("tabs") or [],
-                 "panes": req.get("panes") or [None, None],
-                 "active": 1 if req.get("active") == 1 else 0}
-            try:
-                save_layout(uid, v)
-            except OSError as e:
-                return self._json({"error": f"could not save: {e}"}, 500)
-            # Re-read so the caller gets exactly what every other client will
-            # see, including anything the validator dropped.
-            return self._json(load_layout(uid))
+        """Store this account's open tabs: layout.save_tabs."""
+        return self._json(*layout.save_tabs(users.uid_of(self._who()), req))
 
     def _lock(self, req):
-        """Lock or unlock a project: keep it, stop Claude running in it.
-
-        A name-checked write, and the enforcement is deliberately not this
-        handler's: bb-tty reads the file, because a rule only this UI honors
-        is a suggestion when the ttyd URL is reachable directly.
+        """Lock or unlock a project: keep it, stop Claude running in it
+        (projects.lock_verb).
 
         What it does NOT claim: a session in ANOTHER project still reaches this
         directory through Bash. The file tools are denied on every sibling
@@ -6364,65 +5551,17 @@ class Handler(BaseHTTPRequestHandler):
         # and not a session's.
         if self._not_project(name) or self._refused("lock", name):
             return None
-        try:
-            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
-        except OSError:
-            here = set()
-        if name not in here:
-            return self._json({"error": f"unknown project: {name}"}, 400)
-        with _state_lock:
-            names = set(load_locks())
-            names.add(name) if on else names.discard(name)
-            try:
-                save_locks(names)
-            except OSError as e:
-                return self._json({"error": f"could not save: {e}"}, 500)
-
-        # A lock that waits for the current session to end is a lock that
-        # did not take, and the button does not say that.
-        killed = None
-        sess = claude_session(name)
-        if on and sess in {s["name"] for s in tmux_sessions()}:
-            run(["tmux", "kill-session", "-t", sess], timeout=10)
-            killed = sess
-        return self._json({"locked": sorted(names), "killed": killed})
+        return self._json(*projects.lock_verb(name, on))
 
     def _trash(self, req):
-        """Move a project out of the workspace. The same guards as renaming.
-
-        A live session holds the directory as its working directory and would
-        carry on writing into it wherever it went; a dev instance's containers
-        are bound to paths that would stop existing. Neither is ended here for
-        the same reason renaming does not: that is a bigger decision than the
-        one being asked for.
-        """
+        """Move a project out of the workspace: projects.trash, once
+        project_busy says nothing holds it (the same guards as renaming)."""
         name = req.get("name", "")
         if self._refused("trash", name):
             return
-        live = {s["name"] for s in tmux_sessions()}
-        held = sorted(s for s in live
-                      if tmux_base(s) == claude_session(name)
-                      or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
-        if held:
-            return self._json({"error": "close its terminals first: "
-                                        + ", ".join(held[:3])
-                                        + (" …" if len(held) > 3 else "")}, 409)
-        # No daemon, or no compose file: nothing to protect. Broad because
-        # the check reads the daemon, the store and the compose file, and
-        # none of those failing is a reason to keep the project; logged, so
-        # a trash that went past a fault says so.
-        try:
-            holds = devactions.state(name).get("exists")
-        except Exception as e:                          # noqa: BLE001
-            print(f"[dashboard] trash {name}: instance check skipped: "
-                  f"{type(e).__name__}: {e}", flush=True)
-            holds = False
-        if holds:
-            return self._json({"error": "its dev instance still has "
-                                        "containers; press Down on the "
-                                        "Artifacts tab first"}, 409)
-        body, code = projects.trash(req)
-        return self._json(body, code)
+        if (busy := project_busy(name, "trash")):
+            return self._json({"error": busy}, 409)
+        return self._json(*projects.trash(req))
 
     def _trash_list(self):
         return self._json(projects.trash_list())
@@ -6434,102 +5573,41 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(body, code)
 
     def _trash_purge(self, req):
-        if self._refused("trash"):
-            return
         """Delete a trashed project for good. The guards are in projects.py
         (the path is resolved against the bin and the name has to be typed
         back), and this is only the route to them."""
-        body, code = projects.trash_purge(req)
-        return self._json(body, code)
+        if self._refused("trash"):
+            return
+        return self._json(*projects.trash_purge(req))
 
     def _rename(self, req):
-        """Rename a project. The guards live here; the work is in projects.py.
-
-        These two are checked here rather than there because they are the ones
-        that need to see outside the filesystem: tmux, and the daemon. Both
-        are refusals rather than things to tidy away automatically: a running
-        session holds the old path as its working directory and would carry on
-        writing to it, and a dev instance's containers are named for the old
-        project on a machine this may not even be able to reach. Ending either
-        on the operator's behalf, to complete a rename, is a larger decision
-        than the rename.
-        """
+        """Rename a project: projects.rename, once project_busy says nothing
+        holds it."""
         name = req.get("name", "")
         if self._refused("rename", name):
             return
-        live = {s["name"] for s in tmux_sessions()}
-        held = sorted(s for s in live
-                      if tmux_base(s) == claude_session(name)
-                      or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
-        if held:
-            return self._json({"error": "close its terminals first: "
-                                        + ", ".join(held[:3])
-                                        + (" …" if len(held) > 3 else "")}, 409)
-        # No daemon, or no compose file: nothing to protect; as trash says it.
-        try:
-            holds = devactions.state(name).get("exists")
-        except Exception as e:                          # noqa: BLE001
-            print(f"[dashboard] rename {name}: instance check skipped: "
-                  f"{type(e).__name__}: {e}", flush=True)
-            holds = False
-        if holds:
-            return self._json({"error": "its dev instance still has "
-                                        "containers; press Down on the "
-                                        "Artifacts tab first"}, 409)
-        body, code = projects.rename(req)
-        return self._json(body, code)
+        if (busy := project_busy(name, "rename")):
+            return self._json({"error": busy}, 409)
+        return self._json(*projects.rename(req))
 
     def _project_auth(self, req):
-        """What credential this project's remote uses, and what else it could.
-
-        Asked when the rename dialog opens rather than carried on the status
-        poll: answering it means running `git remote get-url` in the project,
-        and the poll already walks every project every fifteen seconds. One
-        subprocess per dialog is nothing; one per project per poll is not.
-        """
+        """What credential this project's remote uses, and what else it
+        could: projects.auth_answer."""
         name = req.get("name", "")
         # The rename dialog's question, about a project this account sees
         # (B175): it says how the project's remote authenticates.
         if self._not_project(name) or self._refused("rename", name):
             return None
-        if not PROJECT_NAME.fullmatch(name or ""):
-            return self._json({"error": "unknown project"}, 400)
-        d = WORKSPACE / name
-        if not d.is_dir():
-            return self._json({"error": "unknown project"}, 400)
-        return self._json(projects.auth_options(name, d))
+        return self._json(*projects.auth_answer(name))
 
     def _project_pin(self, req):
-        """Pin or unpin a project: whether the sidebar card shows it.
-
-        No session is touched and nothing is blocked: this is the one control
-        of the three that is purely about the view. Unpinning something running
-        a build leaves it running, and the Projects tab still has every button.
-
-        The first unpin has to write the whole current set, not just remove
-        one: until then there is no file, which means "all of them", and
-        saving a single removal would have read as "only this one is pinned".
-        """
+        """Pin or unpin a project: whether the sidebar card shows it
+        (projects.pin). No session is touched and nothing is blocked: this is
+        the one control of the three that is purely about the view."""
         # One set for everybody, so an administrator's (B175).
         if self._refused("pin"):
             return None
-        name, on = req.get("name", ""), bool(req.get("pinned"))
-        try:
-            here = {d.name for d in WORKSPACE.iterdir()
-                    if d.is_dir() and not d.name.startswith(".")}
-        except OSError:
-            here = set()
-        if name not in here:
-            return self._json({"error": f"unknown project: {name}"}, 400)
-        with _state_lock:
-            pins = load_project_pins()
-            names = here.copy() if pins is None else set(pins)
-            names.add(name) if on else names.discard(name)
-            try:
-                save_project_pins(names)
-            except OSError as e:
-                return self._json({"error": f"could not save: {e}"}, 500)
-        return self._json({"pinned": sorted(names)})
+        return self._json(*projects.pin(req.get("name", ""), bool(req.get("pinned"))))
 
     def _session(self, req):
         """Kill a session. Closing a tab that owns a Claude conversation should
@@ -6768,7 +5846,7 @@ def main():
         print("dashboard: no accounts yet; the first page served will ask "
               "you to make the owner. Do it now: until you do, whoever "
               "reaches this port can.", flush=True)
-    prune_claude_tabs()
+    layout.prune_claude_tabs()
     # Daemons: these loops must die with the server, not hold it open.
     doctor.start()
     idle.start()

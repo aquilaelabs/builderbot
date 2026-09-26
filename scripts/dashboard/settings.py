@@ -35,6 +35,9 @@ if _here not in sys.path:
 import statefile  # noqa: E402
 
 write_json = None
+# What reset() forgets beside the state it moves aside: the runner tokens,
+# which are root's, behind the helper (runners.reset), set by server.py.
+forget_runners = None
 FILE = None
 
 # key -> its default, its shape, and when a change takes: "now", applied by
@@ -183,3 +186,19 @@ def reset_state(state):
 # Left where they are by a reset: the runner tokens' store is root's and the
 # mountpoint of a volume, and mint-runner-token --reset empties it instead.
 RESET_KEEPS = ("runner-tokens",)
+
+
+def reset(state):
+    """Start over at onboarding: the controller's own state moved aside
+    (accounts, nodes, project settings, git tokens, the notebook, memories,
+    logs), project files untouched. The runner tokens are root's, behind the
+    helper: forgotten there, since the nodes they were for are being
+    forgotten here. (payload, status); the server re-executes itself after
+    a 200, so the next page is Create the owner."""
+    try:
+        moved = reset_state(state)
+    except OSError as e:
+        return {"error": f"could not move the state aside: {e}"}, 500
+    forgot = forget_runners()
+    kept = [k for k in moved["kept"] if not (k == "runner-tokens" and forgot)]
+    return {"ok": True, "moved_to": str(moved["dest"]), "kept": kept}, 200

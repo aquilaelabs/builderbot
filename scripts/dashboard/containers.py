@@ -402,3 +402,33 @@ def tab_verb(act, name, req, seen):
     if not r.get("error") and under:
         net_nudge()
     return _answer(r)
+
+
+def manager_view(nid, seen):
+    """The Docker manager's whole page in one answer: every instance bound
+    to the node, and every container on that node's daemon that is not one
+    of them. `seen` is None for an administrator, or the projects whose
+    instances and containers this account may see: a node is shared, and
+    anything else on it is another project's work, or nobody's (the
+    operator, 24 Sep)."""
+    # Refresh is the retry: drop the memoised availability first, so a
+    # daemon wired up thirty seconds ago is noticed by pressing the
+    # button rather than by waiting for the memo to lapse.
+    devapp.forget_available()
+    got = devapp.overview(nid or None)
+    if seen is not None:
+        got["instances"] = [i for i in got.get("instances") or []
+                            if i.get("owner") in seen]
+        got["containers"] = [c for c in got.get("containers") or []
+                             if c.get("owner") in seen]
+        # The branches go with them: the Build from picker is an
+        # administrator's.
+        got["refs"] = {}
+        return got
+    # The branches each listed project could be built from. Here
+    # rather than per row: they come from one `for-each-ref` per
+    # project, and the picker needs them before anybody presses.
+    got["refs"] = {p: devapp.refs_of(p)
+                   for p in {i["project"] for i in got.get("instances") or []}
+                   if not devapp.is_file_source(p)}
+    return got

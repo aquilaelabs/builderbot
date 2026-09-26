@@ -1079,3 +1079,14 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
     if status == 200 and action in ("new", "remove", "owner"):
         net_nudge()
     return payload, status
+
+
+def row_states(name):
+    """A project's dev instances for the Artifacts tab: `devapp` is the main
+    instance, which is what the row shows; `devapps` is every instance,
+    which the manager reads. Both, so the row keeps working while the
+    manager grows around it. One read scope for the row and the manager's
+    list: on an agent node each is a probe job, and both ask the same
+    daemon."""
+    with devapp.read_scope():
+        return {"devapp": state(name), "devapps": states(name)}

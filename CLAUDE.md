@@ -234,6 +234,13 @@ by hand cost four commands and still could not see the failed builds.
     header, and the server serves a script only by name, from the list the
     page's own script tags make (`server.page_scripts`). No framework, no
     build step. `bb map sections FILE` reads any of them by its headers.
+    On the server the same split: `server.py` holds the routes, the
+    transport and the gates, and each handler checks who may ask, then
+    makes one call into the feature's module beside it (a project's
+    verbs in `projects.py`, the Nodes tab's in `nodes.py`, what the page
+    may type into a terminal in `macros.py`), which answers with the
+    payload and its status and is handed what it needs by `configure()`
+    or by an attribute the server sets (R77).
   - **The dashboard's design language is `docs/design-language.md`**, held
     by the house rule `design`, which names it and runs `test/uniform.mjs`
     as its check. A new tab kind declares `multi` (a notebook is per

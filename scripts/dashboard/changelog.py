@@ -768,3 +768,31 @@ def editor_verb(name, req):
     if r.get("error"):
         return r, 400
     return r | {"text": read(d), "groups": groups(d)}, 200
+
+
+def reading(name, component=""):
+    """The Unreleased text for reading and the same section as structure for
+    editing, for a project the server has let this account see: one fetch,
+    because the editor shows both and a second round trip would let them
+    disagree about what is in the file. (payload, status)."""
+    d = component_dir(name, component)
+    if d is None:
+        return {"error": "no such component"}, 400
+    return {"text": read(d), "groups": groups(d)}, 200
+
+
+def welcome(seen):
+    """BuilderBot's own changelog, for the welcome panel: the file beside
+    this checkout (CHANGELOG.md two levels up, which is
+    /opt/builderbot/CHANGELOG.md in the image and the repository's under bb
+    dashboard dev), and where this account last looked (`seen`, the image
+    commit it acknowledged), so the panel can draw a line under what is new
+    since."""
+    text = read(Path(__file__).resolve().parents[2])
+    # Trimmed to what is unreleased plus the newest minor's releases:
+    # this panel answers "what changed in the build in front of me",
+    # and the file behind it grows for the life of the project. What
+    # it left out is counted, not hidden.
+    kept, held, series = since_minor(sections(text) if text else [])
+    return {"sections": kept, "held": held, "series": series,
+            "present": text is not None, "seen": seen}

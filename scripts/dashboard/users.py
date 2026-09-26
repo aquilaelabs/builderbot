@@ -890,3 +890,13 @@ def verb(act, req, seen):
     else:
         return {"error": "unknown action"}
     return r
+
+
+def tab_view(me, projects, logins_of):
+    """The Users tab's read, an administrator's: every account with the
+    Claude login each is bound to (logins_of, claudegrant's), the owner, who
+    is asking, the roles, and the projects this administrator can hand
+    out."""
+    return {"users": logins_of(all_users()), "owner": owner_name(),
+            "me": (me or {}).get("name", ""), "roles": list(ROLES),
+            "projects": projects}

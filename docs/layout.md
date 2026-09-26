@@ -13,7 +13,7 @@ scripts/
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
-  lib/relay-verbs                the bb verbs a node relays to the controller (bb and server.py both read it)
+  lib/relay-verbs                the bb verbs a node relays to the controller (bb and bbrelay.py both read it)
   lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
   lib/preflight.sh               `bb tests preflight`, sourced by bb
   lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
@@ -60,7 +60,8 @@ scripts/
   lib/doctor-probes.py           egl, project node, commit identity, session-capable node, signed-in account
   lib/lint-checks.py             bb lint's own checks: runner label pinning, XML well-formedness, settings agreement
   startup.d/*.sh                 startup hooks
-  dashboard/                     web dashboard: server.py; index.html (markup, stylesheet, the wiring that runs at load);
+  dashboard/                     web dashboard: server.py (the routes, the transport and the gates, each handler one call
+                                 into a module beside it); index.html (markup, stylesheet, the wiring that runs at load);
                                  one tab-*.js per document tab, one nb-*.js per notebook view (nb-core.js is the
                                  notebook itself), one page-*.js per part of the page that is neither, all strict,
                                  all pure declarations, served by name from the page's own script tags (R77)
@@ -79,7 +80,7 @@ scripts/
     rules.py                     house rules: what has been decided about working on a project
     preamble.py                  what every session on a project starts with, assembled once
     names.py                     what things are called: a project, a tmux session, a project's Claude session
-    projects.py                  new project / link and unlink a remote, and the worker that clones and pushes
+    projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
     git.py                       the notebook's Git view: the repository read out, and its writes
     codebase.py                  the code base counted, by language, for the Briefing tab
@@ -97,10 +98,11 @@ scripts/
     artifacts.py                 what a project built: dist/, and what a row may offer
     devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
     devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps
-    containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is
+    containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
     phone.py                     a paired handset on a node: install, push, and the asking
     db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
-    nodes.py                     the node registry, the job queue, the agent's channel and the Nodes tab's verbs (docs/nodes.md)
+    nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md); the Nodes tab's verbs; a build job from the controller
+    channel.py                   the node agent's verbs behind /api/v1/agent/: enroll, hello, work, a job's files, log and result
     claudecode.py                Claude Code on each node: which version, checking for and installing an update
     claudegrant.py               a session's Claude login handed to the node it runs on, and taken back
     mapping.py                   a new project's code map built in the background as it is created
@@ -121,6 +123,7 @@ scripts/
     macros.py                    what the page may type into a terminal: the command and key tables, the pins, custom lists
     profiletab.py                an account's own settings, the Profile tab
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
+    layout.py                    what the page keeps here: each account's tab strip and panes, and the sidebar's cards
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing

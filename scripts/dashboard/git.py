@@ -52,6 +52,7 @@ GIT_ENV = None            # (account, project) -> what git runs under: the autho
 MAY_PUSH = None           # project -> whether it was cloned with push rights
 EXCLUDE = None            # tree -> the code map kept out of a new repository
 AUDIT = None              # (principal, action, project, detail) -> the audit row
+HOST_OF = None            # a remote's URL -> {name, kind} of the git host it is on
 
 LOG_MAX = 100             # commits the graph shows
 DIFF_MAX = 200_000        # bytes of diff the page is handed
@@ -63,13 +64,14 @@ EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 def configure(*, workspace, worktrees=None, tell=None, tmux_name=None, state=None,
               accounts=None, owner_uid=None, working=None, owner_name=None, session_open=None,
-              sessions=None, git_env=None, may_push=None, exclude=None, audit=None):
+              sessions=None, git_env=None, may_push=None, exclude=None, audit=None,
+              host_of=None):
     globals().update(WORKSPACE=Path(workspace),
                      WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
                      TELL=tell, TMUX_NAME=tmux_name, ACCOUNTS=accounts, OWNER_UID=owner_uid,
                      WORKING=working, OWNER_NAME=owner_name, SESSION_OPEN=session_open,
                      SESSIONS=sessions, GIT_ENV=git_env, MAY_PUSH=may_push, EXCLUDE=exclude,
-                     AUDIT=audit,
+                     AUDIT=audit, HOST_OF=host_of,
                      STATE=Path(state) if state else None)
 
 
@@ -1390,4 +1392,26 @@ def verb(project, action, req, me, *, prefix, principal):
         AUDIT(principal, "git-" + action, project,
               {k: v for k, v in (req.get("args") or {}).items()
                if k in ("name", "sha", "path", "at")})
+    return r
+
+
+def view(name, what, sha="", path="", n=0, branch=""):
+    """The notebook's Git view (roadmap R36): plumbing reads on the
+    project's tree, for a project the server has let this account see. A
+    sha and a path are checked here against what the repository itself
+    reports; nothing from the query reaches a command line as anything
+    else. The whole view (`what` "" or "all") carries what the network bar
+    may offer too. {..} or {error}."""
+    r = payload(name, what, sha=sha, path=path, n=n, branch=branch)
+    if what in ("", "all") and not r.get("error"):
+        # What the network bar may offer: a remote to talk to, and
+        # the project's push rights, granted once in the clone dialog.
+        r["remote"] = has_remote(WORKSPACE / name)
+        r["push"] = MAY_PUSH(name)
+        # Whose working tree this is (B236): the page says so to anybody
+        # else, and offers them nothing that changes it.
+        r["owner"] = OWNER_NAME() or ""
+        # The host by its name (GitHub, Gitea, or the machine's own),
+        # so the view can say "in step with GitHub" and not "origin".
+        r["host"] = HOST_OF(remote_url(WORKSPACE / name))
     return r

@@ -3260,8 +3260,9 @@ workspace = None         # a project's tree snapshotted, a file in its dist/
 project_prefs = None     # a project -> its settings (its node and node set)
 may_push = None          # a project -> whether it was cloned with push rights
 no_node_advice = None    # a project with no node -> what it can still do
+turns_of = None          # a node row -> its sessions' turns: working, waiting, the limit
 _VERB_PARTS = ("vmtemplate", "forges", "devapp", "claudecode", "runner_store",
-               "workspace", "project_prefs", "may_push", "no_node_advice")
+               "workspace", "project_prefs", "may_push", "no_node_advice", "turns_of")
 
 
 def configure_verbs(**parts):
@@ -3662,3 +3663,27 @@ def jobs_view(jid, q, mine):
     if mine is not None:
         names = {k: v for k, v in names.items() if any(j.get("node") == k for j in rows)}
     return {"jobs": rows, "nodes": names}, 200
+
+
+def tab_view(rows, admin):
+    """The Nodes tab's read: the rows the server has scoped to this account
+    (an account that may not change a node sees the ones its own projects
+    build on), each agent's with its sessions' turns, and for an
+    administrator the agent this controller ships, which rides beside the
+    rows once so a row can say when its node's agent is behind, and the
+    node the Docker tab opens on and New project offers (node_for). Not a
+    default that work falls to: a project with no node has nowhere to send,
+    and the dialogs make the person pick."""
+    for n in rows:
+        if n.get("kind") == "agent":
+            n["turns"] = turns_of(n)
+    return {"nodes": rows, "agent": agent_shipped() if admin else {},
+            "default": node_for() if admin else ""}
+
+
+def log_read_named(principal, asking_id, want, stream, lines, debug_on):
+    """node_log_read with the target named by id or by name, for a session
+    the server has placed on `asking_id`. {..} or {error}."""
+    tgt = node(want) or next((n for n in node_list() if n["name"] == want), None)
+    return node_log_read(principal, asking_id, (tgt or {}).get("id") or want,
+                         stream or "agent", lines or 200, debug_on=debug_on)
