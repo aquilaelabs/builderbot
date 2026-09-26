@@ -399,3 +399,39 @@ controller's own request trace was read beside it.
   found (B221) was in the words, not the check; it would have cost a tester
   their first hour on a node.
 
+
+## 26 September: sending a project to Docker twice
+
+On `builderbot-dev` built from `3c794fe`, as the owner, with the project
+`web` (an nginx compose whose `.env.example` sets `WEB_PORT=8088`) already
+holding one container, `web-dev`, on `bb-dev-sandbox`.
+
+1. **Send, with a container already there.** The Artifacts tab's **Send to
+   Docker manager** opened on the name `web`, the project's own, since
+   `web-dev` is not it, and the hint under the name said the new one goes
+   beside the one it already has and needs ports of its own. The env came
+   seeded with `WEB_PORT=8088`; it was changed to `8089` and Create pressed.
+2. **The build it hands over.** The Docker tab opened on the new row and
+   asked the same question Build asks (*Build web/main? Builds the first
+   image and brings it up.*); answered yes, it built on the node and the
+   controller reported it running with `8089->80` published, beside
+   `web-dev` on `8088`. The page itself was not loaded from here: the
+   session the walk ran in reaches only its own project's containers, and
+   the VM's address is not one of them.
+3. **Send again.** The dialog opened on `web-2`, saying it goes beside the
+   two it already has. With the Docker tab's branches loaded, Build from
+   showed too, carrying the same ports sentence a second time; that one
+   went (`5391ae1`). Cancelled there.
+4. **What a session is handed.** `web`'s briefing (the Briefing tab's
+   source, `/api/preamble`) carries the new paragraph: `bb devapp new
+   [NAME] [--branch REF]` is Send done from a session, and it, not `bb
+   container new`, is how the project's own code goes into Docker. The old
+   *create it when it has none* is gone from it.
+
+- Alpha, new evidence: Send makes a second container of a project, named
+  and built in the one gesture, on a real node.
+- Still dev: `bb devapp new` from a real session on the dev pair, which has
+  no Claude login and so no session token. The verb is proven by the
+  harness instead: run as a session against the fixture server on auto and
+  on ask (made, pinned, built; the card naming the container and its
+  branch) and driven in process on both dials.
