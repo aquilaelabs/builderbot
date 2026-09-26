@@ -11,7 +11,8 @@
 #   (default)  say which files are over their ceiling (exit 1 when any is);
 #              a measurement for now, gated by nothing
 #   --tighten  write the current counts as the new ceilings, for a commit
-#              that shrank one (a count is never raised by this)
+#              that shrank one (a count is never raised by this), and say,
+#              as the default does, which files are still over theirs
 set -u
 here="$(cd "$(dirname "$0")/.." && pwd)"
 table="$here/tools/ratchet.txt"
@@ -23,10 +24,11 @@ while IFS= read -r line; do
     file="${line% *}"; max="${line##* }"
     now="$(wc -l < "$here/$file" | tr -d ' ')"
     if [ "$mode" = --tighten ]; then
+        # Lowered to the count when the file is under it, never raised: a
+        # file over its ceiling stays over, and the lines below report it
+        # the way the default mode does rather than as tightened (B288).
         [ "$now" -lt "$max" ] && max="$now"
         printf '%s %s\n' "$file" "$max" >> "$tmp"
-        printf '  %-36s %6s lines, ceiling %s\n' "$file" "$now" "$max"
-        continue
     fi
     if [ "$now" -gt "$max" ]; then
         printf '  %-36s %6s lines, over its ceiling of %s by %s: move something out (bb map sections), or raise it in tools/ratchet.txt in this commit and say why\n' \
