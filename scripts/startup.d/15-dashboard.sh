@@ -137,6 +137,10 @@ log "dashboard: http://<host>:${PORT}  (terminals proxied at /term; ttyd binds 1
 # one sign-in for everything. Nothing else can reach this port from outside
 # the container, and binding wider would only re-create the second
 # credentials prompt this arrangement exists to remove.
+# Started only where nothing listens yet: the supervisor runs this hook again
+# when the dashboard has died (B282), and a ttyd that survived it stays.
+listening() { ss -ltn 2>/dev/null | awk '{print $4}' | grep -q ":$1\$"; }
+listening "$TTYD_PORT" || \
 nohup ttyd --port "$TTYD_PORT" --interface 127.0.0.1 \
         --url-arg --writable \
         --max-clients 16 \
@@ -149,6 +153,7 @@ nohup ttyd --port "$TTYD_PORT" --interface 127.0.0.1 \
 # Claude's own interface, which is the honest way to show a full-screen TUI,
 # with input going through the dashboard's send path instead of the socket.
 # The proxy decides which of the two a request reaches, by role.
+listening "$TTYD_RO_PORT" || \
 nohup ttyd --port "$TTYD_RO_PORT" --interface 127.0.0.1 \
         --url-arg \
         --max-clients 16 \
@@ -163,6 +168,7 @@ nohup ttyd --port "$TTYD_RO_PORT" --interface 127.0.0.1 \
 #
 # -u so a warning is in the file at the moment it happens rather than when a
 # 8kB buffer fills, which for a mostly-idle server can be hours.
+listening "$PORT" || \
 nohup env DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT="$TTYD_PORT" \
     DASHBOARD_TTYD_RO_PORT="$TTYD_RO_PORT" \
         python3 -u "$DASH/server.py" 2>&1 \

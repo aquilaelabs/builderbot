@@ -49,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -119,8 +120,11 @@ fun BuilderBotApp(openOn: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { Store(context) }
     var signedIn by remember { mutableStateOf(store.signedIn) }
-    var isAdmin by remember { mutableStateOf(true) }
-    var waiting by remember { mutableStateOf(0) }
+    // Nobody is an administrator until the dashboard says so, and the
+    // answer survives a rotation (B275): a user saw the Nodes tab until
+    // Home reloaded.
+    var isAdmin by rememberSaveable { mutableStateOf(false) }
+    var waiting by rememberSaveable { mutableStateOf(0) }
     BuilderBotTheme {
         if (!signedIn) {
             LoginScreen(store) { admin -> isAdmin = admin; signedIn = true; Watch.startIfWanted(context) }

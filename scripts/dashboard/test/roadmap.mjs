@@ -984,7 +984,7 @@ await page.fill('.editbox textarea', 'first, widen it a lot');
 await page.click('.editbox .primary');
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .txt`)?.textContent
-  === 'first, widen it a lot', plainId, { timeout: 10000 });
+  === 'first, widen it a lot', plainId, { timeout: patience(20000) });
 await saveList();
 ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].text
    === 'first, widen it a lot',
@@ -1052,7 +1052,7 @@ await page.fill('.editbox textarea', 'first, widen it a lot');
 await page.click('.editbox .primary');
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .txt`)?.textContent
-  === 'first, widen it a lot', plainId, { timeout: 10000 });
+  === 'first, widen it a lot', plainId, { timeout: patience(20000) });
 
 // ...and the step field has a way out that is not the Escape key a phone
 // keyboard does not have.

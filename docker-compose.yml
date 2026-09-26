@@ -69,6 +69,9 @@ services:
       # nothing else until you have. Open it as soon as the container is up,
       # because this publishes an interactive shell into a container holding
       # a loaded ssh-agent and read-write mounts of every project.
+      # Recursive chown of the home volume at startup; false when it is large
+      # and already correct.
+      CHOWN_HOME: ${CHOWN_HOME:-true}
       DASHBOARD_PORT: ${DASHBOARD_PORT:-7680}
       # Loopback only: the browser reaches terminals through the dashboard
       # port under /term, behind the same single sign-in, so this port is

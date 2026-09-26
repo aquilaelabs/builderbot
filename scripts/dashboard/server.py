@@ -2128,6 +2128,22 @@ def app_apk():
     return apks[0].name if apks else ""
 
 
+def app_apk_sha():
+    """The newest companion APK's sha256, for the app to check a download
+    against before it installs (B273); "" when there is none."""
+    name = app_apk()
+    if not name:
+        return ""
+    try:
+        h = hashlib.sha256()
+        with open(WORKSPACE / "BuilderBot" / "dist" / name, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return ""
+
+
 # The page's own scripts, each named with its version as the page is served.
 # `no-cache` makes a browser ask before it uses a copy, but a phone left on
 # the page across an update still met the old Global rules dialog after it
@@ -2256,16 +2272,38 @@ def _seen_load():
 
 def _seen_now(project, who):
     """The tokens a session is compared against: the poll's per-project
-    revisions, and a digest of the project's own settings (the poll's prefs
-    token is one mtime for every project)."""
+    revisions, a digest of the project's own settings (the poll's prefs
+    token is one mtime for every project), and the count of memory edits
+    made through the notebook by somebody who is not a session. Not the
+    memory files' mtimes, which the poll's token is: a session's own memory
+    tool writes those files without passing through here, and read as
+    news to the session that wrote them (B269)."""
     r = revisions(who, [project])
     try:
         pf = json.dumps(prefs.get(project) or {}, sort_keys=True)
     except Exception:                                                     # noqa: BLE001
         pf = ""
+    edits = _seen_load().get("_mem_edits")
+    edits = edits if isinstance(edits, dict) else {}
     return {"bug": str(r.get(f"bug:{project}") or ""), "rules": str(r.get(f"rules:{project}") or ""),
-            "mem": str(r.get(f"mem:{project}") or ""),
+            "mem": str(edits.get(project) or 0),
             "prefs": hashlib.sha1(pf.encode()).hexdigest()[:12] if pf else ""}
+
+
+def _mem_edited(project):
+    """One more memory edit on this project through the notebook, by
+    somebody who is not a session: the seen note's memory half."""
+    if not project:
+        return
+    try:
+        with _seen_lock:
+            d = _seen_load()
+            edits = d.get("_mem_edits") if isinstance(d.get("_mem_edits"), dict) else {}
+            edits[project] = int(edits.get(project) or 0) + 1
+            d["_mem_edits"] = edits
+            write_json(STATE / SESSION_SEEN, d)
+    except Exception as e:                                                # noqa: BLE001
+        print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
 
 
 def session_mark_own(project, uid, who):
@@ -2890,7 +2928,7 @@ def wait_for_nodes(limit=NODE_WAIT):
     while time.time() < end:
         try:
             owed = [n for n in nodes.node_list()
-                    if n.get("kind") == "agent" and not (n.get("agent") or {}).get("revoked")
+                    if n.get("kind") == "agent"
                     # Whole seconds: last_seen is stamped as an int, so a node
                     # that dialed in the same second this started (48 against
                     # 48.6) is back, not owed until its next heartbeat.
@@ -4442,8 +4480,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": str(e)}, 500)
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
+        # A name with a quote or a line break would end the header early.
         self.send_header("Content-Disposition",
-                         f'attachment; filename="{f.name}"')
+                         f'attachment; filename="{re.sub(r"[^A-Za-z0-9._ -]", "_", f.name)[:200]}"')
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -4455,7 +4494,8 @@ class Handler(BaseHTTPRequestHandler):
         # dashboard serves, the image it is, and where a newer app is.
         return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
                            "image": image_stamp().get("rev") or "",
-                           "built": image_stamp().get("built") or "", "apk": app_apk()})
+                           "built": image_stamp().get("built") or "", "apk": app_apk(),
+                           "apk_sha256": app_apk_sha()})
 
     def _get_welcome(self):
         """GET /api/welcome."""
@@ -4611,8 +4651,11 @@ class Handler(BaseHTTPRequestHandler):
         # derived from where the projects are bound (nodes.node_for). Not a
         # default that work falls to: a project with no node has nowhere to
         # send, and the dialogs make the person pick.
-        return self._json({"nodes": rows, "agent": nodes.agent_shipped(),
-                           "default": nodes.node_for()})
+        # The shipped agent and the tab's first pick are the registry's
+        # facts: an administrator's, like the registry.
+        admin = users.may(self._who(), "admin") == ""
+        return self._json({"nodes": rows, "agent": nodes.agent_shipped() if admin else {},
+                           "default": nodes.node_for() if admin else ""})
 
     def _get_jobs(self):
         """GET /api/v1/jobs."""
@@ -4649,8 +4692,13 @@ class Handler(BaseHTTPRequestHandler):
             active=q.get("active", [""])[0] == "1")
         if mine is not None:
             rows = [j for j in rows if j.get("project") in mine]
-        return self._json({"jobs": rows,
-            "nodes": {x["id"]: x["name"] for x in nodes.node_list(all=True)}})
+        # The names of the nodes these rows run on, and for an account that
+        # is not an administrator no other: the whole registry rode here
+        # past the scoping the nodes listing keeps (the probe of 26 Sep).
+        names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
+        if mine is not None:
+            names = {k: v for k, v in names.items() if any(j.get("node") == k for j in rows)}
+        return self._json({"jobs": rows, "nodes": names})
 
     def _get_docker(self):
         """GET /api/docker."""
@@ -4918,8 +4966,11 @@ class Handler(BaseHTTPRequestHandler):
                 # "" for a session on purpose, and that is the per-account
                 # stores' rule, not this one's.
                 who = self._who() or {}
-                if who.get("session") and any(path.startswith(r) for r in OWN_WRITE_ROUTES):
-                    session_mark_own(who["session"], who.get("uid") or "", who)
+                if any(path.startswith(r) for r in OWN_WRITE_ROUTES):
+                    if who.get("session"):
+                        session_mark_own(who["session"], who.get("uid") or "", who)
+                    elif path.startswith("/api/memory"):
+                        _mem_edited(field(req, "project"))
                 return out
         self._json({"error": "not found"}, 404)
 
@@ -5085,11 +5136,11 @@ class Handler(BaseHTTPRequestHandler):
                                      req.get("capabilities"),
                                      field(req, "user") or "bb")
 
-        def revoke():
-            return nodes.node_revoke(self._principal(), nid)
-
         def power():
             return nodes.node_power(self._principal(), nid, act)
+
+        def gpu_display():
+            return nodes.node_gpu_display(self._principal(), nid)
 
         def config():
             # The configuration plane (docs/nodes.md §12): what the operator
@@ -5264,8 +5315,8 @@ class Handler(BaseHTTPRequestHandler):
 
         verbs = {"vm-xml": vm_xml, "add": add, "update": update, "uninstall": uninstall,
                  "drain": state, "online": state, "retire": state,
-                 "lock": lock, "unlock": lock, "enroll": enroll, "revoke": revoke,
-                 "reboot": power, "poweroff": power,
+                 "lock": lock, "unlock": lock, "enroll": enroll,
+                 "reboot": power, "poweroff": power, "gpu-display": gpu_display,
                  "config": config, "log-grant": log_grant, "turns": turns,
                  "test-workers": test_workers, "session-net": session_net,
                  "root-asks": root_asks, "apply": apply, "runner": runner,
@@ -5293,6 +5344,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*self._run_job(req))
         if act != "cancel":
             return self._json({"error": "unknown action"}, 400)
+        # Whose it is, the way the read is scoped: an account cancels the
+        # jobs of its projects and a session its own project's; a stranger's
+        # job and a missing one answer alike.
+        me = self._who()
+        mine = None if users.may(me, "admin") == "" else {p["name"] for p in project_list(me)}
+        if mine is not None:
+            j = nodes.job(field(req, "id"), with_log=False)
+            if not j or j.get("project") not in mine:
+                return self._json({"error": "no such job of yours"}, 403)
         r = jobs.cancel(self._principal(), field(req, "id"))
         return self._result(r)
 
@@ -6095,7 +6155,15 @@ class Handler(BaseHTTPRequestHandler):
             _auth.clear()
 
     def _signin(self, req):
-        """Start a sign-in, or stop the one that is running."""
+        """Start a sign-in, or stop the one that is running. A person's, on
+        the controller: a session on a node has no business here, and
+        another account's flow is not this one's to stop (the review of 26
+        Sep)."""
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "a session does not sign the controller in"}, 403)
+        if users.may(me, "admin") != "" and signin.owner() not in ("", users.uid_of(me)):
+            return self._json({"error": "that sign-in is another account's"}, 403)
         _auth.clear()               # every home: the flow may have changed any
         if field(req, "action") == "cancel":
             return self._json(signin.cancel() | {"signin": signin.state()})
@@ -6146,6 +6214,11 @@ class Handler(BaseHTTPRequestHandler):
         button); the only refusals left are the ones that cannot be wrong:
         nothing left to send, or far too much to be a code.
         """
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "a session does not sign the controller in"}, 403)
+        if users.may(me, "admin") != "" and signin.owner() not in ("", users.uid_of(me)):
+            return self._json({"error": "that sign-in is another account's"}, 403)
         code = field(req, "code")
         # Anything from a URL onward was never part of the code. The page that
         # hands it out sets the authorize URL flush against it, so Copy takes
@@ -6406,6 +6479,12 @@ class Handler(BaseHTTPRequestHandler):
         out = phone.payload(users.uid_of(self._who()), node=node, probe=probe,
                             admin=users.is_admin(self._who()),
                             project=(self._who() or {}).get("session") or "")
+        # The rows are the nodes this account's projects build on, as every
+        # node-shaped surface is (_node_scope): the list carried every phone
+        # node's name, address and handset to a session (the probe of 26 Sep).
+        scope = self._node_scope()
+        if scope is not None and isinstance(out.get("nodes"), list):
+            out["nodes"] = [r for r in out["nodes"] if r.get("node") in scope]
         ua = self.headers.get("User-Agent", "")
         if "Android" in ua:
             try:
@@ -6852,6 +6931,13 @@ class Handler(BaseHTTPRequestHandler):
         nid = prefs.get(name)["node"]
         node = nodes.node(nid) if nid and not NODES_OK else None
         who = self._who() or {}
+        # A session asks for a phone (bb phone run) and a person answers; it
+        # does not push or install by itself, and uid_of answering the
+        # session's account made the owner check pass for it (the audit of
+        # 26 Sep).
+        if who.get("session"):
+            return self._json({"error": "a session asks for the phone with bb phone run; "
+                                        "it does not push to it by itself"}, 403)
         uid, me = users.uid_of(who), who.get("name") or "somebody"
         # Both verbs touch the phone, so both are the connection owner's:
         # the phone is on somebody's desk, and they are the one who said
@@ -7295,6 +7381,10 @@ class Handler(BaseHTTPRequestHandler):
         """
         act = field(req, "action")
         proj, file = field(req, "project"), field(req, "file")
+        # A project this account sees, whatever the action: the history
+        # read had no project check at all (the audit of 26 Sep).
+        if self._not_project(proj):
+            return None
         if (bad := locked_out(proj)):
             return self._json(bad, 409)
         # Seeing a project and being able to change it are different
@@ -7950,6 +8040,8 @@ class Handler(BaseHTTPRequestHandler):
         answer, and the threading server keeps everything else responsive
         while this one connection waits the half-minute a bad network takes.
         """
+        if self._refused("admin"):
+            return None
         if not doctor.refresh():
             return self._json({"error": "doctor is already running"}, 409)
         return self._json(doctor.payload())

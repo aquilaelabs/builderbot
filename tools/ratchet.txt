@@ -2,7 +2,7 @@
 # lowers its number here in the same commit (tools/no-net-growth.sh --tighten
 # writes the current counts); one that has to grow a file for clarity raises
 # it here and says why in the commit. Roadmap R77; a measurement, not a gate.
-scripts/dashboard/index.html 10452
-scripts/dashboard/server.py 8170
-scripts/bb 7836
-scripts/dashboard/devapp.py 4176
+scripts/dashboard/index.html 10577
+scripts/dashboard/server.py 8602
+scripts/bb 4229
+scripts/dashboard/devapp.py 3383

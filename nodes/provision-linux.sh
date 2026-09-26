@@ -1150,6 +1150,8 @@ cat > "$BBSANDBOX_TMP" <<'BBSANDBOX'
 # through the controller's own bb and needs no privilege. Still deliberately NOT reachable by a session: the agent is offered
 # system jobs only because it enrolled as a sandbox, and `list --json` is the
 # whole of what it reads back. The docker account cannot run this at all.
+# `gpu` installs the NVIDIA driver and a headless X server on the card, so
+# an emulator here renders on it (R20); `gpu-display` is that server's unit.
 set -euo pipefail
 
 CONF=/etc/bb-sandbox.conf
@@ -1811,9 +1813,173 @@ cmd_uninstall() {
     exit 0
 }
 
+# --- the GPU display (R20) -------------------------------------------------
+# The emulator's -gpu host needs GLES from the host driver, and NVIDIA's EGL
+# will not hand out a display without an X server carrying its own GLX
+# module: Xvfb has none and falls through to Mesa's llvmpipe, software by a
+# slower road than the emulator's own SwiftShader. So: the distribution's
+# NVIDIA driver, a real Xorg on it with no monitor, as a unit of this
+# machine's own, and one line in $GPU_STATE saying what it found, which
+# `bb emu gpu`, `bb doctor` and the Nodes tab read. The driver takes the card
+# only after a reboot (nouveau holds it until then), so `gpu` says when one
+# is needed rather than pretending; Reboot on the node's row is that press.
+GPU_STATE=/run/builderbot-gpu-display
+GPU_CONF=/etc/X11/builderbot-gpu.conf
+GPU_UNIT=builderbot-gpu-display
+GPU_LOG=/var/log/xorg-builderbot.log
+gpu_state() {
+    printf '%s\n' "$1" > "$GPU_STATE" 2>/dev/null || return 0
+    chmod 0644 "$GPU_STATE" 2>/dev/null || true
+}
+gpu_card() {
+    local card dev
+    card="$(lspci -nn 2>/dev/null | grep -i 'nvidia' | grep -iE 'vga compatible|3d controller' | head -1 | sed 's/^[^:]*: //')"
+    [ -n "$card" ] && { printf '%s\n' "$card"; return 0; }
+    # No pciutils: sysfs says the same without the name, a display-class
+    # device (0x03) of NVIDIA's vendor id (0x10de).
+    for dev in /sys/bus/pci/devices/*; do
+        [ "$(cat "$dev/vendor" 2>/dev/null)" = "0x10de" ] || continue
+        case "$(cat "$dev/class" 2>/dev/null)" in 0x03*) printf 'NVIDIA device [10de:%s] at %s\n' "$(cut -c3- "$dev/device")" "$(basename "$dev")"; return 0 ;; esac
+    done
+    return 0
+}
+cmd_gpu() {
+    local card
+    card="$(gpu_card)"
+    if [ -z "$card" ]; then
+        gpu_state "none: no NVIDIA card on this machine"
+        say "no NVIDIA card on this machine (lspci); nothing to set up"
+        return 0
+    fi
+    say "card: $card"
+    if ! command -v nvidia-smi >/dev/null 2>&1 || ! command -v Xorg >/dev/null 2>&1; then
+        # shellcheck source=/dev/null
+        [ -r /etc/os-release ] && . /etc/os-release
+        case " ${ID:-} ${ID_LIKE:-} " in
+            *" ubuntu "*)
+                say "installing the NVIDIA driver and a headless X server with apt; this takes minutes"
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -qq
+                apt-get install -y -qq ubuntu-drivers-common xserver-xorg-core pciutils
+                ubuntu-drivers install ;;
+            *" debian "*)
+                say "installing the NVIDIA driver and a headless X server with apt (non-free); this takes minutes"
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -qq
+                apt-get install -y -qq nvidia-driver firmware-misc-nonfree xserver-xorg-core pciutils \
+                    || die "apt could not install nvidia-driver: Debian keeps it in non-free, so add 'contrib non-free non-free-firmware' to the sources on this machine first, then press Set up GPU display again" ;;
+            *)
+                die "the NVIDIA driver is not installed from here on ${ID:-this family} yet: install it and Xorg from NVIDIA's repository for it, then press Set up GPU display again for the display half" ;;
+        esac
+    fi
+    command -v Xorg >/dev/null 2>&1 || die "no Xorg on this machine after the install; the display half needs one"
+    cat > "/etc/systemd/system/$GPU_UNIT.service" <<EOF
+# Written by bb-sandbox gpu. A headless X server on the NVIDIA card, for the
+# Android emulator's -gpu host; bounded restarts, so a card the host has
+# taken back is said in $GPU_STATE rather than retried forever.
+[Unit]
+Description=BuilderBot GPU display: a headless X server on the NVIDIA card
+After=multi-user.target
+StartLimitIntervalSec=900
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/bb-sandbox gpu-display
+Restart=on-failure
+RestartSec=20
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable "$GPU_UNIT" >/dev/null 2>&1 || true
+    if nvidia-smi -L >/dev/null 2>&1; then
+        systemctl restart "$GPU_UNIT" || true
+        sleep 4
+        say "$(head -1 "$GPU_STATE" 2>/dev/null || echo 'the display unit has not said yet')"
+    else
+        gpu_state "reboot: the NVIDIA driver is installed and takes the card at the next boot; Reboot on this node's row"
+        say "the driver is installed and takes the card at the next boot (nouveau holds it now): Reboot on this node's row, and the display comes up on its own"
+    fi
+}
+cmd_gpu_display() {
+    local bus b d f busid pid reason=""
+    if ! nvidia-smi -L >/dev/null 2>&1; then
+        gpu_state "down: the card does not answer nvidia-smi (the driver is not loaded: a reboot after the install, or the host took the card back)"
+        return 1
+    fi
+    # Xorg wants the PCI address in its own notation: nvidia-smi gives
+    # domain:bus:device.function (00000000:04:00.0), the config PCI:4:0:0.
+    bus="$(nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader 2>/dev/null | head -1 || true)"
+    IFS=':.' read -r _ b d f <<< "$bus"
+    if [ -z "${f:-}" ]; then
+        gpu_state "down: could not read the card's PCI address from nvidia-smi ('${bus}')"
+        return 1
+    fi
+    busid="PCI:$((16#${b})):$((16#${d})):$((16#${f}))"
+    mkdir -p /etc/X11
+    cat > "$GPU_CONF" <<EOF
+# Written by bb-sandbox gpu-display. Headless by design: no monitor is
+# attached, and the only client is the Android emulator asking EGL for a
+# display it can render into.
+Section "ServerFlags"
+    Option "AutoAddDevices" "false"
+    Option "AutoAddGPU"     "false"
+EndSection
+
+Section "Device"
+    Identifier "nvidia"
+    Driver     "nvidia"
+    BusID      "${busid}"
+    Option     "AllowEmptyInitialConfiguration" "true"
+    Option     "UseDisplayDevice" "none"
+EndSection
+
+Section "Screen"
+    Identifier "screen"
+    Device     "nvidia"
+    DefaultDepth 24
+    SubSection "Display"
+        Depth 24
+        Virtual 1920 1080
+    EndSubSection
+EndSection
+EOF
+    # A dead server's socket and lock survive it, and Xorg refuses a display
+    # whose lock is present.
+    rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
+    gpu_state "starting"
+    Xorg :0 -config "$GPU_CONF" -noreset -nolisten tcp -logfile "$GPU_LOG" >/dev/null 2>&1 &
+    pid=$!
+    for _ in $(seq 1 40); do
+        [ -S /tmp/.X11-unix/X0 ] && break
+        sleep 0.5
+    done
+    if [ -S /tmp/.X11-unix/X0 ]; then
+        # World-enterable, so a session's account can connect; the socket is
+        # bound into each session's own /tmp by bb-session.
+        chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+        gpu_state "up"
+        wait "$pid" || true
+        gpu_state "down: Xorg exited; see $GPU_LOG"
+        return 1
+    fi
+    kill "$pid" 2>/dev/null || true
+    if grep -qiE "module ABI major version.*does not match|ABI.*mismatch" "$GPU_LOG" 2>/dev/null; then
+        reason="the nvidia X module and this Xorg disagree about the server ABI"
+    elif grep -qiE "no devices detected|no screens found" "$GPU_LOG" 2>/dev/null; then
+        reason="Xorg found no device at ${busid}"
+    fi
+    gpu_state "down: ${reason:-Xorg did not start}; see $GPU_LOG"
+    return 1
+}
+
 case "${1-}" in
     "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
     uninstall)   shift; cmd_uninstall "${1-}" ;;
+    gpu)         cmd_gpu ;;
+    gpu-display) cmd_gpu_display ;;
     list)        shift; if [ "${1-}" = "--json" ]; then cmd_list_json; else cmd_list; fi ;;
     add-nfs)     shift; cmd_add_nfs "${1-}" ;;
     add-share)   shift; cmd_add_share "${1-}" ;;

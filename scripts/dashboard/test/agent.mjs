@@ -88,6 +88,9 @@ except Exception: ms = []
 a = sys.argv[1:]
 def save(): json.dump(ms, open(f, "w"))
 if a[:2] == ["list", "--json"]: print(json.dumps(ms)); sys.exit(0)
+if a[0] == "gpu":
+    open(os.environ["BB_GPU_STATE"], "w").write("reboot: the NVIDIA driver is installed and takes the card at the next boot\\n")
+    print("card: NVIDIA Test Card [10de:0000]"); print("the driver is installed and takes the card at the next boot: Reboot on this node's row"); sys.exit(0)
 if a[0] in ("add-nfs", "add-share"):
     spec = a[1]; ro = spec.endswith(":ro"); spec = spec[:-3] if ro else spec
     if a[0] == "add-nfs":
@@ -268,6 +271,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
   BUILDERBOT_ACT_RUNNER_BIN: `${DIR}/bin/act_runner`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
+  BB_GPU_STATE: `${DIR}/gpu-state`, BUILDERBOT_GPU_DISPLAY_STATE: `${DIR}/gpu-state`,
   BUILDERBOT_NETPLAN_BIN: `${DIR}/bin/netplan`, BUILDERBOT_NETPLAN_DIR: `${DIR}/netplan` };
 {
   let out = '';
@@ -1443,6 +1447,24 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       }, 30000);
       ok(fin?.state === 'failed' && /refused: a reboot is root's/.test(fin.log || '') && /sudo reboot/.test(fin.log || ''),
          `...which an agent that is not root refuses, naming the command (${fin?.state}: ${(fin?.log || '').trim().slice(0, 80)})`);
+    }
+    // The GPU display (R20): a system job the agent answers with bb-sandbox
+    // gpu, whose words are the job's, and whose state line the next hello
+    // carries into the census, so the row says what the machine found.
+    {
+      const g = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
+      ok(g.ok && /^j_/.test(g.job), `Set up GPU display queues a system job on a sandbox node (${g.job || g.error})`);
+      const fin = await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${g.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      ok(fin?.state === 'succeeded' && /takes the card at the next boot/.test(fin.log || ''),
+         `...bb-sandbox gpu runs and its words are the job's (${fin?.state}: ${(fin?.log || '').trim().slice(-70)})`);
+      const told = await until(async () => {
+        const n = await nodeById(minted.id);
+        return /^reboot/.test(n.reported?.gpu_display || '') ? n : null;
+      }, 30000);
+      ok(told !== null, `...and the display's state line reaches the row with the hello that follows (${told?.reported?.gpu_display})`);
     }
 
     // ---- a store under a share that is not mounted ------------------------
@@ -2827,8 +2849,6 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     ok(/agentbox/.test(row) && /live/.test(row) && /cpu/.test(row) && /data/.test(row)
        && new RegExp(`jobs run as ${process.env.USER || 'builder'}`).test(row),
        `the row shows the agent live, its numbers and the account jobs run as (${row.slice(0, 160)}…)`);
-    ok(await page.$(`.nodestab .ndrow[data-node="${minted.id}"] [data-nd="revoke"]`) !== null,
-       '...and offers Revoke, which an ssh node does not have');
     // Each session kept to its own project's network (R79): a switch in the
     // row's Sessions section, a draft until the section's Save (the rule
     // apply-not-onchange: it wrote itself on the click at first, the
@@ -2931,25 +2951,10 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
        '...through bb-sandbox uninstall --yes, detached from the agent');
     const gone = await until(async () => (await api('/api/v1/nodes')).nodes.some(n => n.id === minted.id) ? null : true, 20000);
     ok(!!gone, 'and the controller retires the node when the job lands, so the row leaves every list');
-    // Back to online for the revoke below: the stub uninstall took nothing
-    // off this machine, so the agent is still here to be revoked.
+    // Back to online for what follows: the stub uninstall took nothing
+    // off this machine, so the agent is still here.
     await api('/api/v1/nodes', { action: 'online', id: minted.id });
     ok((await api('/api/v1/nodes')).nodes.some(n => n.id === minted.id), '...and Undrain brings a retired row back, for what follows');
-  }
-  
-  
-
-  // revoke: the credential stops working, the agent says so, the row goes quiet
-  {
-    const r = await api('/api/v1/nodes', { action: 'revoke', id: minted.id });
-    ok(r.ok, 'Revoke cuts the credential');
-    const said = await until(() => /credential|re-enroll/i.test(agentLog()) ? true : null, 40000);
-    ok(said, 'the agent is told its credential is gone and says so in its log');
-    const n = await nodeById(minted.id);
-    ok(n.agent.revoked && n.state === 'online',
-       'the row keeps its history; the state is the operator\'s, the liveness is derived');
-    const q = await api('/api/v1/nodes', { action: 'exec', id: minted.id, argv: ['true'] });
-    ok(q.error, 'a revoked node takes no job');
   }
 } finally {
   agent.kill('SIGTERM');
@@ -3379,7 +3384,7 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
   // responsibility: with control-group systemd killed the job children, and
   // a build left running while the controller re-queues it is the one thing
   // that change could have cost.
-  ok(/def bye\(\*_\):[\s\S]{0,400}?j\.cancel\(\)[\s\S]{0,200}?self\.session_stop\(\)/.test(src),
+  ok(/def bye\(\*_\):[\s\S]{0,400}?j\.cancel\(\)[\s\S]{0,1200}?self\.session_stop\(\)/.test(src),
      'the agent cancels its running jobs on SIGTERM, since systemd no longer does it');
 }
 

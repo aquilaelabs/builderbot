@@ -629,25 +629,6 @@ def node_locked(n):
     return ""
 
 
-def node_revoke(principal, node_id):
-    """Cut an agent node's credential without retiring it. The row stays,
-    the agent's next call fails closed with 'credential revoked', and the
-    way back is a fresh enrollment token, which is to say a new row: a
-    node whose secret was compromised is a node whose identity was, and
-    the id is not reissued."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node holds a credential to revoke"}
-    revoke_tokens(node_id)
-    ag = n.get("agent") or {}
-    ag["revoked"] = int(time.time())
-    _exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), node_id))
-    _touch(node_id, principal, "node-revoke", {})
-    return {"ok": True}
-
-
 def docker_nodes():
     """The docker-host nodes, for every picker: active ones with somewhere
     to send docker to. An agent node that has never dialed in has no known
@@ -804,8 +785,13 @@ def enroll(auth, census, addr, version="", digest="", user=""):
     n = node(nid)
     if not n or n["state"] != "pending":
         return {"error": "this node is not waiting for enrollment"}
+    # Burned in one statement, so two enrolments racing on one token (a
+    # provisioner's retry) cannot both pass and mint two node tokens.
+    cur = _exec("UPDATE tokens SET revoked = 1, uses = uses + 1 WHERE id = ? AND revoked = 0",
+                (auth["token"],))
+    if cur.rowcount != 1:
+        return {"error": "this enrollment token was already used"}
     revoke_tokens(nid, ("enroll",))
-    _exec("UPDATE tokens SET uses = uses + 1 WHERE id = ?", (auth["token"],))
     tid, secret = _token_mint("node", nid)
     cfg = n.get("config") or {}
     if user:
@@ -944,6 +930,11 @@ def _census(c):
     # the address it is on. Facts about the machine, drawn against the
     # operator's desired config on the row; never treated as the config.
     out["sandbox"] = bool(c.get("sandbox"))
+    # The GPU (R20): the NVIDIA card by its PCI id, before any driver, and
+    # what the display's unit last said; absent where there is no card.
+    for k in ("gpu_card", "gpu_display"):
+        if c.get(k):
+            out[k] = str(c[k])[:200]
     # Whether the agent may install system packages there: the stamp and
     # root.
     out["administers"] = bool(c.get("administers"))
@@ -1824,6 +1815,34 @@ def node_uninstall(principal, node_id):
     return r
 
 
+def node_gpu_display(principal, node_id):
+    """Set the GPU display up on a node from its row (R20): a system job
+    the agent answers with bb-sandbox gpu, which installs the NVIDIA driver
+    and a headless X server on the card and says whether a reboot has to
+    follow. The machine's own answer decides: a node with no card gets that
+    said, not refused here."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("kind") != "agent":
+        return {"error": "only an agent node has a GPU display to set up"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "only a node provisioned as a BuilderBot sandbox is set up from here: "
+                         "on the machine, sudo bb-sandbox gpu"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "gpu", "config": {}, "timeout": 1800})
+    if r.get("ok"):
+        audit(principal, "node-gpu-display", node_id, {"job": r["job"]})
+    return r
+
+
 def node_power(principal, node_id, what):
     """Reboot or shut a node down from its row: a system job the agent
     answers by scheduling the machine's own reboot or power-off a few
@@ -1895,8 +1914,6 @@ def node_apply(principal, node_id, what):
                          "(no bb-sandbox on it), so system jobs are not offered to it"}
     if n["state"] != "online":
         return {"error": f"the node is {n['state']}; system jobs go to an online node"}
-    if (n.get("agent") or {}).get("revoked"):
-        return {"error": "this node's credential was revoked"}
     if node_locked(n):
         return {"error": node_locked(n)}
     desired = (n.get("config") or {}).get("desired") or {}
@@ -2256,7 +2273,7 @@ def fits(job, n):
     node is exact; a selector is every key it names, all of which must hold.
     Nothing here about load: first free slot wins, which is the whole
     scheduling policy a single operator needs (docs/nodes.md §2)."""
-    if n["state"] != "online" or (n.get("agent") or {}).get("revoked"):
+    if n["state"] != "online":
         return False
     # An agent that is behind takes nothing but its own update. Here as well
     # as in job_add, because job_add only sees the explicitly-placed case:
@@ -2334,9 +2351,6 @@ def job_add(principal, placement, type, spec, project="", source=None):
             return {"error": "no such node"}
         if n["state"] != "online":
             return {"error": f"node is {n['state']}; it takes no new work"}
-        if (n.get("agent") or {}).get("revoked"):
-            return {"error": "this node's credential was revoked; enroll it "
-                             "again to give it work"}
         if n["kind"] == "agent" and type != "compose" and not n.get("live"):
             return {"error": "the agent on this node is not dialing in; the "
                              "job would wait until it does"}
@@ -2931,10 +2945,15 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     """Terminal. Idempotent by design: the agent retries until it is
     acknowledged, so the second arrival of the same result is a no-op with
     the same answer, not a second audit row."""
-    got = _rows("SELECT node, state, type, project FROM jobs WHERE id = ?", (job_id,))
+    got = _rows("SELECT node, state, type, project, error FROM jobs WHERE id = ?", (job_id,))
     if not got or got[0]["node"] != node_id:
         return {"error": "not this node's job"}
-    if got[0]["state"] in JOB_END:
+    # A row this side failed as lost while the agent kept the job (a
+    # controller restart, a network gap longer than the grace window) takes
+    # the job's real end late rather than dropping it, and says so (B285).
+    late = (got[0]["state"] == "failed"
+            and str(got[0].get("error") or "").startswith(("node lost", "lost:")))
+    if got[0]["state"] in JOB_END and not late:
         return {"ok": True, "already": True}
     if state not in JOB_END:
         return {"error": "a result is succeeded, failed or canceled"}
@@ -2950,9 +2969,18 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     code = None
     with contextlib.suppress(TypeError, ValueError):
         code = int(exit_code) if exit_code is not None else None
-    _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
-          "error = ? WHERE id = ?",
-          (state, code, int(time.time()), str(error or "")[:500], job_id))
+    # Guarded on the state, so a retry that overlaps the first arrival is the
+    # no-op the docstring promises rather than a second audit row and a
+    # second run of the hooks (the review of 26 Sep).
+    err = str(error or "")[:500]
+    if late:
+        err = ("reported late, after this side called the node lost" + (": " + err if err else ""))[:500]
+    cur = _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
+                "error = ? WHERE id = ? AND (state NOT IN ('succeeded', 'failed', 'canceled') "
+                "OR (state = 'failed' AND (error LIKE 'node lost%' OR error LIKE 'lost:%')))",
+                (state, code, int(time.time()), err, job_id))
+    if cur.rowcount == 0:
+        return {"ok": True, "already": True}
     # What the job left behind: the artifacts it uploaded and, for a failed
     # one, the workspace the node kept for inspection (docs/nodes.md §6).
     if isinstance(outputs, list):
@@ -3040,9 +3068,16 @@ def job_cancel(principal, job_id):
         return {"error": "no such job"}
     if got[0]["state"] in JOB_END:
         return {"ok": True, "already": True}
+    # Guarded on the state, since a node can claim the job between the read
+    # above and this write: the queued row is ended only if it is still
+    # queued, and one that was claimed meanwhile gets the flag instead, so
+    # the agent hears the cancel rather than running a job the row calls
+    # canceled (the review of 26 Sep).
     if got[0]["state"] == "queued":
-        _exec("UPDATE jobs SET state = 'canceled', ended = ?, error = 'canceled "
-              "before it started' WHERE id = ?", (int(time.time()), job_id))
+        cur = _exec("UPDATE jobs SET state = 'canceled', ended = ?, error = 'canceled "
+                    "before it started' WHERE id = ? AND state = 'queued'", (int(time.time()), job_id))
+        if cur.rowcount == 0:
+            _exec("UPDATE jobs SET cancel = 1 WHERE id = ?", (job_id,))
     elif not got[0]["cancel"]:
         _exec("UPDATE jobs SET cancel = 1 WHERE id = ?", (job_id,))
     if not _quiet(job_id):
@@ -3081,6 +3116,13 @@ def jobs_for(node_id=None, n=50, project=None, type=None, active=False):
 LOST_S = LIVE_S + 30
 
 
+# When this controller process started: a node's last_seen is from before
+# a restart, so a restart longer than the grace window read as every agent
+# gone at the first tick, and failed every running job on every node as
+# "node lost" while the agents were fine (the review of 26 Sep).
+_BOOT = int(time.time())
+
+
 def jobs_lost():
     """Fail every job assigned to an agent that has gone quiet: "node lost"
     after a grace window (docs/nodes.md §10). The agent is the durable side:
@@ -3094,16 +3136,31 @@ def jobs_lost():
                    "j.node WHERE j.state IN ('assigned', 'running') AND "
                    "k.kind = 'agent'"):
         nd = node(j["node"])
-        seen = (nd.get("agent") or {}).get("last_seen") or 0
+        seen = max((nd.get("agent") or {}).get("last_seen") or 0, _BOOT)
         if now - seen > LOST_S:
             _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', "
                   "error = 'node lost: the agent stopped answering' WHERE "
                   "id = ?", (now, j["id"]))
             audit("system", "job-lost", j["id"], {"node": j["node"]})
+            _lost_done(j["id"])
             n += 1
     if n:
         _jstate_bump()
     return n
+
+
+def _lost_done(jid):
+    """The module that queued a job hears that it was lost, as it hears a
+    result: a compose rebuild failed as lost left the Docker row saying
+    building, since only job_result ran the hook (B287)."""
+    j = job(jid, with_log=False)
+    fn = ON_DONE.get((j or {}).get("type") or "")
+    if not fn or not j:
+        return
+    try:
+        fn(j, "failed")
+    except Exception as e:                                                # noqa: BLE001
+        print(f"[dashboard] {jid}: the done hook failed after the job was lost: {type(e).__name__}: {e}", flush=True)
 
 
 def jobs_reconcile(node_id, running):
@@ -3123,6 +3180,7 @@ def jobs_reconcile(node_id, running):
               "= 'lost: the agent restarted without it' WHERE id = ?",
               (int(time.time()), jid))
         audit("system", "job-lost", jid, {"node": node_id, "why": "restart"})
+        _lost_done(jid)
     if gone:
         _jstate_bump()
 

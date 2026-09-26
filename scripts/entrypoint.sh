@@ -346,11 +346,15 @@ seed_home() {
         "$WORKSPACE"
     chmod 700 "$BUILDER_HOME/.ssh"
 
-    if is_true "${CHOWN_HOME:-true}"; then
+    # Recursed only when the top of the tree is not already the account's:
+    # a home of gigabytes was walked on every start (B283). CHOWN_HOME=false
+    # skips it whatever the owner says.
+    if is_true "${CHOWN_HOME:-true}" && [ "$(stat -c %u:%g "$BUILDER_HOME" 2>/dev/null)" != "$PUID:$PGID" ]; then
         chown -R "$PUID:$PGID" "$BUILDER_HOME"
     fi
     # Make the persistent log readable/rotatable from the share.
-    chown -R "$PUID:$PGID" "$(bb_log_dir)" 2>/dev/null || true
+    [ "$(stat -c %u:%g "$(bb_log_dir)" 2>/dev/null)" = "$PUID:$PGID" ] \
+        || chown -R "$PUID:$PGID" "$(bb_log_dir)" 2>/dev/null || true
     # The workspace root is only ours to chown when it is a directory this
     # container made. Mounted, it is the host's projects share, and quietly
     # changing the ownership of somebody's share because a container started is
@@ -568,6 +572,13 @@ main() {
     mapfile -d '' -t cmd < <(resolve_command "$@")
 
     log "starting: ${cmd[*]}"
+    # The shield, at last: the secrets were stashed for the root helper and
+    # turned into redaction rules at the top, and the hooks that needed one
+    # (npm publishing) have run. Nothing started from here may inherit them:
+    # this is the environment of the dashboard, ttyd and every process under
+    # the builder account, and it carried every one of them until the review
+    # of 26 Sep read this file.
+    unset "${SECRET_VARS[@]}"
     if [ "$privileged" -eq 1 ]; then
         exec gosu builder env HOME="$BUILDER_HOME" USER=builder "${cmd[@]}"
     else

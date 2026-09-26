@@ -145,6 +145,16 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
      `a setting the operator changed is named too (${(st.line || 'no line').slice(0, 90)})`);
   await call('/api/prefs', { project: 'alpha', build: '' });
   await sess({ node: 'nodeA' });
+  // Memories: an edit through the notebook by somebody else is news; the
+  // session's own, through the API or its own memory tool on the files,
+  // is not, since the half counts notebook edits rather than mtimes (B269).
+  await call('/api/memory', { project: 'alpha', action: 'create', name: 'op-note', title: 'the operator wrote one', hook: 'h', type: 'project', body: 'x' });
+  const mem = await sess({ node: 'nodeA' });
+  ok(/somebody else changed this project's memories: read the notebook's Memory view/.test(mem.line || ''),
+     `a memory the operator wrote is named on the next prompt (${(mem.line || 'no line').slice(0, 90)})`);
+  await call('/api/memory', { project: 'alpha', action: 'create', name: 'own-note', title: 'the session wrote one', hook: 'h', type: 'project', body: 'x' }, bearer(toks[1]));
+  const ownMem = await sess({ node: 'nodeA' });
+  ok(!/memories/.test(ownMem.line || ''), `...and the session's own is not (${(ownMem.line || 'no line').slice(0, 90)})`);
 }
 
 {
@@ -157,6 +167,20 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   ok(r.status === 403, `a session cannot set its own node's limit (${r.status})`);
   r = await call('/api/v1/nodes', { action: 'reboot', id: minted.id }, bearer(toks[1]));
   ok(r.status === 403, `...nor reboot or shut down the machine it runs on (${r.status})`);
+  // A job is cancelled by somebody whose project it is (the review of 26
+  // Sep): a session's token for alpha cannot end beta's job, an
+  // administrator can, and the code for the controller's own Claude sign-in
+  // is not a session's to type.
+  await call('/api/prefs', { project: 'beta', node: minted.id });
+  const bj = await call('/api/v1/jobs', { action: 'run', project: 'beta', argv: ['true'] });
+  ok(bj.ok && /^j_/.test(bj.job || ''), `a job on another project is queued for the check (${bj.job || bj.error})`);
+  r = await call('/api/v1/jobs', { action: 'cancel', id: bj.job }, bearer(toks[1]));
+  ok(r.status === 403 && /no such job of yours/.test(r.error || ''), `a session cannot cancel another project's job (${r.status}: ${r.error})`);
+  r = await call('/api/v1/jobs', { action: 'cancel', id: bj.job });
+  ok(r.ok === true || r.status === 200, `...while an administrator can (${JSON.stringify(r).slice(0, 60)})`);
+  await call('/api/prefs', { project: 'beta', node: '' });
+  r = await call('/api/login-code', { code: 'abc#def' }, bearer(toks[1]));
+  ok(r.status === 403, `a session cannot type a code into the controller's sign-in (${r.status})`);
   r = await call('/api/v1/nodes', { action: 'turns', id: minted.id, limit: 1 },
     { Authorization: 'Basic ' + Buffer.from('tn.one:pw-tn.one-1').toString('base64'), 'Content-Type': 'application/json' });
   ok(r.status === 403, `...nor can a plain account (${r.status})`);

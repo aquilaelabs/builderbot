@@ -74,5 +74,10 @@ elif ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | gre
 fi
 
 relink_chromium
-chown -R "$PUID:$PGID" "$STORE" 2>/dev/null || true
-chmod -R a+rwX "$STORE" 2>/dev/null || true
+# Once, when the store's top is not the account's yet (B283: a 1.3 GB walk on
+# every start), and readable and runnable by everyone, never writable: the
+# browsers run as root in this hook and as the account after it.
+if [ "$(stat -c %u:%g "$STORE" 2>/dev/null)" != "$PUID:$PGID" ]; then
+    chown -R "$PUID:$PGID" "$STORE" 2>/dev/null || true
+    chmod -R a+rX "$STORE" 2>/dev/null || true
+fi

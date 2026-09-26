@@ -11,7 +11,7 @@
   <Overview>
 Claude Code workstation and the controller for your build nodes - the machines where builds, tests, CI and the Android emulator run.
 
-Use it from a terminal:  docker exec -it BuilderBot claude
+Open the dashboard on its port; a Claude session runs on a node from there.
 Helper CLI inside:       docker exec -it BuilderBot bb status
 
 NOTES
@@ -73,6 +73,7 @@ NOTES
 
   <!-- ===================== web dashboard ===================== -->
   <Config Name="Dashboard port" Target="7680" Default="7680" Mode="tcp" Description="Web UI for the dashboard page." Type="Port" Display="always" Required="false" Mask="false">7680</Config>
+  <Config Name="CHOWN_HOME" Target="CHOWN_HOME" Default="true" Mode="" Description="Recursive chown of the home volume at startup. false when it is large and already correct." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="DASHBOARD_PORT" Target="DASHBOARD_PORT" Default="7680" Mode="" Description="Must match the Dashboard port mapping above." Type="Variable" Display="advanced" Required="false" Mask="false">7680</Config>
   <Config Name="DASHBOARD_TTYD_PORT" Target="DASHBOARD_TTYD_PORT" Default="7681" Mode="" Description="The LOOPBACK port ttyd binds to inside the container. The browser never talks to it - terminals are proxied through the dashboard port under /term, behind the same single sign-in - so it needs no port mapping. Leave at 7681." Type="Variable" Display="advanced" Required="false" Mask="false">7681</Config>
   <Config Name="SDK_ROOT" Target="SDK_ROOT" Default="/sdk" Mode="" Description="Where downloadable SDKs are kept inside the container. Leave at /sdk; it pairs with the toolchain store mapping above. With no share mapped the SDKs fall back to the home volume, which persists too but mixes them in with everything else." Type="Variable" Display="advanced" Required="false" Mask="false">/sdk</Config>

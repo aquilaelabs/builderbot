@@ -119,12 +119,27 @@ cat <<EOF
 $(find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -printf '      %p\n' 2>/dev/null || true)
 EOF
 
-# Stay in the foreground, doing nothing: everything that runs here supervises
-# itself (the dashboard through its own loop, ttyd through the dashboard), and
-# PID 1's remaining job is to be here for the signal above. The sleep is a
-# background job waited on, so a TERM arriving mid-sleep is handled at once
-# rather than at the end of the second.
+# Stay in the foreground and watch the dashboard: nothing restarted it when it
+# died, and the container read healthy as long as this loop ran (B282). It is
+# started again through its own hook, which starts only what is not listening,
+# at most five times an hour: a server that cannot start is said once in the
+# log rather than retried forever. The sleep is a background job waited on, so
+# a TERM arriving mid-sleep is handled at once rather than at the end of the
+# second.
+restarts=0; window_start=$(date +%s)
 while :; do
     sleep 5 &
     wait $! 2>/dev/null || true
+    if ! pgrep -f 'dashboard/server\.py' >/dev/null 2>&1; then
+        now=$(date +%s)
+        if [ $((now - window_start)) -ge 3600 ]; then restarts=0; window_start=$now; fi
+        if [ "$restarts" -lt 5 ]; then
+            restarts=$((restarts + 1))
+            warn "the dashboard is not running; starting it again (${restarts}/5 this hour)"
+            bash /opt/builderbot/scripts/startup.d/15-dashboard.sh 2>&1 | sed 's/^/[dashboard] /' || true
+        elif [ "$restarts" -eq 5 ]; then
+            restarts=6
+            warn "the dashboard died five times in an hour and is left down: read $(bb_log_dir)/dashboard.log"
+        fi
+    fi
 done

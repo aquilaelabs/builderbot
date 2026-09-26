@@ -107,7 +107,12 @@ def load():
 
 
 def _save(d):
-    write_json(_file(), d)
+    # Private from the instant it is in place, where the helper can take a
+    # mode (statefile's); the harness and bb users hand in one that cannot.
+    try:
+        write_json(_file(), d, mode=0o600)
+    except TypeError:
+        write_json(_file(), d)
     # The file holds password hashes. write_json does not know that, so the
     # mode is set here rather than assumed, and tolerated when it fails,
     # because a dashboard that will not start is worse than one whose file is

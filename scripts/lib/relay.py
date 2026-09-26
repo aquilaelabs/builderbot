@@ -15,6 +15,7 @@ import bbapi
 
 
 auth, *argv = sys.argv[1:]
+auth = auth or os.environ.get("BB_AUTH_HEADER", "")
 r = bbapi.call("/api/v1/bb", {"argv": argv, "project": os.environ.get("BB_RELAY_PROJECT", ""),
                               "cwd": os.getcwd(),
                               "from": "session" if os.environ.get("CLAUDECODE") else "operator"},

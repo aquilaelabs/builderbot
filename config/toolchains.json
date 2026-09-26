@@ -258,13 +258,13 @@
         "reports": "emulator"
       },
       "platforms": [
-        "linux/*"
+        "linux/amd64"
       ],
       "requires": [
         "android-tools",
         "android:platform-tools"
       ],
-      "about": "The emulator binary. System images are per API level and come from the image picker above, or from bb emu create on the node.",
+      "about": "The emulator binary. System images are per API level and come from the image picker above, or from bb emu create on the node. Google ships it for x86_64 Linux only, and the image abi is x86_64 (B278).",
       "system": {
         "apt": [
           "libpulse0",
@@ -331,12 +331,12 @@
         "reports": ""
       },
       "platforms": [
-        "linux/*"
+        "linux/amd64"
       ],
       "requires": [
         "android-tools"
       ],
-      "about": "adb, and the rest of the tools that talk to a device or an emulator. Every `bb emu` verb goes through adb, so the emulator is unusable without it.",
+      "about": "adb, and the rest of the tools that talk to a device or an emulator. Every `bb emu` verb goes through adb, so the emulator is unusable without it. Google ships it for x86_64 Linux only, and the image abi is x86_64 (B278).",
       "source": {
         "kind": "sdkmanager",
         "package": "platform-tools",

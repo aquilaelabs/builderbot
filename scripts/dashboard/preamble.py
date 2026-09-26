@@ -73,8 +73,8 @@ TEST_CHANGE_SAID = {
              "failed and run them again until they pass, then take the next ask; say it "
              "is queued when it arrives."),
     "restart": ("a new ask may cut into the final test run only, the gate after the work "
-                "is done and committed: end that run by the pid in its lock (kill its "
-                "process group, never by name), make the change, and start the run again. "
+                "is done and committed: end that run by the pid you started it with (kill "
+                "its process group, never by name), make the change, and start the run again. "
                 "Work still in progress on the ask in hand, including fixing failures from "
                 "a run made in the middle of it, finishes first; the new ask waits until then."),
 }
@@ -89,12 +89,15 @@ TEST_CHANGE_SAID = {
 # indented command lines, names and labels (nothing capitalised is dropped),
 # numbers, and the words that turn a sentence around, which are the KEEP
 # list and win over the filler list.
-_FILL = frozenset("the a an of to and or is are was were be been being it its this that "
-                  "these those there here which who whom in on at for with as by from into "
-                  "so very just rather then also than some such any each".split())
+# "or", "rather than", "by", "be", "then" and "so" turn a sentence too (the
+# review of 26 Sep read "rather than working from the title" tersed to the
+# opposite, and "Fixed or Security" to a list of one), so they are kept.
+_FILL = frozenset("the a an of to and is are was were been being it its this that "
+                  "these those there here which who whom in on at for with as from into "
+                  "very just also some such any each".split())
 _KEEP = frozenset("not never no nor unless only before after until if when while without "
                   "except but must may cannot always first last same other another every "
-                  "all none".split())
+                  "all none or rather than by be then so".split())
 _PHRASES = [("in order to", "to"), ("as well as", "and"), ("so that", "so"),
             ("make sure", "ensure"), ("at the moment", "now"), ("a number of", "several"),
             ("the fact that", "that")]
@@ -110,30 +113,50 @@ def _terse_words(seg):
     for a, b in _PHRASES:
         seg = re.sub(re.escape(a), b, seg, flags=re.IGNORECASE)
     out = []
+    quoted = False
     for tok in seg.split(" "):
         core = tok.strip(_PUNCT + "()\"'")
-        if core and core.islower() and core in _FILL and core not in _KEEP and "-" not in tok:
+        # Inside double quotes nothing is dropped: a quoted label is a name.
+        # A token carrying a bracket or a quote stays whole: dropping it took
+        # the bracket with it, and the sentence lost its shape.
+        opens = tok.count('"')
+        keep_whole = any(c in tok for c in "()\"") or quoted
+        if (core and core.islower() and core in _FILL and core not in _KEEP
+                and "-" not in tok and not keep_whole):
             punct = tok[len(tok.rstrip(_PUNCT)):]
             if punct and out:
                 out[-1] = out[-1].rstrip(_PUNCT) + punct
-            continue
-        out.append(tok)
+        else:
+            out.append(tok)
+        if opens % 2:
+            quoted = not quoted
     return lead + " ".join(t for t in out if t != "") + trail
 
 
 def terse(text):
-    """`text` with its filler words dropped, line by line, outside code."""
-    lines = []
+    """`text` with its filler words dropped, outside code. A code span can
+    wrap onto the next line, so the backticks are counted across a
+    paragraph rather than a line: counted per line, the words after a
+    wrapped span were read as code, or code as words."""
+    out, para = [], []
+
+    def flush():
+        if not para:
+            return
+        segs = "\n".join(para).split("`")
+        for i in range(0, len(segs), 2):
+            segs[i] = "\n".join(_terse_words(ln) for ln in segs[i].split("\n"))
+        out.extend("`".join(segs).split("\n"))
+        para.clear()
+
     for line in (text or "").split("\n"):
         if not line.strip() or line.startswith(("    ", "\t")):
-            lines.append(line)
+            flush()
+            out.append(line)
             continue
-        lead = line[:len(line) - len(line.lstrip(" "))]
-        segs = line[len(lead):].split("`")
-        for i in range(0, len(segs), 2):
-            segs[i] = _terse_words(segs[i])
-        lines.append(lead + "`".join(segs))
-    return "\n".join(lines)
+        para.append(line)
+    flush()
+    return "\n".join(out)
 
 
 REPLY_SAID = {

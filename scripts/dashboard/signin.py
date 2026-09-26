@@ -62,9 +62,10 @@ class NodeFlow:
     the card does not know or care which of the two it is talking to.
     """
 
-    def __init__(self, nodes, node_id, job_id, name=""):
+    def __init__(self, nodes, node_id, job_id, name="", uid=""):
         self._nodes, self.node, self.job = nodes, node_id, job_id
         self.node_name = name
+        self.uid = str(uid or "")          # whose sign-in it is: theirs to type into
         self.sent = False
 
     def _log(self):
@@ -126,7 +127,7 @@ def start_on_node(nodes, node_id, uid, name="", token=""):
                       {"uid": str(uid), "timeout": 900, "token": str(token or "")})
     if r.get("error"):
         return r
-    f = NodeFlow(nodes, node_id, r["job"], name)
+    f = NodeFlow(nodes, node_id, r["job"], name, uid=uid)
     with _lock:
         _flow = f
     t0 = time.time()
@@ -156,3 +157,10 @@ def state():
     with _lock:
         f = _flow
     return f.state() if f else {"running": False}
+
+
+def owner():
+    """The account the running flow was started for, or "" when none is."""
+    with _lock:
+        f = _flow
+    return getattr(f, "uid", "") if f else ""

@@ -39,7 +39,7 @@ def list_():
         # derived, never stored, and the one column the row cannot lie about.
         state = n["state"]
         if n["kind"] == "agent" and state != "pending":
-            state += (" ✗" if ag.get("revoked") else " ●" if n.get("live") else " ○")
+            state += (" ●" if n.get("live") else " ○")
         s = (n.get("reported") or {}).get("sample") or {}
         nums = (f' · cpu {s.get("cpu_pct", 0):.0f}% · {s.get("mem_used_mb", 0) / 1024:.1f}'
                 f'/{s.get("mem_mb", 0) / 1024:.0f}GB') if s and n.get("live") else ""

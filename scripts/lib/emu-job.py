@@ -14,6 +14,7 @@ import waits
 
 
 auth, proj, *argv = sys.argv[1:]
+auth = auth or os.environ.get("BB_AUTH_HEADER", "")
 files = [f for f in os.environ.get("BB_EMU_FILES", "").split("\n") if f]
 call = lambda path, body=None: bbapi.call(path, body, auth=auth)   # noqa: E731
 r = call("/api/v1/jobs", {"action": "emu", "project": proj, "argv": argv, "files": files,

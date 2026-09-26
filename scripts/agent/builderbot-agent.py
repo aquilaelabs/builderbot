@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.105"
+AGENT_VERSION = "0.7.109"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -278,11 +278,22 @@ def dir_bytes(path):
 # `system` job is refused without it. The netplan seams exist so the tests
 # can stand in for both without a root shell.
 SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandbox")
+# What the GPU display's unit last said (bb-sandbox gpu-display, R20): one
+# line, read into the census so the row says it.
+GPU_DISPLAY_STATE = os.environ.get("BUILDERBOT_GPU_DISPLAY_STATE", "/run/builderbot-gpu-display")
 # The session's view (R35): the root helper that builds it, the file that
 # tells it this machine's layout, and the sudo rule that is the session
 # account's only way to it. Installed and kept by this agent from the bundle,
 # on a node set up as a sandbox; the seams are for the suite.
 SESSION_BIN = os.environ.get("BUILDERBOT_SESSION_BIN", "/usr/local/sbin/bb-session")
+# Where root keeps its own copy of the two tools it installs from a bundle
+# (bb-sandbox out of the provisioner, and bb-session): root-owned, 0700,
+# written from the tar as it is unpacked and never from the toolchain store,
+# which belongs to the job account. Reading them from the store let any job,
+# and so any session through bb run, plant root code that landed on the
+# next hello (the review of 26 Sep).
+TOOLS_DIR = os.environ.get("BUILDERBOT_TOOLS_DIR", "/var/lib/builderbot/agent/tools")
+ROOT_TOOLS = ("nodes/provision-linux.sh", "nodes/bb-session")
 # Where an updated Claude Code is pinned, root-owned, for the sessions (claude_update).
 CLAUDE_DIR = "/usr/local/lib/builderbot/claude"
 SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
@@ -1723,6 +1734,37 @@ def sdk_versions(state):
     return {}
 
 
+def _gpu_card():
+    """The NVIDIA card by its PCI id, before any driver is on it: what the
+    Nodes tab offers Set up GPU display on (R20). A VM's virtual adapter is
+    not one, and neither is a card of another make, which the verb would
+    refuse."""
+    for line in _run(["lspci", "-nn"], timeout=10).splitlines():
+        low = line.lower()
+        if "nvidia" in low and ("vga compatible" in low or "3d controller" in low):
+            return line.split(": ", 1)[-1].strip()[:120]
+    # No pciutils (a minimal Rocky): sysfs says the same without the name,
+    # a display-class device (0x03) of NVIDIA's vendor id (0x10de).
+    try:
+        for dev in sorted(os.listdir("/sys/bus/pci/devices")):
+            base = f"/sys/bus/pci/devices/{dev}"
+            with open(f"{base}/vendor") as f, open(f"{base}/class") as g, open(f"{base}/device") as h:
+                vendor, cls, did = f.read().strip(), g.read().strip(), h.read().strip()
+            if vendor == "0x10de" and cls.startswith("0x03"):
+                return f"NVIDIA device [10de:{did[2:]}] at {dev}"
+    except OSError:
+        pass
+    return ""
+
+
+def _gpu_display():
+    try:
+        with open(GPU_DISPLAY_STATE, encoding="utf-8", errors="replace") as f:
+            return f.readline().strip()[:200]
+    except OSError:
+        return ""
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -1756,6 +1798,8 @@ def census(state):
         "docker_id": _run(["docker", "info", "--format", "{{.ID}}"], timeout=15)
         if shutil.which("docker") else "",
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
+        "gpu_card": _gpu_card(),
+        "gpu_display": _gpu_display(),
         "sshd": _sshd_listening(),
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
@@ -2719,6 +2763,11 @@ class Job(threading.Thread):
         with self.lock:
             self.pending_step = str(name)[:60]
 
+    # What a job may hold unsent while the controller is unreachable: past
+    # this the oldest goes, and one line says how much (B286: a chatty build
+    # grew the agent without limit).
+    PENDING_CAP = 8 * 1024 * 1024
+
     def say(self, text):
         # One line that alone exceeds a body would be refused forever, and
         # everything behind it with it; split rather than let that happen.
@@ -2726,6 +2775,16 @@ class Job(threading.Thread):
             for i in range(0, len(text), 32 * 1024):
                 self.seq += 1
                 self.pending.append({"seq": self.seq, "chunk": text[i:i + 32 * 1024]})
+            held = sum(len(c["chunk"]) for c in self.pending)
+            if held > self.PENDING_CAP:
+                dropped = 0
+                while self.pending and held > self.PENDING_CAP // 2:
+                    gone = self.pending.pop(0)
+                    dropped += len(gone["chunk"])
+                    held -= len(gone["chunk"])
+                self.seq += 1
+                self.pending.insert(0, {"seq": self.seq, "chunk": f"[{dropped} bytes of output dropped: "
+                                        "the controller was unreachable and this job kept talking]\n"})
 
     BATCH = 40 * 1024      # under the controller's 64KB body cap, with headroom
 
@@ -2908,11 +2967,11 @@ class Job(threading.Thread):
             return "failed", 70
         os.close(slave)
         self.tty = master
-        deadline = time.time() + int(spec.get("timeout") or 900)
+        deadline = time.monotonic() + int(spec.get("timeout") or 900)
         last_beat = time.time()
         try:
             while True:
-                if time.time() > deadline:
+                if time.monotonic() > deadline:
                     self.say("the sign-in was not finished in time\n")
                     self.cancel()
                     return "failed", 75
@@ -3068,13 +3127,13 @@ class Job(threading.Thread):
                 pass                      # the pipe went with the process
         reader = threading.Thread(target=pump, daemon=True)
         reader.start()
-        deadline = time.time() + timeout
+        deadline = time.monotonic() + timeout
         killed = False
         while reader.is_alive():
             reader.join(0.5)
             if self.pending:
                 self.flush()
-            if time.time() > deadline and not killed:
+            if time.monotonic() > deadline and not killed:
                 self.say(f"timed out after {int(timeout)}s, killing it\n")
                 self._kill(p)
                 killed = True
@@ -3445,7 +3504,7 @@ class Agent:
                                         "digest": own_digest(),
                                         "running": self.running_ids()}, timeout=30)
         if st == 200:
-            self.hello_at = time.time()
+            self.hello_at = time.monotonic()
             self.poll = int(r.get("poll") or 25)
             self.controller_digest = (r.get("agent") or {}).get("digest") or ""
             # Where toolchains land, from the controller's catalog. Kept on the
@@ -3609,6 +3668,18 @@ class Agent:
                 running = list(self.jobs.values())
             for j in running:
                 j.cancel()
+            # Each job's end, said by this process before it goes: the job
+            # threads die with it and the row read "lost: the agent
+            # restarted" for a stop that was ordered (B287). Best effort, a
+            # few seconds each; a controller that is away hears it at the
+            # next hello's reconcile instead.
+            for j in running:
+                try:
+                    self.ctl.call("result", {"job": j.job["id"], "state": "canceled", "exit": None,
+                                             "error": "canceled: the agent was stopped", "outputs": []},
+                                  timeout=5)
+                except Exception as e:                               # noqa: BLE001
+                    log(f"{j.job['id']}: could not say it was stopped: {e}")
             self.session_stop()
             self.runner_stop()
             raise SystemExit(0)
@@ -3624,7 +3695,10 @@ class Agent:
         self.sessnet.start()
         self.sesswatch.start()
         while True:
-            if time.time() - self.hello_at > 600:
+            # The monotonic clock: a clock step killed a running job as timed
+            # out and stopped hello for the size of the step (B286). Zero
+            # means due now, whichever clock.
+            if not self.hello_at or time.monotonic() - self.hello_at > 600:
                 self.refresh_session_tool()
                 self.quiet_distro_ttyd()
                 st, r = self.hello()
@@ -3874,12 +3948,31 @@ class Agent:
         self.own_dir(store, who)
         bbdir = os.path.join(store, ".bb")
         os.makedirs(bbdir, exist_ok=True)
-        tar_path = os.path.join(bbdir, "bundle.tar")
+        # The tar lands where only root writes when this agent is root: a
+        # path in the job's store is the job's to replace with a symlink.
+        root = os.geteuid() == 0
+        if root:
+            os.makedirs(TOOLS_DIR, mode=0o700, exist_ok=True)
+            os.chmod(TOOLS_DIR, 0o700)
+        tar_path = os.path.join(TOOLS_DIR if root else bbdir, "bundle.tar")
         st, digest = self.ctl.fetch("download?what=bundle", tar_path)
         if st != 200:
             say(f"could not fetch bb from the controller ({st})\n")
             return ""
         hexd = digest.split(":", 1)[-1]
+        # The bytes are what the header says they are, or nothing here runs
+        # them: the digest names the bundle everywhere else.
+        h = hashlib.sha256()
+        with open(tar_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        if not hexd or h.hexdigest() != hexd:
+            say(f"refused: the bundle's bytes do not match the digest the controller named ({hexd[:12]})\n")
+            with contextlib.suppress(OSError):
+                os.unlink(tar_path)
+            return ""
+        if root:
+            self._keep_root_tools(tar_path, hexd[:16] or "bundle", say)
         into = os.path.join(bbdir, hexd[:16] or "bundle")
         if not os.path.isdir(into):
             with tarfile.open(tar_path) as tar:
@@ -3914,6 +4007,38 @@ class Agent:
             self.session_stale = into
         self.session_digest = digest
         return into
+
+    @staticmethod
+    def _keep_root_tools(tar_path, name, say):
+        """Root's own copy of the tools it installs, lifted straight out of
+        the checked tar into TOOLS_DIR/<name>/, and TOOLS_DIR/current pointed
+        at it; the copies of other bundles go."""
+        into = os.path.join(TOOLS_DIR, name)
+        try:
+            with tarfile.open(tar_path) as tar:
+                for m in tar.getmembers():
+                    rel = m.name.lstrip("./")
+                    if rel not in ROOT_TOOLS or not m.isfile():
+                        continue
+                    dest = os.path.join(into, rel)
+                    os.makedirs(os.path.dirname(dest), mode=0o700, exist_ok=True)
+                    src = tar.extractfile(m)
+                    if src is None:
+                        continue
+                    fd = os.open(dest + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+                    with os.fdopen(fd, "wb") as out:
+                        shutil.copyfileobj(src, out)
+                    os.replace(dest + ".new", dest)
+            tmp = os.path.join(TOOLS_DIR, ".current.new")
+            if os.path.lexists(tmp):
+                os.unlink(tmp)
+            os.symlink(name, tmp)
+            os.replace(tmp, os.path.join(TOOLS_DIR, "current"))
+            for other in os.listdir(TOOLS_DIR):
+                if other not in (name, "current", "bundle.tar") and os.path.isdir(os.path.join(TOOLS_DIR, other)):
+                    shutil.rmtree(os.path.join(TOOLS_DIR, other), ignore_errors=True)
+        except (OSError, tarfile.TarError) as e:
+            say(f"could not keep root's copy of the bundle's tools: {e}\n")
 
     @staticmethod
     def prune_bundles(bbdir, keep):
@@ -4421,10 +4546,10 @@ class Agent:
         except (OSError, ValueError) as e:
             job.say(f"could not start the installer: {e}\n")
             return "failed", 70
-        deadline = time.time() + int(spec.get("timeout") or 900)
+        deadline = time.monotonic() + int(spec.get("timeout") or 900)
         for line in iter(job.proc.stdout.readline, b""):
             job.say(line.decode("utf-8", "replace"))
-            if time.time() > deadline:
+            if time.monotonic() > deadline:
                 job.say("the installer did not finish in time\n")
                 job.cancel()
                 return "failed", 75
@@ -4995,7 +5120,7 @@ class Agent:
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
-        if what in ("storage", "network", "root") and not os.access(SANDBOX_BIN, os.X_OK):
+        if what in ("storage", "network", "root", "gpu") and not os.access(SANDBOX_BIN, os.X_OK):
             job.say(f"refused: {what} edits this machine's own configuration, and this node "
                     f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
             return "failed", 77
@@ -5014,8 +5139,19 @@ class Agent:
             return self._apply_uninstall(job)
         if what in ("reboot", "poweroff"):
             return self._apply_power(job, what)
+        if what == "gpu":
+            return self._apply_gpu(job)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
+
+    def _apply_gpu(self, job):
+        """The NVIDIA driver and a headless X server on the card, for the
+        emulator's -gpu host (R20): bb-sandbox gpu does it and says whether
+        a reboot has to follow; then a hello, so the row reads the display's
+        state now rather than at the next census."""
+        rc = self._sh(job, [SANDBOX_BIN, "gpu"], timeout=1800)
+        self.hello_at = 0
+        return ("succeeded", 0) if rc == 0 else ("failed", rc)
 
     def _apply_power(self, job, what):
         """Reboot the machine or power it off, a few seconds out, so this
@@ -5051,9 +5187,10 @@ class Agent:
         copy and gets none."""
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN):
             return
-        store = tc_root(self.state)
-        src = os.path.join(store, ".bb", "current", "nodes", "provision-linux.sh") if store else ""
-        if not src or not os.path.isfile(src):
+        # From root's own copy, never the store's: the store is the job
+        # account's to write.
+        src = os.path.join(TOOLS_DIR, "current", "nodes", "provision-linux.sh")
+        if not os.path.isfile(src):
             return
         try:
             with open(src, encoding="utf-8") as f:
@@ -5112,8 +5249,7 @@ class Agent:
         user = self.session_account()
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not user:
             return
-        store = tc_root(self.state)
-        src = os.path.join(store, ".bb", "current", "nodes", "bb-session") if store else ""
+        src = os.path.join(TOOLS_DIR, "current", "nodes", "bb-session")
         try:
             with open(src, encoding="utf-8") as f:
                 tool = f.read()
@@ -5284,12 +5420,12 @@ class Agent:
                 pass
         reader = threading.Thread(target=pump, daemon=True)
         reader.start()
-        deadline, killed = time.time() + timeout, False
+        deadline, killed = time.monotonic() + timeout, False
         while reader.is_alive():
             reader.join(0.5)
             if job.pending:
                 job.flush()
-            if time.time() > deadline and not killed:
+            if time.monotonic() > deadline and not killed:
                 job.say(f"timed out after {timeout}s, killing it\n")
                 job._kill(p)
                 killed = True

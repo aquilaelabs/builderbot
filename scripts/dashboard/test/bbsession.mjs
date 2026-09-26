@@ -6,7 +6,7 @@
 // projects, two accounts and the agent's stores.
 import { ok, done, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, symlinkSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { userInfo } from 'node:os';
 
@@ -73,8 +73,17 @@ const plan = (over = {}) => {
 };
 
 const myCache = join(myHome, '.cache', 'builderbot'), rootCache = join(homeRoot, '.cache', 'builderbot');
+// The GPU display's socket (R20): where the machine has /tmp/.X11-unix, it
+// is staged before /tmp becomes the session's own and bound back into it.
+// Made here when the box has none, since the plan reads the machine.
+const x11 = '/tmp/.X11-unix';
+const madeX11 = !existsSync(x11) && (() => { try { mkdirSync(x11); return true; } catch { return false; } })();
 const got = plan();
 const steps = got.code === 0 ? JSON.parse(got.out) : [];
+if (madeX11) { try { rmSync(x11, { recursive: true, force: true }); } catch { /* left as found */ } }
+ok(!existsSync(x11) && !madeX11 ? true
+   : steps.some(x => x[0] === 'bind' && x[1] === x11 && x[2] === `${STAGE}/x11`) && steps.some(x => x[0] === 'bind' && x[1] === `${STAGE}/x11` && x[2] === x11),
+   'the X server\'s socket directory is staged and bound back into the session\'s own /tmp');
 const has = (...s) => steps.some(x => JSON.stringify(x) === JSON.stringify(s));
 const bound = t => steps.some(x => x[0] === 'bind' && x[2] === t);
 const hidden = t => steps.some(x => (x[0] === 'hide' || x[0] === 'hidefile') && x[1] === t);

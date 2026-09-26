@@ -37,6 +37,25 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+
+class _KeepTokenHome(urllib.request.HTTPRedirectHandler):
+    """A redirect that leaves the host, or steps down from https, goes on
+    without the token: the default handler forwarded Authorization and
+    PRIVATE-TOKEN to wherever a 301 pointed (the review of 26 Sep)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = urllib.request.HTTPRedirectHandler.redirect_request(self, req, fp, code, msg, headers, newurl)
+        if new is None:
+            return None
+        old_p, new_p = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
+        if old_p.netloc != new_p.netloc or (old_p.scheme == "https" and new_p.scheme != "https"):
+            for h in ("Authorization", "Private-token"):
+                new.remove_header(h)
+        return new
+
+
+_OPENER = urllib.request.build_opener(_KeepTokenHome)
+
 run = None
 STATE = None
 write_json = None
@@ -384,7 +403,7 @@ def _ask(url, kind, token, data=None):
     req = urllib.request.Request(url, data=data, headers=headers,
                                  method="POST" if data is not None else "GET")
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with _OPENER.open(req, timeout=30) as r:
             body = r.read(20000)
             return (json.loads(body) if body.strip() else {}), ""
     except urllib.error.HTTPError as e:

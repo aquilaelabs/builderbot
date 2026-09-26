@@ -5,6 +5,7 @@
 ### Added
 
 - Reboot and Shut down on a node's row, under Advanced: the agent schedules the machine's own reboot or power-off a few seconds out so the job reports first. The press names the sessions it ends; dead with the reason while the agent is away; an administrator's only (0d3a6f0)
+- Set up GPU display on a node's row (Health): the NVIDIA driver and a headless X server on the card, as bb-sandbox gpu and a unit of the machine's own; after the one reboot it asks for, an emulator there renders on the card and bb emu gpu says so, and a session sees the display (6afdb2e)
 
 ### Changed
 
@@ -12,14 +13,50 @@
 - The Questions pick under Yours on this project gains more, for a person who wants the judgment calls put to them, and reads more, Claude's default, fewer, rarely; the Replies pick is Claude's default or minimal, the normal choice having said nothing (0d3a6f0)
 - The Settings tab says a change applies at once or at the next start, in those words, where it said takes now (21462b7)
 - Three shipped rules that explained a helper (report-builderbot, ask-before-unshelving, ship-to-dist) are the briefing's words now, in its notebook, roadmap and versions sections; the rules left are conduct (21462b7)
+- The test report quotes a suite's last lines when it ended without a total, so a run that dies quietly leaves evidence (B267) (1753a83)
+- The container's healthcheck asks the dashboard for an answer rather than only whether the supervisor's sleep loop is alive, so a container whose dashboard died reads unhealthy (f9ca487)
+- A deny refusal names the setting; bb settings shows the Claude settings and every dial; the briefing says how a question reaches a person, and that bb status says whether this machine is a node or the controller (35b6970)
 
 ### Removed
 
 - The paths kept for agents from the 0.5 window: the tell gate that refused an agent older than 0.5.57, and the single actions-runner key beside the runners list. Nothing changes on a node whose agent is current (a32a0a5)
+- Revoke is gone from a node's row: Remove already cuts the credential as it takes the row off the lists, and Uninstall takes BuilderBot off the machine; a leaked secret is re-enrolled either way (08ec700)
 
 ### Fixed
 
 - A session's bb devapp log, start, stop and restart find the project's container on any of its nodes, not only the primary, so the project's own dev instance on its second node is its own again (B268) (21462b7)
+- bb emu create on a node makes the AVD directory before asking avdmanager, and fixes the image path where avdmanager put the AVD rather than where it was told to; without that the first emulator on a node died with Broken AVD system path (2fd40db)
+- A session's next prompt names the memories only when somebody else edited them through the notebook; its own memory files, written with its own tools, are not news to it (B269) (1753a83)
+- CHOWN_HOME, the switch for the home volume's chown at startup, is in compose, .env.example and the Unraid template as well as the README, so the settings check covers it (b65bb5e)
+- The image builds on a push that changes nodes/, CHANGELOG.md or VERSION, which the Dockerfile copies in and the build stamps from; those shipped nothing until the weekly rebuild (f9ca487)
+- Cancelling a queued job that a node claims in the same instant now flags it rather than calling it canceled while it runs; an enrolment token burns in one step so a retry cannot enrol twice; a job result's retry runs the hooks once; users.json is private from the instant it is written (f9ca487)
+- A controller restart longer than the grace window no longer fails every running job on every node as node lost: a node's last word is measured from the controller's own start (35b6970)
+- The terse briefing keeps or, rather than, by, be, then and so, the words that turn a sentence, leaves quoted labels whole and never drops a bracket; a code span wrapped over a line is read as one (35b6970)
+- Four tokens the stylesheet used were never defined, so a held change's text and the About page lost their font and colour; the bell's root tag reads bg on bad as the other tags do; a branch row's five controls wrap on a phone; a shelved item is dim rather than faded (35b6970)
+- A job's real end reaches its row after this side called the node lost: the late result is taken and says so, and the module that queued a job lost at hello or by silence still runs its hook, so a Docker row no longer says building for a build the agent never reported (B285, B287) (df92882)
+- The agent says each running job was stopped when it is stopped, its deadlines and hello timer ride the monotonic clock, and a job's unsent output is capped with a line saying how much was dropped (B286, B287) (df92882)
+- The container's supervisor starts the dashboard again when it dies, at most five times an hour, and the hook it runs starts only what is not already listening (B282) (df92882)
+- The recursive chown of the home volume, the log directory and the Playwright store runs only when their top is not the account's yet, and the store is no longer made world-writable (B283) (df92882)
+- A changelog entry cites the commit that carries it: the bump resolves each entry against the file's own history; and unroll keeps every category (B284, B277) (df92882)
+- A release's MSI and quad forms keep the ordinal, so a release no longer ranks below the dev build before it (B276) (df92882)
+- A snapshot carries the symlinks that stay inside the tree, and a normalised mode (B281) (df92882)
+- bb tests preflight says when the map placed a changed script in no suite and does not call that clean (B280); the code map reads function name braces, one-line functions and a hash inside an expansion (B279), and a property assigned an arrow is not named unused (B271) (df92882)
+- android:platform-tools and android:emulator claim x86_64 Linux only, which is what Google ships (B278) (df92882)
+
+### Security
+
+- Root on a node installs bb-sandbox and the session helper only from its own copy of a bundle, checked against the controller's digest, never from the toolchain store a job can write; a job, and so a session through bb run, could plant root code there before (48be4fa)
+- A job is cancelled only by an account whose project it is, or an administrator; any signed-in principal could cancel any job before (48be4fa)
+- bb passes the person's credential to its python verbs in the environment, where it was on the command line and readable by every account on the node through ps (48be4fa)
+- The controller's Claude sign-in and its code are an account's own or an administrator's: a session's token is refused, and another account's code is not typed into a flow that is not theirs (48be4fa)
+- The container's shielded secrets (ANTHROPIC_API_KEY, NPM_TOKEN, UV_PUBLISH_TOKEN, NODE_TOKEN) are scrubbed from the environment before the dashboard and its terminals start; they were stashed for the root helper and then inherited by every builder process anyway (f9ca487)
+- A session does not push to or install on a phone by itself: bb phone run asks and a person answers; the artifacts verb answered a session as the phone's owner before (f9ca487)
+- A project's memory history is read only by an account that sees the project; the Git view pushes with the project's own token rather than the image's shared gh credential, and a forge's token stays home when its API redirects off the host (f9ca487)
+- A compose that binds a host path outside the project, the docker socket, a dropped security profile or the host's user namespace is a risk a person acknowledges before it runs; a session whose project may run its container could mount the node's root before (f9ca487)
+- The phone tab's rows, the jobs listing's node names and the node listing's shipped agent and first pick are scoped to what the account may see, and re-running the doctor is an administrator's; each carried the machines' names to a session before (35b6970)
+- A dist/ that is a symlink serves nothing outside the project's own tree, for the artifact listing and download and a node's fetch of a job's inputs; a compose file that is a symlink is not read; a local git remote is the project's own repository or a worktree of it, never another project's (35b6970)
+- The companion app asks for the phone to be unlocked before Approve or Deny on a root ask and keeps the command off the lock screen; it warns at sign-in over http, and checks the self-update APK against the dashboard's sha256 before installing (B272, B273) (df92882)
+- The companion app reads a node's projects and defaults nobody to administrator until the dashboard says so (B275); its CI signs a release when the keystore secrets are set and pins its actions and gradle by checksum (B274) (df92882)
 
 ## 0.7.0: 2026-09-25
 

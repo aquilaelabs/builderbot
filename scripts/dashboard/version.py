@@ -366,10 +366,15 @@ def render(project, comp="", repo=None):
             # anything built from them here is mislabeled, which the summary's
             # dirty flag is the only warning for.
             mark = "dirty" if p["dirty"] else ""
+            # The ordinal stays in the two forms Windows compares, as it does
+            # for a dev build: 1.2.3 read as MSI 1.2.3 ranked BELOW the
+            # 1.2.390 of the dev build before it, and the upgrade did not
+            # fire (B276).
+            a3, b3, _c3 = tgt.split(".")
             forms.update(semver=tgt + (f"+{mark}" if mark else ""),
                          pep440=tgt + (f"+{mark}" if mark else ""),
                          file=tgt + (f"-{mark}" if mark else ""),
-                         msi=tgt, quad=f"{tgt}.0")
+                         msi=f"{a3}.{b3}.{ordinal}", quad=f"{tgt}.{ordinal}")
         else:
             mark = ".dirty" if p["dirty"] else ""
             a3, b3, _c3 = tgt.split(".")
@@ -681,8 +686,17 @@ def _seal(project, where, ver_rel, value, msg, env=None, extra=()):
     """
     cl_rel = None
     note = ""
+
+    def cite(text):
+        # The commit that introduced the entry's own line (B284): oldest of
+        # the ones that touched it, since a reword comes later.
+        rel = str((where / changelog.FILE).relative_to(root(project).resolve()))
+        out = _git(project, "log", "--format=%h", "-S", f"- {text}", "--", rel, timeout=30)
+        shas = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
+        return shas[-1:] if shas else []
+
     if changelog is not None and changelog.roll(
-            where, value, time.strftime("%Y-%m-%d")):
+            where, value, time.strftime("%Y-%m-%d"), resolve=cite):
         cl_rel = str((where / changelog.FILE)
                      .relative_to(root(project).resolve()))
     if _git(project, "add", "--", ver_rel) is None:

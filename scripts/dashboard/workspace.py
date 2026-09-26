@@ -38,6 +38,8 @@ import threading
 import time
 from pathlib import Path
 
+import artifacts  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 WORKSPACE = None
@@ -94,7 +96,24 @@ def snapshot(project):
         for rel in files:
             p = root / rel
             try:
-                if not p.is_file() or p.is_symlink():
+                if p.is_symlink():
+                    # A link that stays inside the tree travels as a link
+                    # (B281: the node built a different tree without them);
+                    # one that points out of it is left behind, since the
+                    # node's extraction refuses it and would refuse the lot.
+                    target = os.readlink(p)
+                    inside = (not os.path.isabs(target)
+                              and not os.path.normpath(os.path.join(os.path.dirname(rel), target)).startswith(".."))
+                    if not inside:
+                        continue
+                    ti = tar.gettarinfo(str(p), arcname=rel)
+                    ti.uid = ti.gid = 0
+                    ti.uname = ti.gname = ""
+                    ti.mtime = int(ti.mtime)
+                    tar.addfile(ti)
+                    n += 1
+                    continue
+                if not p.is_file():
                     continue
                 ti = tar.gettarinfo(str(p), arcname=rel)
             except OSError:
@@ -104,6 +123,7 @@ def snapshot(project):
             ti.uid = ti.gid = 0
             ti.uname = ti.gname = ""
             ti.mtime = int(ti.mtime)
+            ti.mode = 0o755 if ti.mode & 0o100 else 0o644
             with open(p, "rb") as f:
                 tar.addfile(ti, f)
             n += 1
@@ -228,7 +248,9 @@ def file_path(project, rel):
     safe = _safe_name(rel)
     if safe is None or WORKSPACE is None:
         return None
-    root = (WORKSPACE / project / "dist").resolve()
+    root = artifacts.dist_dir(WORKSPACE / project)
+    if root is None:
+        return None
     p = (root / safe).resolve()
     try:
         p.relative_to(root)

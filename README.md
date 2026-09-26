@@ -82,7 +82,7 @@ is [docs/unraid.md](docs/unraid.md).
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 
 Mounts: the projects folder, three state dirs (`home`, `config`, `work`), and
-three optional ones: `/secrets` (ro, shielded credentials), `/logs`
+two optional ones: `/secrets` (ro, shielded credentials) and `/logs`
 (relocate logs).
 
 ## The `bb` helper
