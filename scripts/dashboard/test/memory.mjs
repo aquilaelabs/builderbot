@@ -229,11 +229,15 @@ ok(await page.$('#naTitle') === null && await page.$('#memAdd button') !== null,
   // memory both roll it up rather than snapping the list upward.
   await page.click('#memAdd button');
   await page.waitForSelector('#naTitle');
+  // Open all the way first. A Cancel pressed before the fold has moved at
+  // all rolls up from where the box already is, which is no motion, and a
+  // loaded box got there (B291).
+  await page.waitForFunction(() => !document.getElementById('memAdd').getAnimations().length,
+                             null, { timeout: 10000 });
   const seen = await animatedDuring(page, async () => {
-    // Pressed in the page: the box is still folding open from the click
-    // above, and a click Playwright retried after its hit-target check
-    // landed on the button that replaced Cancel, opening the form again
-    // (B262, B124's family).
+    // Pressed in the page: a click Playwright retried after its hit-target
+    // check once landed on the button that replaced Cancel, opening the form
+    // again (B262, B124's family).
     await page.$eval('#naCancel', b => b.click());
     await page.waitForFunction(() => !document.getElementById('naTitle'));
   });
