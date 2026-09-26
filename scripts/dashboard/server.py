@@ -6899,6 +6899,13 @@ class Handler(BaseHTTPRequestHandler):
         nid = prefs.get(name)["node"]
         node = nodes.node(nid) if nid and not NODES_OK else None
         who = self._who() or {}
+        # A session asks for a phone (bb phone run) and a person answers; it
+        # does not push or install by itself, and uid_of answering the
+        # session's account made the owner check pass for it (the audit of
+        # 26 Sep).
+        if who.get("session"):
+            return self._json({"error": "a session asks for the phone with bb phone run; "
+                                        "it does not push to it by itself"}, 403)
         uid, me = users.uid_of(who), who.get("name") or "somebody"
         # Both verbs touch the phone, so both are the connection owner's:
         # the phone is on somebody's desk, and they are the one who said
@@ -7342,6 +7349,10 @@ class Handler(BaseHTTPRequestHandler):
         """
         act = field(req, "action")
         proj, file = field(req, "project"), field(req, "file")
+        # A project this account sees, whatever the action: the history
+        # read had no project check at all (the audit of 26 Sep).
+        if self._not_project(proj):
+            return None
         if (bad := locked_out(proj)):
             return self._json(bad, 409)
         # Seeing a project and being able to change it are different

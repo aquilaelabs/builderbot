@@ -3058,13 +3058,54 @@ def risks(project, cfg):
             out.append(f"{name} shares the host's process namespace")
         if str(sv.get("network_mode") or "") == "host":
             out.append(f"{name} is on the host's own network")
-    # Bind mounts are NOT listed here any more, and their absence is the
-    # design rather than an oversight. wiring() puts every one of them on the
-    # row, always, with the path it lands on, so repeating the ones that
-    # reach outside the project restated what was already on screen two lines
-    # above it, in worse words. What is left is the set that is invisible
-    # otherwise: the flags that make a container more than a container.
+        if str(sv.get("userns_mode") or "") == "host":
+            out.append(f"{name} shares the host's user namespace")
+        loose = [o for o in (sv.get("security_opt") or []) if isinstance(o, str) and "unconfined" in o]
+        if loose:
+            out.append(f"{name} drops a security profile: {', '.join(loose)}")
+        # A bind mount of what gives control of the node is a risk a person
+        # acknowledges, whatever the row already shows about it: with the
+        # project's Run its container dial on auto, a session writes the
+        # compose and rebuilds it, so a mount of / or of the docker socket
+        # was root on the node for the asking (the audit of 26 Sep). A data
+        # share (/mnt/..., /srv, /media) is the ordinary case the row lists
+        # and is not repeated here; the root, the system directories and
+        # the socket are.
+        for host in _bind_sources(sv):
+            if host == "/var/run/docker.sock" or host.endswith("/docker.sock"):
+                out.append(f"{name} mounts the docker socket: every container on the node, and root through it")
+            elif _system_path(host):
+                out.append(f"{name} mounts {host} of the host: the node's own system, not a share")
     return out
+
+
+def _bind_sources(sv):
+    """The host paths a service binds, as written: `src:dst[:mode]` strings
+    and long-form entries with a source. A named volume is not one."""
+    out = []
+    for v in sv.get("volumes") or []:
+        if isinstance(v, str):
+            src = v.split(":", 1)[0] if ":" in v else ""
+        elif isinstance(v, dict):
+            src = str(v.get("source") or "") if str(v.get("type") or "bind") == "bind" else ""
+        else:
+            src = ""
+        if src and (src.startswith("/") or src.startswith(".") or src.startswith("~")):
+            out.append(src)
+    return out
+
+
+SYSTEM_ROOTS = ("/etc", "/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/boot", "/root",
+                "/var", "/proc", "/sys", "/dev", "/run", "/home", "/opt")
+
+
+def _system_path(host):
+    """Whether a bind's host path is the node's root or one of its system
+    directories: what a container could take the machine over through."""
+    path = os.path.normpath(str(host))
+    if path == "/":
+        return True
+    return any(path == r or path.startswith(r + "/") for r in SYSTEM_ROOTS)
 
 
 def our_paths(mapping):

@@ -13,4 +13,15 @@ set -uo pipefail
 pgrep -f '/opt/builderbot/scripts/supervisor\.sh' >/dev/null \
     || { echo "supervisor not running"; exit 1; }
 
+# The supervisor is a sleep loop, so its being alive said nothing about the
+# dashboard, which is what a person reaches: a container whose dashboard had
+# died stayed healthy for as long as it ran. Any HTTP answer counts, 401
+# included: the question is whether the server is there, not whether this
+# check is signed in.
+code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${DASHBOARD_PORT:-7680}/" 2>/dev/null || true)"
+case "$code" in
+    2*|3*|401|403) ;;
+    *) echo "dashboard not answering on ${DASHBOARD_PORT:-7680} (${code:-no answer})"; exit 1 ;;
+esac
+
 echo "ok"

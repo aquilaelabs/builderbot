@@ -11,7 +11,7 @@
   <Overview>
 Claude Code workstation and the controller for your build nodes - the machines where builds, tests, CI and the Android emulator run.
 
-Use it from a terminal:  docker exec -it BuilderBot claude
+Open the dashboard on its port; a Claude session runs on a node from there.
 Helper CLI inside:       docker exec -it BuilderBot bb status
 
 NOTES

@@ -49,8 +49,10 @@ _locks = {}
 _guard = threading.Lock()
 
 
-def write_json(path, obj):
-    """Atomically replace `path` with `obj` as JSON."""
+def write_json(path, obj, mode=0o644):
+    """Atomically replace `path` with `obj` as JSON. `mode` is the file's
+    from the moment it is in place: a file of password hashes was 0644
+    for the instant between the rename and the chmod that followed it."""
     path = _p(path)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".",
@@ -60,7 +62,7 @@ def write_json(path, obj):
         with os.fdopen(fd, "w") as f:
             f.write(json.dumps(obj, indent=2) + "\n")
         # mkstemp gives 600 and these were world-readable before.
-        os.chmod(tmp, 0o644)
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):

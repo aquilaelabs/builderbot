@@ -785,8 +785,13 @@ def enroll(auth, census, addr, version="", digest="", user=""):
     n = node(nid)
     if not n or n["state"] != "pending":
         return {"error": "this node is not waiting for enrollment"}
+    # Burned in one statement, so two enrolments racing on one token (a
+    # provisioner's retry) cannot both pass and mint two node tokens.
+    cur = _exec("UPDATE tokens SET revoked = 1, uses = uses + 1 WHERE id = ? AND revoked = 0",
+                (auth["token"],))
+    if cur.rowcount != 1:
+        return {"error": "this enrollment token was already used"}
     revoke_tokens(nid, ("enroll",))
-    _exec("UPDATE tokens SET uses = uses + 1 WHERE id = ?", (auth["token"],))
     tid, secret = _token_mint("node", nid)
     cfg = n.get("config") or {}
     if user:
@@ -2959,9 +2964,14 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     code = None
     with contextlib.suppress(TypeError, ValueError):
         code = int(exit_code) if exit_code is not None else None
-    _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
-          "error = ? WHERE id = ?",
+    # Guarded on the state, so a retry that overlaps the first arrival is the
+    # no-op the docstring promises rather than a second audit row and a
+    # second run of the hooks (the review of 26 Sep).
+    cur = _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
+                "error = ? WHERE id = ? AND state NOT IN ('succeeded', 'failed', 'canceled')",
           (state, code, int(time.time()), str(error or "")[:500], job_id))
+    if cur.rowcount == 0:
+        return {"ok": True, "already": True}
     # What the job left behind: the artifacts it uploaded and, for a failed
     # one, the workspace the node kept for inspection (docs/nodes.md §6).
     if isinstance(outputs, list):
@@ -3049,9 +3059,16 @@ def job_cancel(principal, job_id):
         return {"error": "no such job"}
     if got[0]["state"] in JOB_END:
         return {"ok": True, "already": True}
+    # Guarded on the state, since a node can claim the job between the read
+    # above and this write: the queued row is ended only if it is still
+    # queued, and one that was claimed meanwhile gets the flag instead, so
+    # the agent hears the cancel rather than running a job the row calls
+    # canceled (the review of 26 Sep).
     if got[0]["state"] == "queued":
-        _exec("UPDATE jobs SET state = 'canceled', ended = ?, error = 'canceled "
-              "before it started' WHERE id = ?", (int(time.time()), job_id))
+        cur = _exec("UPDATE jobs SET state = 'canceled', ended = ?, error = 'canceled "
+                    "before it started' WHERE id = ? AND state = 'queued'", (int(time.time()), job_id))
+        if cur.rowcount == 0:
+            _exec("UPDATE jobs SET cancel = 1 WHERE id = ?", (job_id,))
     elif not got[0]["cancel"]:
         _exec("UPDATE jobs SET cancel = 1 WHERE id = ?", (job_id,))
     if not _quiet(job_id):

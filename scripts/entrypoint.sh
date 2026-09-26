@@ -568,6 +568,13 @@ main() {
     mapfile -d '' -t cmd < <(resolve_command "$@")
 
     log "starting: ${cmd[*]}"
+    # The shield, at last: the secrets were stashed for the root helper and
+    # turned into redaction rules at the top, and the hooks that needed one
+    # (npm publishing) have run. Nothing started from here may inherit them:
+    # this is the environment of the dashboard, ttyd and every process under
+    # the builder account, and it carried every one of them until the review
+    # of 26 Sep read this file.
+    unset "${SECRET_VARS[@]}"
     if [ "$privileged" -eq 1 ]; then
         exec gosu builder env HOME="$BUILDER_HOME" USER=builder "${cmd[@]}"
     else

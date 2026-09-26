@@ -884,7 +884,10 @@ def _run_locked(repo, *args, env=None, timeout=30, index=True):
     # ...and the credential, which the mirror deliberately does not carry.
     cred = _creds(repo)
     if cred:
-        argv[1:1] = ["-c", f"credential.helper={cred}"]
+        # The empty helper first resets git's list, so the shared gh helper
+        # the image installs globally is not asked ahead of the project's
+        # own token and does not receive it back (the review of 26 Sep).
+        argv[1:1] = ["-c", "credential.helper=", "-c", f"credential.helper={cred}"]
     e = {**os.environ, **(env or {}), "GIT_TERMINAL_PROMPT": "0"}
     if own:
         # The tree's object store, so a commit's objects land where the

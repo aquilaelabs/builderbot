@@ -24,6 +24,11 @@ on:
       - ".dockerignore"
       - "scripts/**"
       - "config/**"
+      # ...and the rest of what the Dockerfile copies in or stamps from:
+      # a change to any of these shipped nothing until the weekly rebuild.
+      - "nodes/**"
+      - "CHANGELOG.md"
+      - "VERSION"
       - ".github/workflows/build-image.yml"
   schedule:
     # Weekly rebuild so the base image, Claude Code and the runner stay fresh.

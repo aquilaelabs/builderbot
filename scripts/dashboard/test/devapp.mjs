@@ -803,8 +803,8 @@ await page.waitForFunction(() => /asks for more than its own directory/.test(
   document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
 ok(true, 'a compose reaching past its own directory says so on the row');
 const risked = await devLines("risk");
-ok(risked.length === 1 && /runs privileged/.test(risked[0]),
-   '...one line each, and only the things the mount list does not already show');
+ok(risked.length === 2 && /runs privileged/.test(risked[0]) && /mounts \/ of the host: the node's own system/.test(risked[1]),
+   `...one line each: the flag, and the mount that reaches outside the project, which is root on the node for the asking (${risked.join(' | ').slice(0, 100)})`);
 
 let seen = page.dialogs.length;
 await dmClick('up');

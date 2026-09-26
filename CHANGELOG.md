@@ -14,6 +14,7 @@
 - The Settings tab says a change applies at once or at the next start, in those words, where it said takes now (21462b7)
 - Three shipped rules that explained a helper (report-builderbot, ask-before-unshelving, ship-to-dist) are the briefing's words now, in its notebook, roadmap and versions sections; the rules left are conduct (21462b7)
 - The test report quotes a suite's last lines when it ended without a total, so a run that dies quietly leaves evidence (B267) (1753a83)
+- The container's healthcheck asks the dashboard for an answer rather than only whether the supervisor's sleep loop is alive, so a container whose dashboard died reads unhealthy (f9ca487)
 
 ### Removed
 
@@ -26,6 +27,8 @@
 - bb emu create on a node makes the AVD directory before asking avdmanager, and fixes the image path where avdmanager put the AVD rather than where it was told to; without that the first emulator on a node died with Broken AVD system path (2fd40db)
 - A session's next prompt names the memories only when somebody else edited them through the notebook; its own memory files, written with its own tools, are not news to it (B269) (1753a83)
 - CHOWN_HOME, the switch for the home volume's chown at startup, is in compose, .env.example and the Unraid template as well as the README, so the settings check covers it (b65bb5e)
+- The image builds on a push that changes nodes/, CHANGELOG.md or VERSION, which the Dockerfile copies in and the build stamps from; those shipped nothing until the weekly rebuild (f9ca487)
+- Cancelling a queued job that a node claims in the same instant now flags it rather than calling it canceled while it runs; an enrolment token burns in one step so a retry cannot enrol twice; a job result's retry runs the hooks once; users.json is private from the instant it is written (f9ca487)
 
 ### Security
 
@@ -33,6 +36,10 @@
 - A job is cancelled only by an account whose project it is, or an administrator; any signed-in principal could cancel any job before (48be4fa)
 - bb passes the person's credential to its python verbs in the environment, where it was on the command line and readable by every account on the node through ps (48be4fa)
 - The controller's Claude sign-in and its code are an account's own or an administrator's: a session's token is refused, and another account's code is not typed into a flow that is not theirs (48be4fa)
+- The container's shielded secrets (ANTHROPIC_API_KEY, NPM_TOKEN, UV_PUBLISH_TOKEN, NODE_TOKEN) are scrubbed from the environment before the dashboard and its terminals start; they were stashed for the root helper and then inherited by every builder process anyway (f9ca487)
+- A session does not push to or install on a phone by itself: bb phone run asks and a person answers; the artifacts verb answered a session as the phone's owner before (f9ca487)
+- A project's memory history is read only by an account that sees the project; the Git view pushes with the project's own token rather than the image's shared gh credential, and a forge's token stays home when its API redirects off the host (f9ca487)
+- A compose that binds a host path outside the project, the docker socket, a dropped security profile or the host's user namespace is a risk a person acknowledges before it runs; a session whose project may run its container could mount the node's root before (f9ca487)
 
 ## 0.7.0: 2026-09-25
 
