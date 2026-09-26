@@ -79,7 +79,17 @@ def rebuild():
     # before it starts and the moment after it finishes, and taking either for
     # success is how this said "rebuilt" over a build that had not begun.
     was = (look().get("built_rev") or "")
-    r = post({"action": "rebuild", "why": os.environ.get("BB_DEV_WHY", "")})
+    # As patient as the look: the controller checks the instance on its node
+    # before it answers, and on a slow round trip there the default thirty
+    # seconds ran out while the build went ahead (B298).
+    r = post({"action": "rebuild", "why": os.environ.get("BB_DEV_WHY", "")}, timeout=180)
+    if r.get("error") and "timed out" in str(r["error"]).lower():
+        # Not a refusal: the request reached the controller, which may have
+        # started the build before this stopped waiting for its answer. The
+        # poll below reports the build, or says that none appeared.
+        print("[builderbot] the controller has not answered the rebuild in three minutes; "
+              "it may have started it, so this watches for the build", file=sys.stderr)
+        r = {}
     if r.get("error"):
         # The refusal names the dial, so it is printed as it came.
         sys.exit(f"[builderbot] ERROR: {r['error']}")

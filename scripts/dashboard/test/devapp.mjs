@@ -6,7 +6,7 @@
 // the buttons run table-lookup compose commands and nothing else.
 import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, URL, DIR, nbShown, nbTab } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 // ep.silon gets the compose file, since delta is the harness's EXCLUDED
@@ -3808,6 +3808,43 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   await setNodes('alpha', []);
   await setNodes('ep.silon', [ids.sandbox]);
   rmSync(`${D}/docker-compose.yml`, { force: true });
+}
+
+// bb devapp rebuild when the controller is slow to answer the rebuild
+// request itself (B298): the build went ahead while the verb said "timed
+// out" and stopped. Driven in process with the API call replaced, the way
+// toolchains.mjs drives its module: the request times out, and the verb says
+// the build may have started, watches for it, and reports it built.
+{
+  const LIB = new globalThis.URL('../../lib', import.meta.url).pathname;
+  const run = spawnSync('python3', ['-c', `
+import importlib.util, json, os, sys, time
+sys.path.insert(0, ${JSON.stringify(LIB)})
+spec = importlib.util.spec_from_file_location("dv", ${JSON.stringify(LIB + '/devapp-verbs.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+looks = iter([{"built_rev": "aaa"}, {"job": {"running": True, "step": "building"}},
+              {"built_rev": "bbb", "running": True, "name": "alpha-dev"}])
+asked = []
+def call(path, body=None, auth="", method="", timeout=30):
+    asked.append([body.get("action"), timeout])
+    if body.get("action") == "rebuild":
+        return {"error": "timed out"}
+    return {"state": next(looks)}
+m.bbapi.call = call
+time.sleep = lambda s: None
+os.environ.update(BB_DEV_PROJECT="alpha", BB_DEV_AUTH="x")
+code = 0
+try:
+    m.rebuild()
+except SystemExit as e:
+    code = e.code
+print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
+  const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
+  ok(got.code === 0 && (got.asked || []).some(([a, t]) => a === 'rebuild' && t === 180)
+     && /may have started it, so this watches for the build/.test(run.stderr || '')
+     && /rebuilt bbb; alpha-dev is up/.test(run.stdout || ''),
+     `bb devapp rebuild waits three minutes for the controller, and a timeout there watches for the build rather than giving up (${
+       JSON.stringify(got).slice(0, 90)} ${(run.stderr || '').split('\n').filter(Boolean).pop() || ''})`);
 }
 
 await done(browser);
