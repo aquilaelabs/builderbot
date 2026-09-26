@@ -3790,6 +3790,11 @@ class Handler(BaseHTTPRequestHandler):
         return body, False
 
     def _json(self, obj, code=200, cookie=None):
+        # Held while _post records what a write means for the sessions: it
+        # sends the reply itself once that is done (B290).
+        if getattr(self, "_held", None) is not None:
+            self._held.append((obj, code, cookie))
+            return None
         body, zipped = self._gzip(json.dumps(obj).encode())
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -4396,18 +4401,30 @@ class Handler(BaseHTTPRequestHandler):
                             or req.get("id") or "")[:120], req)
         for how, route, name in POST_ROUTES:
             if (path == route) if how == "exact" else path.startswith(route):
-                out = getattr(self, name)(req)
-                # A session's own write to its project's notebook or
-                # settings is seen by it as it lands (session_seen_note).
-                # The token's own uid, as the hook reads it: uid_of answers
-                # "" for a session on purpose, and that is the per-account
-                # stores' rule, not this one's.
-                who = self._who() or {}
-                if any(path.startswith(r) for r in OWN_WRITE_ROUTES):
-                    if who.get("session"):
-                        session_mark_own(who["session"], who.get("uid") or "", who)
-                    elif path.startswith("/api/memory"):
-                        _mem_edited(field(req, "project"))
+                # What a write to the notebook or the settings means for the
+                # sessions is recorded before its reply goes, not after: the
+                # reply is what lets a session send its next prompt, and one
+                # that overtook the record was told about its own write as
+                # somebody else's (B290). So the reply is held until then.
+                own = any(path.startswith(r) for r in OWN_WRITE_ROUTES)
+                self._held = [] if own else None
+                try:
+                    out = getattr(self, name)(req)
+                    if own:
+                        # A session's own write to its project's notebook or
+                        # settings is seen by it as it lands (session_seen_note).
+                        # The token's own uid, as the hook reads it: uid_of answers
+                        # "" for a session on purpose, and that is the per-account
+                        # stores' rule, not this one's.
+                        who = self._who() or {}
+                        if who.get("session"):
+                            session_mark_own(who["session"], who.get("uid") or "", who)
+                        elif path.startswith("/api/memory"):
+                            _mem_edited(field(req, "project"))
+                finally:
+                    held, self._held = self._held, None
+                for obj, code, cookie in held or ():
+                    self._json(obj, code, cookie=cookie)
                 return out
         self._json({"error": "not found"}, 404)
 
