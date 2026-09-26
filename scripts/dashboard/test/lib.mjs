@@ -134,6 +134,14 @@ export async function newPage(browser, opts = {}){
             const seen = await page.evaluate(() => ({
               tabs: (typeof tabs !== "undefined" ? tabs : []).map(t => t.kind),
               active: typeof active !== "undefined" ? active : null,
+              // Which tab each pane shows and which view a shown notebook is
+              // on: a wait for something drawn in a panel that is not on
+              // screen times out looking exactly like one that never drew
+              // (B297).
+              panes: (typeof panes !== "undefined" ? panes : []).map(id =>
+                id ? ((typeof tabs !== "undefined" ? tabs : []).find(t => t.id === id)?.kind || "?") + ":" + id : null),
+              nbView: [...document.querySelectorAll(".nbview:not([hidden])")]
+                .filter(v => v.offsetParent !== null).map(v => v.dataset.view),
               projects: (state?.projects || []).map(p => p.name),
               sessions: (state?.sessions || []).map(s => s.name),
               nodes: (state?.node_runners || []).length,

@@ -135,7 +135,15 @@ ok(await page.$eval('#rulesBox .rulerow[data-i="1"]', r => getComputedStyle(r).b
 await page.click('#rulesBox .rulerow[data-i="1"] summary');
 await page.waitForFunction(() => document.querySelector('#rulesBox .rulerow[data-i="1"]').open, null, { timeout: 10000 });
 await page.click('#rulesBox .rulerow[data-i="1"] .rlEdit');
-await page.waitForSelector('#rulesBox .rulerow[data-i="1"] .rlText', { timeout: 10000 });
+await page.waitForSelector('#rulesBox .rulerow[data-i="1"] .rlText', { timeout: 10000 }).catch(async e => {
+  // What the panel drew instead, said before the timeout is thrown (B297):
+  // each row, open or shut, editing or not, and whether its field exists.
+  console.log('[rules] no edit field to see: ' + await page.evaluate(() =>
+    [...document.querySelectorAll('#rulesBox .rulerow')].map(r => r.dataset.i
+      + (r.open ? ' open' : ' shut') + (r.classList.contains('editing') ? ' editing' : '')
+      + (r.querySelector('.rlText') ? ' with its field' : '')).join(', ') || 'no rows').catch(() => 'the page is gone'));
+  throw e;
+});
 ok(await page.$('#rulesBox .rulerow[data-i="0"] .rlText') === null,
    'Edit opens that rule\'s fields and no other\'s');
 await page.fill('#rulesBox .rulerow[data-i="1"] .rlText', 'typed, then thought better of');
