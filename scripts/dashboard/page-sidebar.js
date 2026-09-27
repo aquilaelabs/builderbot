@@ -48,18 +48,18 @@ function drawRunner(){
 
 // What gets folded away is what the button says: projects with an *error*, and
 // ones the operator has locked. A warning is not an error: a repo with no
-// CLAUDE.md or one whose environment block has drifted still works, and hiding
-// it would bury the very thing the amber text is asking for. The only thing
+// CLAUDE.md still works, and hiding it would bury the very thing the amber
+// text is asking for. The only thing
 // never listed at all is an empty directory, which the server drops: it is not
 // a problem to fix but a mount point waiting for content.
 const isBroken = p => p.issues.some(i => i.level === "error");
 
 // Why no Claude session may run on this project right now, from the server:
-// its CLAUDE.md environment block from another compatibility window than
-// this BuilderBot, or its own node's agent from one. Drift INSIDE the window
-// (the block behind on a feature, the agent behind on a build) is not
-// here: the row offers the update and the button stays live, the same
-// promise the agent's window makes. Across a window the promise was never
+// its own node's agent from another compatibility window than this
+// BuilderBot (the briefing is assembled per session since R63 step 3, so
+// nothing in the tree can be). Drift INSIDE the window (the agent behind
+// on a build) is not here: the row offers the update and the button stays
+// live. Across a window the promise was never
 // made, so the button waits for the press, bb-tty refuses the URL, and the
 // server ends what is running. Per project: another project's node being
 // out of window is that row's hold, not this one's.

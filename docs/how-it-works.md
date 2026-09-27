@@ -573,7 +573,7 @@ is this tab's, so a reload draws a line under it; the asks are the server's and
 are read live, which is why they leave the list the moment they are answered or
 time out.
 
-Pinned above that log, and not the Clear button's to dismiss, is what is waiting on you or stopping work: a session's phone request with Approve and Deny beside it, a notebook holding a session's changes for approval, a node whose agent has an update available, and (in red) a node whose agent is from another compatibility window, naming the projects that cannot build there until it is updated, or a project whose CLAUDE.md environment block is from another window, with its update beside it. Those rows come from the state on every poll and leave the moment they stop being true; nothing is stored to dismiss.
+Pinned above that log, and not the Clear button's to dismiss, is what is waiting on you or stopping work: a session's phone request with Approve and Deny beside it, a notebook holding a session's changes for approval, a node whose agent has an update available, and (in red) a node whose agent is from another compatibility window, naming the projects that cannot build there until it is updated. Those rows come from the state on every poll and leave the moment they stop being true; nothing is stored to dismiss.
 
 The **About** control beside it is the version, and where the header is too
 narrow for a version string it becomes a **?** rather than a truncated number
@@ -1734,8 +1734,8 @@ detail. Steps only exist because of one physical constraint: each is a message
 it is a point at which the previous work has to have finished before the next
 can start, and a session that splits work into more steps than that costs you
 round trips for nothing. A step can be several lines, blank lines and all, so
-the cheap unit is the line and the expensive one is the step. The template
-CLAUDE.md every project gets says this to sessions in as many words.
+the cheap unit is the line and the expensive one is the step. The briefing
+every session gets says this in as many words.
 
 **Items are handed to the session one at a time, by the arrow beside them.**
 Sending types the line into the running Claude session and submits it, but
@@ -2292,8 +2292,8 @@ twice.
 
 **Delete** is separate and narrower: for a report that should never have
 existed: mis-filed, duplicated, aimed at the wrong project. It takes the row
-and leaves the reason in the log. The template CLAUDE.md tells sessions that
-this is the only case for it; anything that was a real bug gets closed.
+and leaves the reason in the log. The briefing tells sessions that this is
+the only case for it; anything that was a real bug gets closed.
 
 **Send to Claude** hands one bug to the session running there, from the same
 box the roadmap opens under a step: the same note field for anything to send

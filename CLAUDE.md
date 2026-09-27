@@ -211,10 +211,11 @@ by hand cost four commands and still could not see the failed builds.
     gets the row's update link and its Claude button stays live; an agent
     behind gets Update on the Nodes tab and its sessions keep running).
     Across a window the controller ends the Claude sessions on a project
-    whose block, or whose own node's agent, is from the old window, ghosts
-    that project's button and `bb-tty` refuses, per project, until the block
-    and that node's agent are updated (`server.compat_holds`,
-    `compat_reap_once`, `bb claude-md --out-of-window`). BUILD is the
+    whose own node's agent is from the old window, ghosts that project's
+    button and `bb-tty` refuses, per project, until that node's agent is
+    updated (`server.compat_holds`, `compat_reap_once`). The briefing is
+    assembled per session (R63 step 3), so nothing in a project's tree can
+    be from another window any more. BUILD is the
     agent's own counter and never resets: 0.5.28 follows 0.4.27. Moving
     the minor is the one moment superseded paths (an old verb, a fallback
     for a pre-window agent) are removed, and `test/version.mjs` holds both

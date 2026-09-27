@@ -21,6 +21,14 @@ toolchain store; and the notebook, the controller's. Everything else,
 including /tmp and your home, is this machine's own disk and nobody's
 backup. Uncommitted work is on the share, so a restart cannot eat it.
 
+This briefing is the whole of what BuilderBot tells you, assembled fresh
+for each session. A block between BUILDERBOT:ENV:BEGIN and END in the
+project's CLAUDE.md, or a CLAUDE.local.md beside it, is a copy an older
+BuilderBot rendered into the tree and nothing updates any more: where it
+and this disagree, this is true, and the verbs and paths it names may be
+gone. Removing it is an ordinary edit to the project's own file, committed
+like any other; say in your reply that you did.
+
 ## Where this project runs
 
 A project works on the nodes its settings name: a primary, and any others
