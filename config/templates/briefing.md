@@ -89,10 +89,37 @@ dashboard or in the app. Where the project has a container built from its
 compose, rebuild it and use the change there the way a person would before
 calling it done, and say what you saw. Show pixels by saving a file and
 naming the path: this machine is headless, so run every tool in its
-headless mode; `bb shot URL... FILE` screenshots a page, Playwright's
-browsers are on the store at $PLAYWRIGHT_BROWSERS_PATH, and a video is read
-as frames (`ffmpeg -i clip.mp4 -vf fps=1 dist/frames/%03d.png`, with the
-ffmpeg recipe on this node's store).
+headless mode, and Playwright's browsers are on the store at
+$PLAYWRIGHT_BROWSERS_PATH.
+
+Two ways to look, and which one is the question you are asking:
+
+- `bb capture shot` is one picture at rest: `URL FILE` for a page,
+  `--emu [PKG] [FILE]` for the running emulator's screen (into `dist/emu/`
+  when no file is named), `--display :N FILE` for an X display. At rest
+  means it waits until a second of shots a quarter second apart match, so
+  a modal still arriving or a list still loading is not what you read;
+  `--now` takes the one shot at once, and `--drive FILE.sh` works the
+  surface first (`$ADB shell input ...`, or `xdotool` with DISPLAY set).
+  Read the file with your image reader. Reach for it when the question is
+  what a screen looks like.
+- `bb capture reel` is change over time: the frames of a recording that changed,
+  each stamped with its time, tiled into `dist/reel/NAME/sheet.png`, with
+  `frames.json` beside it saying when each change came and how much moved,
+  and every kept frame full-size under `frames/` to pick from afterwards.
+  Reach for it when the question is what happened between two moments: an
+  element popping in, a transition, a screen that was blank and then was
+  not. Read the sheet as one image; the last tile is the settled state.
+  `--url URL --seconds N --drive FILE.mjs` records a page while your script
+  works it (`export default async (page, {seconds}) => {...}`, a Playwright
+  page after `goto`); `--emu [PKG] --drive FILE.sh` records the running
+  emulator while a shell script drives it with `$ADB shell input ...`, and
+  writes the package's `gfxinfo framestats` beside the reel, which is where
+  the timing is read, since a software-rendered capture is about 10fps;
+  `--display :N --drive FILE.sh` records an X display while the script
+  drives it with `xdotool`, for an app with a window (start it under an
+  Xvfb the node has: `Xvfb :9 -screen 0 1280x800x24 & DISPLAY=:9 the-app &`);
+  `--video FILE` reels a recording you already have.
 
 ## Asking a person
 
@@ -189,11 +216,16 @@ is always asked.
 <!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
 This project has a compose file, so it can have a container built from it:
 its dev instance, the place to prove a change. Up and Down are the
-operator's; under the same dial you may rebuild it, change its env, create
-it when it has none and remove it: `bb devapp` says what it was built from
-and whether it is running, then `bb devapp rebuild`, `bb devapp env set
-FILE`, `bb devapp new` and `bb devapp remove`, which leaves its env and data
-for a remake. Its env is kept by BuilderBot, not as a file in the tree:
+operator's; under the same dial you may send the project to Docker and
+rebuild, change the env of and remove its containers. `bb devapp new [NAME]
+[--branch REF]` is the Artifacts tab's Send to Docker done from here: a
+container made from this project's compose file (its own while it has
+none, then another beside it, which needs ports of its own from `--env
+FILE`), built and started. That, not `bb container new`, is how this
+project's own code goes into Docker. `bb devapp` says what one was built
+from and whether it is running, then `bb devapp rebuild`, `bb devapp env
+set FILE` and `bb devapp remove`, which leaves its env and data for a
+remake. Its env is kept by BuilderBot, not as a file in the tree:
 `bb devapp env` prints it, and a compose line `env_file: .env` is pointed
 at it when the container runs, so a missing `.env` in the project is
 expected. The project's Tests run setting decides whether `bb test` runs

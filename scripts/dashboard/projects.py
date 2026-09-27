@@ -39,6 +39,8 @@ import urllib.parse
 import zipfile
 from pathlib import Path
 
+from names import claude_session
+
 # Which git host a remote is on, and the two things a host can be asked that
 # git cannot: whether a token is real, and creating an empty repository. A
 # peer library rather than an injection: it holds no server state, and the
@@ -210,6 +212,16 @@ first_version = None
 # about, and asked once for the project rather than once for a name this module
 # would have to spell.
 rename_project_data = None
+# What create_from_dialog() and the pins need from the server: the one lock
+# every read-edit-write of the server's state files takes, an account taking
+# a project on (users.take_on), and a project's settings written the way the
+# settings dialog writes them (prefs.set_prefs).
+lock = None
+take_on = None
+set_prefs = None
+# ...and a lock's, which ends the project's own Claude session: this
+# container's tmux sessions (the server's tmux_sessions).
+live_sessions = None
 
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
@@ -255,7 +267,7 @@ _KEYED = {
 }
 
 # Files holding a flat list of project names.
-_LISTED = ["locked-projects.json", "pinned-projects.json"]
+_LISTED = ["locked-projects.json"]
 
 
 def _rename_in_json(path, old, new):
@@ -468,6 +480,11 @@ def rename(req):
                 moved.append(name)
         except OSError as e:
             failed.append(f"{name}: {e}")
+    try:
+        if _rename_in_pins(STATE / "pinned-projects.json", old, new):
+            moved.append("pinned-projects.json")
+    except OSError as e:
+        failed.append(f"pinned-projects.json: {e}")
     try:
         rewritten, dropped = _rename_tabs(old, new)
         if rewritten:
@@ -1227,7 +1244,7 @@ def create(req, env=None):
         # checkouts of it. Deploying an app from a public repo is exactly that
         # case: three Radarrs are three directories and one repository. So the
         # field is optional and defaults to this, and typing nothing still
-        # gets the old behaviour. Notes are not asked for either way: they
+        # gets the derived name. Notes are not asked for either way: they
         # are drafted from the code after the clone.
         name = sanitize_name(_field(req, "name"))
         if not name:
@@ -1917,3 +1934,277 @@ def _link(dest, name, forge, host, path, remote, keyed, pat,
     return "", f"{created}pushed {branch}"
 
 
+# ---------------------------------------------------------------------------
+# the create dialog's one submit, and the sidebar's pins
+
+def create_from_dialog(req, *, env, account, may_node):
+    """The create dialog's one submit, once the server has let an
+    administrator make a project: create(), then what the dialog chose
+    besides. `account` is who made it (an account's name, or ""), and
+    `may_node(name)` whether they may set its node, asked after they have
+    taken it on. (payload, status)."""
+    body, code = create(req, env=env)
+    if code != 200 or not body.get("name"):
+        return body, code
+    name = body["name"]
+    # Taken on by whoever made it (the operator, 24 Sep), before the
+    # writes below: they ask whether this account may work on the
+    # project, and an administrator's new one was not on their list, so
+    # it came out read-only to them and the node the dialog picked was
+    # quietly not set. A clone's directory exists from here, while the
+    # clone itself runs on; one that fails leaves a name on the list that
+    # matches nothing.
+    if account:
+        take_on(account, name)
+    # The node it was made for, when the dialog offered one: the same
+    # write the settings dialog makes, so a project is born able to
+    # build and start a session rather than needing a second dialog
+    # first (16 Sep). Refused the way the settings dialog refuses it.
+    nid = str(req.get("node") or "").strip()
+    if nid and may_node(name):
+        r = set_prefs(name, node=nid)
+        if r.get("error"):
+            body["note"] = f"{body.get('note') or 'ready'}; node not set: {r['error']}"
+    # ...and the four gates (roadmap #27), when the dialog offered them:
+    # the same write the settings dialog makes, so what a session may
+    # enter into the notebook is decided where the project is made.
+    gate = req.get("gate")
+    if isinstance(gate, dict) and gate:
+        r = set_prefs(name, gate=gate)
+        if r.get("error"):
+            body["note"] = f"{body.get('note') or 'ready'}; gates not set: {r['error']}"
+    # ...and whether a session may run its container, the fifth of them
+    # on the dialog, so a session can create the first one by request.
+    devbuild = req.get("devbuild")
+    if devbuild and devbuild != "deny":
+        r = set_prefs(name, devbuild=str(devbuild))
+        if r.get("error"):
+            body["note"] = f"{body.get('note') or 'ready'}; Run its container not set: {r['error']}"
+    # Pinned on arrival, once anything has ever been pinned. Without this a
+    # project made while a pins file exists is absent from it, so it lands
+    # on disk and never reaches the sidebar: created, and apparently gone.
+    # No file still means "all of them", so there is nothing to write then
+    # and writing one would turn the first create into an unasked-for
+    # decision about every other project.
+    with lock:
+        try:
+            pin_new_project(name)
+        except OSError:
+            pass                  # the project exists; the sidebar is not
+                                  # worth failing the create over
+    return body, code
+
+
+# Which projects the sidebar card shows. A THIRD axis, independent of the
+# locks and the settings: pinning says nothing about what may run, only about
+# what is worth looking at from the sidebar. Everything unpinned is still on
+# the Projects tab, whole and with every control.
+#
+# pinned-projects.json and not pinned-commands.json, which is the command
+# pin's (macros.py), as are its load_pins, save_pins, /api/pin and the
+# page's setPinned. Taking all five once split this feature across two
+# files: the constant resolved to theirs, the functions to mine, and project
+# names were written into pinned-commands.json while nothing went red,
+# because the command pin had no test (bug #20).
+def _pins_file():
+    return STATE / "pinned-projects.json"
+
+
+def _load_pins():
+    """Every account's pinned set, {uid: [names]}. The file was one flat list
+    for everybody until 27 Sep; read as everyone's default under "*" once,
+    and written back keyed by account the first time anybody pins."""
+    try:
+        v = json.loads(_pins_file().read_text())
+    except (OSError, ValueError):
+        return {}
+    if isinstance(v, list):
+        return {"*": sorted({x for x in v if isinstance(x, str)})}
+    if not isinstance(v, dict):
+        return {}
+    return {k: sorted({x for x in names if isinstance(x, str)})
+            for k, names in v.items() if isinstance(k, str) and isinstance(names, list)}
+
+
+def load_project_pins(uid):
+    """This account's pinned set, or None when it has never pinned anything
+    and nobody's default stands.
+
+    None is not the same as empty and the difference decides what a fresh
+    install looks like. No entry means this person has not had this thought
+    yet, so every project is pinned and the card is what it always was; an
+    empty LIST means they unpinned the last one on purpose, and a sidebar that
+    quietly refilled itself would be arguing with them. The pins are the
+    person's, not the controller's (the operator, 27 Sep): what is worth
+    looking at from the sidebar is a question each account answers.
+    """
+    d = _load_pins()
+    v = d.get(str(uid or ""), d.get("*"))
+    return None if v is None else sorted(v)
+
+
+def save_project_pins(uid, names):
+    d = _load_pins()
+    d[str(uid or "")] = sorted(set(names))
+    write_json(_pins_file(), d)
+
+
+def pin_new_project(name):
+    """A project made after anything has been pinned is pinned for everyone
+    who has a set: absent from theirs it would land on disk and never reach
+    their sidebar, created and apparently gone. Nothing to write while no
+    account has a set, since no file means all of them."""
+    d = _load_pins()
+    if not d:
+        return
+    write_json(_pins_file(), {k: sorted(set(v) | {name}) for k, v in d.items()})
+
+
+def _rename_in_pins(path, old, new):
+    """The same, for every account's pinned set."""
+    d = _load_pins()
+    moved = False
+    for k, names in d.items():
+        if old in names:
+            d[k] = sorted((set(names) - {old}) | {new})
+            moved = True
+    if moved:
+        write_json(path, d)
+    return moved
+
+
+def pin(uid, name, on):
+    """Pin or unpin a project for one account, once the server has let a
+    signed-in person: the pins are theirs. Unpinning something running a
+    build leaves it running, and the Projects tab still has every button.
+
+    The first unpin has to write the whole current set, not just remove
+    one: until then there is no entry, which means "all of them", and
+    saving a single removal would have read as "only this one is pinned".
+    (payload, status)."""
+    try:
+        here = {d.name for d in WORKSPACE.iterdir()
+                if d.is_dir() and not d.name.startswith(".")}
+    except OSError:
+        here = set()
+    if name not in here:
+        return {"error": f"unknown project: {name}"}, 400
+    with lock:
+        pins = load_project_pins(uid)
+        names = here.copy() if pins is None else set(pins)
+        names.add(name) if on else names.discard(name)
+        try:
+            save_project_pins(uid, names)
+        except OSError as e:
+            return {"error": f"could not save: {e}"}, 500
+    return {"pinned": sorted(names)}, 200
+
+
+# ---------------------------------------------------------------------------
+# the locks
+
+# Locked projects live on the /config volume so the list survives the image
+# updates this container is built to expect. bb-tty reads the same file; a
+# rule only the dashboard honored would be advice, since the terminal URL is
+# reachable on its own.
+#
+# There used to be two of these. "Excluded" meant "this is not a project, stop
+# showing it work" and locked meant "this one is mine to run", and the operator
+# found the distinction too fine to be worth two buttons that looked alike and
+# sat next to each other. Locked is the survivor and it carries the whole
+# meaning now: no session starts here, the notebook is readable but not
+# writable, and nothing may be created in the project on Claude's behalf. What
+# it does NOT touch is everything the operator does themselves: the artifacts,
+# a dev instance, the findings and their history.
+def _locks_file():
+    return STATE / "locked-projects.json"
+
+
+def load_locks():
+    try:
+        v = json.loads(_locks_file().read_text())
+        return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_locks(names):
+    write_json(_locks_file(), sorted(set(names)))
+
+
+# What a locked project refuses, in one place.
+#
+# The button being hidden is not the rule; this is. The dashboard's own URLs
+# are reachable without it, so a lock enforced only by a missing control is
+# advice. That is the same reasoning that put the lock file where bb-tty can
+# read it rather than keeping it in the page.
+#
+# READS are never refused, and the list of what stays is the point of the
+# feature: the notebook opens, the findings and their history are there, the
+# artifacts list and a dev instance still work. What goes is everything that
+# writes on Claude's behalf: the notebook's three tabs, and creating or
+# refreshing a CLAUDE.md, which is a file put into somebody else's project.
+LOCKED_REFUSAL = ("{name} is locked: yours to run. Unlock it to change its "
+                  "notebook or its CLAUDE.md; everything you read here still "
+                  "works while it stays locked.")
+
+
+def locked_out(name):
+    """The refusal for a write into a locked project, or None."""
+    if name and name in set(load_locks()):
+        return {"error": LOCKED_REFUSAL.format(name=name)}
+    return None
+
+
+def lock_verb(name, on):
+    """Lock or unlock a project, once the server has let this person: keep
+    it, stop Claude running in it. A name-checked write, and the
+    enforcement is deliberately not this function's: bb-tty reads the
+    file, because a rule only this UI honors is a suggestion when the ttyd
+    URL is reachable directly. (payload, status)."""
+    try:
+        here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
+    except OSError:
+        here = set()
+    if name not in here:
+        return {"error": f"unknown project: {name}"}, 400
+    with lock:
+        names = set(load_locks())
+        names.add(name) if on else names.discard(name)
+        try:
+            save_locks(names)
+        except OSError as e:
+            return {"error": f"could not save: {e}"}, 500
+    # A lock that waits for the current session to end is a lock that
+    # did not take, and the button does not say that.
+    killed = None
+    sess = claude_session(name)
+    if on and sess in {x["name"] for x in live_sessions()}:
+        run(["tmux", "kill-session", "-t", sess], timeout=10)
+        killed = sess
+    return {"locked": sorted(names), "killed": killed}, 200
+
+
+def auth_answer(name):
+    """What credential this project's remote uses, and what else it could,
+    for the rename dialog of a project the server has let this account
+    see. Asked when the dialog opens rather than carried on the status
+    poll: answering it means running `git remote get-url` in the project,
+    and one subprocess per dialog is nothing where one per project per poll
+    is not. (payload, status)."""
+    if not PROJECT_NAME.fullmatch(name or ""):
+        return {"error": "unknown project"}, 400
+    d = WORKSPACE / name
+    if not d.is_dir():
+        return {"error": "unknown project"}, 400
+    return auth_options(name, d), 200
+
+
+def job_verb(act):
+    """Stop the running project job, or clear the last one's outcome.
+    (payload, status)."""
+    if act == "abort":
+        return abort(), 200
+    if act == "dismiss":
+        return dismiss(), 200
+    return {"error": f"unknown action: {act}"}, 400

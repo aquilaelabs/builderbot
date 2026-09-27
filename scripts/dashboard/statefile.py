@@ -70,6 +70,27 @@ def write_json(path, obj, mode=0o644):
         raise
 
 
+def write_text(path, text, mode=0o644, encoding="utf-8"):
+    """Atomically replace `path` with `text`: a temporary of its own name
+    beside it, renamed over it, so a reader never meets it half-written and
+    two writers never share a temp file (B196). The one copy of this: git.py,
+    gitrelay.py, changelog.py and memory.py each carried their own and each
+    met the fixed-temp-file race on its own before this."""
+    path = _p(path)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".",
+                               prefix="." + os.path.basename(path) + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as f:
+            f.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
 @contextlib.contextmanager
 def locked(path):
     """Hold `path` exclusively, against this process's threads and every other

@@ -9,7 +9,7 @@
 // Same size matters as much as staying loaded: a hidden frame is still an
 // attached tmux client, and tmux sizes a window to its smallest client.
 import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -142,8 +142,12 @@ ok(await kindCount('notebook') >= 2,
 // happened, and is invisible until somebody reloads. Compared against the
 // files rather than trusted, because the two are in different languages and
 // nothing else makes them agree.
-const html = readFileSync(new globalThis.URL('../index.html', import.meta.url).pathname, 'utf8');
-const py = readFileSync(new globalThis.URL('../server.py', import.meta.url).pathname, 'utf8');
+// Every script the page is made of: TABKINDS is page-tabs.js's since R77.
+const html = ['index.html', ...readdirSync(new globalThis.URL('..', import.meta.url))
+    .filter(f => /^(page|tab|nb)-.*\.js$/.test(f))]
+  .map(f => readFileSync(new globalThis.URL('../' + f, import.meta.url).pathname, 'utf8')).join('\n');
+// The server's half is layout.py's since R77: what a saved layout may carry.
+const py = readFileSync(new globalThis.URL('../layout.py', import.meta.url).pathname, 'utf8');
 const inPage = [...html.matchAll(/^ {2}([a-z]+):\s*\{ multi:/gm)].map(m => m[1]).sort();
 const inServer = (py.match(/^TAB_KINDS = \{([^}]*)\}/m) || [, ''])[1]
   .match(/"([a-z]+)"/g).map(s => s.replace(/"/g, '')).sort();
@@ -153,15 +157,26 @@ ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
 // The limit is on terminals, per account (R78): a shell past it is refused
 // with a toast that says so, and a document tab opens past it, because it
 // costs no terminal. The strip counted is this account's own layout.
+// Each in one round trip: a status poll landing between setting the limit
+// and opening the tab put the server's limit back, and the shell opened
+// (B289).
 {
-  await page.evaluate(() => { state.max_tabs = tabs.filter(t => t.kind === 'term').length; });
-  const before = await page.evaluate(() => tabs.length);
-  await page.evaluate(() => openTab({kind: 'term', arg: 'sh:99:alpha', label: 'sh 99'}));
-  ok(await page.evaluate(() => tabs.length) === before
-     && await page.evaluate(() => /Terminal tab limit reached/.test(document.body.textContent)),
+  const shell = await page.evaluate(() => {
+    state.max_tabs = tabs.filter(t => t.kind === 'term').length;
+    const before = tabs.length;
+    openTab({kind: 'term', arg: 'sh:99:alpha', label: 'sh 99'});
+    return { before, after: tabs.length,
+             said: /Terminal tab limit reached/.test(document.body.textContent) };
+  });
+  ok(shell.after === shell.before && shell.said,
      'a shell past the terminal limit is refused, and the toast names the terminal limit');
-  await page.evaluate(() => openNodesTab());
-  ok(await page.evaluate(() => tabs.length) === before + 1 && await page.evaluate(() => tabs.some(t => t.kind === 'nodes')),
+  const doc = await page.evaluate(() => {
+    state.max_tabs = tabs.filter(t => t.kind === 'term').length;
+    const before = tabs.length;
+    openNodesTab();
+    return { before, after: tabs.length, nodes: tabs.some(t => t.kind === 'nodes') };
+  });
+  ok(doc.after === doc.before + 1 && doc.nodes,
      '...while a document tab opens past it: it costs no terminal');
   await page.evaluate(() => { state.max_tabs = 12; });
 }

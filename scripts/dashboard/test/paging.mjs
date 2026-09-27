@@ -96,7 +96,7 @@ ok(await page.evaluate(() => {
 // innerHTML happens to contain. The page and every notebook view file, since
 // a view's renderer lives in its own nb-*.js now (R60).
 const src = ['../index.html', ...readdirSync(new globalThis.URL('..', import.meta.url))
-    .filter(f => /^nb-.*\.js$/.test(f)).map(f => '../' + f)]
+    .filter(f => /^(nb|page|tab)-.*\.js$/.test(f)).map(f => '../' + f)]
   .map(f => readFileSync(new globalThis.URL(f, import.meta.url), 'utf8')).join('\n');
 for (const [what, call] of [
   ['the roadmap', 'paginate($("roadmapList"), ":scope > .grp"'],

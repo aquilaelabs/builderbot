@@ -27,11 +27,14 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
+from fields import field  # noqa: E402
 
 write_json = None
 FILE = None
 redact = str              # diag.redact, injected
 build = None              # () -> the controller's build, as a report records it
+node_name = None          # project -> the name of the node it builds on, or ""
+audit = None              # (principal, action, target, detail) -> the audit row
 
 STATES = ("open", "filed", "closed")
 MAX_TEXT = 2000
@@ -183,3 +186,50 @@ def clear():
         d["reports"] = []
         write_json(FILE, d)
     return {"ok": True, "cleared": n}
+
+
+# ---- the dashboard's verbs, one call each ------------------------------------
+
+def _answer(r):
+    return r, (400 if r.get("error") else 200)
+
+
+def own_verb(act, proj, req, *, by):
+    """A project's own: add a report for it, or read what became of its
+    reports, once the server has let the caller at the project (a session
+    only at its own) and, for an add, its Report BuilderBot bugs dial.
+    (payload, status)."""
+    if act == "mine":
+        # What became of each: open, filed, or closed with the words the
+        # close addressed to it. Not the bug it became, which is a number in
+        # BuilderBot's own tracker, nor who filed it: a session sees nothing
+        # of another project's notebook, and two reports filed as one bug
+        # would show that tracker's triage (B317).
+        return {"reports": [{k: v for k, v in r.items() if k not in ("bug", "done_by")}
+                            for r in listing(None, proj, n=30)]}, 200
+    return _answer(add(proj, req.get("text"), by=by, node=node_name(proj),
+                       area=req.get("area"), repro=req.get("repro")))
+
+
+def diag_verb(act, req, *, by, principal):
+    """Every project's reports, behind the diagnostics' own gate, since that
+    is where BuilderBot's own work reads them (bb diag reports): list, read
+    one, file one as a bug, close one, count, or clear them all. (payload,
+    status)."""
+    if act == "list":
+        st = field(req, "state") or "open"
+        return {"reports": listing(None if st == "all" else st)}, 200
+    if act == "get":
+        r = get(req.get("id"))
+        return (r, 200) if r else ({"error": "no such report"}, 400)
+    if act == "filed":
+        return _answer(filed(req.get("id"), field(req, "bug"), by=by))
+    if act == "close":
+        return _answer(close(req.get("id"), field(req, "why"), by=by))
+    if act == "count":
+        return counts(), 200
+    if act == "clear":
+        r = clear()
+        audit(principal, "reports-clear", "reports", {"cleared": r["cleared"]})
+        return r, 200
+    return {"error": f"unknown action: {act}"}, 400

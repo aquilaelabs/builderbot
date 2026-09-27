@@ -47,7 +47,7 @@ the two sides become a switch.
 
 (Staged data. The pictures regenerate with `bash tools/readme-shots.sh`,
 which boots the checkout's dashboard against an invented workspace on a
-private tmux server and photographs it with `bb shot`: the pattern the
+private tmux server and photographs it with `bb capture shot`: the pattern the
 [`bb` helper section](#the-bb-helper) preaches, practiced.)
 ## Install
 
@@ -75,6 +75,7 @@ is [docs/unraid.md](docs/unraid.md).
 | `NPM_TOKEN` | *(none)* | `npm publish` auth for a shell on the controller (lands in its `~/.npmrc`). A Claude session runs on a node, with that node's home, and does not get it |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `BUILDERBOT_PULL` | `missing` | compose's pull policy for the image: `missing` pulls (an install); `build` builds this checkout, which is what BuilderBot's own dev instance sets, with `BUILDERBOT_TAG=dev` |
+| `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and read by `bb findings` and the Analysis view; empty where no scanner runs |
 | `COMPOSE_PROFILES` | empty | compose's own switch: `lab` in a dev instance's env file starts the lab's Gitea beside it (the `gitea` service), for `bb tests lab` |
 | `BB_LAB_HOST` | `127.0.0.1` | the address other machines reach that Gitea on |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
@@ -217,10 +218,16 @@ bb devapp rebuild [--why "..."]
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Allow) or auto. Up, Down and a container of
                    any other shape stay the operator's
-bb devapp new [--env FILE] [--why "..."]
-                   create the project's container from its own compose file when it
-                   has none, under the same setting; on ask, Allow creates, writes
-                   the env and builds
+bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
+                   send the project to Docker, as the Artifacts tab's Send to Docker
+                   manager does, under the same setting: a container made from its
+                   own compose file on its node, then built and started, and this
+                   waits for the verdict. Unnamed, it is the project's own container
+                   while it has none, then another beside it named for the project
+                   with -2, -3 and on; a second needs ports of its own, so give it
+                   an env that sets them with --env. --branch builds it
+                   from that branch. On ask, one request carries all of it and
+                   Allow makes and builds it
 bb devapp remove [--why "..."]
                    take the container out of the manager, under the same setting;
                    its env and data stay for a remake, as the row's Remove leaves them
@@ -408,7 +415,22 @@ bb dashboard trace [SECONDS]  what the dashboard was asked over the last SECONDS
 bb drift           what this checkout changed that the container is not serving
 bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
                    draws ID|.class, suites FILE...; a session asks it before grepping
-bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
+bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
+                   one picture at rest: a page, the running emulator's screen,
+                   or an X display (--drive F works the surface first). At rest
+                   means shots a quarter second apart until a second of them
+                   match, so a modal still arriving or a list still loading is
+                   not the picture: the dashboard's own pages and the two other
+                   sources settle by default, --settle asks it of any page, --now
+                   takes the one shot at once. Into dist/emu/ for the emulator
+bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
+                   eyes on change over time: the frames of a recording that changed,
+                   each stamped with its time, tiled into dist/reel/NAME/sheet.png
+                   beside frames.json (when, and how much moved). From a video, a
+                   page Playwright records while --drive FILE.mjs works it, the
+                   running emulator's screenrecord (with gfxinfo framestats beside
+                   it), or an X display grabbed while a shell script drives it with
+                   xdotool; the provisioner installs Xvfb and xdotool for that
 bb tool            the tools toolchains add to a session, each under its own name
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,

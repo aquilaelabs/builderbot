@@ -155,6 +155,12 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   await call('/api/memory', { project: 'alpha', action: 'create', name: 'own-note', title: 'the session wrote one', hook: 'h', type: 'project', body: 'x' }, bearer(toks[1]));
   const ownMem = await sess({ node: 'nodeA' });
   ok(!/memories/.test(ownMem.line || ''), `...and the session's own is not (${(ownMem.line || 'no line').slice(0, 90)})`);
+  // ...and a person only READING the log is no edit: the history is a POST
+  // like the writes, and it was counted as one (B296).
+  await call('/api/memory', { project: 'alpha', action: 'history', limit: 5 });
+  const histRead = await sess({ node: 'nodeA' });
+  ok(!/memories/.test(histRead.line || ''),
+     `...nor a person reading the memory history (${(histRead.line || 'no line').slice(0, 90)})`);
 }
 
 {

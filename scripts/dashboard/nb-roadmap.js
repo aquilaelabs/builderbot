@@ -2,6 +2,9 @@
 // refusal when two writers meet, and the staged changes Save replays. One
 // classic script beside index.html (docs/nodes.md §13): one file per notebook
 // view (R60). A factory makeNotebook calls per notebook.
+
+"use strict";
+
 function nbRoadmapView({$, nb}){
   // ---- the shared to-do list ---------------------------------------------
   // Both sides write it: the operator here, a session through `bb roadmap`. Its

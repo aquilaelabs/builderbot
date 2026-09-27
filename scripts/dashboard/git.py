@@ -21,13 +21,20 @@ Path-pure like changelog.py: functions take the project's directory,
 configure() only knows where the workspace and the worktrees are.
 """
 import os
+import sys
 import re
-import secrets
 import shutil
 import hashlib
 import subprocess
 import threading
 from pathlib import Path
+
+# Its own directory on the path, so a test can load this file alone (git.mjs
+# does) and still find statefile beside it.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statefile  # noqa: E402
+from fields import field  # noqa: E402
+from names import claude_session  # noqa: E402
 
 WORKSPACE = None
 WORKTREES = None
@@ -37,6 +44,15 @@ TMUX_NAME = None
 ACCOUNTS = None           # () -> {uid: account name}, injected: whose a branch is
 OWNER_UID = None          # () -> the owner's uid: the project directory is their tree
 WORKING = None            # (project, uid) -> whether that account's Claude session there is mid-prompt
+# ...and what in_use() and verb() need from the server:
+OWNER_NAME = None         # () -> the owner's account name, for "your" or theirs
+SESSION_OPEN = None       # project -> whether the owner's Claude session is open in its directory
+SESSIONS = None           # () -> every session running, for the ask
+GIT_ENV = None            # (account, project) -> what git runs under: the author, the credentials
+MAY_PUSH = None           # project -> whether it was cloned with push rights
+EXCLUDE = None            # tree -> the code map kept out of a new repository
+AUDIT = None              # (principal, action, project, detail) -> the audit row
+HOST_OF = None            # a remote's URL -> {name, kind} of the git host it is on
 
 LOG_MAX = 100             # commits the graph shows
 DIFF_MAX = 200_000        # bytes of diff the page is handed
@@ -47,11 +63,15 @@ EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
 def configure(*, workspace, worktrees=None, tell=None, tmux_name=None, state=None,
-              accounts=None, owner_uid=None, working=None):
+              accounts=None, owner_uid=None, working=None, owner_name=None, session_open=None,
+              sessions=None, git_env=None, may_push=None, exclude=None, audit=None,
+              host_of=None):
     globals().update(WORKSPACE=Path(workspace),
                      WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
                      TELL=tell, TMUX_NAME=tmux_name, ACCOUNTS=accounts, OWNER_UID=owner_uid,
-                     WORKING=working,
+                     WORKING=working, OWNER_NAME=owner_name, SESSION_OPEN=session_open,
+                     SESSIONS=sessions, GIT_ENV=git_env, MAY_PUSH=may_push, EXCLUDE=exclude,
+                     AUDIT=audit, HOST_OF=host_of,
                      STATE=Path(state) if state else None)
 
 
@@ -194,25 +214,13 @@ def _own(repo, write=False):
 
 
 def _atomic(path, text):
-    """Write `text` at `path`, all of it or none of it.
-
-    The temporary name is UNIQUE per call, which is the whole of it working.
-    A fixed `.new` raced with itself: the Git view polls, so two reads build
-    the mirror at once, both write the same temporary file and the second
-    rename finds it already moved. That surfaced as ENOENT, which _own catches
-    and answers by falling back to running git in the TREE, so the protection
-    this module exists for switched itself off for that request and said so
-    only in the log. gitrelay's _atomic already took a random suffix; this one
-    did not. git.mjs asserts the log carries no fallback, which is how it was
-    found at all.
-    """
-    tmp = Path(f"{path}.{secrets.token_hex(4)}.tmp")
-    try:
-        tmp.write_text(text)
-        os.replace(tmp, path)
-    except OSError:
-        tmp.unlink(missing_ok=True)
-        raise
+    """Write `text` at `path`, all of it or none of it: statefile.write_text,
+    whose temporary name is unique per call. A fixed `.new` raced with itself
+    here: the Git view polls, two reads built the mirror at once, and the
+    second rename found the file already moved, which _own answered by
+    falling back to the tree (B153, git.mjs asserts the log carries no
+    fallback)."""
+    statefile.write_text(path, text)
 
 
 def _carry(src, dst):
@@ -1328,3 +1336,82 @@ def ask(repo, project, kind, args, sessions=(), session=""):
     if r.get("error"):
         return r
     return {"ok": True, "sent": bool(r.get("sent")), "session": session, "text": line}
+
+
+# ---- the Git view's actions, one call from the dashboard's /api/git ----------
+
+def in_use(project, action, args, uid):
+    """Why the project directory's own Claude session keeps this action off
+    it right now, or "". Both a switch and a merge rewrite the working tree.
+    A merge is not a switch, but it lands other people's files in a
+    directory a session is reading and editing right now, which is the same
+    surprise for the same reason, so it waits for the same moment.
+
+    A merge INTO ANOTHER branch (into: main, from wherever the tree stands)
+    is done with plumbing and checks nothing out, so it moves nothing here
+    and the session is no reason to refuse it: that is the merge the
+    operator makes to accept a session's work while it keeps working."""
+    lands_here = action == "switch" or (
+        action == "merge" and str(args.get("into") or "")
+        in ("", status(WORKSPACE / project).get("branch") or ""))
+    if not lands_here:
+        return ""
+    # The project directory is the owner's session's tree. A switch waits
+    # while that session is open at all, since it changes the branch the
+    # session is on; a merge only while it is WORKING, since a session at
+    # its prompt sees the changed files when it next reads them, and it
+    # was one merely open that refused the operator's own merge, 24 Sep.
+    # "your" to the owner: "the owner's" read as somebody else's.
+    owner_uid = OWNER_UID()
+    whose = "your" if uid == owner_uid else f"{OWNER_NAME()}'s"
+    if action == "switch":
+        if SESSION_OPEN(project):
+            return (f"{whose} Claude session is running in this directory; end it "
+                    "before switching the branch under it")
+    elif WORKING(project, owner_uid):
+        return f"{whose} Claude session is working in this directory; merge when it is waiting"
+    return ""
+
+
+def verb(project, action, req, me, *, prefix, principal):
+    """One of the Git view's actions (roadmap R36 step 2), once server.py
+    has let this account act on the project and in_use() has said the tree
+    is free: `ask` puts a question to the presser's own session, and
+    anything else is act() under the account's author and the project's
+    own credentials, audited. {ok} or {error}."""
+    if action == "ask":
+        # The presser's own session, by the name the roadmap's send uses
+        # (B235): the bare name alone was the owner's.
+        return ask(WORKSPACE / project, project, field(req, "kind"), req.get("args") or {},
+                   SESSIONS(), session=prefix + claude_session(project))
+    r = act(WORKSPACE / project, action, req.get("args") or {}, env=GIT_ENV(me, project),
+            may_push=MAY_PUSH(project))
+    if action == "init" and r.get("ok"):
+        EXCLUDE(WORKSPACE / project)      # the code map is never the project's
+    if r.get("ok"):
+        AUDIT(principal, "git-" + action, project,
+              {k: v for k, v in (req.get("args") or {}).items()
+               if k in ("name", "sha", "path", "at")})
+    return r
+
+
+def view(name, what, sha="", path="", n=0, branch=""):
+    """The notebook's Git view (roadmap R36): plumbing reads on the
+    project's tree, for a project the server has let this account see. A
+    sha and a path are checked here against what the repository itself
+    reports; nothing from the query reaches a command line as anything
+    else. The whole view (`what` "" or "all") carries what the network bar
+    may offer too. {..} or {error}."""
+    r = payload(name, what, sha=sha, path=path, n=n, branch=branch)
+    if what in ("", "all") and not r.get("error"):
+        # What the network bar may offer: a remote to talk to, and
+        # the project's push rights, granted once in the clone dialog.
+        r["remote"] = has_remote(WORKSPACE / name)
+        r["push"] = MAY_PUSH(name)
+        # Whose working tree this is (B236): the page says so to anybody
+        # else, and offers them nothing that changes it.
+        r["owner"] = OWNER_NAME() or ""
+        # The host by its name (GitHub, Gitea, or the machine's own),
+        # so the view can say "in step with GitHub" and not "origin".
+        r["host"] = HOST_OF(remote_url(WORKSPACE / name))
+    return r

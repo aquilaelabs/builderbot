@@ -1,0 +1,123 @@
+// The Sessions card: every terminal and Claude session this account has,
+// the tab each is in, and ending one.
+//
+// One classic script beside index.html (docs/design-language.md, Files),
+// moved out of the page's own script with bb map sections in hand (R77):
+// pure declarations, nothing runs at load. What runs at load stays in
+// index.html under the section's header.
+
+"use strict";
+
+// ---- the sessions card --------------------------------------------------
+
+// A session tmux knows as "claude-Foo" is the same thing the Projects card
+// opens as "claude:Foo". Opening it under the raw name takes bb-tty's fallback
+// branch: a bare shell at /workspace, skipping the project directory, the
+// exclusion check and the scoped settings, which is only invisible while the
+// session already exists. Map it back when the project is one we know.
+function argForSession(name){
+  // Whoever owns it, the arg is derived from what comes AFTER the prefix;
+  // that part is the project and the number, which is all bb-tty is told.
+  // The listing only carries sessions this account may see, so a prefixed one
+  // here is this account's own and sessionOf puts the prefix back.
+  name = name.replace(/^u_[0-9a-f]{8}~/, "");
+  // Matched through tmuxName (a session's name is the project's with `.` and
+  // `:` rewritten), and by exact project first, so a project genuinely called
+  // "web-2" is not read as terminal 2 of a project called "web".
+  for (const [prefix, arg] of [["claude-", "claude:"], ["shell-", "shell:"]]){
+    const p = name.startsWith(prefix) ? projFor(name.slice(prefix.length)) : null;
+    if (p) return arg + p;
+  }
+  // shell-<project>-<n> and shell-<n>, the numbered terminals.
+  const m = /^shell-(?:(.+)-)?(\d+)$/.exec(name);
+  if (m){
+    const p = m[1] ? projFor(m[1]) : "";
+    if (p !== null) return `sh:${m[2]}:${p}`;
+  }
+  return name;
+}
+
+function drawSessions(ss){
+  const el = $("sessions");
+  if (!ss.length){ paint(el, '<div class="empty">no tmux sessions; nothing is running</div>'); return; }
+  // Named exactly as its tab is: the tmux name and the full path are on hover,
+  // where the detail belongs.
+  const names = sessionLabels();
+  // The name is the way to a session's tab: click it and you are there,
+  // reopened first if it was minimized. The button beside it does the other
+  // thing: green when the tab is on the strip, and then it puts the tab away
+  // (Minimize for a shell; Close for a Claude session, which asks first, the
+  // way the ✕ does, because that one ends the conversation); plain "Open"
+  // when there is no tab. The pill says whether the session is on screen
+  // right now, and in which pane when the view is split.
+  const tabFor = new Map(tabs.filter(t => t.kind === "term").map(t => [sessionOf(t.arg), t]));
+  const fresh = paint(el, ss.map(s => {
+    const t = tabFor.get(s.name);
+    const claude = tmuxBase(s.name).startsWith("claude-");
+    const shownAt = t ? panes.indexOf(t.id) : -1;
+    // A session on a node says so (roadmap #24): it is in that machine's
+    // tmux, reached through the same tab, ended through its agent.
+    const pill = (shownAt === -1 ? ""
+      : `<span class="pill ok att">${isSplit() ? (shownAt === 0 ? "◧ " : "◨ ") : ""}attached</span>`)
+      + (s.node ? ` <span class="pill" title="runs on the node ${esc(s.node)}">on ${esc(s.node)}</span>` : "");
+    const tip = tabTitle(t || {kind:"term", arg: argForSession(s.name), label: s.name});
+    return `
+    <div class="row">
+      <div class="grow"><span class="name go" data-go="${esc(s.name)}" title="${esc(tip)}"
+        >${stateDot(s.claude)}${esc(names.get(s.name) || s.name)}</span> ${pill}
+        ${s.claude?.task && s.claude.state === "working"
+          // Only while it IS working. The task comes off the pane title, which
+          // Claude sets as it goes and never clears, so an idle session kept
+          // showing the last thing it happened to be doing, with no age on it
+          // and nothing to make it expire. "done: Nvidia EGL display error"
+          // reads as a status and is a fossil. A session that is not doing
+          // anything has no answer to "what is it doing", and the honest
+          // version of that is a blank line rather than an old one.
+          ? `<div class="sub" title="${esc(s.claude.task)}">working on: ${
+              esc(s.claude.task)}</div>` : ""}</div>
+      ${t ? (claude
+          ? `<button class="primary" data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}" title="end this Claude session: asks first">Close</button>`
+          : `<button class="primary" data-min="${esc(t.id)}" title="take its tab off the strip; it keeps running">Minimize</button>`)
+          : `<button data-a="${esc(s.name)}" title="reopen its tab">Open</button>`}
+      <button data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}" title="end this session">✕</button>
+    </div>`; }).join(""));
+  if (!fresh) return;
+  // On a phone the list is a flyout over the terminal, and picking a session
+  // is a request to look at it: the flyout gets out of the way.
+  const goTo = name => { if (isPhone()){ showSessions = false; drawKeys(); }   // even if the
+                         openTab({kind:"term", arg:argForSession(name), label:name}); };  // tab cap refuses
+  el.querySelectorAll("[data-a]").forEach(b => b.onclick = () => goTo(b.dataset.a));
+  el.querySelectorAll("[data-go]").forEach(n => n.onclick = () => goTo(n.dataset.go));
+  el.querySelectorAll("[data-min]").forEach(b => b.onclick = () => hideTab(b.dataset.min));
+  // Closing a terminal tab leaves its session running, so this is where one
+  // actually gets ended: otherwise they would only ever accumulate.
+  el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => killSession(b.dataset.k, b.dataset.kn));
+}
+
+// `node` is the id of the node the session runs on, when the row said so:
+// the same name can exist here and there: a project unbound from a node
+// while a session was still open on it, and the row knows which it meant.
+async function killSession(name, node = ""){
+  const claude = tmuxBase(name).startsWith("claude-");
+  if (!confirm(claude
+        ? `End the Claude session "${name}"?\n\nThe transcript is kept and can be `
+          + `resumed later, but the conversation stops now.`
+        : `End the session "${name}"?\n\nAnything running in it is terminated.`)) return;
+  try{
+    const j = await endSession(name, node);
+    if (j.error){ notify(j.error, true); return; }
+    // Its tab, if one is open, is now pointing at nothing.
+    const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === name);
+    if (t) dropTab(t.id);
+    notify(`ended ${name}`);
+  }catch(e){ notify("could not end it: " + e, true); }
+  refresh();
+}
+
+// End a session, no questions asked. killSession is this with the dialog in
+// front of it; Sign in is this without one, because the person just pressed a
+// button that says what it does.
+async function endSession(name, node = ""){
+  const r = await postJSON("/api/session", {action:"kill", session:name, node});
+  return r.json();
+}

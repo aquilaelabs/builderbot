@@ -1,0 +1,92 @@
+"""What a session's hooks have to say, from a NODE (roadmap #24).
+
+bb-work-note and bb-prompt-relay write this container's /config when they
+run here: the overlap notes, the project's chat feed. On a node there is no
+/config, so they post the same things to /api/v1/hook with the session's
+token, and the same modules write them: `note` (a file the session is about
+to edit, with a guess at the symbol; answers who else has it open), `asked`
+(what the person typed, into the project feed), `started` (the session
+began, and this is the only place that is announced from, since every
+session is on a node), `seen` (what the notebook has done since this
+session was last told; the answer goes back into the turn the hook is
+already in, which is how a session stays current without anybody pressing
+a button, roadmap #27), and `turn` and `turn-done` (a prompt about to
+start, or a turn over: turns.py).
+
+The account is the token's, never the request's: the server checks the
+token and hands verb() the account and project it was minted for, and
+that is who the note is filed under and who the feed says asked.
+"""
+from fields import field
+
+# The server's, handed over by configure(): the account store, the overlap
+# notes, the chat feed, the notebook's catch-up and what it had waiting, the
+# turn queue and the node registry, and two of the server's own: what a
+# session is told it has not seen (session_seen_note) and which node and
+# limit its turns count against (turn_scope).
+users = None
+overlap = None
+chat = None
+roadmap = None
+pending = None
+turns = None
+nodes = None
+seen_note = None
+turn_scope = None
+
+
+def configure(**deps):
+    globals().update(deps)
+
+
+def verb(kind, req, me, uid, project):
+    """One hook's word for the session `me` names, running as `uid` on
+    `project`. (payload, status)."""
+    store = users.load()["users"]
+    name = next((n for n, u in store.items() if u.get("uid") == uid), "") or uid
+    if kind == "note":
+        path = str(req.get("path") or "")[:400]
+        if not path:
+            return {"error": "a note names a file"}, 400
+        others = overlap.others_touching(project, uid, path)
+        overlap.note(project, uid, path, str(req.get("symbol") or "")[:120])
+        by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
+        return {"ok": True, "others": [by_uid.get(o, o) for o in others]}, 200
+    if kind == "asked":
+        text = str(req.get("text") or "").strip()[:800]
+        if not text:
+            return {"error": "nothing asked"}, 400
+        chat.post(project, uid, f"{name} asked: {text}", kind="asked")
+        return {"ok": True}, 200
+    if kind == "started":
+        chat.event(project, uid, f"{name} started a Claude session on {project}"
+                                 + (f" ({field(req, 'node')})" if field(req, "node") else ""))
+        seen_note(project, uid, field(req, "node"), who=me, begin=True)
+        return {"ok": True}, 200
+    if kind == "seen":
+        # What this session has not been told about the notebook, and
+        # marked told (roadmap #27). The answer rides back into the turn
+        # the hook is already in, so nothing is spent on saying it.
+        # ...and what the operator decided about anything it had waiting
+        # for approval, which is the other half of #27.
+        line = " ".join(x for x in (roadmap.catchup(project, uid),
+                                    pending.settled_line(project),
+                                    seen_note(project, uid, field(req, "node"), who=me)) if x)
+        return {"ok": True, "line": line}, 200
+    if kind in ("turn", "turn-done"):
+        # A prompt about to start, or a turn over (turns.py): how many
+        # sessions on one node work at once, when an administrator has
+        # said. No node to count on, or no limit, and every turn goes.
+        scope = turn_scope(project, uid)
+        if not scope:
+            return {"ok": True, "go": True}, 200
+        nid, key, limit, heart, at = scope
+        if kind == "turn-done":
+            turns.done(nid, key)
+            return {"ok": True}, 200
+        r = turns.ask(nid, key, limit, heart, at)
+        if not r["go"]:
+            n = nodes.node(nid) or {}
+            r["node"] = n.get("name") or nid
+        return {"ok": True, **r}, 200
+    return {"error": "a hook is note, asked, started, seen, turn or turn-done"}, 400

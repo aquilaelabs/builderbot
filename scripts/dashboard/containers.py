@@ -27,20 +27,51 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import devapp  # noqa: E402
+from fields import field  # noqa: E402
+
+# What the verbs at the foot need from the rest of the server, set by
+# server.py: a project's Run its container dial, the account store, the
+# asking (phone.ask_rebuild), and the sessions' networks told when a
+# container changes hands (R79).
+dial = None
+users = None
+ask_rebuild = None
+net_nudge = None
 
 
-def _known_container(name):
-    """The container the daemon just reported under this name, or None.
+def _targets(name):
+    """The containers `name` means, as the daemon reports them now: the one
+    it lists under that name or id, else every container of the instance or
+    written container the Docker tab lists as `name`.
 
     The rule every executing surface here follows: what reaches a command
     line is a string this server handed out. A name typed by somebody, or
     remembered by a page from a listing five minutes old, is not that, so it
     is looked up again before it is used (R68 step 1).
+
+    The second half is what `bb devapp ls` prints: an instance under its
+    compose name, whose containers are named for it and its services
+    (mediareducer-dev-mediareducer-1). Looked up by container name alone, that
+    name found nothing, and a project's own dev instance was refused to its
+    session as not its own, its log with it (reports #4, #6 and #9).
     """
-    for c in (devapp.containers().get("containers") or []):
-        if name and (c.get("name") == name or c.get("id") == name):
-            return c
-    return None
+    got = devapp.containers().get("containers") or []
+    one = [c for c in got if name and (c.get("name") == name or c.get("id") == name)]
+    if one:
+        return one[:1]
+    row = devapp.row_named(name)
+    if not row:
+        return []
+    pn = devapp._pname(*row)
+    return [c for c in got if c.get("project") == pn]
+
+
+def _known_container(name):
+    """The container the daemon just reported under this name, or None: the
+    first of what the name means, which for an instance is one of its
+    services (its project is the instance's, so a row's owner is read off
+    it the same)."""
+    return (_targets(name) or [None])[0]
 
 
 def container_ctl(name, what):
@@ -54,15 +85,16 @@ def container_ctl(name, what):
     """
     if what not in devapp._CTL_OK:
         return {"error": f"a container is started, stopped or restarted, not {what!r}"}
-    c = _known_container(name)
-    if not c:
+    cs = _targets(name)
+    if not cs:
         return {"error": f"no container called {name} on this daemon now: the list is "
                          "read again before anything is acted on, and it has moved"}
-    r = devapp._run([devapp.DOCKER, what, c.get("name") or c.get("id")], timeout=60)
+    # Every container the name means: an instance's services together.
+    r = devapp._run([devapp.DOCKER, what, *[c.get("name") or c.get("id") for c in cs]], timeout=60)
     if r["code"] != 0:
         return {"error": devapp._why_not(r["out"]) or f"{what} failed"}
-    return {"ok": True, "out": f"{what}ped {c.get('name')}" if what == "stop"
-                               else f"{what}ed {c.get('name')}"}
+    did = ", ".join(c.get("name") or c.get("id") for c in cs)
+    return {"ok": True, "out": f"{what}ped {did}" if what == "stop" else f"{what}ed {did}"}
 
 
 def owned_container(name):
@@ -88,22 +120,44 @@ def container_logs(name, lines=None):
     page is not a download: LOG_LINES is what a restart loop needs to be
     legible.
     """
-    c = _known_container(name)
-    if not c:
+    cs = _targets(name)
+    if not cs:
         return {"error": f"no container called {name} on this daemon now"}
     n = str(int(lines or devapp.LOG_LINES))
-    r = devapp._run([devapp.DOCKER, "logs", "--tail", n, "--timestamps",
-                     c.get("name") or c.get("id")], timeout=30)
-    # A container that has said nothing is not an error, and neither is one
-    # whose log the daemon answered on stderr: docker writes a container's
-    # own stderr there, which for most images is most of the log.
-    if r["code"] != 0 and not (r["out"] or "").strip():
-        return {"error": devapp._why_not(r["out"]) or "could not read the log"}
-    return {"ok": True, "name": c.get("name") or c.get("id"),
-            "text": (r["out"] or "")[-60000:]}
+    parts = []
+    for c in cs:
+        r = devapp._run([devapp.DOCKER, "logs", "--tail", n, "--timestamps",
+                         c.get("name") or c.get("id")], timeout=30)
+        # A container that has said nothing is not an error, and neither is
+        # one whose log the daemon answered on stderr: docker writes a
+        # container's own stderr there, which for most images is most of
+        # the log.
+        if r["code"] != 0 and not (r["out"] or "").strip():
+            return {"error": devapp._why_not(r["out"]) or "could not read the log"}
+        # An instance's services, each under its name; one container, as it is.
+        parts.append((f"== {c.get('name') or c.get('id')} ==\n" if len(cs) > 1 else "")
+                     + (r["out"] or ""))
+    return {"ok": True, "name": name if len(cs) > 1 else (cs[0].get("name") or cs[0].get("id")),
+            "text": "\n".join(parts)[-60000:]}
 
 
 COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
+
+
+def name_free(name):
+    """Why a container cannot be made under `name`, or "": one the store
+    has, or a name another project's instance resolves to. Asked before a
+    session's request reaches the bell as well as by create_container, so an
+    administrator is not asked to decide on a request no answer can build
+    (B309). The way forward is named rather than "pick another name": the
+    usual reason to ask again under a name is to change that container,
+    and a second name is a second container on the same data."""
+    slug = devapp._slug(name) or ""
+    if slug in devapp._load():
+        return (f"{slug} already exists here. To change it, the operator removes it from "
+                "the Docker tab first, or a session changes a variable with bb devapp "
+                f"--container {slug} env set FILE and then bb devapp --container {slug} rebuild")
+    return devapp.name_clash(slug, devapp.MAIN)
 
 
 def create_container(name, compose_text, env_text="", node="", for_project=""):
@@ -135,11 +189,9 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
             return {"error": why}
     node = node or devapp._node_here()
     with devapp._lock:
-        if slug in devapp._load():
-            return {"error": f"{slug} already exists; pick another name"}
-        clash = devapp.name_clash(slug, devapp.MAIN)
-        if clash:
-            return {"error": clash}
+        why = name_free(slug)
+        if why:
+            return {"error": why}
     d = devapp.containers_dir(slug)
     try:
         d.mkdir(parents=True, exist_ok=True)
@@ -279,3 +331,151 @@ def set_container_owner(name, owner):
         devapp.write_json(devapp.OWNERS, d)
     devapp._bump()
     return {"ok": True, "owner": owner}
+
+
+# ---- the Docker tab's verbs, one call from the dashboard -----------------------
+
+def not_ours(what, sess=""):
+    """The refusal for a container that does not belong to the caller's
+    project. The owner is not named: to a session that would be another
+    project's name, which is the thing it may not read."""
+    return (f"{what} does not belong to {sess}: a session reaches its own project's "
+            "containers, and an administrator sets which project each belongs to on "
+            "the Docker tab" if sess else
+            f"{what} does not belong to one of your projects: an administrator sets "
+            "which project each container belongs to on the Docker tab")
+
+
+def _answer(r):
+    return r, (400 if r.get("error") else 200)
+
+
+def session_verb(sess, me, act, name, req):
+    """A SESSION's word on one container that belongs to its project (the
+    operator, 24 Sep): on its project's nodes, its log when it asks, since
+    that is reading it, and start, stop or restart as the project's Run its
+    container setting allows. (payload, status)."""
+    # Looked for on each of the project's nodes, primary first: its
+    # containers live on any of them (R82), and asking the primary
+    # alone refused the project's own dev instance on its second
+    # node as not its own (B268).
+    c, owner, nid = None, "", devapp.project_daemon(sess)
+    for cand in (devapp.nodes_of(sess) or [nid]):
+        with devapp.on_node(cand or None):
+            c, owner = owned_container(name)
+        if c:
+            nid = cand
+            break
+    # A stranger's container and a missing one answer alike; one of the
+    # project's own with nothing running under it is said as that.
+    if owner != sess:
+        row = devapp.row_named(name)
+        if row and devapp.owner_of(*row) == sess:
+            return {"error": f"{name} has no containers on its node now: bb devapp says "
+                             "whether it is built and up"}, 400
+        return {"error": not_ours(name, sess)}, 403
+    if act == "logs":
+        with devapp.on_node(nid or None):
+            return container_logs(name), 200
+    if act not in ("start", "stop", "restart"):
+        return {"error": f"a session starts, stops or restarts a "
+                         f"container, or reads its log, not {act!r}"}, 400
+    mode = dial(sess)
+    if mode == "deny":
+        return {"error": devapp.RUN_DENIED}, 403
+    if mode == "ask":
+        acct = users.account_of(me) or {}
+        return _answer(ask_rebuild(
+            field(req, "why"), sess, "", c["name"],
+            asker_uid=str(acct.get("uid") or ""),
+            asker_name=str(acct.get("name") or ""),
+            asker_admin=users.is_admin(acct), ctl=act, node=nid))
+    with devapp.on_node(nid or None):
+        return _answer(container_ctl(name, act))
+
+
+def admin_verb(act, name, nid, under):
+    """An administrator's word on one container on node `nid`: which project
+    it belongs to (`under`, one the server has checked, or none), its log,
+    or start, stop and restart. Every docker call is addressed at that
+    node's daemon, the way the manager's own listing is. (payload,
+    status)."""
+    with devapp.on_node(nid or None):
+        if act == "owner":
+            r = set_container_owner(name, under)
+            # Whose it is also decides whose sessions may reach it (R79).
+            if not r.get("error"):
+                net_nudge()
+            return _answer(r)
+        if act == "logs":
+            return container_logs(name), 200
+        return _answer(container_ctl(name, act))
+
+
+def tab_verb(act, name, req, seen):
+    """A container from a compose file written on the Docker tab, with no
+    project behind it: read or save one, or create one. `seen()` is the
+    projects this account sees. (payload, status)."""
+    if act == "read":
+        if name not in overview_names():
+            return {"error": f"no container {name}"}, 400
+        return read_container(name), 200
+    if act == "save":
+        if name not in overview_names():
+            return {"error": f"no container {name}"}, 400
+        return _answer(update_container(name, req.get("compose") or "", req.get("env") or ""))
+    if act != "create":
+        return {"error": f"unknown action: {act}"}, 400
+    # A name that is also a project would collide in the store, which is
+    # keyed by one namespace for both kinds, and the collision is on the
+    # SLUG, not the typing. `builderbot` is not the project `BuilderBot`
+    # by string comparison and is exactly it by the time _pname has run:
+    # same compose project name, same env file, same data directory, with
+    # nothing anywhere saying the two had met.
+    mine = seen()
+    clash = next((p for p in mine if devapp._slug(p) == devapp._slug(name)), "")
+    if name and clash:
+        return {"error": f"that is the project {clash}: a "
+                         f"container written here needs a name "
+                         f"of its own"}, 400
+    # The project it belongs to, when one is picked: only a project this
+    # account can see, or none.
+    under = field(req, "owner")
+    if under and under not in mine:
+        return {"error": f"not a project: {under}"}, 400
+    r = create_container(name, req.get("compose") or "",
+                         req.get("env") or "", field(req, "node"), under)
+    # Made for a project: its sessions may reach it (R79).
+    if not r.get("error") and under:
+        net_nudge()
+    return _answer(r)
+
+
+def manager_view(nid, seen):
+    """The Docker manager's whole page in one answer: every instance bound
+    to the node, and every container on that node's daemon that is not one
+    of them. `seen` is None for an administrator, or the projects whose
+    instances and containers this account may see: a node is shared, and
+    anything else on it is another project's work, or nobody's (the
+    operator, 24 Sep)."""
+    # Refresh is the retry: drop the memoised availability first, so a
+    # daemon wired up thirty seconds ago is noticed by pressing the
+    # button rather than by waiting for the memo to lapse.
+    devapp.forget_available()
+    got = devapp.overview(nid or None)
+    if seen is not None:
+        got["instances"] = [i for i in got.get("instances") or []
+                            if i.get("owner") in seen]
+        got["containers"] = [c for c in got.get("containers") or []
+                             if c.get("owner") in seen]
+        # The branches go with them: the Build from picker is an
+        # administrator's.
+        got["refs"] = {}
+        return got
+    # The branches each listed project could be built from. Here
+    # rather than per row: they come from one `for-each-ref` per
+    # project, and the picker needs them before anybody presses.
+    got["refs"] = {p: devapp.refs_of(p)
+                   for p in {i["project"] for i in got.get("instances") or []}
+                   if not devapp.is_file_source(p)}
+    return got

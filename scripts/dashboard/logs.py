@@ -30,6 +30,11 @@ import threading
 import time
 from pathlib import Path
 
+# What download() needs for the diagnostics, set by server.py: the report
+# bb diag prints (diag.report), and the audit row a read of it writes.
+diag_report = None
+audit = None
+
 STATE = None
 write_json = None
 _lock = threading.Lock()
@@ -293,3 +298,39 @@ def _ci_entries():
             out.append({"path": f, "arc": f"ci/{repo.name}/{f.name}",
                         "bytes": st.st_size, "mtime": int(st.st_mtime)})
     return out
+
+
+# ---- the Controller settings' log controls, one call each from the dashboard ----
+
+def download(what, principal):
+    """A download for an administrator: the diagnostics whole (`diag`), the
+    whole log archive (`archive`), or the container's own session log.
+    ((filename, bytes, content type), 200), or an error and its status."""
+    if what == "diag":
+        # The controller's diagnostics whole, the report bb diag prints
+        # with what sessions have reported about BuilderBot among it, as
+        # one file to keep or hand over (the operator, 24 Sep). Redacted
+        # as they always are, and on the audit trail as a read of them
+        # through the API is.
+        audit(principal, "diag-download", "diagnostics", {})
+        data = (json.dumps(diag_report(), indent=2) + "\n").encode()
+        return (time.strftime("builderbot-diagnostics-%Y%m%d-%H%M.json"), data, "application/json"), 200
+    if what == "archive":
+        data, err = archive_bytes()
+        if data is None:
+            return {"error": err}, 500
+        return ("builderbot-logs.tar.gz", data, "application/gzip"), 200
+    return ("builderbot-session.log", session_bytes(), "text/plain; charset=utf-8"), 200
+
+
+def verb(act, req):
+    """The log policy, and the two things that can be done to the pile:
+    how many days are kept, and clearing it. Reading is a download rather
+    than a view: these are megabytes of plain text, and a browser is better
+    at saving one than this is at paginating it. (payload, status)."""
+    if act == "days":
+        r = set_days(req.get("days"))
+        return r, (400 if r.get("error") else 200)
+    if act == "clear":
+        return clear(), 200
+    return {"error": f"unknown action: {act}"}, 400

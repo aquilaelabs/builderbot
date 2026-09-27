@@ -17,6 +17,9 @@
 // Fetched on demand rather than on the fifteen-second poll: a probe is a job
 // on the node, so the tab asks when it is opened or pressed, and the server
 // answers from its cache in between.
+
+"use strict";
+
 let ph = null, phBusy = "", phRev = 0;
 let phNode = "";                 // the picked node's id; "" until the first answer
 // Held outside the render, because the tab is rebuilt whole on every draw and

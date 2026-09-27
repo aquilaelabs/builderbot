@@ -481,3 +481,68 @@ def replay(project, verb, args):
         return {"error": f"not a settings change that can be replayed: {verb}"}
     return session_set(project, **{k: v for k, v in (args or {}).items() if k in SESSION_FIELDS})
 
+
+# ---- the settings dialog's save, one call from the dashboard ------------------
+
+# What dialog_save() needs from the server, set by configure_dialog: the
+# projects' directory (set_prefs reads a project's files), a dev instance
+# pinned to the node it is on before its project moves
+# (devapp.pin_to_current_node), a project's Claude session ended
+# (end_claude), and the sessions' networks told (R79).
+WORKSPACE = None
+pin_instances = None
+end_claude = None
+net_nudge = None
+
+
+def configure_dialog(**parts):
+    globals().update(parts)
+
+
+def dialog_save(name, req, uid):
+    """A project's settings dialog saved, once server.py has let this person
+    at the project, its node and its container dial: the project's own
+    settings, and what is the asking account's. (payload, status)."""
+    # A dev instance with no node of its own follows the project's, so a
+    # node change would move its row onto a daemon that has none of it
+    # while its containers carry on running where they are. They stay up
+    # on purpose: an instance is removed from the Docker manager, never by
+    # a setting changed somewhere else. So they keep their row too, pinned
+    # to the machine they are actually on, and the manager can still stop
+    # or remove them. Before the write, because afterwards the old node is
+    # not recorded anywhere.
+    moved = []
+    moved_node = False
+    if "node" in req and str(req.get("node") or "") != (get(name) or {}).get("node", ""):
+        moved = pin_instances(name)
+        moved_node = True
+    r = set_prefs(name, node=req.get("node"), nodes=req.get("nodes"),
+                  build=req.get("build"),
+                  test=req.get("test"), outputs=req.get("outputs"),
+                  gate=req.get("gate"), gitpol=req.get("gitpol"),
+                  devbuild=req.get("devbuild"),
+                  tests_in=req.get("tests_in"),
+                  test_change=req.get("test_change"), brief=req.get("brief"),
+                  report=req.get("report"),
+                  color=req.get("color"),
+                  workspace=WORKSPACE)
+    # ...and what is the ASKING ACCOUNT's rather than the project's: the
+    # model and effort its sessions launch on, and the author its commits
+    # here carry. Same dialog, same request, different store, because two
+    # people on one project are two authors on two models and neither
+    # should be able to change the other's (17 Sep).
+    mine = {k: req[k] for k in ("model", "effort", "git_name", "git_email", "reply", "asks") if k in req}
+    if mine and not r.get("error"):
+        r = dict(r) | {"yours": set_for_user(uid, name, mine)}
+    # The restart is asked for by the dialog, which is where the
+    # operator was told what it costs, and never inferred here from the
+    # change alone, because the same write happens when nothing is
+    # running and there is nothing to interrupt.
+    if not r.get("error") and req.get("restart"):
+        r |= end_claude(name)
+    if moved and not r.get("error"):
+        r = dict(r) | {"pinned": moved}
+    # A project on another node owns its instances somewhere else now (R79).
+    if moved_node and not r.get("error"):
+        net_nudge()
+    return r, (400 if r.get("error") else 200)

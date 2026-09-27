@@ -6,7 +6,7 @@
 // here, before the app finds out by drawing blanks. Moving the surface is
 // fine; moving it without the app is what this catches.
 import { ok, done, URL, DIR } from './lib.mjs';
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -72,14 +72,18 @@ ok(missing.length === 0, `every path the app reads answers with the fields it dr
 
 // ---- every POST action the app sends is one the server knows --------------------------
 // Read from the source rather than sent: a real send would change the
-// fixture. The handler for each path names its actions as `act == "x"` or
-// a tuple, and each one the contract lists must appear.
+// fixture. The handler for each path, or the module it calls into (a
+// handler is a gate plus one call, R77), names its actions as `act == "x"`
+// or a tuple, and each one the contract lists must appear in one of them.
+const DASH = join(REPO, 'scripts', 'dashboard');
+const serverSrc = readdirSync(DASH).filter(f => f.endsWith('.py'))
+  .map(f => readFileSync(join(DASH, f), 'utf8')).join('\n');
 let unknown = [];
 for (const e of surface.endpoints) {
   if (e.method !== 'POST') continue;
   for (const a of e.actions || []) {
     if (a.startsWith('(')) continue;
-    if (!new RegExp(`"${a}"`).test(serverPy)) unknown.push(`${e.path}: ${a}`);
+    if (!new RegExp(`"${a}"`).test(serverSrc)) unknown.push(`${e.path}: ${a}`);
   }
 }
 ok(unknown.length === 0, `every action the app posts is one the server names${unknown.length ? ': ' + unknown.join('; ') : ''}`);

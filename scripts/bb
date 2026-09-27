@@ -23,219 +23,360 @@ BB_LIB="$(dirname "$(readlink -f "$0")")/lib"
 export BB_LIB
 
 usage() {
+    # The one owner of the bb reference: README.md's block is written from
+    # this by tools/readme-bb-ref.sh, and bb lint fails when the two differ
+    # (R91 step 5). Column 0 for a verb, 19 in for a line that continues it.
     cat <<'EOF'
 bb: BuilderBot helper
 
-  bb status              show tool versions, runner state and mounted projects
-  bb version             this project's version, and who is allowed to move it
-  bb version --code      one form only: --code (Android versionCode), --quad
-                         (= --win: manifest.json and Windows VERSIONINFO),
-                         --msi, --pep440, --file, --semver, --json
-  bb version bump PART   move the target: major|minor|patch, if policy allows
-  bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
-  bb version unbump      take an unreleased bump back; its changelog section
-                         dissolves into Unreleased, the code stays
-  bb version --list      every version this repo carries: its own, and any
-                         component, a directory with its own VERSION file
-  bb version --for DIR   ask about one component instead of the project
-  bb version policy      what a session may move here, and who decides
-  bb changelog           this project's user-facing changelog (--for DIR)
-  bb changelog add "..." --cat NAME   log what a change means for the person
-                         using it; the next version bump dates the lines.
-                         A category is required: Added, Changed, Deprecated,
-                         Removed, Fixed or Security (run it without one for
-                         when each applies), or a project's own, kept as typed
-  bb changelog unreleased  the entries waiting for a bump, numbered by
-                         category, in the order somebody arranged them
-  bb changelog edit N "..."  reword one of them: a change that tweaks something
-                         already logged this cycle corrects its line, not adds one.
-                         --cat NAME on its own moves it and leaves the words;
-                         --no-stamp corrects a line without claiming a commit
-  bb changelog merge N M "..."   one line for several, carrying all their commits
-  bb changelog split N   back into one line per commit it carries
-  bb changelog rm N      drop one that stopped being true
-  bb projects            list mounted project directories
-  bb shell               open a login shell as the builder user
-  bb login               run the Claude Code auth flow. On a node it first
-                         keeps this account's login in step with the
-                         controller's, in whichever direction is newer
-  bb login --check       the quiet half: what this machine is signed in as,
-                         told to the controller, and a sign-out taken here
-  bb git push|fetch|pull|ls-remote [ARGS]
-  bb git policy      what a session may push here (its branch, main) from the
-                     project's Git view; the controller enforces it on the relay
-                         git's network half, run where the credential is: from a
-                         session on a node it goes through the controller
-  bb emu start [API]     boot the emulator headless (e.g. `bb emu start 37`)
-  bb emu stop            shut the emulator down
-  bb emu status          adb devices
-  bb emu list            configured API levels and the AVDs that exist
-  bb emu log [-p] [N]    this boot's emulator log, or -p for the one before it
-  bb emu gpu             which renderer a start would use, and why
-  bb emu create API      build the AVD for an API level (images installed if missing)
-  bb emu install APK     install an APK on the running emulator
-  bb emu shot [FILE]     screenshot the emulator into dist/emu/
-  bb emu gfx PKG [FILE]  a package's per-frame timings (gfxinfo framestats) into dist/emu/
-  bb emu images [--available]  the system images on this machine's store, or every one there is
-  bb emu flavors         google_apis, +playstore, tv, wear: what each is for
-  bb emu image add|remove ID  put a system image on this machine's store, or take one off
-                         (every emu verb runs on the project's node when it has one)
-  bb ci-labels [--write] the runner labels the registry knows; --write regenerates
-                         .github/actionlint.yaml from them
-  bb lint [PATH]         lint the infrastructure files a repo carries: shell
-                         scripts, Dockerfiles, GitHub workflows, compose, XML
-  bb roadmap             this project's roadmap (add/done/rm/shelve/history)
-  bb roadmap show N      one item in full: its details, its steps and theirs
-  bb roadmap add "..." [--step "..."]   an item, or an ordered group of steps
-  bb bug                 this project's bug tracker: open bugs, newest first
-  bb bug find TEXT       search the reports themselves: area and repro included
-  bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
-  bb bug na N ["why"]    it was real and stopped applying: the feature went
-  bb bug rm N ["why"]    delete a report that should not have been filed
-  bb tests run [ARGS]    run the project's test command, time it, and record the run.
-                         Ends by NAMING what went wrong: the failed assertions,
-                         and for a file that crashed the line it died on.
-                         ARGS go to the command, so a suite that takes file
-                         names runs only those: `bb tests run auth cards`
-  bb tests last          that verdict again from the last run's log, running nothing
-  bb tests log [-f]      the last run's output, whole; -f follows a run still going
-  bb tests lab           the lab suites, against real services: the dev stack's Gitea, a real node
-  bb tests probe FILE    a scratch Playwright script against the dashboard fixture, like a suite
-  bb tests keep [stop|log]  keep the fixture up, so a suite or a probe attaches to it
-  bb tests preflight [--dry] [--base REF] [--files F...]  the suites and checks a change touches, run
-  bb tests coverage [SUITE...]  a covered run: which functions the suites reach, into bb map coverage
-  bb devapp test [ARGS]  the project's test command inside its running dev instance, log and exit code
-                         (--instance NAME on any devapp verb for a project with several)
-  bb rules               the house rules for this project: the operator's and yours
-  bb rules show NAME     one of them in full: what a conditional rule says
-  bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
-  bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
-  bb rules history       what has changed them, by either of you
-  bb preamble            what a session started here is handed: rules, roadmap, bugs
-  bb tests               the test registry: where the suite's time goes, slowest first
-  bb tests show KEY      one test: what it protects, what it exercises, its history
-  bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
-  bb tests describe --from FILE.json      fill many at once, in one write
-  bb tests ingest [LOG]  record a run's real durations (BB_TEST_TIMING=1 output)
-  bb tests drift         what the runner reported that this list does not, and back
-  bb tests flagged       the ones sitting on a round timeout rather than working
-  bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
-  bb tests projection    when a run should finish, from what the last one took
-  bb history [--find X]  one search over the notebook: roadmap, bugs, memory
-                         and the scanner's logs
-  bb nodes               the node registry, read-only (docs/nodes.md phase 1)
-  bb users               the dashboard's accounts; passwd NAME is the way back in
-  bb users token PROJECT [ACCOUNT]  a session token for one project (and one
-                         account), for a node proved by hand
-  bb settings [--json]   this project's settings as the dashboard has them
-  bb settings set build|test|outputs VALUE   fill one in for the operator; held
-                         or refused where the project's gate says so
-  bb work                who else is changing this project, and which files
-                         two of you have open at once
-  bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended;
-                         an id prints that job's log, which is where a failure
-                         says what happened
-  bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node,
-                         stream the log back; --out GLOB brings files into dist/
-  bb build               the project's build command, on its node (settings dialog)
-  bb test [ARGS]         the project's test command, on its node or inside its
-                         dev instance as its settings say (Tests run); ARGS are
-                         appended to it, to narrow a run to some of it
-  bb devapp              this project's dev instance: built from what, running,
-                         and whether its daemon answers
-  bb devapp rebuild [--why "..."]
-                         build it and bring it up. Only where the project's
-                         settings hand that over (Claude may: Run its
-                         container). On `ask` the reason goes to a person and
-                         this waits for their answer
-  bb devapp new [--env FILE] [--why "..."]
-                         create the project's container from its own compose
-                         file when it has none, under the same setting
-  bb devapp remove [--why "..."]
-                         take it out of the manager, under the same setting;
-                         its env and data stay for a remake
-  bb devapp env [set FILE|-] [--why "..."]
-                         print its env, or replace it, under the same setting.
-                         The env is kept by BuilderBot, not as a file in the
-                         project: a compose line `env_file: .env` is pointed
-                         at it when the container runs
-  bb devapp ls           every container that belongs to this project on its
-                         node: its own, one written for it, one somebody else
-                         started that the operator put under it
-  bb devapp log NAME     one of those containers' log
-  bb devapp start|stop|restart NAME [--why "..."]
-                         one of those, under the same setting
-                         (--container NAME on status, rebuild, env and test,
-                         for one of them that is not the project's own)
-  bb findings [PATH]     digest scanner SARIF findings for this project
-  bb findings --all      ...including findings in other projects' trees
-  bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
-  bb findings history    what the scanner stopped and started saying here
-  bb findings sample [--remove]   write a clearly-fake report, so the Analysis
-                         surfaces can be worked on where no scanner runs
-  bb token keep          store BB_TOKEN where this account's sessions read it
-                         (-n N, --since 7d, --find TEXT, as the other logs)
-  bb phone               what phone is connected, and what is waiting on you
-  bb root                what root commands are waiting on an administrator
-  bb root run --why "..." -- CMD...    ask for ONE command as root on this
-                         project's node; an administrator allows or denies it
-  bb phone run --why "..." -- adb args...    ask to reach it; the operator
-                         allows it on the dashboard and this runs it there
-  bb container           what container asks are waiting on an administrator
-  bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
-                         ask for a container built from that compose file; an
-                         administrator reads it and allows or denies it
-  bb catchup             what has happened here lately: commits and the first
-                         line of their bodies, what moved in the notebook, the
-                         builds, and which image this box is running
-  bb ci-log              what CI printed on its last run here; the runner
-                         keeps none of it, so the workflow archives it
-  bb ci-log --list       the runs kept for this project, newest first
-  bb logs [-f] [N]       show this boot's log (default: last 100 lines)
-  bb diag [--json] [SECTION...]
-                         the controller's diagnostics: its build and images,
-                         the doctor, each node's agent and sessions, failed
-                         jobs, error lines in its logs, the audit trail, the
-                         reports sessions made about BuilderBot; for a
-                         session, behind debug mode and its node's grant
-  bb report "..." [--area A] [--repro "..."]
-                         a problem with BuilderBot itself, sent to its
-                         maintainers rather than filed here; bb report alone
-                         says what became of this project's reports
-  bb report file N [--sev S] [--as BUG] | close N "why"
-                         turn a report into a bug in this tracker (or mark it
-                         as one already there), or close it; behind the
-                         diagnostics' gate, for BuilderBot's own sessions
-  bb logs -p [N]         show a previous boot's log (the log rotates per start)
-  bb logs --list         list the kept boot logs, newest first
-  bb logs --node NAME [--agent|--runner|--terminal] [N]
-                         a MACHINE's own log, which is root's on that box:
-                         the agent's journal, the runner's, the terminal
-                         server's. Offered only while the controller's debug
-                         mode is on and only to a node granted that node on
-                         its Debug settings, its own included. Without it a
-                         session reads its project's CI and test logs alone
-  bb doctor              check the things that usually go wrong
+bb status          tool versions, runner registration, mounted projects
+bb version         this project's version, and who is allowed to move it
+bb version --code  one form only: --code (Android versionCode), --quad (= --win:
+                   manifest.json and Windows VERSIONINFO), --msi, --pep440,
+                   --file, --semver, --json
+bb version bump major|minor|patch    move the target, if the policy allows it.
+                   A bump decides the number and closes the changelog under
+                   it; it does not release anything. **Release** on the
+                   Artifacts tab is the second gesture: an annotated tag
+                   (vX.Y.Z, or DIR-vX.Y.Z for a component) on the commit you
+                   are on, pushed to the remote. Until that tag exists every
+                   build reads X.Y.Z-dev.N+sha, which sorts BEFORE X.Y.Z,
+                   heading for it rather than at it; from the tag on, a build
+                   of that commit is the bare number. Releasing is the
+                   operator's whatever the policy says, and a pushed tag is
+                   never moved or deleted from the dashboard.
+                   A repo that carries its number somewhere else as well
+                   (an agent's protocol number, a template's stamp) declares
+                   that by carrying an executable `tools/version-stamp`, run
+                   from the repo root with the new version and the part that
+                   moved. Whatever it changes is committed with VERSION, so
+                   the bump is one commit or none: a hook that fails refuses
+                   the bump rather than leaving the number moved and its twin
+                   behind. A repo without one is unaffected
+bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
+bb version unbump      take an unreleased bump back; its changelog section
+                   dissolves into Unreleased, the code stays
+bb version --list  every version this repo carries: its own, and any component
+bb version --for DIR   ask about a component: a directory with its own VERSION
+bb version policy  what a session may move here, and who decides. The
+                   operator picks it on the Artifacts tab, before or after
+                   there is a version: locked (theirs entirely), may start
+                   one (a session writes the FIRST version and moves nothing
+                   after), patch, patch and minor, or anything
+bb changelog       this project's user-facing changelog (--for DIR for a component)
+bb changelog add "..." --cat NAME   log what a change means for the person using
+                   it; the next version bump dates the accumulated lines. A
+                   category is required, and the tool is where the rule lives:
+                   Added (somebody can do something they could not), Changed
+                   (already here, now different), Deprecated (going away),
+                   Removed (gone), Fixed (was wrong, now right), Security
+                   (act on it because of what it exposed). When two fit, the
+                   one a reader would look under; something nobody using the
+                   product would notice gets no entry. Run without a category
+                   and it prints this. A name that means one of the six is
+                   spelled the one way (`fix` files under Fixed), the six keep
+                   their usual order among themselves, and a project that
+                   files its own way names its own category, kept as typed and
+                   placed at the end: a default, which a house rule overrides.
+                   What order the categories and their lines sit in is still
+                   the operator's, on the Changelog editor beside the version
+bb changelog unreleased  the entries waiting for a bump, numbered straight
+                   through the section by category, in the arranged order
+bb changelog edit N "..."  reword one of them: a change that tweaks something
+                   already logged this cycle corrects its line rather than adding one,
+                   and the line gains that commit. --cat NAME on its own moves it
+                   and leaves the words, filing it at the end of that category the
+                   way add --cat does, so re-filing a line into its own category
+                   sends it to the bottom, which is the ordering a session has.
+                   --no-stamp corrects a line without claiming a commit made it,
+                   which is what a pass over the wording is
+bb changelog merge N M "..."   one line for several, carrying all their commits
+bb changelog split N     back into one line per commit it carries
+bb changelog rm N        drop one that stopped being true
+bb projects        mounted project dirs and their branches
+bb shell           login shell as the builder user
+bb login           Claude Code subscription auth flow, on the machine it is
+                   run on. Nothing is copied anywhere
+bb login --check   what THIS machine is signed in as, told to the controller,
+                   and a sign-out taken here. The grant never travels: every
+                   failure this had came from one OAuth pair living on several
+                   machines: a refresh rotates the refresh token, so two
+                   copies sign each other out, and a machine that was away
+                   holds one the server has retired. Each machine signs in for
+                   itself and keeps the grant it alone refreshes. What crosses
+                   the wire is "I am signed in as X" going up and a generation
+                   coming back; behind means the account was signed out while
+                   this machine was not listening, and the answer is
+                   `claude auth logout` here. Run on every connection and
+                   every prompt
+bb git push|fetch|pull|ls-remote [ARGS]
+bb git policy      what a session may push here (its own branches, main) from
+                   the project's Git view; the controller enforces it on the
+                   relay, against the refs the push would write: a name that is
+                   only on the remote, a tag, --all and deleting a branch there
+                   are the operator's whatever the two settings say
+                   git's network half, run where the credential is: from a
+                   session on a node it goes through the controller
+bb emu start [api] | stop | status | list | log [-p]
+bb lint [path]     lint a repo's infrastructure files: shell scripts,
+                   Dockerfiles, workflows, compose files, XML
+bb nodes           the machines enrolled as nodes, read-only in a terminal;
+                   the Nodes tab is where they are edited
+bb settings        this project's settings as the dashboard has them: node,
+                   model, effort, build and test commands, lock. On a node
+                   it is relayed from the controller, and it is what bb-tty
+                   and bb build read there. `set build|test|outputs VALUE`
+                   is the one write: a session fills a field in for the
+                   operator, under the project's gate (below).
+bb users           the dashboard's accounts. `passwd NAME` resets one from a
+                   shell, which is the way back when the owner is locked out
+bb work            who else is working this project, and which files two of
+                   you have uncommitted at once: read-only
+bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended,
+                   read-only; the Jobs tab is where one is stopped. An id
+                   prints that job's log, which is where a failed job says
+                   what happened rather than only that it failed
+bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
+                   stream the log back; `--out GLOB` brings what matches into
+                   dist/ with its provenance; `--node` names another node
+bb build           the project's build command on its node, with the outputs
+                   it lists: all set in the project's settings dialog
+bb test [ARGS]     the same for its test command; ARGS are appended to it, so a
+                   suite that takes file names runs only those. Where it runs is
+                   "Tests run" in the project's settings: on the node, which is the
+                   default; inside its dev instance when that is up, else on the
+                   node; or only inside it, where a container that is down is a
+                   refusal naming it and nothing runs on the node
+bb devapp          this project's dev instance: what it was built from, whether it is
+                   running, and whether its daemon answers
+bb devapp rebuild [--why "..."]
+                   build it and bring it up. Only where the project has handed that
+                   over: Claude may: Run its container, in its settings dialog and
+                   the new-project dialog, reads deny (the default, refused with the
+                   sentence that names it), ask (the reason goes to a person and the
+                   command waits for Allow) or auto. Up, Down and a container of
+                   any other shape stay the operator's
+bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
+                   send the project to Docker, as the Artifacts tab's Send to Docker
+                   manager does, under the same setting: a container made from its
+                   own compose file on its node, then built and started, and this
+                   waits for the verdict. Unnamed, it is the project's own container
+                   while it has none, then another beside it named for the project
+                   with -2, -3 and on; a second needs ports of its own, so give it
+                   an env that sets them with --env. --branch builds it
+                   from that branch. On ask, one request carries all of it and
+                   Allow makes and builds it
+bb devapp remove [--why "..."]
+                   take the container out of the manager, under the same setting;
+                   its env and data stay for a remake, as the row's Remove leaves them
+bb devapp env [set FILE|-] [--why "..."]
+                   print the container's env, or replace it, under the same setting;
+                   on ask, Allow writes it and builds nothing, since the card said
+                   env set, and the rebuild is the next ask.
+                   BuilderBot keeps it per container, never as a file in the project,
+                   and points a compose line `env_file: .env` at it when it runs
+bb devapp ls       every container that belongs to this project on its node
+bb devapp log NAME one of those containers' log
+bb devapp start|stop|restart NAME [--why "..."]
+                   one of those, under the same setting; --container NAME on the
+                   other verbs reaches one written for this project
+bb emu create API  build the AVD for an API level, installing its image if missing
+bb emu install APK install an APK on the running emulator
+bb emu shot [FILE] screenshot the emulator into dist/emu/
+bb emu gfx PKG     a package's per-frame timings (gfxinfo framestats) into
+                   dist/emu/, and every emu verb runs on the project's node
+                   when it has one, its output coming back into dist/
+bb emu images [--available]
+                   the system images on this machine's toolchain store, or
+                   every one there is; `bb emu flavors` says what each is for
+bb emu image add|remove ID
+                   put a system image on this machine's store, or take one
+                   off: a full id or a flavor's short name (tv, wear,
+                   playstore). The operator's, like bb toolchains install
+bb ci-labels       the runner labels the registry knows; this box's and every
+                   node runner's; `--write` regenerates .github/actionlint.yaml
+bb findings        this project's scanner findings (--all for every project)
+                   narrow with --level error|warning|note, --rule ID, --find TEXT
+bb findings history   what the scanner stopped and started saying here
+                      (-n N, --since 7d, --find TEXT, as the other logs)
+bb findings sample [--remove]   write a clearly-fake report, so the Analysis
+                      surfaces can be worked on where no scanner runs
+bb token keep      store BB_TOKEN where this account's sessions on this
+                   machine read it; the agent runs it for an idle session
+bb roadmap            this project's roadmap: items are R1, R2, ...; bugs are B1, B2
+bb roadmap show N     one item in full: its details, its steps and theirs (N is R12 or 12)
+bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` abandoned
+bb roadmap restore N  put a dropped one back from the history, as it was
+bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
+bb roadmap unshelve N [WHY]   ask for one back: held for a person on the project to approve
+bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
+bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for one step
+bb roadmap info N [M] "..."           attach the technical details to one, or step M
+bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
+bb roadmap pending    what a session added that is waiting for your approval
+bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
+bb bug find TEXT   search the reports themselves: area, repro and notes too
+bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
+bb bug pending     reports a session filed that are waiting for your approval
+bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
+                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
+bb tests run [ARGS]  run the project's test command, time it, and record the run: says first when it should
+                   finish, and ends by NAMING what went wrong: the failed assertions per file, and for a file
+                   that CRASHED the line it died on, the assertions that had already failed before it did,
+                   and the fact that nothing after it ran. A crash prints no `FAIL` line and no totals, so a
+                   run that only said "failures above" cost four whole runs to read once. ARGS go to the
+                   command, so `bb tests run auth cards` times and records those two files and nothing else
+bb tests last      that verdict again off the last run's log, running nothing
+bb tests log [-f]  the last run's output, whole; -f follows a run still going. The
+                   Tests view's Open the run's output sends this into the project's shell
+bb devapp test [ARGS]  the project's test command inside its running dev instance, as a compose job on
+                   its node: the whole log, and the job's exit code. `bb test` takes this path on its own
+                   where "Tests run" in the project's settings says the dev instance, so a suite that
+                   tests BuilderBot cannot disturb the BuilderBot it runs on (roadmap R48). Only for an
+                   image that carries its tests: one built to ship has none, and a run inside it finds
+                   nothing and passes. Claude may: Run its container is not asked: a test runs in a
+                   container that is already up
+bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
+                   Each names what it needs and skips in one line without it, so a missing service
+                   is never a failure, and nothing records them: a lab run is a proof, not a timing.
+                   Two services are known. A Gitea: the `gitea` service of BuilderBot's own dev
+                   stack, under its compose file's `lab` profile, brought up from the Docker tab
+                   like any project's stack (`BB_LAB_GITEA`, the local one by default). A real node,
+                   through the controller it is enrolled on: `BB_LAB_CONTROLLER` (that dashboard's
+                   address), `BB_LAB_TOKEN` (`user:password` for an administrator there, the lab's
+                   own) and `BB_LAB_NODE` (the node by name or id). A job runs on that node, so name
+                   one you are willing to have that happen to
+bb tests projection  when a run should finish, from what the last one took (--secs for the number)
+bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
+bb rules           the house rules for this project: the operator's and yours
+bb rules show NAME one of them in full: what a conditional rule says
+bb rules add NAME "..." [--files ...] [--words ...] [--doc PATH] [--check CMD]   leave one of your own
+bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
+bb rules check [NAME|--all]   run the checks of the rules whose files you changed
+bb rules history   what has changed them, by either of you
+bb rules pending   rules a session added that are waiting for your approval
+bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb tests           the test registry: where the suite's time goes, slowest first
+bb tests show KEY  one test: what it protects, what it exercises, its history
+bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
+bb tests describe --from FILE.json      fill many at once, in one write
+bb tests ingest [LOG]  record a run's real durations (BB_TEST_TIMING=1 output)
+bb tests drift     what the runner reported that this list does not, and back
+bb tests flagged   the ones sitting on a round timeout rather than working
+bb history         one search over the notebook's logs: roadmap, bugs, memory
+                   (`--find X`, `--since 7d`, `-n N`)
+bb roadmap history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
+bb phone           what phone is connected, and what is waiting on you
+bb phone run --why "..." -- adb args...
+                   ask to reach it: the operator allows it on the dashboard
+                   and the dashboard runs it, so a session never touches the
+                   handset itself
+bb container       what container asks are waiting on an administrator
+bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
+                   a container built from a compose file the session wrote,
+                   under the project's *Claude may: Run its container*: refused
+                   at deny, asked at ask (an administrator reads the file on
+                   the bell, and Allow registers it through the Docker tab's own
+                   New container path and starts its build), and at auto made
+                   at once when it is this project's own on its own node; one
+                   for another project or another node is always asked. A
+                   published image is a compose naming it; a repository with a
+                   Dockerfile is a compose with a build context on the projects
+                   share. Never a user's to approve
+bb root            what root commands are waiting on an administrator
+bb root run --why "..." -- CMD...
+                   ask for ONE command as root on this project's node: an
+                   administrator allows or denies it on the Nodes tab or the
+                   bell, and the node runs that command and nothing else. Not
+                   sudo: a second command is a second question. A node's
+                   Sessions section can turn root asks off altogether, and
+                   the ask is then refused with that said
+bb catchup         what has happened here lately: commits with the first line
+                   of their bodies, what moved in the notebook, the builds this
+                   box archived, and which image it is actually running
+                   (`--since 7d`, `-n COMMITS`)
+bb ci-log          what CI printed on its last run here (`--list` for the runs
+                   kept, a run id for one, `--project NAME` from elsewhere)
+bb logs [-f] [N]   this boot's log
+bb logs -p [N]     a previous boot's log
+bb logs --list     the kept boot logs, newest first
+bb logs --node NAME [--agent|--runner|--terminal] [N]
+                   a machine's own log: the agent's journal, the CI runner's,
+                   the terminal server's. Root's on that box: the enrolled
+                   account is in neither `adm` nor `systemd-journal`, so a
+                   session cannot read them at all. Offered only while **debug
+                   mode** is on in Controller settings AND the asking node has
+                   been granted that node on its **Debug settings**, its own
+                   journal included; "it is only looking at itself" is the
+                   reasoning that makes a boundary stop meaning anything.
+                   Which node is asking is the node of the session's own
+                   project, proved by its token, never the `BB_NODE` in its
+                   environment. What can be read is a table of three streams;
+                   anything else is refused, not run
+bb diag [--json] [SECTION...]
+                   the controller's diagnostics, read-only: its build and the
+                   images it ran, its switches, the doctor's every check, each
+                   node's agent and session half, the Claude plugins each
+                   account installed on each node, the last day's jobs and the
+                   failures, error lines from its own logs and the audit
+                   trail, with anything shaped like a credential redacted. An
+                   administrator's. A session reads it only while **debug
+                   mode** is on, its node is ticked for **the controller's
+                   diagnostics** on its Debug settings, and its account is an
+                   administrator's, so a tester on the same node never gets it.
+                   Its `reports` section is what sessions on other projects
+                   reported about BuilderBot and nobody has answered yet
+bb report "..." [--area A] [--repro "..."]
+                   a problem with BuilderBot itself, from a session on any
+                   project: it waits on the controller for BuilderBot's own
+                   sessions rather than going into the project's tracker (the
+                   briefing's notebook section says so), redacted like the
+                   diagnostics. `bb report` alone lists the project's reports
+                   and what became of each. A `bb bug add` whose words name
+                   BuilderBot or a `bb` command is not filed but sent here,
+                   unless `--here` says it is the project's own. *Claude may: Report
+                   BuilderBot bugs* in a project's settings turns all of it off
+                   for that project, rule and nudge included: BuilderBot's own
+                   project, whose tracker those bugs belong in, has it off
+bb report file N [--sev S] [--as BUG] | close N "why"
+                   answer a report, behind the diagnostics' gate: file it as a
+                   bug in this project's tracker through `bb bug add` (or mark
+                   it as one already there), or close it with the reason its
+                   session will read
+bb doctor          check everything that usually goes wrong
 
-  Developing BuilderBot itself (this repo is the container's source):
-  bb dashboard test [F]  browser-test the dashboard from this checkout, isolated
-  bb dashboard dev [DIR] serve the live dashboard from DIR (default: ./scripts/dashboard)
-  bb dashboard dev --off ...and put the image's copy back
-  bb dashboard status    which copy of the dashboard is serving right now
-  bb drift [REPO]        which files this checkout changed that the running
-                         container is not serving yet
-  bb map [VERB ...]      the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
-                         draws ID|.class, suites FILE..., state [FILE], sections FILE, unused,
-                         addresses [FILE...], coverage, covered NAME, uncovered [FILE]; ask it before grepping
-  bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
-  bb tool                the tools toolchains add to a session, each under its own name
-  bb tool graphics CMD   pictures a session can make and read back (the graphics toolchain):
-                         info F | resize F WxH [OUT] | crop F WxH+X+Y [OUT] | compose BASE OVER [+X+Y] [OUT]
-                         annotate F TEXT [OUT] [--at +X+Y] [--size N] [--color C] | diff A B [OUT]
-                         svg2png F [WIDTH] [OUT] | optimize F... [--lossy] [--webp]; into dist/img/
-                         favicon SVG [DIR]: favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
-  bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) to PNG and SVG in dist/diagrams/
-  bb toolchains            the toolchains kept outside the image: status, install X, remove X
+# developing BuilderBot itself, from inside it
+bb dashboard test  browser-test the dashboard from this checkout, isolated
+bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reverts)
+bb dashboard status  which copy of the dashboard is serving
+bb dashboard trace [SECONDS]  what the dashboard was asked over the last SECONDS, by endpoint and who asked, with how long each took
+bb drift           what this checkout changed that the container is not serving
+bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
+                   draws ID|.class, suites FILE...; a session asks it before grepping
+bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
+                   one picture at rest: a page, the running emulator's screen,
+                   or an X display (--drive F works the surface first). At rest
+                   means shots a quarter second apart until a second of them
+                   match, so a modal still arriving or a list still loading is
+                   not the picture: the dashboard's own pages and the two other
+                   sources settle by default, --settle asks it of any page, --now
+                   takes the one shot at once. Into dist/emu/ for the emulator
+bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
+                   eyes on change over time: the frames of a recording that changed,
+                   each stamped with its time, tiled into dist/reel/NAME/sheet.png
+                   beside frames.json (when, and how much moved). From a video, a
+                   page Playwright records while --drive FILE.mjs works it, the
+                   running emulator's screenrecord (with gfxinfo framestats beside
+                   it), or an X display grabbed while a shell script drives it with
+                   xdotool; the provisioner installs Xvfb and xdotool for that
+bb tool            the tools toolchains add to a session, each under its own name
+bb tool graphics CMD  pictures a session can make and then read back, with the
+                   graphics toolchain on its node: info, resize, crop, compose,
+                   annotate, diff, svg2png and optimize, into dist/img/, and
+                   favicon SVG [DIR], a favicon set (ico + touch icon) from one mark
+bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) rendered to
+                   PNG and SVG in dist/diagrams/, with the diagrams toolchain
+bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 EOF
 }
 
@@ -620,6 +761,16 @@ cmd_emu() {
             local api="${2:-}" pkg name
             [ -n "$api" ] || die "bb emu create <api>: the API level to build the AVD for"
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this node's toolchain store: say so in your reply; the operator adds android-tools on the Toolchains tab with this node picked"
+            # Google names a level "37.0" or "36.1" in its index some years,
+            # and a person says 37: the level given is looked up against what
+            # the index offers, so `bb emu create 37` installs android-37.0
+            # rather than failing on a package that does not exist.
+            if [ ! -d "${ANDROID_HOME:-/opt/android-sdk}/system-images/android-${api}/google_apis/x86_64" ]; then
+                local found
+                found="$(cmd_emu images --available 2>/dev/null \
+                    | awk -F'\t' -v a="$api" '$3 == "google_apis" && ($2 == a || $2 == a ".0") { print $2; exit }')"
+                [ -z "$found" ] || api="$found"
+            fi
             pkg="system-images;android-${api};google_apis;x86_64"
             name="$(emu_avd "$api")"
             if [ ! -d "${ANDROID_HOME:-/opt/android-sdk}/system-images/android-${api}/google_apis/x86_64" ]; then
@@ -663,13 +814,9 @@ cmd_emu() {
             adb -s "$serial" install -r "$apk" || die "adb install failed"
             ;;
         shot)
-            # A screenshot of the emulator's screen, into dist/ so the
-            # Artifacts tab lists it and a node's copy returns the same way.
-            local serial out="${2:-}"
-            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running; bb emu start first"
-            [ -n "$out" ] || { mkdir -p dist/emu; out="dist/emu/shot-$(date +%Y%m%d-%H%M%S).png"; }
-            adb -s "$serial" exec-out screencap -p > "$out" || die "screencap failed"
-            log "screenshot: ${out}"
+            # The emulator's screen at rest, into dist/ so the Artifacts tab
+            # lists it: bb capture shot --emu, which is where every shot lives now.
+            shift; capture_shot --emu "$@"
             ;;
         gfx)
             # Real per-frame timings for a package, from dumpsys gfxinfo
@@ -1974,16 +2121,16 @@ cmd_container() {
 # bb devapp: this project's dev instance, and what a session may be given
 # over it.
 #
-# Up, Down, removing one and a container of any other shape are the
-# operator's. What a project can hand over, with one setting in its settings
-# dialog (Claude may: Run its container), is rebuilding its container,
-# changing its env and creating its own when it has none (24 Sep), because
-# a project whose work IS the container has a loop that a session cannot
-# close otherwise: change it, rebuild it, look at what it did. Three settings and
-# `deny` is the default: `auto` is the loop, `ask` puts the reason in front
-# of a person and starts the build when they allow it, `deny` refuses with
-# the sentence that names the dial, so a session that tries learns where the
-# decision lives rather than guessing.
+# Up, Down and a container of any other shape are the operator's. What a
+# project can hand over, with one setting in its settings dialog (Claude may:
+# Run its container), is sending it to Docker (its own container, or another
+# beside it: 24 and 26 Sep), rebuilding its containers, changing their env
+# and removing one, because a project whose work IS the container has a loop
+# that a session cannot close otherwise: change it, rebuild it, look at what
+# it did. Three settings and `deny` is the default: `auto` is the loop, `ask`
+# puts the reason in front of a person and starts the build when they allow
+# it, `deny` refuses with the sentence that names the dial, so a session that
+# tries learns where the decision lives rather than guessing.
 #
 # The daemon is the controller's connection to the node, so this goes through
 # the API like `bb root` and `bb phone` rather than running docker anywhere.
@@ -2035,12 +2182,41 @@ cmd_devapp() {
             shift || true
             BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" python3 "$BB_LIB/devapp-verbs.py" test "$@"
             ;;
-        new|env|remove)
-            # Creating the project's own container, its env, and removing it,
-            # under the same setting as rebuild (Claude may: Run its
-            # container). On `ask` one request carries it all and Allow runs
-            # it, the build included; on `auto` it is done and bb devapp
-            # rebuild is next.
+        new)
+            # This project sent to Docker, as the Artifacts tab's Send does: a
+            # container made from its own compose file, named NAME or, unnamed,
+            # its own while it has none and one beside it after; pinned to a
+            # branch with --branch; then built and started, with this waiting
+            # for the verdict. Under the same setting as rebuild (Claude may:
+            # Run its container): on `ask` one request carries it all and
+            # Allow makes and builds it.
+            local why="" file="" ref="" tmp="" rc=0
+            local usage="usage: bb devapp new [NAME] [--branch REF] [--env FILE|-] [--why \"...\"]"
+            shift || true
+            if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then
+                [ -z "$inst" ] || die "name it once: bb devapp new NAME, or --instance NAME"
+                BB_DEV_INSTANCE="$1"; shift
+            fi
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    --branch) [ $# -ge 2 ] || die "$usage"; ref="$2"; shift 2 ;;
+                    --env) [ $# -ge 2 ] || die "$usage"; file="$2"; shift 2 ;;
+                    *) die "$usage" ;;
+                esac
+            done
+            if [ "$file" = - ]; then tmp="$(mktemp)"; cat > "$tmp"; file="$tmp"; fi
+            [ -z "$file" ] || [ -f "$file" ] || die "no such file: $file"
+            BB_DEV_AUTH="$auth" BB_DEV_PROJECT="$proj" BB_DEV_WHY="$why" BB_DEV_REF="$ref" \
+            BB_DEV_FILE="$file" python3 "$BB_LIB/devapp-verbs.py" new || rc=$?
+            [ -z "$tmp" ] || rm -f "$tmp"
+            return "$rc"
+            ;;
+        env|remove)
+            # Its env, and removing it, under the same setting as rebuild
+            # (Claude may: Run its container). On `ask` Allow removes it, or
+            # writes the env and builds nothing; on `auto` it is done, and bb
+            # devapp rebuild applies an env.
             local verb="$sub" why="" file="" setting=0 tmp=""
             shift || true
             if [ "$verb" = env ] && [ "${1:-}" = set ]; then
@@ -2051,9 +2227,7 @@ cmd_devapp() {
             while [ $# -gt 0 ]; do
                 case "$1" in
                     --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
-                    --env) { [ "$verb" = new ] && [ $# -ge 2 ]; } || die "usage: bb devapp new [--env FILE] [--why \"...\"]"
-                           file="$2"; shift 2 ;;
-                    *) die "usage: bb devapp new [--env FILE] [--why \"...\"] | env [set FILE|-] [--why \"...\"] | remove [--why \"...\"]" ;;
+                    *) die "usage: bb devapp env [set FILE|-] [--why \"...\"] | remove [--why \"...\"]" ;;
                 esac
             done
             if [ "$file" = - ]; then tmp="$(mktemp)"; cat > "$tmp"; file="$tmp"; fi
@@ -2087,7 +2261,7 @@ cmd_devapp() {
             BB_DEV_AUTH="$auth" BB_DEV_VERB="$verb" BB_DEV_NAME="$name" BB_DEV_WHY="$why" \
                 python3 "$BB_LIB/devapp-verbs.py" ctl
             ;;
-        *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
+        *) die "usage: bb devapp [--instance NAME|--container NAME] [status|rebuild [--why \"...\"]|new [NAME] [--branch REF] [--env FILE] [--why \"...\"]|env [set FILE|-]|test [ARGS]|ls|log NAME|start|stop|restart NAME]" ;;
     esac
 }
 
@@ -2132,12 +2306,12 @@ ago() {
 #
 # BB_TOKEN first: a Claude session is given one of those (scoped to its own
 # project, `user` rights, an expiry) instead of the operator's password,
-# which is what it used to inherit (bug #16). DASHBOARD_AUTH is no longer a
+# which is what it used to inherit (bug #16). DASHBOARD_AUTH is not a
 # container setting (the owner is made on the first-run screen) but it is
 # still read here, so an operator in a plain `docker exec` shell can pass one
-# for a single command rather than being unable to reach the API at all. The
-# operator's
-# own shell, and a session no longer has it in its environment at all.
+# for a single command rather than being unable to reach the API at all. It
+# reaches the operator's own shell that way and nowhere else: a session has
+# no DASHBOARD_AUTH in its environment at all.
 # When a session token stops being good, as a unix time, or nothing for
 # anything that is not one. The body is base64url of `project|exp|uid|sig`.
 bb_token_exp() {
@@ -2550,9 +2724,10 @@ cmd_jobs() {
         "") : ;;
         *) die "bb jobs [-n N | ID]: an id looks like j_1a2b3c4d" ;;
     esac
-    py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
-    [ -f "$py" ] || die "nodes.py is missing from this image"
-    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/jobs-verbs.py" "$py" "$n" "$jid"
+    # Through the API as the caller, which narrows the list the way the Jobs
+    # tab is narrowed: a session to its project's jobs (B317).
+    local auth; auth="$(bb_auth_or_die)"
+    BB_JOBS_AUTH="$auth" python3 "$BB_LIB/jobs-verbs.py" "$n" "$jid"
 }
 
 # bb run / build / test: a job on the project's node, watched from here.
@@ -3125,18 +3300,14 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         fi
 
         section "docs (bb help vs README)"
-        local missing extra
-        missing="$(comm -23 \
-            <(sed -n 's/^  bb \([a-z-]*\).*/\1/p' scripts/bb | sort -u) \
-            <(sed -n 's/^bb \([a-z-]*\).*/\1/p' README.md | sort -u))"
-        extra="$(comm -13 \
-            <(sed -n 's/^  bb \([a-z-]*\).*/\1/p' scripts/bb | sort -u) \
-            <(sed -n 's/^bb \([a-z-]*\).*/\1/p' README.md | sort -u))"
-        if [ -z "$missing" ] && [ -z "$extra" ]; then
-            echo "  [ok]   every command in bb help is in the README, and back"
+        # The README's reference block is written from bb help by
+        # tools/readme-bb-ref.sh (R91 step 5): one owner, and the two held
+        # equal here rather than by hand.
+        if diff -q <(tools/readme-bb-ref.sh --print) <(bash scripts/bb help | sed '1,2d') >/dev/null 2>&1; then
+            echo "  [ok]   the README's bb reference is bb help, word for word"
         else
-            [ -n "$missing" ] && printf '  [FAIL] in bb help, missing from README: %s\n' "$(echo "$missing" | tr '\n' ' ')"
-            [ -n "$extra" ] && printf '  [FAIL] in README, not a bb command: %s\n' "$(echo "$extra" | tr '\n' ' ')"
+            echo "  [FAIL] the README's bb reference differs from bb help: tools/readme-bb-ref.sh rewrites it"
+            diff <(tools/readme-bb-ref.sh --print) <(bash scripts/bb help | sed '1,2d') | head -12 | sed 's/^/         /'
             rc=1
         fi
     fi
@@ -3152,6 +3323,21 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
     if [ -f docker-compose.yml ] && [ -f .env.example ] && [ -f unraid/builderbot.xml ] && [ -f README.md ]; then
         section "settings (compose, .env.example, Unraid template, README)"
         python3 "$BB_LIB/lint-checks.py" settings || rc=1
+    fi
+
+    # The API page against the routes (R91): a route added and not written
+    # up is a row with no words, and a page behind the table is a failure.
+    if [ -f docs/api.md ] && [ -f tools/api-doc.py ]; then
+        section "api (docs/api.md vs server.py's routes)"
+        python3 tools/api-doc.py --check || rc=1
+    fi
+
+    # The layout page against the tree (R91): a module the page does not
+    # name is a newcomer's dead end, and the page drifted a dozen files
+    # behind before this held it.
+    if [ -f docs/layout.md ]; then
+        section "layout (docs/layout.md vs git ls-files)"
+        python3 "$BB_LIB/lint-checks.py" layout || rc=1
     fi
 
     echo
@@ -3276,7 +3462,10 @@ cmd_map() {
     # `addresses` with nothing to read reads the roadmap: the plan is where
     # a session writes `file ~line`, and where those go stale (item 7).
     if [ "${1:-}" = addresses ] && [ $# -eq 1 ]; then
-        cmd_roadmap | python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" addresses -
+        # As a command of its own rather than cmd_roadmap in this process:
+        # on a node the roadmap is the controller's, and only the dispatch a
+        # command starts with relays it there (B293).
+        "$0" roadmap | python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" addresses -
         return
     fi
     python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" "$@"
@@ -3342,10 +3531,10 @@ find_chromium() {
     die "no Playwright chromium found; install the browsers with: bb toolchains install playwright"
 }
 
-# bb shot: headless screenshots, for showing the operator visual state from
+# bb capture shot: headless screenshots, for showing the operator visual state from
 # a box with no display. Playwright's Chromium from the image.
 #
-# One URL keeps the old shape (bb shot URL [FILE]). Several URLs share one
+# One URL takes an optional file (bb capture shot URL [FILE]). Several URLs share one
 # browser and land in a directory, each named from its path (/ -> index.png).
 # --full and --scale exist because README screenshots need the whole page at
 # 2x, and capabilities MediaReducer's tools/screenshots grew privately before
@@ -3354,11 +3543,72 @@ find_chromium() {
 # not on a node (B103); --wait absorbs pages whose async fetches settle after
 # networkidle, because a screenshot of a spinner is not a screenshot of the
 # page. The intended split: a project's own script boots its app into a
-# photogenic state, then ends with one bb shot line.
-cmd_shot() {
+# photogenic state, then ends with one bb capture shot line.
+# bb capture reel: eyes on change over time (R95). One sheet of the frames that
+# changed, each stamped with its time, and a JSON of when, from a video, a
+# page Playwright records while a script drives it, the emulator's
+# screenrecord, or an X display. reel.py does the work; this hands it the
+# store's tools and the project's dist/.
+# bb capture: what a session looks with (R95). shot is a picture at rest,
+# reel the frames that changed, each from any source that draws: a page,
+# the running emulator's screen, an X display, or (for a reel) a video.
+cmd_capture() {
+    case "${1:-}" in
+        shot) shift; capture_shot "$@" ;;
+        reel) shift; capture_reel "$@" ;;
+        *) cat <<'EOT'
+bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]   [--drive F] [--settle|--now]
+bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N   [--seconds N] [--drive F] [--name N]
+  shot: one picture at rest (shots a quarter second apart until a second of
+        them match; --now takes it at once)
+  reel: the frames that changed, stamped with their times, on one sheet in
+        dist/reel/NAME/ with frames.json beside it (bb capture reel -h)
+EOT
+           [ -z "${1:-}" ] || [ "$1" = -h ] || [ "$1" = --help ] || die "bb capture shot|reel"
+           ;;
+    esac
+}
+
+# The store's tools for capture.py, which shot and reel share.
+capture_env() {
+    local root; root="$(sdk_root 2>/dev/null || true)"
+    local ff; ff="$(command -v ffmpeg || true)"; [ -n "$ff" ] || { [ -x "$root/ffmpeg/bin/ffmpeg" ] && ff="$root/ffmpeg/bin/ffmpeg"; }
+    local adb; adb="$(command -v adb || true)"; [ -n "$adb" ] || { [ -x "$root/platform-tools/adb" ] && adb="$root/platform-tools/adb"; }
+    BB_CAPTURE_FFMPEG="$ff" BB_CAPTURE_NODE_PATH="$(pw_node_path)" BB_CAPTURE_CHROME="$(find_chromium 2>/dev/null || true)" \
+    BB_CAPTURE_ADB="$adb" BB_CAPTURE_AUTH="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" "$@"
+}
+
+capture_reel() {
+    case "${1:-}" in
+        -h|--help|"")
+            cat <<'EOT'
+bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N  [--seconds N] [--drive FILE] [--name NAME]
+        [--threshold T] [--fps N]
+  the frames that changed, each stamped with its time, tiled into
+  dist/reel/NAME/sheet.png beside frames.json (when, and how much moved):
+  what a screenshot cannot show, one image a session reads at a glance.
+  --video    any recording
+  --url      a page, recorded for --seconds while --drive FILE.mjs works it
+             (export default async (page, {seconds}) => {...})
+  --emu      the running emulator's screenrecord, PKG launched first and its
+             gfxinfo framestats beside the reel; --drive FILE is a shell script
+             with $ADB in its environment
+  --display  an X display grabbed for --seconds while --drive FILE (a shell
+             script, DISPLAY set) drives it with xdotool
+  --threshold ffmpeg's scene score that counts as a change (0.02)
+EOT
+            return 0 ;;
+    esac
+    local proj; proj="$(project_here 2>/dev/null || true)"
+    local out="${proj:+${WORKSPACE}/${proj}/dist/reel}"
+    [ -n "$out" ] || out="$PWD/dist/reel"
+    BB_CAPTURE_OUT="$out" capture_env python3 "$BB_LIB/reel.py" "$@"
+}
+
+capture_shot() {
     # The operator's password, or a session's token, whichever this shell
     # has. --auth overrides both.
-    local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0
+    local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0 settle="" src="" pkg="" disp="" drive=""
     local full=0 resize="" out="" mode=file urls=()
     # Used by the test harness, which needs the same answer this does and
     # should not re-implement the search to get it.
@@ -3372,6 +3622,20 @@ cmd_shot() {
             --wait)   wait="$2"; shift 2 ;;
             --resize) resize="${2%x}"; shift 2 ;;
             --full)   full=1; shift ;;
+            # Shot at rest: screenshots a quarter second apart until two
+            # match, so a modal still arriving or a list still loading is
+            # not what the picture shows. The dashboard's own pages settle
+            # by default (a notebook view fetches its list after it draws);
+            # --settle asks it of any page, --now takes the one shot at once.
+            --settle) settle=1; shift ;;
+            --now)    settle=0; shift ;;
+            # The other things that draw (R95): the running emulator's screen
+            # and an X display, pictured at rest the same way; capture.py takes
+            # those, and a URL keeps the browser path below.
+            --emu)    src=emu; case "${2:-}" in ""|-*|http://*|https://*) shift ;; *) pkg="$2"; shift 2 ;; esac ;;
+            --display) [ -n "${2:-}" ] || die "--display needs the display after it (:9)"; src=display; disp="$2"; shift 2 ;;
+            --drive)  [ -n "${2:-}" ] || die "--drive needs the script after it"; drive="$2"; shift 2 ;;
+            --url)    shift ;;
             -*) die "unknown option: $1" ;;
             *) case "$1" in
                    # Scheme-tagged, because page.goto needs one anyway: a bare
@@ -3383,8 +3647,20 @@ cmd_shot() {
                esac; shift ;;
         esac
     done
+    if [ -n "$src" ]; then
+        [ "${#urls[@]}" -eq 0 ] || die "one source: --emu or --display, not a URL as well"
+        [ -z "$out" ] || [ -d "$out" ] && { mkdir -p "${out:-dist/emu}"; out="${out:-dist/emu}/shot-$(date +%Y%m%d-%H%M%S).png"; }
+        # Emulator shots into dist/, so the Artifacts tab lists them.
+        local -a args=()
+        [ "$src" = emu ] && args+=(--emu "$pkg") || args+=(--display "$disp")
+        [ -z "$drive" ] || args+=(--drive "$drive")
+        [ "$settle" = 0 ] && args+=(--now)
+        capture_env python3 "$BB_LIB/capture.py" shot "${args[@]}" "$out"
+        return
+    fi
     [ "${#urls[@]}" -gt 0 ] || die \
-        "usage: bb shot URL... [FILE|DIR] [--auth user:pass] [--size WxH] [--full] [--scale N] [--wait MS] [--resize W]
+        "usage: bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]   [--drive F] [--settle|--now]
+        [--auth user:pass] [--size WxH] [--full] [--scale N] [--wait MS] [--resize W]
 URLs need their scheme (http:// or https://)"
     case "${width}${height}${scale}${wait}${resize}" in
         *[!0-9]*) die "--size WxH, --scale N, --wait MS and --resize W take whole numbers" ;;
@@ -3405,11 +3681,11 @@ URLs need their scheme (http:// or https://)"
     local files
     files="$(NODE_PATH="$(pw_node_path)" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
-        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "${urls[@]}" <<'EOF'
+        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "$settle" "${urls[@]}" <<'EOF'
 const { chromium } = require("playwright");
 const fs = require("fs");
 const path = require("path");
-const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
+const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, ...urls]
   = process.argv.slice(2);
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
@@ -3431,7 +3707,7 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
     deviceScaleFactor: +scale,
     ...(username ? { httpCredentials: { username, password } } : {}) });
   // The header goes to the DASHBOARD and nowhere else. On the context it went
-  // to every URL in the run, so `bb shot <dashboard> https://example.com`
+  // to every URL in the run, so `bb capture shot <dashboard> https://example.com`
   // handed the credential to example.com as well (bug #49). Per-route, matched
   // on origin, so shooting somebody else's page cannot carry it there.
   const mine = new Set(urls.filter(u => {
@@ -3514,7 +3790,28 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
       taken.add(name);
       out = path.join(dest, name + ".png");
     }
-    await p.screenshot({ path: out, fullPage: full === "1" });
+    // At rest, when asked or when it is the dashboard's own page: a shot
+    // every quarter second until a whole second of them are the same
+    // bytes, and that one is the picture. Two matching frames were not
+    // enough: they came in the first half second, before a list that
+    // lands a second later. A page that never stops moving (a spinner) is
+    // taken as it is after six seconds, and said.
+    let atRest = settle === "1" || (settle === "" && (() => {
+      try { return mine.has(new URL(url).origin); } catch { return false; } })());
+    if (atRest) {
+      let last = await p.screenshot({ fullPage: full === "1" }), still = 0;
+      const until = Date.now() + 6000;
+      while (Date.now() < until && still < 4) {
+        await p.waitForTimeout(250);
+        const next = await p.screenshot({ fullPage: full === "1" });
+        still = next.equals(last) ? still + 1 : 0;
+        last = next;
+      }
+      if (still < 4) console.error(`${url}: still moving after six seconds; shot as it is`);
+      fs.writeFileSync(out, last);
+    } else {
+      await p.screenshot({ path: out, fullPage: full === "1" });
+    }
     if (+resize) await shrink(out, +resize);
     console.log(out);
   }
@@ -4223,7 +4520,7 @@ case "${1:-help}" in
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;
     map)      shift; cmd_map "$@" ;;
-    shot)     shift; cmd_shot "$@" ;;
+    capture)  shift; cmd_capture "$@" ;;
     tool)     shift; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
     -h|--help|help) usage ;;

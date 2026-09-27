@@ -635,6 +635,16 @@ pkg_names() {
         ttyd:deb|ttyd:arch|ttyd:alpine|ttyd:void) echo "ttyd" ;;
         ttyd:suse)    case "${ID:-}" in *tumbleweed*) echo "ttyd" ;; *) echo "" ;; esac ;;
         ttyd:*)       echo "" ;;
+        # A display a session can record and drive (bb capture reel, R95): a server
+        # install has no X server, so Xvfb for one, xdotool to work it and
+        # xdpyinfo to measure it. The RHEL family's xdotool is EPEL's.
+        reel:deb)     echo "xvfb xdotool x11-utils" ;;
+        reel:rhel)    echo "xorg-x11-server-Xvfb xdotool xorg-x11-utils" ;;
+        reel:arch)    echo "xorg-server-xvfb xdotool xorg-xdpyinfo" ;;
+        reel:suse)    echo "xorg-x11-server-Xvfb xdotool xdpyinfo" ;;
+        reel:alpine)  echo "xvfb xdotool xdpyinfo" ;;
+        reel:void)    echo "xorg-server-xvfb xdotool xdpyinfo" ;;
+        reel:gentoo)  echo "x11-base/xorg-server x11-misc/xdotool x11-apps/xdpyinfo" ;;
         nft:deb)      echo "nftables" ;;
         nft:gentoo)   echo "net-firewall/nftables" ;;
         nft:*)        echo "nftables" ;;
@@ -1048,6 +1058,11 @@ else
     # shellcheck disable=SC2046
     pkg $(pkg_names session) >/dev/null 2>&1 \
         || warn "tmux, jq or git did not install; sessions will not start until they do"
+    # A display for bb capture reel (R95): not fatal, since a node without one still
+    # builds and tests; bb capture reel --display says what is missing.
+    # shellcheck disable=SC2046
+    pkg $(pkg_names reel) >/dev/null 2>&1 \
+        || warn "Xvfb, xdotool or xdpyinfo did not install; bb capture reel --display needs them"
     ttyd_pkg="$(pkg_names ttyd)"
     if ! command -v ttyd >/dev/null 2>&1 && [ -n "$ttyd_pkg" ]; then
         pkg "$ttyd_pkg" >/dev/null 2>&1 || true

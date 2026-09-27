@@ -1,6 +1,9 @@
 // The notebook's Tests view: the test registry, what each test protects and
 // what a run cost. One classic script beside index.html (docs/nodes.md §13):
 // one file per notebook view (R60). A factory makeNotebook calls per notebook.
+
+"use strict";
+
 function nbTestsView({$, nb, project}){
   // ---- the test registry ---------------------------------------------------
   // Write-through like the tracker beside it, and for the same reason: what

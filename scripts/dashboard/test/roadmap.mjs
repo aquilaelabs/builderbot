@@ -470,9 +470,16 @@ ok(await page.$$eval('#roadmapList .roadmap', ts => ts.length) > 0
 ok(await page.evaluate(() => document.activeElement?.tagName !== 'INPUT'),
    '...without the cursor in the field, like every other box in this window');
 await page.click('.dropbox .stop');
-ok(await page.$('.dropbox') === null
-   && read().projects.alpha.find(r => String(r.id) === c1.id).steps.length === 2,
-   'Cancel closes it and drops nothing');
+// Waited for rather than read in the same breath as the click, which a
+// loaded box lost once (B292); a Cancel that never closes the box still
+// fails here, five seconds on, and the line says which half it was.
+{
+  const shut = await page.waitForSelector('.dropbox', { state: 'detached', timeout: 5000 })
+    .then(() => true, () => false);
+  const steps = read().projects.alpha.find(r => String(r.id) === c1.id).steps.length;
+  ok(shut && steps === 2,
+     `Cancel closes it and drops nothing (the box ${shut ? 'closed' : 'is still open'}, ${steps} steps on disk)`);
+}
 
 await page.click(`#roadmapList .roadmap[data-id="${c1.id}"][data-step="0"] .rm`);
 await page.waitForSelector('.dropbox textarea', { timeout: 10000 });

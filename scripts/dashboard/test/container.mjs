@@ -142,12 +142,17 @@ const no = (await api('/api/phone', { action: 'outcome', id: again.body.id })).b
 ok(no.state === 'denied' && !(await api('/api/docker')).body.instances.some(i => i.project === 'sonarr-denied'),
    'Deny is what the session is told, and nothing is registered');
 
-// ---- the same name twice is refused where the tab would refuse it -------------
+// ---- the same name twice is refused before it reaches anybody's bell ----------
+// It used to be queued, sit on the administrators' bell, and fail at Allow
+// with "pick another name", so a person was asked to decide on a request no
+// answer could build, and told the wrong way out for the case it met (B309).
 const dup = await ask({});
-await api('/api/phone', { action: 'allow', id: dup.body.id });
-const dupOut = (await api('/api/phone', { action: 'outcome', id: dup.body.id })).body;
-ok(dupOut.state === 'done' && dupOut.code === 1 && /already exists/.test(dupOut.out || ''),
-   `a name the store already has is refused at Allow with the tab's own words (${dupOut.out})`);
+const asks = (await api('/api/phone')).body.asks || [];
+ok(dup.status === 400 && /sonarr-for-alpha already exists here/.test(dup.body.error || '')
+   && /removes it from the Docker tab first|env set/.test(dup.body.error || '')
+   && !asks.some(a => a.kind === 'container' && a.name === 'sonarr-for-alpha' && a.state === 'pending'),
+   `a name the store already has is refused before the bell, naming the ways forward (${dup.status}: ${
+      (dup.body.error || '').slice(0, 70)})`);
 
 ok(page.errors.length === 0, 'zero console errors');
 await done(browser);

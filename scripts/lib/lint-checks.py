@@ -61,6 +61,48 @@ def xml_():
         raise SystemExit(f'  {e}') from None
 
 
+def layout():
+    """docs/layout.md names every tracked file (R91): a row is a path, a
+    directory (which covers what is under it only when nothing beneath it
+    is listed) or a glob, and a tracked file no row names fails. A tree
+    that grows a module the page does not name is a newcomer's dead end."""
+    import fnmatch
+    import subprocess
+    try:
+        lay = open("docs/layout.md", encoding="utf-8").read().split("```")[1].splitlines()
+    except (OSError, IndexError):
+        print("  [FAIL] docs/layout.md has no code block to read")
+        return 1
+    rows, stack = [], []
+    for ln in lay:
+        m = re.match(r"^(\s*)([A-Za-z0-9_.\-/*]+)", ln)
+        if not m or not ln.strip():
+            continue
+        ind, tok = len(m.group(1)), m.group(2)
+        while stack and stack[-1][0] >= ind:
+            stack.pop()
+        path = (stack[-1][1] if stack else "") + tok
+        if tok.endswith("/"):
+            stack.append((ind, path))
+        rows.append(path)
+    leaf_dirs = {r for r in rows if r.endswith("/") and not any(x != r and x.startswith(r) for x in rows)}
+    tracked = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=False).stdout.split()
+    if not tracked:
+        print("  [skip] not a git checkout, so nothing to hold the page to")
+        return 0
+
+    def named(f):
+        return any(r == f or (r in leaf_dirs and f.startswith(r)) or ("*" in r and fnmatch.fnmatch(f, r))
+                   for r in rows)
+    miss = [f for f in tracked if not named(f)]
+    if miss:
+        print(f"  [FAIL] {len(miss)} tracked file(s) docs/layout.md does not name: " + " ".join(miss[:12])
+              + (" ..." if len(miss) > 12 else ""))
+        return 1
+    print(f"  [ok]   docs/layout.md names every one of the {len(tracked)} tracked files")
+    return 0
+
+
 def settings():
     compose = open("docker-compose.yml").read()
     # The builderbot service only: the lab's services carry their own.
@@ -116,4 +158,4 @@ def settings():
     sys.exit(1 if bad else 0)
 
 
-{"runner": runner, "xml": xml_, "settings": settings}[verb]()
+{"runner": runner, "xml": xml_, "settings": settings, "layout": layout}[verb]()

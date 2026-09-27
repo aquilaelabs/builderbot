@@ -24,13 +24,12 @@ import sys as _sys
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from names import claude_session   # noqa: E402
+from fields import field   # noqa: E402
 import functools
 import hashlib
 import inspect
 import json
-import os
 import re
-import tempfile
 import threading
 import time
 from pathlib import Path
@@ -188,11 +187,12 @@ LINK_RE = re.compile(r"\]\(([^)\s]+)")
 # (the instructions Claude writes them under say so). Unlike the index line
 # it is checked only against the memories that exist here (roadmap #4).
 WIKI_RE = re.compile(r"\[\[([^\]\n]+)\]\]")
-# One index line: `- [Title](file.md) — hook`. The separator is written as an
+# One index line: `- [Title](file.md) <em dash> hook`, the separator Claude Code's
+# own memory index uses, written here as its escape (the house rule voice). It is read as an
 # em dash but arrives as whatever the keyboard produced, so any of the dashes
 # is accepted and only the em dash is written back.
 INDEX_RE = re.compile(r"^\s*[-*]\s*\[(?P<title>[^\]]*)\]\((?P<file>[^)\s]+)\)"
-                      r"\s*(?:[—–-]|:)?\s*(?P<hook>.*?)\s*$")
+                      r"\s*(?:[\u2014\u2013-]|:)?\s*(?P<hook>.*?)\s*$")
 
 # What a memory's `type` is allowed to be: the four Claude Code documents.
 # A select rather than a text field on the page, and checked again here.
@@ -236,7 +236,7 @@ def _line(file, title, hook):
     """
     title = re.sub(r"[\[\]()]", "", (title or "").replace("\n", " ")).strip()
     hook = (hook or "").replace("\n", " ").strip()
-    return f"- [{title or Path(file).stem}]({file})" + (f" — {hook}" if hook else "")
+    return f"- [{title or Path(file).stem}]({file})" + (f" \u2014 {hook}" if hook else "")
 
 
 def _front(text):
@@ -444,29 +444,10 @@ def _target(d, file):
 
 
 def _write(p, text):
-    """Replace a file's contents atomically.
-
-    Through a temporary file in the same directory: a half-written memory is
-    still loaded at the next session start, and a truncated frontmatter block
-    is worse than the text it replaced.
-
-    A name of its OWN per call. It was a fixed `<name>.tmp`, which is the
-    collision statefile.py's docstring records as fixed everywhere else: two
-    saves landing together opened the same temp file, the second truncating
-    what the first was writing, and whichever renamed first published a torn
-    file (B196).
-    """
-    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=p.name + ".", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, p)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    """Replace a memory atomically, through statefile.write_text: a
+    half-written memory is still loaded at the next session start, and a
+    torn frontmatter block is worse than the text it replaced (B196)."""
+    statefile.write_text(p, text)
 
 
 _fallback_lock = threading.RLock()
@@ -715,3 +696,51 @@ def delete(project, file, home=None):
     _unindex(d, file)
     _log(project, "you", {"act": "forgot", "text": file})
     return {"ok": True}
+
+
+# ---- the Memory panel's verbs, one call from the dashboard -------------------
+
+# The roadmap's unsaved mark, set by server.py: a memory edit marks the same
+# flag the list does (roadmap.mark_unsaved).
+mark_unsaved = None
+
+# The actions of verb() that write. The server counts a person's edit for
+# the sessions' catch-up by these, and a history read is not one of them
+# (B296).
+WRITES = ("save", "index", "create", "delete")
+
+
+def verb(proj, act, req, home):
+    """Edit, delete or create one of this project's memories, rewrite the
+    index, or read the history, once server.py has let this account at the
+    project. `home` is whose memories: the reader's own home, never the
+    owner's (B67). The project and file names go through untouched because
+    this module is the thing that checks them against what is on disk.
+    (payload, status)."""
+    file = field(req, "file")
+    if act == "save":
+        r = save(proj, file, field(req, "text"), rev=field(req, "rev"), home=home)
+    elif act == "index":
+        r = save_index(proj, [e for e in (req.get("lines") or []) if isinstance(e, dict)],
+                       rev=field(req, "rev"), home=home)
+    elif act == "create":
+        r = create(proj, field(req, "name"), field(req, "title"),
+                   field(req, "hook"), field(req, "type"),
+                   field(req, "body"), home=home)
+    elif act == "delete":
+        r = delete(proj, file, home=home)
+    elif act == "history":
+        return {"history": history(
+            proj, limit=req.get("limit"), since=req.get("since"),
+            find=field(req, "find"))}, 200
+    else:
+        return {"error": f"unknown action: {act}"}, 400
+    # One Save for the project, not one per thing in the panel: a memory
+    # edit marks the same flag the list does, and the one button spends the
+    # one line telling a session about all of it.
+    if not r.get("error"):
+        mark_unsaved(proj, "memory")
+    # A conflict answers 200 (see the roadmap's). The whole file as it now
+    # stands rides back in it, which is what lets the editor show both
+    # versions instead of just losing the typing.
+    return r, (400 if r.get("error") and not r.get("conflict") else 200)

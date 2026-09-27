@@ -6,24 +6,19 @@ decisions you need to make.
 
 ### 0. Know the three credentials (they are NOT interchangeable)
 
-| Credential | Lives where | Used for |
-|---|---|---|
-| **GHCR pull token**: classic PAT, `read:packages` scope only | On the Unraid **host** (`docker login`) | Lets the server pull the image while the package is private; a public package needs none. Fine-grained PATs don't work for GHCR pulls |
-| **Runner token** (fine-grained, owned by the org, and only for registering runners on your *nodes*. Repo: *Administration R/W*. Org: *Self-hosted runners R/W*. Nothing else) | Typed into the runner section of the node's row on the **Nodes tab**; kept root-only on the controller | Registers that node's runner with your repo or org. Never visible to sessions |
-| **Git SSH key(s)** | `secrets/ssh/` (shielded) or `home/.ssh/` (simple) | `git clone/pull/push` in your projects. Shielded keys are usable but unreadable |
+Three credentials, three places, three jobs: a **GHCR pull token** on the
+host so the server can pull a private image, a **runner token** for the
+nodes' CI runners, and **git SSH keys** for your projects. Which of them
+your setup needs, what each is exactly, and the three things that trip
+people up are in [unraid.md, shared step 1](unraid.md#shared-step-1-credentials);
+decide there before going on.
 
 ### 1. Authorize the server to pull the image (one-time)
 
-```bash
-docker login ghcr.io -u <your-github-username>     # paste the read:packages PAT
-
-# Unraid wipes root's filesystem every boot, so persist the login:
-cp /root/.docker/config.json /boot/config/ghcr-auth.json
-echo 'install -D -m 600 /boot/config/ghcr-auth.json /root/.docker/config.json' >> /boot/config/go
-```
-
-The auth file stores the PAT base64-encoded (not encrypted) on flash, which
-is why it must be a `read:packages`-only token.
+A `docker login ghcr.io` on the host with the pull token, persisted across
+Unraid's reboot of root's filesystem: the commands, and why the token must
+be `read:packages` only, are in
+[unraid.md, shared step 2](unraid.md#shared-step-2-log-the-unraid-host-into-ghcr).
 
 ### 2. Create the state directories
 

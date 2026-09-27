@@ -22,6 +22,12 @@ import threading
 import time
 from pathlib import Path
 
+# The request-field reader verb() shares with the server, found beside this
+# file however it was loaded: a test loads it by path, where a plain sibling
+# import finds nothing.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fields import field  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 
 # The two the server owns: running a command and writing a state file
@@ -1330,3 +1336,66 @@ def versions_loop():
             if start_job("check", [p["name"] for p in TOOLCHAINS], auto=True):
                 due = time.time() + TC_CHECK_EVERY
         time.sleep(300)
+
+
+# ---- the Tools card's verbs, one call from the dashboard ---------------------
+
+def verb(action, req, principal):
+    """Queue installs or removals of the toolchains the Tools card offers,
+    once server.py has let an administrator ask: here, or on another node
+    as a job against that node's store. Names are checked against
+    TOOLCHAINS rather than passed through: what reaches a command line is a
+    string this server chose, which is the rule every other executing
+    endpoint here follows. (payload, status)."""
+    nid = field(req, "node")
+    if nid and nid != "local":
+        # On another node the install is a job against that node's
+        # toolchain store (docs/nodes.md §6): same catalog, same names,
+        # audited, one at a time there, and gated on the store's
+        # headroom before a byte is downloaded.
+        if nodes is None:
+            return {"error": "the node store did not open"}, 500
+        if action not in ("install", "remove", "sysdeps", "check"):
+            return {"error": "a node takes install, remove, sysdeps or check"}, 400
+        node = nodes.node(nid)
+        if not node:
+            return {"error": "no such node"}, 400
+        known = {p["name"] for p in TOOLCHAINS}
+        if action == "check":
+            # Every row, or the ones named: the question a check answers
+            # is "is any of this out of date", and an uninstalled row's
+            # answer is what it would fetch, which is half the reason to
+            # press it (R67).
+            names = [n for n in (req.get("names") or []) if n in known]
+        elif action == "sysdeps":
+            # The system packages the held recipes need, installed
+            # without the recipes (roadmap R51): named ones, or every
+            # held one when none are named.
+            names = [n for n in (req.get("names") or []) if n in known][:8]
+        else:
+            names = [n for n in (req.get("names") or []) if n in known][:8]
+            if not names:
+                return {"error": "nothing selected"}, 400
+        r = node_job(principal, nid, action, names)
+        return r, (400 if r.get("error") else 200)
+    if action == "abort":
+        return {"ok": abort_job()}, 200
+    if action not in ("install", "remove", "update", "check"):
+        return {"error": "unknown action"}, 400
+    known = {p["name"] for p in TOOLCHAINS}
+    names = [n for n in (req.get("names") or []) if n in known]
+    # Checking is about everything, not a selection: the question it
+    # answers is "is any of this out of date, and what would the rest of
+    # it install". The uninstalled rows are half the reason to press it:
+    # a version you can read before spending the gigabytes.
+    if action == "check" and not names:
+        names = [p["name"] for p in TOOLCHAINS]
+    if not names:
+        return {"error": "nothing selected"}, 400
+    if not start_job(action, names):
+        # Which one, because the automatic version check holds the queue
+        # too and being told "an install is already running" when nobody
+        # started an install is the kind of answer that wastes an evening.
+        return {"error": "a version check is running; try again in a moment"
+                if job_is_automatic() else "an install is already running"}, 409
+    return {"ok": True, "queued": names}, 200

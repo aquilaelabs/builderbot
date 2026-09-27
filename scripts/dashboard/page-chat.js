@@ -4,6 +4,8 @@
 // moved out of the page's own script with bb map sections in hand: pure
 // declarations, nothing runs at load.
 
+"use strict";
+
 let chatWith = null;                 // {who} or {project}, or null for the list
 let chatMsgs = [], chatDraft = {}, chatSeenRev = -1, chatTimer = null;
 let chatDrawn = "";                  // what the open conversation was last painted from

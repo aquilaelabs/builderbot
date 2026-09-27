@@ -9,6 +9,8 @@
 // says why, rather than being offered one that fails, but the store refuses
 // it regardless, because `bb users` reaches the same rules from a shell.
 
+"use strict";
+
 let usersList = null;            // last answer, or null before the first
 let usersRev = 0;                // bumped when it changes, so panes repaint
 let usersErr = "";

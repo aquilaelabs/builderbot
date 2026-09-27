@@ -74,8 +74,8 @@ sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 # a node the agent sets ANDROID_HOME to that directory for every job and
 # session; on the controller nothing sets it since the image stopped
 # carrying /opt/android-sdk (10c), and the store is the only root there is;
-# sdk_relink_android, which used to point the image's tree onto the share,
-# finds nothing to relink and does nothing. One value, correct in both
+# sdk_relink_android, which points an image-side SDK tree onto the share,
+# finds no such tree and does nothing. One value, correct in both
 # places, and sdkmanager never runs without it.
 sdk_root_flag() { printf -- '--sdk_root=%s' "${ANDROID_HOME:-$(sdk_dir android)}"; }
 sdkmgr() {
@@ -166,8 +166,8 @@ PY
 # Rewrite the file every shell sources, so a toolchain installed a minute ago
 # is on PATH in the next terminal rather than after the next container
 # restart. The startup hook writes the same file from the same generator;
-# this is the other half: installs happen at runtime, and until now only
-# boot noticed them.
+# this is the other half: installs happen at runtime, and without it only
+# boot would notice them.
 # Where the generated env file lives. NOT in the toolchain store root, which is a share
 # two machines mount at different paths: every line in it is absolute
 # (/sdk/flutter/bin, RUSTUP_HOME=/sdk/rust/rustup), so a copy written here is
@@ -223,7 +223,7 @@ sdk_status() {
         # which holds the browsers its boot put there and is --local's.
         if [ -z "$node" ]; then
             log "this project has no node: toolchains are installed on a node (the Nodes tab), and a project with none cannot compile here"
-            log "bb toolchains --local lists this container's own store: what its boot keeps for bb shot, nothing to install"
+            log "bb toolchains --local lists this container's own store: what its boot keeps for bb capture shot, nothing to install"
             return 0
         fi
     fi
@@ -904,9 +904,9 @@ sdk_plan() {
 # The android package id an install would resolve to: a bare name, a versioned
 # one, or the newest image of a flavor.
 # flavor -> the sdkmanager id prefix, out of the catalog's android_images
-# section. Empty when the name is not one of them. The section replaced three
-# catalog rows that could each only ever install the newest level; every
-# caller that used to ask a row for `source.image` asks this now.
+# section. Empty when the name is not one of them. One section rather than a
+# catalog row per flavor, because a row can only ever name the newest level;
+# every caller that wants an image id asks this, never a row.
 sdk_image_flavor() {
     local want="${1#android:}" name abi rest
     case "$want" in

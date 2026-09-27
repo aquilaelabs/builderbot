@@ -5,9 +5,7 @@ those three are the whole of this file:
 
   * **what an address may look like.** `git clone` accepts transports a web
     form must never reach (`ext::` runs a command), so a URL typed into the
-    dashboard is matched against the shapes below and refused otherwise. That
-    check used to be "is it github.com", which is why nothing else could be
-    linked.
+    dashboard is matched against the shapes below and refused otherwise.
   * **whether a token is real**, asked before the network work starts, so a
     wrong paste fails in the dialog rather than half-way through a job.
   * **creating the repository** when it does not exist yet. Only ever an
@@ -502,3 +500,13 @@ def _create_gitlab(base, kind, token, owner, repo, entry):
     if made is not None:
         return ""
     return f"{entry['name']} would not create {owner}/{repo}: {why}"
+
+
+def host_label(url):
+    """The git host a remote's URL is on, by its name (GitHub, Gitea, or the
+    machine's own) and kind: what the Git view says it is in step with,
+    rather than "origin"."""
+    at = parse(url) if url else None
+    f = forge_of(at["host"]) if at else None
+    return {"name": (f["name"] if f and f["id"] != "git" else (at or {}).get("host", "")),
+            "kind": (f or {}).get("kind", "")}

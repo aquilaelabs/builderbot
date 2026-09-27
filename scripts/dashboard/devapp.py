@@ -720,6 +720,20 @@ def _forget_reads(node_id):
             del _last_reads[k]
 
 
+def _agent_exec(n, argv, timeout):
+    """One docker verb on one container, run on the agent node as a probe
+    job the Jobs tab never keeps, in _run's own {"code", "out"} shape. Not
+    _agent_read: a start is not a read, so nothing is memoised and a busy
+    node is not answered from what it said before."""
+    _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
+    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
+                       forget=True)
+    out = ({"code": 1, "out": r["error"]} if r.get("error")
+           else {"code": int(r.get("code") or 0), "out": r.get("out") or ""})
+    _docker_result(argv, out["code"], out["out"])
+    return out
+
+
 def _agent_read(n, argv, timeout):
     """One bare docker read, run on the agent node as a probe job the Jobs
     tab never keeps, in _run's own {"code", "out"} shape."""
@@ -793,8 +807,8 @@ def _available_agent(n):
     question the ssh has no part in was the whole mistake.
 
     The daemon's own id comes with them, from the same census. It is how two
-    VMs wearing one address are told apart (adopt), and it used to be read
-    over ssh with `docker info`, the reader this replaces. An agent too old
+    VMs wearing one address are told apart (adopt), and the census is the
+    only place it is read from: never `docker info` over ssh. An agent too old
     to report it sends nothing, and a record with no id is judged on its
     address alone, which is what every record written before the field is
     judged on and is documented as safe.
@@ -1165,6 +1179,17 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
         n = _agent_here()
         if n:
             return _agent_read(n, argv, timeout)
+    # ...and the verbs addressed at one container by name (its log, start,
+    # stop, restart) run there the same way, as one exec and never from a
+    # kept answer: they fell through to DOCKER_HOST=ssh:// below, which on
+    # an agent node is the path R85 names and no controller holds a key
+    # for, so a session's bb devapp log on the dev pair met "Host key
+    # verification failed" from the VM (B312).
+    if sink is None and hold is None and argv[:1] == [DOCKER] \
+            and len(argv) > 1 and argv[1] in _CTL_OK | {"logs"}:
+        n = _agent_here()
+        if n:
+            return _agent_exec(n, argv, timeout)
     _docker_log("$ " + " ".join(argv))
     env = dict(os.environ)
     # The resolved address, so `auto` never reaches the docker CLI, which does
@@ -2493,6 +2518,43 @@ def on_project_node(whose, node=""):
     return "", str(node) if node else own[0]
 
 
+def instance_key(project, name):
+    """The key a typed container name is recorded under: its slug, or MAIN
+    for the project's own name. The default instance is named after the
+    project, so asking for that name by hand is asking for that container,
+    not a second one beside it; before this, the name a person naturally
+    typed into "New container from X" was refused as a clash with X's own
+    container, which nobody had built yet (the operator, 25 Sep)."""
+    slug = _slug(name) or ""
+    return MAIN if slug and slug == _slug(project) else slug
+
+
+def _taken(project, slug, d):
+    """Why the key `slug` is not free for a new container of `project` in
+    the store `d`, or "". Not one the project has, and not one that another
+    project has taken: the name no longer carries the project, so two of
+    them asking for `dev` would be one compose project, one env file and one
+    data directory wearing two rows, which is the collision the old
+    spelling prevented by being long, and this prevents by asking."""
+    if slug in (d.get(project) or {}):
+        return (f"{project} already has its own container, {_pname(project, MAIN)}, "
+                "on the Docker tab: Build or Rebuild builds it there"
+                if slug == MAIN else f"{project} already has an instance called {slug}")
+    return name_clash(project, slug)
+
+
+def new_refusal(project, key):
+    """Why a new container keyed `key` (instance_key's answer) cannot be
+    made for this project, or "": said before a session's asked one goes to
+    a person, who would otherwise be answering a request no answer can
+    build, and again by create_instance itself."""
+    if not key:
+        return "an instance needs a name with a letter or digit in it"
+    if compose_file(project) is None:
+        return f"{project} has no compose file to make an instance of"
+    return _taken(project, key, _load())
+
+
 def create_instance(project, name, node="", owner=None):
     """Register a new instance of a project. Nothing is built or started.
 
@@ -2509,11 +2571,10 @@ def create_instance(project, name, node="", owner=None):
     `My App` and `my-app` are the same instance and the second should be
     refused rather than silently becoming the first.
     """
-    slug = _slug(name) or ""
-    if not slug:
-        return {"error": "an instance needs a name with a letter or digit in it"}
-    if compose_file(project) is None:
-        return {"error": f"{project} has no compose file to make an instance of"}
+    slug = instance_key(project, name)
+    why = new_refusal(project, slug)
+    if why:
+        return {"error": why}
     # A container lives on the node of the project it belongs to and nowhere
     # else: a session reaches only its own project's containers on its own
     # node (R79), so one anywhere else is out of reach of the work it is for
@@ -2531,28 +2592,12 @@ def create_instance(project, name, node="", owner=None):
         # takes an instance that was never built along (pin_to_current_node
         # keeps a built one where it is).
         node = picked
-    # The project's own name IS its own container: the default instance is
-    # named after the project, so asking for that name by hand is asking
-    # for that container, not a second one beside it. Before this, the name
-    # a person naturally typed into "New container from X" was refused as a
-    # clash with X's own container, which nobody had built yet (the
-    # operator, 25 Sep).
-    if slug == _slug(project):
-        slug = MAIN
     with _lock:
         d = _load()
-        if slug in (d.get(project) or {}):
-            return {"error": (f"{project} already has its own container, {_pname(project, MAIN)}, "
-                              "on the Docker tab: Build or Rebuild builds it there"
-                              if slug == MAIN else f"{project} already has an instance called {slug}")}
-        # And not one that another project has taken. The name no longer
-        # carries the project, so two of them asking for `dev` would be one
-        # compose project, one env file and one data directory wearing two
-        # rows, which is the collision the old spelling prevented by being
-        # long, and this prevents by asking.
-        clash = name_clash(project, slug)
-        if clash:
-            return {"error": clash}
+        # Asked again under the lock that writes it: two sends at once.
+        why = _taken(project, slug, d)
+        if why:
+            return {"error": why}
         rec = _rec(d, project, slug)
         if node:
             rec["node"] = str(node)
@@ -2786,6 +2831,22 @@ def only_instance(project):
     recorded one, else `main`."""
     have = list((_load().get(project) or {}).keys())
     return have[0] if len(have) == 1 else MAIN
+
+
+def send_name(project):
+    """The name a new container of a project gets when nobody typed one: the
+    project's own while it has none, then <project>-2, -3 and on, the first
+    that no container here holds. Send to Docker opens on it and `bb devapp
+    new` takes it, so sending a project again makes another container beside
+    the first rather than a refusal naming the one it already has (the
+    operator, 26 Sep)."""
+    d = _load()
+    if not _taken(project, MAIN, d):
+        return project
+    base, n = _slug(project) or "container", 2
+    while _taken(project, f"{base}-{n}", d):
+        n += 1
+    return f"{base}-{n}"
 
 
 def _rec(d, project, instance):
@@ -3317,22 +3378,16 @@ def _risk_gate(project, instance=MAIN, ack=""):
             _rec(store, project, instance)["risks_ack"] = d
             write_json(FILE, store)
         return ""
-    # With the way past it, which a session met this without: a person
-    # acknowledges the list where it is shown, once, and it holds until the
-    # compose asks for more. Taking the risky lines out of the compose is
-    # the move the bare refusal suggested, and it broke the container it was
-    # for (24 Sep, a PUID/PGID image that needs CHOWN and SETUID).
+    # With the way past it: a person acknowledges the list where it is
+    # shown, once, and it holds until the compose asks for more. Taking the
+    # risky lines out of the compose is the move the bare refusal suggested,
+    # and it broke the container it was for (24 Sep, a PUID/PGID image that
+    # needs CHOWN and SETUID). A session's build never meets this: its
+    # project's Run its container setting is its answer (rebuild's `gate`).
     return ("this compose asks for more than its own directory: "
             + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else "")
             + ". A person acknowledges that once by pressing Build or Rebuild on its row "
-              "on the Docker tab, where the list is shown; after that a rebuild from a "
-              "session works until the compose asks for more")
-
-
-def unacked_risks(project, instance=MAIN):
-    """The risk gate's refusal for this instance as things stand, or "": the
-    gate itself, asked without an acknowledgement, so nothing is written."""
-    return _risk_gate(project, instance, "")
+              "on the Docker tab, where the list is shown")
 
 
 def is_file_source(project, instance=MAIN):
@@ -3422,5 +3477,3 @@ def _dirty(project):
     r = _run(["git", "-C", str(WORKSPACE / project), "status", "--porcelain"],
              timeout=10, env_extra={"GIT_OPTIONAL_LOCKS": "0"})
     return r["code"] == 0 and bool(r["out"].strip())
-
-

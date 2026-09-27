@@ -62,8 +62,8 @@ def _wire_nodes(m, path):
 
 def verdicts(m):
     """[(state, sentence)], one per node with a daemon. state is ok, FAIL or skip."""
-    # The daemon is a node's (DOCKER_HOST is gone: the sandbox VM is a node
-    # record, docs/nodes.md §11), and there is no primary among them (the
+    # The daemon is a node's (there is no DOCKER_HOST to read: the sandbox VM
+    # is a node record, docs/nodes.md §11), and there is no primary among them (the
     # operator, 25 Sep): each node's daemon gets its own line, named, so a
     # box with two nodes does not read one machine's silence as "the docker
     # daemon" being down. No node with one is not a fault to report red on
@@ -90,8 +90,8 @@ def verdicts(m):
 
 
 def mapping_faults(m):
-    """Complaints about the node's path mapping (its row's node_paths, once
-    DOCKER_HOST_PATHS), or an empty list.
+    """Complaints about the node's path mapping (its row's node_paths), or an
+    empty list.
 
     Worth a boot line of its own because it is the failure nothing else
     catches: a pair whose two sides have drifted apart means a bind mount

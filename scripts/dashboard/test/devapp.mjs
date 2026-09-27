@@ -6,7 +6,7 @@
 // the buttons run table-lookup compose commands and nothing else.
 import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, URL, DIR, nbShown, nbTab } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 // ep.silon gets the compose file, since delta is the harness's EXCLUDED
@@ -1916,11 +1916,28 @@ ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT'
 await page.waitForSelector('#dnEnvField:not([hidden])', { timeout: 10000 });
 ok(/PORT=8080/.test(await page.$eval('#dnEnv', e => e.value)),
    '...carrying the env seeded from .env.example');
-// The dialog offers the project's own name, and that name means the
-// project's own container: asked for when the project already has one, the
-// answer says so and where it is, rather than "needs another name" (the
-// operator, 25 Sep, on a project sent for the first time).
-ok(await page.$eval('#dnName', e => e.value) === 'ep.silon', 'the send dialog offers the project\'s own name');
+// The dialog offers the name the next container takes: the project's own
+// while it has none, and once it has that, one beside it, so pressing Send
+// again makes another container rather than a refusal naming the first (the
+// operator, 26 Sep). Its hint says a second needs ports of its own. How many
+// it counts is what the tab had when it loaded, which may still include one
+// the block above is removing: a remove is a job, and the record goes when
+// the job finishes.
+{
+  const offer = await page.evaluate(() => ({ name: $('dnName').value, hint: $('dnHint').textContent }));
+  const have = Object.keys(JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['ep.silon'] || {});
+  ok(have.includes('main') && offer.name === 'ep-silon-2'
+     && /beside the (one|\d+) it already has: give it ports of its own/.test(offer.hint),
+     `with its own container made, the send dialog offers one beside it and says so (${offer.name}; ${
+        offer.hint.slice(0, 70)}; has ${have.join(', ')})`);
+  const fresh = await (await fetch(URL.replace(/\/$/, '') + '/api/artifacts?project=beta',
+    { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  ok(fresh.send_as === 'beta', `...and a project with none is offered its own name (${fresh.send_as})`);
+}
+// The project's own name still means the project's own container: asked for
+// when the project already has one, the answer says so and where it is,
+// rather than "needs another name" (the operator, 25 Sep, on a project sent
+// for the first time).
 {
   // Asked from here rather than the page: a 400 the page fetches lands in
   // its console, and the dev row's check below wants that console clean.
@@ -3021,33 +3038,108 @@ ok(await page.$('#devSend'),
                                    body: JSON.stringify({ project: 'ep.silon', instance: i, action: 'remove' }) });
     }, inst);
     await dial('auto');
-    // A compose asking for more than its own directory needs a person's
-    // acknowledgement once, whatever the setting (a session's report, 24
-    // Sep): new says so rather than promising that rebuild builds it, and
-    // rebuild's refusal names the way past it instead of inviting the
-    // session to cut the compose down.
+    // A compose asking for more than its own directory is confirmed by a
+    // person pressing Build; a session's build follows its project's Run its
+    // container setting instead, like every other container (the operator,
+    // 26 Sep, after a session on auto was stopped there): auto builds it,
+    // and at ask the person's Allow is the confirmation. A person's own
+    // rebuild without it is still refused, on its job.
     writeFileSync(`${DIR}/dockerstate/riskynew.config`, JSON.stringify(
       { services: { app: { build: { context: '.' }, privileged: true } } }));
+    const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+    const jobEnd = async id => {
+      let j = null;
+      for (let i = 0; i < 60 && id && !(j && ['failed', 'succeeded', 'canceled'].includes(j.state)); i++){
+        await sleep(500);
+        j = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?id=' + id, { headers: H })).json();
+      }
+      return j || {};
+    };
     const rn = await asSession({ project: 'ep.silon', action: 'new', instance: 'riskynew' });
-    ok(rn.status === 200 && /asks for more than its own directory/.test(rn.needs_ack || '')
-       && /pressing Build or Rebuild on its row on the Docker tab/.test(rn.needs_ack || ''),
-       `on auto, new says a risky compose waits for a person's acknowledgement (${String(rn.needs_ack).slice(0, 90)})`);
-    // The refusal is the job's (B260): the request answers with the job and
-    // the gate's words land on it, which is what bb devapp rebuild prints.
     const rr = await asSession({ project: 'ep.silon', action: 'rebuild', instance: 'riskynew' });
-    let rj = null;
-    for (let i = 0; i < 60 && rr.job && !(rj && ['failed', 'succeeded', 'canceled'].includes(rj.state)); i++){
-      await sleep(500);
-      rj = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?id=' + rr.job,
-        { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
-    }
-    ok(rr.status === 200 && rj?.state === 'failed' && /Build or Rebuild on its row on the Docker tab/.test(rj.error || ''),
-       `...and rebuild's refusal, on its job, names the way past it (${rj?.state}: ${String(rj?.error).slice(0, 90)})`);
+    const rj = await jobEnd(rr.job);
+    ok(rn.status === 200 && !rn.needs_ack && rr.status === 200 && rj.state === 'succeeded',
+       `on auto a session makes and builds a compose that asks for more than its own directory (${
+          rn.error || 'made'}; ${rj.state}: ${String(rj.error || '').slice(0, 80)})`);
+    const mine = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'ep.silon', instance: 'riskynew', action: 'rebuild', ack: '' }) })).json()));
+    const mj = await jobEnd(mine.job);
+    ok(mj.state === 'failed' && /Build or Rebuild on its row on the Docker tab/.test(mj.error || ''),
+       `...while a person's own rebuild without the confirmation is still refused, on its job (${mj.state}: ${
+          String(mj.error || '').slice(0, 60)})`);
+    await dial('ask');
+    const ra = await asSession({ project: 'ep.silon', action: 'rebuild', instance: 'riskynew',
+                                 why: 'the privileged one again' });
+    await page.evaluate(async (id) => {
+      await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ action: 'allow', id }) });
+    }, ra.id);
+    const out = await (await fetch(URL.replace(/\/$/, '') + '/api/phone', { method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+      body: JSON.stringify({ action: 'outcome', id: ra.id }) })).json();
+    const aj = await jobEnd(out.out);
+    ok(ra.status === 200 && ra.id && out.state === 'done' && aj.state === 'succeeded',
+       `...and at ask the person's Allow is the confirmation: the build it starts goes through (${
+          out.state}; ${aj.state}: ${String(aj.error || out.out || '').slice(0, 80)})`);
+    await dial('auto');
+    await idle();
     await page.evaluate(async () => {
       await fetch('/api/devapp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                                    body: JSON.stringify({ project: 'ep.silon', instance: 'riskynew', action: 'remove' }) });
     });
+    await idle();
     rmSync(`${DIR}/dockerstate/riskynew.config`, { force: true });
+    // ---- sending it again: another container beside the first (26 Sep) --
+    // A session sends its project to Docker the way the Artifacts tab's Send
+    // does, and sending again makes another container rather than a refusal
+    // naming the first: unnamed, a new one is the project's own while it has
+    // none and <project>-2, -3 after, which is also the name Send opens on.
+    // On ask a name nothing could make is refused before anybody is asked,
+    // the card names the container and the branch it builds from, and Allow
+    // makes it, pins it and builds it from there.
+    {
+      const G = (...a) => execFileSync('git', ['-C', D, ...a], { env, encoding: 'utf8' });
+      ok(insts().includes('main'), `the project has its own container to send another beside (${insts().join(', ')})`);
+      const second = await asSession({ project: 'ep.silon', action: 'new' });
+      const third = await asSession({ project: 'ep.silon', action: 'new' });
+      ok(second.status === 200 && second.instance === 'ep-silon-2' && third.instance === 'ep-silon-3',
+         `unnamed, a session's new makes another container beside the one it has, then another (${
+            second.error || second.instance}, ${third.error || third.instance})`);
+      const offered = await page.evaluate(async () =>
+        (await (await fetch('/api/artifacts?project=ep.silon')).json()).send_as);
+      ok(offered === 'ep-silon-4', `...and Send offers the name after them (${offered})`);
+      await dial('ask');
+      const taken = await asSession({ project: 'ep.silon', action: 'new', instance: 'ep-silon-2', why: 'another' });
+      ok(taken.status === 400 && /already has an instance called ep-silon-2/.test(taken.error || '') && !taken.id,
+         `on ask a name that is taken is refused before anybody is asked (${String(taken.error).slice(0, 60)})`);
+      G('branch', 'sendbranch');
+      const sent = await asSession({ project: 'ep.silon', action: 'new', ref: 'sendbranch',
+                                     why: 'the branch beside main' });
+      const card = await page.evaluate(async (id) =>
+        ((await (await fetch('/api/phone')).json()).asks || []).find(a => a.id === id), sent.id);
+      ok(sent.status === 200 && sent.instance === 'ep-silon-4' && sent.name === 'ep-silon-4'
+         && JSON.stringify(card?.cmd) === '["devapp","new","ep-silon-4","--branch","sendbranch"]',
+         `...and a send's card names the container it makes and its branch (${
+            sent.error || sent.instance}: ${JSON.stringify(card?.cmd)})`);
+      await page.evaluate(async (id) => {
+        await fetch('/api/phone', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ action: 'allow', id }) });
+      }, sent.id);
+      await idle();
+      const made4 = (await asSession({ project: 'ep.silon', instance: 'ep-silon-4', action: 'state' })).state || {};
+      ok(made4.ref === 'sendbranch' && made4.built_ref === 'sendbranch',
+         `...and Allow makes it, pins it to that branch and builds it from there (${
+            JSON.stringify([made4.ref, made4.built_ref])})`);
+      await dial('auto');
+      for (const i of ['ep-silon-2', 'ep-silon-3', 'ep-silon-4'])
+        await asSession({ project: 'ep.silon', instance: i, action: 'remove' });
+      await idle();
+      try { G('worktree', 'remove', '--force', `${DIR}/ws/ep-silon-ep-silon-4-build`); }
+      catch (e) { rmSync(`${DIR}/ws/ep-silon-ep-silon-4-build`, { recursive: true, force: true });
+                  try { G('worktree', 'prune'); } catch (e2) { /* nothing to prune */ } }
+      G('branch', '-D', 'sendbranch');
+    }
   }
   // The setting lives in the project's settings with the other Claude may
   // dials (the operator, 24 Sep), because it covers creating the container,
@@ -3540,6 +3632,30 @@ print(json.dumps(out))
      `...reads one written for it by name, and not its own project's container sent to no project (${st.status}, ${theirs.error})`);
   const log = await as('/api/dockerctl', { action: 'logs', container: 'someone-elses' });
   ok(/hello from someone-elses/.test(log.text || ''), `...reads the log of one somebody else started, put under it (${log.status})`);
+  // ...and one of its own by the name bb devapp ls prints, which is the
+  // compose name: its containers are named for it and its services, and
+  // looked up by container name alone the name found nothing and the
+  // project's own instance was refused to its session as not its own, its
+  // log with it (B307). The log is each service's, under its name.
+  const bare = await as('/api/dockerctl', { action: 'logs', container: 'helper-for-eps' });
+  ok(bare.status === 400 && /has no containers on its node now/.test(bare.error || ''),
+     `one of its own with nothing running under it is said as that, not refused as a stranger's (${
+        bare.status}: ${String(bare.error).slice(0, 50)})`);
+  const wasUp = existsSync(`${DIR}/dockerstate/helper-for-eps.up`);
+  writeFileSync(`${DIR}/dockerstate/helper-for-eps.up`, '');
+  // Read once the node is idle: while a job runs there, a listing is
+  // answered from the last one kept, which predates the mark just written.
+  await idle();
+  const own = await as('/api/dockerctl', { action: 'logs', container: 'helper-for-eps' });
+  ok(own.status === 200 && /hello from helper-for-eps-app-1/.test(own.text || ''),
+     `...and the log of its own container by the name ls prints, which is its services' (${own.status}: ${
+        String(own.error || own.text).trim().slice(0, 60)})`);
+  await dial('auto');
+  const ctlWas = readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').length;
+  const ownRestart = await as('/api/dockerctl', { action: 'restart', container: 'helper-for-eps' });
+  ok(ownRestart.ok && readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').slice(ctlWas).includes('helper-for-eps-app-1'),
+     `...and restarts it by that name, which restarts its services (${JSON.stringify(ownRestart).slice(0, 70)})`);
+  if (!wasUp) rmSync(`${DIR}/dockerstate/helper-for-eps.up`, { force: true });
   await dial('deny');
   const denied = await as('/api/dockerctl', { action: 'restart', container: 'someone-elses' });
   ok(denied.status === 403 && /Claude may: Run its container/.test(denied.error || ''),
@@ -3696,8 +3812,13 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
 
 // A one-shot service that ran and exited 0 is finished, not down: the row
 // says running and the chip says finished, while a service that exited
-// non-zero still makes the row partly up (B147).
+// non-zero still makes the row partly up (B147). Drawn against a listing
+// read with the node idle: dmRowsHtml wears the page's own listing's
+// staleness, and the restart a block above sends as a job left the kept
+// one marked stale, so the row read "(running, as last seen)" (B303).
 {
+  await idle();
+  await page.evaluate(async () => { dockerList = null; await loadDocker(); });
   const row = svc => ({ project: 'delta', instance: 'delta-dev', name: 'delta-dev', running: true, exists: true,
     source: 'project', ports: [], services: [
       { service: 'app', name: 'app', state: 'running', status: 'Up 5 hours (healthy)' },
@@ -3808,6 +3929,155 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   await setNodes('alpha', []);
   await setNodes('ep.silon', [ids.sandbox]);
   rmSync(`${D}/docker-compose.yml`, { force: true });
+}
+
+// bb devapp rebuild when the controller is slow to answer the rebuild
+// request itself (B298): the build went ahead while the verb said "timed
+// out" and stopped. Driven in process with the API call replaced, the way
+// toolchains.mjs drives its module: the request times out, and the verb says
+// the build may have started, watches for it, and reports it built.
+{
+  const LIB = new globalThis.URL('../../lib', import.meta.url).pathname;
+  const run = spawnSync('python3', ['-c', `
+import importlib.util, json, os, sys, time
+sys.path.insert(0, ${JSON.stringify(LIB)})
+spec = importlib.util.spec_from_file_location("dv", ${JSON.stringify(LIB + '/devapp-verbs.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+looks = iter([{"built_rev": "aaa"}, {"job": {"running": True, "step": "building"}},
+              {"built_rev": "bbb", "running": True, "name": "alpha-dev"}])
+asked = []
+def call(path, body=None, auth="", method="", timeout=30):
+    asked.append([body.get("action"), timeout])
+    if body.get("action") == "rebuild":
+        return {"error": "timed out"}
+    return {"state": next(looks)}
+m.bbapi.call = call
+time.sleep = lambda s: None
+os.environ.update(BB_DEV_PROJECT="alpha", BB_DEV_AUTH="x")
+code = 0
+try:
+    m.rebuild()
+except SystemExit as e:
+    code = e.code
+print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
+  const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
+  ok(got.code === 0 && (got.asked || []).some(([a, t]) => a === 'rebuild' && t === 180)
+     && /may have started it, so this watches for the build/.test(run.stderr || '')
+     && /rebuilt bbb; alpha-dev is up/.test(run.stdout || ''),
+     `bb devapp rebuild waits three minutes for the controller, and a timeout there watches for the build rather than giving up (${
+       JSON.stringify(got).slice(0, 90)} ${(run.stderr || '').split('\n').filter(Boolean).pop() || ''})`);
+}
+
+// bb devapp rebuild follows the job its answer names (B312): a rebuild of an
+// unchanged commit that ended between two looks showed the row neither a
+// running job nor a new revision, and the verb said no build appeared over
+// one that had. Driven in process: the row never changes, the job says
+// succeeded, and the verb reports it rebuilt.
+{
+  const LIB = new globalThis.URL('../../lib', import.meta.url).pathname;
+  const run = spawnSync('python3', ['-c', `
+import importlib.util, json, os, sys, time
+sys.path.insert(0, ${JSON.stringify(LIB)})
+spec = importlib.util.spec_from_file_location("dv", ${JSON.stringify(LIB + '/devapp-verbs.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+asked = []
+def call(path, body=None, auth="", method="", timeout=30):
+    if body is None:
+        asked.append(path); return {"state": "succeeded"}
+    asked.append(body.get("action"))
+    if body.get("action") == "rebuild":
+        return {"ok": True, "started": True, "job": "j9"}
+    return {"state": {"built_rev": "aaa", "running": True, "name": "alpha-dev"}}
+m.bbapi.call = call
+time.sleep = lambda s: None
+os.environ.update(BB_DEV_PROJECT="alpha", BB_DEV_AUTH="x", BB_DEV_INSTANCE="", BB_DEV_CONTAINER="")
+code = 0
+try:
+    m.rebuild()
+except SystemExit as e:
+    code = e.code
+print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
+  const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
+  ok(got.code === 0 && (got.asked || []).includes('/api/v1/jobs?id=j9') && /rebuilt aaa; alpha-dev is up/.test(run.stdout || ''),
+     `bb devapp rebuild follows the job its answer names, so a fast rebuild of the same commit is reported built (${
+        JSON.stringify(got).slice(0, 80)})`);
+}
+
+// A container's log, start, stop and restart on an agent node run on that
+// node through its agent, as the bare reads do (B312): every other docker
+// verb fell to DOCKER_HOST=ssh://, the path R85 names, which no controller
+// holds a key for. Driven in process with the node and the queue replaced.
+{
+  const DASH = new globalThis.URL('../', import.meta.url).pathname.replace(/\/$/, '');
+  const run = spawnSync('python3', ['-c', `
+import importlib.util, json, os, sys, types
+sys.path.insert(0, ${JSON.stringify(DASH)})
+spec = importlib.util.spec_from_file_location("dvp", ${JSON.stringify(DASH + '/devapp.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+ran = []
+m._agent_here = lambda: {"id": "n1", "name": "box"}
+m.queue = types.SimpleNamespace(run_wait=lambda who, nid, argv, timeout=0, forget=False: (ran.append([nid, list(argv)]), {"code": 0, "out": "hello"})[1],
+                                job_running=lambda nid: 0)
+m._docker_log = lambda *a, **k: None
+m._docker_result = lambda *a, **k: None
+m.docker_host = lambda: (_ for _ in ()).throw(AssertionError("went to DOCKER_HOST"))
+out = [m._run([m.DOCKER, "logs", "--tail", "5", "--timestamps", "c1"]), m._run([m.DOCKER, "restart", "c1"])]
+print(json.dumps({"ran": ran, "out": out}))`], { encoding: 'utf8' });
+  const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
+  ok(JSON.stringify((got.ran || []).map(r => r[1][1])) === '["logs","restart"]' && (got.out || []).every(o => o.out === 'hello'),
+     `a container's log and restart on an agent node run through its agent, never over ssh (${
+        (run.stderr || '').split('\n').filter(Boolean).pop() || JSON.stringify(got).slice(0, 80)})`);
+}
+
+// bb devapp new sends the project to Docker the way Send does (the operator,
+// 26 Sep): on auto it makes the container, then builds that one and waits
+// for the verdict; on ask the one request carries the branch, Allow makes
+// and builds it, and the verb follows that build rather than asking for
+// another. Driven in process the same way, once per dial.
+{
+  const LIB = new globalThis.URL('../../lib', import.meta.url).pathname;
+  const run = spawnSync('python3', ['-c', `
+import importlib.util, json, os, sys, time
+sys.path.insert(0, ${JSON.stringify(LIB)})
+spec = importlib.util.spec_from_file_location("dv", ${JSON.stringify(LIB + '/devapp-verbs.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+time.sleep = lambda s: None
+m.waits.outcome = lambda auth, rid, no: {"code": 0, "out": "j1"}
+out = {}
+for dial in ("auto", "ask"):
+    bodies = []
+    looks = iter(([{"built_rev": ""}] if dial == "auto" else [])
+                 + [{"built_rev": "ccc", "running": True, "name": "alpha-2"}])
+    def call(path, body=None, auth="", method="", timeout=30, dial=dial, bodies=bodies, looks=looks):
+        if body is None:
+            bodies.append({"action": "job", "instance": path.split("=")[-1], "ref": None})
+            return {"state": "succeeded"}
+        bodies.append({k: body.get(k) for k in ("action", "instance", "ref")})
+        if body.get("action") == "new":
+            return ({"ok": True, "instance": "alpha-2", "name": "alpha-2"} if dial == "auto"
+                    else {"ok": True, "id": 7, "to": "the administrators", "instance": "alpha-2", "name": "alpha-2"})
+        if body.get("action") == "rebuild":
+            return {"ok": True, "started": True, "job": "j1"}
+        return {"state": next(looks)}
+    m.bbapi.call = call
+    os.environ.update(BB_DEV_PROJECT="alpha", BB_DEV_AUTH="x", BB_DEV_REF="sendbranch",
+                      BB_DEV_INSTANCE="", BB_DEV_CONTAINER="")
+    code = 0
+    try:
+        m.new()
+    except SystemExit as e:
+        code = e.code
+    out[dial] = {"code": code, "bodies": bodies}
+print(json.dumps(out))`], { encoding: 'utf8' });
+  const got = JSON.parse((run.stdout || '').trim().split('\n').pop() || '{}');
+  const acts = d => (got[d]?.bodies || []).map(b => b.action + (b.instance ? ':' + b.instance : '')).join(' ');
+  ok(got.auto?.code === 0 && got.auto.bodies[0].action === 'new' && !got.auto.bodies[0].instance
+     && got.auto.bodies[0].ref === 'sendbranch' && acts('auto') === 'new state:alpha-2 rebuild:alpha-2 job:j1 state:alpha-2'
+     && /created alpha-2/.test(run.stderr || '') && /built ccc; alpha-2 is up/.test(run.stdout || ''),
+     `bb devapp new on auto makes the container and builds that one, waiting for the verdict (${acts('auto')})`);
+  ok(got.ask?.code === 0 && acts('ask') === 'new job:j1 state:alpha-2'
+     && /asked the administrators \(#7\) to send it to Docker as alpha-2/.test(run.stderr || ''),
+     `...and on ask it follows the build Allow starts instead of asking for another (${acts('ask')})`);
 }
 
 await done(browser);

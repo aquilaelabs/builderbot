@@ -178,7 +178,7 @@ await page.click('#roadmapSaveQuiet');
 await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
                              .getAttribute('aria-busy') !== 'true',
                            { timeout: 15000 });
-ok(read('MEMORY.md').includes('- [Loose ends](loose.md) — only recall ever surfaced this one'),
+ok(read('MEMORY.md').includes('- [Loose ends](loose.md) \u2014 only recall ever surfaced this one'),
    'saving writes the line, in the shape Claude wrote the others in');
 ok(!read('MEMORY.md').includes('vanished.md'),
    '...and the line pointing at a file that is not there comes out with it');
@@ -219,7 +219,7 @@ ok(born.startsWith('---\nname: no-parsed-progress\n')
    && born.includes('metadata:\n  type: feedback\n')
    && born.trimEnd().endsWith('Report what it is doing in a word.'),
    'a memory written by hand comes out in the shape Claude writes them in');
-ok(read('MEMORY.md').includes('- [No parsed progress here](no-parsed-progress.md) — '
+ok(read('MEMORY.md').includes('- [No parsed progress here](no-parsed-progress.md) \u2014 '
                               + 'a word and an ellipsis, never a bar'),
    '...and gets its line in the index in the same act, never one without the other');
 ok(await page.$('#naTitle') === null && await page.$('#memAdd button') !== null,
@@ -229,11 +229,15 @@ ok(await page.$('#naTitle') === null && await page.$('#memAdd button') !== null,
   // memory both roll it up rather than snapping the list upward.
   await page.click('#memAdd button');
   await page.waitForSelector('#naTitle');
+  // Open all the way first. A Cancel pressed before the fold has moved at
+  // all rolls up from where the box already is, which is no motion, and a
+  // loaded box got there (B291).
+  await page.waitForFunction(() => !document.getElementById('memAdd').getAnimations().length,
+                             null, { timeout: 10000 });
   const seen = await animatedDuring(page, async () => {
-    // Pressed in the page: the box is still folding open from the click
-    // above, and a click Playwright retried after its hit-target check
-    // landed on the button that replaced Cancel, opening the form again
-    // (B262, B124's family).
+    // Pressed in the page: a click Playwright retried after its hit-target
+    // check once landed on the button that replaced Cancel, opening the form
+    // again (B262, B124's family).
     await page.$eval('#naCancel', b => b.click());
     await page.waitForFunction(() => !document.getElementById('naTitle'));
   });

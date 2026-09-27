@@ -132,8 +132,11 @@ services:
       # Static-analysis reports, READ-ONLY. The scanner stays on the host by
       # design: mounting only its output means nothing in this container can
       # run it, reconfigure it, or rewrite what it found. Read them with
-      # `bb findings`.
-      # - ${SCANNER_REPORTS_PATH:-/mnt/user/appdata/scanners/reports}:/reports:ro
+      # `bb findings`. Mounted whether or not a scanner writes there, as the
+      # Unraid template mounts it, so a dev instance of BuilderBot names its
+      # own directory in its env and reads a scan the same way (26 Sep); with
+      # no scanner the directory is empty and the Analysis view says so.
+      - ${SCANNER_REPORTS_PATH:-/mnt/user/appdata/scanners/reports}:/reports:ro
 
       # Optional: send the persistent log somewhere else (e.g. an array
       # share). The container auto-detects a /logs mount; without it, logs

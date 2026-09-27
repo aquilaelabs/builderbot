@@ -43,6 +43,15 @@ import os
 import time
 from pathlib import Path
 
+# What the dashboard's verbs below need from the server, set by server.py: the
+# cached answer to who each home is signed in as, cleared when this changes
+# it; nodes' names by id, [] when the node store is not up; and the answer
+# itself for a home, read afresh.
+forget_auth = None
+node_names = None
+claude_auth = None
+home_for = None           # an account's uid -> its home, where its Claude record is
+
 MARK = ".bb-grant.json"
 MAX_NODES = 64
 
@@ -146,3 +155,72 @@ def sign_out(home):
     gen = int(d.get("gen") or 0) + 1
     _write(home, {"gen": gen, "email": "", "plan": "", "nodes": {}})
     return {"ok": True, "gen": gen, "was": was, "nodes": where}
+
+
+# ---- the dashboard's verbs, one call each --------------------------------------
+
+def sign_out_verb(home):
+    """Sign an account out of Claude, on every machine it is on, once the
+    server has said none of its conversations is running. There is nothing
+    here to delete (the credentials are the nodes'), so what this does is
+    move the generation and clear the record: each node compares
+    generations on its next sync (every connection, every prompt) and signs
+    ITSELF out when its own is behind, which is what reaches one that is
+    not listening. (payload, status)."""
+    r = sign_out(home)
+    forget_auth()
+    if r.get("error"):
+        return r, 500
+    return {"ok": True, "gen": r["gen"],
+            # What it reaches, said rather than assumed: a node that is not
+            # dialing in signs itself out when it comes back, and the
+            # sentence should not pretend they all go at once.
+            "nodes": node_names(r["nodes"]),
+            "auth": claude_auth(home=home)}, 200
+
+
+def identity(home):
+    """What a node asks: who this BuilderBot account is bound to and what
+    the generation is. No credential leaves here, because none is kept
+    here: a machine signs in for itself and keeps the grant it alone
+    refreshes. Behind means sign yourself out. (payload, status)."""
+    st = state(home)
+    return {"email": st["email"], "plan": st["plan"],
+            "gen": st["gen"], "signed_in": st["signed_in"],
+            "nodes": len(st["nodes"])}, 200
+
+
+def report_from(home, nid, req):
+    """A node reporting what it is signed in AS, never the grant itself,
+    once the server has said which node it is from the token. (payload,
+    status)."""
+    r = report(home, nid, req.get("email") or "", req.get("plan") or "",
+               signed_in=bool(req.get("signed_in", True)))
+    forget_auth()
+    return r, (400 if r.get("error") else 200)
+
+
+def logins_of(rows):
+    """Which Anthropic account each BuilderBot account is signed in as, and
+    whether two of them share one, for the Users tab.
+
+    From the RECORD, not from a credential: no login lives on this container
+    (R47), and what it keeps instead is which Anthropic account each of its
+    accounts is bound to, as the node that signed in reported it.
+
+    Anthropic's consumer terms allow one person per Claude account, so two
+    BuilderBot accounts on one login is the thing the per-account homes exist
+    to avoid, said on the row rather than left for somebody to work out.
+    """
+    out = []
+    for u in rows:
+        home = home_for(u.get("uid", "")) or os.environ.get("BUILDER_HOME", str(Path.home()))
+        out.append(u | {"claude": state(home)["email"]})
+    seen = {}
+    for u in out:
+        if u["claude"]:
+            seen.setdefault(u["claude"], []).append(u["name"])
+    for u in out:
+        others = [n for n in seen.get(u["claude"], []) if n != u["name"]]
+        u["claude_shared_with"] = others
+    return out

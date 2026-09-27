@@ -1641,7 +1641,7 @@ JDK, the Android SDK and emulator, .NET, Flutter and Swift, and only then
 does the local node lose `package-build`. The other order strands every
 project between a container that cannot build and a node that cannot yet.
 `bb toolchains` shrinks to what a session and the dashboard actually use here:
-node, Python, and the Playwright browsers for `bb shot` against a URL.
+node, Python, and the Playwright browsers for `bb capture shot` against a URL.
 
 **Then the session's tools close.** The settings file `claude_scope()`
 already passes (`scripts/dashboard/bb-tty`) denies the file tools every

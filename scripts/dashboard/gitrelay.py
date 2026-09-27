@@ -25,12 +25,18 @@ credentials at all.
 import contextlib
 import fcntl
 import os
+import sys
 import re
 import secrets
 import shutil
 import subprocess
 import time
 from pathlib import Path
+
+# Its own directory on the path, so a test can load this file alone (git.mjs
+# does) and still find statefile beside it.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import statefile  # noqa: E402
 
 # Injected by configure().
 STATE = None
@@ -275,9 +281,8 @@ def _q(value):
 
 
 def _atomic(path, text):
-    tmp = Path(str(path) + f".{secrets.token_hex(4)}.tmp")
-    tmp.write_text(text)
-    os.replace(tmp, path)
+    """All of `text` or none of it, through statefile.write_text."""
+    statefile.write_text(path, text)
 
 
 def _base():

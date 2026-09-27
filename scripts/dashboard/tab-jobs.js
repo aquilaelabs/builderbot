@@ -10,6 +10,8 @@
 // "jobs" revision token moves, never from the status poll. The one verb is
 // Cancel; a job is never edited, and a finished one is history (door 1).
 
+"use strict";
+
 let jobsList = null;             // last answer, or null before the first
 let jobsNodes = {};              // id -> name, from the same answer
 let jobsRev = 0;                 // bumped when it changes, so panes repaint

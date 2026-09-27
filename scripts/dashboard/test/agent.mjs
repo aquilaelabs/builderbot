@@ -1310,7 +1310,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     const verbs = readFileSync(`${REPO}/scripts/lib/relay-verbs`, 'utf8').split(/\s+/).filter(Boolean);
     ok(verbs.includes('roadmap') && verbs.includes('git')
        && /lib\/relay-verbs/.test(readFileSync(`${REPO}/scripts/bb`, 'utf8'))
-       && /"lib" \/ "relay-verbs"/.test(readFileSync(`${REPO}/scripts/dashboard/server.py`, 'utf8')),
+       && /"lib" \/ "relay-verbs"/.test(readFileSync(`${REPO}/scripts/dashboard/bbrelay.py`, 'utf8')),
        `bb and the server read the relay verbs from one file (${verbs.length} verbs)`);
     await relay({ argv: ['roadmap', 'rm', String(((added.out || '').match(/added R(\d+)/) || [])[1]), 'test'] });
   }
@@ -2773,6 +2773,26 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
          '...and names the step, so the row says a directory could not be made rather than that up failed');
       rmSync(`${DIR}/devdata/blocked`, { force: true });
       await api('/api/devapp', { project: 'ep.silon', instance: 'blocked', action: 'remove' });
+    }
+    // A bind directory that is there already is somebody's (a container's
+    // config directory, a tree an administrator chowned on request) and is
+    // left as it is: handing every mount source to the agent's account on
+    // each rebuild broke the containers that owned them (B315). Only one
+    // this step makes is given to the session account.
+    {
+      const made = await api('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'kept', node: minted.id });
+      mkdirSync(`${DIR}/devdata/kept`, { recursive: true });
+      const up3 = await api('/api/devapp', { project: 'ep.silon', instance: 'kept', action: 'up' });
+      const jk = await until(async () => {
+        const r = await api('/api/v1/jobs?project=ep.silon&type=compose&n=1');
+        const one = (r.jobs || [])[0];
+        if (!one || !['succeeded', 'failed', 'canceled'].includes(one.state) || one.id === j.id) return null;
+        return api(`/api/v1/jobs?id=${one.id}`);
+      }, 60000);
+      ok(made.ok && (up3.ok || up3.started) && jk && /bind directory .*\/kept \(already there, left as it is\)/.test(jk.log || ''),
+         `a bind directory that exists already is left as it is, and the job says so (${jk?.state}: ${
+            ((jk?.log || '').match(/bind directory [^\n]*/) || [''])[0].slice(0, 90)})`);
+      await api('/api/devapp', { project: 'ep.silon', instance: 'kept', action: 'remove' });
     }
     // A compose file that reads its settings through `env_file: .env`: the
     // project's own .env, which BuilderBot never writes. The instance's env

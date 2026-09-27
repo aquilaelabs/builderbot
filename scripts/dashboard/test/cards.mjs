@@ -2166,7 +2166,7 @@ ok(cmdPin.status === 200 && (cmdPin.body.pinned || []).includes('status'),
    'a command can be pinned');
 ok(JSON.parse(readFileSync(`${DIR}/state/pinned-commands.json`, 'utf8')).includes('status'),
    '...into pinned-commands.json, which is its own file');
-ok(!JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8')).includes('status'),
+ok(!Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('status'),
    '...and not into the projects one');
 ok((await api('/api/pin', { name: 'alpha', pinned: true })).status === 400,
    'a project name is not a command, and the command pin says so');

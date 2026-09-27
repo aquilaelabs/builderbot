@@ -10,6 +10,9 @@
 // settings because two people on one project are two authors: it reaches
 // every session this account starts as git's environment, which outranks
 // whatever a repository has configured.
+
+"use strict";
+
 let profile = null, profileRev = 0;
 // Typed and not yet saved, kept across the poll's redraws: a field that
 // emptied itself mid-sentence would be unusable (docs/design-language.md,

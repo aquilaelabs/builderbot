@@ -9,6 +9,9 @@
 
 // Fetched when the gear opens the dialog, and again after an End. Drawn only
 // while the dialog is still on the project it was asked for.
+
+"use strict";
+
 async function rnSessionsLoad(name){
   let j;
   try{

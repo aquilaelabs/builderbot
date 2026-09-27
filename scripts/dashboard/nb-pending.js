@@ -2,6 +2,9 @@
 // ask, waiting on the operator. One classic script beside index.html
 // (docs/nodes.md §13): one file per notebook view (R60). A factory
 // makeNotebook calls per notebook.
+
+"use strict";
+
 function nbPendingView({$, nb, project, root}){
   // ---- what a session has waiting for approval (roadmap #27) --------------
   async function loadPending(again = false){

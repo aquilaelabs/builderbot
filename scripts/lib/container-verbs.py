@@ -37,9 +37,7 @@ def new():
         print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
     if not r.get("id"):
         # Done at once: the setting is auto and it is this project's own.
-        print(f"[builderbot] created {r.get('name') or 'it'}"
-              + (f", and it cannot be built from here yet: {r['needs_ack']}" if r.get("needs_ack")
-                 else "; the build is a job on the Jobs tab"))
+        print(f"[builderbot] created {r.get('name') or 'it'}; the build is a job on the Jobs tab")
         sys.exit(0)
     rid = r["id"]
     print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}): the compose file is on their "

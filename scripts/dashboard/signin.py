@@ -46,6 +46,24 @@ URL_WAIT = 10
 _lock = threading.Lock()
 _flow = None
 
+# What verb() and take_code() need from the server, set by server.py: the
+# node registry a flow runs on, a session token minted for the account the
+# flow signs in, and the cached answer to who each home is signed in as,
+# cleared whenever a flow may have changed it.
+nodes = None
+mint = None
+forget_auth = None
+
+# What gets removed from a pasted code before it is handed to the flow:
+# whitespace of every kind (a wrapped copy brings line breaks, a phone
+# keyboard adds a trailing space), control characters, and the zero-width
+# marks HTML copy buttons smuggle along. Everything printable stays. This is
+# deliberately a strip-list and not an allow-list: two rounds of guessing the
+# code's alphabet each refused a real code with advice to copy it again, to an
+# operator who had copied it. The code is somebody else's credential format;
+# judging it is the flow's job, and the flow says why in its own words.
+CODE_JUNK = re.compile(r"[^!-~]+")
+
 
 class NodeFlow:
     """The same flow, run on a NODE (roadmap R47).
@@ -164,3 +182,76 @@ def owner():
     with _lock:
         f = _flow
     return getattr(f, "uid", "") if f else ""
+
+
+# ---- the card's verbs, one call each from the dashboard ------------------------
+
+def verb(action, want, uid):
+    """Start a sign-in for account `uid`, on the node named or the one node
+    there is, or stop the one that is running, once server.py has said this
+    person may. (payload, status)."""
+    forget_auth()               # every home: the flow may have changed any
+    if action == "cancel":
+        return cancel() | {"signin": state()}, 200
+    # WHERE it runs. Claude Code is installed where sessions are, which
+    # is a node, so the flow goes there, on the node the operator picked
+    # or the one node there is. There is no other answer: this container
+    # carries no Claude Code, so with no node the refusal below is it.
+    # A node that runs SESSIONS, which is the same test session_target
+    # makes: Claude Code is installed for the session account, the
+    # credential lands in that account's home, and a node with no session
+    # half has neither. Not merely "online": a build node that runs no
+    # sessions has nowhere for a login to live.
+    live = [] if nodes is None else [
+        n for n in nodes.node_list()
+        if n["kind"] == "agent" and n["state"] == "online"
+        and n.get("live") is not False
+        and ((n.get("reported") or {}).get("session") or {}).get("up")]
+    pick = next((n for n in live if want in (n["id"], n["name"])), None) \
+        if want else (live[0] if len(live) == 1 else None)
+    if pick:
+        tok = mint(f"node:{pick['id']}", ttl=1800, uid=uid)
+        return start_on_node(nodes, pick["id"], uid, pick["name"], token=tok) | {"signin": state()}, 200
+    if live:
+        return {"error": "which node should the sign-in run on? "
+                         + ", ".join(n["name"] for n in live),
+                "nodes": [n["name"] for n in live]}, 400
+    # And nowhere else. Claude Code is installed for the account that runs
+    # sessions, which is a node's; this container carries none, so there
+    # is no flow here to fall back to and saying so is the whole answer.
+    return {"error": "no node is running sessions, and a Claude "
+                     "sign-in runs on the machine Claude is "
+                     "installed on. Enroll one on the Nodes tab, or "
+                     "wait for one to come back"}, 400
+
+
+def take_code(code):
+    """Hand the code from the browser to the sign-in flow.
+
+    Transport, not judgment. The only property this end owes the pty is
+    that a paste is one line of printable text, so the junk a copy brings
+    along is stripped rather than refused, and whether what remains is a
+    valid code is decided by the flow, whose refusal the card repeats in
+    the flow's own words. Two shape checks in a row each turned out to
+    refuse a real code (an allow-listed alphabet without base64's `+/=`,
+    then the page's own authorize URL glued to the code by its Copy
+    button); the only refusals left are the ones that cannot be wrong:
+    nothing left to send, or far too much to be a code. (payload,
+    status)."""
+    # Anything from a URL onward was never part of the code. The page that
+    # hands it out sets the authorize URL flush against it, so Copy takes
+    # both. A code is base64url and a `#`, with no colon and no slash, so the
+    # cut cannot land inside a real one.
+    code = re.split(r"https?://", code, maxsplit=1)[0]
+    code = CODE_JUNK.sub("", code)
+    if not code:
+        return {"error": "no code in that paste: copy the "
+                         "code itself, not the page's link"}, 400
+    if len(code) > 2048:
+        return {"error": "that is far too long to be a code; "
+                         "copy just the code"}, 400
+    r = submit(code)
+    # Whatever the cache is holding is about to be wrong either way.
+    forget_auth()
+    r = r | {"signin": state()}
+    return r, (400 if r.get("error") else 200)

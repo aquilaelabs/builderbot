@@ -1,7 +1,8 @@
 # Working inside BuilderBot
 
-
----
+What a session started in this repository is told, over the briefing every
+session gets: what this tree is, how it is built and tested, and the
+conventions the house rules refer to. A person's way in is CONTRIBUTING.md.
 
 ## About this project
 
@@ -81,7 +82,11 @@ by hand cost four commands and still could not see the failed builds.
   its lock; a loop over a log that a dead command was supposed to write
   never ends (eight such loops were found alive here at once, the oldest at
   10h54m), so a run is waited on with `run_in_background` and its
-  notification; inside tmux the client ignores `TMUX_TMPDIR`, so a
+  notification; a whole run doubles every wait, and a wait that runs out
+  while the page still has requests in flight or the box is saturated is
+  given the same time again, three times at most, because four workers on
+  four cores timed out a dozen checks a day that passed alone (27 Sep);
+  inside tmux the client ignores `TMUX_TMPDIR`, so a
   throwaway session made by an ad-hoc harness lands on the real server;
   and `run.sh` called by hand tested a whole day's work on the node while
   the container it was meant to prove sat untouched (R65), which is why
@@ -170,7 +175,7 @@ by hand cost four commands and still could not see the failed builds.
   specifically, `bb dashboard dev` restarts the live dashboard from
   `./scripts/dashboard` (same port and credential; lasts until the container
   restarts; `--off` reverts), so a dashboard change can be looked at in the
-  browser without a 40-minute image build. `bb shot URL... [FILE|DIR]` takes
+  browser without a 40-minute image build. `bb capture shot URL... [FILE|DIR]` takes
   headless screenshots to show the operator; it reads `DASHBOARD_AUTH` from
   the environment for the dashboard's own pages. `tools/readme-shots.sh`
   regenerates the README's screenshots from a staged instance.
@@ -223,16 +228,24 @@ by hand cost four commands and still could not see the failed builds.
     the row names the number, and when they disagreed three tabs said
     "runs 0.6.92 and ships 0.6.92" (B221).
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
-    `index.html` is vanilla JS and CSS with one classic `tab-*.js` script per
-    document tab, one `nb-*.js` per notebook view, and one `page-*.js` per
-    part of the page that is neither (the welcome panel, chat, motion, the
-    sidebar cards, the gear menu, doctor, the command cards, paged lists, a
-    project's sessions),
-    all loaded before the page's own script and all pure declarations:
+    `index.html` is the markup, the stylesheet and the wiring that runs at
+    load, with one classic `tab-*.js` script per document tab, one
+    `nb-*.js` per notebook view (`nb-core.js` is the notebook itself), and
+    one `page-*.js` per part of the page that is neither (the state and its
+    helpers, the tabs and the strip, the panes, the sidebar, a project's
+    settings, the polls, the bell and the rest), all loaded before the
+    page's own script, all pure declarations and all `"use strict"`:
     wiring that must run at load stays in `index.html` under the section's
-    header, and the server serves a script only by name (the allow-list in
-    `server.py`). No framework, no build step. `bb map sections index.html`
-    says which section moves next, and R77 is the rest of that migration.
+    header, and the server serves a script only by name, from the list the
+    page's own script tags make (`server.page_scripts`). No framework, no
+    build step. `bb map sections FILE` reads any of them by its headers.
+    On the server the same split: `server.py` holds the routes, the
+    transport and the gates, and each handler checks who may ask, then
+    makes one call into the feature's module beside it (a project's
+    verbs in `projects.py`, the Nodes tab's in `nodes.py`, what the page
+    may type into a terminal in `macros.py`), which answers with the
+    payload and its status and is handed what it needs by `configure()`
+    or by an attribute the server sets (R77).
   - **The dashboard's design language is `docs/design-language.md`**, held
     by the house rule `design`, which names it and runs `test/uniform.mjs`
     as its check. A new tab kind declares `multi` (a notebook is per

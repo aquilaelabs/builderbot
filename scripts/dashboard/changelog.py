@@ -39,6 +39,10 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import statefile   # noqa: E402
 
+# The directory a project's component keeps its changelog in, from version.py
+# (its _sub), set by server.py for editor_verb(); bb never calls that.
+component_dir = None
+
 FILE = "CHANGELOG.md"
 
 HEADER = "# Changelog\n"
@@ -73,21 +77,9 @@ def _held(fn):
 
 
 def _write(d, text):
-    """The file replaced whole: a temp beside it, renamed over it, so a reader
-    never meets it half-written."""
-    p = path(d)
-    fd, tmp = tempfile.mkstemp(dir=str(p.parent), prefix=f".{FILE}.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, p)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    """The file replaced whole, through statefile.write_text: a reader never
+    meets it half-written."""
+    statefile.write_text(path(d), text)
 
 
 def read(d):
@@ -691,9 +683,10 @@ def since_minor(secs):
     older. When 0.7.0 is cut, 0.6's releases fall off it in that one gesture,
     without anybody pruning a file.
 
-    Nothing is deleted and nothing is lost: CHANGELOG.md keeps every release
-    forever and stays the place to read them, which is why the panel says how
-    many it is not showing rather than quietly ending.
+    Nothing is deleted and nothing is lost: CHANGELOG.md keeps the current
+    series and the one before it, docs/changelog-0.5.md what came before
+    those (moved out on 27 Sep, when the file passed 130KB), and the panel
+    says how many it is not showing rather than quietly ending.
 
     Returns (kept, held, series).
     """
@@ -740,3 +733,67 @@ def sections(text):
                                    "shas": m.group(1).split(", ") if m else [],
                                    "cat": cat})
     return out
+
+
+# ---- the editor's writes, one call from the dashboard's /api/changelog -----
+
+def editor_verb(name, req):
+    """Write back the Unreleased section a person rearranged, or the first
+    line of a changelog there is none of yet, once server.py has let a
+    PERSON at it (a session has the CLI verbs, each saying what it does to
+    one entry).
+
+    The WHOLE section at once, which is what the editor holds: somebody
+    moving three lines and renaming a category is not making five edits,
+    and applying it as a sequence would let a refusal halfway leave a
+    shape nobody asked for. (payload, status)."""
+    d = component_dir(name, str(req.get("component") or ""))
+    if d is None:
+        return {"error": "no such component"}, 400
+    if req.get("action") == "first":
+        # The first line, from the page: the editor was dead until a
+        # session's `bb changelog add` made the file, and the operator
+        # is as entitled to the first entry as to every arrangement
+        # after it (16 Sep). Only the first: a file that exists is
+        # edited through the editor, whole.
+        if read(d) is not None:
+            return {"error": "there is a changelog here already; edit it below"}, 409
+        r = add(d, str(req.get("text") or ""))
+        if r.get("error"):
+            return r, 400
+        return r | {"text": read(d), "groups": groups(d)}, 200
+    gs = req.get("groups")
+    if not isinstance(gs, list):
+        return {"error": "groups is a list of {name, entries}"}, 400
+    r = put(d, gs)
+    if r.get("error"):
+        return r, 400
+    return r | {"text": read(d), "groups": groups(d)}, 200
+
+
+def reading(name, component=""):
+    """The Unreleased text for reading and the same section as structure for
+    editing, for a project the server has let this account see: one fetch,
+    because the editor shows both and a second round trip would let them
+    disagree about what is in the file. (payload, status)."""
+    d = component_dir(name, component)
+    if d is None:
+        return {"error": "no such component"}, 400
+    return {"text": read(d), "groups": groups(d)}, 200
+
+
+def welcome(seen):
+    """BuilderBot's own changelog, for the welcome panel: the file beside
+    this checkout (CHANGELOG.md two levels up, which is
+    /opt/builderbot/CHANGELOG.md in the image and the repository's under bb
+    dashboard dev), and where this account last looked (`seen`, the image
+    commit it acknowledged), so the panel can draw a line under what is new
+    since."""
+    text = read(Path(__file__).resolve().parents[2])
+    # Trimmed to what is unreleased plus the newest minor's releases:
+    # this panel answers "what changed in the build in front of me",
+    # and the file behind it grows for the life of the project. What
+    # it left out is counted, not hidden.
+    kept, held, series = since_minor(sections(text) if text else [])
+    return {"sections": kept, "held": held, "series": series,
+            "present": text is not None, "seen": seen}

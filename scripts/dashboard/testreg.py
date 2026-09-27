@@ -47,6 +47,7 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
+from fields import field  # noqa: E402
 import time
 from pathlib import Path
 
@@ -535,3 +536,24 @@ def revisions():
         d = load()
     return {p: int(v.get("rev") or 0)
             for p, v in (d.get("projects") or {}).items()}
+
+
+# ---- the Tests tab's writes, one call from the dashboard ---------------------
+
+def verb(name, act, req):
+    """The hand-written half of the registry: describe a test (a
+    write-through edit of one row, like the bug tracker's fields: there is
+    nothing to stage, because what is written is a sentence about a thing
+    that already exists) or accept a changed one. Ingesting a run is `bb
+    tests ingest`, in process: a run log is far past the body cap every
+    request here has. (payload, status)."""
+    if act == "describe":
+        r = describe(name, field(req, "key"), protects=req.get("protects"),
+                     notes=req.get("notes"))
+    elif act == "accept":
+        r = accept(name, field(req, "key"), field(req, "why"))
+    else:
+        return {"error": f"unknown action: {act}"}, 400
+    if r.get("error"):
+        return r, 400
+    return r | payload(name), 200

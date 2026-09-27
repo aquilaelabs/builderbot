@@ -336,14 +336,14 @@ with zipfile.ZipFile('${fx}/slip.zip', 'w') as z:
 // The pins file is the one that is trivial to seed and to read back, so it
 // stands in for the table: if the name moved there it moved by the same code
 // path everywhere else.
-ok(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8')).includes('pinme'),
+ok(Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('pinme'),
    'the pins file knows the project before the rename');
 const rn = await postJson({ name: 'pinme', to: 'pinned-again' }, '/api/rename');
 ok(rn.status === 200 && rn.body.name === 'pinned-again',
    'renaming answers with the name it actually made');
 ok(existsSync(`${DIR}/ws/pinned-again/.git`) && !existsSync(`${DIR}/ws/pinme`),
    '...the directory moved, and nothing was left behind under the old name');
-const pins = JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'));
+const pins = Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat();
 ok(pins.includes('pinned-again') && !pins.includes('pinme'),
    '...and the state keyed to the old name came with it');
 ok(Array.isArray(rn.body.moved) && rn.body.moved.length > 0 && !rn.body.failed.length,

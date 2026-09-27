@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.109"
+AGENT_VERSION = "0.7.112"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2888,6 +2888,15 @@ class Job(threading.Thread):
             state, error = "canceled", "stopped by the operator"
         elif state == "failed" and not error:
             error = f"exit {code}"
+        # A container came, went or moved: the session network's sets are
+        # rebuilt from `docker ps` every ten seconds, and a session told by
+        # its rebuild that the instance was up curled its port inside that
+        # window and was refused, the pair not yet in the set (B307). Read
+        # again now, before the controller hears the job is done, so what
+        # it reports up is reachable by the time anybody is told.
+        if self.job.get("type") == "compose" \
+                or os.path.basename(str((spec.get("argv") or [""])[0] or "")) == "docker":
+            self.agent.sessnet.containers_at = 0.0
         # Door 5: keep trying. The controller may be gone for a while; the
         # answer waits here, with backoff, until it is taken.
         delay = 1
@@ -3104,6 +3113,18 @@ class Job(threading.Thread):
             timeout = float(spec.get("timeout") or 3600)
         except (TypeError, ValueError):
             timeout = 3600
+        # Below the node's other work when the controller asks (a test run:
+        # the emulator, a docker build and a session's own work keep the
+        # CPU when they want it, and a run that only yields under contention
+        # is not slower on a quiet box; the operator, 27 Sep). The coreutils
+        # nice in front of the command, not a fork hook: see preexec_fn
+        # below on why this process must not run one.
+        try:
+            nice = int(spec.get("nice") or 0)
+        except (TypeError, ValueError):
+            nice = 0
+        if 0 < nice <= 19 and shutil.which("nice"):
+            argv = ["nice", "-n", str(nice)] + argv
         try:
             p = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, start_new_session=True,
@@ -4832,11 +4853,18 @@ class Agent:
                 job.say(f"skipping a bind directory that is not a plain path: {d}\n")
                 continue
             try:
+                # Only a directory this step makes is given to the session
+                # account. One that was there already is somebody's: the
+                # config directory of a container running as another user,
+                # or a tree an administrator just chowned on request, and
+                # handing it to the agent's account on every rebuild broke
+                # the containers that owned it (B315).
+                had = os.path.isdir(d)
                 os.makedirs(d, exist_ok=True)
-                if who:
+                if who and not had:
                     with contextlib.suppress(OSError):
                         os.chown(d, who["user"], who["group"])
-                job.say(f"bind directory {d}\n")
+                job.say(f"bind directory {d}" + (" (already there, left as it is)" if had else "") + "\n")
             except OSError as e:
                 # A bind source this machine cannot make. Whether that ends
                 # the job depends on whether docker could do better: it runs

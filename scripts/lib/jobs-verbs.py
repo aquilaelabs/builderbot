@@ -1,28 +1,34 @@
 """Behind `bb jobs` (cmd_jobs in bb): the queue, read-only: the recent jobs
-and what became of them, or one job's log, from the node store the way
-the Jobs tab reads it (dashboard/nodes.py).
+and what became of them, or one job's log, from the controller's API as
+the caller, which narrows it the way the Jobs tab is narrowed: a session
+to its own project's jobs, an account to its projects', an administrator
+to all. It read the node store directly before, which on a machine that
+holds the controller's state showed a session every project's jobs by
+name (B317).
 
-Arguments: nodes.py's path, how many jobs to list, and a job's id for its
-log. DASHBOARD_STATE says where the store is.
+Arguments: how many jobs to list, and a job's id for its log. BB_JOBS_AUTH
+is the auth header.
 """
 import os
 import sys
 import time
 
-import dash
+import bbapi
 
-nodes = dash.load("nodes", dash.beside(sys.argv[1]))
-try:
-    nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
-    jid = sys.argv[3] if len(sys.argv) > 3 else ""
-    rows = ([nodes.job(jid)] if jid else nodes.jobs_for(n=int(sys.argv[2])))
-    names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
-except Exception as e:
-    print(f"no node store yet; the dashboard creates it on boot ({e})")
-    raise SystemExit(0) from None
-if jid and not rows[0]:
-    print(f"no such job: {jid}")
-    raise SystemExit(1)
+auth = os.environ["BB_JOBS_AUTH"]
+jid = sys.argv[2] if len(sys.argv) > 2 else ""
+d = bbapi.call(f"/api/v1/jobs?id={jid}" if jid else f"/api/v1/jobs?n={int(sys.argv[1])}", auth=auth)
+if jid:
+    # One job answers as itself; the API's "no such job" is the same answer
+    # for one that is another project's, on purpose.
+    if d.get("error") and "state" not in d:
+        print(f"no such job: {jid}")
+        raise SystemExit(1)
+    rows, names = [d], {}
+else:
+    if d.get("error"):
+        sys.exit(f"[builderbot] ERROR: {d['error']}")
+    rows, names = d.get("jobs") or [], d.get("nodes") or {}
 if not rows:
     print("no jobs yet; a compose action, an exec on a node or an agent update makes one")
     raise SystemExit(0)
@@ -43,19 +49,18 @@ for j in rows:
             ("clear " + (f'{s["project"]}\'s caches' if s.get("project") else "every cache"))
             if j["type"] == "cache-clear" else
             "exec " + " ".join(s.get("argv") or [])[:60])
-    state = j["state"] + (" (stopping)" if j["cancel"] and j["state"] == "running" else "")
+    state = j["state"] + (" (stopping)" if j.get("cancel") and j["state"] == "running" else "")
     if j["state"] == "running" and j.get("step"):
         state += f' · {j["step"]}'
-    when = time.strftime("%d %b %H:%M", time.localtime(j["queued"]))
-    took = (f' · {max(1, j["ended"] - j["started"])}s'
+    when = time.strftime("%d %b %H:%M", time.localtime(j.get("queued") or 0))
+    took = (f' · {max(1, int(j["ended"]) - int(j["started"]))}s'
             if j.get("started") and j.get("ended") else "")
     err = f': {j["error"]}' if j.get("error") else ""
-    print(f'{j["id"]:>12}  {when}  {state:<22} {names.get(j["node"], j["node"] or "any"):<12} '
+    print(f'{j["id"]:>12}  {when}  {state:<22} {names.get(j.get("node"), j.get("node") or "any"):<12} '
           f'{what}{took}{err}')
     if jid:
-        # The log, which is why an id was given. `nodes.job` reads it whole;
-        # a build's can be megabytes, so the tail is what prints unless the
-        # whole thing is small.
+        # The log, which is why an id was given. A build's can be megabytes,
+        # so the tail is what prints unless the whole thing is small.
         log = (j.get("log") or "")
         if not log.strip():
             print("\n  (this job wrote nothing, and not "

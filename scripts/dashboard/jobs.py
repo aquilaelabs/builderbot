@@ -251,8 +251,8 @@ def run_exec(job, run):
     # Only local work reaches this runner. Everything on a node is the
     # agent's, compose included, and runner_of places it there, so a job
     # arriving here for another node is a placement fault, not something to
-    # paper over by reaching for ssh. This used to run compose on the legacy
-    # ssh kind over a key from this container; that kind is gone (#24).
+    # paper over by reaching for ssh: the ssh kind is gone (#24), and with it
+    # the key this container would need.
     if not n or n.get("kind") == "local":
         cmd = argv
     else:

@@ -18,12 +18,25 @@ ok(/\d+ files \(.*\d+ js.*\d+ py.*\), \d+ definitions, \d+ calls/.test(built),
 
 // A definition: where, with its span.
 const def = map('find', 'openDocker');
+// A page-level let, var or const that is not a function is a definition
+// too: find said nothing defines `active`, which page-state.js declares
+// on its line 30, and the answer to where a page variable lives was a
+// grep (B299). It names the file, the line and the kind, and points a
+// let at bb map state for where it is assigned.
+{
+  const at = (name, re) => re.test(map('find', name));
+  ok(at('active', /^scripts\/dashboard\/page-state\.js:\d+  page-level let; bb map state page-state\.js says where it is assigned$/m)
+     && at('refreshBusy', /page-poll\.js:\d+  page-level let/) && at('popWins', /page-state\.js:\d+  page-level const$/m)
+     && /nothing defines/.test(map('find', 'noSuchNameAnywhere')),
+     `find answers for a page-level let or const with its file, line and kind, and still says when nothing defines a name (${
+        map('find', 'active').trim().slice(0, 80)})`);
+}
 ok(/^scripts\/dashboard\/tab-docker\.js:\d+ to \d+  function$/m.test(def),
    `find names a function's file, line and span (${def.split('\n')[0]})`);
 
 // Callers, with the function each call is made from, page and suites apart.
 const callers = map('who-calls', 'loadDocker');
-ok(/tab-docker\.js:\d+  from openDocker/.test(callers) && /index\.html:\d+  from open/.test(callers),
+ok(/tab-docker\.js:\d+  from openDocker/.test(callers) && /page-tabs\.js:\d+  from open/.test(callers),
    'who-calls attributes a call to the function it is made from, through a parameter list with commas');
 ok(/^test scripts\/dashboard\/test\/devapp\.mjs/m.test(callers),
    '...and marks the suites among the callers');
@@ -33,7 +46,7 @@ ok(!/from \(top level\)  \| async function loadDocker/.test(callers),
 // What a definition says about itself rides with its address: the comment
 // directly above it, or a docstring's first sentence, and nothing where
 // nothing sits there. The notes live in the code; the map reads them out.
-ok(/^    says: What the panel needs after any change: the list, whether there is anywhere to send, and whether a session has been told about it yet\.$/m.test(map('find', '_roadmap_state')),
+ok(/^    says: Node ids this account may look at, or None for "no restriction"\.$/m.test(map('find', '_node_scope')),
    "find hands over a python method's docstring, its first sentence whole");
 ok(/^    says: gfx_tool RECIPE NAME: /m.test(map('find', 'gfx_tool')), "...and a shell function's comment");
 ok(/^    says: Each terminal tab is an iframe running a full xterm\.js over its own websocket\.$/m.test(map('find', 'roomForTab')),
@@ -41,10 +54,10 @@ ok(/^    says: Each terminal tab is an iframe running a full xterm\.js over its 
 ok(!/says:/.test(map('find', 'pinTo')), '...and says nothing for a function with nothing directly above it');
 
 // Python: a method's callers carry the class.
-const py = map('who-calls', '_roadmap_state');
-ok(/^_roadmap_state: What the panel needs after any change/m.test(py) && /from Handler\._get_todo \(GET \/api\/roadmap\.\)/.test(py),
+const py = map('who-calls', '_node_scope');
+ok(/^_node_scope: Node ids this account may look at/m.test(py) && /from Handler\._node_asked \(Resolve and check a `\?node=` for this account\.\)/.test(py),
    "who-calls opens with the callee's sentence and gives each caller its first clause");
-ok(/server\.py:\d+  from Handler\._roadmap\b/.test(py), 'a python method is attributed to its class and method');
+ok(/server\.py:\d+  from Handler\._nodes_for\b/.test(py), 'a python method is attributed to its class and method');
 
 // Shell: bb's own functions.
 const sh = map('who-calls', 'gfx_tool');
@@ -130,10 +143,10 @@ ok(/devactions\.py:\d+  passed by name in configure  \| .*runner\.register\("com
 {
   const txt = `${REPO}/.bb-map/probe-addresses.txt`;
   const at = map('find', 'openDocker').match(/:(\d+)/)[1];      // a true address, wherever it is today
-  writeFileSync(txt, ['  R2  a plan', '       details: The picker is pinTo() in scripts/dashboard/index.html (~4634), and',
+  writeFileSync(txt, ['  R2  a plan', '       details: The picker is pinTo() in scripts/dashboard/page-tabs.js (~4634), and',
                       '~ R3  another, shelved', `       details: imgAdder() in index.html (~8093); openDocker (tab-docker.js ~${at}) draws it.`, ''].join('\n'));
   const adr = map('addresses', txt);
-  ok(/^  R2: ~4634  pinTo is scripts\/dashboard\/index\.html:\d+ now$/m.test(adr),
+  ok(/^  R2: ~4634  pinTo is scripts\/dashboard\/page-tabs\.js:\d+ now$/m.test(adr),
      'an address more than twenty lines from its name is reported with where the name is now, under its item');
   ok(/^  R3: ~8093  imgAdder is defined nowhere the map looks now \(was index\.html;/m.test(adr),
      '...a name that is gone is said to be gone, under a shelved item too');
@@ -147,7 +160,7 @@ ok(/devactions\.py:\d+  passed by name in configure  \| .*runner\.register\("com
 // refactor read it as nothing. Found, and seen passed by name.
 ok(/^scripts\/dashboard\/page-commands\.js:\d+  arrow$/m.test(map('find', 'drawLinux')),
    'an expression-bodied arrow is a definition');
-ok(/index\.html:\d+  passed by name in refresh  \| .*drawCard\("linux", drawLinux\)/.test(map('who-calls', 'drawLinux')),
+ok(/page-poll\.js:\d+  passed by name in refresh  \| .*drawCard\("linux", drawLinux\)/.test(map('who-calls', 'drawLinux')),
    '...and who-calls sees it handed to the card draw');
 
 // The page's mutable state (B223): every page-level `let`, where it is

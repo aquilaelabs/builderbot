@@ -6,6 +6,9 @@
 // A factory rather than a script that runs: makeNotebook calls it per
 // notebook with the notebook's element lookup, its state object and its
 // project, and takes back the one function the rest of the notebook calls.
+
+"use strict";
+
 function nbGitView({$, nb, project}){
   // ---- git -----------------------------------------------------------------
   // The repository, read out (roadmap R36 step 1). Fetched on open and on

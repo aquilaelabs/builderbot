@@ -17,10 +17,9 @@ direction: everything this layer does is BUILT ON those, so a module for
 them would have had devapp importing it back, a cycle. The cut that holds
 is the other way round: the layer on top leaves, the base stays, and the
 base knows nothing of this file. server.py holds only the routes and hands
-the compose runner to jobs.py through configure() here, as devapp used to.
+the compose runner to jobs.py through configure() here.
 """
 
-import contextlib
 import os
 import re
 import sys
@@ -39,6 +38,17 @@ def configure(*, runner=None):
     devapp.configure(), which is where `runner` also lands for Abort."""
     if runner is not None:
         runner.register("compose", run_compose_job)
+
+
+# What request() needs from the rest of the server, set by server.py: the
+# account store (who is asking, and whether they administer), the asking
+# (phone.ask_rebuild), a line in the project's chat (chat.event), and the
+# sessions' networks told when a container is made, removed or given to
+# another project (R79).
+users = None
+ask_rebuild = None
+say = None
+net_nudge = None
 
 
 # One action per INSTANCE at a time. Two clicks on one row are two compose
@@ -556,6 +566,10 @@ def state(project, instance=devapp.MAIN):
            # machine this actually asked are not always the same one, and
            # when the answer is a refusal, that is the first thing to know.
            "where": a.get("where", ""),
+           # ...and what to call it: the node's name for an agent node, whose
+           # ssh address `where` still carries for the page's port links and
+           # nobody dials (B313). The row prints this one after a refusal.
+           "daemon": a.get("kind", ""),
            # The compose project name, which is what actually groups the
            # containers, the network and the volumes. Not the container name:
            # a compose file may set container_name to anything it likes, and
@@ -800,12 +814,19 @@ def _job_down(project, instance, run):
 
 
 @devapp._on_instance
-def rebuild(project, instance=devapp.MAIN, ack=""):
+def rebuild(project, instance=devapp.MAIN, ack="", gate=True):
     """Build, then bounce, or stop at the env gate. A job: a build is
     minutes, and the poll watches it through job_rev. The name and the
     worktree are this side's and are checked in front of the answer; the
     risk gate reads the compose on the node and runs behind it (B260), so
-    its refusal is the job's, on the row."""
+    its refusal is the job's, on the row.
+
+    `gate` is False for a build its project's setting has already answered
+    for: a session's on auto, or a person's Allow on a session's question.
+    The confirmation of what a compose asks for is a person's own press of
+    Build; a session's build follows Claude may: Run its container like
+    every other (the operator, 26 Sep: auto does it, ask asks, deny
+    refuses)."""
     if devapp.compose_file(project) is None:
         return {"error": "no compose file here"}
     clash = devapp.name_clash(project, instance)
@@ -815,7 +836,7 @@ def rebuild(project, instance=devapp.MAIN, ack=""):
     if moved:
         return {"error": moved}
     return _submit(project, instance, "rebuild",
-                   check=lambda: devapp._risk_gate(project, instance, ack))
+                   check=lambda: devapp._risk_gate(project, instance, ack) if gate else "")
 
 
 def run_compose_job(job, run):
@@ -902,7 +923,27 @@ def _job_rebuild(project, instance, run):
         devapp._bump()
 
 
-def act(project, instance, action, req, *, test_cmd=""):
+def make_instance(project, instance, node="", owner=None, ref=""):
+    """A new container of a project, pinned to the branch it is to build
+    from when one is named: `new` from the dialog or a session, and Allow on
+    a session's asked one, which is the same making. Nothing is built.
+
+    The pin comes before the first build, or that build comes from the
+    project's checkout and the row says otherwise. A pin that is refused
+    takes the record with it, or the retry that fixes the branch is told the
+    container already exists (B259); nothing was built, so there is nothing
+    else to undo.
+    """
+    r = devapp.create_instance(project, instance or devapp.MAIN, node, owner)
+    if not r.get("error") and ref:
+        p = devapp.set_ref(project, r["instance"], ref)
+        if p.get("error"):
+            _remove_records(project, r["instance"])
+            return p
+    return r
+
+
+def act(project, instance, action, req, *, test_cmd="", gate=True):
     """One dev-instance verb, as the dashboard and `bb devapp` name them,
     once server.py has decided who may ask (docker-write, the per-project
     dial, a session's own node) and which instance is meant.
@@ -912,6 +953,9 @@ def act(project, instance, action, req, *, test_cmd=""):
     state riding on every change so nothing on screen is stale. Here rather
     than in the handler because what a verb means is this module's to say
     (the one-file rule); the handler holds the gate and nothing else.
+    `gate` is rebuild()'s: False for a session's, since a session's rebuild
+    reaches here only on its project's `auto` (at `ask` it is a question to
+    a person first, and at `deny` it is refused before this).
     """
     f = devapp.field
     if action == "abort":
@@ -931,18 +975,8 @@ def act(project, instance, action, req, *, test_cmd=""):
         # string decides a compose project and a data directory and is not
         # somewhere an arbitrary one should reach.
         # The project it belongs to when the request says, "" being none.
-        r = devapp.create_instance(project, instance, f(req, "node"),
-                                   f(req, "owner") if "owner" in req else None)
-        if not r.get("error") and f(req, "ref"):
-            # Pinned before the build the dialog starts, or the first one
-            # comes from the project's checkout and the row says otherwise.
-            p = devapp.set_ref(project, r["instance"], f(req, "ref"))
-            if p.get("error"):
-                # The record goes with the refused request, or the retry
-                # that fixes the ref is told the instance already exists
-                # (B259). Nothing was built, so there is nothing else to undo.
-                _remove_records(project, r["instance"])
-                return p, 400
+        r = make_instance(project, instance, f(req, "node"),
+                          f(req, "owner") if "owner" in req else None, f(req, "ref"))
         if not r.get("error") and isinstance(req.get("text"), str) \
                 and req["text"].strip():
             # Written before the build that follows, so the first one has
@@ -953,15 +987,6 @@ def act(project, instance, action, req, *, test_cmd=""):
             if w.get("error"):
                 _remove_records(project, r["instance"])      # as above (B259)
                 return r | {"error": w["error"]}, 400
-        if not r.get("error"):
-            # Said now rather than at the first rebuild: a compose that asks
-            # for more than its own directory cannot be built until a person
-            # has acknowledged it, and "rebuild builds it" was untrue (24 Sep).
-            # After the env, which a path in the compose can come from.
-            with contextlib.suppress(Exception):
-                why = devapp.unacked_risks(project, r["instance"])
-                if why:
-                    r["needs_ack"] = why
         return r, (400 if r.get("error") else 200)
     if instance not in devapp.instances(project):
         return {"error": f"no instance {instance} of {project}"}, 400
@@ -996,7 +1021,7 @@ def act(project, instance, action, req, *, test_cmd=""):
         r = test(project, instance, test_cmd,
                  [str(a) for a in (req.get("args") or [])][:32])
     elif action == "rebuild":
-        r = rebuild(project, instance, f(req, "ack"))
+        r = rebuild(project, instance, f(req, "ack"), gate=gate)
     elif action == "env-get":
         # An empty env opens on the example rather than on nothing. The
         # `missing` list still answers about what is STORED, so the hint
@@ -1016,3 +1041,79 @@ def act(project, instance, action, req, *, test_cmd=""):
     if r.get("error"):
         return r, 400
     return r | {"state": state(project, instance)}, 200
+
+
+def request(project, instance, action, req, *, me, principal, dial="", test_cmd=""):
+    """One dev-instance verb as the Docker tab and `bb devapp` send it, once
+    server.py has decided this caller may: a session whose project's Run
+    its container dial is at `ask` puts a change in front of a person
+    instead (a rebuild, the env, making or removing the container); any
+    other is act(), with a line in the project's chat first for what the
+    others sharing it would want to know, and the sessions' networks told
+    after a container is made, removed or given away. (payload, status)."""
+    sess = me.get("session") or ""
+    if sess and dial == "ask" and action in ("rebuild", "env-set", "new", "remove"):
+        # Aborting is not asked about: it stops a build this session
+        # was already allowed to start, and a running build nobody
+        # can stop is worse than one nobody approved. Reading the env
+        # is not either: a session cannot propose a change to what it
+        # cannot see, and the change is what is asked about.
+        acct = users.account_of(me) or {}
+        # The instance the handler resolved, as the auto path acts on it:
+        # for a change, the project's only one when the request names
+        # none; for a new one, the name Send would offer. Deriving it
+        # again here made Allow write an env for, and build, an instance
+        # the project did not have (the review of 24 Sep).
+        want = devapp.instance_key(project, instance) if action == "new" else instance
+        # A name no answer could make is refused here rather than put in
+        # front of a person first.
+        why = devapp.new_refusal(project, want) if action == "new" else ""
+        if why:
+            return {"error": why}, 400
+        text = req.get("text") if action in ("env-set", "new") else None
+        # env-set means the env, whatever was sent as it: a missing
+        # text is an empty env, as the auto path writes one.
+        if action == "env-set" and not isinstance(text, str):
+            text = ""
+        # Asked by, and answered to, the session's project; acting on
+        # the container named, which may be one written here.
+        r = ask_rebuild(
+            devapp.field(req, "why"), sess, want, devapp.pname(project, want),
+            asker_uid=str(acct.get("uid") or ""),
+            asker_name=str(acct.get("name") or ""),
+            asker_admin=users.is_admin(acct),
+            env=text if isinstance(text, str) and (action == "env-set" or text.strip()) else None,
+            create=action == "new", remove=action == "remove", target="" if project == sess else project,
+            ref=devapp.field(req, "ref") if action == "new" else "")
+        # Which container it will be, which the session did not necessarily
+        # choose, keyed and named as the auto path answers: it follows that
+        # container's build once Allow starts it.
+        return (r | {"instance": want, "name": devapp.pname(project, want)} if not r.get("error") else r), \
+            (400 if r.get("error") else 200)
+    # What the others sharing this project would want to know before they
+    # press the same button, naming the instance the server resolved. Reads
+    # and the env editor are not news, so they are not on this list.
+    if action in ("up", "down", "rebuild", "remove", "abort"):
+        say(project, users.uid_of(me),
+            f"{principal[len('user:'):]} ran {action} on "
+            f"{project}" + (f" ({instance})" if instance != devapp.MAIN else ""))
+    payload, status = act(project, instance, action, req, test_cmd=test_cmd, gate=not sess)
+    # An instance made, removed or given to another project changes what
+    # a project's sessions may reach on its node (R79).
+    if status == 200 and action in ("new", "remove", "owner"):
+        net_nudge()
+    return payload, status
+
+
+def row_states(name):
+    """A project's dev instances for the Artifacts tab: `devapp` is the main
+    instance, which is what the row shows; `devapps` is every instance,
+    which the manager reads. Both, so the row keeps working while the
+    manager grows around it. One read scope for the row and the manager's
+    list: on an agent node each is a probe job, and both ask the same
+    daemon."""
+    with devapp.read_scope():
+        return {"devapp": state(name), "devapps": states(name),
+                # The name Send opens on: its own for a project with none,
+                # another beside it for one that has it.
+                "send_as": devapp.send_name(name)}

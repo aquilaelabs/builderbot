@@ -385,3 +385,22 @@ def payload(project):
            + len(d["settled"].get(project) or []))
     return {"project": project, "pending": rs, "counts": by_kind, "rev": rev,
             "gate": {k: gate.get(k) or "auto" for k in KINDS}}
+
+
+# ---- the approvals, one call from the dashboard -----------------------------
+
+def verb(name, act, req):
+    """Approve or deny what a session has waiting (roadmap #27), once
+    server.py has let a PERSON at it: a session approving its own additions
+    is the setting not existing. The reply carries what each record became
+    (approved, failed with the store's own reason, or skipped because its
+    parent is still waiting) and the queue as it now stands, so the modal
+    redraws from one answer. (payload, status)."""
+    ids_ = req.get("ids") if isinstance(req.get("ids"), list) else []
+    if act == "approve":
+        r = approve(name, ids_)
+    elif act == "deny":
+        r = deny(name, ids_)
+    else:
+        return {"error": "action is approve or deny"}, 400
+    return r | payload(name), 200

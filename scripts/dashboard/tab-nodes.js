@@ -10,6 +10,8 @@
 // this file only fills slots. Data comes from /api/v1/nodes, fetched when the
 // "nodes" revision token moves, never from the status poll.
 
+"use strict";
+
 let nodesList = null;            // last answer, or null before the first
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";

@@ -18,6 +18,9 @@
 // The one answer, from the poll. `on` absent (an older server, a payload that
 // has not landed yet) is not "off": a control the page has no opinion about
 // should behave as it always did rather than switch itself off on a hunch.
+
+"use strict";
+
 const dockerWhy = () =>
   state?.docker && state.docker.on === false
     ? (state.docker.why || "no docker daemon is reachable from here") : "";
@@ -210,18 +213,21 @@ function dnNodeSay(){
   $("dnGo").disabled = false;
 }
 
-function openSendToDocker(project){
+// `sendAs` is the name the server offers (send_name): the project's own
+// while it has none, which is what Send means then, and after that one
+// beside it, so pressing Send again makes another container rather than a
+// refusal naming the first (the operator, 26 Sep). `have` is how many it
+// has already, whose ports a second one must not take.
+function openSendToDocker(project, sendAs, have){
   dnFor = project;
   $("dnTitle").textContent = "New container from " + project;
-  // The project's own name, ready to go: that makes the project's own
-  // container, which is what Send means for a project that has none yet;
-  // another name makes a second one beside it.
-  $("dnName").value = project;
+  $("dnName").value = sendAs || project;
   $("dnErrWrap").hidden = true;
   $("dnPreview").hidden = true;
   $("dnGo").disabled = false; $("dnGo").textContent = "Create";
-  $("dnHint").textContent =
-    "Built from " + project + "'s codebase. Its own name makes its own container; another name makes a second one.";
+  $("dnHint").textContent = have
+    ? `Built from ${project}'s codebase, beside the ${have === 1 ? "one" : have} it already has: give it ports of its own.`
+    : `Built from ${project}'s codebase. Its own name makes its own container; another name makes a second one.`;
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   fillUnderSelect($("dnUnder"), project);
@@ -1374,10 +1380,10 @@ function renderDockerInto(i){
   const asks = (typeof ph !== "undefined" && ph?.asks || [])
     .filter(a => a.kind === "rebuild");
   const askRows = asks.map(a => `<div class="row dmask">
-      <div class="grow"><div class="name">${esc(a.ctl || "rebuild")}: ${esc(a.why)}</div>
+      <div class="grow"><div class="name">${esc(askVerb(a))}: ${esc(a.why)}</div>
         <div class="phcmd">bb ${esc(a.cmd.join(" "))}</div>
         <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project")
-                                       : a.project || "a session")} asks to ${esc(a.ctl || "rebuild")} it · ${
+                                       : a.project || "a session")} asks to ${esc(askVerb(a))} it · ${
           a.left > 60 ? `${Math.floor(a.left / 60)} min left to answer`
                       : `${a.left}s left to answer`}</div></div>
       <span class="acts">
@@ -1450,3 +1456,23 @@ function renderDockerInto(i){
 // through branches. The server re-validates everything; this side only
 // catches the obvious before a round-trip, and keeps the dialog open on
 // failure so nothing typed is lost.
+
+// ---- no daemon, no Docker buttons ---------------------------------------
+
+// The controls that act on the daemon, in one list. Not the ones that only
+// read or explain: Refresh is how you retry after wiring one up, Edit and Env
+// open a compose file that is a file whether or not anything can run it, and
+// the manager tab itself is where the reason is written in words: disabling
+// the way to READ a diagnosis is how you get a dashboard that has gone quiet
+// for no visible cause.
+//
+// REMOVE IS NOT ONE OF THEM, and that is the correction: removing is this
+// side's own record, with a `down` in front of it as a courtesy. Gating it on
+// the daemon left a row on a machine that had gone away removable by nobody:
+// the one state a list must not have, since the row is the only control over
+// the thing it names. It stays live, the server takes the record either way,
+// and the confirmation says which of the two halves will happen.
+// The new-project dialog that followed this list is tab-projects.js now; its fields and its submit are wired further down.
+const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],'
+                  + '[data-dm="rebuild"],'
+                  + '#devSend,#bDockerNew';

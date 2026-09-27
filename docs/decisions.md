@@ -172,7 +172,12 @@ confirmation. Confirmed once per set rather than per press: an
 acknowledgement given every time is one nobody reads, and asked again the
 moment the file reaches for something new. It warns rather than refuses: a
 legitimate compose may genuinely want a host path, and nothing here can tell
-which.
+which. That confirmation is a person's own press of Build. A session's build
+is not asked it (26 Sep): the project's **Run its container** setting answers
+for a session there as it does for every other container, so `auto` builds,
+`ask` puts the build in front of a person, whose Allow is the confirmation,
+and `deny` refuses. A session on `auto` that stopped here anyway was a
+setting saying yes and a gate saying no to the same build.
 
 **What a container is called** is what you called it: `radarr`, not
 `bbdev-myproject-radarr`. The daemon is a machine with nothing else on it, so

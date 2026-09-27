@@ -10,6 +10,9 @@
 // The tab repaints when what it shows has moved on the poll: a value saved
 // here, or by another window, and not otherwise, so typing is not swept
 // away by a poll that changed nothing. A string, compared whole by drawPanes.
+
+"use strict";
+
 function settingsLive(){
   return JSON.stringify([state?.settings?.settings, state?.idle, state?.log_days]);
 }

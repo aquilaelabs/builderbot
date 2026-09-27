@@ -59,7 +59,7 @@ elif sub == "mine":
         print(f"no reports from {proj or 'this project'} about BuilderBot")
     for r in rows:
         when = time.strftime("%d %b %H:%M", time.localtime(r.get("at") or 0))
-        state = (f"filed as {r['bug']}" if r.get("state") == "filed"
+        state = ("filed in BuilderBot's tracker" if r.get("state") == "filed"
                  else f"closed: {r.get('why') or ''}" if r.get("state") == "closed" else "open")
         print(f"  #{r['id']}  {when}  {state}")
         print(f"      {r.get('text')}")
