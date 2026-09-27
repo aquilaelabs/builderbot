@@ -452,12 +452,36 @@ def _valid_projects(ps):
             if not any(i["level"] == "error" for i in p["issues"])}
 
 
+def mounted():
+    """Whether there is a reports directory, False for one that cannot even
+    be looked at: pathlib's is_dir() raises for a mount gone stale under the
+    container (NFS errno 116) rather than answering, and the status poll
+    asks this every time (B326)."""
+    try:
+        return REPORTS.is_dir()
+    except OSError:
+        return False
+
+
+def report_files():
+    """Every report under REPORTS, the .sarif then the .sarif.json, each
+    sorted; None when there is no directory that can be read. A stale mount
+    is one of those: counts() runs on every /api/status, and one unreadable
+    directory answered the whole poll with an error and held every page on
+    loading (B326)."""
+    if not mounted():
+        return None
+    try:
+        return sorted(REPORTS.glob("*.sarif")) + sorted(REPORTS.glob("*.sarif.json"))
+    except OSError:
+        return None
+
+
 def payload(ps):
     known = {p["name"] for p in ps}
-    if not REPORTS.is_dir():
+    files = report_files()
+    if files is None:
         return {"available": False, "reports": [], "projects": sorted(known)}
-    files = sorted(f for f in REPORTS.glob("*.sarif")) + \
-            sorted(f for f in REPORTS.glob("*.sarif.json"))
     # The same rule the counts apply: a report a whole cycle behind its
     # siblings is not read. Its scanner has probably died and left its last
     # good output in place, and this payload feeding the Analysis tab while
@@ -569,10 +593,7 @@ def counts(ps):
     # notebook's view, which parses fresh, files it correctly.
     known = {p["name"] for p in ps}
     valid = _valid_projects(ps)
-    files = []
-    if REPORTS.is_dir():
-        files = sorted(REPORTS.glob("*.sarif")) + \
-            sorted(REPORTS.glob("*.sarif.json"))
+    files = report_files() or []
     # A report a whole cycle behind its siblings is not read. Its scanner
     # failed and the host left the previous file in place, so what it contains
     # describes a tree that has since moved: counting it does not make the
@@ -657,7 +678,7 @@ def reports_ok():
     it that parses, and a control that is off wants one answer, not three. Read
     after counts(), which is what fills it.
     """
-    return bool(REPORTS.is_dir() and _counts["ok"])
+    return bool(mounted() and _counts["ok"])
 
 
 def heads():

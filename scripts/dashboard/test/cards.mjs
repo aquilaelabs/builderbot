@@ -474,6 +474,39 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await refreshUntil(page, () => state?.reports_ok === true, { timeout: 20000 });
   ok(await page.$eval('#bFindings', b => !b.disabled),
      '...and a readable one lights it again');
+  // A fourth way to have nothing: a mount gone stale under the container.
+  // The directory is fine on the host and every read of it here raises
+  // (NFS errno 116), and counts() runs on every /api/status, so the whole
+  // poll answered with the error and the page never left loading (B326).
+  // No NFS in the harness to go stale, so the module is handed a reports
+  // path that raises what a stale one does, on the look and on the listing.
+  {
+    const { execFileSync } = await import('node:child_process');
+    const dash = new globalThis.URL('..', import.meta.url).pathname;
+    const said = JSON.parse(execFileSync('python3', ['-c', `
+import errno, json, os, sys
+sys.path.insert(0, ${JSON.stringify(dash)})
+import findings
+class Stale(type(findings.REPORTS)):
+    def is_dir(self, *a, **k): raise OSError(errno.ESTALE, os.strerror(errno.ESTALE), str(self))
+    def glob(self, *a, **k): raise OSError(errno.ESTALE, os.strerror(errno.ESTALE), str(self))
+class Listless(type(findings.REPORTS)):
+    def is_dir(self, *a, **k): return True
+    def glob(self, *a, **k): raise OSError(errno.ESTALE, os.strerror(errno.ESTALE), str(self))
+out = {}
+for name, cls in (("stale", Stale), ("listless", Listless)):
+    findings.REPORTS = cls("/reports")
+    try:
+        out[name] = {"counts": findings.counts([]), "ok": findings.reports_ok(), "mounted": findings.mounted(),
+                     "available": findings.payload([]).get("available")}
+    except OSError as e:
+        out[name] = {"raised": str(e)}
+print(json.dumps(out))
+`], { encoding: 'utf8' }));
+    ok(JSON.stringify(said.stale) === JSON.stringify({ counts: {}, ok: false, mounted: false, available: false })
+       && JSON.stringify(said.listless) === JSON.stringify({ counts: {}, ok: false, mounted: true, available: false }),
+       `a reports mount gone stale reads as nothing to read rather than raising into every status poll (${JSON.stringify(said)})`);
+  }
   await page.click('#bFindings');
   await page.waitForSelector('.fxtab #fxProject', { timeout: 15000 });
 }

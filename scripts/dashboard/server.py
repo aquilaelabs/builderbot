@@ -2930,7 +2930,7 @@ def snapshot(who):
         # and nothing else, since CI left this container (phase 7). Read from
         # the census, which already carries it.
         "node_runners": runners.listing(),
-        "reports": findings.REPORTS.is_dir(),
+        "reports": findings.mounted(),
         "reports_mtime": findings.reports_mtime(),
         "findings_counts": _findings_counts(who, ps),
         # ...and, for the row they land on, what those paths actually look
