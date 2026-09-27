@@ -7,7 +7,7 @@
 - Reboot and Shut down on a node's row, under Advanced: the agent schedules the machine's own reboot or power-off a few seconds out so the job reports first. The press names the sessions it ends; dead with the reason while the agent is away; an administrator's only (0d3a6f0)
 - Set up GPU display on a node's row (Health): the NVIDIA driver and a headless X server on the card, as bb-sandbox gpu and a unit of the machine's own; after the one reboot it asks for, an emulator there renders on the card and bb emu gpu says so, and a session sees the display (6afdb2e)
 - A Claude session can send its project to Docker the way the Artifacts tab's Send to Docker manager does: bb devapp new [NAME] [--branch REF] makes a container from the project's compose file, builds and starts it, and waits for the result, under the project's Claude may: Run its container setting (f02a9a8)
-- bb reel: the frames of a recording that changed, each stamped with its time, on one sheet in dist/reel/ with a JSON of when, from a video, a page Playwright records while a script drives it, the emulator's screenrecord, or an X display xdotool drives; the provisioner installs Xvfb and xdotool (60d809c)
+- bb capture: shot, one picture at rest (shots a quarter second apart until a second of them match), and reel, the frames that changed on one sheet with a JSON of when; each from a page, the running emulator or an X display. bb emu shot is bb capture shot --emu (60d809c, 0a56328)
 
 ### Changed
 
@@ -20,7 +20,6 @@
 - A deny refusal names the setting; bb settings shows the Claude settings and every dial; the briefing says how a question reaches a person, and that bb status says whether this machine is a node or the controller (35b6970)
 - Send to Docker makes more than one container of a project: once the project has its own, the dialog offers the next name (project-2, project-3) and says the new one needs ports of its own, and an unnamed bb devapp new does the same (f02a9a8)
 - A session's build follows the project's Run its container setting even when the compose asks for more than its own directory: auto builds, ask puts it to you and Allow is the confirmation, deny refuses. Your own Build on the row still shows the list (52b1ba3)
-- bb shot pictures the dashboard's own pages at rest: shots a quarter second apart until a second of them match, so a modal still arriving or a list still loading is not the picture; --settle asks that of any page, --now takes the one shot at once (0a56328)
 
 ### Removed
 
