@@ -103,7 +103,7 @@ function drawBell(){
     ...asks.map(a => `<div class="bnote ask${a.kind === "root" ? " bad" : ""}">
         <div class="btag">${
           a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
-          : a.kind === "rebuild" ? `${esc(a.ctl || "rebuild")} in ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "rebuild" ? `${esc(askVerb(a))} in ${esc(a.project || "a project")}: needs your answer`
           : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>

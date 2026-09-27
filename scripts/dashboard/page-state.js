@@ -27,6 +27,13 @@ let tabs = [{id:"ws", kind:"term", arg:"shell", label:"sh: workspace"}];
 // comes back into the strip: the edge R8 named, decided this way.
 const popWins = new Map();
 let panes = ["ws", null];
+// What a session's container ask is asking for, from its own command line:
+// "new" makes a container, "remove" removes one, "env set" writes its env,
+// start, stop and restart are themselves, and only the rest is a rebuild.
+// The card said rebuild for all of them (B301).
+function askVerb(a){
+  return a.ctl || ({new: "create", remove: "remove", env: "env set"}[a.cmd?.[1]] || "rebuild");
+}
 let active = 0;
 let state = null;   // the status poll's answer, and the one source: a `let` that
                     // mirrors part of it drifts (B213, B215), so read it here

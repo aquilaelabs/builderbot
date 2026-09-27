@@ -1380,10 +1380,10 @@ function renderDockerInto(i){
   const asks = (typeof ph !== "undefined" && ph?.asks || [])
     .filter(a => a.kind === "rebuild");
   const askRows = asks.map(a => `<div class="row dmask">
-      <div class="grow"><div class="name">${esc(a.ctl || "rebuild")}: ${esc(a.why)}</div>
+      <div class="grow"><div class="name">${esc(askVerb(a))}: ${esc(a.why)}</div>
         <div class="phcmd">bb ${esc(a.cmd.join(" "))}</div>
         <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project")
-                                       : a.project || "a session")} asks to ${esc(a.ctl || "rebuild")} it · ${
+                                       : a.project || "a session")} asks to ${esc(askVerb(a))} it · ${
           a.left > 60 ? `${Math.floor(a.left / 60)} min left to answer`
                       : `${a.left}s left to answer`}</div></div>
       <span class="acts">
