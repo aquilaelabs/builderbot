@@ -163,6 +163,7 @@ config/icon.png                  the icon the Unraid template shows
 config/toolchains.json           the toolchains the Toolchains tab offers, and how to install each
 config/templates/                briefing.md, assembled per session by preamble.py; nothing is copied into a project
 tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
+tools/readme-bb-ref.sh           writes the README's bb reference from bb help; bb lint holds the two equal
 tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
