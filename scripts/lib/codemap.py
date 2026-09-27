@@ -982,10 +982,33 @@ def said_by(root, d, limit=160):
     return text
 
 
+def page_bindings(idx, root, name):
+    """Where a page script declares `name` at its top level: a `let`, `var`
+    or `const` that is not a function, which the defs never carried, so
+    `find active` said nothing defines what page-state.js declares on line
+    30 (B299). (file, line, kind) per declaration."""
+    out = []
+    decl = re.compile(r"^(let|var|const)\s+(.*)$")
+    for f in page_scripts(idx):
+        for lines, l0 in script_bodies(root, f):
+            for i, l in enumerate(lines):
+                m = decl.match(l)
+                if m and name in declarators(m.group(2)):
+                    out.append((f, l0 + i, m.group(1)))
+    return out
+
+
 def q_find(idx, name, root=None):
     rows = [d for d in idx["defs"] if d["name"] == name]
     if not rows:
-        return [f"nothing defines {name}"]
+        found = page_bindings(idx, root, name) if root else []
+        if not found:
+            return [f"nothing defines {name}"]
+        out = []
+        for f, ln, kind in found:
+            out.append(f"{f}:{ln}  page-level {kind}"
+                       + ("" if kind == "const" else f"; bb map state {Path(f).name} says where it is assigned"))
+        return out
     out = []
     for d in rows:
         where = f"{d['file']}:{d['line']}"

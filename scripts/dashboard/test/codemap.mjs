@@ -18,6 +18,19 @@ ok(/\d+ files \(.*\d+ js.*\d+ py.*\), \d+ definitions, \d+ calls/.test(built),
 
 // A definition: where, with its span.
 const def = map('find', 'openDocker');
+// A page-level let, var or const that is not a function is a definition
+// too: find said nothing defines `active`, which page-state.js declares
+// on its line 30, and the answer to where a page variable lives was a
+// grep (B299). It names the file, the line and the kind, and points a
+// let at bb map state for where it is assigned.
+{
+  const at = (name, re) => re.test(map('find', name));
+  ok(at('active', /^scripts\/dashboard\/page-state\.js:\d+  page-level let; bb map state page-state\.js says where it is assigned$/m)
+     && at('refreshBusy', /page-poll\.js:\d+  page-level let/) && at('popWins', /page-state\.js:\d+  page-level const$/m)
+     && /nothing defines/.test(map('find', 'noSuchNameAnywhere')),
+     `find answers for a page-level let or const with its file, line and kind, and still says when nothing defines a name (${
+        map('find', 'active').trim().slice(0, 80)})`);
+}
 ok(/^scripts\/dashboard\/tab-docker\.js:\d+ to \d+  function$/m.test(def),
    `find names a function's file, line and span (${def.split('\n')[0]})`);
 
