@@ -415,6 +415,14 @@ bb dashboard trace [SECONDS]  what the dashboard was asked over the last SECONDS
 bb drift           what this checkout changed that the container is not serving
 bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
                    draws ID|.class, suites FILE...; a session asks it before grepping
+bb reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
+                   eyes on change over time: the frames of a recording that changed,
+                   each stamped with its time, tiled into dist/reel/NAME/sheet.png
+                   beside frames.json (when, and how much moved). From a video, a
+                   page Playwright records while --drive FILE.mjs works it, the
+                   running emulator's screenrecord (with gfxinfo framestats beside
+                   it), or an X display grabbed while a shell script drives it with
+                   xdotool; the provisioner installs Xvfb and xdotool for that
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
 bb tool            the tools toolchains add to a session, each under its own name
 bb tool graphics CMD  pictures a session can make and then read back, with the

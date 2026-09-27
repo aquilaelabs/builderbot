@@ -229,6 +229,9 @@ bb: BuilderBot helper
   bb map [VERB ...]      the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
                          draws ID|.class, suites FILE..., state [FILE], sections FILE, unused,
                          addresses [FILE...], coverage, covered NAME, uncovered [FILE]; ask it before grepping
+  bb reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
+                         the frames that changed, stamped with their times,
+                         on one sheet in dist/reel/ with a JSON of when
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb tool                the tools toolchains add to a session, each under its own name
   bb tool graphics CMD   pictures a session can make and read back (the graphics toolchain):
@@ -3398,6 +3401,46 @@ find_chromium() {
 # networkidle, because a screenshot of a spinner is not a screenshot of the
 # page. The intended split: a project's own script boots its app into a
 # photogenic state, then ends with one bb shot line.
+# bb reel: eyes on change over time (R95). One sheet of the frames that
+# changed, each stamped with its time, and a JSON of when, from a video, a
+# page Playwright records while a script drives it, the emulator's
+# screenrecord, or an X display. reel.py does the work; this hands it the
+# store's tools and the project's dist/.
+cmd_reel() {
+    case "${1:-}" in
+        -h|--help|"")
+            cat <<'EOT'
+bb reel --video FILE | --url URL | --emu [PKG] | --display :N  [--seconds N] [--drive FILE] [--name NAME]
+        [--threshold T] [--fps N]
+  the frames that changed, each stamped with its time, tiled into
+  dist/reel/NAME/sheet.png beside frames.json (when, and how much moved):
+  what a screenshot cannot show, one image a session reads at a glance.
+  --video    any recording
+  --url      a page, recorded for --seconds while --drive FILE.mjs works it
+             (export default async (page, {seconds}) => {...})
+  --emu      the running emulator's screenrecord, PKG launched first and its
+             gfxinfo framestats beside the reel; --drive FILE is a shell script
+             with $ADB in its environment
+  --display  an X display grabbed for --seconds while --drive FILE (a shell
+             script, DISPLAY set) drives it with xdotool
+  --threshold ffmpeg's scene score that counts as a change (0.02)
+EOT
+            return 0 ;;
+    esac
+    local proj; proj="$(project_here 2>/dev/null || true)"
+    local out="${proj:+${WORKSPACE}/${proj}/dist/reel}"
+    [ -n "$out" ] || out="$PWD/dist/reel"
+    # The store's ffmpeg and adb where the shell's PATH does not carry them.
+    local root; root="$(sdk_root 2>/dev/null || true)"
+    local ff; ff="$(command -v ffmpeg || true)"; [ -n "$ff" ] || { [ -x "$root/ffmpeg/bin/ffmpeg" ] && ff="$root/ffmpeg/bin/ffmpeg"; }
+    local adb; adb="$(command -v adb || true)"; [ -n "$adb" ] || { [ -x "$root/platform-tools/adb" ] && adb="$root/platform-tools/adb"; }
+    BB_REEL_OUT="$out" BB_REEL_FFMPEG="$ff" \
+    BB_REEL_NODE_PATH="$(pw_node_path)" BB_REEL_CHROME="$(find_chromium 2>/dev/null || true)" \
+    BB_REEL_ADB="$adb" \
+    BB_REEL_AUTH="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" \
+        python3 "$BB_LIB/reel.py" "$@"
+}
+
 cmd_shot() {
     # The operator's password, or a session's token, whichever this shell
     # has. --auth overrides both.
@@ -4267,6 +4310,7 @@ case "${1:-help}" in
     drift)    shift; cmd_drift "$@" ;;
     map)      shift; cmd_map "$@" ;;
     shot)     shift; cmd_shot "$@" ;;
+    reel)     shift; cmd_reel "$@" ;;
     tool)     shift; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
     -h|--help|help) usage ;;

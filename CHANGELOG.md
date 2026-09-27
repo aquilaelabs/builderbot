@@ -7,6 +7,7 @@
 - Reboot and Shut down on a node's row, under Advanced: the agent schedules the machine's own reboot or power-off a few seconds out so the job reports first. The press names the sessions it ends; dead with the reason while the agent is away; an administrator's only (0d3a6f0)
 - Set up GPU display on a node's row (Health): the NVIDIA driver and a headless X server on the card, as bb-sandbox gpu and a unit of the machine's own; after the one reboot it asks for, an emulator there renders on the card and bb emu gpu says so, and a session sees the display (6afdb2e)
 - A Claude session can send its project to Docker the way the Artifacts tab's Send to Docker manager does: bb devapp new [NAME] [--branch REF] makes a container from the project's compose file, builds and starts it, and waits for the result, under the project's Claude may: Run its container setting (f02a9a8)
+- bb reel: the frames of a recording that changed, each stamped with its time, on one sheet in dist/reel/ with a JSON of when, from a video, a page Playwright records while a script drives it, the emulator's screenrecord, or an X display xdotool drives; the provisioner installs Xvfb and xdotool (60d809c)
 
 ### Changed
 
