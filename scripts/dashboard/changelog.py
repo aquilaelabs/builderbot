@@ -683,9 +683,10 @@ def since_minor(secs):
     older. When 0.7.0 is cut, 0.6's releases fall off it in that one gesture,
     without anybody pruning a file.
 
-    Nothing is deleted and nothing is lost: CHANGELOG.md keeps every release
-    forever and stays the place to read them, which is why the panel says how
-    many it is not showing rather than quietly ending.
+    Nothing is deleted and nothing is lost: CHANGELOG.md keeps the current
+    series and the one before it, docs/changelog-0.5.md what came before
+    those (moved out on 27 Sep, when the file passed 130KB), and the panel
+    says how many it is not showing rather than quietly ending.
 
     Returns (kept, held, series).
     """
