@@ -70,6 +70,22 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // the push and download buttons live, and a row with state and actions
     // is exactly what this list already speaks.
     const da = art.devapp || {};
+    // Every container of the project's own, one row each, the first
+    // carrying the ids the rest of this view and the suite address. The
+    // row described the project's own instance whether or not it existed,
+    // so a project whose only container was web-dev read "web (down)" with
+    // web-dev nowhere on the tab (B300). A project with no container yet
+    // keeps its one row, which is what Send is for.
+    const insts = (art.devapps || []).filter(d => d && d.compose
+      && (d.exists || d.running || d.built_rev || d.job?.running || d.job?.error));
+    const shown = insts.length ? insts : da.compose ? [da] : [];
+    const daJob = shown.find(d => d.job?.running)?.job || da.job;
+    const devTcpOf = d => (d.ports || []).filter(p => p.proto === "TCP" && p.published);
+    const devUrl = p => `http://${daemonHost()}:${p.published}/`;
+    const devLines = (label, items, cls) => !items?.length ? "" :
+      `<div class="dim ${cls}">${label}</div>`
+      + items.map(x => `<div class="dim ${cls} li">${esc(x)}</div>`).join("");
+    const rowFor = (da, i) => {
     const daJob = da.job;
     // The same row the files use, because it IS one of the rows: kind on a
     // pill, the thing's own name in bold, what is known about it underneath.
@@ -88,7 +104,6 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // The host is this page's own address, which is the honest answer to
     // "where do I reach that port": the dashboard and the published port are
     // on the same machine, and this is the name the operator got there by.
-    const devPorts = da.ports || [];
     // A way in. One published port is a link straight there; several is a
     // question, and the answer is the operator's; nothing here knows which
     // of them is the web UI, and Unraid does not either: its own tab reads a
@@ -96,8 +111,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // label. So the single case is known, and the rest is asked rather than
     // guessed. Only while it is up: a link to a port with nothing behind it
     // is a broken link.
-    const devTcp = devPorts.filter(p => p.proto === "TCP" && p.published);
-    const devUrl = p => `http://${daemonHost()}:${p.published}/`;
+    const devTcp = devTcpOf(da);
     // The route's URL when the instance has one (docs/nodes.md §7): a
     // funnel's public address, or lan on the node the instance is on: else
     // the old guess from the daemon's host.
@@ -113,19 +127,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // thing to keep in step for no reader. The manager's rows fold it open.
     // One line each, never a run-on joined by semicolons. These are separate
     // facts about separate services and reading them is the whole point.
-    const devLines = (label, items, cls) => !items?.length ? "" :
-      `<div class="dim ${cls}">${label}</div>`
-      + items.map(x => `<div class="dim ${cls} li">${esc(x)}</div>`).join("");
-    const devHtml = !da.compose ? "" : !da.available ? `
-      <div class="artrow job"><span class="pill">docker</span>
-        <span class="grow">${esc(da.why || "docker is not reachable")}${
-          // The machine it asked, because an instance stays on the node it
-          // was made on: "it could not find the daemon on the node I pointed
-          // it at" is the same sentence whether it looked there or somewhere
-          // else, and only this tells the two apart.
-          da.daemon || da.where ? ` <span class="dim">(${esc(da.daemon || da.where)})</span>` : ""}</span>
-      </div>` : `
-      <div class="artrow" id="devRow">
+    return `
+      <div class="artrow${i ? " devRow" : ""}"${i ? ` data-devrow="${i}"` : ' id="devRow"'}>
         <div class="grow">
           <div class="top"><span class="pill">docker</span>
             <b>${esc(da.name || "dev instance")}</b>
@@ -163,13 +166,23 @@ function nbArtifactsView({$, nb, project, root, sheet}){
         <span class="acts">
           ${devWeb ? `<a class="btn" href="${esc(devWeb)}" target="_blank"
             rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
-          ${devAsk ? `<button type="button" id="devOpen"
+          ${devAsk ? `<button type="button" data-devopen="${i}"${i ? "" : ' id="devOpen"'}
             title="it publishes ${devTcp.length} ports: pick one">Open</button>` : ""}
-          <button type="button" id="devSend" class="primary"
+          ${i ? "" : `<button type="button" id="devSend" class="primary"
             title="make a container from this project and manage it on the Docker tab"
-            >Send to Docker manager</button>
+            >Send to Docker manager</button>`}
         </span>
       </div>`;
+    };
+    const devHtml = !da.compose ? "" : !da.available ? `
+      <div class="artrow job"><span class="pill">docker</span>
+        <span class="grow">${esc(da.why || "docker is not reachable")}${
+          // The machine it asked, because an instance stays on the node it
+          // was made on: "it could not find the daemon on the node I pointed
+          // it at" is the same sentence whether it looked there or somewhere
+          // else, and only this tells the two apart.
+          da.daemon || da.where ? ` <span class="dim">(${esc(da.daemon || da.where)})</span>` : ""}</span>
+      </div>` : shown.map(rowFor).join("");
     // An install is one shot rather than a session, so it reports its own
     // line: what it is doing, and what went wrong in words when it does.
     // The push session, as a row: live once web-ext says the add-on is on
@@ -265,8 +278,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     }
     if (!tcDotsTimer && list.querySelector(".dots"))
       tcDotsTimer = setInterval(tcTickDots, 400);
-    const devOpenBtn = $("devOpen");
-    if (devOpenBtn) devOpenBtn.onclick = () => {
+    list.querySelectorAll("[data-devopen]").forEach(b => b.onclick = () => {
+      const devTcp = devTcpOf(shown[Number(b.dataset.devopen)] || {});
       const box = document.createElement("div");
       box.className = "portpick";
       box.innerHTML = `<div class="hint">It publishes ${devTcp.length} ports: pick one.</div>`
@@ -275,7 +288,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             <span class="dim">→ ${esc(p.target)}:${esc(p.proto)}</span></a>`).join("");
       box.querySelectorAll("a").forEach(a => a.addEventListener("click", nb.closeSheet));
       nb.openSheet("Open which port?", [box]);
-    };
+    });
     const send = list.querySelector("#devSend");
     if (send) send.onclick = () => openSendToDocker(project, art.send_as, (art.devapps || []).length);
     // THIS project's daemon, which is its node's and need not be the default
