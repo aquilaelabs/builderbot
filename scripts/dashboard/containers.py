@@ -144,6 +144,22 @@ def container_logs(name, lines=None):
 COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
 
 
+def name_free(name):
+    """Why a container cannot be made under `name`, or "": one the store
+    has, or a name another project's instance resolves to. Asked before a
+    session's request reaches the bell as well as by create_container, so an
+    administrator is not asked to decide on a request no answer can build
+    (B309). The way forward is named rather than "pick another name": the
+    usual reason to ask again under a name is to change that container,
+    and a second name is a second container on the same data."""
+    slug = devapp._slug(name) or ""
+    if slug in devapp._load():
+        return (f"{slug} already exists here. To change it, the operator removes it from "
+                "the Docker tab first, or a session changes a variable with bb devapp "
+                f"--container {slug} env set FILE and then bb devapp --container {slug} rebuild")
+    return devapp.name_clash(slug, devapp.MAIN)
+
+
 def create_container(name, compose_text, env_text="", node="", for_project=""):
     """A container from a compose file written here, with no project behind it.
 
@@ -173,11 +189,9 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
             return {"error": why}
     node = node or devapp._node_here()
     with devapp._lock:
-        if slug in devapp._load():
-            return {"error": f"{slug} already exists; pick another name"}
-        clash = devapp.name_clash(slug, devapp.MAIN)
-        if clash:
-            return {"error": clash}
+        why = name_free(slug)
+        if why:
+            return {"error": why}
     d = devapp.containers_dir(slug)
     try:
         d.mkdir(parents=True, exist_ok=True)

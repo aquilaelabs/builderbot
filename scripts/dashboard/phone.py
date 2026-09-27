@@ -57,8 +57,10 @@ env_writer = None
 ctl_runner = None
 remover = None
 # containers.create_container, injected the same way: what Allow on a container
-# ask calls (R71). None where no docker path is wired up.
+# ask calls (R71). None where no docker path is wired up. container_free is
+# its name check, asked before a request is queued (B309).
 container_maker = None
+container_free = None
 # ...and what verb() needs to know about the one asking, set by server.py
 # beside the rest: the account store, the projects an account sees, the
 # node a project builds on and its Run its container dial, a container's
@@ -1245,6 +1247,12 @@ def verb(action, req, who, fresh):
                         return r | {"error": f"{r['name']} is registered on the Docker "
                                              f"tab, and its build did not start: {built['error']}"}, 400
                     return r | {"job": built.get("job")}, 200
+            # A name nothing could build under is refused here, before the
+            # request is on anybody's bell (B309), with the words the
+            # create would use.
+            why = container_free(field(req, "name")) if container_free is not None else ""
+            if why:
+                return {"error": why}, 400
             r = ask_container(field(req, "why"), field(req, "name"),
                               req.get("compose"), req.get("env"),
                               target["id"] if target else "",
