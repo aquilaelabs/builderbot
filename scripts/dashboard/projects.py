@@ -267,7 +267,7 @@ _KEYED = {
 }
 
 # Files holding a flat list of project names.
-_LISTED = ["locked-projects.json", "pinned-projects.json"]
+_LISTED = ["locked-projects.json"]
 
 
 def _rename_in_json(path, old, new):
@@ -480,6 +480,11 @@ def rename(req):
                 moved.append(name)
         except OSError as e:
             failed.append(f"{name}: {e}")
+    try:
+        if _rename_in_pins(STATE / "pinned-projects.json", old, new):
+            moved.append("pinned-projects.json")
+    except OSError as e:
+        failed.append(f"pinned-projects.json: {e}")
     try:
         rewritten, dropped = _rename_tabs(old, new)
         if rewritten:
@@ -1981,14 +1986,11 @@ def create_from_dialog(req, *, env, account, may_node):
     # No file still means "all of them", so there is nothing to write then
     # and writing one would turn the first create into an unasked-for
     # decision about every other project.
-    if load_project_pins() is not None:
-        with lock:
-            pins = load_project_pins()
-            if pins is not None:
-                try:
-                    save_project_pins(set(pins) | {name})
-                except OSError:
-                    pass          # the project exists; the sidebar is not
+    with lock:
+        try:
+            pin_new_project(name)
+        except OSError:
+            pass                  # the project exists; the sidebar is not
                                   # worth failing the create over
     return body, code
 
@@ -2008,33 +2010,76 @@ def _pins_file():
     return STATE / "pinned-projects.json"
 
 
-def load_project_pins():
-    """The pinned set, or None when nobody has ever pinned anything.
-
-    None is not the same as empty and the difference decides what a fresh
-    install looks like. No file means the operator has not had this thought
-    yet, so every project is pinned and the card is what it always was; an
-    empty LIST means they unpinned the last one on purpose, and a sidebar that
-    quietly refilled itself would be arguing with them.
-    """
+def _load_pins():
+    """Every account's pinned set, {uid: [names]}. The file was one flat list
+    for everybody until 27 Sep; read as everyone's default under "*" once,
+    and written back keyed by account the first time anybody pins."""
     try:
         v = json.loads(_pins_file().read_text())
     except (OSError, ValueError):
-        return None
-    return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else None
+        return {}
+    if isinstance(v, list):
+        return {"*": sorted({x for x in v if isinstance(x, str)})}
+    if not isinstance(v, dict):
+        return {}
+    return {k: sorted({x for x in names if isinstance(x, str)})
+            for k, names in v.items() if isinstance(k, str) and isinstance(names, list)}
 
 
-def save_project_pins(names):
-    write_json(_pins_file(), sorted(set(names)))
+def load_project_pins(uid):
+    """This account's pinned set, or None when it has never pinned anything
+    and nobody's default stands.
+
+    None is not the same as empty and the difference decides what a fresh
+    install looks like. No entry means this person has not had this thought
+    yet, so every project is pinned and the card is what it always was; an
+    empty LIST means they unpinned the last one on purpose, and a sidebar that
+    quietly refilled itself would be arguing with them. The pins are the
+    person's, not the controller's (the operator, 27 Sep): what is worth
+    looking at from the sidebar is a question each account answers.
+    """
+    d = _load_pins()
+    v = d.get(str(uid or ""), d.get("*"))
+    return None if v is None else sorted(v)
 
 
-def pin(name, on):
-    """Pin or unpin a project, once the server has let an administrator:
-    the pins are one set for everybody. Unpinning something running a build
-    leaves it running, and the Projects tab still has every button.
+def save_project_pins(uid, names):
+    d = _load_pins()
+    d[str(uid or "")] = sorted(set(names))
+    write_json(_pins_file(), d)
+
+
+def pin_new_project(name):
+    """A project made after anything has been pinned is pinned for everyone
+    who has a set: absent from theirs it would land on disk and never reach
+    their sidebar, created and apparently gone. Nothing to write while no
+    account has a set, since no file means all of them."""
+    d = _load_pins()
+    if not d:
+        return
+    write_json(_pins_file(), {k: sorted(set(v) | {name}) for k, v in d.items()})
+
+
+def _rename_in_pins(path, old, new):
+    """The same, for every account's pinned set."""
+    d = _load_pins()
+    moved = False
+    for k, names in d.items():
+        if old in names:
+            d[k] = sorted((set(names) - {old}) | {new})
+            moved = True
+    if moved:
+        write_json(path, d)
+    return moved
+
+
+def pin(uid, name, on):
+    """Pin or unpin a project for one account, once the server has let a
+    signed-in person: the pins are theirs. Unpinning something running a
+    build leaves it running, and the Projects tab still has every button.
 
     The first unpin has to write the whole current set, not just remove
-    one: until then there is no file, which means "all of them", and
+    one: until then there is no entry, which means "all of them", and
     saving a single removal would have read as "only this one is pinned".
     (payload, status)."""
     try:
@@ -2045,11 +2090,11 @@ def pin(name, on):
     if name not in here:
         return {"error": f"unknown project: {name}"}, 400
     with lock:
-        pins = load_project_pins()
+        pins = load_project_pins(uid)
         names = here.copy() if pins is None else set(pins)
         names.add(name) if on else names.discard(name)
         try:
-            save_project_pins(names)
+            save_project_pins(uid, names)
         except OSError as e:
             return {"error": f"could not save: {e}"}, 500
     return {"pinned": sorted(names)}, 200

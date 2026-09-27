@@ -862,12 +862,13 @@ lives in its body. The cards:
   padlock after the name; a row with a repo *error* carries no Claude button at
   all, because a session cannot start there. **Shell** stays either way, since
   that is often how you would fix it
-- a **thumbtack** per project, which decides whether the sidebar shows it at
-  all. Unpinning takes a project off this card and nothing else: it keeps every
-  control on the **All projects** tab at the foot of the card, which lists
-  everything under `/workspace` with the same buttons on each row. Pins live in
-  `/config/pinned-projects.json`; no file at all means everything is pinned,
-  which is what a fresh install sees
+- a **thumbtack** per project, which decides whether your sidebar shows it at
+  all. The pins are each person's own: unpinning takes a project off your card
+  and nobody else's, and nothing else: it keeps every control on the **All
+  projects** tab at the foot of the card, which lists everything under
+  `/workspace` with the same buttons on each row. Pins live per account in
+  `/config/pinned-projects.json`; an account with no set sees everything
+  pinned, which is what a fresh install sees
 - a **bin**, which moves a project to `/workspace/.trash/<name>` with every
   file kept: a second delete of the same name is numbered rather than
   overwriting the first, and `/config` is not touched, so putting one back is

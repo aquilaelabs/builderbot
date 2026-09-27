@@ -1240,13 +1240,25 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
     await act(ownerAuth, '/api/users', { action: 'projects', name: 'plainone', projects: ['alpha'] });
     for (const [path, body, why] of [
         ['/api/lock', { name: 'alpha', locked: true }, /administrator's/],
-        ['/api/project-pin', { name: 'alpha', pinned: true }, /administrator's/],
         ['/api/pin', { name: 'status', pinned: true }, /administrator's/],
         ['/api/project-auth', { name: 'alpha' }, /administrator's|rename/],
         ['/api/version', { project: 'alpha', action: 'bump', part: 'patch' }, /administrator's/],
         ['/api/version', { project: 'alpha', action: 'policy', policy: 'any' }, /administrator's/]]) {
       const r = await act(plainAuth, path, body);
       ok(r.status === 403 && why.test(r.error), `a plain account cannot ${path} ${body.action || ''} (${r.status}: ${r.error.slice(0, 50)})`);
+    }
+    // The project pins are a person's own (the operator, 27 Sep): a plain
+    // account unpins alpha from its sidebar and the owner's card still shows
+    // it; a session, which has no sidebar, pins for nobody.
+    {
+      const un = await act(plainAuth, '/api/project-pin', { name: 'alpha', pinned: false });
+      const rows = async h => ((await (await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: h })).json()).projects || []);
+      const plain = (await rows(plainAuth)).find(p => p.name === 'alpha'), owner = (await rows(ownerAuth)).find(p => p.name === 'alpha');
+      ok(un.status === 200 && plain && plain.pinned === false && owner && owner.pinned === true,
+         `a plain account's unpin is its own: alpha off its sidebar and still on the owner's (${un.status}; ${plain?.pinned}/${owner?.pinned})`);
+      const sess = await act(sessAuth, '/api/project-pin', { name: 'alpha', pinned: true });
+      ok(sess.status === 403 && /a session has no sidebar/.test(sess.error || ''), `...and a session pins for nobody (${sess.status})`);
+      await act(plainAuth, '/api/project-pin', { name: 'alpha', pinned: true });
     }
     const lockBeta = await act(plainAuth, '/api/lock', { name: 'beta', locked: true });
     ok(lockBeta.status === 400 && /not a project/.test(lockBeta.error),

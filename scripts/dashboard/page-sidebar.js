@@ -250,7 +250,7 @@ function projectRow(p, live, cls, inTab){
             + "and its notebook goes read-only"}"
         >${p.locked ? LOCK : LOCK_OPEN}</button>
       ${inTab ? `<button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
-        data-on="${p.pinned ? "0" : "1"}"${state?.admin === false ? " disabled" : ""}
+        data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
         title="${state?.admin === false ? "the pins are one set for everybody, so moving them is an administrator's"
           : p.pinned
