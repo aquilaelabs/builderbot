@@ -376,6 +376,11 @@ print(json.dumps(m._build_env('verstamp', '')))
        got.BB_BUILD_VERSION || 'unstamped'})`);
   rmSync(vrepo, { recursive: true, force: true });
 }
+// Waited for, not read once: the manager's Up and Down follow its own
+// listing, a fetch behind the artifacts row's, and under a whole run the
+// row still read the state from before the up when this looked (B319).
+await page.waitForFunction(sel => document.querySelector(sel + ' [data-dm="up"]')?.disabled
+  && document.querySelector(sel + ' [data-dm="down"]')?.disabled === false, DM, { timeout: patience(20000) });
 r = await row();
 ok(!r.down && r.up, 'running: Down is live, Up is dead');
 // Rebuild does NOT go to sleep when the build matches the code, which it used
