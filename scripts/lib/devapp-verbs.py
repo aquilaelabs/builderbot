@@ -312,8 +312,17 @@ def edit():
 
 def ls():
     proj = os.environ["BB_DEV_PROJECT"]
-    d = bbapi.call("/api/docker?project=" + urllib.parse.quote(proj), auth=os.environ["BB_DEV_AUTH"])
+    # The listing is a read on the node, which right after a build starts
+    # there took longer than the client's thirty seconds and stopped with
+    # "timed out" (B310): the look's patience, and a timeout that names the
+    # reason rather than the clock.
+    d = bbapi.call("/api/docker?project=" + urllib.parse.quote(proj), auth=os.environ["BB_DEV_AUTH"],
+                   timeout=180)
     if d.get("error") and not (d.get("instances") or d.get("containers")):
+        if "timed out" in str(d["error"]).lower():
+            sys.exit("[builderbot] ERROR: the node did not list its containers in three minutes; "
+                     "a build just started there is the usual reason, and bb jobs says whether one "
+                     "is running. Try again when it is done")
         sys.exit(f"[builderbot] ERROR: {d['error']}")
     blind = bool(d.get("blind"))
     rows = []
