@@ -2677,6 +2677,9 @@ doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes
 nodes.came_back = lambda nid: threading.Thread(target=doctor.refresh, name="doctor-after-hello",
                                                daemon=True).start()
 # The Docker tab's first pick is derived from where the projects are bound.
+# A job of a container written for a project is that project's (B321).
+nodes.job_owner = lambda j: devapp.owner_of(j.get("project") or "",
+                                           (j.get("spec") or {}).get("instance") or devapp.MAIN)
 nodes.project_nodes = lambda: {p: (v or {}).get("node") or ""
                                for p, v in prefs.all_projects(WORKSPACE).items()}
 devapp.all_project_nodes = lambda: {p: (v or {}).get("nodes") or []
