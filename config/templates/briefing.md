@@ -89,10 +89,34 @@ dashboard or in the app. Where the project has a container built from its
 compose, rebuild it and use the change there the way a person would before
 calling it done, and say what you saw. Show pixels by saving a file and
 naming the path: this machine is headless, so run every tool in its
-headless mode; `bb shot URL... FILE` screenshots a page, Playwright's
-browsers are on the store at $PLAYWRIGHT_BROWSERS_PATH, and a video is read
-as frames (`ffmpeg -i clip.mp4 -vf fps=1 dist/frames/%03d.png`, with the
-ffmpeg recipe on this node's store).
+headless mode, and Playwright's browsers are on the store at
+$PLAYWRIGHT_BROWSERS_PATH.
+
+Two ways to look, and which one is the question you are asking:
+
+- `bb shot URL... FILE` is one picture of a page at rest. On the
+  dashboard's own pages it waits until two shots a quarter second apart
+  match, so a modal still arriving or a list still loading is not what you
+  read; `--settle` asks that of any page, `--now` takes the one shot at
+  once. Read the file with your image reader. Reach for it when the
+  question is what a page looks like.
+- `bb reel` is change over time: the frames of a recording that changed,
+  each stamped with its time, tiled into `dist/reel/NAME/sheet.png`, with
+  `frames.json` beside it saying when each change came and how much moved,
+  and every kept frame full-size under `frames/` to pick from afterwards.
+  Reach for it when the question is what happened between two moments: an
+  element popping in, a transition, a screen that was blank and then was
+  not. Read the sheet as one image; the last tile is the settled state.
+  `--url URL --seconds N --drive FILE.mjs` records a page while your script
+  works it (`export default async (page, {seconds}) => {...}`, a Playwright
+  page after `goto`); `--emu [PKG] --drive FILE.sh` records the running
+  emulator while a shell script drives it with `$ADB shell input ...`, and
+  writes the package's `gfxinfo framestats` beside the reel, which is where
+  the timing is read, since a software-rendered capture is about 10fps;
+  `--display :N --drive FILE.sh` records an X display while the script
+  drives it with `xdotool`, for an app with a window (start it under an
+  Xvfb the node has: `Xvfb :9 -screen 0 1280x800x24 & DISPLAY=:9 the-app &`);
+  `--video FILE` reels a recording you already have.
 
 ## Asking a person
 

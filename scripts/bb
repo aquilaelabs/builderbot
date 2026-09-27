@@ -3444,7 +3444,7 @@ EOT
 cmd_shot() {
     # The operator's password, or a session's token, whichever this shell
     # has. --auth overrides both.
-    local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0
+    local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0 settle=""
     local full=0 resize="" out="" mode=file urls=()
     # Used by the test harness, which needs the same answer this does and
     # should not re-implement the search to get it.
@@ -3458,6 +3458,13 @@ cmd_shot() {
             --wait)   wait="$2"; shift 2 ;;
             --resize) resize="${2%x}"; shift 2 ;;
             --full)   full=1; shift ;;
+            # Shot at rest: screenshots a quarter second apart until two
+            # match, so a modal still arriving or a list still loading is
+            # not what the picture shows. The dashboard's own pages settle
+            # by default (a notebook view fetches its list after it draws);
+            # --settle asks it of any page, --now takes the one shot at once.
+            --settle) settle=1; shift ;;
+            --now)    settle=0; shift ;;
             -*) die "unknown option: $1" ;;
             *) case "$1" in
                    # Scheme-tagged, because page.goto needs one anyway: a bare
@@ -3470,7 +3477,7 @@ cmd_shot() {
         esac
     done
     [ "${#urls[@]}" -gt 0 ] || die \
-        "usage: bb shot URL... [FILE|DIR] [--auth user:pass] [--size WxH] [--full] [--scale N] [--wait MS] [--resize W]
+        "usage: bb shot URL... [FILE|DIR] [--auth user:pass] [--size WxH] [--full] [--scale N] [--wait MS] [--resize W] [--settle|--now]
 URLs need their scheme (http:// or https://)"
     case "${width}${height}${scale}${wait}${resize}" in
         *[!0-9]*) die "--size WxH, --scale N, --wait MS and --resize W take whole numbers" ;;
@@ -3491,11 +3498,11 @@ URLs need their scheme (http:// or https://)"
     local files
     files="$(NODE_PATH="$(pw_node_path)" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
-        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "${urls[@]}" <<'EOF'
+        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "$settle" "${urls[@]}" <<'EOF'
 const { chromium } = require("playwright");
 const fs = require("fs");
 const path = require("path");
-const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
+const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, ...urls]
   = process.argv.slice(2);
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
@@ -3600,7 +3607,28 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, ...urls]
       taken.add(name);
       out = path.join(dest, name + ".png");
     }
-    await p.screenshot({ path: out, fullPage: full === "1" });
+    // At rest, when asked or when it is the dashboard's own page: a shot
+    // every quarter second until a whole second of them are the same
+    // bytes, and that one is the picture. Two matching frames were not
+    // enough: they came in the first half second, before a list that
+    // lands a second later. A page that never stops moving (a spinner) is
+    // taken as it is after six seconds, and said.
+    let atRest = settle === "1" || (settle === "" && (() => {
+      try { return mine.has(new URL(url).origin); } catch { return false; } })());
+    if (atRest) {
+      let last = await p.screenshot({ fullPage: full === "1" }), still = 0;
+      const until = Date.now() + 6000;
+      while (Date.now() < until && still < 4) {
+        await p.waitForTimeout(250);
+        const next = await p.screenshot({ fullPage: full === "1" });
+        still = next.equals(last) ? still + 1 : 0;
+        last = next;
+      }
+      if (still < 4) console.error(`${url}: still moving after six seconds; shot as it is`);
+      fs.writeFileSync(out, last);
+    } else {
+      await p.screenshot({ path: out, fullPage: full === "1" });
+    }
     if (+resize) await shrink(out, +resize);
     console.log(out);
   }

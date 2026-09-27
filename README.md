@@ -424,6 +424,10 @@ bb reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F
                    it), or an X display grabbed while a shell script drives it with
                    xdotool; the provisioner installs Xvfb and xdotool for that
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
+                   at rest on the dashboard's own pages: shots a quarter second
+                   apart until two match, so a modal still arriving or a list
+                   still loading is not the picture; --settle asks that of any
+                   page, --now takes the one shot at once
 bb tool            the tools toolchains add to a session, each under its own name
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,

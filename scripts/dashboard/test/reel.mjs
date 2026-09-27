@@ -42,4 +42,30 @@ ok(noDisp.status !== 0 && /no X display :77 on this node.*provisioner adds Xvfb 
    `a display the node does not have is refused, naming what the provisioner adds (${(noDisp.stderr || '').trim().slice(0, 80)})`);
 const noVid = reel('--video', `${S}/none.mp4`);
 ok(noVid.status !== 0 && /no such video/.test(noVid.stderr || ''), 'a video that is not there is refused');
+// bb shot at rest: shots a quarter second apart until two match, so a page
+// whose element lands late is pictured after it does. A page of this
+// suite's own, served here, draws its heading after a second and a half;
+// the immediate shot and the settled one differ, and two settled ones are
+// the same bytes, since nothing on the page moves after that. The element
+// lands inside the second bb shot waits for; a page that changes later than
+// that is a page bb shot cannot know about, and --wait is for it.
+{
+  const { spawn } = await import('node:child_process');
+  const { writeFileSync } = await import('node:fs');
+  const web = `${S}/web`; mkdirSync(web, { recursive: true });
+  writeFileSync(`${web}/index.html`, '<!doctype html><body style="margin:0;background:#fff">'
+    + '<script>setTimeout(() => { document.body.innerHTML = "<h1 style=\'font:48px sans-serif\'>late</h1>"; }, 700)</script></body>');
+  const port = 30000 + Math.floor(Math.random() * 20000);
+  const srv = spawn('python3', ['-m', 'http.server', String(port), '--bind', '127.0.0.1'], { cwd: web, stdio: 'ignore' });
+  await new Promise(r => setTimeout(r, 1200));
+  const shot = (file, ...flags) => spawnSync('bash', [`${REPO}/scripts/bb`, 'shot', `http://127.0.0.1:${port}/`, file, ...flags],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_PORT: '1' } });
+  const now = shot(`${S}/now.png`, '--now'), one = shot(`${S}/one.png`, '--settle'), two = shot(`${S}/two.png`, '--settle');
+  srv.kill();
+  const bytes = f => existsSync(f) ? readFileSync(f) : Buffer.alloc(0);
+  ok(now.status === 0 && one.status === 0 && two.status === 0 && bytes(`${S}/one.png`).length > 0
+     && !bytes(`${S}/now.png`).equals(bytes(`${S}/one.png`)) && bytes(`${S}/one.png`).equals(bytes(`${S}/two.png`)),
+     `bb shot --settle pictures a page after its late element lands, and --now pictures it before (${
+        [now, one, two].map(r => r.status).join('/')}; ${(one.stderr || '').trim().slice(0, 60)})`);
+}
 await done();
