@@ -375,7 +375,9 @@ a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
 
 Everything that appears, leaves, opens or changes state moves: a panel or
 menu arrives (`menuIn`), a document brought to the front fades in
-(`contentIn`), a section or card folds over its height (`slideBody`, the
+(`docIn`, contentIn's frames under a name of its own, so a document that
+already wears contentIn from its first paint still fades when it comes
+forward), a section or card folds over its height (`slideBody`, the
 section tween), a button or tab eases its colour, a tooltip fades, a toast
 slides, a modal leaves the way it arrived (caught off the `hidden` attribute
 by one observer, so no close site has to remember), and a row folding its

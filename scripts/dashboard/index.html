@@ -3023,8 +3023,13 @@ body.booting .pane>.loading{margin:auto}
    Not color-scheme:dark on the frame; that is what turns the canvas white,
    which is the opposite of what it sounds like it would do. */
 .pane iframe{flex:1;border:0;width:100%;display:block;background:#2b2b2b}
-/* A document brought to the front fades in, the way painted content does. */
-.pane .doc.on{animation:contentIn .18s ease}
+/* A document brought to the front fades in, the way painted content does.
+   The frames are contentIn's under a name of their own: a document that
+   paint() drew straight into wears .justpainted for good, a class that asks
+   for the name an element already has starts nothing, and Projects, drawn
+   that way, snapped to the front while every other document faded (B327). */
+@keyframes docIn{from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none}}
+.pane .doc.on{animation:docIn .18s ease}
 .pane .doc{overflow:auto;background:var(--bg);padding:12px;
   -webkit-overflow-scrolling:touch}
 /* A document has a reading width. Left to fill an ultrawide pane, every row
