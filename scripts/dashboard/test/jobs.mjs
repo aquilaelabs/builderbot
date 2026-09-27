@@ -190,10 +190,15 @@ await ready(page);
   await page.waitForSelector('.jobstab .jbrow', { timeout: 10000 });
 }
 
-// bb jobs reads the same store
+// bb jobs reads the same listing the tab does, through the API as the
+// caller: an administrator sees every job, and a session its own project's
+// and no other, by name or by id (B317: it read the store directly, which
+// on the machine holding the controller's state showed a session every
+// project's jobs).
 {
-  const bbj = (...a) => execFileSync('bash', ['scripts/bb', 'jobs', ...a],
-    { encoding: 'utf8', cwd: REPO, env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const admin = { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_AUTH: 'test:test',
+                  BB_CONTROLLER: base, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` };
+  const bbj = (...a) => execFileSync('bash', ['scripts/bb', 'jobs', ...a], { encoding: 'utf8', cwd: REPO, env: admin });
   const out = bbj();
   ok(/canceled/.test(out) && /exit 7/.test(out) && /controller/.test(out) && /exec sh -c/.test(out),
      'bb jobs lists the recent jobs with state, node and reason');
@@ -211,6 +216,24 @@ await ready(page);
   let missing = '';
   try { bbj('j_deadbeef'); } catch (e) { missing = (e.stdout + '' + e.stderr).toString(); }
   ok(/no such job/.test(missing), '...and an id that is not there says so rather than listing everything');
+  // As a session of alpha: its project's jobs only, and another project's
+  // job by id is "no such job", the same answer a typo gets.
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  // One of beta's, so there is something to keep out of alpha's view.
+  await exec({ id: 'local', project: 'beta', argv: ['true'] });
+  const all = (await (await fetch(base + '/api/v1/jobs?n=100', { headers: H })).json()).jobs || [];
+  const theirs = all.filter(j => j.project && j.project !== 'alpha').map(j => j.id);
+  const tok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+  const sess = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: base, BB_TOKEN: tok, BB_PROJECT: 'alpha',
+                 XDG_CACHE_HOME: `${DIR}/cache-jobs` };
+  const bbs = (...a) => { try { return execFileSync('bash', [`${REPO}/scripts/bb`, 'jobs', ...a],
+    { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: sess, stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch (e) { return (e.stdout || '') + (e.stderr || ''); } };
+  const mineOut = bbs();
+  ok(!theirs.some(id => mineOut.includes(id)) && (theirs.length ? /no such job/.test(bbs(theirs[0])) : true),
+     `a session's bb jobs lists its own project's jobs and answers "no such job" for another project's (${
+        theirs.length} of others' kept out; ${mineOut.trim().split('\n')[0].slice(0, 70)})`);
 }
 
 ok(page.errors.length === 0,

@@ -3643,6 +3643,9 @@ print(json.dumps(out))
         bare.status}: ${String(bare.error).slice(0, 50)})`);
   const wasUp = existsSync(`${DIR}/dockerstate/helper-for-eps.up`);
   writeFileSync(`${DIR}/dockerstate/helper-for-eps.up`, '');
+  // Read once the node is idle: while a job runs there, a listing is
+  // answered from the last one kept, which predates the mark just written.
+  await idle();
   const own = await as('/api/dockerctl', { action: 'logs', container: 'helper-for-eps' });
   ok(own.status === 200 && /hello from helper-for-eps-app-1/.test(own.text || ''),
      `...and the log of its own container by the name ls prints, which is its services' (${own.status}: ${

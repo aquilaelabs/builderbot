@@ -2589,9 +2589,10 @@ cmd_jobs() {
         "") : ;;
         *) die "bb jobs [-n N | ID]: an id looks like j_1a2b3c4d" ;;
     esac
-    py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
-    [ -f "$py" ] || die "nodes.py is missing from this image"
-    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/jobs-verbs.py" "$py" "$n" "$jid"
+    # Through the API as the caller, which narrows the list the way the Jobs
+    # tab is narrowed: a session to its project's jobs (B317).
+    local auth; auth="$(bb_auth_or_die)"
+    BB_JOBS_AUTH="$auth" python3 "$BB_LIB/jobs-verbs.py" "$n" "$jid"
 }
 
 # bb run / build / test: a job on the project's node, watched from here.

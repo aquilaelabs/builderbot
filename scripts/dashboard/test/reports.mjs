@@ -49,9 +49,9 @@ ok(seen && seen.project === 'alpha' && /inside the dev instance/.test(seen.text)
 // ---- answered from there -------------------------------------------------------------
 const filed = await call('/api/reports', { action: 'filed', id: made.id, bug: 'B9' });
 const after = (await call('/api/reports', { action: 'mine' }, ALPHA)).reports.find(r => r.id === made.id);
-ok(filed.ok && after.state === 'filed' && after.bug === 'B9'
+ok(filed.ok && after.state === 'filed' && !('bug' in after) && !('done_by' in after)
    && !((await call('/api/diag', { sections: ['reports'] })).reports || []).some(r => r.id === made.id),
-   'filing it records the bug it became, which its session reads, and it leaves the open list');
+   'filing it records the bug it became; its session reads that it was filed and not the number, which is another notebook\'s (B317), and it leaves the open list');
 const second = await call('/api/reports', { action: 'add', text: 'the briefing names a verb that is gone' }, ALPHA);
 const closed = await call('/api/reports', { action: 'close', id: second.id, why: 'the verb is there: bb map -h' });
 const again = await call('/api/reports', { action: 'close', id: second.id, why: 'twice' });
@@ -69,7 +69,7 @@ const bb = (args, env, cwd) => spawnSync('bash', [`${REPO}/scripts/bb`, ...args]
 const said = bb(['report', 'bb map build wrote .bb-map into the tree unignored', '--area', 'bb map'], node);
 ok(said.status === 0 && /reported #\d+/.test(said.stdout), `bb report sends one from a session (${(said.stdout + said.stderr).trim()})`);
 const list = bb(['report'], node);
-ok(list.status === 0 && /filed as B9/.test(list.stdout) && /bb map build wrote/.test(list.stdout),
+ok(list.status === 0 && /filed in BuilderBot's tracker/.test(list.stdout) && !/B9/.test(list.stdout) && /bb map build wrote/.test(list.stdout),
    `...and bb report alone says what became of the project's reports (${list.stdout.replace(/\s+/g, ' ').slice(0, 120)})`);
 // Filed from BuilderBot's side, through bb bug add, as an administrator.
 const id = Number((said.stdout.match(/#(\d+)/) || [])[1]);

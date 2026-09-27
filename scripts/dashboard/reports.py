@@ -200,7 +200,13 @@ def own_verb(act, proj, req, *, by):
     only at its own) and, for an add, its Report BuilderBot bugs dial.
     (payload, status)."""
     if act == "mine":
-        return {"reports": listing(None, proj, n=30)}, 200
+        # What became of each: open, filed, or closed with the words the
+        # close addressed to it. Not the bug it became, which is a number in
+        # BuilderBot's own tracker, nor who filed it: a session sees nothing
+        # of another project's notebook, and two reports filed as one bug
+        # would show that tracker's triage (B317).
+        return {"reports": [{k: v for k, v in r.items() if k not in ("bug", "done_by")}
+                            for r in listing(None, proj, n=30)]}, 200
     return _answer(add(proj, req.get("text"), by=by, node=node_name(proj),
                        area=req.get("area"), repro=req.get("repro")))
 
