@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.110"
+AGENT_VERSION = "0.7.111"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -4841,11 +4841,18 @@ class Agent:
                 job.say(f"skipping a bind directory that is not a plain path: {d}\n")
                 continue
             try:
+                # Only a directory this step makes is given to the session
+                # account. One that was there already is somebody's: the
+                # config directory of a container running as another user,
+                # or a tree an administrator just chowned on request, and
+                # handing it to the agent's account on every rebuild broke
+                # the containers that owned it (B315).
+                had = os.path.isdir(d)
                 os.makedirs(d, exist_ok=True)
-                if who:
+                if who and not had:
                     with contextlib.suppress(OSError):
                         os.chown(d, who["user"], who["group"])
-                job.say(f"bind directory {d}\n")
+                job.say(f"bind directory {d}" + (" (already there, left as it is)" if had else "") + "\n")
             except OSError as e:
                 # A bind source this machine cannot make. Whether that ends
                 # the job depends on whether docker could do better: it runs
