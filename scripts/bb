@@ -155,7 +155,9 @@ bb devapp rebuild [--why "..."]
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Allow) or auto. Up, Down and a container of
-                   any other shape stay the operator's
+                   any other shape stay the operator's. The build sees BB_BUILD_REV,
+                   BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
+                   interpolate them; its other options are the compose file's own
 bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts tab's Send to Docker
                    manager does, under the same setting: a container made from its
@@ -2182,6 +2184,16 @@ cmd_devapp() {
                 case "$1" in
                     --why) [ $# -ge 2 ] || die "--why needs the sentence after it"
                            why="$2"; shift 2 ;;
+                    -h|--help) cat <<'EOT'
+bb devapp rebuild [--why "what it is for"]
+  build this project's dev instance from its compose file and bring it up,
+  under the project's dial (Claude may: Run its container). The build sees
+  BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION in its environment (the
+  commit, when, the version), so a compose whose build.args interpolate them
+  (GIT_SHA: ${BB_BUILD_REV}) stamps the image without reading .git. Its other
+  options (args, target, Dockerfile) are the compose file's own to say.
+EOT
+                        return 0 ;;
                     *) die "usage: bb devapp rebuild [--why \"what it is for\"]" ;;
                 esac
             done

@@ -246,6 +246,11 @@ set FILE` and `bb devapp remove`, which leaves its env and data for a
 remake. Its env is kept by BuilderBot, not as a file in the tree:
 `bb devapp env` prints it, and a compose line `env_file: .env` is pointed
 at it when the container runs, so a missing `.env` in the project is
-expected. The project's Tests run setting decides whether `bb test` runs
-inside it or on the node.
+expected. A build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`
+in its environment (the commit it is built from, when, and the project's
+version), so a compose whose `build.args` interpolate them (`GIT_SHA:
+${BB_BUILD_REV}`) stamps the image without reading `.git`; the rest of a
+build (its args, target and Dockerfile) is the compose file's own to say.
+The project's Tests run setting decides whether `bb test` runs inside it or
+on the node.
 <!-- BUILDERBOT:END -->

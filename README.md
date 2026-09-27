@@ -217,7 +217,9 @@ bb devapp rebuild [--why "..."]
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Allow) or auto. Up, Down and a container of
-                   any other shape stay the operator's
+                   any other shape stay the operator's. The build sees BB_BUILD_REV,
+                   BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
+                   interpolate them; its other options are the compose file's own
 bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts tab's Send to Docker
                    manager does, under the same setting: a container made from its
