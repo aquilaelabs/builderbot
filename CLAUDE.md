@@ -1,7 +1,8 @@
 # Working inside BuilderBot
 
-
----
+What a session started in this repository is told, over the briefing every
+session gets: what this tree is, how it is built and tested, and the
+conventions the house rules refer to. A person's way in is CONTRIBUTING.md.
 
 ## About this project
 

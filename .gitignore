@@ -6,7 +6,6 @@ _work/
 # A generated descriptions file for `bb tests describe --from`, derived from
 # the test files, applied to /config, and no more part of the repository than
 # a run log is.
-.bb-descriptions.json
 # The last run's output, written by `bb tests run` and read back by the
 # ingest half. Beside the project because on a node the ingest is relayed and
 # the controller reads the path on its own filesystem, and /workspace is the
