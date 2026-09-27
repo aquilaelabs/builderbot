@@ -3622,6 +3622,11 @@ def run_job(name, req, principal):
     if snap.get("error"):
         return snap, 400
     spec = {"argv": argv, "timeout": timeout, "outputs": outputs, "project": name}
+    # A test run sits below the node's other work: the emulator, a docker
+    # build and a session's own work keep the CPU when they want it (the
+    # operator, 27 Sep). The agent puts nice in front of the command.
+    if field(req, "role") == "test":
+        spec["nice"] = 10
     if fell_over:
         spec["fell_over"] = fell_over      # the primary it stood in for (R82 step 6)
     r = job_add(who, {"node": nid}, "exec", spec, name,

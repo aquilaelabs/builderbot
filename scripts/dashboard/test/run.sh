@@ -450,6 +450,13 @@ if [ "${BB_TEST_WORKERS:-1}" -gt 1 ] 2>/dev/null && [ -z "${BB_TEST_WORKER:-}" ]
     # No more workers than suites, and one suite is the single path below.
     _n="$BB_TEST_WORKERS"
     [ "$_n" -le "${#_names[@]}" ] || _n="${#_names[@]}"
+    # Beside each other the suites get the patience CI gives them: every
+    # wait doubled. How many run beside each other is the node's row's
+    # (BB_TEST_WORKERS), not this file's to cap: four on four cores ran a
+    # suite a third slower than alone and timed out a dozen checks a day
+    # that passed alone every time (26 and 27 Sep), which is a fact about
+    # the waits, and lib.mjs's wrapper gives a slow page more time.
+    [ "$_n" -le 1 ] || export BB_TEST_SLOW="${BB_TEST_SLOW:-2}"
     [ "$_n" -le 1 ] || run_workers "$_n" "${_names[@]}"
 fi
 # Every tmux call from here on (ours and the server's) talks to a private
@@ -462,6 +469,13 @@ fi
 # on cleanup, killed the real server, the operator's shell and the Claude
 # session running the tests along with it. Verified below, not assumed.
 unset TMUX
+# Below everything else on the box: the servers, the browsers and node this
+# run starts all inherit it, so the emulator, a docker build and a session's
+# own work keep the CPU when they want it, and on a quiet box nothing is
+# slower (the operator, 27 Sep). Best effort: a shell that may not lower
+# its own priority runs as it is.
+renice -n 10 -p $$ >/dev/null 2>&1 || true
+command -v ionice >/dev/null 2>&1 && ionice -c 2 -n 7 -p $$ >/dev/null 2>&1 || true
 # Same reasoning, for the credential. This script is usually run FROM a Claude
 # session, which is given BB_TOKEN, a token scoped to ONE project with `user`
 # rights and a twelve-hour life. `bb` prefers it over DASHBOARD_AUTH, so every

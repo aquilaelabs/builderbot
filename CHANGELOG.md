@@ -20,6 +20,7 @@
 - A deny refusal names the setting; bb settings shows the Claude settings and every dial; the briefing says how a question reaches a person, and that bb status says whether this machine is a node or the controller (35b6970)
 - Send to Docker makes more than one container of a project: once the project has its own, the dialog offers the next name (project-2, project-3) and says the new one needs ports of its own, and an unnamed bb devapp new does the same (f02a9a8)
 - A session's build follows the project's Run its container setting even when the compose asks for more than its own directory: auto builds, ask puts it to you and Allow is the confirmation, deny refuses. Your own Build on the row still shows the list (52b1ba3)
+- A test run on a node sits below its other work (nice 10), so the emulator, a docker build and a session keep the CPU when they want it; and the dashboard's own suite gives a slow page the same wait again rather than failing a check that passes alone (4c62d77)
 
 ### Removed
 

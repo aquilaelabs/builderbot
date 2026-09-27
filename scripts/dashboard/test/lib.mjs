@@ -2,6 +2,7 @@
 // and hands over the URL, the Chromium binary and the fixture directory in
 // the environment; each test file opens its own pages and reports PASS/FAIL
 // lines, exiting non-zero on any failure.
+import os from 'node:os';
 import { mkdirSync } from 'node:fs';
 import { basename } from 'node:path';
 import { createRequire } from 'module';
@@ -109,14 +110,37 @@ export async function newPage(browser, opts = {}){
   // job sets. A wait that is too long costs seconds on a failure; one that is
   // too short costs a red run that was never about the code (bug #13).
   page.setDefaultTimeout(patience(30000));
+  // What the page has in flight, for the wrapper below: a wait that runs
+  // out while the page is still asking the server is a slow page, not an
+  // absent element.
+  let inFlight = 0;
+  page.on("request", () => { inFlight++; });
+  for (const ev of ["requestfinished", "requestfailed"]) page.on(ev, () => { inFlight = Math.max(0, inFlight - 1); });
   for (const m of ["waitForFunction", "waitForSelector"]){
     const real = page[m].bind(page);
     page[m] = async (...args) => {
       const last = args[args.length - 1];
       if (last && typeof last === "object" && typeof last.timeout === "number")
         args[args.length - 1] = { ...last, timeout: patience(last.timeout) };
+      // A timeout is only a timeout on a page that is at rest on a box
+      // that is not saturated. Four workers on four cores timed out a
+      // dozen checks a day that passed alone every time (27 Sep): the
+      // redraw came, after the budget. So a wait that runs out while the
+      // page has requests in flight, or while the load average is at the
+      // core count, gets the same budget again, three times at most; an
+      // element that never comes still fails, with its snapshot, later.
+      let tries = 0;
+      const budget = () => (typeof args[args.length - 1]?.timeout === "number" ? args[args.length - 1].timeout : patience(30000));
+      const busy = () => inFlight > 0 || os.loadavg()[0] >= os.cpus().length;
       try {
-        return await real(...args);
+        for (;;){
+          try { return await real(...args); }
+          catch (e) {
+            if (!/Timeout .*exceeded/.test(String(e)) || ++tries >= 3 || !busy()) throw e;
+            console.log(`[wait] ran out after ${budget()}ms with ${inFlight} request(s) in flight and a load of ${
+              os.loadavg()[0].toFixed(1)} on ${os.cpus().length} cores: waiting the same again (${tries} of 2)`);
+          }
+        }
       } catch (e) {
         // A timeout here says what was waited for and nothing about WHY it
         // never came, which is how the same few files have been rewaited

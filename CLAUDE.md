@@ -81,7 +81,11 @@ by hand cost four commands and still could not see the failed builds.
   its lock; a loop over a log that a dead command was supposed to write
   never ends (eight such loops were found alive here at once, the oldest at
   10h54m), so a run is waited on with `run_in_background` and its
-  notification; inside tmux the client ignores `TMUX_TMPDIR`, so a
+  notification; a whole run doubles every wait, and a wait that runs out
+  while the page still has requests in flight or the box is saturated is
+  given the same time again, three times at most, because four workers on
+  four cores timed out a dozen checks a day that passed alone (27 Sep);
+  inside tmux the client ignores `TMUX_TMPDIR`, so a
   throwaway session made by an ad-hoc harness lands on the real server;
   and `run.sh` called by hand tested a whole day's work on the node while
   the container it was meant to prove sat untouched (R65), which is why

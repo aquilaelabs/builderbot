@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.111"
+AGENT_VERSION = "0.7.112"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3113,6 +3113,18 @@ class Job(threading.Thread):
             timeout = float(spec.get("timeout") or 3600)
         except (TypeError, ValueError):
             timeout = 3600
+        # Below the node's other work when the controller asks (a test run:
+        # the emulator, a docker build and a session's own work keep the
+        # CPU when they want it, and a run that only yields under contention
+        # is not slower on a quiet box; the operator, 27 Sep). The coreutils
+        # nice in front of the command, not a fork hook: see preexec_fn
+        # below on why this process must not run one.
+        try:
+            nice = int(spec.get("nice") or 0)
+        except (TypeError, ValueError):
+            nice = 0
+        if 0 < nice <= 19 and shutil.which("nice"):
+            argv = ["nice", "-n", str(nice)] + argv
         try:
             p = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, start_new_session=True,
