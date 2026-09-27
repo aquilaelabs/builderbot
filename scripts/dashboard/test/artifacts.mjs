@@ -99,10 +99,13 @@ ok(acts.every(a => a.dl), '...and everything can be downloaded');
   const art = await page.evaluate(async () =>
     (await (await fetch('/api/artifacts?project=alpha')).json()));
   const capNames = (art.captures || []).map(c => c.name);
-  ok(!names.some(n => /sheet\.png|shot-1\.png|loose\.png|frames\.json/.test(n))
+  const shipped = await page.$$eval('#artList .artrow b', bs => bs.map(b => b.textContent));
+  ok(!shipped.some(n => /sheet\.png|shot-1\.png|loose\.png|frames\.json|^walk$/.test(n))
      && !(art.artifacts || []).some(a => /^dist\/(reel|emu)\//.test(a.path)),
-     `a reel's sheet and an emulator shot are not listed among what the project ships (${names.join(', ')})`);
-  ok(capNames.join(',') === 'shot-1.png,walk,loose.png' && art.capture_days === 7,
+     `a reel's sheet and an emulator shot are not listed among what the project ships (${shipped.join(', ')})`);
+  const ats = (art.captures || []).map(c => c.at);
+  ok(capNames.length === 3 && ['shot-1.png', 'walk', 'loose.png'].every(n => capNames.includes(n))
+     && ats.every((t, i) => !i || t <= ats[i - 1]) && art.capture_days === 7,
      `...they are the captures, newest first, and the project keeps them 7 days (${capNames.join(', ')}; ${art.capture_days})`);
   ok(!existsSync(`${DIR}/ws/alpha/dist/reel/stale`),
      'the ten-day-old reel was swept on that read: by age, never by need');
@@ -119,9 +122,11 @@ ok(acts.every(a => a.dl), '...and everything can be downloaded');
      `the tab draws them as one fold, shut, saying how many and for how long (${head.trim()})`);
   await page.click('#artCaptures summary');
   await page.waitForFunction(() => document.querySelector('#artCaptures details.sect')?.open, null, { timeout: 10000 });
+  // By text, not by position: the one with no record goes by its file's
+  // time, which is whenever this suite wrote it.
   const rows = await page.$$eval('#artCaptures .artrow', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ').trim()));
-  ok(rows.length === 3 && /reel walk by stencil · .* · 3 frames/.test(rows[1]) && /shot shot-1\.png by claude/.test(rows[0])
-     && /loose\.png by nobody known/.test(rows[2]),
+  ok(rows.length === 3 && rows.some(r => /reel walk by stencil · .* · 3 frames/.test(r)) && rows.some(r => /shot shot-1\.png by claude/.test(r))
+     && rows.some(r => /loose\.png by nobody known/.test(r)),
      `...each row says whose it is (${rows.join(' | ')})`);
   const dl = await page.$$eval('#artCaptures .artrow a.btn', as => as.map(a => a.getAttribute('href')));
   ok(dl.some(h => /path=dist%2Freel%2Fwalk%2Fsheet\.png/.test(h)), 'Download hands over the sheet');
