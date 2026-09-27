@@ -3812,8 +3812,13 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
 
 // A one-shot service that ran and exited 0 is finished, not down: the row
 // says running and the chip says finished, while a service that exited
-// non-zero still makes the row partly up (B147).
+// non-zero still makes the row partly up (B147). Drawn against a listing
+// read with the node idle: dmRowsHtml wears the page's own listing's
+// staleness, and the restart a block above sends as a job left the kept
+// one marked stale, so the row read "(running, as last seen)" (B303).
 {
+  await idle();
+  await page.evaluate(async () => { dockerList = null; await loadDocker(); });
   const row = svc => ({ project: 'delta', instance: 'delta-dev', name: 'delta-dev', running: true, exists: true,
     source: 'project', ports: [], services: [
       { service: 'app', name: 'app', state: 'running', status: 'Up 5 hours (healthy)' },
