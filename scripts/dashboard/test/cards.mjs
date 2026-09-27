@@ -133,31 +133,37 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
      `...and leaves nothing behind once it has settled (${JSON.stringify(settled)})`);
   // The rings hold still while the cards scroll over them, and the two
   // halves of the page wear one glass (the operator, 24 Sep): the cards,
-  // the tab strip, a pane's bar and the document in it, over a pane left
-  // open so it is the hull that shows through.
+  // the tab strip, a pane's bar and the ground under a document, over a pane
+  // left open so it is the hull that shows through. The ground is the
+  // stack's and the document box paints none, so the document fading in
+  // does not take the glass with it (27 Sep).
   const glass = await page.evaluate(() => {
     const alpha = c => {
       const m = /\/\s*([0-9.]+)\s*\)$/.exec(c || '') || /^rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)$/.exec(c || '');
       return m ? Number(m[1]) : 1;
     };
     const bg = e => e ? getComputedStyle(e).backgroundColor : '';
-    // A document, as the tab side draws one, read and taken away again.
+    // A document on show, as the tab side draws one, read and taken away
+    // again in the same task, so it is never painted.
     const pane = document.querySelector('.pane');
-    const doc = document.createElement('div');
-    doc.className = 'doc'; doc.style.visibility = 'hidden';
-    pane?.appendChild(doc);
+    const st = document.createElement('div'), doc = document.createElement('div');
+    st.className = 'stack'; st.style.visibility = 'hidden';
+    doc.className = 'doc on';
+    st.appendChild(doc);
+    pane?.appendChild(st);
     const out = { rings: getComputedStyle(document.querySelector('.col.side')).backgroundAttachment,
                   card: bg(document.querySelector('.card[data-card="doctor"]')),
                   tabbar: bg(document.querySelector('.tabbar')),
                   bar: bg(document.querySelector('.pane .bar')) || 'no bar',
-                  doc: bg(doc), pane: bg(pane) };
-    doc.remove();
+                  ground: bg(st), doc: bg(doc), pane: bg(pane) };
+    st.remove();
     out.alpha = alpha(out.card);
     return out;
   });
   ok(glass.rings === 'scroll',
      `the rings stay where the column is while the cards scroll over them (${glass.rings})`);
-  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.card === glass.tabbar && glass.card === glass.doc
+  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.card === glass.tabbar && glass.card === glass.ground
+     && glass.doc === 'rgba(0, 0, 0, 0)'
      && (glass.bar === 'no bar' || glass.bar === glass.card) && glass.pane === 'rgba(0, 0, 0, 0)',
      `...and the tab side wears the cards' own glass, over a pane left open (${JSON.stringify(glass)})`);
   await page.evaluate(() => {
@@ -797,16 +803,18 @@ ok(await page.evaluate(() => {
      const st = getComputedStyle(document.querySelector('header'), '::after');
      return /repeating-linear-gradient/.test(st.backgroundImage);
    }), '...and Nostromo brings its hazard stripe with it, as a gradient');
-// The notebook's scanlines sit on the pane's scrolling box, not on the tall
-// content inside it (bug #57): a gradient rasterized across a long roadmap's
-// whole scroll height is what Firefox for Android was painting as yellow
-// striped tiles. One viewport of gradient, on the box that stays put.
+// The notebook's scanlines sit on the pane's box, not on the tall content
+// inside it (bug #57): a gradient rasterized across a long roadmap's whole
+// scroll height is what Firefox for Android was painting as yellow striped
+// tiles. One viewport of gradient, on the box that stays put: the stack
+// under the document, with the glass, since both are the ground the
+// notebook arrives on rather than part of what fades in.
 await page.evaluate(() => openNotebook(state.projects[0].name));
 await page.waitForSelector('.pane .doc > .nb');
 const scan = await page.evaluate(() => {
   const nb = document.querySelector('.pane .doc > .nb');
   const g = e => /repeating-linear-gradient/.test(getComputedStyle(e).backgroundImage);
-  return { box: g(nb.parentElement), content: g(nb) };
+  return { box: g(nb.closest('.stack')), content: g(nb) || g(nb.parentElement) };
 });
 ok(scan.box && !scan.content,
    `...and the notebook's scanlines are on the pane's box, not across the scroll height (${JSON.stringify(scan)})`);

@@ -374,11 +374,12 @@ a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
 ## Motion
 
 Everything that appears, leaves, opens or changes state moves: a panel or
-menu arrives (`menuIn`), a document brought to the front fades in
-(`docIn`, contentIn's frames under a name of its own, so a document that
-already wears contentIn from its first paint still fades when it comes
-forward), a section or card folds over its height (`slideBody`, the
-section tween), a button or tab eases its colour, a tooltip fades, a toast
+menu arrives (`menuIn`), a document brought to the front fades in over its
+own ground (`docIn`, contentIn's frames under a name of its own, so a
+document that already wears contentIn from its first paint still fades when
+it comes forward), a section or card folds over its height
+(`slideBody`, the section tween), a button or tab eases its colour, a
+tooltip fades, a toast
 slides, a modal leaves the way it arrived (caught off the `hidden` attribute
 by one observer, so no close site has to remember), and a row folding its
 controls out on a phone slides over the height that takes. A change that
@@ -387,6 +388,15 @@ snaps is a change the eye has to find. Every one of them is off under
 `--fold: fade` on the card (nostromo does: its plate mark is a decal, and a
 decal sliding into the title bar reads as a bug): the body fades where it
 stands, then the gap closes, and the cards below still ride the height.
+
+**What fades is what is drawn, never the ground under it.** A document's
+ground (the page colour, the panel colour, nostromo's glass and scanlines)
+is painted by the pane's stack while that document is the one on show, and
+the document box itself paints none, so the fade on it carries only its
+content. When the box painted its own ground, the ground faded in with the
+rest over the pane's black, and every switch to a notebook opened on a black
+pane (27 Sep). `uniform.mjs` photographs the first frame of a switch, every
+kind and every scheme, and holds it to the settled tab's own ground.
 
 **The page waits on its own ground.** Nothing can be drawn in a pane until
 the first snapshot lands, and an empty one used to be black and wearing the

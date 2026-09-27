@@ -272,29 +272,31 @@ html[data-theme="nostromo"] .card h2{
   background:var(--glass);
   outline:1px solid var(--line);outline-offset:-1px}
 /* The tab side in the same glass: its strip, each pane's bar and the
-   document in it, with the pane behind them left open so it is the hull
-   that shows, as it does behind a card. A terminal keeps its own solid
+   ground under a document (the stack's, so the document fading in does not
+   take its glass with it), with the pane behind them left open so it is the
+   hull that shows, as it does behind a card. A terminal keeps its own solid
    ground, drawn by the terminal itself: output read through a pattern is
    output misread. */
 html[data-theme="nostromo"] .tabbar,
 html[data-theme="nostromo"] .pane .bar{background:var(--glass)}
 html[data-theme="nostromo"] .pane{background:transparent}
-html[data-theme="nostromo"] .pane .doc{background-color:var(--glass)}
+html[data-theme="nostromo"] .pane .stack:has(> .doc.on){background-color:var(--glass)}
 html[data-theme="nostromo"] .card.closed h2{border-radius:calc(var(--r-surface) - 1px) 0 0 calc(var(--r-surface) - 1px)}
 
 /* CRT scanlines, on the panels only: never over a terminal pane, where they
    would sit on top of somebody's actual output at the exact size of its text.
    3px pitch and 4% black: visible on a flat fill, gone under text.
-   The notebook's are on the pane's scrolling BOX, not on the tall content
-   inside it (bug #57). A repeating gradient on the content is rasterized
-   across the whole scroll height: a long roadmap is thousands of pixels of
-   1px stripes for the GPU to tile, and Firefox for Android was painting
-   some of those tiles as yellow striped blocks. On the box it is one
-   viewport of gradient, painted once, and the lines hold still under the
-   scrolling text the way a screen's would. */
+   The notebook's are on the pane's BOX, not on the tall content inside it
+   (bug #57). A repeating gradient on the content is rasterized across the
+   whole scroll height: a long roadmap is thousands of pixels of 1px stripes
+   for the GPU to tile, and Firefox for Android was painting some of those
+   tiles as yellow striped blocks. On the box it is one viewport of
+   gradient, painted once, and the lines hold still under the scrolling text
+   the way a screen's would. The stack's box, with the glass, since they are
+   the ground a notebook arrives on and not part of what fades in. */
 html[data-theme="nostromo"] .card,
 html[data-theme="nostromo"] .modal>.box,
-html[data-theme="nostromo"] .pane .doc:has(>.nb){
+html[data-theme="nostromo"] .pane .stack:has(> .doc.on > .nb){
   background-image:repeating-linear-gradient(180deg,
     rgba(0,0,0,.04) 0 1px, rgba(0,0,0,0) 1px 3px)}
 
@@ -2144,7 +2146,8 @@ pre.diff .d-ctx{color:var(--dim)}
    notebook beside them did not. One language, and this is it.
    Scoped through .pane, or `.pane .doc` further down the sheet wins on
    source order at equal specificity and the inset comes back. */
-.pane .doc.nbhost,.pane .doc.flush{padding:0;background:var(--panel)}
+.pane .doc.nbhost,.pane .doc.flush{padding:0}
+.pane .stack:has(> .doc.on:is(.nbhost,.flush)){background:var(--panel)}
 /* The same reading width the notebook's bands take, so a row's controls do
    not end up an ultrawide pane away from the name they act on. */
 .projtab,.dmtab,.fxtab,.doctab{display:block;max-width:var(--doc-w)}
@@ -3023,15 +3026,22 @@ body.booting .pane>.loading{margin:auto}
    Not color-scheme:dark on the frame; that is what turns the canvas white,
    which is the opposite of what it sounds like it would do. */
 .pane iframe{flex:1;border:0;width:100%;display:block;background:#2b2b2b}
-/* A document brought to the front fades in, the way painted content does.
-   The frames are contentIn's under a name of their own: a document that
-   paint() drew straight into wears .justpainted for good, a class that asks
-   for the name an element already has starts nothing, and Projects, drawn
-   that way, snapped to the front while every other document faded (B327). */
+/* A document brought to the front fades in, the way painted content does,
+   over its own ground. The ground is the stack's, painted while a document is
+   the child on show, and never the document's own: the fade is on the
+   document, so a document that painted its ground faded it in with the rest,
+   over the pane's black, and every switch to a notebook opened on a black
+   pane for the first frames (the operator, 27 Sep). The ground is there on
+   the first frame now, in every scheme, and only what is drawn on it
+   arrives. The frames are contentIn's under a name of their own: a document
+   that paint() drew straight into wears .justpainted for good, a class that
+   asks for the name an element already has starts nothing, and Projects,
+   drawn that way, snapped to the front while every other document faded. */
 @keyframes docIn{from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none}}
 .pane .doc.on{animation:docIn .18s ease}
-.pane .doc{overflow:auto;background:var(--bg);padding:12px;
+.pane .doc{overflow:auto;padding:12px;
   -webkit-overflow-scrolling:touch}
+.pane .stack:has(> .doc.on){background:var(--bg)}
 /* A document has a reading width. Left to fill an ultrawide pane, every row
    here becomes a name at one end of two thousand pixels and the control that
    acts on it at the other (the bin, the Revert, the version pill) with the
