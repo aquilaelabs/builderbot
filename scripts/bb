@@ -4487,9 +4487,11 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
     # relays its own ingest afterwards, which is the half that is state.
     case "${1:-} ${2:-}" in
         # `run` runs the suite, which belongs where the toolchain and the tree
-        # are; `last` reads the log that run wrote, which is beside the
-        # project on the share both machines mount. Neither is the
-        # controller's to answer.
+        # are; `last` and `log` read the log that run wrote, which is beside
+        # the project on the share both machines mount. Neither is the
+        # controller's to answer, and `log` relayed read the controller's
+        # stale view of a file this machine had just rewritten in place:
+        # half the lines, starting mid-way (B324).
         # `lab` runs the lab suites against a real service reachable from
         # here, the same reason.
         # `rules check` runs each rule's check command, which belongs where
@@ -4502,7 +4504,7 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # to the real controller it would be a session planting findings in
         # somebody else's report directory.
         # `probe` and `keep` drive the dashboard fixture, which runs here.
-        "tests run"|"tests last"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests coverage"|"rules check"|"findings sample") : ;;
+        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests coverage"|"rules check"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and
