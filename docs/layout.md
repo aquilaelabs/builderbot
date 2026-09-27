@@ -165,6 +165,7 @@ config/toolchains.json           the toolchains the Toolchains tab offers, and h
 config/templates/                briefing.md, assembled per session by preamble.py; nothing is copied into a project
 tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
 tools/readme-bb-ref.sh           writes the README's bb reference from bb help; bb lint holds the two equal
+tools/api-doc.py                 writes docs/api.md from server.py's route tables; bb lint holds the two equal
 tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
@@ -177,6 +178,7 @@ tools/version-stamp              this repo's own stamp hook: a bump moves the co
 docs/unraid.md                   step-by-step Unraid walkthrough
 docs/install.md                  setup, start to finish: the checklist with the decisions each step needs
 docs/architecture.md             the map: the seven parts, how they reach each other, where each is explained
+docs/api.md                      every /api/ route with its method, handler, first sentence and what it refuses on, written by tools/api-doc.py
 docs/how-it-works.md             the controller, the nodes, the sessions, the dashboard, the notebook: how each works
 docs/decisions.md                the design decisions, with their dates and reasons
 docs/layout.md                   this list, held to the tree by bb lint

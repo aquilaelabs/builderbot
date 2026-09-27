@@ -3325,6 +3325,13 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         python3 "$BB_LIB/lint-checks.py" settings || rc=1
     fi
 
+    # The API page against the routes (R91): a route added and not written
+    # up is a row with no words, and a page behind the table is a failure.
+    if [ -f docs/api.md ] && [ -f tools/api-doc.py ]; then
+        section "api (docs/api.md vs server.py's routes)"
+        python3 tools/api-doc.py --check || rc=1
+    fi
+
     # The layout page against the tree (R91): a module the page does not
     # name is a newcomer's dead end, and the page drifted a dozen files
     # behind before this held it.
