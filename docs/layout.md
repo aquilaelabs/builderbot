@@ -1,6 +1,15 @@
 # Layout
 
 ```
+README.md                        the front page: what it is, the configuration reference, the bb command reference
+CLAUDE.md                        working inside this repository: what a session here is told
+CHANGELOG.md                     the user-facing record, by release and category; bb changelog writes it
+VERSION                          this repository's own version, moved per commit by tools/version-stamp
+LICENSE                          the Apache License 2.0
+NOTICE                           the copyright line the license's notice section asks a redistribution to keep
+.gitignore                       what the tree leaves out of git; .dockerignore what the image build leaves out of its context
+.dockerignore                    (see .gitignore)
+ruff.toml                        the python linter's settings for the controller; scripts/agent/ruff.toml pins the agent's to a Rocky node's python
 Dockerfile                       image definition
 docker-compose.yml               compose variant of the stack
 .env.example                     annotated compose configuration
@@ -25,6 +34,8 @@ scripts/
   lib/embedded.py                pulls scripts and python out of quoted heredocs so `bb lint` sees them
   lib/waits.py                   the wait for a person's Allow and the job-log stream, shared by the verbs below
   lib/devapp-verbs.py            `bb devapp`: status, rebuild, test, new, env, remove, ls, log, start, stop, restart
+  lib/capture.py                 `bb capture`: the sources anything that draws gives (a page, the emulator, an X display) and a shot at rest
+  lib/reel.py                    `bb capture reel`: the frames of a recording that changed, stamped and tiled
   lib/container-verbs.py         `bb container`: status and new
   lib/phone-verbs.py             `bb phone`: status and run
   lib/root-verbs.py              `bb root`: status and run
@@ -65,7 +76,14 @@ scripts/
                                  one tab-*.js per document tab, one nb-*.js per notebook view (nb-core.js is the
                                  notebook itself), one page-*.js per part of the page that is neither, all strict,
                                  all pure declarations, served by name from the page's own script tags (R77)
+    server.py                    the routes, the transport and the gates; each handler one call into a module beside it
+    index.html                   the markup, the stylesheet and the wiring that runs at load
+    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Toolchains, Emulator, Phone, Settings, Users, Profile, Findings, Projects)
+    nb-*.js                      one per notebook view; nb-core.js is the notebook itself
+    page-*.js                    one per part of the page that is neither: the state, the tabs and the strip, the panes, the sidebar, the polls, the bell and the rest
+    static/                      the favicon set and the SVG marks the page draws
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
+    bb-check-relay               the relay's own check, run by bb tests preflight
     bb-gate                      the hook every tool call asks before it runs, on a node
     bb-keep-login                keeps a node session's Claude login in step, once per prompt
     bb-prompt-relay              a node session's prompts and answers, back to the controller
@@ -114,6 +132,7 @@ scripts/
     idle.py                      ending Claude sessions nobody has used for a while
     projsessions.py              every account's sessions on a project, and an administrator ending one
     reports.py                   problems with BuilderBot reported by any project's session (bb report)
+    diag.py                      the Diagnostics section of Controller settings: reports, images, errors, the audit trail, and the download
     doctor.py                    `bb doctor` run on a timer and cached, for the Doctor card
     runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
     findings.py                  the scanner's reports read and attributed, and what they used to say
@@ -131,13 +150,16 @@ scripts/
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite: `bb dashboard test`, isolated
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
+  agent/ruff.toml                the linter's settings for it, pinned to the python a Rocky node carries
 android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
 nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
 nodes/provision-macos.sh            enrolls a Mac as a guest node: one directory, one launchd agent, no root; --remove takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes
 nodes/vm/                        the same machine for the other six hypervisors: Proxmox, libvirt, QEMU, VMware, Hyper-V, VirtualBox
+nodes/cloud-init/                the seed a cloud image boots from: meta-data and the user-data that runs the provisioner
 config/skel/                     home directory skeleton
+config/icon.png                  the icon the Unraid template shows
 config/toolchains.json           the toolchains the Toolchains tab offers, and how to install each
 config/templates/                briefing.md, assembled per session by preamble.py; nothing is copied into a project
 tools/readme-shots.sh            regenerates the pictures above from a staged dashboard
@@ -154,7 +176,8 @@ docs/unraid.md                   step-by-step Unraid walkthrough
 docs/install.md                  setup, start to finish: the checklist with the decisions each step needs
 docs/how-it-works.md             the controller, the nodes, the sessions, the dashboard, the notebook: how each works
 docs/decisions.md                the design decisions, with their dates and reasons
-docs/layout.md                   this list
+docs/layout.md                   this list, held to the tree by bb lint
+docs/screenshots/                the README's pictures, regenerated by tools/readme-shots.sh
 docs/start-here.md               the one page for somebody given an account on somebody else's BuilderBot
 docs/journeys.md                 what a person does with BuilderBot, walked for real, dated
 docs/sandbox-vm.md               the Docker sandbox VM: why, how, and pointing this at it
@@ -164,6 +187,10 @@ docs/design-language.md          what the dashboard's surfaces owe each other: h
                                  house rule `design` and measured by test/uniform.mjs
 .hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint
 .github/actionlint.yaml          this runner's labels, for workflow linting
-.github/workflows/               GHCR publish (hosted, cached from :latest); lint + dashboard tests; the companion app's build (android-app.yml)
-                                 browser tests (on this runner); runner smoke test (manual)
+.github/workflows/
+  build-image.yml                GHCR publish: hosted, cached from :latest, on a push to main that touches the image's inputs
+  lint.yml                       the linters, on a pull request, on this runner
+  dashboard.yml                  the dashboard's browser suite, on a pull request that changes it, on this runner
+  android-app.yml                the companion app's build
+  runner-smoke-test.yml          proves this runner picks up jobs, carries its toolchain and cannot see the shielded PAT (manual)
 ```

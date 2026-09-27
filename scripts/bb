@@ -3196,6 +3196,14 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         python3 "$BB_LIB/lint-checks.py" settings || rc=1
     fi
 
+    # The layout page against the tree (R91): a module the page does not
+    # name is a newcomer's dead end, and the page drifted a dozen files
+    # behind before this held it.
+    if [ -f docs/layout.md ]; then
+        section "layout (docs/layout.md vs git ls-files)"
+        python3 "$BB_LIB/lint-checks.py" layout || rc=1
+    fi
+
     echo
     if [ "$rc" -ne 0 ]; then
         echo "lint: FAILURES above"
