@@ -24,6 +24,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session's build follows the project's Run its container setting even when the compose asks for more than its own directory: auto builds, ask puts it to you and Allow is the confirmation, deny refuses. Your own Build on the row still shows the list (52b1ba3)
 - A test run on a node sits below its other work (nice 10), so the emulator, a docker build and a session keep the CPU when they want it; and the dashboard's own suite gives a slow page the same wait again rather than failing a check that passes alone (4c62d77)
 - The sidebar's project pins are each person's own: any signed-in account pins and unpins for its own card, an administrator's pins no longer decide everyone's, and the set everybody had until now stays as each account's starting point until they pin (337ca53)
+- Captures (a reel's sheet, an emulator shot) are listed apart on the Artifacts tab, each saying whose it is, and removed after the project's 'captures kept' days (7; 0 keeps them) or by Remove there; bb capture ls and prune do the same from a session. Only the sheet and the record land in dist/ (83417b4)
 
 ### Removed
 
@@ -485,4 +486,3 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On a node the toolchains and the shared base home are read-only inside a session, and each person keeps their own build caches, so no session can change a command another person or a job runs; a person's first build on a node downloads its own dependencies (B163, B157) (57cac69)
 - A plain account can no longer queue a job on a node: a job runs outside every session's view with the node's own rights, so running one is an administrator's (d221eff)
 - Nobody can end, type into or press keys in another person's session any more, and locking a project, moving the shared pins, and moving or releasing a version are an administrator's (549b376)
-

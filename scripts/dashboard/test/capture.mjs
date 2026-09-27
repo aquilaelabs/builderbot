@@ -4,14 +4,18 @@
 // ffmpeg is a toolchain recipe rather than a given, so a node without it
 // says so and this skips rather than failing for a tool it never had.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { ok, done, DIR } from './lib.mjs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const S = `${DIR}/reel`;
 mkdirSync(S, { recursive: true });
-const env = { ...process.env, BB_CAPTURE_OUT: `${S}/out` };
+// dist/ and the scratch apart (R96): the sheet and frames.json land under
+// dist/reel/NAME, the recording and the frames under the scratch, and the
+// record names who asked.
+const env = { ...process.env, BB_CAPTURE_OUT: `${S}/dist/reel`, BB_CAPTURE_SCRATCH: `${S}/scratch`, BB_ACCOUNT_NAME: 'tester' };
 const reel = (...a) => spawnSync('python3', [`${REPO}/scripts/lib/reel.py`, ...a], { encoding: 'utf8', env });
+const cap = (...a) => spawnSync('python3', [`${REPO}/scripts/lib/capture.py`, ...a], { encoding: 'utf8', env });
 
 const ff = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' });
 if (ff.status !== 0){
@@ -22,16 +26,43 @@ if (ff.status !== 0){
     '-vf', "drawbox=x=100:y=100:w=300:h=150:color=orange:t=fill:enable='gte(t,2)',drawbox=x=420:y=40:w=150:h=300:color=white:t=fill:enable='gte(t,3.5)'",
     `${S}/cut.mp4`]);
   const r = reel('--video', `${S}/cut.mp4`, '--name', 'cut');
-  const log = existsSync(`${S}/out/cut/frames.json`) ? JSON.parse(readFileSync(`${S}/out/cut/frames.json`, 'utf8')) : null;
+  const log = existsSync(`${S}/dist/reel/cut/frames.json`) ? JSON.parse(readFileSync(`${S}/dist/reel/cut/frames.json`, 'utf8')) : null;
   const ts = (log?.frames || []).map(f => f.t);
   ok(r.status === 0 && ts.length === 3 && ts[0] === 0 && Math.abs(ts[1] - 2) < 0.2 && Math.abs(ts[2] - 3.5) < 0.2
      && log.frames[1].change > 0.05 && log.frames[2].change > 0.05 && log.frames[0].change === 0,
      `a video with two changes reels to three frames at their times, with how much moved (${JSON.stringify(ts)}; ${
         (r.stderr || '').trim().split('\n').pop()?.slice(0, 80)})`);
-  ok(existsSync(`${S}/out/cut/sheet.png`) && readFileSync(`${S}/out/cut/sheet.png`).length > 1000
+  ok(existsSync(`${S}/dist/reel/cut/sheet.png`) && readFileSync(`${S}/dist/reel/cut/sheet.png`).length > 1000
      && /3 frames changed over 3.5s/.test(r.stderr || ''),
      '...tiled into one sheet, and the verb says how many and over how long');
   ok(/^\s+1\s+2\.0s\s+change/m.test(r.stdout || ''), '...and lists each frame with its time on the terminal');
+  const inDist = readdirSync(`${S}/dist/reel/cut`).sort();
+  ok(inDist.join(',') === 'frames.json,sheet.png' && existsSync(`${S}/scratch/cut/frames/0001.png`)
+     && log.work === `${S}/scratch/cut` && log.frames[0].file === `${S}/scratch/cut/frames/0001.png`
+     && /frames are under .*scratch\/cut/.test(r.stderr || ''),
+     `dist/ keeps the sheet and the record; the frames are under the scratch, where frames.json and the verb say (${inDist.join(', ')})`);
+  ok(log.by === 'tester' && Math.abs(log.at - Date.now() / 1000) < 120,
+     `...and the record says who asked and when (${log.by}, ${log.at})`);
+  // ls and prune: the one rule the Artifacts tab's sweep applies, from a
+  // node. A shot ten days old with its record beside it goes by --days,
+  // the reel by name, and a name that is not there is refused naming ls.
+  mkdirSync(`${S}/dist/emu`, { recursive: true });
+  writeFileSync(`${S}/dist/emu/shot-old.png`, Buffer.from([1, 2, 3]));
+  writeFileSync(`${S}/dist/emu/.shot-old.png.json`, JSON.stringify({ by: 'claude', at: Math.floor(Date.now() / 1000) - 10 * 86400 }));
+  const ls = cap('ls', `${S}/dist`);
+  ok(ls.status === 0 && /reel\s+cut\s+.*ago\s+tester\s+3 frames/.test(ls.stdout) && /shot\s+shot-old\.png\s+10d ago\s+claude/.test(ls.stdout),
+     `ls names each capture with whose it is and how old (${ls.stdout.trim().replace(/\s+/g, ' ')})`);
+  const byAge = cap('prune', `${S}/dist`, '--days', '7');
+  ok(byAge.status === 0 && /1 capture removed/.test(byAge.stderr) && !existsSync(`${S}/dist/emu/shot-old.png`)
+     && !existsSync(`${S}/dist/emu/.shot-old.png.json`) && existsSync(`${S}/dist/reel/cut/sheet.png`),
+     'prune --days 7 removes the ten-day-old shot and its record, and keeps the reel made just now');
+  const none = cap('prune', `${S}/dist`);
+  ok(none.status !== 0 && /prune NAME\.\.\. removes those; --days N/.test(none.stderr), 'prune with nothing to go by says what it takes');
+  const missing = cap('prune', `${S}/dist`, 'nope');
+  ok(missing.status !== 0 && /no such capture: nope; bb capture ls names them/.test(missing.stderr), 'a name that is not there is refused, naming ls');
+  const byName = cap('prune', `${S}/dist`, 'cut');
+  ok(byName.status === 0 && !existsSync(`${S}/dist/reel/cut`) && /no captures/.test(cap('ls', `${S}/dist`).stderr),
+     'prune NAME lets a capture go now whatever its age');
 }
 // The sources refuse in their own words when the node lacks what they need.
 const noSrc = reel('--name', 'x');
@@ -51,7 +82,6 @@ ok(noVid.status !== 0 && /no such video/.test(noVid.stderr || ''), 'a video that
 // that is a page bb capture shot cannot know about, and --wait is for it.
 {
   const { spawn } = await import('node:child_process');
-  const { writeFileSync } = await import('node:fs');
   const web = `${S}/web`; mkdirSync(web, { recursive: true });
   writeFileSync(`${web}/index.html`, '<!doctype html><body style="margin:0;background:#fff">'
     + '<script>setTimeout(() => { document.body.innerHTML = "<h1 style=\'font:48px sans-serif\'>late</h1>"; }, 700)</script></body>');

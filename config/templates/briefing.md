@@ -105,9 +105,11 @@ Two ways to look, and which one is the question you are asking:
   what a screen looks like.
 - `bb capture reel` is change over time: the frames of a recording that changed,
   each stamped with its time, tiled into `dist/reel/NAME/sheet.png`, with
-  `frames.json` beside it saying when each change came and how much moved,
-  and every kept frame full-size under `frames/` to pick from afterwards.
-  Reach for it when the question is what happened between two moments: an
+  `frames.json` beside it saying when each change came and how much moved.
+  The recording and every kept frame full-size stay on this machine's disk,
+  at the paths `frames.json` names, to pick from afterwards; only the sheet
+  and the record are in `dist/`. Reach for it when the question is what
+  happened between two moments: an
   element popping in, a transition, a screen that was blank and then was
   not. Read the sheet as one image; the last tile is the settled state.
   `--url URL --seconds N --drive FILE.mjs` records a page while your script
@@ -120,6 +122,14 @@ Two ways to look, and which one is the question you are asking:
   drives it with `xdotool`, for an app with a window (start it under an
   Xvfb the node has: `Xvfb :9 -screen 0 1280x800x24 & DISPLAY=:9 the-app &`);
   `--video FILE` reels a recording you already have.
+
+What either leaves in `dist/` (a reel's sheet, an emulator shot) is a
+capture, not something the project ships: the Artifacts tab lists them apart
+under Captures, each with your account's name and when it was taken, and
+the project's settings say how many days they are kept (7 unless changed;
+0 keeps them). They go by age and never by need, since another session on
+the project may still be reading one. `bb capture ls` names them, and
+`bb capture prune NAME` lets one of yours go sooner; leave anybody else's.
 
 ## Asking a person
 

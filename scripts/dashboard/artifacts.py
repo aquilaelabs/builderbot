@@ -22,7 +22,17 @@ shell installer is as often `dist/install` as `dist/install.sh`, and the thing
 that actually says so is the shebang on its first line. So a file whose
 extension this module does not know is opened and its first two bytes read.
 Nothing is executed from here, ever: the tab downloads and it reads.
+
+What a session looks with is in dist/ too (R96): a reel's sheet under
+dist/reel/NAME and an emulator shot under dist/emu, each with a record of
+who asked and when. Those are not what the project ships, so the listing
+leaves them out and the tab draws them as one Captures fold, and they go by
+age: the project's "captures kept" days, swept here when the tab draws,
+since nothing can tell whether another session is still reading one. The
+rule is capture.py's (scripts/lib, loaded by path), the same one `bb
+capture prune` applies on a node.
 """
+import importlib.util
 import io
 import os
 import re
@@ -46,6 +56,10 @@ phone_summary = None
 
 DIST = "dist"
 UID_RE = re.compile(r"^u_[0-9a-f]{8}$")
+# The project's "captures kept" days, set by server.py from prefs.
+capture_days = None
+# scripts/lib/capture.py, loaded by path: captures(dist) and prune(dist, days, names).
+_capture = None
 
 # Extension -> kind. A short list on purpose: these are the things this
 # operator's projects actually produce, and an unknown extension still shows
@@ -67,9 +81,14 @@ MAX_VIEW = 256 * 1024
 MAX_DEPTH = 2
 
 
-def configure(*, workspace, worktrees=None):
+def configure(*, workspace, worktrees=None, capture=None):
     globals().update(WORKSPACE=Path(workspace),
                      WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees")
+    path = Path(capture) if capture else Path(__file__).resolve().parent.parent / "lib" / "capture.py"
+    spec = importlib.util.spec_from_file_location("bb_capture", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    globals()["_capture"] = mod
 
 
 def _tree(project, tree=""):
@@ -117,6 +136,9 @@ def listing(project, tree=""):
             if p.name.startswith("."):
                 continue
             if p.is_dir():
+                # The captures' own directories are the Captures fold's.
+                if depth == 0 and p.name in _capture.CAPTURE_DIRS:
+                    continue
                 if depth < MAX_DEPTH:
                     stack.append((p, depth + 1))
                 continue
@@ -266,6 +288,41 @@ def source_zip(project):
 SOURCE_CAP = 256 << 20
 
 
+# ---- the captures: listed apart, swept by age, let go by name ---------------------
+
+def captures_of(project):
+    """The project's captures as the tab's fold lists them, after the sweep:
+    each {name, kind, path (under dist/), at, by, node, size}, newest first,
+    and the days the project keeps them. The sweep runs here, on the read
+    that shows them, so a capture is never removed by anything a person is
+    not looking at."""
+    root = dist_dir(WORKSPACE / project)
+    days = capture_days(project) if capture_days else 7
+    if root is None or not root.is_dir():
+        return {"captures": [], "capture_days": days}
+    try:
+        _capture.prune(str(root), days)
+        rows = _capture.captures(str(root))
+    except OSError:
+        rows = []
+    return {"captures": [{k: v for k, v in c.items() if k != "file"} | {"path": f"{DIST}/{c['path']}"}
+                         for c in rows],
+            "capture_days": days}
+
+
+def forget_capture(project, name):
+    """One capture removed now, by the person who decided: the tab's
+    Remove. (payload, status)."""
+    root = dist_dir(WORKSPACE / project)
+    name = str(name or "")
+    if root is None or not root.is_dir() or not name:
+        return {"error": "no such capture"}, 404
+    gone = _capture.prune(str(root), None, {name})
+    if not gone:
+        return {"error": f"no capture named {name}: it may have been removed already"}, 404
+    return {"ok": True, "removed": name}, 200
+
+
 # ---- the tab's read and its downloads, one call each from the dashboard --------
 
 def tab_view(name, uid):
@@ -277,7 +334,7 @@ def tab_view(name, uid):
              "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
                           for g in branches(name)],
              "build": build_state(name)}
-            | instance_states(name) | phone_summary(name, uid))
+            | captures_of(name) | instance_states(name) | phone_summary(name, uid))
 
 
 def download(name, rel, tree=""):

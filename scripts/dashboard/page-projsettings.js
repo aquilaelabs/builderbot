@@ -63,7 +63,7 @@ function rnLoadModelNow(name){
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
                  node: "", nodes: "", build: "", test: "", outputs: "",
-                 gate: "", color: ""};
+                 capture_days: "7", gate: "", color: ""};
 // The colours a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -105,6 +105,7 @@ function rnFillPrefs(p){
                nodes: (p?.prefs?.nodes || []).join(","),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
+               capture_days: String(p?.prefs?.capture_days ?? 7),
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
@@ -187,6 +188,7 @@ function rnFillPrefsRest(p){
   $("rnReply").value = p?.yours?.reply || "";
   $("rnAsks").value = p?.yours?.asks || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
+  $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
     if (el.dataset.built !== "1"){
@@ -507,6 +509,7 @@ async function rnSubmit(){
   const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
+  const capture_days = $("rnCaptureDays").value.trim();
   const gate = rnGateNow();
   const color = rnColorNow();
   // With the node's group: nothing here restarts a session.
@@ -516,7 +519,7 @@ async function rnSubmit(){
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
-    || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs
+    || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
     || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change || brief !== rnPrefWas.brief
     || devbuild !== rnPrefWas.devbuild
@@ -532,6 +535,8 @@ async function rnSubmit(){
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
+  if (capture_days !== "" && !/^\d{1,3}$/.test(capture_days))
+    return fail("captures kept is a number of days, 0 to 365");
   // The one combination the dialog will not write: authenticating with a token
   // it is being told to throw away. The hint has been saying so; this is what
   // makes it true rather than advice.
@@ -571,6 +576,7 @@ async function rnSubmit(){
                               node, nodes, build, test, gate, color,
                               tests_in, test_change, brief, reply, asks, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
+                              ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.
                               restart: restartNow})});

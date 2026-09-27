@@ -1368,12 +1368,13 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.selectOption('#rnNode', minted.id);
   await page.fill('#rnBuildCmd', './gradlew assembleDebug');
   await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
+  await page.fill('#rnCaptureDays', '3');
   await page.click('#rnGo');
   await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
   const saved = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha;
   ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
-     && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi',
-     'Save writes the project\'s node, the command and the outputs onto the project record');
+     && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi' && saved.capture_days === 3,
+     'Save writes the project\'s node, the command, the outputs and the days captures are kept onto the project record');
 
   // ---- saved is not applied ----------------------------------------------
   // Apply used to be live whenever anything had been saved, so a node that

@@ -240,6 +240,48 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           </span>
         </div>`).join(""));
     paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
+    // What a session looked with (R96): a reel's sheet, an emulator shot.
+    // One fold apart from the files, since they are not what ships, each
+    // row saying whose it is and when. They go by age (the project's
+    // "captures kept" days, swept by the server on this read) or by Remove
+    // here: never by need, because nothing can tell whether another
+    // session is still reading one. Hidden when there are none: nothing to
+    // act on.
+    const capBox = $("artCaptures");
+    const caps = art.captures || [];
+    if (capBox){
+      capBox.hidden = !caps.length;
+      const days = art.capture_days ?? 7;
+      capBox.innerHTML = !caps.length ? "" : docSection("artifacts", "captures", "Captures",
+        `${caps.length}, kept ${days ? `${days} day${days === 1 ? "" : "s"}` : "until removed"}`,
+        `<div class="hint">What a session looked with: a reel's sheet (<b>bb capture reel</b>) or an
+           emulator shot, not what the project ships. ${days
+             ? `Each is removed ${days} day${days === 1 ? "" : "s"} after it was taken`
+             : "Kept until somebody removes one"}; the project's settings say how long.</div>`
+        + caps.map((c, i) => `
+        <div class="artrow">
+          <span class="grow">
+            <span class="top"><span class="pill">${esc(c.kind)}</span> <b>${esc(c.name)}</b></span>
+            <span class="dim">${esc(c.by ? `by ${c.by}` : "by nobody known")} · ${esc(ago(c.at))} · ${esc(human(c.size))}${
+              c.kind === "reel" ? ` · ${c.frames} frame${c.frames === 1 ? "" : "s"}` : ""}</span></span>
+          <span class="acts">
+            <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
+              }&path=${encodeURIComponent(c.path)}" download>Download</a>
+            <button type="button" data-artcap="${i}" title="remove it from dist/ now, for everybody">Remove</button>
+          </span>
+        </div>`).join(""), {open: false});
+      wireSections(capBox);
+      capBox.querySelectorAll("[data-artcap]").forEach(b => b.onclick = async () => {
+        const c = caps[+b.dataset.artcap];
+        if (!c) return;
+        busy(b, "Removing");
+        try{
+          const j = await (await postJSON("/api/artifacts", {project, action: "forget-capture", name: c.name})).json();
+          if (j.error) return notify(j.error, true);
+        }catch(e){ return notify(String(e), true); }
+        loadArtifacts();
+      });
+    }
     // Builds made on a branch, in each account's worktree (B237): Download
     // and View, carrying the tree. Install and Push stay with dist/, whose
     // files the phone's node is sent by their path in the project.

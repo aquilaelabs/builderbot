@@ -3453,6 +3453,10 @@ body.booting .pane>.loading{margin:auto}
            artifacts it stamps are one subject; those filenames carry it. -->
       <div id="verBox"></div>
       <div class="field" id="artList"></div>
+      <!-- What a session looked with (R96): reels and emulator shots, in one
+           fold apart from what ships, each saying whose it is, and swept
+           after the project's "captures kept" days. -->
+      <div id="artCaptures" hidden></div>
       <!-- Builds made on a branch, in each account's own worktree (B237):
            listed apart from dist/, which is what the project ships. -->
       <div class="field" id="artBranches" hidden></div>
@@ -3681,6 +3685,12 @@ body.booting .pane>.loading{margin:auto}
       <input id="rnOutputs" autocomplete="off" spellcheck="false"
              placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
       <div class="hint">Run from the tree's root on the node; files matching the outputs land in dist/.</div>
+      <!-- What a session looks with lands in dist/ too (a reel's sheet, an
+           emulator shot), under the Artifacts tab's Captures fold, and goes
+           by age rather than by need: nothing can tell whether another
+           session is still reading one (R96). -->
+      <div class="logdays setrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-tip="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
+        <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
       <!-- Where the tests run, which is this project's business and used to
            be set on the Docker tab, a machine surface it has no other reason
            to visit (R68 step 6). Only for a project that HAS a container to

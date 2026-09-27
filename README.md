@@ -430,7 +430,19 @@ bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [-
                    page Playwright records while --drive FILE.mjs works it, the
                    running emulator's screenrecord (with gfxinfo framestats beside
                    it), or an X display grabbed while a shell script drives it with
-                   xdotool; the provisioner installs Xvfb and xdotool for that
+                   xdotool; the provisioner installs Xvfb and xdotool for that.
+                   Only the sheet and frames.json land in dist/: the recording
+                   and the full-size frames are on this machine's disk, where
+                   frames.json says
+bb capture ls      the captures in this project's dist/ (reels and emulator
+                   shots), each with who asked and when: the Artifacts tab's
+                   Captures fold, in the terminal
+bb capture prune [--days N] [NAME...]
+                   remove those named now, or every capture older than N days.
+                   A capture is somebody's until the project's "captures kept"
+                   days are up (7 unless its settings say otherwise), and the
+                   controller sweeps them when the Artifacts tab draws: name
+                   yours here to let them go sooner
 bb tool            the tools toolchains add to a session, each under its own name
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,

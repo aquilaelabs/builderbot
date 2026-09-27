@@ -2,7 +2,7 @@
 // The convention IS the feature: the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
 import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil } from './lib.mjs';
-import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync } from 'node:fs';
+import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 // alpha ships an APK and an XPI; the XPI is a real zip with a manifest, since
@@ -38,6 +38,23 @@ import sys, zipfile
 with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as z:
     for f in sys.argv[2:]: z.write(f, f.rsplit('/', 1)[-1])`,
   `${DIR}/ws/alpha/dist/companion-0.2.0.xpi`, `${stage}/manifest.json`, `${stage}/background.js`]);
+// What a session looked with (R96): two reels and two emulator shots, each
+// with the record bb capture leaves (who, when); one reel ten days old,
+// which the project's default of seven days sweeps on the tab's first read;
+// one shot with no record at all, which goes by its own time.
+const now = Math.floor(Date.now() / 1000);
+const seedReel = (name, at) => {
+  mkdirSync(`${DIR}/ws/alpha/dist/reel/${name}`, { recursive: true });
+  writeFileSync(`${DIR}/ws/alpha/dist/reel/${name}/sheet.png`, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  writeFileSync(`${DIR}/ws/alpha/dist/reel/${name}/frames.json`, JSON.stringify({
+    by: 'stencil', at, node: 'n_fixture', work: '/tmp/nowhere', frames: [{ t: 0 }, { t: 1.5 }, { t: 3 }] }));
+};
+seedReel('walk', now - 120);
+seedReel('stale', now - 10 * 86400);
+mkdirSync(`${DIR}/ws/alpha/dist/emu`, { recursive: true });
+writeFileSync(`${DIR}/ws/alpha/dist/emu/shot-1.png`, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+writeFileSync(`${DIR}/ws/alpha/dist/emu/.shot-1.png.json`, JSON.stringify({ by: 'claude', at: now - 60, source: 'emu' }));
+writeFileSync(`${DIR}/ws/alpha/dist/emu/loose.png`, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 // ...and a secret outside dist/, wired in by symlink: the download endpoint
 // must refuse to follow it out.
 writeFileSync(`${DIR}/ws/alpha/secret.txt`, 'not yours');
@@ -76,6 +93,70 @@ ok(acts.find(a => a.name === 'streamlift-1.2.apk').install
    && !acts.find(a => a.name === 'companion-0.2.0.xpi').install,
    'Install is offered for the APK and not for the extension');
 ok(acts.every(a => a.dl), '...and everything can be downloaded');
+
+// ---- the captures: apart from what ships, whose they are, gone by age ------
+{
+  const art = await page.evaluate(async () =>
+    (await (await fetch('/api/artifacts?project=alpha')).json()));
+  const capNames = (art.captures || []).map(c => c.name);
+  ok(!names.some(n => /sheet\.png|shot-1\.png|loose\.png|frames\.json/.test(n))
+     && !(art.artifacts || []).some(a => /^dist\/(reel|emu)\//.test(a.path)),
+     `a reel's sheet and an emulator shot are not listed among what the project ships (${names.join(', ')})`);
+  ok(capNames.join(',') === 'shot-1.png,walk,loose.png' && art.capture_days === 7,
+     `...they are the captures, newest first, and the project keeps them 7 days (${capNames.join(', ')}; ${art.capture_days})`);
+  ok(!existsSync(`${DIR}/ws/alpha/dist/reel/stale`),
+     'the ten-day-old reel was swept on that read: by age, never by need');
+  const walk = art.captures.find(c => c.name === 'walk'), loose = art.captures.find(c => c.name === 'loose.png');
+  ok(walk?.kind === 'reel' && walk.by === 'stencil' && walk.frames === 3 && walk.path === 'dist/reel/walk/sheet.png'
+     && loose?.kind === 'shot' && loose.by === '' && Math.abs(loose.at - now) < 120,
+     `each says what it is, whose it is and where its picture is; one with no record goes by its file's time (${
+        JSON.stringify({ walk, loose })})`);
+  await page.evaluate(() => getNotebook('alpha')?.view('artifacts'));
+  await page.waitForSelector('#artCaptures details.sect', { timeout: 15000 });
+  const head = await page.$eval('#artCaptures summary', e => e.textContent);
+  ok(/Captures/.test(head) && /3, kept 7 days/.test(head)
+     && await page.$eval('#artCaptures details.sect', d => !d.open),
+     `the tab draws them as one fold, shut, saying how many and for how long (${head.trim()})`);
+  await page.click('#artCaptures summary');
+  await page.waitForFunction(() => document.querySelector('#artCaptures details.sect')?.open, null, { timeout: 10000 });
+  const rows = await page.$$eval('#artCaptures .artrow', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ').trim()));
+  ok(rows.length === 3 && /reel walk by stencil · .* · 3 frames/.test(rows[1]) && /shot shot-1\.png by claude/.test(rows[0])
+     && /loose\.png by nobody known/.test(rows[2]),
+     `...each row says whose it is (${rows.join(' | ')})`);
+  const dl = await page.$$eval('#artCaptures .artrow a.btn', as => as.map(a => a.getAttribute('href')));
+  ok(dl.some(h => /path=dist%2Freel%2Fwalk%2Fsheet\.png/.test(h)), 'Download hands over the sheet');
+  await page.click('#artCaptures .artrow:has(b:text-is("loose.png")) [data-artcap]');
+  await page.waitForFunction(() => !document.querySelector('#artCaptures .artrow b')
+    || ![...document.querySelectorAll('#artCaptures .artrow b')].some(b => b.textContent === 'loose.png'), null, { timeout: 15000 });
+  ok(!existsSync(`${DIR}/ws/alpha/dist/emu/loose.png`) && await page.$eval('#artCaptures summary', e => /2, kept/.test(e.textContent)),
+     'Remove takes one away now, and the fold recounts');
+  // 0 keeps them: a stale one seeded again survives the read, and the fold
+  // says so. A number that is not days is refused by name.
+  const pref = async body => page.evaluate(async b => (await (await fetch('/api/prefs', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).json()), body);
+  const bad = await pref({ project: 'alpha', capture_days: 'soon' });
+  ok(/captures kept is a number of days, 0 to 365/.test(bad.error || ''), `a value that is not days is refused (${bad.error})`);
+  const zero = await pref({ project: 'alpha', capture_days: 0 });
+  seedReel('stale', now - 10 * 86400);
+  const again = await page.evaluate(async () => (await (await fetch('/api/artifacts?project=alpha')).json()));
+  ok(!zero.error && again.capture_days === 0 && again.captures.some(c => c.name === 'stale') && existsSync(`${DIR}/ws/alpha/dist/reel/stale`),
+     `captures kept 0 keeps a ten-day-old reel (${again.capture_days}; ${again.captures.map(c => c.name).join(', ')})`);
+  await page.evaluate(() => getNotebook('alpha')?.view('artifacts'));
+  await page.waitForFunction(() => /kept until removed/.test(document.querySelector('#artCaptures summary')?.textContent || ''),
+                             null, { timeout: 15000 });
+  ok(true, '...and the fold says they are kept until removed');
+  // A session lets a capture go from the tree (bb capture prune), never here.
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+  const tok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+  const r = await fetch(URL.replace(/\/$/, '') + '/api/artifacts', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+    body: JSON.stringify({ project: 'alpha', action: 'forget-capture', name: 'walk' }) });
+  const asSession = { status: r.status, j: await r.json().catch(() => ({})) };
+  ok(asSession.status === 403 && /bb capture prune/.test(asSession.j.error || '') && existsSync(`${DIR}/ws/alpha/dist/reel/walk`),
+     `a session is told to use bb capture prune instead (${asSession.status} ${asSession.j.error})`);
+  await pref({ project: 'alpha', capture_days: 7 });
+}
 
 // ---- a script is a product, and one people read before they run it ---------
 {

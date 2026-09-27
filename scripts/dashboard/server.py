@@ -2402,6 +2402,7 @@ artifacts.account_names = account_names
 artifacts.build_state = build_state
 
 artifacts.instance_states = devactions.row_states
+artifacts.capture_days = lambda name: prefs.get(name)["capture_days"]
 artifacts.phone_summary = lambda name, uid: phone.summary(
     prefs.get(name)["node"], uid,
     nodes.node(prefs.get(name)["node"]) if prefs.get(name)["node"] and not NODES_OK else None)
@@ -5105,10 +5106,12 @@ class Handler(BaseHTTPRequestHandler):
         # A session asks for a phone (bb phone run) and a person answers; it
         # does not push or install by itself, and uid_of answering the
         # session's account made the owner check pass for it (the audit of
-        # 26 Sep).
+        # 26 Sep). A capture it lets go of with bb capture prune, in the tree.
         if who.get("session"):
-            return self._json({"error": "a session asks for the phone with bb phone run; "
-                                        "it does not push to it by itself"}, 403)
+            return self._json({"error": "a session asks for the phone with bb phone run and lets a "
+                                        "capture go with bb capture prune NAME; neither is done from here"}, 403)
+        if field(req, "action") == "forget-capture":
+            return self._json(*artifacts.forget_capture(name, field(req, "name")))
         return self._json(*phone.artifact_verb(name, field(req, "action"), req,
                                                uid=users.uid_of(who), me=who.get("name") or "somebody",
                                                by=self._principal()))

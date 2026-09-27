@@ -203,6 +203,18 @@ is derived from where the projects are bound (the node most of them use)
 rather than from enrolment order. Doctor reports each node's daemon on its
 own line.
 
+## Captures go by age, never by need
+
+A reel's sheet and an emulator shot land in the project's `dist/`, because
+the Artifacts tab is where a person looks for what a session produced, and
+nothing can tell when one is done with: two sessions on one project may each
+be reading a reel the other made, and a session ending is not evidence that
+its reel is. So they are removed by age (the project's "captures kept" days,
+7 by default, swept on the read that draws the tab) or by somebody's hand
+(Remove on the fold, `bb capture prune NAME` from a session), never by a
+guess about need, and only the sheet and the record go to the share: the
+recording and the full-size frames stay on the node's own disk (27 Sep, R96).
+
 ## Analysis
 
 **The subtraction alone stopped being enough when `/workspace` stopped being

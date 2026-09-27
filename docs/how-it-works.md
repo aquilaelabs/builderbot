@@ -1975,6 +1975,23 @@ things means the copy step is missing, and it says so.
 Each row is labeled by kind (apk, xpi, whatever the extension says) with
 its size and age, newest first. Everything can be **downloaded**.
 
+What a session looked with lands in `dist/` too: a reel's sheet under
+`dist/reel/NAME` and an emulator shot under `dist/emu`, each with a record
+of who asked and when (`bb capture`, R96). Those are not what ships, so the
+list leaves them out and the tab draws them as one **Captures** fold, shut,
+saying how many and how long they are kept; open, each row says whose it is
+and offers Download and Remove. The recording and the full-size frames never
+reach the share at all: they are working files on the node's own disk, at
+the paths the reel's `frames.json` names.
+
+They go by age and never by need. Nothing can tell whether a capture is done
+with: two sessions on one project may each be reading a reel the other made,
+and a session ending is not evidence that its reel is. So the project's
+settings carry **Captures kept for N days** (7; 0 keeps them), the server
+sweeps what is older on the read that draws the tab, a person removes one
+from the fold, and a session lets one of its own go with `bb capture prune
+NAME`, the same rule applied from the node.
+
 A **script** is the one kind the extension cannot settle on its own: a shipped
 shell installer is as often `dist/install` as `dist/install.sh`, so a file
 whose extension the list does not know is asked for its first two bytes and a
