@@ -63,7 +63,7 @@ TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
 # The cookie is a signed expiry, not a server-side session: the secret lives
 # on the /config volume, so a container update does not log every phone out,
 # and there is no session table to grow, lock, or clean. Basic auth still
-# works on every request (curl, bb shot and the tests send it preemptively),
+# works on every request (curl, bb capture shot and the tests send it preemptively),
 # but no response carries a WWW-Authenticate challenge any more, because the
 # challenge is precisely what made browsers pop their own dialog.
 SESSION_DAYS = 30

@@ -754,7 +754,7 @@
       "requires": [
         "node"
       ],
-      "about": "Chromium, Firefox and WebKit, and the playwright module that drives them, together in the store. The image carries a copy of the module and the system libraries; a node carries neither, so the module lands here beside the browsers and NODE_PATH points at it: what bb shot and the dashboard's own tests require().",
+      "about": "Chromium, Firefox and WebKit, and the playwright module that drives them, together in the store. The image carries a copy of the module and the system libraries; a node carries neither, so the module lands here beside the browsers and NODE_PATH points at it: what bb capture shot and the dashboard's own tests require().",
       "source": {
         "kind": "command",
         "requires": "npm",

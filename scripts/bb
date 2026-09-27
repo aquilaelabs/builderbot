@@ -229,10 +229,13 @@ bb: BuilderBot helper
   bb map [VERB ...]      the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
                          draws ID|.class, suites FILE..., state [FILE], sections FILE, unused,
                          addresses [FILE...], coverage, covered NAME, uncovered [FILE]; ask it before grepping
-  bb reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
+  bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
+                         a picture at rest: shots a quarter second apart
+                         until a second of them match (--now: at once);
+                         a page, the emulator's screen, or an X display
+  bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
                          the frames that changed, stamped with their times,
                          on one sheet in dist/reel/ with a JSON of when
-  bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb tool                the tools toolchains add to a session, each under its own name
   bb tool graphics CMD   pictures a session can make and read back (the graphics toolchain):
                          info F | resize F WxH [OUT] | crop F WxH+X+Y [OUT] | compose BASE OVER [+X+Y] [OUT]
@@ -678,13 +681,9 @@ cmd_emu() {
             adb -s "$serial" install -r "$apk" || die "adb install failed"
             ;;
         shot)
-            # A screenshot of the emulator's screen, into dist/ so the
-            # Artifacts tab lists it and a node's copy returns the same way.
-            local serial out="${2:-}"
-            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running; bb emu start first"
-            [ -n "$out" ] || { mkdir -p dist/emu; out="dist/emu/shot-$(date +%Y%m%d-%H%M%S).png"; }
-            adb -s "$serial" exec-out screencap -p > "$out" || die "screencap failed"
-            log "screenshot: ${out}"
+            # The emulator's screen at rest, into dist/ so the Artifacts tab
+            # lists it: bb capture shot --emu, which is where every shot lives now.
+            shift; capture_shot --emu "$@"
             ;;
         gfx)
             # Real per-frame timings for a package, from dumpsys gfxinfo
@@ -3388,10 +3387,10 @@ find_chromium() {
     die "no Playwright chromium found; install the browsers with: bb toolchains install playwright"
 }
 
-# bb shot: headless screenshots, for showing the operator visual state from
+# bb capture shot: headless screenshots, for showing the operator visual state from
 # a box with no display. Playwright's Chromium from the image.
 #
-# One URL takes an optional file (bb shot URL [FILE]). Several URLs share one
+# One URL takes an optional file (bb capture shot URL [FILE]). Several URLs share one
 # browser and land in a directory, each named from its path (/ -> index.png).
 # --full and --scale exist because README screenshots need the whole page at
 # 2x, and capabilities MediaReducer's tools/screenshots grew privately before
@@ -3400,17 +3399,46 @@ find_chromium() {
 # not on a node (B103); --wait absorbs pages whose async fetches settle after
 # networkidle, because a screenshot of a spinner is not a screenshot of the
 # page. The intended split: a project's own script boots its app into a
-# photogenic state, then ends with one bb shot line.
-# bb reel: eyes on change over time (R95). One sheet of the frames that
+# photogenic state, then ends with one bb capture shot line.
+# bb capture reel: eyes on change over time (R95). One sheet of the frames that
 # changed, each stamped with its time, and a JSON of when, from a video, a
 # page Playwright records while a script drives it, the emulator's
 # screenrecord, or an X display. reel.py does the work; this hands it the
 # store's tools and the project's dist/.
-cmd_reel() {
+# bb capture: what a session looks with (R95). shot is a picture at rest,
+# reel the frames that changed, each from any source that draws: a page,
+# the running emulator's screen, an X display, or (for a reel) a video.
+cmd_capture() {
+    case "${1:-}" in
+        shot) shift; capture_shot "$@" ;;
+        reel) shift; capture_reel "$@" ;;
+        *) cat <<'EOT'
+bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]   [--drive F] [--settle|--now]
+bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N   [--seconds N] [--drive F] [--name N]
+  shot: one picture at rest (shots a quarter second apart until a second of
+        them match; --now takes it at once)
+  reel: the frames that changed, stamped with their times, on one sheet in
+        dist/reel/NAME/ with frames.json beside it (bb capture reel -h)
+EOT
+           [ -z "${1:-}" ] || [ "$1" = -h ] || [ "$1" = --help ] || die "bb capture shot|reel"
+           ;;
+    esac
+}
+
+# The store's tools for capture.py, which shot and reel share.
+capture_env() {
+    local root; root="$(sdk_root 2>/dev/null || true)"
+    local ff; ff="$(command -v ffmpeg || true)"; [ -n "$ff" ] || { [ -x "$root/ffmpeg/bin/ffmpeg" ] && ff="$root/ffmpeg/bin/ffmpeg"; }
+    local adb; adb="$(command -v adb || true)"; [ -n "$adb" ] || { [ -x "$root/platform-tools/adb" ] && adb="$root/platform-tools/adb"; }
+    BB_CAPTURE_FFMPEG="$ff" BB_CAPTURE_NODE_PATH="$(pw_node_path)" BB_CAPTURE_CHROME="$(find_chromium 2>/dev/null || true)" \
+    BB_CAPTURE_ADB="$adb" BB_CAPTURE_AUTH="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" "$@"
+}
+
+capture_reel() {
     case "${1:-}" in
         -h|--help|"")
             cat <<'EOT'
-bb reel --video FILE | --url URL | --emu [PKG] | --display :N  [--seconds N] [--drive FILE] [--name NAME]
+bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N  [--seconds N] [--drive FILE] [--name NAME]
         [--threshold T] [--fps N]
   the frames that changed, each stamped with its time, tiled into
   dist/reel/NAME/sheet.png beside frames.json (when, and how much moved):
@@ -3430,21 +3458,13 @@ EOT
     local proj; proj="$(project_here 2>/dev/null || true)"
     local out="${proj:+${WORKSPACE}/${proj}/dist/reel}"
     [ -n "$out" ] || out="$PWD/dist/reel"
-    # The store's ffmpeg and adb where the shell's PATH does not carry them.
-    local root; root="$(sdk_root 2>/dev/null || true)"
-    local ff; ff="$(command -v ffmpeg || true)"; [ -n "$ff" ] || { [ -x "$root/ffmpeg/bin/ffmpeg" ] && ff="$root/ffmpeg/bin/ffmpeg"; }
-    local adb; adb="$(command -v adb || true)"; [ -n "$adb" ] || { [ -x "$root/platform-tools/adb" ] && adb="$root/platform-tools/adb"; }
-    BB_REEL_OUT="$out" BB_REEL_FFMPEG="$ff" \
-    BB_REEL_NODE_PATH="$(pw_node_path)" BB_REEL_CHROME="$(find_chromium 2>/dev/null || true)" \
-    BB_REEL_ADB="$adb" \
-    BB_REEL_AUTH="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" \
-        python3 "$BB_LIB/reel.py" "$@"
+    BB_CAPTURE_OUT="$out" capture_env python3 "$BB_LIB/reel.py" "$@"
 }
 
-cmd_shot() {
+capture_shot() {
     # The operator's password, or a session's token, whichever this shell
     # has. --auth overrides both.
-    local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0 settle=""
+    local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0 settle="" src="" pkg="" disp="" drive=""
     local full=0 resize="" out="" mode=file urls=()
     # Used by the test harness, which needs the same answer this does and
     # should not re-implement the search to get it.
@@ -3465,6 +3485,13 @@ cmd_shot() {
             # --settle asks it of any page, --now takes the one shot at once.
             --settle) settle=1; shift ;;
             --now)    settle=0; shift ;;
+            # The other things that draw (R95): the running emulator's screen
+            # and an X display, pictured at rest the same way; capture.py takes
+            # those, and a URL keeps the browser path below.
+            --emu)    src=emu; case "${2:-}" in ""|-*|http://*|https://*) shift ;; *) pkg="$2"; shift 2 ;; esac ;;
+            --display) [ -n "${2:-}" ] || die "--display needs the display after it (:9)"; src=display; disp="$2"; shift 2 ;;
+            --drive)  [ -n "${2:-}" ] || die "--drive needs the script after it"; drive="$2"; shift 2 ;;
+            --url)    shift ;;
             -*) die "unknown option: $1" ;;
             *) case "$1" in
                    # Scheme-tagged, because page.goto needs one anyway: a bare
@@ -3476,8 +3503,20 @@ cmd_shot() {
                esac; shift ;;
         esac
     done
+    if [ -n "$src" ]; then
+        [ "${#urls[@]}" -eq 0 ] || die "one source: --emu or --display, not a URL as well"
+        [ -z "$out" ] || [ -d "$out" ] && { mkdir -p "${out:-dist/emu}"; out="${out:-dist/emu}/shot-$(date +%Y%m%d-%H%M%S).png"; }
+        # Emulator shots into dist/, so the Artifacts tab lists them.
+        local -a args=()
+        [ "$src" = emu ] && args+=(--emu "$pkg") || args+=(--display "$disp")
+        [ -z "$drive" ] || args+=(--drive "$drive")
+        [ "$settle" = 0 ] && args+=(--now)
+        capture_env python3 "$BB_LIB/capture.py" shot "${args[@]}" "$out"
+        return
+    fi
     [ "${#urls[@]}" -gt 0 ] || die \
-        "usage: bb shot URL... [FILE|DIR] [--auth user:pass] [--size WxH] [--full] [--scale N] [--wait MS] [--resize W] [--settle|--now]
+        "usage: bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]   [--drive F] [--settle|--now]
+        [--auth user:pass] [--size WxH] [--full] [--scale N] [--wait MS] [--resize W]
 URLs need their scheme (http:// or https://)"
     case "${width}${height}${scale}${wait}${resize}" in
         *[!0-9]*) die "--size WxH, --scale N, --wait MS and --resize W take whole numbers" ;;
@@ -3524,7 +3563,7 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, ...
     deviceScaleFactor: +scale,
     ...(username ? { httpCredentials: { username, password } } : {}) });
   // The header goes to the DASHBOARD and nowhere else. On the context it went
-  // to every URL in the run, so `bb shot <dashboard> https://example.com`
+  // to every URL in the run, so `bb capture shot <dashboard> https://example.com`
   // handed the credential to example.com as well (bug #49). Per-route, matched
   // on origin, so shooting somebody else's page cannot carry it there.
   const mine = new Set(urls.filter(u => {
@@ -4337,8 +4376,7 @@ case "${1:-help}" in
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;
     map)      shift; cmd_map "$@" ;;
-    shot)     shift; cmd_shot "$@" ;;
-    reel)     shift; cmd_reel "$@" ;;
+    capture)  shift; cmd_capture "$@" ;;
     tool)     shift; cmd_tool "$@" ;;
     toolchains) shift; cmd_toolchains "$@" ;;
     -h|--help|help) usage ;;

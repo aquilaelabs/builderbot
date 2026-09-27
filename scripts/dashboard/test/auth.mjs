@@ -107,7 +107,7 @@ ok(r.headers.get('content-encoding') === 'gzip'
 r = await bare('/api/status', { headers: { ...AUTHH, 'Accept-Encoding': 'identity' } });
 ok(!r.headers.get('content-encoding'), 'a client that cannot take gzip gets plain bytes');
 
-// A browser with preemptive basic auth (bb shot, curl -u, these tests) still
+// A browser with preemptive basic auth (bb capture shot, curl -u, these tests) still
 // works exactly as before: the whole page, no login step.
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });

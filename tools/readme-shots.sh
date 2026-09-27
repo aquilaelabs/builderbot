@@ -3,7 +3,7 @@
 # Regenerate docs/screenshots/ from a staged dashboard.
 #
 # Boots the checkout's server.py and a real ttyd against a scratch workspace
-# of invented projects, then photographs it with `bb shot`, which is half
+# of invented projects, then photographs it with `bb capture shot`, which is half
 # the point: the screenshots document the dashboard, and taking them
 # exercises the container's own camera. Staged rather than shot from the
 # live instance so the pictures are reproducible and can never carry a real
@@ -218,7 +218,7 @@ sleep 5      # the first doctor run and status poll, so no card says loading
 # ---- the photographs -------------------------------------------------------
 mkdir -p "$OUT"
 BASE="http://127.0.0.1:$PORT"
-# DASHBOARD_PORT, because that is how `bb shot` knows which origin the
+# DASHBOARD_PORT, because that is how `bb capture shot` knows which origin the
 # credential belongs to: it sends the Authorization header to that port and
 # nowhere else, so that shooting somebody else's page in the same run cannot
 # carry it there (bug #49). Without it the staged instance on $PORT is not
@@ -235,7 +235,7 @@ shot "$BASE/"               "$OUT/dashboard.png"       --size 1440x1180 --scale 
 # No --resize: 390 at scale 2 is already 780 wide, so the flag only ever ran
 # imagemagick to produce the same pixels, and imagemagick is in the
 # controller's image and not on a node, which is where sessions are. The flag
-# stays on bb shot for a shot that really does downscale.
+# stays on bb capture shot for a shot that really does downscale.
 shot "$BASE/?view=dash"     "$OUT/phone-dashboard.png" --size 390x844 --scale 2
 shot "$BASE/?view=terminal" "$OUT/phone-terminal.png"  --size 390x844 --scale 1
 log "wrote $OUT/{dashboard,phone-dashboard,phone-terminal}.png"

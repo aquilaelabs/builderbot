@@ -223,7 +223,7 @@ sdk_status() {
         # which holds the browsers its boot put there and is --local's.
         if [ -z "$node" ]; then
             log "this project has no node: toolchains are installed on a node (the Nodes tab), and a project with none cannot compile here"
-            log "bb toolchains --local lists this container's own store: what its boot keeps for bb shot, nothing to install"
+            log "bb toolchains --local lists this container's own store: what its boot keeps for bb capture shot, nothing to install"
             return 0
         fi
     fi

@@ -8,7 +8,7 @@
 # there), and the bundles come here.
 #
 # PLAYWRIGHT_BROWSERS_PATH still says /opt/pw-browsers, because everything
-# from `bb shot` to the dashboard's tests to the project CLAUDE.md template
+# from `bb capture shot` to the dashboard's tests to the project CLAUDE.md template
 # names that path. It is a symlink into the share now; nothing that used it
 # has to know.
 #
@@ -54,7 +54,7 @@ relink_chromium() {
 
 # First boot on an empty share: fetch them. Synchronous and loud, like the
 # Android baseline: it happens once per share, and a container that comes up
-# "ready" while `bb shot` cannot work would be worse than a slow start.
+# "ready" while `bb capture shot` cannot work would be worse than a slow start.
 #
 # Unless they were removed on purpose. A fresh share and one somebody just
 # cleared look exactly alike from here, so without the marker an uninstall
@@ -68,7 +68,7 @@ elif ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | gre
            playwright install chromium firefox webkit >/dev/null 2>&1; then
         log "playwright browsers ready"
     else
-        warn "could not install the playwright browsers: bb shot and the dashboard"
+        warn "could not install the playwright browsers: bb capture shot and the dashboard"
         warn "tests will not work until: bb toolchains install playwright"
     fi
 fi

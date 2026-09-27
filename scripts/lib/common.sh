@@ -185,7 +185,7 @@ sdk_have() {
 # A toolchain the operator deliberately removed.
 #
 # Two startup hooks fetch things on a fresh share (the browsers, the
-# emulator) because a container that comes up "ready" with `bb shot` broken
+# emulator) because a container that comes up "ready" with `bb capture shot` broken
 # is worse than a slow first boot. But a fresh share and a share somebody just
 # cleared look identical, so an uninstall used to last until the next restart
 # and no further. This is how the intent outlives it: `bb toolchains remove` leaves a

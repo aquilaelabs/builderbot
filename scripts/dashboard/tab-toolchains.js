@@ -69,7 +69,7 @@ let tcDots = 0, tcDotsTimer = null;
 // toolchain store, where an install is a job. Empty until tcPick() chooses
 // one, and empty when there is none to choose: toolchains are installed on
 // NODES (roadmap #26), and this container is never offered: what it keeps is
-// the Playwright browsers its boot hook put on its store for bb shot, and no
+// the Playwright browsers its boot hook put on its store for bb capture shot, and no
 // button reaches its installer. "local" is still what that installer is
 // called (`bb toolchains install` from a shell and the suite address it) but
 // nothing on this page sets it.

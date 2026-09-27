@@ -170,7 +170,7 @@ by hand cost four commands and still could not see the failed builds.
   specifically, `bb dashboard dev` restarts the live dashboard from
   `./scripts/dashboard` (same port and credential; lasts until the container
   restarts; `--off` reverts), so a dashboard change can be looked at in the
-  browser without a 40-minute image build. `bb shot URL... [FILE|DIR]` takes
+  browser without a 40-minute image build. `bb capture shot URL... [FILE|DIR]` takes
   headless screenshots to show the operator; it reads `DASHBOARD_AUTH` from
   the environment for the dashboard's own pages. `tools/readme-shots.sh`
   regenerates the README's screenshots from a staged instance.

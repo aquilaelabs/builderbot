@@ -163,12 +163,12 @@ fi
 # store, and the /opt path is a symlink that only exists once the startup
 # hook has run. The checkout's bb, not the one on PATH: this harness tests
 # this tree, and the installed copy is whatever the running image shipped.
-NODE_PATH="$(bash "$DASH/../bb" shot --print-node-path 2>/dev/null \
+NODE_PATH="$(bash "$DASH/../bb" capture shot --print-node-path 2>/dev/null \
             || printf '%s' "${NODE_PATH:-/usr/lib/node_modules}")"
 export NODE_PATH
 node -e "require.resolve('playwright')" 2>/dev/null \
     || die "node and playwright are not on PATH here (NODE_PATH=$NODE_PATH); on a node they are the playwright recipe in the toolchain store, installed from the Tools tab"
-CHROME="$(bash "$DASH/../bb" shot --print-chromium 2>/dev/null || true)"
+CHROME="$(bash "$DASH/../bb" capture shot --print-chromium 2>/dev/null || true)"
 [ -x "${CHROME:-}" ] || die "no Playwright chromium: install it with: bb toolchains install playwright"
 command -v tmux >/dev/null || die "tmux is not installed"
 

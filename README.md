@@ -47,7 +47,7 @@ the two sides become a switch.
 
 (Staged data. The pictures regenerate with `bash tools/readme-shots.sh`,
 which boots the checkout's dashboard against an invented workspace on a
-private tmux server and photographs it with `bb shot`: the pattern the
+private tmux server and photographs it with `bb capture shot`: the pattern the
 [`bb` helper section](#the-bb-helper) preaches, practiced.)
 ## Install
 
@@ -415,7 +415,15 @@ bb dashboard trace [SECONDS]  what the dashboard was asked over the last SECONDS
 bb drift           what this checkout changed that the container is not serving
 bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
                    draws ID|.class, suites FILE...; a session asks it before grepping
-bb reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
+bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
+                   one picture at rest: a page, the running emulator's screen,
+                   or an X display (--drive F works the surface first). At rest
+                   means shots a quarter second apart until a second of them
+                   match, so a modal still arriving or a list still loading is
+                   not the picture: the dashboard's own pages and the two other
+                   sources settle by default, --settle asks it of any page, --now
+                   takes the one shot at once. Into dist/emu/ for the emulator
+bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
                    eyes on change over time: the frames of a recording that changed,
                    each stamped with its time, tiled into dist/reel/NAME/sheet.png
                    beside frames.json (when, and how much moved). From a video, a
@@ -423,11 +431,6 @@ bb reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F
                    running emulator's screenrecord (with gfxinfo framestats beside
                    it), or an X display grabbed while a shell script drives it with
                    xdotool; the provisioner installs Xvfb and xdotool for that
-bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
-                   at rest on the dashboard's own pages: shots a quarter second
-                   apart until two match, so a modal still arriving or a list
-                   still loading is not the picture; --settle asks that of any
-                   page, --now takes the one shot at once
 bb tool            the tools toolchains add to a session, each under its own name
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,

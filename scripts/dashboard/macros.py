@@ -28,7 +28,7 @@ from pathlib import Path
 #
 # What is NOT here, and why. Nothing but `bb`; anything else belongs in the
 # terminal, one click away. Nothing that needs an argument to mean anything
-# (`bb shot URL`): a button is never a half-written command line. Nothing a
+# (`bb capture shot URL`): a button is never a half-written command line. Nothing a
 # card already does better: the Projects card lists projects and offers the
 # CLAUDE.md fixes per row, the Doctor card runs doctor, the findings report
 # beats `bb findings` on every count. And nothing that only means anything

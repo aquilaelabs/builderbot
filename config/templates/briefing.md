@@ -94,13 +94,16 @@ $PLAYWRIGHT_BROWSERS_PATH.
 
 Two ways to look, and which one is the question you are asking:
 
-- `bb shot URL... FILE` is one picture of a page at rest. On the
-  dashboard's own pages it waits until two shots a quarter second apart
-  match, so a modal still arriving or a list still loading is not what you
-  read; `--settle` asks that of any page, `--now` takes the one shot at
-  once. Read the file with your image reader. Reach for it when the
-  question is what a page looks like.
-- `bb reel` is change over time: the frames of a recording that changed,
+- `bb capture shot` is one picture at rest: `URL FILE` for a page,
+  `--emu [PKG] [FILE]` for the running emulator's screen (into `dist/emu/`
+  when no file is named), `--display :N FILE` for an X display. At rest
+  means it waits until a second of shots a quarter second apart match, so
+  a modal still arriving or a list still loading is not what you read;
+  `--now` takes the one shot at once, and `--drive FILE.sh` works the
+  surface first (`$ADB shell input ...`, or `xdotool` with DISPLAY set).
+  Read the file with your image reader. Reach for it when the question is
+  what a screen looks like.
+- `bb capture reel` is change over time: the frames of a recording that changed,
   each stamped with its time, tiled into `dist/reel/NAME/sheet.png`, with
   `frames.json` beside it saying when each change came and how much moved,
   and every kept frame full-size under `frames/` to pick from afterwards.

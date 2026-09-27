@@ -122,7 +122,7 @@ exclude file, never the project's `.gitignore`, so a project's commits
 never carry the index. It is rough on purpose, braces not scope, and says
 so where it guesses.
 
-`bb shot` is the container's camera: one URL with an optional output file
+`bb capture shot` is the container's camera: one URL with an optional output file
 keeps the simple shape, several URLs share one browser and land in a
 directory named from their paths (`/` → `index.png`). For README-quality
 captures it takes `--full` (whole page, not just the viewport), `--scale 2`
@@ -131,7 +131,7 @@ fetches settle after networkidle), and `--resize W` (imagemagick downscale,
 in place, so full-size originals never land in a repo). `--auth user:pass`
 falls back to `BB_TOKEN` or a `DASHBOARD_AUTH` you pass for the command. The intended split for a project's docs
 screenshots: the project keeps a script that boots its app into a
-photogenic state (staged data, ready-wait) and ends with one `bb shot`
+photogenic state (staged data, ready-wait) and ends with one `bb capture shot`
 line; the Playwright plumbing lives here, once.
 
 `bb tool graphics favicon LOGO.svg [DIR]` is the same idea for a web app's icon: the
@@ -157,7 +157,7 @@ Flutter, .NET: is a recipe installed into a **node's toolchain store**, from
 the Toolchains tab with that node picked; the tab lists nodes and nothing else,
 and with none enrolled it says so. The controller's own store: the SDK
 share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`): holds
-only what its boot keeps for `bb shot`, the Playwright browsers; nothing is
+only what its boot keeps for `bb capture shot`, the Playwright browsers; nothing is
 installed on the controller from the dashboard. A node enrolled with the same
 share is recognized as sharing it, and installs are arbitrated across both.
 
@@ -261,7 +261,7 @@ directly), and it says how the human at the keyboard overrides it:
 `env -u CLAUDECODE bb toolchains install …`.
 
 **A removal sticks.** The Playwright browsers are fetched on the first boot
-of a fresh share, because a container that comes up "ready" with `bb shot`
+of a fresh share, because a container that comes up "ready" with `bb capture shot`
 broken is worse than a slow first start. A share somebody has just cleared looks
 identical to a fresh one from a startup hook, so `bb toolchains remove` leaves a
 marker under `.removed/` on the share and the hooks respect it; installing
@@ -317,7 +317,7 @@ anywhere else.
 | `zig` | ~300MB | A C/C++ cross-compiler: `zig cc -target x86_64-windows-gnu` makes this box a Windows toolchain |
 | Android packages | 800MB emulator, 3GB NDK | Platforms, build-tools, emulator, NDK, CMake |
 | Android system images | 1–2GB each | One per API level per flavor; see [below](#the-toolchain-store-lives-outside-the-image) |
-| `playwright` | ~1.3GB | Chromium, Firefox and WebKit: fetched on a fresh share, since `bb shot` and the dashboard's tests need them; removing it stays removed |
+| `playwright` | ~1.3GB | Chromium, Firefox and WebKit: fetched on a fresh share, since `bb capture shot` and the dashboard's tests need them; removing it stays removed |
 | `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
 | `dotnet` | ~4GB | .NET SDK plus the `maui-android` workload |
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
@@ -2498,7 +2498,7 @@ never uses. Pins live in `/config/pinned-commands.json`: one machine, one
 operator, so a pin made at the desk is there on the phone.
 
 What is *not* there is most of `bb`, on purpose. Nothing that needs an argument
-(`bb shot URL`): a button is never a half-written command line. Nothing a card
+(`bb capture shot URL`): a button is never a half-written command line. Nothing a card
 already does better: the Projects card lists projects and offers the CLAUDE.md
 fixes on each row, the Doctor card runs doctor, the findings report beats
 `bb findings`, and the Runner card has the runner's own controls. And nothing
