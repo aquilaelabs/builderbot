@@ -218,8 +218,8 @@ html[data-theme="ash"],.sw[data-theme="ash"]{
 /* ---- Nostromo -----------------------------------------------------------
    The one scheme that is more than a recolour. Amber phosphor on a green-black
    hull, after the ship's own screens. The flare is gradients; the hull's
-   plating, the binding rings down the gutter, the plate mark on a card and the
-   glyph strip in the header are four hand-written SVG files under
+   plating, the binding rings down the gutter and the
+   glyph strip in the header are three hand-written SVG files under
    static/nostromo, text in the tree like the favicon's source, served by
    the same allow-list. No raster: a PNG would be a binary in the repository,
    shipped in the layer that gets rebuilt weekly, for something a few paths
@@ -338,37 +338,19 @@ html[data-theme="nostromo"] .col.side{
   background-attachment:scroll}
 /* Folding a card here fades the card away, fill, frame and body, and then
    closes the gap, rather than sliding the body up under the header: the
-   plate mark in the corner is a decal, and a decal sliding into the title
-   bar looks like a bug. The header keeps its own fill and frame (above) and
-   is what is left standing. Read by slideCard (page-motion.js). */
+   smoked glass sliding into the title bar read as a bug when the corner
+   carried a decal, and the fade reads as this scheme's own. The header
+   keeps its own fill and frame (above) and is what is left standing. Read
+   by slideCard (page-motion.js). */
 html[data-theme="nostromo"] .card{--fold:fade}
 html[data-theme="nostromo"] .card.fading{
   background-color:transparent;box-shadow:inset 0 0 0 1px transparent}
-/* The plate mark is a pseudo-element, which no script can animate, so it
-   fades on a class the fold puts on the card for the body's fade and takes
-   off with the body's return; while the gap closes the mark is already gone,
-   and nothing rides the bottom edge up. */
-html[data-theme="nostromo"] .card::after{transition:opacity .12s ease}
-html[data-theme="nostromo"] .card.fading::after{opacity:0}
 @media(max-width:900px){
   html[data-theme="nostromo"] .col.side{
     margin-left:-8px;padding-left:8px;background-position:-2px 6px}
 }
-/* A stencilled plate mark in an open card's bottom-right corner, the way
-   a ship numbers its panels. Absolute in the card's own box (already
-   position:relative for the resume chooser), pointer-events off, and
-   BEHIND the card's content: the card isolates so z-index:-1 lands above
-   its own background and under its buttons, where the first cut painted
-   the mark over Sign out. Open cards only: on a closed card it sat in the
-   title row beside the fold mark. Hidden there by opacity, not removed:
-   the fold measures the closed height by flipping the class for a frame,
-   and a mark that is removed and re-created across that cannot fade. */
-html[data-theme="nostromo"] .card{isolation:isolate}
-html[data-theme="nostromo"] .card::after{
-  content:"";position:absolute;right:6px;bottom:4px;width:64px;height:26px;
-  z-index:-1;pointer-events:none;
-  background:url(/static/nostromo/corner.svg) no-repeat}
-html[data-theme="nostromo"] .card.closed::after{opacity:0}
+/* The plate mark that sat in an open card's bottom-right corner is gone
+   (the operator, 28 Sep): the hull, the rings and the glyphs stay. */
 @media(min-width:901px){
   /* The ship's glyphs across the header's empty middle. The two flat bands
      of panel colour keep them out from under the title on the left and the

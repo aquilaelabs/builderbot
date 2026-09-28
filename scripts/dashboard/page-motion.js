@@ -123,15 +123,16 @@ function slideCard(el, closing){
 // The fold a scheme asks for with `--fold: fade` on the card (nostromo):
 // the body fades out where it stands and THEN the gap closes, and on open the
 // gap opens first and the body fades in. Two phases because the body never
-// slides: a decal drawn in the card's corner sliding up into the title bar
-// read as a glitch, and a fade leaves the mark where it was until it is gone.
+// slides: the smoked glass sliding up into the title bar read as a glitch
+// (first seen with the decal the card's corner used to carry), and a fade
+// leaves the card where it is until it is gone.
 // The cards below still ride on the height tween, the same as the plain fold.
 // A second click mid-way cancels whatever phase is running, in the subtree
 // too. A cancelled fold's clean-up runs a microtask AFTER the newer fold has
 // set its own state, so it clears only while it still owns the card (the
 // token), or a re-open would run its gap phase with the body showing.
-// `fading` on the card is for the plate mark, a pseudo-element the script
-// cannot reach: the stylesheet fades it on the class.
+// `fading` on the card is for the stylesheet: it clears the card's own fill
+// and frame on the class while the body is out.
 function fadeFoldCard(el, closing){
   el.querySelectorAll(".justpainted").forEach(n => n.classList.remove("justpainted"));
   const body = [...el.children].filter(n => n.tagName !== "H2");

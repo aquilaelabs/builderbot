@@ -25,8 +25,7 @@ schemes had text on that fill under AA before the cap, nostromo worst at
 3.56:1. `test/uniform.mjs` measures the rendered pixels on every scheme.
 Nostromo alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
 served by the page's allow-list): hull plating behind the page, ribbing in
-the left gutter, a plate mark in a card's corner and a glyph strip in the
-header. Each bakes its own opacity, none sits under text above a third, and
+the left gutter and a glyph strip in the header. Each bakes its own opacity, none sits under text above a third, and
 none moves the layout: a texture lives in space the page already leaves
 empty. The same suite measures the contrast with them in place.
 
@@ -409,9 +408,9 @@ by one observer, so no close site has to remember), and a row folding its
 controls out on a phone slides over the height that takes. A change that
 snaps is a change the eye has to find. Every one of them is off under
 `prefers-reduced-motion`. A scheme may ask for a different fold with
-`--fold: fade` on the card (nostromo does: its plate mark is a decal, and a
-decal sliding into the title bar reads as a bug): the body fades where it
-stands, then the gap closes, and the cards below still ride the height.
+`--fold: fade` on the card (nostromo does: its smoked glass sliding into
+the title bar read as a bug): the body fades where it stands, then the gap
+closes, and the cards below still ride the height.
 
 **What fades is what is drawn, never the ground under it.** A document's
 ground (the page colour, the panel colour, nostromo's glass and scanlines)
