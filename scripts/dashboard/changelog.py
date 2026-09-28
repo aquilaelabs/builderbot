@@ -326,8 +326,18 @@ def add(d, text, sha="", cat=""):
         text, cat = _clean_text(text), canonical(_clean_name(cat))
     except _Refused as e:
         return {"error": str(e)}
+    # A stamp typed on the end of the text is read as the entry's own, the
+    # way the file is read back, and the sha passed in joins it only when it
+    # is not already there: bb changelog add passes HEAD, and an entry that
+    # named HEAD itself was written with the hash twice (B336).
+    m = _STAMP.search(text)
+    shas = m.group(1).split(", ") if m and text[:m.start()].strip() else []
+    if shas:
+        text = text[:m.start()].rstrip()
+    if sha and not any(s.startswith(sha) or sha.startswith(s) for s in shas):
+        shas.append(sha)
     if read(d) is None:
-        entry = f"- {text}" + (f" ({sha})" if sha else "")
+        entry = f"- {text}" + (f" ({', '.join(shas)})" if shas else "")
         body = f"{CATEGORY}{cat}\n\n{entry}" if cat else entry
         try:
             _write(d, f"{HEADER}\n{UNRELEASED}\n\n{body}\n")
@@ -353,7 +363,7 @@ def add(d, text, sha="", cat=""):
             gs.insert(later, hit) if later is not None else gs.append(hit)
         else:
             gs.append(hit)
-    hit["entries"].append({"text": text, "shas": [sha] if sha else []})
+    hit["entries"].append({"text": text, "shas": shas})
     return put(d, gs)
 
 

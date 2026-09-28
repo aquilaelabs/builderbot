@@ -357,6 +357,13 @@ ok(yb('changelog', 'add', 'Worked before any version existed', '--cat', 'Added')
   ok(own.code === 0 && /### Upgrading/.test(body) && body.indexOf('### Added') < body.indexOf('### Fixed')
      && body.indexOf('### Fixed') < body.indexOf('### Upgrading'),
      "a project's own category is kept as typed and goes on the end, while the six keep their usual order among themselves");
+  // The verb stamps HEAD, and an entry that names HEAD itself was written
+  // with the hash twice (B336): a stamp typed on the end is the entry's own.
+  const head = execFileSync('git', ['-C', Y, 'rev-parse', '--short=7', 'HEAD'], { env }).toString().trim();
+  yb('changelog', 'add', `Named its own commit (${head})`, '--cat', 'Fixed');
+  const once = readFileSync(`${Y}/CHANGELOG.md`, 'utf8').split('\n').find(l => l.includes('Named its own commit'));
+  ok(once === `- Named its own commit (${head})`,
+     `an entry that already ends with the commit it is stamped with carries it once (${once})`);
 }
 setPolicyFor('young', 'open');
 yb('version', 'init', '0.1.0');
