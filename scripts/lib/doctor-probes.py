@@ -63,8 +63,12 @@ def identity():
     elif n == m:
         print(f"  [ok]   every account has a commit identity ({m})")
     elif n:
-        print(f"  [warn] {m - n} of {m} accounts have no commit identity yet: a session"
-              " refuses to open for them until it is set on their Profile")
+        # Not a warning: an account without one is told on its own Claude
+        # buttons and Profile, and the operator's card is not where
+        # somebody else's missing email belongs (the operator, 28 Sep).
+        # Nothing here is theirs to fix.
+        print(f"  [ok]   commit identity on {n} of {m} accounts")
+        print("         an account without one is told on its own Claude buttons and Profile, not here")
     else:
         print("  [warn] no account has a commit identity yet: set one on the Profile tab"
               " (the gear in the header) before opening a session")
