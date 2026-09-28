@@ -151,6 +151,14 @@ const pillIs = async (want) => {
 // described a path that was not taken (B264).
 {
   await openManager();
+  // Waited for: the header comes from the manager's own listing, which a
+  // whole run can land after the rows the poll drew, or bring back as "the
+  // daemon did not answer" once, and a read that did not wait crashed the
+  // file at its first check (B334). Asked for again once if it has not come.
+  await page.waitForSelector('.dmtab .dmsrc', { timeout: 20000 }).catch(async () => {
+    await page.evaluate(() => { dockerList = null; loadDocker(); });
+    await page.waitForSelector('.dmtab .dmsrc', { timeout: 20000 });
+  });
   const src = await page.$eval('.dmtab .dmsrc', e => e.textContent.replace(/\s+/g, ' ').trim());
   ok(/^on sandbox, through its agent/.test(src),
      `the manager's header names an agent node's daemon by the node, through its agent (${src.slice(0, 60)})`);
