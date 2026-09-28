@@ -89,7 +89,7 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
 
 // ---- the briefing names them ------------------------------------------------------------
 const pre = await api('/api/preamble?project=alpha');
-ok(/This project reads beta: each is at \/workspace\/NAME, read-only/.test(pre.text)
+ok(/This project reads beta: each is at \/workspace\/NAME, read-only, and `bb -p NAME` in front/.test(pre.text)
    && /Nothing there is yours to change/.test(pre.text) && /read the projects its settings say it reads/.test(pre.text),
    'the briefing says which projects the session reads and that nothing there is its to change, and the shipped rule carries the exception');
 await api('/api/prefs', { project: 'alpha', reads: [] });

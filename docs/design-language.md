@@ -117,7 +117,8 @@ different height.
 **A set of things to pick from is a listbox.** Several nodes a project
 works on, several projects it reads: a `.lbox`, a bordered box of checkbox
 rows (`label.lrow`: the box, the name, a quiet note at the right), each a
-thumb high, scrolling past six, under a label like any field. Never a
+thumb high, scrolling past four so it stays small, under a label like any
+field. Never a
 `select multiple`, whose list is the platform's and whose picks are
 invisible once it closes, and never a loose column of checkboxes, which has
 no edge to say where the choice ends. The project settings dialog draws

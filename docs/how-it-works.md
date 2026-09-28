@@ -1220,8 +1220,8 @@ catalog to the node's own toolchain store.
 **Reads.** Under the nodes, a project's settings name the other projects a
 session on it may read: their trees, bound read-only at `/workspace/NAME`
 into the session's view on a node, and their notebooks, which `bb roadmap`,
-`bb bug`, `bb rules`, `bb design` and the rest answer for once the session
-has stepped into that directory. Every write is refused by name, on the API
+`bb bug`, `bb rules`, `bb design` and the rest answer for with `bb -p NAME`
+in front. Every write is refused by name, on the API
 and on the relayed verbs alike, and a session's Claude gets the same wall:
 Read allowed, Edit denied. The briefing names the projects a session reads,
 and the shipped "stay in project" rule carries the exception. Set by the

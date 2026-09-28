@@ -2497,8 +2497,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   color:var(--ink)}
 /* A set of things to pick from is a listbox (docs/design-language.md,
    Controls): a bordered box of checkbox rows, a thumb high each, scrolling
-   past six, never a select multiple or a loose column of checkboxes. */
-.lbox{display:flex;flex-direction:column;max-height:calc(6 * var(--tap));overflow-y:auto;
+   past four so it stays small, never a select multiple or a loose column of
+   checkboxes. */
+.lbox{display:flex;flex-direction:column;max-height:calc(4 * var(--tap));overflow-y:auto;
   border:1px solid var(--line);border-radius:var(--r-control);background:var(--sunk)}
 .lbox label.lrow{display:flex;gap:8px;align-items:center;min-height:var(--tap);padding:0 10px;
   margin:0;font:var(--f-ui);color:var(--ink);border-bottom:1px solid var(--line);cursor:pointer}

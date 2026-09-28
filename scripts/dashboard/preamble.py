@@ -212,10 +212,10 @@ def reads_line(project):
         return ""
     names = ", ".join(reads)
     return (f"This project reads {names}: each is at /workspace/NAME, read-only, and "
-            f"`cd /workspace/NAME` before `bb roadmap`, `bb bug`, `bb rules`, `bb design`, "
-            f"`bb tests` or `bb map` answers for it, so its notebook and its code are yours to "
-            f"read. Nothing there is yours to change: a write to its tree fails, and a write "
-            f"to its notebook is refused; a session on that project is what changes them.")
+            f"`bb -p NAME` in front of `bb roadmap`, `bb bug`, `bb rules`, `bb design`, "
+            f"`bb tests` or `bb map` makes the verb answer for it, so its notebook and its code "
+            f"are yours to read. Nothing there is yours to change: a write to its tree fails, "
+            f"and a write to its notebook is refused; a session on that project is what changes them.")
 
 
 def test_change_line(project):

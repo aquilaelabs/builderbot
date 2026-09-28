@@ -29,6 +29,8 @@ usage() {
     cat <<'EOF'
 bb: BuilderBot helper
 
+bb -p NAME VERB    any verb, about another project this one reads (its
+                   settings name them): bb -p NAME roadmap, bb -p NAME map find X
 bb status          tool versions, runner registration, mounted projects
 bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:
@@ -2582,15 +2584,14 @@ revalidate_tree() {
     return 0
 }
 
-# bb_project: the project a verb acts on. The working directory first, when
-# it is inside a project: a session that has stepped into a project its own
-# reads (/workspace/NAME, read-only in its view) is asking about that one,
-# and BB_PROJECT, its own, is the answer everywhere else.
+# bb_project: the project a verb acts on: BB_PROJECT, which is the session's
+# own or what `bb -p NAME` named, else the working directory's when it is
+# inside a project. The switch and not the directory, because a checkout of
+# BuilderBot itself sits under /workspace on the controller and the harness
+# runs bb from it with the project in the environment.
 bb_project() {
-    local here
-    here="$(project_here 2>/dev/null)" && [ -n "$here" ] && { printf '%s' "$here"; return 0; }
     [ -n "${BB_PROJECT:-}" ] && { printf '%s' "$BB_PROJECT"; return 0; }
-    return 1
+    project_here
 }
 
 bb_relay() {
@@ -4553,6 +4554,18 @@ cmd_changelog() {
 # On a node, the verbs whose state is the controller's go there whole (see
 # bb_relay); BB_RELAYED marks the controller's own run so a relayed verb that
 # calls bb again cannot bounce.
+# `bb -p NAME VERB`: the verb about another project, one this project reads
+# (prefs.reads, read-only from here). It moves every project the verbs read,
+# and the tree bb map reads, before the relay decides where the words go:
+# the controller's door is what refuses a project this one does not read.
+if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
+    [ -n "${2:-}" ] || die "bb -p NAME VERB: which project?"
+    case "$2" in */*|.*) die "bb -p: '$2' is not a project name" ;; esac
+    export BB_PROJECT="$2" BB_ROADMAP_PROJECT="$2" BB_BUG_PROJECT="$2" BB_VERSION_PROJECT="$2"
+    export BB_TREE="$WORKSPACE/$2"
+    shift 2
+fi
+
 if on_node && [ -z "${BB_RELAYED:-}" ]; then
     # One verb is relayed except for one of its subcommands. `bb tests` reads
     # and writes the registry, which is the controller's; `bb tests run` RUNS

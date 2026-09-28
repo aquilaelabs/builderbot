@@ -91,6 +91,8 @@ two optional ones: `/secrets` (ro, shielded credentials) and `/logs`
 Bare `bb` prints this list; `bb status` is the tool-version wall.
 
 ```
+bb -p NAME VERB    any verb, about another project this one reads (its
+                   settings name them): bb -p NAME roadmap, bb -p NAME map find X
 bb status          tool versions, runner registration, mounted projects
 bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:
