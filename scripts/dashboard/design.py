@@ -43,7 +43,9 @@ git_env = None
 FILE_PATH = "docs/design-language.md"
 MAX_PAGES = 40
 MAX_BLOCKS = 40
-NOTES_MAX = 4000
+# Room for a design language written out in full: BuilderBot's own runs to
+# thirty thousand characters, and the notes are where its prose lives now.
+NOTES_MAX = 65536
 NAME_MAX = 120
 
 # ---- the vocabulary: what a design is made of -------------------------------
@@ -141,7 +143,7 @@ TOKENS = [
 # A language has one theme or several (light and dark, a few presets), the
 # first being the one the app starts on. Where a theme picker sits is the
 # app's business: a session asked to make one takes the themes from here.
-THEMES_MAX = 8
+THEMES_MAX = 16
 COLORS_MAX = 40
 MODES = ("dark", "light")
 TOKEN_KEYS = [k for k, _, _ in TOKENS]

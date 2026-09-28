@@ -160,7 +160,7 @@ function nbDesignView({$, nb, project, root}){
             `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope)}</textarea>`, true)}</div>
       <div class="field">${ctl("dsRules", "Design notes",
             "everything the settings cannot say, for every page: no modals, every list pages at fifty",
-            `<textarea id="dsRules" rows="4" maxlength="4000">${esc(L.rules)}</textarea>`, true)}</div>
+            `<textarea id="dsRules" rows="${(L.rules || "").length > 2000 ? 18 : 4}" maxlength="65536">${esc(L.rules)}</textarea>`, true)}</div>
       <div class="field">${lbl("dsPromptL", "Prompt", "what a session is asked to do; Send to Claude points the session at it")}
         <textarea id="dsPromptL" class="dsprompt" readonly rows="10" spellcheck="false"></textarea>
         <div class="actbar"><span class="state" data-dsstate="lang"></span>
@@ -224,7 +224,7 @@ function nbDesignView({$, nb, project, root}){
       <div class="hint">Drag a block to move it and its corner to size it; the arrow keys move a focused one, with Shift to size.</div></div>`
       : `<div class="field"><div class="hint">${n ? "Tap a block to name what it is for." : "Add a block, or start again from a template with Add page."}</div></div>`}
       <div class="field">${ctl(`${key}-notes`, "Notes", "what the blocks cannot say: what a tap does, where the data comes from",
-            `<textarea id="${key}-notes" rows="3" maxlength="4000" data-dsf="notes">${esc(p.notes)}</textarea>`, true)}</div>
+            `<textarea id="${key}-notes" rows="3" maxlength="65536" data-dsf="notes">${esc(p.notes)}</textarea>`, true)}</div>
       <div class="field">${lbl(`${key}-prompt`, "Prompt", "what a session is asked to do for this page; Send to Claude points the session at it")}
         <textarea id="${key}-prompt" class="dsprompt" readonly rows="10" spellcheck="false" data-dsprompt></textarea>
         <div class="actbar"><span class="state" data-dsstate="${key}"></span>
