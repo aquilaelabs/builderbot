@@ -25,6 +25,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A test run on a node sits below its other work (nice 10), so the emulator, a docker build and a session keep the CPU when they want it; and the dashboard's own suite gives a slow page the same wait again rather than failing a check that passes alone (4c62d77)
 - The sidebar's project pins are each person's own: any signed-in account pins and unpins for its own card, an administrator's pins no longer decide everyone's, and the set everybody had until now stays as each account's starting point until they pin (337ca53)
 - Captures (a reel's sheet, an emulator shot) are listed apart on the Artifacts tab, each saying whose it is, and removed after the project's 'captures kept' days (7; 0 keeps them) or by Remove there; bb capture ls and prune do the same from a session. Only the sheet and the record land in dist/ (83417b4)
+- bb tests run ends by saying what it exits with, and a role's command is shown as it was set rather than inside its sh -c wrapper (88280f0)
 
 ### Removed
 

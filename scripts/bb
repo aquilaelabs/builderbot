@@ -1960,6 +1960,13 @@ cmd_tests() {
                 rc=3
             fi
         fi
+        # The verdict in words, last. A caller that reads the output rather
+        # than the status (a session whose pipeline ends in tail, and whose
+        # own tool then reports tail's zero) read a failed npm ci followed
+        # by an exit of 0 that was not this command's (B330).
+        if [ "$rc" = 0 ]; then log "bb tests run exits 0: the test command passed"
+        else log "bb tests run exits $rc: the tests did not pass"
+        fi
         return "$rc"
     fi
     [ -f "$py" ] || die "testreg.py is missing from this image"
@@ -2547,7 +2554,15 @@ run_here() {
     while [ $# -gt 0 ]; do
         case "$1" in --) shift; break ;; *) outs+=("$1"); shift ;; esac
     done
-    log "$role: running here, on ${BB_NODE:-this node}: $*"
+    # A role's command arrives as sh -c 'CMD "$@"' ROLE ARGS...: shown as
+    # the command that was set, with anything appended after it, and not as
+    # the wrapper, whose quotes the log drops: "sh -c npm ci && npm test
+    # "$@" test" read as a different command from the one that ran (B330).
+    local shown="$*"
+    if [ "${1:-}" = sh ] && [ "${2:-}" = -c ] && [ $# -ge 4 ]; then
+        shown="${3% \"\$@\"}${5:+ ${*:5}}"
+    fi
+    log "$role: running here, on ${BB_NODE:-this node}: $shown"
     local code=0
     "$@" || code=$?
     if [ "$code" -eq 0 ] && [ "${#outs[@]}" -gt 0 ]; then
