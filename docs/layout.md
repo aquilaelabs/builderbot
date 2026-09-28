@@ -54,6 +54,7 @@ scripts/
   lib/roadmap-verbs.py           `bb roadmap`
   lib/bug-verbs.py               `bb bug`
   lib/brief-verbs.py             `bb brief`: a new project's brief, and bb-tty's take of it for a first session
+  lib/design-verbs.py            `bb design`: a project's design language and pages, as the notebook's Design view keeps them
   lib/nb-history.py              `bb history`: the notebook's logs merged
   lib/rules-verbs.py             `bb rules`, except check
   lib/rules-check.py             `bb rules check`: a rule's check command, run in this tree
@@ -100,6 +101,7 @@ scripts/
     rules.py                     house rules: what has been decided about working on a project
     preamble.py                  what every session on a project starts with, assembled once
     brief.py                     a new project's brief: kept out of CLAUDE.md, handed to its first session through a dialog
+    design.py                    the notebook's Design view: a project's design language and pages, the prompts a session is pointed at, and docs/design-language.md written from them
     names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot

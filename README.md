@@ -324,6 +324,11 @@ bb rules pending   rules a session added that are waiting for your approval
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
 bb brief           the brief this project was started from: waiting for its first
                    Claude session, or kept after that session started
+bb design          what this project looks like, from the notebook's Design view:
+                   its design language in a line, and its pages
+bb design show [ID|NAME]   the prompt for one page, or for the language alone:
+                   the colours as tokens, the type, the shape, the layout
+bb design file     docs/design-language.md as the notebook writes it
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs

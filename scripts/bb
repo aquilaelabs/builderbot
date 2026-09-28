@@ -262,6 +262,11 @@ bb rules pending   rules a session added that are waiting for your approval
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
 bb brief           the brief this project was started from: waiting for its first
                    Claude session, or kept after that session started
+bb design          what this project looks like, from the notebook's Design view:
+                   its design language in a line, and its pages
+bb design show [ID|NAME]   the prompt for one page, or for the language alone:
+                   the colours as tokens, the type, the shape, the layout
+bb design file     docs/design-language.md as the notebook writes it
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -1662,6 +1667,22 @@ cmd_history() {
 # take is bb-tty's, as it starts a new session: the brief the account staged
 # with Build it, printed for the launcher to hand claude, or nothing; it
 # never fails, because a brief is not a reason for a session not to start.
+# `bb design`: the project's design language and pages, as the notebook's
+# Design view keeps them. Read only from here: a session applies a design,
+# and the words it is handed are the controller's (design.py), so what it
+# prints is what the tab shows.
+cmd_design() {
+    local verb="${1:-list}" auth proj
+    case "$verb" in list|show|file) ;; -h|--help)
+        echo "bb design [list | show [ID|NAME] | file]: what this project looks like, from the notebook's Design view"; return 0 ;;
+        *) die "bb design [list | show [ID|NAME] | file]" ;; esac
+    proj="${BB_PROJECT:-}"
+    [ -n "$proj" ] || proj="$(project_here 2>/dev/null)" \
+        || die "not inside a project under ${WORKSPACE}; cd into one first"
+    auth="$(bb_auth_or_die)"
+    BB_DESIGN_AUTH="$auth" BB_DESIGN_PROJECT="$proj" python3 "$BB_LIB/design-verbs.py" "$@"
+}
+
 cmd_brief() {
     local verb="${1:-show}" auth proj
     case "$verb" in show|take) ;; -h|--help) echo "bb brief: the brief this project was started from"; return 0 ;;
@@ -4596,6 +4617,7 @@ case "${1:-help}" in
     tests)    shift; cmd_tests "$@" ;;
     preamble) shift; cmd_preamble "$@" ;;
     brief) shift; cmd_brief "$@" ;;
+    design) shift; cmd_design "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;

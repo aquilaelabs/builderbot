@@ -269,6 +269,8 @@ _KEYED = {
     "claude-prefs.json":  ["projects"],
     # A new project's brief, staged or kept after it left the tree (brief.py).
     "briefs.json":        [None],
+    # A project's design language and pages (design.py).
+    "designs.json":       [None],
 }
 
 # Files holding a flat list of project names.

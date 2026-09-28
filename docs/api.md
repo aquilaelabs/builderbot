@@ -43,6 +43,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/global-rules` | prefix | `_get_global_rules` | GET /api/global-rules. |  |
 | GET | `/api/preamble` | prefix | `_get_preamble` | GET /api/preamble. |  |
 | GET | `/api/brief` | prefix | `_get_brief` | GET /api/brief: brief.view, the brief waiting in a project's tree and the one kept after it left, for a project this account sees. |  |
+| GET | `/api/design` | prefix | `_get_design` | GET /api/design: design.view, a project's design language, its pages and the vocabulary they are drawn from, for a project this account sees; a session reads it too, through bb design. |  |
 | GET | `/api/codebase` | prefix | `_get_codebase` | GET /api/codebase. |  |
 | GET | `/api/pending` | prefix | `_get_pending` | GET /api/pending. |  |
 | GET | `/api/memory` | prefix | `_get_memory` | GET /api/memory. |  |
@@ -93,6 +94,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/memory` | prefix | `_memory` | Edit, create or delete one of this project's memories, rewrite their index, or read the history: memory.verb, behind the gates here. |  |
 | POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: docker-write |
 | POST | `/api/brief` | prefix | `_brief` | POST /api/brief: the first Claude press's Build it and Start without it, and a session's take as it starts: brief.verb, behind the gates here. |  |
+| POST | `/api/design` | prefix | `_design` | POST /api/design: the notebook's Save of the language and the pages, a prompt preview, the file written into the tree, and Send to Claude: design.verb, for an account that works on the project. |  |
 | POST | `/api/devapp` | prefix | `_devapp` | The dev-instance controls: the Docker tab's buttons, and `bb devapp` from a session. | refused: docker-write |
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |

@@ -352,8 +352,19 @@ in that band's place. Never at the foot: a phone should not scroll past the
 list to add to it.
 
 Save and Revert at the notebook's foot show only on the views that stage
-something behind them (Roadmap, Briefing, the version on Artifacts). A view
-that writes through or only reads (Bugs, Tests, Analysis, Git) has no foot.
+something behind them (Roadmap, Briefing, Design, the version on
+Artifacts). A view that writes through or only reads (Bugs, Tests,
+Analysis, Git) has no foot.
+
+**The Design view's board is the one surface here whose colours are data.**
+A page's blocks are painted in the project's own language (`nb-design.js`,
+`blockStyle`), inline from the saved hex, because the board is a picture of
+that project and not chrome of this page; everything around the board (the
+frame's edge, the selection outline, the grip) is the page's tokens. Its
+controls are the framework's: choices in labelled selects on a `.dsrow`
+that lines up at the bottom, colours as a chip beside a seven-character
+field, prose in a proseline, and the prompt in a read-only textarea, which
+is a page of text and not a control.
 
 ## Both sizes
 

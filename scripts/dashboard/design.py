@@ -1,0 +1,665 @@
+"""The notebook's Design view: a project's design language and its pages.
+
+The one thing the dashboard had no say in was what a project looks like:
+every colour, font and layout was a sentence typed into a session and
+gone with the conversation. This keeps them. A project has ONE design
+language (colours as tokens, type, shape, space, and the rules the operator
+adds in their own words) and any number of PAGES, each a layout of labelled
+blocks arranged on a phone or desktop frame and named for what it is for
+("the settings page"). The name is the target: applying a page's design
+means applying it there.
+
+Two things come out of it, both generated here and nowhere else, so the
+tab, `bb design` and the file cannot drift:
+
+  * a prompt, one for the language and one per page, which the tab shows
+    and Send to Claude points a session at. A prompt is typed into a
+    terminal a character at a time, so what is typed is a short pointer at
+    `bb design show`, and this text is what that prints;
+  * docs/design-language.md in the project's tree, the same shape as
+    BuilderBot's own, written on request from the saved state. A session
+    reads it as the standing description of the look, which is what the
+    brief could never be: a file that says what the product looks like now.
+
+Store: designs.json, {project: {"language": {...}, "next": n, "pages":
+[...]}}, keyed by project so a rename carries it (projects._KEYED). Edits
+are staged in the notebook and land as one save of the whole record.
+"""
+import json
+import re
+import time
+from pathlib import Path
+
+import statefile
+
+WORKSPACE = None
+FILE = None
+write_json = None
+tell = None
+sessions = None
+claude_session = None
+git_env = None
+
+FILE_PATH = "docs/design-language.md"
+MAX_PAGES = 40
+MAX_BLOCKS = 40
+NOTES_MAX = 4000
+NAME_MAX = 120
+
+# ---- the vocabulary: what a design is made of -------------------------------
+# What a block can be. A label a person reads, and one line of what the
+# kind means, which is what the prompt says about it. Alphabetical by key,
+# as every list of choices here is (docs/design-language.md).
+KINDS = [
+    ("button", "Button", "a primary action"),
+    ("card", "Card", "a raised box holding one thing"),
+    ("chart", "Chart", "a chart or a meter"),
+    ("content", "Content", "the main reading or working area"),
+    ("footer", "Footer", "a footer with the quiet links"),
+    ("form", "Form", "fields with one Save or Submit at the foot"),
+    ("header", "Header", "the top bar with the name and the account"),
+    ("hero", "Hero", "a large opening block with one message"),
+    ("image", "Image", "a picture or a media block"),
+    ("list", "List", "rows of things, each opening to detail"),
+    ("nav", "Navigation", "the way around: tabs or a menu"),
+    ("search", "Search", "a search box"),
+    ("sidebar", "Sidebar", "a side column of links or filters"),
+    ("table", "Table", "columns of data"),
+    ("tabs", "Tabs", "a strip of tabs switching one area"),
+    ("text", "Text", "a block of prose"),
+]
+KIND_KEYS = [k for k, _, _ in KINDS]
+
+# The frames a page is laid out on: the grid a block's cells are counted in.
+FRAMES = {"phone": {"cols": 6, "rows": 12, "label": "Phone"},
+          "desktop": {"cols": 12, "rows": 8, "label": "Desktop"}}
+
+# Preset layouts: a set of blocks on a frame, the starting point a page is
+# made from and then rearranged. Blocks are (kind, label, x, y, w, h).
+TEMPLATES = [
+    {"key": "blank", "label": "Blank", "frame": "desktop", "blocks": []},
+    {"key": "app", "label": "App shell", "frame": "desktop", "blocks": [
+        ("header", "the app's name and the account menu", 0, 0, 12, 1),
+        ("sidebar", "the sections of the app", 0, 1, 3, 7),
+        ("content", "the section that is open", 3, 1, 9, 7)]},
+    {"key": "dashboard", "label": "Dashboard", "frame": "desktop", "blocks": [
+        ("header", "the app's name and the account menu", 0, 0, 12, 1),
+        ("card", "the first number that matters", 0, 1, 4, 2),
+        ("card", "the second number that matters", 4, 1, 4, 2),
+        ("card", "the third number that matters", 8, 1, 4, 2),
+        ("chart", "the trend over time", 0, 3, 8, 5),
+        ("list", "what happened most recently", 8, 3, 4, 5)]},
+    {"key": "landing", "label": "Landing page", "frame": "desktop", "blocks": [
+        ("header", "the name and the way in", 0, 0, 12, 1),
+        ("hero", "what this is, in one sentence, and the one action", 0, 1, 12, 3),
+        ("card", "the first reason to use it", 0, 4, 4, 2),
+        ("card", "the second reason", 4, 4, 4, 2),
+        ("card", "the third reason", 8, 4, 4, 2),
+        ("footer", "the quiet links", 0, 7, 12, 1)]},
+    {"key": "listdetail", "label": "List and detail", "frame": "desktop", "blocks": [
+        ("header", "the app's name and the account menu", 0, 0, 12, 1),
+        ("search", "find one by name", 0, 1, 4, 1),
+        ("list", "every one, newest first", 0, 2, 4, 6),
+        ("content", "the one that is open", 4, 1, 8, 7)]},
+    {"key": "settings", "label": "Settings", "frame": "desktop", "blocks": [
+        ("header", "the app's name and the account menu", 0, 0, 12, 1),
+        ("nav", "the groups of settings", 0, 1, 3, 7),
+        ("form", "the group that is open, with one Save at its foot", 3, 1, 9, 7)]},
+    {"key": "mobile", "label": "Mobile app", "frame": "phone", "blocks": [
+        ("header", "the screen's title", 0, 0, 6, 1),
+        ("content", "the screen", 0, 1, 6, 10),
+        ("tabs", "the app's sections, a thumb away", 0, 11, 6, 1)]},
+    {"key": "mobilefeed", "label": "Mobile feed", "frame": "phone", "blocks": [
+        ("header", "the app's name and a search", 0, 0, 6, 1),
+        ("list", "the feed, newest first", 0, 1, 6, 10),
+        ("button", "the one thing this screen is for", 4, 9, 2, 1),
+        ("tabs", "the app's sections, a thumb away", 0, 11, 6, 1)]},
+]
+TEMPLATE_KEYS = [t["key"] for t in TEMPLATES]
+
+# The colour tokens a language names, in the order a reader meets them:
+# what the page is painted on, what sits on it, the text, the edges, then
+# the four states. The names are the dashboard's own, so a session that
+# knows one knows the other.
+TOKENS = [
+    ("bg", "Background", "the page"),
+    ("panel", "Surface", "a raised box, a card, a bar"),
+    ("ink", "Text", "the text"),
+    ("dim", "Muted", "secondary text and labels"),
+    ("line", "Edge", "hairlines and borders"),
+    ("accent", "Accent", "the one colour that means \"this is the one\": the active tab, the primary button, a link"),
+    ("warn", "Warning", "a warning"),
+    ("bad", "Danger", "an error, a destructive verb"),
+    ("note", "Note", "an informational mark"),
+]
+TOKEN_KEYS = [k for k, _, _ in TOKENS]
+
+# Preset schemes. The dashboard's own twelve, so a project can wear what its
+# operator already looks at, and three light ones the dashboard has no use
+# for. Default leads because it is what you get having made no choice; the
+# rest are alphabetical.
+SCHEMES = [
+    ("default", "Default", {"bg": "#1a1f26", "panel": "#212730", "line": "#4d5c6f", "ink": "#e6edf3",
+                            "dim": "#9fa9b4", "accent": "#3fb950", "warn": "#d29922", "bad": "#f8524a", "note": "#58a6ff"}),
+    ("abyss", "Abyss", {"bg": "#111d20", "panel": "#18262a", "line": "#3e5e66", "ink": "#dcecee",
+                        "dim": "#93a9ac", "accent": "#2fb8c6", "warn": "#d7ab4c", "bad": "#ef6a63", "note": "#6fb3e0"}),
+    ("ash", "Ash", {"bg": "#1b1b1b", "panel": "#222322", "line": "#555955", "ink": "#e2e4e0",
+                    "dim": "#a1a59f", "accent": "#a3b18a", "warn": "#cfa94a", "bad": "#e26d60", "note": "#82a7b8"}),
+    ("carbon", "Carbon", {"bg": "#141417", "panel": "#1c1c1f", "line": "#53535b", "ink": "#e8e8ea",
+                          "dim": "#9d9da4", "accent": "#e64e53", "warn": "#d9a441", "bad": "#ff6b6b", "note": "#7aa2f7"}),
+    ("ember", "Ember", {"bg": "#1f1814", "panel": "#271f1a", "line": "#67533e", "ink": "#f0e4d8",
+                        "dim": "#af9f90", "accent": "#f0873f", "warn": "#e8bb50", "bad": "#ef5f52", "note": "#8fb4d9"}),
+    ("ice", "Ice", {"bg": "#151c21", "panel": "#1c252c", "line": "#465b6c", "ink": "#e3edf5",
+                    "dim": "#9aa8ae", "accent": "#58c7e8", "warn": "#d3ab52", "bad": "#ee6a68", "note": "#7cc0ff"}),
+    ("linen", "Linen (light)", {"bg": "#f6f1e8", "panel": "#fffaf2", "line": "#d5c9b6", "ink": "#2b2620",
+                                "dim": "#6f665b", "accent": "#b5562a", "warn": "#9a6a00", "bad": "#b8322b", "note": "#2d6a9f"}),
+    ("mint", "Mint (light)", {"bg": "#eef5f1", "panel": "#ffffff", "line": "#c3d6cb", "ink": "#1d2a24",
+                              "dim": "#5f6f67", "accent": "#1f8a5b", "warn": "#9a6a00", "bad": "#c0392b", "note": "#2a6f9e"}),
+    ("moss", "Moss", {"bg": "#161f1b", "panel": "#1d2920", "line": "#48604f", "ink": "#dfe9df",
+                      "dim": "#9daba0", "accent": "#63c98a", "warn": "#d6ad4e", "bad": "#e8695f", "note": "#74b3d8"}),
+    ("nocturne", "Nocturne", {"bg": "#181825", "panel": "#202031", "line": "#53537b", "ink": "#e4e2f5",
+                              "dim": "#a2a0c1", "accent": "#9d7cff", "warn": "#e0b24d", "bad": "#f2637b", "note": "#7cb0ff"}),
+    ("nostromo", "Nostromo", {"bg": "#101712", "panel": "#162018", "line": "#405b37", "ink": "#d7e3c8",
+                              "dim": "#95a488", "accent": "#ffb000", "warn": "#ffd166", "bad": "#ff5f45", "note": "#9ad07a"}),
+    ("paper", "Paper (light)", {"bg": "#f4f5f7", "panel": "#ffffff", "line": "#cfd4dc", "ink": "#1f2328",
+                                "dim": "#59636e", "accent": "#0969da", "warn": "#9a6700", "bad": "#cf222e", "note": "#0550ae"}),
+    ("plum", "Plum", {"bg": "#1e1623", "panel": "#261d2d", "line": "#654d73", "ink": "#eddff2",
+                      "dim": "#ae9cb7", "accent": "#c874d8", "warn": "#dfae52", "bad": "#ee6183", "note": "#83aee8"}),
+    ("rust", "Rust", {"bg": "#1e1614", "panel": "#261d1a", "line": "#6a4e4a", "ink": "#ecdedb",
+                      "dim": "#ae9d99", "accent": "#cf6a4c", "warn": "#d9a441", "bad": "#e8544a", "note": "#7fa8c9"}),
+    ("sepia", "Sepia", {"bg": "#1f1b14", "panel": "#272219", "line": "#63563e", "ink": "#ece0cb",
+                        "dim": "#b0a28c", "accent": "#d3a94f", "warn": "#e3c069", "bad": "#e0705f", "note": "#9db98c"}),
+    ("slate", "Slate", {"bg": "#181c23", "panel": "#1f242d", "line": "#4f5a68", "ink": "#dfe5ec",
+                        "dim": "#9fa6ae", "accent": "#6ea8fe", "warn": "#d9a441", "bad": "#ef6f6c", "note": "#7fb8ff"}),
+]
+SCHEME_KEYS = [k for k, _, _ in SCHEMES]
+
+# What a page is for. On the page rather than the language, because one
+# project can be several products (a web app and its Android companion) in
+# one look. It tailors the rest of the page: which frames it is laid out on
+# (a phone app has no desktop frame), what the platform's own font is, and
+# the conventions the prompt holds the session to. Alphabetical after Web
+# app, which leads because it is what a page is until it says otherwise.
+PLATFORMS = [
+    ("web", "Web app", ["desktop", "phone"], "system-ui, the platform's own sans-serif",
+     "a responsive web app: the layout holds at phone and desktop widths, and every tap "
+     "target is at least 44px on a coarse pointer"),
+    ("android", "Android app", ["phone"], "Roboto, the platform's own",
+     "an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections "
+     "as a bottom bar, and the system's back gesture respected"),
+    ("ios", "iOS app", ["phone"], "SF Pro, the platform's own",
+     "an iOS app: the Human Interface Guidelines' tab bar and navigation bar, 44pt touch "
+     "targets, and Dynamic Type respected"),
+    ("linux", "Linux app", ["desktop"], "the desktop's own (Cantarell on GNOME, Noto Sans on KDE)",
+     "a Linux desktop app: the desktop's toolkit conventions (the GNOME or KDE guidelines), "
+     "a header bar of the window's own, and the desktop's controls"),
+    ("macos", "macOS app", ["desktop"], "SF Pro, the platform's own",
+     "a macOS app: a sidebar and toolbar in the platform's shape, the menu bar carrying every "
+     "command, and the system's own controls"),
+    ("windows", "Windows app", ["desktop"], "Segoe UI Variable, the platform's own",
+     "a Windows app: Fluent's spacing and controls, a navigation view for the app's sections, "
+     "and the title bar the platform draws"),
+]
+PLATFORM_KEYS = [k for k, *_ in PLATFORMS]
+
+# The rest of a language: each a fixed set of choices, so a prompt and a
+# file say the same words for the same choice.
+FONTS = [
+    ("system", "System sans", "the platform's own sans-serif (system-ui), so the app reads as native"),
+    ("humanist", "Humanist sans", "a warm sans-serif such as Source Sans or Lato"),
+    ("geometric", "Geometric sans", "a geometric sans-serif such as Inter or Manrope"),
+    ("serif", "Serif", "a readable serif such as Source Serif or Georgia, for prose"),
+    ("mono", "Monospace", "a monospace such as JetBrains Mono, everywhere, for a terminal feel"),
+]
+CORNERS = [
+    ("square", "Square", "no rounding anywhere"),
+    ("soft", "Soft", "small radii: 6px on controls, 8px on boxes, 4px on tags"),
+    ("round", "Round", "generous radii: 10px on controls, 14px on boxes, and pills for tags"),
+]
+DENSITY = [
+    ("compact", "Compact", "tight rows and small gaps, for a tool used all day"),
+    ("comfortable", "Comfortable", "an ordinary rhythm: 11px by 14px bands, 10px between fields"),
+    ("spacious", "Spacious", "generous space around everything, for a page read rather than worked"),
+]
+MOTION = [
+    ("quiet", "Quiet", "short eases on state changes, nothing decorative, and none under prefers-reduced-motion"),
+    ("none", "None", "no animation at all"),
+    ("lively", "Lively", "things arrive and leave with motion, still off under prefers-reduced-motion"),
+]
+CHOICES = {"font": FONTS, "corners": CORNERS, "density": DENSITY, "motion": MOTION}
+
+LANGUAGE_DEFAULT = {"scheme": "default", "colors": dict(SCHEMES[0][2]),
+                    "font": "system", "corners": "soft", "density": "comfortable",
+                    "motion": "quiet", "scope": "", "rules": ""}
+
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def configure(*, workspace, state, write_json, tell, sessions, claude_session, git_env=None):
+    globals().update(WORKSPACE=Path(workspace), FILE=Path(state) / "designs.json",
+                     write_json=write_json, tell=tell, sessions=sessions,
+                     claude_session=claude_session, git_env=git_env)
+
+
+def _load():
+    try:
+        with open(FILE, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _record(d, project):
+    rec = d.get(project)
+    if not isinstance(rec, dict):
+        rec = {}
+    lang = _clean_language(rec.get("language") or {})
+    pages = [p for p in (rec.get("pages") or []) if isinstance(p, dict)]
+    return {"language": lang, "pages": pages, "next": int(rec.get("next") or 1)}
+
+
+# ---- validation: what is kept is what the vocabulary allows -------------------
+class _Refused(Exception):
+    pass
+
+
+def _choice(value, keys, what, dflt):
+    v = str(value or dflt)
+    if v not in keys:
+        raise _Refused(f"{what}: no such choice, {v!r}")
+    return v
+
+
+def _line(value, cap, what):
+    v = " ".join(str(value or "").split())
+    if len(v) > cap:
+        raise _Refused(f"{what} is at most {cap} characters")
+    return v
+
+
+def _clean_language(lang):
+    """A language as stored, from whatever arrived: every choice one of the
+    vocabulary's, every colour a hex, the notes capped."""
+    if not isinstance(lang, dict):
+        lang = {}
+    out = dict(LANGUAGE_DEFAULT)
+    out["colors"] = dict(LANGUAGE_DEFAULT["colors"])
+    out["scheme"] = _choice(lang.get("scheme"), SCHEME_KEYS + ["custom"], "scheme", "default")
+    base = dict(next((c for k, _, c in SCHEMES if k == out["scheme"]), SCHEMES[0][2]))
+    colors = lang.get("colors") if isinstance(lang.get("colors"), dict) else {}
+    for k in TOKEN_KEYS:
+        v = str(colors.get(k) or base[k]).strip().lower()
+        if not _HEX.match(v):
+            raise _Refused(f"{k}: a colour is #rrggbb, not {v!r}")
+        out["colors"][k] = v
+    for key, rows in CHOICES.items():
+        out[key] = _choice(lang.get(key), [k for k, _, _ in rows], key, LANGUAGE_DEFAULT[key])
+    out["scope"] = _line(lang.get("scope"), NAME_MAX, "what the language governs")
+    rules = str(lang.get("rules") or "").strip()
+    if len(rules) > NOTES_MAX:
+        raise _Refused(f"the rules are at most {NOTES_MAX} characters")
+    out["rules"] = rules
+    return out
+
+
+def _clean_block(b, frame):
+    if not isinstance(b, dict):
+        raise _Refused("a block is an object")
+    g = FRAMES[frame]
+    kind = _choice(b.get("kind"), KIND_KEYS, "block kind", "content")
+    try:
+        x, y, w, h = (int(b.get(k, 0)) for k in ("x", "y", "w", "h"))
+    except (TypeError, ValueError):
+        raise _Refused("a block's cells are whole numbers") from None
+    w, h = max(1, w), max(1, h)
+    x = min(max(0, x), g["cols"] - 1)
+    y = min(max(0, y), g["rows"] - 1)
+    w = min(w, g["cols"] - x)
+    h = min(h, g["rows"] - y)
+    return {"kind": kind, "label": _line(b.get("label"), NAME_MAX, "a block's label"),
+            "x": x, "y": y, "w": w, "h": h}
+
+
+def _clean_page(p, pid):
+    if not isinstance(p, dict):
+        raise _Refused("a page is an object")
+    platform = _choice(p.get("platform"), PLATFORM_KEYS, "platform", "web")
+    # A frame the platform has: a page switched to Android keeps its
+    # blocks and takes the phone frame, where they are clamped.
+    frames = _platform(platform)[2]
+    frame = str(p.get("frame") or frames[0])
+    if frame not in frames:
+        frame = frames[0]
+    blocks = p.get("blocks") if isinstance(p.get("blocks"), list) else []
+    if len(blocks) > MAX_BLOCKS:
+        raise _Refused(f"a page holds at most {MAX_BLOCKS} blocks")
+    notes = str(p.get("notes") or "").strip()
+    if len(notes) > NOTES_MAX:
+        raise _Refused(f"a page's notes are at most {NOTES_MAX} characters")
+    return {"id": pid, "name": _line(p.get("name"), NAME_MAX, "a page's name"),
+            "platform": platform, "template": _choice(p.get("template"), TEMPLATE_KEYS, "template", "blank"),
+            "frame": frame, "blocks": [_clean_block(b, frame) for b in blocks],
+            "notes": notes, "at": int(time.time())}
+
+
+# ---- what the tab and bb read ---------------------------------------------------
+def presets():
+    """The vocabulary, for the tab to draw its pickers from: one copy, here."""
+    return {"kinds": [{"key": k, "label": l, "means": m} for k, l, m in KINDS],
+            "frames": {k: dict(v) for k, v in FRAMES.items()},
+            "templates": [{"key": t["key"], "label": t["label"], "frame": t["frame"],
+                           "blocks": [dict(zip(("kind", "label", "x", "y", "w", "h"), b)) for b in t["blocks"]]}
+                          for t in TEMPLATES],
+            "platforms": [{"key": k, "label": l, "frames": list(f), "system": sf, "means": m}
+                          for k, l, f, sf, m in PLATFORMS],
+            "tokens": [{"key": k, "label": l, "means": m} for k, l, m in TOKENS],
+            "schemes": [{"key": k, "label": l, "colors": dict(c)} for k, l, c in SCHEMES],
+            "choices": {key: [{"key": k, "label": l, "means": m} for k, l, m in rows]
+                        for key, rows in CHOICES.items()},
+            "file": FILE_PATH}
+
+
+def _file_state(project, rec):
+    """Whether docs/design-language.md is there and is what the saved
+    state would write, so the tab can say 'written' or 'behind'."""
+    p = WORKSPACE / project / FILE_PATH
+    try:
+        have = p.read_text(encoding="utf-8") if p.is_file() else None
+    except OSError:
+        have = None
+    return {"path": FILE_PATH, "exists": have is not None,
+            "current": have is not None and have == file_text(rec)}
+
+
+def view(project):
+    """GET /api/design: the saved record, the vocabulary and the file's
+    state. Whether a session is running to send to is the page's poll."""
+    rec = _record(_load(), project)
+    return {"language": rec["language"], "pages": rec["pages"], "presets": presets(),
+            "file": _file_state(project, rec)}
+
+
+# ---- the words ------------------------------------------------------------------
+def _means(rows, key):
+    return next((m for k, _, m in rows if k == key), "")
+
+
+def _label(rows, key):
+    return next((label for k, label, _ in rows if k == key), key)
+
+
+def _where(b, frame):
+    """A block's place in words: which part of the frame, and how much."""
+    g = FRAMES[frame]
+    cols, rows = g["cols"], g["rows"]
+    full_w = b["w"] >= cols
+    top = b["y"] == 0
+    bottom = b["y"] + b["h"] >= rows
+    left = b["x"] == 0
+    right = b["x"] + b["w"] >= cols
+    if full_w and top and bottom:
+        return "filling the frame"
+    if full_w:
+        band = "across the top" if top else "across the bottom" if bottom else "across the middle"
+        return f"{band}, {b['h']} of {rows} rows high"
+    side = ("the left" if left and not right else "the right" if right and not left
+            else "the middle")
+    tall = b["h"] >= rows
+    span = f"{b['w']} of {cols} columns wide"
+    if tall:
+        return f"down {side}, {span}, full height"
+    vert = "at the top" if top else "at the bottom" if bottom else "part way down"
+    return f"{'in' if side == 'the middle' else 'on'} {side}, {vert}, {span}, {b['h']} of {rows} rows high"
+
+
+def _platform(key):
+    return next((row for row in PLATFORMS if row[0] == key), PLATFORMS[0])
+
+
+def _font_means(lang, platform=""):
+    """What the font choice means: the system font is a different face on
+    each platform, so a page's prompt names the one its platform has, and
+    the language alone names them all."""
+    if lang["font"] != "system":
+        return _means(FONTS, lang["font"])
+    if platform:
+        return _platform(platform)[3]
+    return ("the platform's own sans-serif: " + ", ".join(
+        f"{row[3].split(',')[0].split(' (')[0]} on {row[1].split(' ')[0]}" for row in PLATFORMS))
+
+
+def language_text(lang, platform=""):
+    """The language as prose a session applies: every choice and its meaning."""
+    c = lang["colors"]
+    lines = []
+    scheme = _label(SCHEMES, lang["scheme"]) if lang["scheme"] != "custom" else "a custom scheme"
+    light = _luma(c["bg"]) > 0.5
+    lines.append(f"Colours ({scheme}, {'light' if light else 'dark'}), as tokens a stylesheet names once "
+                 "and every surface reads, never a hex in a component:")
+    for k, label, means in TOKENS:
+        lines.append(f"  {label.lower()} {c[k]}: {means}")
+    lines.append("A filled accent surface carries the text colour on it, at AA contrast.")
+    lines.append(f"Type: {_font_means(lang, platform)}; monospace for data (names, paths, numbers).")
+    lines.append(f"Shape: {_means(CORNERS, lang['corners'])}; hairlines 1px in the edge colour.")
+    lines.append(f"Space: {_means(DENSITY, lang['density'])}.")
+    lines.append(f"Motion: {_means(MOTION, lang['motion'])}.")
+    if lang.get("rules"):
+        lines.append("The operator's own rules:")
+        lines.extend("  " + ln for ln in lang["rules"].splitlines() if ln.strip())
+    return "\n".join(lines)
+
+
+def _cap(text):
+    """The first letter up and the rest as written: str.capitalize lowers
+    the rest, and Material became material."""
+    return text[:1].upper() + text[1:]
+
+
+def _luma(hexcol):
+    r, g, b = (int(hexcol[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def page_text(page):
+    """A page's layout as prose: each block, what it is for, and where."""
+    g = FRAMES[page["frame"]]
+    plat = _platform(page["platform"])
+    lines = [f"Platform: {plat[4]}.",
+             f"Layout of {page['name'] or 'this page'} on a {page['frame']} frame "
+             f"({g['cols']} columns by {g['rows']} rows), from the {_label([(t['key'], t['label'], '') for t in TEMPLATES], page['template'])} template:"]
+    if not page["blocks"]:
+        lines.append("  (no blocks placed yet)")
+    for b in sorted(page["blocks"], key=lambda b: (b["y"], b["x"])):
+        what = f": {b['label']}" if b["label"] else ""
+        lines.append(f"  {_label(KINDS, b['kind'])} ({_means(KINDS, b['kind'])}){what}, {_where(b, page['frame'])}")
+    if page.get("notes"):
+        lines.append("Notes:")
+        lines.extend("  " + ln for ln in page["notes"].splitlines() if ln.strip())
+    return "\n".join(lines)
+
+
+def prompt(lang, page=None):
+    """What a session is asked to do, in full: the text the tab shows under
+    a page and `bb design show` prints. The language alone when no page."""
+    scope = lang.get("scope") or "the project's user interface"
+    if page is None:
+        head = (f"Apply this design language to {scope}. Put the tokens in one place the whole "
+                f"stylesheet reads, and keep {FILE_PATH} in step with what you build.")
+        return head + "\n\n" + language_text(lang)
+    target = page["name"] or "this page"
+    head = (f"Build or restyle {target} to this layout, in the project's design language. "
+            f"Keep what the blocks are for, at every width, and keep {FILE_PATH} in step.")
+    return head + "\n\n" + page_text(page) + "\n\n" + language_text(lang, page["platform"])
+
+
+def file_text(rec):
+    """docs/design-language.md for a project: its language and its pages,
+    the shape BuilderBot's own file has, generated from the saved state so
+    it cannot say what the notebook no longer does."""
+    lang, pages = rec["language"], rec["pages"]
+    c = lang["colors"]
+    out = ["# The design language", "",
+           "What this project looks like, in one place. Written by BuilderBot's Design view "
+           "from the notebook, so edit it there, or edit here and say so in the notebook. "
+           "Every surface follows it; a change to the look is a change to this file first.", ""]
+    if lang.get("scope"):
+        out += [f"It governs {lang['scope']}.", ""]
+    out += ["## Colour", "",
+            "Colour comes only from these tokens, named once in the stylesheet:", "",
+            "| token | value | for |", "|---|---|---|"]
+    out += [f"| `--{k}` | `{c[k]}` | {means} |" for k, _, means in TOKENS]
+    out += ["", "A filled accent surface carries `--ink` on it, at AA contrast.", "",
+            "## Type", "", _cap(_font_means(lang)) + ". Monospace for data: names, paths, numbers.", "",
+            "## Shape", "", _cap(_means(CORNERS, lang["corners"])) + ". Hairlines are 1px in `--line`.", "",
+            "## Space", "", _cap(_means(DENSITY, lang["density"])) + ".", "",
+            "## Motion", "", _cap(_means(MOTION, lang["motion"])) + "."]
+    if lang.get("rules"):
+        out += ["", "## Rules", ""] + [ln for ln in lang["rules"].splitlines()]
+    if pages:
+        out += ["", "## Pages", "",
+                "Each page is a layout of labelled blocks on a frame, named for what it is for, "
+                "on the platform it is built for."]
+        for p in pages:
+            out += ["", f"### {p['name'] or 'unnamed page'} ({_platform(p['platform'])[1]})", "", page_text(p)]
+    return "\n".join(out).rstrip() + "\n"
+
+
+# ---- writes ----------------------------------------------------------------------
+def save(project, req):
+    """The notebook's Save: the whole record replaced by what was staged,
+    each page keeping its id (a new one gets the next). (payload, status)."""
+    try:
+        lang = _clean_language(req.get("language") or {})
+        raw = req.get("pages") if isinstance(req.get("pages"), list) else []
+        if len(raw) > MAX_PAGES:
+            raise _Refused(f"a project holds at most {MAX_PAGES} pages")
+    except _Refused as e:
+        return {"error": str(e)}, 400
+    with statefile.locked(FILE):
+        d = _load()
+        rec = _record(d, project)
+        nxt = rec["next"]
+        pages = []
+        try:
+            for p in raw:
+                pid = p.get("id") if isinstance(p, dict) else None
+                if not isinstance(pid, int) or pid < 1:
+                    pid, nxt = nxt, nxt + 1
+                pages.append(_clean_page(p, pid))
+        except _Refused as e:
+            return {"error": str(e)}, 400
+        seen = set()
+        for p in pages:
+            if p["id"] in seen:
+                return {"error": "two pages carry one id"}, 400
+            seen.add(p["id"])
+        d[project] = {"language": lang, "pages": pages, "next": nxt}
+        write_json(FILE, d)
+    return {"ok": True, "language": lang, "pages": pages}, 200
+
+
+def write_file(project, who=""):
+    """Write docs/design-language.md from the saved state, not committed:
+    the session applying the design commits it with the work, and the Git
+    view shows it changed until then. (payload, status)."""
+    rec = _record(_load(), project)
+    p = WORKSPACE / project / FILE_PATH
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(file_text(rec), encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not write {FILE_PATH}: {e}"}, 500
+    return {"ok": True, "path": FILE_PATH, "file": _file_state(project, rec)}, 200
+
+
+def send(project, page_id, mine=""):
+    """Send to Claude: a short pointer typed into this account's session
+    on the project. Short because it is typed a character at a time; the
+    whole text is what bb design show prints. (payload, status)."""
+    if tell is None or sessions is None or claude_session is None:
+        return {"error": "no way to reach a session from here"}, 400
+    rec = _record(_load(), project)
+    page = next((p for p in rec["pages"] if p["id"] == page_id), None) if page_id else None
+    if page_id and page is None:
+        return {"error": "no such page: save it first"}, 400
+    if page is None:
+        scope = rec["language"].get("scope") or "the project's user interface"
+        line = (f"From the operator, on the Design view: apply the project's design language to "
+                f"{scope}. `bb design show` prints it in full; read it, apply it, keep "
+                f"{FILE_PATH} in step, and say what you changed.")
+    else:
+        line = (f"From the operator, on the Design view: build or restyle {page['name'] or 'the page'} "
+                f"to the saved design. `bb design show {page['id']}` prints its layout and the "
+                f"language; read it, apply it there, keep {FILE_PATH} in step, and say what you changed.")
+    session = (mine or "") + claude_session(project)
+    r = tell(session, line, sessions())
+    if r.get("error"):
+        return r, 400
+    return {"ok": True, "sent": bool(r.get("sent")), "text": line}, 200
+
+
+def verb(project, req, who, session):
+    """POST /api/design. A session reads through GET and bb design; the
+    writes and the send are a person's. (payload, status)."""
+    act = str(req.get("action") or "")
+    if session:
+        return {"error": "the Design view is a person's; a session reads it with bb design"}, 403
+    if act == "preview":
+        try:
+            lang = _clean_language(req.get("language") or {})
+            page = _clean_page(req["page"], 0) if isinstance(req.get("page"), dict) else None
+        except _Refused as e:
+            return {"error": str(e)}, 400
+        return {"text": prompt(lang, page)}, 200
+    if act == "save":
+        return save(project, req)
+    if act == "write":
+        return write_file(project, who)
+    if act == "send":
+        pid = req.get("page")
+        return send(project, pid if isinstance(pid, int) else 0, str(req.get("mine") or ""))
+    return {"error": f"unknown action: {act}"}, 400
+
+
+def text_for(project, which=""):
+    """bb design: the list (`list`), the prompt for the language
+    (`language`) or for one page by id or name, or the file's text
+    (`file`). (text, error)."""
+    rec = _record(_load(), project)
+    if which == "list":
+        return listing(project), ""
+    if which == "file":
+        return file_text(rec), ""
+    if which == "language":
+        return prompt(rec["language"]), ""
+    page = next((p for p in rec["pages"] if str(p["id"]) == which or p["name"].lower() == which.lower()), None)
+    if page is None:
+        return "", f"no page here called {which!r}: bb design lists them"
+    return prompt(rec["language"], page), ""
+
+
+def listing(project):
+    """bb design with no words: the language in one line and the pages."""
+    rec = _record(_load(), project)
+    lang = rec["language"]
+    scheme = _label(SCHEMES, lang["scheme"]) if lang["scheme"] != "custom" else "custom colours"
+    lines = [f"{project}'s design language: {scheme}, {_label(FONTS, lang['font']).lower()}, "
+             f"{lang['corners']} corners, {lang['density']}, {lang['motion']} motion"
+             + (f"; it governs {lang['scope']}" if lang.get("scope") else "")]
+    if not rec["pages"]:
+        lines.append("  no pages yet: the notebook's Design view adds one")
+    for p in rec["pages"]:
+        lines.append(f"  {p['id']:>3}  {p['name'] or '(unnamed)'}  ({_platform(p['platform'])[1].lower()}, {p['frame']}, {len(p['blocks'])} block"
+                     f"{'' if len(p['blocks']) == 1 else 's'})")
+    lines.append(f"bb design show [ID|NAME] prints one in full; bb design file prints {FILE_PATH}")
+    return "\n".join(lines)
+
+
+# Every preset passes its own validation, so a template or a scheme that
+# drifts from the vocabulary fails at import rather than at the first save.
+for _k, _l, _c in SCHEMES:
+    _clean_language({"scheme": _k, "colors": _c})
+for _t in TEMPLATES:
+    _clean_page({"frame": _t["frame"], "template": _t["key"],
+                 "blocks": [dict(zip(("kind", "label", "x", "y", "w", "h"), b)) for b in _t["blocks"]]}, 1)

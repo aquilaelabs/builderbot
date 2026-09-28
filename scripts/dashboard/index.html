@@ -1904,6 +1904,39 @@ pre.diff .d-ctx{color:var(--dim)}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
+/* ---- the Design view (nb-design.js) --------------------------------------
+   A language's choices in labelled controls, its colours as chips beside
+   their hex, and a page's layout as blocks on a frame the finger moves
+   them around. The board's colours are the design's own, painted inline
+   from the language, which is the one place a hex is data and not chrome. */
+.dsrow{display:flex;flex-wrap:wrap;gap:var(--field-gap);align-items:flex-end}
+.dsctl{display:flex;flex-direction:column;gap:var(--label-gap);flex:0 1 auto;min-width:0}
+.dsctl select{width:auto;min-width:9em}
+.dsctl.grow{flex:1 1 14em}
+.dstoks{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:var(--field-gap)}
+.dstok{display:flex;flex-direction:column;gap:var(--label-gap);min-width:0}
+.dstok .dsc{display:flex;gap:6px;align-items:center}
+.dschip{width:22px;height:22px;flex:0 0 auto;border-radius:var(--r-small);border:1px solid var(--line)}
+.dstok input{width:7.5em}
+.dsboard{position:relative;display:grid;gap:4px;padding:6px;box-sizing:border-box;
+  border:1px solid var(--line);border-radius:var(--r-surface);touch-action:none;user-select:none}
+.dsboard[data-frame="desktop"]{aspect-ratio:16/10;max-width:640px}
+.dsboard[data-frame="phone"]{aspect-ratio:9/16;max-width:290px}
+.dsblock{position:relative;display:flex;flex-direction:column;gap:2px;padding:5px 7px;min-width:0;min-height:0;
+  border:1px solid;border-radius:var(--r-control);overflow:hidden;cursor:grab;
+  transition:outline-color .15s ease}
+.dsblock b{font:600 11px/1.3 system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsblock span{font:10px/1.3 system-ui,sans-serif;opacity:.85;overflow:hidden;display:-webkit-box;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical}
+.dsblock.on{outline:2px solid var(--accent);outline-offset:1px}
+.dsblock:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.dsblock.dragging{cursor:grabbing;opacity:.85}
+.dsgrip{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;
+  background:linear-gradient(135deg,transparent 50%,var(--accent) 50%)}
+@media(pointer:coarse){ .dsgrip{width:26px;height:26px} }
+.dsempty{grid-column:1/-1;grid-row:1/-1;display:flex;align-items:center;justify-content:center;
+  text-align:center;color:var(--dim);font:var(--f-note);padding:8px}
+.dsprompt{white-space:pre-wrap}
 /* The roadmap's summary is a full sentence where the other three are a few
    words, so it is the one that has to be allowed to wrap inside the header
    rather than shoving History off the end. */
@@ -3274,13 +3307,15 @@ body.booting .pane>.loading{margin:auto}
          #27). Above the strip like the batch note, because it is about the
          notebook and not one tab of it: the modal it opens lists every tab's. -->
     <div class="field mdrift" id="nbPending" hidden></div>
-    <!-- In the order a project is worked: what to know (Briefing), what to
-         do (Roadmap), what is broken (Bugs), the code as it stands (Git),
-         what it produced (Artifacts, with the version), whether it holds
-         (Tests), and what a scanner says about it (Analysis): the last
-         because it is read least, and only when a report exists. -->
+    <!-- In the order a project is worked: what to know (Briefing), what it
+         should look like (Design), what to do (Roadmap), what is broken
+         (Bugs), the code as it stands (Git), what it produced (Artifacts,
+         with the version), whether it holds (Tests), and what a scanner
+         says about it (Analysis): the last because it is read least, and
+         only when a report exists. -->
     <div class="nbtabs" role="tablist">
       <button type="button" data-v="briefing">Briefing</button>
+      <button type="button" data-v="design">Design</button>
       <button type="button" data-v="roadmap">Roadmap</button>
       <button type="button" data-v="bugs">Bugs</button>
       <button type="button" data-v="git">Git</button>
@@ -3518,6 +3553,22 @@ body.booting .pane>.loading{margin:auto}
         <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
       <div id="gitBody"></div>
+    </div>
+    <div class="nbview" data-view="design" hidden>
+      <!-- What the project looks like (design.py, nb-design.js): one design
+           language, and pages laid out as labelled blocks, each named for
+           what it is for and the platform it is built for. Staged behind
+           the notebook's Save like the roadmap; the prompts and the file
+           are generated on the server, so the tab, bb design and
+           docs/design-language.md say one thing. -->
+      <div class="field nbhead vbar"><span id="dsHint">loading…</span><span class="sp"></span>
+        <button type="button" id="dsWrite"
+          title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></div>
+      <div class="field"><div class="addbar" data-add="design">
+        <select id="dsPlatform" aria-label="the platform the new page is for"></select>
+        <select id="dsTemplate" aria-label="the layout the new page starts from"></select>
+        <button id="dsAdd" class="primary" type="button">Add page</button></div></div>
+      <div id="dsBody"></div>
     </div>
     <div class="nbview" data-view="analysis" hidden>
       <div class="field nbhead vbar"><span id="anaHint">loading…</span>
@@ -4459,6 +4510,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="nb-git.js"></script>
 <script src="nb-artifacts.js"></script>
 <script src="nb-analysis.js"></script>
+<script src="nb-design.js"></script>
 <script src="nb-rules.js"></script>
 <script src="nb-tests.js"></script>
 <script src="nb-bugs.js"></script>

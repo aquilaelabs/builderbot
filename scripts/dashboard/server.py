@@ -2263,6 +2263,15 @@ import brief                                                     # noqa: E402
 
 brief.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
 
+# ---- a project's design language and its pages ------------------------------
+# What the project looks like, kept: colours as tokens, type, shape, space and
+# the operator's rules, and pages laid out as labelled blocks; a prompt a
+# session is pointed at and docs/design-language.md written from it: design.py.
+import design                                                    # noqa: E402
+
+design.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
+                 tell=notify.tell, sessions=sessions_anywhere, claude_session=claude_session)
+
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card; see the module docstring
 # for why it stopped being a question inside each send box.
@@ -3090,6 +3099,7 @@ GET_ROUTES = (
     ("prefix", "/api/global-rules", "_get_global_rules"),
     ("prefix", "/api/preamble", "_get_preamble"),
     ("prefix", "/api/brief", "_get_brief"),
+    ("prefix", "/api/design", "_get_design"),
     ("prefix", "/api/codebase", "_get_codebase"),
     ("prefix", "/api/pending", "_get_pending"),
     ("prefix", "/api/memory", "_get_memory"),
@@ -3153,6 +3163,7 @@ POST_ROUTES = (
     ("prefix", "/api/memory", "_memory"),
     ("prefix", "/api/prefs", "_prefs_post"),
     ("prefix", "/api/brief", "_brief"),
+    ("prefix", "/api/design", "_design"),
     ("prefix", "/api/devapp", "_devapp"),
     ("prefix", "/api/changelog", "_changelog"),
     ("prefix", "/api/version", "_version"),
@@ -4328,6 +4339,34 @@ class Handler(BaseHTTPRequestHandler):
             return
         return self._json(*brief.verb(name, req, users.uid_of(who), who.get("name") or "somebody",
                                       bool(who.get("session"))))
+
+    def _get_design(self):
+        """GET /api/design: design.view, a project's design language, its
+        pages and the vocabulary they are drawn from, for a project this
+        account sees; a session reads it too, through bb design."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        # ?show= is bb design's: the words rather than the record, so a
+        # session prints what the tab shows and nothing is assembled twice.
+        show = q.get("show", [""])[0]
+        if show:
+            text, err = design.text_for(name, show)
+            return self._json({"error": err} if err else {"text": text}, 404 if err else 200)
+        return self._json(design.view(name))
+
+    def _design(self, req):
+        """POST /api/design: the notebook's Save of the language and the
+        pages, a prompt preview, the file written into the tree, and Send to
+        Claude: design.verb, for an account that works on the project."""
+        name = field(req, "project")
+        if self._not_project(name) or self._readonly(name):
+            return
+        who = self._who() or {}
+        req["mine"] = users.tmux_prefix(who)
+        return self._json(*design.verb(name, req, who.get("name") or "somebody",
+                                       bool(who.get("session"))))
 
     def _get_codebase(self):
         """GET /api/codebase."""
