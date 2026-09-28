@@ -589,18 +589,16 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .logacts{display:flex;flex-wrap:wrap;gap:6px}
 /* An anchor, because a download is a link and a link is what a browser knows
    how to save. Dressed as a button so the row reads as three controls. */
-.logacts .btnish,.cvlog .btnish{display:inline-flex;align-items:center;justify-content:center;
+.logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
   flex:0 0 auto;min-height:var(--tap);padding:0 10px;border-radius:var(--r-surface);
   border:1px solid var(--line);background:var(--btn);color:var(--ink);
   text-decoration:none;font:var(--f-ui);cursor:pointer}
 .logacts button{flex:0 0 auto;min-height:var(--tap)}
-@media(hover:hover){ .logacts .btnish:hover,.cvlog .btnish:hover{background:var(--btn-hi)} }
-/* The Profile's conversation logs: one row a conversation, its words on
-   the left and the download on the right, wrapping under it on a phone. */
-.cvlogs{display:flex;flex-direction:column;gap:6px}
-.cvlog{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.cvlog .cvwhat{flex:1 1 14em;min-width:0}
-.cvlog .cvfirst{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(hover:hover){ .logacts .btnish:hover{background:var(--btn-hi)} }
+/* The Profile's conversation logs are the Artifacts tab's rows (.artrow):
+   a hairline between each, the words left, the download right. */
+.cvlogs{display:flex;flex-direction:column}
+.cvlogs .artrow .first{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* A swatch renders in its own scheme: the tokens above are defined for
    .sw[data-theme=...] as well as for the page, so this is the palette itself
    at 1cm rather than a hand-kept copy of it. */
@@ -1903,7 +1901,10 @@ pre.diff .d-ctx{color:var(--dim)}
 .dsrow{display:flex;flex-wrap:wrap;gap:var(--field-gap);align-items:flex-end}
 .dsctl{display:flex;flex-direction:column;gap:var(--label-gap);flex:0 1 auto;min-width:0}
 .dsctl select{width:auto;min-width:9em}
-.dsctl.grow{flex:1 1 14em}
+/* The row's prose field grows, but only to the width the other tabs give a
+   field (the Profile's, the settings'), so what follows it stays beside it
+   rather than at the far edge of a wide window. */
+.dsctl.grow{flex:1 1 14em;max-width:26em}
 .dsc{display:flex;gap:6px;align-items:center}
 .dschip{width:22px;height:22px;flex:0 0 auto;border-radius:var(--r-small);border:1px solid var(--line)}
 .dsboard{position:relative;display:grid;gap:4px;padding:6px;box-sizing:border-box;
@@ -1911,10 +1912,9 @@ pre.diff .d-ctx{color:var(--dim)}
 .dsboard[data-frame="desktop"]{aspect-ratio:16/10;max-width:640px}
 .dsboard[data-frame="phone"]{aspect-ratio:9/16;max-width:290px}
 .dsboard[data-frame="landscape"]{aspect-ratio:16/9;max-width:520px}
-.dstheme{display:flex;flex-direction:column;gap:var(--field-gap);border:1px solid var(--line);
-  border-radius:var(--r-surface)}
-.dsrule{display:flex;flex-direction:column;gap:var(--field-gap);border:1px solid var(--line);
-  border-radius:var(--r-surface)}
+/* The theme and the rule the section's pulldown shows: fields like any
+   tab's, not a box of their own (the operator, 28 Sep). */
+.dstheme,.dsrule{display:flex;flex-direction:column;gap:var(--field-gap)}
 .dsrule .dsctl input{width:12em}
 .dscolours{display:flex;flex-direction:column;gap:var(--field-gap)}
 .dscolours .dsctl input{width:9em}
@@ -1928,8 +1928,12 @@ pre.diff .d-ctx{color:var(--dim)}
 .dsblock.on{outline:2px solid var(--accent);outline-offset:1px}
 .dsblock:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .dsblock.dragging{cursor:grabbing;opacity:.85}
-.dsgrip{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;
+/* The sizing corner is the selected block's only: a tap selects a block
+   before anything drags it, and a corner on every block was a picture of
+   grips rather than of the page. */
+.dsgrip{display:none;position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;
   background:linear-gradient(135deg,transparent 50%,var(--accent) 50%)}
+.dsblock.on .dsgrip{display:block}
 @media(pointer:coarse){ .dsgrip{width:26px;height:26px} }
 .dsempty{grid-column:1/-1;grid-row:1/-1;display:flex;align-items:center;justify-content:center;
   text-align:center;color:var(--dim);font:var(--f-note);padding:8px}
@@ -2600,7 +2604,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    each adding their own inset to the body's. */
 .nb .sect>.body>.field,.nb .sect>.body>.fnote,.nb .sect>.body>.row,
 .nb .sect>.body .sect>summary,.nb .sect>.body .sect>.body,
-.nb .sect>.body .loading,.nb .sect>.body .empty{padding-left:0;padding-right:0}
+.nb .sect>.body .loading,.nb .sect>.body .empty,
+.nb .sect>.body .dstheme>.field,.nb .sect>.body .dsrule>.field,
+.nb .sect>.body [data-dspage]>.field{padding-left:0;padding-right:0}
 /* A control never spans its container. The cap goes on the ROW where there
    is one (an action bar, a filter bar, a picker row, an add form), so the
    controls in it stop short together and are not capped a second time

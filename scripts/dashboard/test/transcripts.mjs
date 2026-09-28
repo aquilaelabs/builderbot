@@ -43,17 +43,19 @@ const browser = await launch();
 const page = await newPage(browser);
 await page.goto(URL); await ready(page);
 await page.evaluate(() => openProfileTab());
-await page.waitForSelector('.profiletab .cvlog', { timeout: 15000 });
-const rows = await page.$$eval('.profiletab .cvlog', els => els.map(e => ({
-  text: e.textContent.replace(/\s+/g, ' ').trim(), href: e.querySelector('a.btnish')?.getAttribute('href') || '' })));
+await page.waitForSelector('.profiletab .cvlogs .artrow', { timeout: 15000 });
+const rows = await page.$$eval('.profiletab .cvlogs .artrow', els => els.map(e => ({
+  text: e.textContent.replace(/\s+/g, ' ').trim(), href: e.querySelector('a.btn')?.getAttribute('href') || '' })));
 ok(rows.length >= 2, `the Profile lists the account's conversations (${rows.length})`);
 ok(/^alpha .*Please tick the roadmap item off/.test(rows[0].text), `the newest first, with the first thing typed: ${rows[0].text.slice(0, 70)}`);
 ok(rows[0].href === `/api/transcript?project=alpha&id=conv-one-2026&tz=${encodeURIComponent(ZONE)}`, `its Download is the transcript by project and id, in this browser's zone: ${rows[0].href}`);
 ok(rows.some(r => /An earlier chat from the worktree/.test(r.text)), 'a worktree session of the same project is listed with it');
 const i1 = rows.findIndex(r => /conv-one-2026/.test(r.href)), i2 = rows.findIndex(r => /conv-two-2025/.test(r.href));
 ok(i1 >= 0 && i2 > i1, 'newest first');
-ok(await page.$eval('.profiletab .cvlog a.btnish', a => a.hasAttribute('download') && a.getBoundingClientRect().height >= 30),
+ok(await page.$eval('.profiletab .cvlogs .artrow a.btn', a => a.hasAttribute('download') && a.getBoundingClientRect().height >= 30),
   'the download is a link dressed as a button, a tap tall');
+ok(await page.$$eval('.profiletab .cvlogs .artrow', els => els.length > 1 && els.slice(0, -1).every(e => getComputedStyle(e).borderBottomWidth === '1px')),
+  "the rows are the Artifacts tab's: a hairline between each");
 
 const got = await page.evaluate(async href => {
   const r = await fetch(href);

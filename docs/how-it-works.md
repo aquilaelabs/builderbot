@@ -1598,13 +1598,15 @@ of its own, one per project, and as many open at once as you have projects;
 each is its own instance, so what is half-typed in one survives working in
 another, and the button lights green while that project's is open. Its tab
 strip: **Briefing** (the rules, and what Claude remembers here), **Design**
-(what the project looks like: one design language of themes, each a
-named set of colours, dark or light, that a preset fills and you add to
-or cut, the app starting on the first; type and the exact families, shape,
-space, motion and your own design notes; and pages laid out as
+(what the project looks like, in four folds: the pages, laid out as
 labelled blocks on a phone or desktop frame, each named for what it is for
 and the platform it is built for, a web app or an Android, iOS, Linux,
-macOS or Windows app, since one project can be several; every edit is
+macOS or Windows app, since one project can be several; the design
+language, type and the exact families, shape, space, motion and what it
+governs; the themes, each a named set of colours, dark or light, that a
+preset fills and you add to or cut, the app starting on the first; and
+your own design rules; the folds that hold a list show one of it at a
+time, chosen on a pulldown at the top; every edit is
 staged behind Save, the prompt under each is the server's words to copy
 into a session when you want it applied, and nothing on the view reaches
 into one: a session meets the design by itself, through the rules its

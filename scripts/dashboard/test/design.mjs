@@ -56,9 +56,8 @@ ok(labels.join(',') === 'Header,Card,Card,Card,Chart,List'
    && await page.$eval(`${NB} #roadmapSaveQuiet`, b => !b.disabled),
    `Add page lays the Dashboard template out as blocks on a desktop frame and wakes Save (${labels.join(',')})`);
 await page.fill(`${NB} [data-dspage] [data-dsf="name"]`, 'the home dashboard');
-await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'the home dashboard',
-                           `.nb [data-dspage] .sect > summary .t`, { timeout: 5000 });
-ok(true, 'naming the page names its section: the name is what the page is for');
+await page.waitForFunction(() => /^the home dashboard \(/.test(document.querySelector('.nb #dsPagePick option:checked')?.textContent || ''), null, { timeout: 5000 });
+ok(true, "naming the page names its line on the Pages pulldown: the name is what the page is for");
 // Drag: the chart one column to the right, by the pointer.
 const blocks = await page.$$(`${NB} [data-dspage] .dsblock`);
 await blocks[4].click();
@@ -118,9 +117,10 @@ await page.fill(`${NB} #dst-0-name-0`, 'page');
 await page.selectOption(`${NB} #dsThemeFrom`, 'paper');
 await page.click(`${NB} #dsThemeAdd`);
 await page.waitForSelector(`${NB} [data-dstheme="1"]`, { timeout: 5000 });
-ok(await page.$eval(`${NB} [data-sect="design:language"] > summary .sst`, e => e.textContent) === '2 themes'
-   && await page.$eval(`${NB} #dst-name-1`, e => e.value) === 'Paper' && await page.$eval(`${NB} #dst-mode-1`, e => e.value) === 'light',
-   'Add theme adds one from a preset, named for it, light or dark as it is, and the section counts them');
+ok(await page.$eval(`${NB} [data-sect="design:themes"] > summary .sst`, e => e.textContent) === '2 themes'
+   && await page.$eval(`${NB} #dst-name-1`, e => e.value) === 'Paper' && await page.$eval(`${NB} #dst-mode-1`, e => e.value) === 'light'
+   && await page.$eval(`${NB} #dsThemePick`, e => e.value === '1' && e.options.length === 2) && !(await page.$(`${NB} [data-dstheme="0"]`)),
+   'Add theme adds one from a preset, named for it, light or dark as it is, the Themes section counts them and its pulldown shows the new one alone');
 await page.selectOption(`${NB} [data-dspage] [data-dsf="platform"]`, 'android');
 await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'phone', null, { timeout: 5000 });
 const frames = await page.$$eval(`${NB} [data-dspage] [data-dsf="frame"] option`, os => os.map(o => o.value));
@@ -172,6 +172,9 @@ ok(/no page or rule here called 'nowhere'/.test(err), `...and a page that is not
   ok(pre.tokens.map(t => t.key).join() === 'bg,panel,ink,dim,line,accent,warn,bad,note,good'
      && pre.kinds.some(k => k.key === 'overlay') && pre.frames.landscape.cols === 12,
      'the vocabulary carries a good role, an overlay kind and a sideways phone frame');
+  await page.selectOption(`${NB} #dsThemePick`, '0');
+  await page.waitForSelector(`${NB} [data-dstheme="0"]`, { timeout: 5000 });
+  ok(!(await page.$(`${NB} [data-dstheme="1"]`)), 'the Themes pulldown shows the theme chosen and no other');
   await page.click(`${NB} [data-dstheme="0"] [data-dstcadd]`);
   await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dstc="10"]`, { timeout: 5000 });
   await page.fill(`${NB} #dst-0-name-10`, 'surface 2');
@@ -200,10 +203,14 @@ ok(/no page or rule here called 'nowhere'/.test(err), `...and a page that is not
      '...as does the file, a table per theme, the colour as a token of its own');
   await page.click(`${NB} [data-dstheme="0"] [data-dstcrm="10"]`);
   await page.waitForFunction(() => !document.querySelector('.nb [data-dstheme="0"] [data-dstc="10"]'), null, { timeout: 5000 });
+  await page.selectOption(`${NB} #dsThemePick`, '1');
+  await page.waitForSelector(`${NB} [data-dstheme="1"]`, { timeout: 5000 });
   await page.click(`${NB} [data-dstheme="1"] [data-dstdefault]`);
   await page.waitForFunction(() => document.querySelector('.nb #dst-name-0')?.value === 'Paper', null, { timeout: 5000 });
+  await page.selectOption(`${NB} #dsThemePick`, '1');
+  await page.waitForSelector(`${NB} [data-dstheme="1"]`, { timeout: 5000 });
   await page.click(`${NB} [data-dstheme="1"] [data-dstrm]`);
-  await page.waitForFunction(() => !document.querySelector('.nb [data-dstheme="1"]'), null, { timeout: 5000 });
+  await page.waitForFunction(() => document.querySelector('.nb #dsThemePick')?.options.length === 1, null, { timeout: 5000 });
   await page.fill(`${NB} #dsFonts`, '');
   await saved();
   const back = (await api(`/api/design?project=${P}`)).language;
@@ -235,15 +242,20 @@ ok(/no page or rule here called 'nowhere'/.test(err), `...and a page that is not
      && after.pages[1].id === 2 && after.pages[1].name === 'the login screen' && after.pages[1].frame === 'phone' && after.by === 'session:alpha',
      `a session's bb design save writes the record back: the language, the page by its id, a new page with the next (${said.trim()})`);
   await page.evaluate(n => getNotebook(n).view('design'), P);
-  await page.waitForFunction(() => document.querySelectorAll('.nb [data-dspage]').length === 2, null, { timeout: 15000 });
-  ok(await page.$eval(`${NB} [data-sect="design:language"] > summary .sst`, e => e.textContent) === '2 themes'
-     && await page.$eval(`${NB} [data-dspage="p2"] .sect > summary .t`, e => e.textContent) === 'the login screen',
-     '...and the tab shows what the session saved when it is shown again');
+  await page.waitForFunction(() => document.querySelector('.nb #dsPagePick')?.options.length === 2, null, { timeout: 15000 });
+  ok(await page.$eval(`${NB} [data-sect="design:themes"] > summary .sst`, e => e.textContent) === '2 themes'
+     && /^the login screen \(/.test(await page.$eval(`${NB} #dsPagePick option[value="p2"]`, e => e.textContent))
+     && await page.$eval(`${NB} [data-sect="design:pages"] > summary .sst`, e => e.textContent) === '2 pages',
+     '...and the tab shows what the session saved when it is shown again: two themes, and the new page on the Pages pulldown');
   let refused = '';
   try { bb('save', '/nonexistent.json'); } catch (e) { refused = String(e.stderr); }
   ok(/could not read \/nonexistent.json/.test(refused), 'a file that is not there is refused by name');
+  await page.selectOption(`${NB} #dsPagePick`, 'p2');
+  await page.waitForSelector(`${NB} [data-dspage="p2"] .dsboard`, { timeout: 5000 });
+  ok(!(await page.$(`${NB} [data-dspage="p1"]`)), 'the Pages pulldown shows the page chosen and no other');
   await page.click(`${NB} [data-dspage="p2"] [data-dspagerm]`);
-  await page.waitForFunction(() => document.querySelectorAll('.nb [data-dspage]').length === 1, null, { timeout: 5000 });
+  await page.waitForFunction(() => document.querySelector('.nb #dsPagePick')?.options.length === 1 && document.querySelector('.nb [data-dspage="p1"]'), null, { timeout: 5000 });
+  ok(true, 'Remove page takes it off the pulldown, which shows the first page again');
 }
 
 // ---- the design's rules reach a session the way house rules do ---------------------------
@@ -262,9 +274,13 @@ ok(/no page or rule here called 'nowhere'/.test(err), `...and a page that is not
      'the briefing names the triggered rule and how to read it, carries the standing one whole, and never the triggered one\'s text');
   ok(/^lists \(applies to: list, paging\)\n\nEvery list pages at fifty\./.test(bb('show', 'lists')),
      `bb design show NAME prints one rule with what fires it (${bb('show', 'lists').split('\n')[0]})`);
-  // In the view: the rules as bands, added and removed.
+  // In the view: the Rules section, one shown at a time, added and removed.
   await page.evaluate(n => getNotebook(n).view('design'), P);
-  await page.waitForSelector(`${NB} [data-dsrule="1"]`, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('.nb #dsRulePick')?.options.length === 2, null, { timeout: 15000 });
+  await page.selectOption(`${NB} #dsRulePick`, '1');
+  await page.waitForSelector(`${NB} [data-dsrule="1"]`, { timeout: 5000 });
+  ok(await page.$eval(`${NB} #dsr-name-1`, e => e.value) === 'voice' && !(await page.$(`${NB} [data-dsrule="0"]`)),
+     'the Rules pulldown shows the rule chosen and no other');
   await page.click(`${NB} #dsRuleAdd`);
   await page.waitForSelector(`${NB} [data-dsrule="2"]`, { timeout: 5000 });
   await page.fill(`${NB} #dsr-name-2`, 'Tap targets');
@@ -309,10 +325,14 @@ ok(/no page or rule here called 'nowhere'/.test(err), `...and a page that is not
 // ---- a page removed, and the record put back ------------------------------------------
 await page.click(`${NB} [data-dspage] [data-dspagerm]`);
 await page.waitForFunction(() => !document.querySelector('.nb [data-dspage]'), null, { timeout: 5000 });
+await page.selectOption(`${NB} #dsThemePick`, '0');
+await page.waitForSelector(`${NB} [data-dstheme="0"]`, { timeout: 5000 });
 await page.selectOption(`${NB} [data-dstheme="0"] [data-dst="from"]`, 'default');
 await page.waitForFunction(() => document.querySelector('.nb #dst-0-hex-0')?.value === '#1a1f26', null, { timeout: 5000 });
+await page.selectOption(`${NB} #dsThemePick`, '1');
+await page.waitForSelector(`${NB} [data-dstheme="1"]`, { timeout: 5000 });
 await page.click(`${NB} [data-dstheme="1"] [data-dstrm]`);
-await page.waitForFunction(() => !document.querySelector('.nb [data-dstheme="1"]'), null, { timeout: 5000 });
+await page.waitForFunction(() => document.querySelector('.nb #dsThemePick')?.options.length === 1, null, { timeout: 5000 });
 await saved();
 const gone = await api(`/api/design?project=${P}`);
 ok(gone.pages.length === 0 && gone.language.themes.length === 1 && gone.language.themes[0].colors[0].hex === '#1a1f26',

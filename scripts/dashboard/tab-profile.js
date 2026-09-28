@@ -163,18 +163,20 @@ function profilePlugins(rows){
 // keep: what you said, what Claude said, every command it ran and what came
 // back (transcripts.py renders the transcript Claude Code wrote). An anchor
 // rather than a button, because a download is a link and the browser knows
-// how to save one.
+// how to save one; the rows are the Artifacts tab's, divided by hairlines.
 function profileLogs(rows){
   if (!rows.length) return `<div class="dim">None yet. A Claude session on a project writes one as you talk, and it is listed here for you alone.</div>`;
   const size = b => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
   // The stamps in the text are written in this browser's zone, the one the
   // times on this page are in, so the log and the page agree.
   const tz = userTZ() || Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  // The Artifacts tab's rows, so the two lists read the same.
   return `<div class="cvlogs">${rows.map(r => `
-    <div class="cvlog">
-      <div class="cvwhat"><b>${esc(r.project)}</b> <span class="dim">${esc(fmtTime(r.at * 1000))} · ${esc(size(r.bytes))}</span>
-        ${r.first ? `<div class="dim cvfirst">${esc(r.first)}</div>` : ""}</div>
-      <a class="btnish" href="/api/transcript?project=${encodeURIComponent(r.project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a>
+    <div class="artrow">
+      <div class="grow">
+        <div class="top"><b>${esc(r.project)}</b> <span class="dim">${esc(fmtTime(r.at * 1000))} · ${esc(size(r.bytes))}</span></div>
+        ${r.first ? `<div class="dim first">${esc(r.first)}</div>` : ""}</div>
+      <div class="acts"><a class="btn" href="/api/transcript?project=${encodeURIComponent(r.project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a></div>
     </div>`).join("")}</div>
     <div class="dim">The text is the whole exchange: your words, Claude's, each command it ran and what the command answered. Claude's private reasoning is not in it.</div>`;
 }

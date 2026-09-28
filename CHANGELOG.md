@@ -18,6 +18,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Changed
 
+- The Design view is four folds, Pages first, and a fold that holds a list shows one of it at a time on a pulldown; the theme, rule and page shown are plain fields rather than a box, the sizing corner shows on the selected block only, and nothing on the view reaches into a session
+- The Profile's conversation logs are the Artifacts tab's rows: a hairline between each, the download at the right
 - The Doctor stops warning the operator that other accounts have no commit identity: an account without one is told on its own Claude buttons and Profile, and the Doctor's line is a green count
 - BuilderBot's own design language lives in its notebook's Design view now: its thirteen schemes as themes, its prose as twenty named rules with triggers, and four of its surfaces as pages; docs/design-language.md is written from it by bb design file
 - BuilderBot is 0.7: the compatibility window moved, so a node whose agent is from 0.6 is held until Update agent on its row, which the bell and the Nodes tab say (a32a0a5)

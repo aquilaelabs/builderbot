@@ -539,7 +539,7 @@ sentence and offers Close.
 
 ### rows-you-open
 
-Applies to: scripts/dashboard/nb-*.js; row, fold, edit, cancel
+Applies to: scripts/dashboard/nb-*.js, scripts/dashboard/tab-profile.js, scripts/dashboard/nb-artifacts.js; row, fold, edit, cancel, download
 
 A row with detail behind it is a fold, the shape a bug report has: the name
 on the line with its pills, the fields under labels when opened, its action
@@ -551,6 +551,12 @@ A row opens to be read, never as a form. Edit on its action bar swaps the
 fields in; Cancel (`.stop`) puts them away and drops what was typed, and
 Save puts them away having written it. A row Add made has nothing to go
 back to, so cancelling it removes it.
+
+A list of things to download or open is the Artifacts tab's rows
+(`.artrow`) wherever it appears: the name in bold with its facts in the
+small mono beside it, a hairline between rows, and the download or the
+action at the row's right, wrapping under it on a phone. The Profile's
+conversation logs are those rows, not a list of their own.
 
 ### long-lists
 
@@ -607,13 +613,27 @@ something behind them (Roadmap, Briefing, Design, the version on
 Artifacts). A view that writes through or only reads (Bugs, Tests,
 Analysis, Git) has no foot.
 
+The Design view is four folds under its head row and add bar: Pages, Design
+language, Themes and Rules, in that order, so the boards are the first
+thing seen. A fold that holds a list (the pages, the themes, the rules)
+shows one of it at a time, chosen on a pulldown at its top, and what is
+added is what is shown: every page and every theme at once was the whole
+view scrolled past (the operator, 28 Sep). The one shown is fields like any
+tab's, never a box of its own. The view is passive: nothing on it reaches
+into a session; the prompt under the language and under each page is text
+to copy, and a session reads the design by itself through its rules and
+`bb design show`.
+
 **The Design view's board is the one surface here whose colours are data.**
 A page's blocks are painted in the project's own language (`nb-design.js`,
 `blockStyle`), inline from the saved hex, because the board is a picture of
 that project and not chrome of this page; everything around the board (the
-frame's edge, the selection outline, the grip) is the page's tokens. Its
-controls are the framework's: choices in labelled selects on a `.dsrow`
-that lines up at the bottom, colours as a chip beside a seven-character
+frame's edge, the selection outline, the sizing corner) is the page's
+tokens, and the corner shows on the selected block only, since a tap
+selects a block before anything drags it. Its controls are the framework's:
+choices in labelled selects on a `.dsrow` that lines up at the bottom, the
+row's prose field growing only to the width the other tabs give a field so
+what follows it stays beside it, colours as a chip beside a seven-character
 field, prose in a proseline, and the prompt in a read-only textarea, which
 is a page of text and not a control.
 
