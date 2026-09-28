@@ -63,6 +63,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Switching to a document tab (a notebook, Projects, Docker and the rest) no longer opens on a black pane: the tab's own background is there from the first frame in every theme, and only its contents fade in (b3b3ad8)
 - A container written on the Docker tab or asked for with bb container new that would build from a relative path is refused, naming the way in for a project's own code (a compose file at its root and Send to Docker, or bb devapp new): with no tree behind it, it built from an empty directory (6f28fbd)
 - A Claude session left idle on a node keeps its access to the notebook: the agent never refreshed an idle session's token, so after twelve hours without a call it had expired. Each node needs Update agent on its row (B335) (b5f3863)
+- The Artifacts tab's version row says where a bump will land when the checkout is not on the branch builds come from, in red when that branch is already merged, and says when the number there is unpushed or differs from main's; bb version says the same (B338) (4d0bcd5)
 
 ### Security
 
