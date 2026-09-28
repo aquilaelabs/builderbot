@@ -1538,7 +1538,10 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    own rule) and only its hit area widens. */
 @media(pointer:coarse){
   .pcpick{gap:6px}
-  .pcpick button{width:30px;height:30px;min-height:30px}   /* nine in a row at 375px */
+  /* Named with .modal: the rule below giving every dialog button the tap
+     height comes later at the same weight and stretched each circle into
+     an oval on a phone (the operator, 28 Sep). */
+  .pcpick button,.modal .pcpick button{width:30px;height:30px;min-height:30px;flex:0 0 auto}   /* nine in a row at 375px */
   #bBell{padding:0 8px}
   .tab .ic{display:inline-flex;align-items:center;justify-content:center;min-width:32px}
   .tabbar .newtab{min-width:36px;min-height:36px}
@@ -1913,19 +1916,18 @@ pre.diff .d-ctx{color:var(--dim)}
 .dsctl{display:flex;flex-direction:column;gap:var(--label-gap);flex:0 1 auto;min-width:0}
 .dsctl select{width:auto;min-width:9em}
 .dsctl.grow{flex:1 1 14em}
-.dstoks{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:var(--field-gap)}
-.dstok{display:flex;flex-direction:column;gap:var(--label-gap);min-width:0}
-.dstok .dsc{display:flex;gap:6px;align-items:center}
+.dsc{display:flex;gap:6px;align-items:center}
 .dschip{width:22px;height:22px;flex:0 0 auto;border-radius:var(--r-small);border:1px solid var(--line)}
-.dstok input{width:7.5em}
 .dsboard{position:relative;display:grid;gap:4px;padding:6px;box-sizing:border-box;
   border:1px solid var(--line);border-radius:var(--r-surface);touch-action:none;user-select:none}
 .dsboard[data-frame="desktop"]{aspect-ratio:16/10;max-width:640px}
 .dsboard[data-frame="phone"]{aspect-ratio:9/16;max-width:290px}
 .dsboard[data-frame="landscape"]{aspect-ratio:16/9;max-width:520px}
-.dsmore{display:flex;flex-direction:column;gap:var(--field-gap)}
-.dsmore .dsctl input{width:9em}
-.dsmore .dsctl .dsc input{width:7.5em}
+.dstheme{display:flex;flex-direction:column;gap:var(--field-gap);border:1px solid var(--line);
+  border-radius:var(--r-surface)}
+.dscolours{display:flex;flex-direction:column;gap:var(--field-gap)}
+.dscolours .dsctl input{width:9em}
+.dscolours .dsctl .dsc input{width:7.5em}
 .dsblock{position:relative;display:flex;flex-direction:column;gap:2px;padding:5px 7px;min-width:0;min-height:0;
   border:1px solid;border-radius:var(--r-control);overflow:hidden;cursor:grab;
   transition:outline-color .15s ease}

@@ -139,39 +139,27 @@ function nbDesignView({$, nb, project, root}){
 
   function languageSection(){
     const L = nb.dsLang, P = presets(), C = P.choices || {};
-    const schemes = [...(P.schemes || []), {key: "custom", label: "Custom"}];
-    const status = L.scheme === "custom" ? "custom colours" : (byKey(P.schemes, L.scheme)?.label || L.scheme);
+    const themes = L.themes || [];
+    const status = `${themes.length} theme${themes.length === 1 ? "" : "s"}`;
     const body = `
       <div class="field"><div class="dsrow">
-        ${ctl("dsScheme", "Colours", "a preset to start from; changing a colour below makes the scheme custom",
-              `<select id="dsScheme">${opt(schemes, L.scheme)}</select>`)}
         ${ctl("dsFont", "Type", "", `<select id="dsFont">${opt(C.font, L.font)}</select>`)}
         ${ctl("dsCorners", "Corners", "", `<select id="dsCorners">${opt(C.corners, L.corners)}</select>`)}
         ${ctl("dsDensity", "Space", "", `<select id="dsDensity">${opt(C.density, L.density)}</select>`)}
         ${ctl("dsMotion", "Motion", "", `<select id="dsMotion">${opt(C.motion, L.motion)}</select>`)}
       </div></div>
-      <div class="field"><div class="dstoks">${(P.tokens || []).map(t => `
-        <div class="dstok">${lbl("dsc-" + t.key, t.label, t.means)}
-          <div class="dsc"><span class="dschip" style="background:${esc(L.colors[t.key])}"></span>
-            <input id="dsc-${esc(t.key)}" data-tok="${esc(t.key)}" maxlength="7" spellcheck="false"
-              autocomplete="off" value="${esc(L.colors[t.key])}"></div></div>`).join("")}</div></div>
-      <div class="field">${lbl("", "More colours", "everything the design names beyond the ten: a second surface, a chart ramp, a game's card colours; each a name, a hex and what it is for")}
-        <div class="dsmore">${(L.more || []).map((m, i) => `
-          <div class="dsrow" data-dsmore="${i}">
-            ${ctl(`dsm-name-${i}`, "Name", "", `<input id="dsm-name-${i}" data-dsm="name" maxlength="40" autocomplete="off" value="${esc(m.name)}">`)}
-            ${ctl(`dsm-hex-${i}`, "Hex", "", `<div class="dsc"><span class="dschip" style="background:${esc(m.hex)}"></span><input id="dsm-hex-${i}" data-dsm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(m.hex)}"></div>`)}
-            ${ctl(`dsm-for-${i}`, "For", "", `<textarea id="dsm-for-${i}" class="proseline" rows="1" maxlength="120" data-dsm="means">${esc(m.means)}</textarea>`, true)}
-            <button type="button" class="danger" data-dsmorerm="${i}" title="take this colour out">Remove</button>
-          </div>`).join("")}</div>
-        <div class="addbar"><button type="button" id="dsMoreAdd" ${(L.more || []).length >= (P.more_max || 40) ? "disabled" : ""}>Add colour</button></div></div>
       <div class="field">${ctl("dsFonts", "Families",
             "the exact font stacks when the choice above is not enough: Inter for text, JetBrains Mono for code",
             `<textarea id="dsFonts" class="proseline" rows="1" maxlength="200">${esc(L.fonts || "")}</textarea>`, true)}</div>
+      <div class="field">${lbl("", "Themes", "each a named set of colours, dark or light; the first is the one the app starts on, and a theme picker, where the app has one, offers them by name")}
+        <div class="addbar" data-add="theme"><select id="dsThemeFrom" aria-label="the preset the new theme starts from">${
+          opt(P.schemes, "default")}</select><button type="button" id="dsThemeAdd" ${themes.length >= (P.themes_max || 8) ? "disabled" : ""}>Add theme</button></div></div>
+      ${themes.map((t, i) => themeBand(t, i, themes.length)).join("")}
       <div class="field">${ctl("dsScope", "Governs",
             "what the language covers when the project is more than one product: the web app in site/",
             `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope)}</textarea>`, true)}</div>
       <div class="field">${ctl("dsRules", "Design notes",
-            "everything the settings cannot say, for every page: no modals, every list pages at fifty, a dark and a light theme switched from the header",
+            "everything the settings cannot say, for every page: no modals, every list pages at fifty",
             `<textarea id="dsRules" rows="4" maxlength="4000">${esc(L.rules)}</textarea>`, true)}</div>
       <div class="field">${lbl("dsPromptL", "Prompt", "what a session is asked to do; Send to Claude points the session at it")}
         <textarea id="dsPromptL" class="dsprompt" readonly rows="10" spellcheck="false"></textarea>
@@ -179,6 +167,33 @@ function nbDesignView({$, nb, project, root}){
           <button type="button" data-dscopy="lang" title="copy the prompt">Copy</button>
           <button type="button" class="primary" data-dssend="lang">Send to Claude</button></div></div>`;
     return docSection("design", "language", "Design language", status, body);
+  }
+
+  // One theme: its name and mode, its colours as rows (a name, a hex and
+  // what it is for), and what can be done to it. The first theme is the
+  // one the app starts on; Make default moves another up to first.
+  function themeBand(t, i, n){
+    const P = presets();
+    const modes = (P.modes || ["dark", "light"]).map(m => ({key: m, label: m[0].toUpperCase() + m.slice(1)}));
+    return `<div class="field dstheme" data-dstheme="${i}">
+      <div class="dsrow">
+        ${ctl(`dst-name-${i}`, "Theme", "", `<textarea id="dst-name-${i}" class="proseline" rows="1" maxlength="40" data-dst="name">${esc(t.name)}</textarea>`, true)}
+        ${ctl(`dst-mode-${i}`, "Mode", "", `<select id="dst-mode-${i}" data-dst="mode">${opt(modes, t.mode)}</select>`)}
+        ${ctl(`dst-from-${i}`, "Fill from", "replace this theme's colours with a preset's ten",
+              `<select id="dst-from-${i}" data-dst="from"><option value="">keep as they are</option>${opt(P.schemes, "")}</select>`)}
+      </div>
+      <div class="dscolours">${(t.colors || []).map((c, j) => `
+        <div class="dsrow" data-dstc="${j}">
+          ${ctl(`dst-${i}-name-${j}`, "Name", "", `<input id="dst-${i}-name-${j}" data-dsm="name" maxlength="40" autocomplete="off" value="${esc(c.name)}">`)}
+          ${ctl(`dst-${i}-hex-${j}`, "Hex", "", `<div class="dsc"><span class="dschip" style="background:${esc(c.hex)}"></span><input id="dst-${i}-hex-${j}" data-dsm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c.hex)}"></div>`)}
+          ${ctl(`dst-${i}-for-${j}`, "For", "", `<textarea id="dst-${i}-for-${j}" class="proseline" rows="1" maxlength="120" data-dsm="means">${esc(c.means)}</textarea>`, true)}
+          <button type="button" class="danger" data-dstcrm="${j}" title="take this colour out">Remove</button>
+        </div>`).join("")}</div>
+      <div class="actbar"><span class="state">${i === 0 ? "the default: the app starts on it" : ""}</span>
+        <button type="button" data-dstcadd ${(t.colors || []).length >= (P.colors_max || 40) ? "disabled" : ""}>Add colour</button>
+        ${i === 0 ? "" : `<button type="button" data-dstdefault title="the app starts on this theme">Make default</button>`}
+        <button type="button" class="danger" data-dstrm ${n === 1 ? "disabled" : ""} title="${n === 1 ? "a language keeps at least one theme" : "take this theme out"}">Remove theme</button></div>
+    </div>`;
   }
 
   function pageSection(p){
@@ -226,17 +241,26 @@ function nbDesignView({$, nb, project, root}){
   // is the accent, the reading area is the page itself.
   const WEAR = {header: "panel", nav: "panel", tabs: "panel", sidebar: "panel", footer: "panel",
                 button: "accent", hero: "accent"};
+  // The default theme's colours by role, whatever the design calls them
+  // (presets.roles), falling back to the dashboard's own scheme: the board
+  // is painted in the language, and a theme with a "page" and a "surface"
+  // is still a page and a surface.
+  const FALLBACK = {bg: "#1a1f26", panel: "#212730", ink: "#e6edf3", line: "#4d5c6f", accent: "#3fb950"};
+  function paint(role){
+    const t = (nb.dsLang.themes || [])[0];
+    const names = presets().roles?.[role] || [role];
+    const hit = (t?.colors || []).find(c => names.includes(c.name.toLowerCase()));
+    return hit ? hit.hex : FALLBACK[role];
+  }
   function blockStyle(b){
-    const c = nb.dsLang.colors;
     const wear = WEAR[b.kind] || (["content", "text"].includes(b.kind) ? "bg" : "panel");
-    const bg = c[wear];
-    const ink = wear === "accent" ? c.bg : c.ink;
+    const bg = paint(wear);
+    const ink = wear === "accent" ? paint("bg") : paint("ink");
     return `grid-column:${b.x + 1} / span ${b.w};grid-row:${b.y + 1} / span ${b.h};`
-      + `background:${bg};color:${ink};border-color:${wear === "accent" ? bg : c.line}`;
+      + `background:${bg};color:${ink};border-color:${wear === "accent" ? bg : paint("line")}`;
   }
   function boardHtml(p){
     const g = presets().frames?.[p.frame] || {cols: 12, rows: 8};
-    const c = nb.dsLang.colors;
     const key = keyOf(p);
     const inner = p.blocks.length
       ? p.blocks.map((b, i) => `<div class="dsblock${nb.dsSel[key] === i ? " on" : ""}" tabindex="0" role="button"
@@ -244,7 +268,7 @@ function nbDesignView({$, nb, project, root}){
             <b>${esc(kindLabel(b.kind))}</b>${b.label ? `<span>${esc(b.label)}</span>` : ""}<i class="dsgrip" aria-hidden="true"></i></div>`).join("")
       : `<div class="dsempty">nothing on this ${esc(p.frame)} yet</div>`;
     return `<div class="dsboard" data-frame="${esc(p.frame)}" role="group" aria-label="the layout of ${esc(p.name || "this page")}"
-      style="grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(c.bg)};border-color:${esc(c.line)}">${inner}</div>`;
+      style="grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div>`;
   }
   const kindLabel = k => byKey(presets().kinds, k)?.label || k;
   function repaintBoard(p){
@@ -402,59 +426,64 @@ function nbDesignView({$, nb, project, root}){
   // ---- the language's controls ------------------------------------------------------
   function wireLanguage(body){
     const L = nb.dsLang, P = presets();
-    body.querySelector("#dsScheme").onchange = e => {
-      L.scheme = e.target.value;
-      const s = byKey(P.schemes, L.scheme);
-      if (s){
-        L.colors = {...s.colors};
-        body.querySelectorAll("[data-tok]").forEach(i => {
-          i.value = L.colors[i.dataset.tok];
-          i.previousElementSibling.style.background = L.colors[i.dataset.tok];
-        });
-        nb.dsPages.forEach(repaintBoard);
-      }
-      const sst = body.querySelector('[data-sect="design:language"] > summary .sst');
-      if (sst) sst.textContent = L.scheme === "custom" ? "custom colours" : (s?.label || L.scheme);
-      touched(); refreshAllPrompts();
-    };
-    body.querySelectorAll("[data-tok]").forEach(i => i.oninput = () => {
-      const v = i.value.trim().toLowerCase();
-      if (!/^#[0-9a-f]{6}$/.test(v)) return;       // half-typed: nothing moves yet
-      L.colors[i.dataset.tok] = v;
-      i.previousElementSibling.style.background = v;
-      if (L.scheme !== "custom"){
-        L.scheme = "custom";
-        body.querySelector("#dsScheme").value = "custom";
-        const sst = body.querySelector('[data-sect="design:language"] > summary .sst');
-        if (sst) sst.textContent = "custom colours";
-      }
-      nb.dsPages.forEach(repaintBoard);
-      touched(); refreshAllPrompts();
-    });
+    const sst = () => { const e = body.querySelector('[data-sect="design:language"] > summary .sst');
+      if (e) e.textContent = `${L.themes.length} theme${L.themes.length === 1 ? "" : "s"}`; };
     for (const [id, k] of [["dsFont", "font"], ["dsCorners", "corners"], ["dsDensity", "density"], ["dsMotion", "motion"]])
       body.querySelector("#" + id).onchange = e => { L[k] = e.target.value; touched(); refreshAllPrompts(); };
     body.querySelector("#dsScope").oninput = e => { L.scope = e.target.value; touched(); refreshAllPrompts(); };
     body.querySelector("#dsFonts").oninput = e => { L.fonts = e.target.value; touched(); refreshAllPrompts(); };
-    // The colours beyond the ten: typed in place, added and removed with a
-    // redraw, since a row is a thing to place rather than a value to edit.
-    body.querySelectorAll("[data-dsmore]").forEach(row => {
-      const m = L.more[+row.dataset.dsmore]; if (!m) return;
-      row.querySelector('[data-dsm="name"]').oninput = e => { m.name = e.target.value; touched(); refreshAllPrompts(); };
-      row.querySelector('[data-dsm="means"]').oninput = e => { m.means = e.target.value; touched(); refreshAllPrompts(); };
-      row.querySelector('[data-dsm="hex"]').oninput = e => {
-        const v = e.target.value.trim().toLowerCase();
-        if (!/^#[0-9a-f]{6}$/.test(v)) return;
-        m.hex = v; e.target.previousElementSibling.style.background = v; touched(); refreshAllPrompts();
-      };
-      row.querySelector("[data-dsmorerm]").onclick = () => { L.more.splice(+row.dataset.dsmore, 1); touched(); drawDesign(); };
-    });
-    body.querySelector("#dsMoreAdd").onclick = () => {
-      L.more = L.more || [];
-      L.more.push({name: "", hex: L.colors.accent, means: ""});
-      touched(); drawDesign();
-      root.querySelector(`#dsm-name-${L.more.length - 1}`)?.focus();
-    };
     body.querySelector("#dsRules").oninput = e => { L.rules = e.target.value; touched(); refreshAllPrompts(); };
+    // A theme from a preset: the ten colours in its hexes, named for it.
+    const fromScheme = (key, name) => {
+      const sc = byKey(P.schemes, key) || P.schemes[0];
+      const light = (c => { const r = parseInt(c.slice(1, 3), 16), g = parseInt(c.slice(3, 5), 16), b = parseInt(c.slice(5, 7), 16);
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5; })(sc.colors.bg);
+      return {name: name || sc.label.replace(" (light)", ""), mode: light ? "light" : "dark",
+              colors: (P.tokens || []).map(t => ({name: t.key, hex: sc.colors[t.key], means: t.means}))};
+    };
+    body.querySelector("#dsThemeAdd").onclick = () => {
+      const key = body.querySelector("#dsThemeFrom").value;
+      const t = fromScheme(key, "");
+      const names = new Set(L.themes.map(x => x.name.toLowerCase()));
+      for (let k = 2; names.has(t.name.toLowerCase()); k++) t.name = `${byKey(P.schemes, key)?.label || "Theme"} ${k}`;
+      L.themes.push(t); touched(); drawDesign();
+      root.querySelector(`#dst-name-${L.themes.length - 1}`)?.focus();
+    };
+    body.querySelectorAll("[data-dstheme]").forEach(band => {
+      const i = +band.dataset.dstheme, t = L.themes[i]; if (!t) return;
+      band.querySelector('[data-dst="name"]').oninput = e => { t.name = e.target.value; touched(); refreshAllPrompts(); };
+      band.querySelector('[data-dst="mode"]').onchange = e => { t.mode = e.target.value; touched(); refreshAllPrompts(); };
+      band.querySelector('[data-dst="from"]').onchange = e => {
+        if (!e.target.value) return;
+        const f = fromScheme(e.target.value, t.name);
+        t.mode = f.mode; t.colors = f.colors; touched(); drawDesign();
+      };
+      band.querySelectorAll("[data-dstc]").forEach(row => {
+        const c = t.colors[+row.dataset.dstc]; if (!c) return;
+        row.querySelector('[data-dsm="name"]').oninput = e => { c.name = e.target.value; touched(); if (i === 0) nb.dsPages.forEach(repaintBoard); refreshAllPrompts(); };
+        row.querySelector('[data-dsm="means"]').oninput = e => { c.means = e.target.value; touched(); refreshAllPrompts(); };
+        row.querySelector('[data-dsm="hex"]').oninput = e => {
+          const v = e.target.value.trim().toLowerCase();
+          if (!/^#[0-9a-f]{6}$/.test(v)) return;
+          c.hex = v; e.target.previousElementSibling.style.background = v;
+          if (i === 0) nb.dsPages.forEach(repaintBoard);
+          touched(); refreshAllPrompts();
+        };
+        row.querySelector("[data-dstcrm]").onclick = () => { t.colors.splice(+row.dataset.dstc, 1); touched(); drawDesign(); };
+      });
+      band.querySelector("[data-dstcadd]").onclick = () => {
+        t.colors.push({name: "", hex: paint("accent"), means: ""}); touched(); drawDesign();
+        root.querySelector(`#dst-${i}-name-${t.colors.length - 1}`)?.focus();
+      };
+      band.querySelector("[data-dstdefault]")?.addEventListener("click", () => {
+        L.themes.splice(i, 1); L.themes.unshift(t); touched(); drawDesign();
+      });
+      band.querySelector("[data-dstrm]").onclick = () => {
+        if (L.themes.length === 1) return;
+        L.themes.splice(i, 1); touched(); drawDesign();
+      };
+    });
+    sst();
     body.querySelector('[data-dscopy="lang"]').onclick = e => copyPrompt(body.querySelector("#dsPromptL").value, e.target);
     body.querySelector('[data-dssend="lang"]').onclick = e => sendTo(null, e.target);
   }

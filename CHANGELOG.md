@@ -12,7 +12,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb capture: shot, one picture at rest (shots a quarter second apart until a second of them match), and reel, the frames that changed on one sheet with a JSON of when; each from a page, the running emulator or an X display. bb emu shot is bb capture shot --emu (60d809c, 0a56328)
 - The notebook has a Design view: a project's design language (colours as tokens, type, shape, space, motion, your rules) and pages laid out as labelled blocks on a phone or desktop frame, each named for what it is for and its platform; Send to Claude, bb design and docs/design-language.md carry it (8d6375a)
 - A project's settings name other projects a session on it may read: their code read-only in its view on a node, their notebooks through bb from inside them, every write refused by name. That list, and the nodes a project also works on, are checkbox listboxes (206c6d6)
-- The Design view's language grows to what real projects name: a tenth token for success, any number of named colours beyond the ten, the exact font families, an overlay block for a dialog or sheet, and a sideways-phone frame (2a6b656)
+- The Design view holds themes: each a name, dark or light, and its own colours, added and cut one by one with what each is for; a preset fills the ten, the app starts on the first, and a theme picker asked of a session takes them from here (2a6b656, 74e517a)
 
 ### Changed
 
