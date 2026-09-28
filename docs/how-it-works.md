@@ -1221,7 +1221,10 @@ catalog to the node's own toolchain store.
 session on it may read: their trees, bound read-only at `/workspace/NAME`
 into the session's view on a node, and their notebooks, which `bb roadmap`,
 `bb bug`, `bb rules`, `bb design` and the rest answer for with `bb -p NAME`
-in front. Every write is refused by name, on the API
+in front. Their running containers answer the session too, on its own
+project's nodes, so a page of theirs can be opened and photographed with
+`bb capture`; a read project's node the reading project is not on stays
+out until the operator adds it. Every write is refused by name, on the API
 and on the relayed verbs alike, and a session's Claude gets the same wall:
 Read allowed, Edit denied. The briefing names the projects a session reads,
 and the shipped "stay in project" rule carries the exception. Set by the

@@ -1871,12 +1871,21 @@ m.all_project_nodes = lambda: {'alpha': ['n1', 'n2', 'n3'], 'beta': ['n1'], 'gam
 m._load = lambda: {'alpha': {'main': {'node': 'n2'}, 'aux': {}}, 'beta': {'main': {}}, 'gamma': {'main': {}}}
 m._owners = lambda: {'n2': {'plex': 'alpha', 'other': 'beta'}}
 print(json.dumps(m.session_net_own('n1')))
+# ...and with alpha reading beta and gamma (prefs.reads): beta's instance
+# here and its container on alpha's other node join alpha's set; gamma's
+# node is not alpha's, so gamma stays out.
+m.reads_of = lambda p: {'alpha': ['beta', 'gamma']}.get(p, [])
+print(json.dumps(m.session_net_own('n1')))
 `], { encoding: 'utf8' });
-  const own = JSON.parse(sn.trim().split('\n').pop());
+  const [own, withReads] = sn.trim().split('\n').slice(-2).map(l => JSON.parse(l));
   const same = (a, b) => JSON.stringify(Object.keys(a).sort().map(k => [k, a[k]])) === JSON.stringify(Object.keys(b).sort().map(k => [k, b[k]]));
   ok(same(own.alpha, { compose: ['aux'], hosts: ['192.168.1.40'], names: [],
        peers: [['192.168.1.17', 8088], ['192.168.1.17', 8443], ['192.168.1.17', 32400]] }),
      `a project's sessions on one node reach its containers' published ports on its other node and its Mac whole (${JSON.stringify(own.alpha)})`);
+  ok(same(withReads.alpha, { compose: ['aux', 'beta'], hosts: ['192.168.1.40'], names: [],
+       peers: [['192.168.1.17', 1234], ['192.168.1.17', 8088], ['192.168.1.17', 8443], ['192.168.1.17', 32400]] })
+     && same(withReads.beta, own.beta),
+     `a project that reads others reaches their containers here and on its own other nodes, never on a node it is not on, and the read project's own set is unchanged (${JSON.stringify(withReads.alpha)})`);
   ok(same(own.beta, { compose: ['beta'], hosts: [], names: [], peers: [] }) && !own.gamma,
      `...a project on this node alone reaches nothing else, and one not on this node is not named at all (${JSON.stringify(own.beta)}; gamma ${JSON.stringify(own.gamma)})`);
 }

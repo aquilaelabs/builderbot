@@ -153,8 +153,9 @@ command as root on this node; `bb phone run` for a phone connected here;
 `bb container new --why "..." --name NAME --compose FILE` for a container
 that does not exist yet. A node can have root asks turned off, and the ask
 then says so. Every one of the project's dials (Claude may: add to the
-roadmap, file bugs, add rules, fill in build and test, run its container,
-report BuilderBot bugs) reads the same way: auto lands it, ask holds it
+roadmap, file bugs, add rules, fill in build and test, add to the design,
+run its container, report BuilderBot bugs) reads the same way: auto lands
+it, ask holds it
 for the operator, deny refuses it and the refusal names the setting;
 `bb settings` shows each dial as it stands for this project. Never route
 around a refusal.

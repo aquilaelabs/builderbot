@@ -2535,6 +2535,8 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    rename_project_data=devapp.rename_project_data,
                    after_create=mapping.start)
 projects.prefs_mod = prefs
+# The session network reaches the containers of the projects a project reads.
+devapp.reads_of = lambda p: (prefs.get(p) or {}).get("reads") or []
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
 projects.lock = _state_lock
 projects.take_on = users.take_on
