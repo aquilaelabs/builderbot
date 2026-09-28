@@ -130,6 +130,11 @@
      into two: 13px in some rows and 12.5px in others, for the same job, a
      half-pixel apart and nobody's decision. */
   --f-row:13px/1.45 system-ui,sans-serif;      /* what a row says */
+  /* WHAT YOU TYPE INTO: every text field and picker, named once. Mono, and
+     a step below --f-ui, because mono at the size of the text beside it
+     reads a size larger (the operator, 25 Sep and again 28 Sep). The 16px
+     iOS needs on a typed field is its own rule, further down. */
+  --f-field:11px/1.5 var(--mono);
   --f-tag:600 10px/1 system-ui,sans-serif;     /* pills and badges */
   /* The badge palette: who/what colors used by tags across the notebook.
      Hex was retyped at every site, and the day one shade drifts is the day
@@ -1190,7 +1195,7 @@ textarea,select{
 .doctab input:where(:not([type="checkbox"],[type="radio"])),
 .doctab select,.doctab textarea,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
-  padding:8px 9px;font:12px/1.5 var(--mono)}
+  padding:8px 9px;font:var(--f-field)}
 /* The sidebar's own selects: the Claude card's pickers. A phone gives them
    the finger height and nothing else: a select does not zoom iOS, so it keeps
    the size of the text beside it. */
@@ -1448,7 +1453,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    next value, so it is a button; a starting number is arbitrary and nothing
    can derive it, so it is a field: validated here and again on the server. */
 .verinit{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
-.verinit .vstart{font:12px/1.5 var(--mono);flex:0 0 auto;width:8em}
+.verinit .vstart{font:var(--f-field);flex:0 0 auto;width:8em}
 /* A `font:` shorthand carries the SIZE with it, and this selector outranks
    the shared phone rule, so this field alone stayed 12px on a phone and iOS
    zoomed into a layout that cannot zoom back. Every other control that sets
@@ -2720,7 +2725,7 @@ button[aria-busy="true"]{opacity:.75}
    renders: .dmtab predates the scaffold's groups. Not inflated on a phone: a
    select never zooms iOS, so it keeps the size of the text beside it and
    takes the finger height instead (uniform.mjs measures both ways). */
-.dmpick select{font:12px/1.5 var(--mono);padding:8px 9px}
+.dmpick select{font:var(--f-field);padding:8px 9px}
 @media(max-width:900px){ .dmpick select{min-height:var(--tap)} }
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
@@ -2803,7 +2808,7 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 #docAuth{flex-wrap:wrap}
 .codebox{display:flex;gap:8px;flex:1 1 100%}
 .codebox input{flex:1;min-width:0;padding:7px 9px;
-  font:12px/1.4 var(--mono);min-height:var(--tap)}
+  font:var(--f-field);min-height:var(--tap)}
 .codebox button{flex:0 0 auto;min-height:var(--tap)}
 @media(max-width:900px){ @supports (-webkit-touch-callout:none){ .codebox input{font-size:16px} } }
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}

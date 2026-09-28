@@ -78,8 +78,9 @@ the two tokens, so a dialog that invents a third fails rather than shipping.
 
 The field skin (ground, edge, radius) is applied to the elements globally,
 so a new surface's controls match by existing. What a surface adds is
-sizing: full-width 12px mono controls mean joining the `.modal input, …`
-sizing group, its iOS rule and its `:focus` group. **The 16px is iOS's
+sizing: full-width mono controls at `--f-field` (11px, a step below the
+text beside them, because mono at the same size reads larger) mean joining
+the `.modal input, …` sizing group, its iOS rule and its `:focus` group. **The 16px is iOS's
 alone**: Safari there zooms the page into a typed field smaller than that
 and this layout cannot zoom back, so fields you type into are 16px under
 `@supports (-webkit-touch-callout: none)`, a property only iOS has, and the

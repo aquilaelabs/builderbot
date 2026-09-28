@@ -1126,7 +1126,7 @@ const sideways = () => page.evaluate(() => {
     overflow: Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth,
                        box ? box.scrollWidth - box.clientWidth : 0),
     widest,
-    // Every control on a phone is the field size (12px mono): a 16px mono
+    // Every control on a phone is the field size (--f-field, 11px mono): a 16px mono
     // field beside an 11px label is the loudest thing on the tab, and the
     // operator asked for smaller text in every box (25 Sep). The 16px that
     // stops iOS Safari zooming the page into a typed field is iOS's alone,

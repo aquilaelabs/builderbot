@@ -28,6 +28,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb tests run ends by saying what it exits with, and a role's command is shown as it was set rather than inside its sh -c wrapper (88280f0)
 - New project's brief is no longer written into CLAUDE.md: the first Claude press opens it in a dialog to change, with the model and effort, Build it starts that session on it, and it then leaves the project for the notebook's Briefing view (18634bc)
 - Starting a project from an archive no longer offers a brief: the archive is where it starts (18634bc)
+- Text fields and pickers are a size smaller, one step below the text beside them; typed fields on an iPhone stay 16px so Safari does not zoom (5730757)
 
 ### Removed
 
