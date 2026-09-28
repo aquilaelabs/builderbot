@@ -1563,14 +1563,30 @@ ok((await page.errors).every(e => /400/.test(e)),
   const staged = (await marks()).find(m => /Save commits it on/.test(m.text));
   ok(staged?.bad && /Save commits it on claude\/polish, which is already in main, where builds come from/.test(staged.text)
      && /switch to main on the Git view and pull first/.test(staged.text),
-     `a bump staged on a branch already merged into main says, in red, where Save would commit it and how to bump main (${staged?.text})`);
+     `a bump staged on a branch already merged into main says where Save would commit it and how to bump main (${staged?.text})`);
+  // Red as an error is everywhere, beside the plain staged line's yellow, and
+  // in the value column with it: the class drew nothing until B338, and a
+  // long line dropped under the label.
+  const look = await page.$$eval(`${LNB} #verBox .vermark`, ms => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--bad)';
+    document.body.appendChild(probe);
+    const red = getComputedStyle(probe).color;
+    probe.remove();
+    const of = re => ms.find(m => re.test(m.textContent));
+    const [warn, plain] = [of(/Save commits it on/), of(/staged: 0\.8\.0/)];
+    return { red, warn: warn && getComputedStyle(warn).color, plain: plain && getComputedStyle(plain).color,
+             lefts: [warn, plain].map(m => m && Math.round(m.getBoundingClientRect().left)) };
+  });
+  ok(look.warn === look.red && look.plain !== look.red && look.lefts[0] === look.lefts[1],
+     `...in red beside the staged line's yellow, and in the same column (${JSON.stringify(look)})`);
   await page.click(`${LNB} #roadmapSaveQuiet`);
   await page.waitForFunction(sel => [...document.querySelectorAll(sel)]
     .some(m => /0\.8\.0 is committed on/.test(m.textContent)), `.nb #verBox .vermark`, { timeout: 20000 }).catch(() => {});
   const now = (await marks()).find(m => /is committed on/.test(m.text));
-  ok(now?.bad && now.text === '0.8.0 is committed on claude/polish and not pushed. '
-                               + 'Builds come from main, which reads 0.7.0 as last fetched.',
-     `...and once saved, the row says the number is on that branch, unpushed, while main still reads the old one (${now?.text})`);
+  ok(now?.bad && now.text === '0.8.0 is committed on claude/polish, on top of work main already has, and not pushed. '
+                               + 'Builds come from main, which reads 0.7.0 as last fetched, so it reaches them only through another merge.',
+     `...and once saved, the row says in red that the number sits unpushed on work main already has, while main still reads the old one (${now?.text})`);
   ok(g('rev-parse', '--abbrev-ref', 'HEAD') === 'claude/polish' && g('show', 'origin/main:VERSION') === '0.7.0',
      '...the bump itself committed where the checkout stands and pushed nothing, as it always has');
 

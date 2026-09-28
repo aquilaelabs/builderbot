@@ -1602,6 +1602,12 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .verln code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
 .verln.off code{color:var(--dim)}
 .vermark{font:var(--f-note);color:var(--warn)}
+/* An error on the version row is red and a warning yellow, as everywhere
+   (docs/design-language.md): the class was on the window-move line from
+   the start and drew nothing (B338). And a long line wraps in the value
+   column rather than dropping under the label. */
+.vermark.bad{color:var(--bad)}
+.verln .vermark{flex:1 1 0;min-width:0}
 .verwhy{color:var(--dim);font:var(--f-note);margin:7px 0 0;max-width:70ch}
 .verbtns{gap:6px;margin-top:8px}
 /* Claude access: a labelled control on its own line rather than a stray

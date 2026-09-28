@@ -556,17 +556,28 @@ def lands(project, comp="", facts=None):
     # The commit that set the number here: whether it is in the branch
     # builds come from, and whether any remote has it at all.
     vsha = _git(project, "log", "-1", "--format=%H", "--", rel) or ""
-    first = ""
+    first, stranded = "", False
     if vsha and _git(project, "merge-base", "--is-ancestor", vsha, ships) is None:
         pushed = bool(_git(project, "for-each-ref", "--count=1",
                            "--contains", vsha, "refs/remotes"))
         spot = "here" if on_base else (f"on {branch}" if branch else "on a detached checkout")
-        first = f"{tgt} is committed {spot}" + ("." if pushed else " and not pushed.")
-        out["bad"] = not pushed
+        # The reported case once saved: the commit that set the number sits
+        # on work the branch builds come from already has, so nothing that
+        # merges this branch is still to come.
+        stranded = not on_base and _git(project, "merge-base", "--is-ancestor",
+                                        f"{vsha}^", ships) is not None
+        first = (f"{tgt} is committed {spot}"
+                 + (f", on top of work {base} already has" if stranded else "")
+                 + ("." if pushed else (", and not pushed." if stranded else " and not pushed.")))
+        # Red only for that case unpushed: a number nobody else has, on a
+        # branch nothing will merge again. A bump not pushed yet on main, or
+        # on a branch with its own work to merge, is a warning.
+        out["bad"] = stranded and not pushed
     elif not on_base:
         first = f"This checkout is on {branch}." if branch else "This checkout is on no branch."
-    second = (f"Builds come from {base}, which reads {theirs} as last fetched." if theirs
-              else f"Builds come from {base}, which has no {VERSION_FILE} as last fetched.")
+    second = ((f"Builds come from {base}, which reads {theirs} as last fetched" if theirs
+               else f"Builds come from {base}, which has no {VERSION_FILE} as last fetched")
+              + (", so it reaches them only through another merge." if stranded else "."))
     out["now"] = f"{first} {second}".strip()
     return out
 
