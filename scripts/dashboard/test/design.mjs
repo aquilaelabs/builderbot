@@ -104,7 +104,7 @@ ok(await state() === '' && await page.$eval(`${NB} [data-dspage] [data-dssend]`,
 const promptText = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
 ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
    && /Platform: a responsive web app/.test(promptText)
-   && /Chart \(a chart or a meter\): orders per day, in the middle, at the bottom, 8 of 12 columns wide, 5 of 8 rows high/.test(promptText)
+   && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 9 of 12, rows 4 to 8 of 8/.test(promptText)
    && /accent #3fb950/.test(promptText) && /Type: system-ui, the platform's own sans-serif/.test(promptText),
    `the page's prompt names the page, its platform, each block with what it is for and where, and the language (${promptText.split('\n')[3]})`);
 

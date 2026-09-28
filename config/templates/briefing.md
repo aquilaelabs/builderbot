@@ -161,8 +161,12 @@ around a refusal.
 
 ## The notebook
 
-`bb roadmap`, `bb bug`, `bb rules`, `bb tests`, `bb changelog`, and
-`bb <verb> -h` for the rest of any of them. The record's verbs, as you
+`bb roadmap`, `bb bug`, `bb rules`, `bb tests`, `bb changelog`, `bb design`,
+and `bb <verb> -h` for the rest of any of them. `bb design` is what the
+project looks like as the operator laid it out on the notebook's Design
+view, its language and its pages: read it before styling or laying out
+anything, `bb design show NAME` for one page, and `bb design file` prints
+the docs/design-language.md it writes. The record's verbs, as you
 meet things: `bb bug add "..." --sev medium --area "..." --repro "..."` for
 a bug, `bb roadmap add "..."` for work worth doing, `bb bug note B7 "..."`
 for what you learn about an open one, and `bb bug fix B7 "what fixed it"`

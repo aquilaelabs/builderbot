@@ -3,8 +3,8 @@
 The one thing the dashboard had no say in was what a project looks like:
 every colour, font and layout was a sentence typed into a session and
 gone with the conversation. This keeps them. A project has ONE design
-language (colours as tokens, type, shape, space, and the rules the operator
-adds in their own words) and any number of PAGES, each a layout of labelled
+language (colours as tokens, type, shape, space, and the design notes the
+operator adds in their own words, for everything the settings cannot say) and any number of PAGES, each a layout of labelled
 blocks arranged on a phone or desktop frame and named for what it is for
 ("the settings page"). The name is the target: applying a page's design
 means applying it there.
@@ -299,7 +299,7 @@ def _clean_language(lang):
     out["scope"] = _line(lang.get("scope"), NAME_MAX, "what the language governs")
     rules = str(lang.get("rules") or "").strip()
     if len(rules) > NOTES_MAX:
-        raise _Refused(f"the rules are at most {NOTES_MAX} characters")
+        raise _Refused(f"the design notes are at most {NOTES_MAX} characters")
     out["rules"] = rules
     return out
 
@@ -401,17 +401,16 @@ def _where(b, frame):
     right = b["x"] + b["w"] >= cols
     if full_w and top and bottom:
         return "filling the frame"
+    where_rows = f"rows {b['y'] + 1} to {b['y'] + b['h']} of {rows}" if b["h"] > 1 else f"row {b['y'] + 1} of {rows}"
+    where_cols = f"columns {b['x'] + 1} to {b['x'] + b['w']} of {cols}" if b["w"] > 1 else f"column {b['x'] + 1} of {cols}"
     if full_w:
         band = "across the top" if top else "across the bottom" if bottom else "across the middle"
-        return f"{band}, {b['h']} of {rows} rows high"
+        return f"{band}, {where_rows}"
     side = ("the left" if left and not right else "the right" if right and not left
             else "the middle")
-    tall = b["h"] >= rows
-    span = f"{b['w']} of {cols} columns wide"
-    if tall:
-        return f"down {side}, {span}, full height"
-    vert = "at the top" if top else "at the bottom" if bottom else "part way down"
-    return f"{'in' if side == 'the middle' else 'on'} {side}, {vert}, {span}, {b['h']} of {rows} rows high"
+    if b["h"] >= rows:
+        return f"down {side}, full height, {where_cols}"
+    return f"{'in' if side == 'the middle' else 'on'} {side}, {where_cols}, {where_rows}"
 
 
 def _platform(key):
@@ -446,7 +445,7 @@ def language_text(lang, platform=""):
     lines.append(f"Space: {_means(DENSITY, lang['density'])}.")
     lines.append(f"Motion: {_means(MOTION, lang['motion'])}.")
     if lang.get("rules"):
-        lines.append("The operator's own rules:")
+        lines.append("Design notes, the operator's own:")
         lines.extend("  " + ln for ln in lang["rules"].splitlines() if ln.strip())
     return "\n".join(lines)
 
@@ -516,7 +515,7 @@ def file_text(rec):
             "## Space", "", _cap(_means(DENSITY, lang["density"])) + ".", "",
             "## Motion", "", _cap(_means(MOTION, lang["motion"])) + "."]
     if lang.get("rules"):
-        out += ["", "## Rules", ""] + [ln for ln in lang["rules"].splitlines()]
+        out += ["", "## Notes", ""] + [ln for ln in lang["rules"].splitlines()]
     if pages:
         out += ["", "## Pages", "",
                 "Each page is a layout of labelled blocks on a frame, named for what it is for, "

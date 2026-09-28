@@ -158,8 +158,8 @@ function nbDesignView({$, nb, project, root}){
       <div class="field">${ctl("dsScope", "Governs",
             "what the language covers when the project is more than one product: the web app in site/",
             `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope)}</textarea>`, true)}</div>
-      <div class="field">${ctl("dsRules", "Your rules",
-            "sentences of your own every session follows: no modals, every list pages at fifty",
+      <div class="field">${ctl("dsRules", "Design notes",
+            "everything the settings cannot say, for every page: no modals, every list pages at fifty, a dark and a light theme switched from the header",
             `<textarea id="dsRules" rows="4" maxlength="4000">${esc(L.rules)}</textarea>`, true)}</div>
       <div class="field">${lbl("dsPromptL", "Prompt", "what a session is asked to do; Send to Claude points the session at it")}
         <textarea id="dsPromptL" class="dsprompt" readonly rows="10" spellcheck="false"></textarea>
