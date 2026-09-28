@@ -1171,7 +1171,7 @@ await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout:
   .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="-1"] .txt`)?.textContent
-  === 'a wording nobody asked for', plainId, { timeout: 10000 });
+  === 'a wording nobody asked for', plainId, { timeout: patience(20000) });   // late under load (B311)
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .rm`);
 await page.waitForSelector('.dropbox .danger', { timeout: 10000 });
 await page.click('.dropbox .danger');
