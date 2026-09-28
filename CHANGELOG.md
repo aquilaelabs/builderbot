@@ -13,6 +13,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The notebook has a Design view: a project's design language (colours as tokens, type, shape, space, motion, your rules) and pages laid out as labelled blocks on a phone or desktop frame, each named for what it is for and its platform; Send to Claude, bb design and docs/design-language.md carry it (8d6375a)
 - A project's settings name other projects a session on it may read: their code read-only in its view on a node, their notebooks through bb from inside them, every write refused by name. That list, and the nodes a project also works on, are checkbox listboxes (206c6d6)
 - The Design view holds themes: each a name, dark or light, and its own colours, added and cut one by one with what each is for; a preset fills the ten, the app starts on the first, and a theme picker asked of a session takes them from here (2a6b656, 74e517a)
+- A session's save of a project's design goes through its own dial, Claude may: Add to the design, auto by default; a design's notes are named rules with triggers a session is handed one at a time, like house rules; and a session reaches the containers of the projects its own reads, for bb capture (d8338f5)
 
 ### Changed
 
