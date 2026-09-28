@@ -49,6 +49,10 @@ if verb == "save":
         fail("the controller answered something that is not a design")
     if r.get("error"):
         fail(r["error"])
+    if r.get("held"):
+        print(f"held for the operator's approval on {proj}'s notebook (Claude may: Add to the design is ask): "
+              f"{r['held'].get('summary', '')}")
+        raise SystemExit(0)
     n = len(r.get("pages") or [])
     print(f"saved {proj}'s design: {n} page{'' if n == 1 else 's'}; the notebook's Design view shows it, "
           "and bb design file prints docs/design-language.md from it")

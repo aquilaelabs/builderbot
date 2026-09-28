@@ -158,9 +158,18 @@ function nbDesignView({$, nb, project, root}){
       <div class="field">${ctl("dsScope", "Governs",
             "what the language covers when the project is more than one product: the web app in site/",
             `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope)}</textarea>`, true)}</div>
-      <div class="field">${ctl("dsRules", "Design notes",
-            "everything the settings cannot say, for every page: no modals, every list pages at fifty",
-            `<textarea id="dsRules" rows="${(L.rules || "").length > 2000 ? 18 : 4}" maxlength="65536">${esc(L.rules)}</textarea>`, true)}</div>
+      <div class="field">${lbl("", "Design rules", "everything the settings cannot say, cut into named rules: a session gets one on the turn it edits a file or is asked about a word the rule names; one with no trigger stands in every briefing")}
+        <div class="addbar" data-add="rule"><button type="button" id="dsRuleAdd" ${(L.rules || []).length >= (P.rules_max || 60) ? "disabled" : ""}>Add rule</button></div></div>
+      ${(L.rules || []).map((r, i) => `<div class="field dsrule" data-dsrule="${i}">
+        <div class="dsrow">
+          ${ctl(`dsr-name-${i}`, "Rule", "a short name: dialogs, tap-targets", `<input id="dsr-name-${i}" data-dsr="name" maxlength="40" autocomplete="off" value="${esc(r.name)}">`)}
+          ${ctl(`dsr-words-${i}`, "Words", "words in a prompt that bring it up, comma-separated", `<textarea id="dsr-words-${i}" class="proseline" rows="1" maxlength="300" data-dsr="words">${esc((r.words || []).join(", "))}</textarea>`, true)}
+          ${ctl(`dsr-files-${i}`, "Files", "files or directories whose edit brings it up: src/ui, *.css", `<textarea id="dsr-files-${i}" class="proseline" rows="1" maxlength="300" data-dsr="paths">${esc((r.paths || []).join(", "))}</textarea>`, true)}
+        </div>
+        ${ctl(`dsr-text-${i}`, "Text", "", `<textarea id="dsr-text-${i}" rows="${(r.text || "").length > 600 ? 10 : 4}" maxlength="20000" data-dsr="text">${esc(r.text)}</textarea>`, true)}
+        <div class="actbar"><span class="state">${(r.words || []).length || (r.paths || []).length ? "named in the briefing; its text arrives when it applies" : "standing: in every briefing whole"}</span>
+          <button type="button" class="danger" data-dsrrm title="take this rule out">Remove rule</button></div>
+      </div>`).join("")}
       <div class="field">${lbl("dsPromptL", "Prompt", "what a session is asked to do; Send to Claude points the session at it")}
         <textarea id="dsPromptL" class="dsprompt" readonly rows="10" spellcheck="false"></textarea>
         <div class="actbar"><span class="state" data-dsstate="lang"></span>
@@ -432,7 +441,22 @@ function nbDesignView({$, nb, project, root}){
       body.querySelector("#" + id).onchange = e => { L[k] = e.target.value; touched(); refreshAllPrompts(); };
     body.querySelector("#dsScope").oninput = e => { L.scope = e.target.value; touched(); refreshAllPrompts(); };
     body.querySelector("#dsFonts").oninput = e => { L.fonts = e.target.value; touched(); refreshAllPrompts(); };
-    body.querySelector("#dsRules").oninput = e => { L.rules = e.target.value; touched(); refreshAllPrompts(); };
+    // The design's rules: typed in place, added and removed with a redraw.
+    const split = v => v.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
+    body.querySelectorAll("[data-dsrule]").forEach(band => {
+      const r = L.rules[+band.dataset.dsrule]; if (!r) return;
+      band.querySelector('[data-dsr="name"]').oninput = e => { r.name = e.target.value; touched(); refreshAllPrompts(); };
+      band.querySelector('[data-dsr="text"]').oninput = e => { r.text = e.target.value; touched(); refreshAllPrompts(); };
+      band.querySelector('[data-dsr="words"]').oninput = e => { r.words = split(e.target.value); touched(); refreshAllPrompts(); };
+      band.querySelector('[data-dsr="paths"]').oninput = e => { r.paths = split(e.target.value); touched(); refreshAllPrompts(); };
+      band.querySelector("[data-dsrrm]").onclick = () => { L.rules.splice(+band.dataset.dsrule, 1); touched(); drawDesign(); };
+    });
+    body.querySelector("#dsRuleAdd").onclick = () => {
+      L.rules = L.rules || [];
+      L.rules.push({name: "", text: "", words: [], paths: []});
+      touched(); drawDesign();
+      root.querySelector(`#dsr-name-${L.rules.length - 1}`)?.focus();
+    };
     // A theme from a preset: the ten colours in its hexes, named for it.
     const fromScheme = (key, name) => {
       const sc = byKey(P.schemes, key) || P.schemes[0];

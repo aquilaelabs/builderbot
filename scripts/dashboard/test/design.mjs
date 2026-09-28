@@ -172,7 +172,7 @@ ok(bb('show', '1').trim() === shown.trim() && bb('show', 'the home dashboard') =
 ok(bb('file') === written, 'bb design file prints the file as the notebook wrote it');
 let err = '';
 try { bb('show', 'nowhere'); } catch (e) { err = String(e.stderr); }
-ok(/no page here called 'nowhere'/.test(err), `...and a page that is not there is refused by name (${err.trim()})`);
+ok(/no page or rule here called 'nowhere'/.test(err), `...and a page that is not there is refused by name (${err.trim()})`);
 
 // ---- beyond the ten: a colour of the design's own, the families, an overlay, a sideways frame
 // What ten real projects needed that the first vocabulary had no slot for
@@ -234,7 +234,7 @@ ok(/no page here called 'nowhere'/.test(err), `...and a page that is not there i
      'bb design json prints the record with the presets it is drawn from');
   rec.language.themes = [{ name: 'Night', mode: 'dark', colors: Object.entries(rec.presets.schemes.find(s => s.key === 'carbon').colors).map(([name, hex]) => ({ name, hex, means: '' })) },
                          { name: 'Day', mode: 'light', colors: [{ name: 'bg', hex: '#ffffff', means: 'the page' }] }];
-  rec.language.rules = 'Every list pages at fifty.';
+  rec.language.rules = [{ name: 'Lists', text: 'Every list pages at fifty.', words: 'list, paging' }, { name: 'voice', text: 'One sentence that tells the person what to do.' }];
   rec.pages[0].notes = 'The chart is the first thing read.';
   rec.pages.push({ name: 'the login screen', platform: 'ios', template: 'blank',
                    blocks: [{ kind: 'form', label: 'email, password, one Sign in', x: 0, y: 4, w: 6, h: 4 }] });
@@ -242,7 +242,7 @@ ok(/no page here called 'nowhere'/.test(err), `...and a page that is not there i
   writeFileSync(tmp, JSON.stringify(rec));
   const said = bb('save', tmp);
   const after = await api(`/api/design?project=${P}`);
-  ok(/saved alpha's design: 2 pages/.test(said) && after.language.themes.map(t => t.name).join() === 'Night,Day' && after.language.rules === 'Every list pages at fifty.'
+  ok(/saved alpha's design: 2 pages/.test(said) && after.language.themes.map(t => t.name).join() === 'Night,Day' && after.language.rules.map(r => r.name).join() === 'lists,voice'
      && after.pages[0].id === 1 && after.pages[0].notes === 'The chart is the first thing read.'
      && after.pages[1].id === 2 && after.pages[1].name === 'the login screen' && after.pages[1].frame === 'phone' && after.by === 'session:alpha',
      `a session's bb design save writes the record back: the language, the page by its id, a new page with the next (${said.trim()})`);
@@ -256,6 +256,66 @@ ok(/no page here called 'nowhere'/.test(err), `...and a page that is not there i
   ok(/could not read \/nonexistent.json/.test(refused), 'a file that is not there is refused by name');
   await page.click(`${NB} [data-dspage="p2"] [data-dspagerm]`);
   await page.waitForFunction(() => document.querySelectorAll('.nb [data-dspage]').length === 1, null, { timeout: 5000 });
+}
+
+// ---- the design's rules reach a session the way house rules do ---------------------------
+// A rule with a trigger is named in the briefing and arrives on its turn
+// (rules.matching, through the hooks); one without stands in every
+// briefing whole. bb rules show reads it like any rule; bb design show too.
+{
+  const rulesOut = execFileSync('bash', [`${REPO}/scripts/bb`, 'rules', '--json'], { encoding: 'utf8',
+    env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: P } });
+  const eff = JSON.parse(rulesOut);
+  ok(eff.some(r => r.name === 'lists' && r.design && r.words.join() === 'list,paging'),
+     'a design rule is among the rules a session works under, marked as the design\'s, with its triggers');
+  const pre = await api(`/api/preamble?project=${P}`);
+  ok(/  lists: list, paging \(the design's: bb design show reads it/.test(pre.text) && /One sentence that tells the person what to do\. \(the design's/.test(pre.text)
+     && !/Every list pages at fifty/.test(pre.text),
+     'the briefing names the triggered rule and how to read it, carries the standing one whole, and never the triggered one\'s text');
+  ok(/^lists \(applies to: list, paging\)\n\nEvery list pages at fifty\./.test(bb('show', 'lists')),
+     `bb design show NAME prints one rule with what fires it (${bb('show', 'lists').split('\n')[0]})`);
+  // In the view: the rules as bands, added and removed.
+  await page.evaluate(n => getNotebook(n).view('design'), P);
+  await page.waitForSelector(`${NB} [data-dsrule="1"]`, { timeout: 15000 });
+  await page.click(`${NB} #dsRuleAdd`);
+  await page.waitForSelector(`${NB} [data-dsrule="2"]`, { timeout: 5000 });
+  await page.fill(`${NB} #dsr-name-2`, 'Tap targets');
+  await page.fill(`${NB} #dsr-words-2`, 'tap, phone');
+  await page.fill(`${NB} #dsr-files-2`, 'scripts/dashboard');
+  await page.fill(`${NB} #dsr-text-2`, 'Every button on a touch screen is a thumb high.');
+  await saved();
+  const now = (await api(`/api/design?project=${P}`)).language.rules;
+  ok(now.length === 3 && now[2].name === 'tap-targets' && now[2].words.join() === 'tap,phone' && now[2].paths.join() === 'scripts/dashboard',
+     `a rule typed in the view saves with its slug name and triggers (${JSON.stringify(now[2]).slice(0, 90)})`);
+  const bad = await fetch(URL.replace(/\/$/, '') + '/api/design', { method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: P, action: 'save', language: { ...(await api(`/api/design?project=${P}`)).language, rules: [{ name: 'empty' }] }, pages: [] }) });
+  ok(bad.status === 400 && /the rule empty says nothing/.test((await bad.json()).error || ''), 'a rule with no text is refused by name');
+}
+
+// ---- the dial: Claude may: Add to the design -------------------------------------------
+// A session's save goes through the project's setting: auto lands it (as
+// above), ask holds it for the operator's approval, deny refuses it by name.
+{
+  const gate = mode => api('/api/prefs', { project: P, gate: { design: mode } });
+  const rec = JSON.parse(bb('json'));
+  rec.pages[0].notes = 'saved under ask';
+  const tmp = `${DIR}/design-ask.json`;
+  writeFileSync(tmp, JSON.stringify(rec));
+  await gate('deny');
+  let refused = '';
+  try { bb('save', tmp); } catch (e) { refused = String(e.stderr); }
+  ok(/Claude may: Add to the design is deny/.test(refused), `under deny a session's save is refused naming the setting (${refused.trim().slice(0, 80)})`);
+  await gate('ask');
+  const held = bb('save', tmp);
+  const queue = await api(`/api/pending?project=${P}`);
+  const mine = (queue.rows || queue.pending || queue.items || []).find(r => r.kind === 'design');
+  ok(/held for the operator's approval/.test(held) && mine && /theme/.test(mine.summary) && (await api(`/api/design?project=${P}`)).pages[0].notes !== 'saved under ask',
+     `under ask the save waits on the notebook with a summary and nothing has landed (${(mine || {}).summary})`);
+  const ok2 = await api('/api/pending', { project: P, action: 'approve', ids: [mine.id] });
+  ok(!ok2.error && (await api(`/api/design?project=${P}`)).pages[0].notes === 'saved under ask',
+     `...and Approve lands it as the session's save (${ok2.error || 'ok'})`);
+  await gate('auto');
 }
 
 // ---- a page removed, and the record put back ------------------------------------------

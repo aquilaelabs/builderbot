@@ -256,7 +256,22 @@ def effective(project):
     if project == GLOBAL:
         return globals_now()
     on = [r for r in globals_now() if not r.get("disabled")]
-    return on + rules(project)
+    return on + rules(project) + _design_rules(project)
+
+
+def _design_rules(project):
+    """The design's rules (the notebook's Design view, design.py), in this
+    module's shape: the operator's, with triggers like any other, so the
+    hooks hand one over on the turn it applies and the briefing names it.
+    Read from the store beside this one; nothing when there is none."""
+    try:
+        import design                                    # beside this module
+    except ImportError:
+        return []
+    try:
+        return design.rules_for(project, STATE)
+    except Exception:                                    # noqa: BLE001
+        return []
 
 
 def _clean(r, i):
@@ -641,6 +656,8 @@ def block(project):
         bits = []
         if r.get("scope") == "global":
             bits.append("global")
+        if r.get("design"):
+            bits.append("the design's: bb design show reads it")
         if r.get("doc"):
             bits.append(f"defined in full in {r['doc']}, read first")
         if r.get("check"):

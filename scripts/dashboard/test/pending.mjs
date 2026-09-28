@@ -59,8 +59,9 @@ const opts = await page.$$eval('#rnGateRoadmap option', os => os.map(o => o.valu
 ok(opts.join(',') === 'auto,ask,deny'
    && await page.$eval('#rnGateRoadmap', e => e.value) === 'auto'
    && await page.$eval('#rnGateRules', e => e.value) === 'auto'
-   && await page.$eval('#rnGateSettings', e => e.value) === 'auto',
-   'the dialog offers auto, ask and deny per tab, and for build and test, and reads auto until something is set');
+   && await page.$eval('#rnGateSettings', e => e.value) === 'auto'
+   && await page.$eval('#rnGateDesign', e => e.value) === 'auto',
+   'the dialog offers auto, ask and deny per tab, for build and test and for the design, and reads auto until something is set');
 await page.selectOption('#rnGateRoadmap', 'ask');
 await page.selectOption('#rnGateBugs', 'ask');
 await page.selectOption('#rnGateRules', 'deny');

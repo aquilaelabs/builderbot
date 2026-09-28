@@ -1925,6 +1925,9 @@ pre.diff .d-ctx{color:var(--dim)}
 .dsboard[data-frame="landscape"]{aspect-ratio:16/9;max-width:520px}
 .dstheme{display:flex;flex-direction:column;gap:var(--field-gap);border:1px solid var(--line);
   border-radius:var(--r-surface)}
+.dsrule{display:flex;flex-direction:column;gap:var(--field-gap);border:1px solid var(--line);
+  border-radius:var(--r-surface)}
+.dsrule .dsctl input{width:12em}
 .dscolours{display:flex;flex-direction:column;gap:var(--field-gap)}
 .dscolours .dsctl input{width:9em}
 .dscolours .dsctl .dsc input{width:7.5em}
@@ -3843,6 +3846,8 @@ body.booting .pane>.loading{margin:auto}
           aria-label="new house rules from a session"></select></label>
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
+        <label class="pick">Add to the design <select id="rnGateDesign"
+          aria-label="the design language and pages saved from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
              when there is none, remove it (devbuild; the Docker row says
              what it is set to). Deny by default. -->

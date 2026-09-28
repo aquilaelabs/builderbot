@@ -93,7 +93,8 @@ function rnFillColor(cur){
 }
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
-const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules", settings: "rnGateSettings"};
+const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules", settings: "rnGateSettings",
+                  design: "rnGateDesign"};
 const rnGateNow = () => Object.fromEntries(
   Object.entries(GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
 const gateKey = g => Object.keys(GATE_IDS).map(k => g?.[k] || "auto").join(",");

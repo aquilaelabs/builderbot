@@ -30,6 +30,7 @@ import re
 import time
 from pathlib import Path
 
+import pending
 import statefile
 
 WORKSPACE = None
@@ -43,9 +44,17 @@ git_env = None
 FILE_PATH = "docs/design-language.md"
 MAX_PAGES = 40
 MAX_BLOCKS = 40
-# Room for a design language written out in full: BuilderBot's own runs to
-# thirty thousand characters, and the notes are where its prose lives now.
-NOTES_MAX = 65536
+NOTES_MAX = 4000
+# The design's rules: the prose, cut into named pieces with triggers, the
+# shape the house rules have. A session gets one on the turn it edits a
+# file or is asked about a word the rule names (rules.matching, through the
+# hooks), never the whole text at once: BuilderBot's own design language is
+# thirty thousand characters, and a dump of it on every design question is
+# what nobody reads (the operator, 28 Sep). One without triggers stands in
+# every briefing, as a house rule does.
+RULES_MAX = 60
+RULE_TEXT_MAX = 20000
+RULE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 NAME_MAX = 120
 
 # ---- the vocabulary: what a design is made of -------------------------------
@@ -258,7 +267,7 @@ def _luma(hexcol):
 
 
 LANGUAGE_DEFAULT = {"themes": [], "font": "system", "corners": "soft", "density": "comfortable",
-                    "motion": "quiet", "scope": "", "rules": "", "fonts": ""}
+                    "motion": "quiet", "scope": "", "rules": [], "fonts": ""}
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -267,6 +276,18 @@ def configure(*, workspace, state, write_json, tell, sessions, claude_session, g
     globals().update(WORKSPACE=Path(workspace), FILE=Path(state) / "designs.json",
                      write_json=write_json, tell=tell, sessions=sessions,
                      claude_session=claude_session, git_env=git_env)
+    # The approval queue (roadmap #27): a session's save under ask waits
+    # for the operator, who approves it on the notebook, and it lands then.
+    pending.configure(write_json=write_json, state=state)
+    pending.applier("design", replay)
+
+
+def replay(project, verb, args):
+    """A held save, approved: the same save, as the session's."""
+    if verb != "save":
+        return {"error": f"nothing to replay for design {verb}"}
+    r, st = save(project, args if isinstance(args, dict) else {}, "claude")
+    return r if st == 200 else {"error": r.get("error") or "the save failed"}
 
 
 def _load():
@@ -372,11 +393,62 @@ def _clean_language(lang):
         out[key] = _choice(lang.get(key), [k for k, _, _ in rows], key, LANGUAGE_DEFAULT[key])
     out["scope"] = _line(lang.get("scope"), NAME_MAX, "what the language governs")
     out["fonts"] = _line(lang.get("fonts"), 200, "the font families")
-    rules = str(lang.get("rules") or "").strip()
-    if len(rules) > NOTES_MAX:
-        raise _Refused(f"the design notes are at most {NOTES_MAX} characters")
+    raw = lang.get("rules")
+    if isinstance(raw, str):
+        # The notes from before rules: one standing rule, kept whole.
+        raw = [{"name": "design-notes", "text": raw}] if raw.strip() else []
+    raw = [r for r in (raw if isinstance(raw, list) else []) if isinstance(r, dict)]
+    if len(raw) > RULES_MAX:
+        raise _Refused(f"a language holds at most {RULES_MAX} rules")
+    rules, names = [], set()
+    for i, r in enumerate(raw):
+        r = _clean_rule(r, i)
+        if r["name"] in names:
+            raise _Refused(f"two design rules are called {r['name']}")
+        names.add(r["name"])
+        rules.append(r)
     out["rules"] = rules
     return out
+
+
+def _bits(v):
+    """Triggers as a list, from a list or the line somebody typed."""
+    parts = [str(x) for x in v] if isinstance(v, (list, tuple)) else re.split(r"[,\s]+", str(v or ""))
+    return [p.strip() for p in parts if p.strip() and re.search(r"[A-Za-z0-9]", p)][:24]
+
+
+def _clean_rule(r, i):
+    """A design rule as stored: a slug name, its text, and what fires it."""
+    name = re.sub(r"[^a-z0-9]+", "-", str(r.get("name") or "").strip().lower()).strip("-")[:40].strip("-")
+    if not RULE_NAME.match(name):
+        name = f"design-{i + 1}"
+    text = str(r.get("text") or "").strip()
+    if len(text) > RULE_TEXT_MAX:
+        raise _Refused(f"the rule {name} is at most {RULE_TEXT_MAX} characters")
+    if not text:
+        raise _Refused(f"the rule {name} says nothing")
+    return {"name": name, "text": text, "words": [w.lower() for w in _bits(r.get("words"))],
+            "paths": [p.replace("\\", "/").lstrip("/") for p in _bits(r.get("paths")) if ".." not in p.split("/")]}
+
+
+def rules_for(project, state=None):
+    """The design's rules in the house rules' shape, for rules.effective:
+    the operator's, marked as the design's, each pointing at the file the
+    view writes. Read from the store by path, so the rules module can ask
+    without this one being configured."""
+    path = FILE if state is None else Path(state) / "designs.json"
+    try:
+        with open(path, encoding="utf-8") as f:
+            rec = (json.load(f) or {}).get(project) or {}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return []
+    try:
+        lang = _clean_language(rec.get("language") or {})
+    except _Refused:
+        return []
+    return [{"name": r["name"], "text": r["text"], "paths": r["paths"], "words": r["words"],
+             "doc": "", "check": "", "by": "you", "at": int(rec.get("at") or 0), "design": True}
+            for r in lang["rules"]]
 
 
 # What a colour is for, by the names a design gives it: the board and the
@@ -458,7 +530,7 @@ def presets():
             "schemes": [{"key": k, "label": l, "colors": dict(c)} for k, l, c in SCHEMES],
             "choices": {key: [{"key": k, "label": l, "means": m} for k, l, m in rows]
                         for key, rows in CHOICES.items()},
-            "modes": list(MODES), "themes_max": THEMES_MAX, "colors_max": COLORS_MAX,
+            "modes": list(MODES), "themes_max": THEMES_MAX, "colors_max": COLORS_MAX, "rules_max": RULES_MAX,
             "roles": {k: list(v) for k, v in ROLES.items()},
             "file": FILE_PATH}
 
@@ -554,9 +626,15 @@ def language_text(lang, platform=""):
     lines.append(f"Shape: {_means(CORNERS, lang['corners'])}; hairlines 1px in the edge colour.")
     lines.append(f"Space: {_means(DENSITY, lang['density'])}.")
     lines.append(f"Motion: {_means(MOTION, lang['motion'])}.")
-    if lang.get("rules"):
-        lines.append("Design notes, the operator's own:")
-        lines.extend("  " + ln for ln in lang["rules"].splitlines() if ln.strip())
+    standing = [r for r in lang["rules"] if not (r["words"] or r["paths"])]
+    named = [r for r in lang["rules"] if r["words"] or r["paths"]]
+    for r in standing:
+        lines.append(f"{r['name']}: {r['text']}")
+    if named:
+        lines.append("Design rules, named, not quoted: `bb design show NAME` reads one, and its text "
+                     "arrives on the turn you edit a file or are asked about a word it names.")
+        lines.extend(f"  {r['name']}: " + "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
+                     for r in named)
     return "\n".join(lines)
 
 
@@ -630,8 +708,13 @@ def file_text(rec):
             "## Shape", "", _cap(_means(CORNERS, lang["corners"])) + ". Hairlines are 1px in `--line`.", "",
             "## Space", "", _cap(_means(DENSITY, lang["density"])) + ".", "",
             "## Motion", "", _cap(_means(MOTION, lang["motion"])) + "."]
-    if lang.get("rules"):
-        out += ["", "## Notes", ""] + [ln for ln in lang["rules"].splitlines()]
+    if lang["rules"]:
+        out += ["", "## Rules", "",
+                "Each is one rule of the design, by name; a session is handed one on the turn it edits a "
+                "file or is asked about a word the rule names, and `bb design show NAME` reads one."]
+        for r in lang["rules"]:
+            on = "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
+            out += ["", f"### {r['name']}", ""] + ([f"Applies to: {on}", ""] if on else []) + [r["text"]]
     if pages:
         out += ["", "## Pages", "",
                 "Each page is a layout of labelled blocks on a frame, named for what it is for, "
@@ -735,6 +818,27 @@ def verb(project, req, who, session):
             return {"error": str(e)}, 400
         return {"text": prompt(lang, page)}, 200
     if act == "save":
+        # A session's save is the project's dial, Claude may: Add to the
+        # design (auto lands it, ask holds it for the operator, deny refuses
+        # it by name); a person's from the tab always lands.
+        if session and not pending.replaying():
+            g = pending.mode(project, "design")
+            if g == "deny":
+                return {"error": pending.refusal("design")}, 403
+            if g == "ask":
+                try:
+                    lang = _clean_language(req.get("language") or {})
+                    pages = [_clean_page(p, 0) for p in (req.get("pages") if isinstance(req.get("pages"), list) else [])]
+                except _Refused as e:
+                    return {"error": str(e)}, 400
+                names = ", ".join(t["name"] for t in lang["themes"])
+                r = pending.hold(project, "design", "save",
+                                 {"language": req.get("language") or {}, "pages": req.get("pages") or []},
+                                 summary=f"the design: {len(lang['themes'])} theme{'' if len(lang['themes']) == 1 else 's'} ({names}), "
+                                         f"{len(lang['rules'])} rule{'' if len(lang['rules']) == 1 else 's'}, {len(pages)} page{'' if len(pages) == 1 else 's'}")
+                if r.get("error"):
+                    return r, 400
+                return {"ok": True, "held": r["held"]}, 202
         return save(project, req, who)
     if act == "write":
         return write_file(project, who)
@@ -758,9 +862,13 @@ def text_for(project, which=""):
         return file_text(rec), ""
     if which == "language":
         return prompt(rec["language"]), ""
+    rule = next((r for r in rec["language"]["rules"] if r["name"] == which.lower()), None)
+    if rule is not None:
+        on = "; ".join(x for x in [", ".join(rule["paths"]), ", ".join(rule["words"])] if x)
+        return (f"{rule['name']}" + (f" (applies to: {on})" if on else "") + "\n\n" + rule["text"]), ""
     page = next((p for p in rec["pages"] if str(p["id"]) == which or p["name"].lower() == which.lower()), None)
     if page is None:
-        return "", f"no page here called {which!r}: bb design lists them"
+        return "", f"no page or rule here called {which!r}: bb design lists them"
     return prompt(rec["language"], page), ""
 
 
@@ -772,6 +880,9 @@ def listing(project):
     lines = [f"{project}'s design language: {themes}; {_label(FONTS, lang['font']).lower()}, "
              f"{lang['corners']} corners, {lang['density']}, {lang['motion']} motion"
              + (f"; it governs {lang['scope']}" if lang.get("scope") else "")]
+    if lang["rules"]:
+        lines.append(f"  {len(lang['rules'])} design rule{'' if len(lang['rules']) == 1 else 's'}: "
+                     + ", ".join(r["name"] for r in lang["rules"][:12]) + (", ..." if len(lang["rules"]) > 12 else ""))
     if not rec["pages"]:
         lines.append("  no pages yet: the notebook's Design view adds one")
     for p in rec["pages"]:

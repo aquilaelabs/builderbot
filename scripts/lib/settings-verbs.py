@@ -106,7 +106,8 @@ def show():
     print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
     print(f"    Captures kept (days; 0 keeps them)      {rec.get('capture_days', 7)}")
     for label, key in (("Add to roadmap", "roadmap"), ("File bugs", "bugs"), ("Add rules", "rules"),
-                       ("Fill in build and test", "settings"), ("Run its container", "devbuild"),
+                       ("Fill in build and test", "settings"), ("Add to the design", "design"),
+                       ("Run its container", "devbuild"),
                        ("Report BuilderBot bugs", "report")):
         if rec.get(key) not in (None, ""):
             print(f"    Claude may: {label:<28} {rec.get(key)}")
