@@ -68,6 +68,40 @@ def _argv(req):
     return [str(a) for a in (req.get("argv") or []) if isinstance(a, (str, int))][:64]
 
 
+# The relayed words a session may send about a project it READS: each verb
+# with the forms of it that only look. Anything not listed is a write, or a
+# verb that acts on the project's machines, and is refused by name.
+READ_FORMS = {
+    "roadmap": ("", "show", "history", "pending", "--json"),
+    "bug": ("", "all", "show", "find", "history", "pending", "--json"),
+    "rules": ("", "show", "history", "pending", "--json"),
+    "tests": ("", "show", "drift", "flagged", "projection", "last", "log", "--json"),
+    "history": None,                    # every form reads
+    "version": ("", "policy", "--list", "--for", "--json", "--semver", "--code", "--quad",
+                "--win", "--moz", "--msi", "--pep440", "--file"),
+    "changelog": ("", "unreleased", "--for", "--json"),
+    "findings": ("", "history", "--level", "--find", "--json"),
+    "catchup": None,
+    "preamble": None,
+    "settings": ("", "--json"),
+}
+
+
+def _not_a_read(argv):
+    """Why these words are not a read of a project, or "" when they are."""
+    verb = argv[0] if argv else ""
+    forms = READ_FORMS.get(verb, ())
+    if forms is None:
+        return ""
+    first = argv[1] if len(argv) > 1 else ""
+    if verb in READ_FORMS and first in forms:
+        return ""
+    if verb in READ_FORMS:
+        return (f"bb {verb} {first} would change it, and a session on the project "
+                f"that reads it only reads")
+    return f"bb {verb} acts on the project's own machines, and reading it does not"
+
+
 def admit(me, req):
     """(project, None) when the relay's own rules let this caller send these
     words for that project, and (None, (payload, status)) when they do not:
@@ -97,7 +131,17 @@ def admit(me, req):
                                 "and a session reads its own: run it without --all"}, 403)
     project = field(req, "project") or me.get("session") or ""
     if me.get("session") and project != me["session"]:
-        return None, ({"error": "this session's token is for another project"}, 403)
+        # A project this session's own reads (prefs.reads): the reading
+        # words go through and every other refuses by name, here rather
+        # than in each verb, because the relayed bb runs on the controller
+        # with a token for the project it is asked about.
+        if project in (me.get("reads") or []):
+            why = _not_a_read(argv)
+            if why:
+                return None, ({"error": f"{project} is read-only from a session on "
+                                        f"{me['session']}: {why}"}, 403)
+        else:
+            return None, ({"error": "this session's token is for another project"}, 403)
     # git's network half runs under the account's author like everything
     # else it does with a repository: none set, none run. Push, fetch and
     # pull write with git, and git wants an author; a policy read and an

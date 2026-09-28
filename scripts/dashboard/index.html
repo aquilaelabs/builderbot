@@ -2495,6 +2495,18 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndtools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .ndcap{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
   color:var(--ink)}
+/* A set of things to pick from is a listbox (docs/design-language.md,
+   Controls): a bordered box of checkbox rows, a thumb high each, scrolling
+   past six, never a select multiple or a loose column of checkboxes. */
+.lbox{display:flex;flex-direction:column;max-height:calc(6 * var(--tap));overflow-y:auto;
+  border:1px solid var(--line);border-radius:var(--r-control);background:var(--sunk)}
+.lbox label.lrow{display:flex;gap:8px;align-items:center;min-height:var(--tap);padding:0 10px;
+  margin:0;font:var(--f-ui);color:var(--ink);border-bottom:1px solid var(--line);cursor:pointer}
+.lbox label.lrow:last-child{border-bottom:0}
+.lbox label.lrow input{width:15px;height:15px;flex:0 0 auto;margin:0}
+.lbox .lsub{color:var(--dim);font:var(--f-note);margin-left:auto;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:50%}
+.lbox .empty{padding:8px 10px}
 .ndcap input{width:15px;height:15px;flex:0 0 auto}
 .docbarrow .sp{flex:1}
 .ndtest.warn,.ndcheck.warn,#logDaysSaid.warn{color:var(--warn)}
@@ -3753,8 +3765,18 @@ body.booting .pane>.loading{margin:auto}
       <label for="rnNode">Node<span class="help" data-tip="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
-      <div id="rnNodesMore" hidden></div>
-      <div class="hint" id="rnNodesMoreHint" hidden>Also works on these: a session can start on any of them, and its containers may live on any of them.</div>
+      <label id="rnNodesLabel" hidden>Also works on</label>
+      <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
+      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them.</div>
+    </div>
+    <!-- The projects a session here may read (prefs.reads): their trees
+         bound read-only into its view on a node, their notebooks answering
+         to bb from inside them, every write refused. The operator's to
+         name, never a session's. -->
+    <div class="field" id="rnReadsField" hidden>
+      <label id="rnReadsLabel">Reads<span class="help" data-tip="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
+      <div class="lbox" id="rnReads" role="group" aria-labelledby="rnReadsLabel"></div>
+      <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
     </div>
     <div class="field" id="rnBuildField">
       <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>

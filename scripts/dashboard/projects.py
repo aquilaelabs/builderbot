@@ -257,6 +257,10 @@ def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
 
 # {file: [the keys inside it whose sub-dicts are keyed by project]}. None means
 # the file's own top level is the keyed dict.
+# The prefs module, set by the server: a rename touches the reads lists in
+# it, which are keyed by the READING project and name this one inside.
+prefs_mod = None
+
 _KEYED = {
     "roadmap.json":         ["projects", "unsaved", "history", "batch"],
     "bugs.json":          ["projects", "history", "batch"],
@@ -487,6 +491,12 @@ def rename(req):
                 moved.append(name)
         except OSError as e:
             failed.append(f"{name}: {e}")
+    # ...and every other project that reads this one by name (prefs.reads).
+    try:
+        if prefs_mod is not None and prefs_mod.rename_reads(old, new):
+            moved.append("claude-prefs.json reads")
+    except OSError as e:
+        failed.append(f"reads: {e}")
     try:
         if _rename_in_pins(STATE / "pinned-projects.json", old, new):
             moved.append("pinned-projects.json")

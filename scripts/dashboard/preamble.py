@@ -194,6 +194,30 @@ def _brief_mode(project):
         return "full"
 
 
+# The projects this one reads (prefs.reads), said where the session will
+# act on it: their trees are at /workspace/NAME read-only, and their
+# notebooks answer to bb from inside them. Nothing when there are none:
+# the shipped rule already says to stay in the project.
+_READS = "<!-- BUILDERBOT:READS -->"
+
+
+def reads_line(project):
+    reads = []
+    if prefs_mod is not None:
+        try:
+            reads = list((prefs_mod.get(project) or {}).get("reads") or [])
+        except Exception:                                            # noqa: BLE001
+            reads = []
+    if not reads:
+        return ""
+    names = ", ".join(reads)
+    return (f"This project reads {names}: each is at /workspace/NAME, read-only, and "
+            f"`cd /workspace/NAME` before `bb roadmap`, `bb bug`, `bb rules`, `bb design`, "
+            f"`bb tests` or `bb map` answers for it, so its notebook and its code are yours to "
+            f"read. Nothing there is yours to change: a write to its tree fails, and a write "
+            f"to its notebook is refused; a session on that project is what changes them.")
+
+
 def test_change_line(project):
     mode = "wait"
     if prefs_mod is not None:
@@ -263,6 +287,13 @@ def briefing(project):
             # A block skipped between two blank lines leaves one of them,
             # not both: the template has no double blank of its own.
             if not line.strip() and out and not out[-1].strip():
+                continue
+            if line.strip() == _READS:
+                said = reads_line(project)
+                if said:
+                    out.append(said)
+                elif out and not out[-1].strip():
+                    continue
                 continue
             out.append(test_change_line(project) if line.strip() == _TESTCHANGE else line)
     return "\n".join(out).strip("\n")

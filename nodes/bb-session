@@ -37,9 +37,9 @@ file is read only after the drop, as the session.
 
     bb-session check
         exit 0 when this machine can build the view; root only
-    bb-session plan  --project P --account U --home H --cwd D
+    bb-session plan  --project P --account U --home H --cwd D [--reads R]...
         the mounts, as JSON, without making any; anybody
-    bb-session enter --project P --account U --home H --cwd D --env FILE -- COMMAND...
+    bb-session enter --project P --account U --home H --cwd D [--reads R]... --env FILE -- COMMAND...
         the session, inside the view; through sudo
     bb-session check-net
         exit 0 when this helper can give a session a network of its own; root
@@ -174,6 +174,13 @@ def args(argv):
             out[a[2:]] = argv[i + 1]
             i += 2
             continue
+        # A project this one reads, once per project: its tree is in the
+        # view read-only. Repeated rather than joined, so the launcher
+        # line stays words a respawn can read back (RESPAWNABLE).
+        if a == "--reads" and i + 1 < len(argv):
+            out.setdefault("reads", []).append(argv[i + 1])
+            i += 2
+            continue
         raise Refused(f"bb-session: '{a}' is not an option it takes")
     return out, rest
 
@@ -200,6 +207,14 @@ def plan(c, a, uid):
         raise Refused(f"bb-session: {home} does not exist") from None
     if not stat.S_ISDIR(st.st_mode) or (uid is not None and st.st_uid != uid):
         raise Refused(f"bb-session: {home} is not a directory the session account owns")
+    reads = []
+    for r in a.get("reads", []):
+        if not PROJECT.fullmatch(r) or r.startswith(".") or r == project:
+            raise Refused(f"bb-session: '{r}' is not a project this one could read")
+        if not _real_dir(f"{ws}/{r}"):
+            raise Refused(f"bb-session: {ws}/{r} is not a project directory")
+        if r not in reads:
+            reads.append(r)
     inside = (f"{ws}/{project}", f"{ws}/.worktrees/{project}")
     parts = cwd.split("/")
     if ".." in parts or not any(cwd == d or cwd.startswith(d + "/") for d in inside):
@@ -247,6 +262,10 @@ def plan(c, a, uid):
     for rel in (project, f".worktrees/{project}", f".claude/{account}"):
         if _real_dir(f"{ws}/{rel}"):
             steps.append(("bind", f"{STAGE}/ws/{rel}", f"{ws}/{rel}"))
+    # The projects this one reads: their trees, read-only. Nothing of
+    # theirs beyond the tree: no worktrees, no caches, no stores.
+    for r in reads:
+        steps.append(("bindro", f"{STAGE}/ws/{r}", f"{ws}/{r}"))
     transcripts = f"{ws}/.claude/{account}/projects"
     if _real_dir(transcripts):
         for entry in sorted(os.listdir(transcripts)):

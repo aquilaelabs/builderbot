@@ -62,7 +62,7 @@ function rnLoadModelNow(name){
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
-                 node: "", nodes: "", build: "", test: "", outputs: "",
+                 node: "", nodes: "", reads: "", build: "", test: "", outputs: "",
                  capture_days: "7", gate: "", color: ""};
 // The colours a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
@@ -103,6 +103,7 @@ function rnFillPrefs(p){
                git_name: p?.yours?.git_name || "", git_email: p?.yours?.git_email || "",
                node: p?.prefs?.node || "",
                nodes: (p?.prefs?.nodes || []).join(","),
+               reads: (p?.prefs?.reads || []).join(","),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
@@ -123,6 +124,7 @@ function rnFillPrefs(p){
     : "Empty uses your Profile. Set these to commit here under a different name.";
   rnFillNode();
   rnFillPrefsRest(p);
+  rnFillReads();
   rnLoadModelNow(rnFor);
 }
 
@@ -157,21 +159,38 @@ function rnFillNode(){
     rnFillNodesMore();
 }
 
-// The rest of the set (R82): every node but the primary, a checkbox each,
-// checked for the ones the project also works on. Redrawn when the primary
+// A listbox row: a checkbox, the name, and a quiet note at the right.
+const lrow = (value, name, sub, on) => `<label class="lrow"><input type="checkbox" value="${esc(value)}"${
+    on ? " checked" : ""}><span>${esc(name)}</span>${sub ? `<span class="lsub">${esc(sub)}</span>` : ""}</label>`;
+
+// The rest of the set (R82): every node but the primary, a listbox row each,
+// ticked for the ones the project also works on. Redrawn when the primary
 // changes, since the primary is never offered twice.
 function rnFillNodesMore(){
-  const box = $("rnNodesMore"), hint = $("rnNodesMoreHint");
+  const box = $("rnNodesMore"), hint = $("rnNodesMoreHint"), label = $("rnNodesLabel");
   if (!box) return;
   const primary = $("rnNode").value;
   const was = new Set(rnPrefWas.nodes.split(",").filter(Boolean));
   const checked = new Set([...box.querySelectorAll("input:checked")].map(i => i.value));
   const first = !box.dataset.drawn;
   const others = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.id !== primary);
-  box.hidden = hint.hidden = rnMode === "git" || !primary || !others.length;
-  box.innerHTML = others.map(n => `<label class="ndcap"><input type="checkbox" value="${esc(n.id)}"${
-      (first ? was.has(n.id) : checked.has(n.id)) ? " checked" : ""}> ${esc(n.name)}</label>`).join("");
+  box.hidden = hint.hidden = label.hidden = rnMode === "git" || !primary || !others.length;
+  box.innerHTML = others.map(n => lrow(n.id, n.name, `${n.kind}, ${n.state}${n.live === false ? ", quiet" : ""}`,
+                                       first ? was.has(n.id) : checked.has(n.id))).join("");
   box.dataset.drawn = "1";
+}
+
+// The projects a session here may read: every other project this account
+// sees, a listbox row each, ticked from the settings. Read-only there by
+// construction (users.with_reads), so the hint under it can say so plainly.
+function rnFillReads(){
+  const box = $("rnReads"), wrap = $("rnReadsField");
+  if (!box) return;
+  const was = new Set(rnPrefWas.reads.split(",").filter(Boolean));
+  const others = (state?.projects || []).filter(p => p.name !== rnFor)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  wrap.hidden = rnMode === "git" || !others.length;
+  box.innerHTML = others.map(p => lrow(p.name, p.name, p.branch ? `git: ${p.branch}` : "", was.has(p.name))).join("");
 }
 
 function rnFillPrefsRest(p){
@@ -306,7 +325,7 @@ function renameProject(name, mode = "all"){
   const where = p?.forge_name || "its remote";
   $("rnTitle").textContent = git ? `${where} settings for ${name}` : name;
   for (const id of ["rnNameField", "rnColorField", "rnMineField",
-                    "rnGateField", "rnBuildField"])
+                    "rnGateField", "rnBuildField", "rnReadsField"])
     $(id).hidden = git;
   // The node picker and the two credential blocks have hidden rules of their
   // own further down, and each of those consults the mode too.
@@ -507,6 +526,7 @@ async function rnSubmit(){
   const model = rnModelPick(), effort = $("rnEffort").value;
   const node = $("rnNode").value;
   const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
+  const reads = [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value);
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const capture_days = $("rnCaptureDays").value.trim();
@@ -519,6 +539,7 @@ async function rnSubmit(){
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
+    || reads.join(",") !== rnPrefWas.reads
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
     || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change || brief !== rnPrefWas.brief
@@ -573,7 +594,7 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
-                              node, nodes, build, test, gate, color,
+                              node, nodes, reads, build, test, gate, color,
                               tests_in, test_change, brief, reply, asks, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),

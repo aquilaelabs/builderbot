@@ -1217,6 +1217,16 @@ node's cache size beside **Clear cache**, and the Toolchains tab gains a node
 picker: installing a toolchain there is a job that carries `bb` and the
 catalog to the node's own toolchain store.
 
+**Reads.** Under the nodes, a project's settings name the other projects a
+session on it may read: their trees, bound read-only at `/workspace/NAME`
+into the session's view on a node, and their notebooks, which `bb roadmap`,
+`bb bug`, `bb rules`, `bb design` and the rest answer for once the session
+has stepped into that directory. Every write is refused by name, on the API
+and on the relayed verbs alike, and a session's Claude gets the same wall:
+Read allowed, Edit denied. The briefing names the projects a session reads,
+and the shipped "stay in project" rule carries the exception. Set by the
+operator in the dialog, never by a session.
+
 **Compose runs on the node, not from here.** A dev instance's Up, Down,
 Rebuild and Remove are executed by the agent with the node's own docker: the
 dashboard sends the plan and the compose file, the node runs it. So an

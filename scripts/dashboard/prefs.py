@@ -242,6 +242,12 @@ def _clean(rec):
             # worked on from either. Everything that reads one node keeps
             # reading `node`; containers may live on any of these.
             "nodes": _nodes_of(rec),
+            # The other projects a session here may READ: their trees, bound
+            # read-only into the session's view on a node, and their
+            # notebooks through the API and the relayed verbs, every write
+            # to them refused. Named here by the operator, never by a
+            # session; a project never reads itself.
+            "reads": _reads_of(rec),
             # What `bb build` / `bb test` run there, and the globs whose
             # matches come back into dist/.
             "build": str(rec.get("build") or "")[:500],
@@ -340,6 +346,34 @@ def all_projects(workspace=None):
     return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
 
 
+def _reads_of(rec):
+    """The projects this one reads, as stored: names that could be a
+    project directory, at most 16, in the order given."""
+    got = rec.get("reads") if isinstance(rec.get("reads"), list) else []
+    out = []
+    for n in got:
+        n = str(n or "").strip()[:80]
+        if n and "/" not in n and not n.startswith(".") and n not in out:
+            out.append(n)
+    return out[:16]
+
+
+def rename_reads(old, new):
+    """A project renamed is renamed in every other project's reads list, so
+    a session on those keeps reading it. True when anything moved."""
+    moved = False
+    with _lock:
+        d = _load()
+        for rec in d["projects"].values():
+            reads = rec.get("reads") if isinstance(rec, dict) and isinstance(rec.get("reads"), list) else None
+            if reads and old in reads:
+                rec["reads"] = [new if r == old else r for r in reads if r != new or r == old]
+                moved = True
+        if moved:
+            write_json(FILE, d)
+    return moved
+
+
 def _nodes_of(rec):
     """The project's node set, primary first, from a record that may carry
     only `node` (from before R82) or a `nodes` list as well."""
@@ -356,7 +390,7 @@ def _nodes_of(rec):
 def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None,
-              test_change=None, brief=None, capture_days=None):
+              test_change=None, brief=None, capture_days=None, reads=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -377,6 +411,9 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             cur["node"] = str(node)[:40]
             if cur["node"] and cur["node"] not in cur["nodes"]:
                 cur["nodes"] = [cur["node"]] + cur["nodes"]
+        if reads is not None:
+            got = reads if isinstance(reads, list) else str(reads).split(",")
+            cur["reads"] = [r for r in _reads_of({"reads": got}) if r != project]
         if build is not None:
             cur["build"] = str(build)[:500].strip()
         if test is not None:
@@ -435,7 +472,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if (cur["node"] or cur["color"]
+        if (cur["node"] or cur["color"] or cur["reads"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
@@ -551,7 +588,7 @@ def dialog_save(name, req, uid):
                   tests_in=req.get("tests_in"),
                   test_change=req.get("test_change"), brief=req.get("brief"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
-                  color=req.get("color"),
+                  color=req.get("color"), reads=req.get("reads"),
                   workspace=WORKSPACE)
     # ...and what is the ASKING ACCOUNT's rather than the project's: the
     # model and effort its sessions launch on, and the author its commits

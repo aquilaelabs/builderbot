@@ -566,6 +566,10 @@ spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 home = '/home/builder/users/u_0000abcd/.cache/builderbot/u/u_0000abcd/project'
 ok = lambda c: re.fullmatch(m.RESPAWNABLE, c) is not None
+# A launcher line with the projects the session reads, one --reads each
+# (prefs.reads), is still a line a respawn may run again.
+assert ok('sudo -n /opt/fake/bb-session enter --project alpha --account u_0000abcd --home /home/x --cwd /w/alpha --reads beta --reads gamma --env /e -- ' + home + '/alpha/claude-run.sh'), 'reads'
+
 def respawn(start):
     # tmux_ops against a tmux that records what it was asked and answers the
     # pane's start command, which is all a respawn reads.

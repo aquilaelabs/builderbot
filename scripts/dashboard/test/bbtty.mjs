@@ -832,6 +832,34 @@ print(uid)`);
          && /^check$/m.test(readFileSync(calls, 'utf8')) && new RegExp(`^plan --project ${vproj} `, 'm').test(readFileSync(calls, 'utf8')),
          '...having asked the helper whether this node builds one and planned it first, with the environment in a file only the account reads');
       tmuxKill(`${ownerUid}~claude-${vproj}`);
+      // The projects this one reads (prefs.reads) ride the grant: one
+      // --reads each for the helper, and Claude's walls let it Read them
+      // and not Edit them.
+      {
+        // Into the store itself: the dialog's endpoint knows a project by
+        // the listing, which has not met a directory made a moment ago,
+        // and prefs.get reads the file fresh on every grant.
+        const prefsFile = join(DIR, 'state', 'claude-prefs.json');
+        const setReads = reads => {
+          const d = existsSync(prefsFile) ? JSON.parse(readFileSync(prefsFile, 'utf8')) : { projects: {}, users: {} };
+          d.projects = d.projects || {};
+          d.projects[vproj] = { ...(d.projects[vproj] || {}), reads };
+          writeFileSync(prefsFile, JSON.stringify(d));
+        };
+        setReads(['alpha']);
+        runView(`u:${ownerUid}:claude:${vproj}:b:${boot}`);
+        await sleep(400);
+        const rcmd = tmuxFmt(`${ownerUid}~claude-${vproj}`, '#{pane_start_command}');
+        const scope = JSON.parse(readFileSync(join(vcache, 'claude-scope.json'), 'utf8'));
+        const deny = scope.permissions.deny;
+        ok(rcmd.includes(` --cwd ${join(DIR, 'ws', vproj)} --reads alpha --env `)
+           && !deny.includes(`Read(${join(DIR, 'ws', 'alpha')}/**)`) && deny.includes(`Edit(${join(DIR, 'ws', 'alpha')}/**)`)
+           && deny.includes(`Read(${join(DIR, 'ws', 'beta')}/**)`),
+           `a project the session reads goes to the helper as --reads and stays a wall to Edit alone (${rcmd.slice(rcmd.indexOf('--cwd'), rcmd.indexOf('--cwd') + 160)}; BB_READS ${
+             readFileSync(envf, 'utf8').split('\0').find(l => l.startsWith('BB_READS=')) || 'unset'}; deny ${deny.filter(d => /alpha|beta/.test(d)).join(' ')})`);
+        tmuxKill(`${ownerUid}~claude-${vproj}`);
+        setReads([]);
+      }
       writeFileSync(helper, helperSrc(true), { mode: 0o755 });
       tmuxKill(`${ownerUid}~shell-${vproj}`);
       const refused = runView(`u:${ownerUid}:shell:${vproj}`);

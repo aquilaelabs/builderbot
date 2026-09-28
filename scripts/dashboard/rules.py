@@ -147,9 +147,10 @@ GLOBAL = "*"
 # that reads it twice pays twice and the two copies drift.
 BUILTIN = [
     {"name": "stay-in-project",
-     "text": "Work in this project only: never read, write or look for context in"
-             " another project under /workspace. If something seems to be"
-             " missing, ask."},
+     "text": "Work in this project only, and read the projects its settings say it"
+             " reads (the briefing names them): never read, write or look for"
+             " context in any other project under /workspace, and never change"
+             " one it reads. If something seems to be missing, ask."},
     {"name": "ask-do-not-install",
      "text": "Never install a tool with a system package manager: it is invisible"
              " to `bb toolchains` and gone when the node is rebuilt. Say what is"

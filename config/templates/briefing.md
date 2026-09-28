@@ -40,6 +40,8 @@ project's other nodes by their published ports: nothing else on the
 machine or the LAN answers, by design, so a connection refused to another
 address is the firewall, not a fault.
 
+<!-- BUILDERBOT:READS -->
+
 ## Finding your way
 
     bb map who-calls NAME      every call of NAME, with the function it is made from

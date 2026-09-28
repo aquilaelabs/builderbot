@@ -1679,9 +1679,7 @@ cmd_design() {
     case "$verb" in list|show|file|json|save) ;; -h|--help)
         echo "bb design [list | show [ID|NAME] | file | json | save FILE]: what this project looks like, from the notebook's Design view"; return 0 ;;
         *) die "bb design [list | show [ID|NAME] | file | json | save FILE]" ;; esac
-    proj="${BB_PROJECT:-}"
-    [ -n "$proj" ] || proj="$(project_here 2>/dev/null)" \
-        || die "not inside a project under ${WORKSPACE}; cd into one first"
+    proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
     auth="$(bb_auth_or_die)"
     BB_DESIGN_AUTH="$auth" BB_DESIGN_PROJECT="$proj" python3 "$BB_LIB/design-verbs.py" "$@"
 }
@@ -1690,8 +1688,7 @@ cmd_brief() {
     local verb="${1:-show}" auth proj
     case "$verb" in show|take) ;; -h|--help) echo "bb brief: the brief this project was started from"; return 0 ;;
         *) die "bb brief: the brief this project was started from (take is bb-tty's)" ;; esac
-    proj="${BB_PROJECT:-}"
-    [ -n "$proj" ] || proj="$(project_here 2>/dev/null)" \
+    proj="$(bb_project 2>/dev/null)" \
         || { [ "$verb" = take ] && return 0; die "not inside a project under ${WORKSPACE}; cd into one first"; }
     if [ "$verb" = take ]; then
         auth="$(bb_auth_header 2>/dev/null)" || return 0
@@ -2585,10 +2582,22 @@ revalidate_tree() {
     return 0
 }
 
+# bb_project: the project a verb acts on. The working directory first, when
+# it is inside a project: a session that has stepped into a project its own
+# reads (/workspace/NAME, read-only in its view) is asking about that one,
+# and BB_PROJECT, its own, is the answer everywhere else.
+bb_project() {
+    local here
+    here="$(project_here 2>/dev/null)" && [ -n "$here" ] && { printf '%s' "$here"; return 0; }
+    [ -n "${BB_PROJECT:-}" ] && { printf '%s' "$BB_PROJECT"; return 0; }
+    return 1
+}
+
 bb_relay() {
     local auth proj rc
     auth="$(bb_auth_or_die)"
-    proj="${BB_PROJECT:-${BB_ROADMAP_PROJECT:-${BB_BUG_PROJECT:-${BB_VERSION_PROJECT:-$(project_here || true)}}}}"
+    proj="$(bb_project 2>/dev/null || true)"
+    [ -n "$proj" ] || proj="${BB_ROADMAP_PROJECT:-${BB_BUG_PROJECT:-${BB_VERSION_PROJECT:-}}}"
     BB_RELAY_PROJECT="$proj" BB_AUTH_HEADER="$auth" python3 "$BB_LIB/relay.py" "" "$@"
     rc=$?
     revalidate_tree

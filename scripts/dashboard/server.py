@@ -2534,6 +2534,7 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    write_json=write_json,
                    rename_project_data=devapp.rename_project_data,
                    after_create=mapping.start)
+projects.prefs_mod = prefs
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
 projects.lock = _state_lock
 projects.take_on = users.take_on
@@ -3220,6 +3221,11 @@ class Handler(BaseHTTPRequestHandler):
             # and nothing else (bug #16).
             tok = hdr[7:].strip()
             who = users.session_principal(tok)
+            # ...widened to the projects its own reads (prefs.reads), read
+            # from the settings on every request rather than baked into the
+            # token, so a change in the dialog reaches a running session.
+            if who:
+                who = users.with_reads(who, (prefs.get(who["session"]) or {}).get("reads") or [])
             # Past half its life, the answer to this request carries a fresh
             # one (users.renewal): set here, sent by _json, so a session in
             # use never runs out. Reset per request, because the handler instance
@@ -4727,8 +4733,12 @@ class Handler(BaseHTTPRequestHandler):
         if not req.get("ro") and users.may(me, "terminal"):
             return self._json({"error": f"{me['name']} has no shell, so this terminal is the "
                                         "read-only one"}, 403)
+        # ...and the projects this one reads, for the view bb-session builds
+        # (their trees read-only) and the walls bb-tty gives Claude.
         return self._json({"uid": me["uid"], "name": me["name"], "project": project,
-                           "owner": me.get("role") == "owner"})
+                           "owner": me.get("role") == "owner",
+                           "reads": [r for r in (prefs.get(project) or {}).get("reads") or []
+                                     if (WORKSPACE / r).is_dir()]})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24):

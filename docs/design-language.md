@@ -114,6 +114,15 @@ same with its action cluster. `test/uniform.mjs` groups every visible control
 into lines by vertical overlap and fails when one on a line ends at a
 different height.
 
+**A set of things to pick from is a listbox.** Several nodes a project
+works on, several projects it reads: a `.lbox`, a bordered box of checkbox
+rows (`label.lrow`: the box, the name, a quiet note at the right), each a
+thumb high, scrolling past six, under a label like any field. Never a
+`select multiple`, whose list is the platform's and whose picks are
+invisible once it closes, and never a loose column of checkboxes, which has
+no edge to say where the choice ends. The project settings dialog draws
+both of its sets this way (`lrow` in `page-projsettings.js`).
+
 **A file field is a button of ours and the name of what was picked.** The
 browser's own chooser stays hidden: its button wears the browser's skin,
 not the page's, and there is no styling it. A `.filepick`: a button that

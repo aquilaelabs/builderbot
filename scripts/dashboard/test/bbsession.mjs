@@ -97,6 +97,18 @@ ok(hidden(join(tr, slug(join(ws, 'beta')))) && hidden(join(tr, slug(join(ws, 'al
    && hidden(join(tr, slug(join(ws, '.worktrees', 'alpha-two', me))))
    && !hidden(join(tr, slug(join(ws, 'alpha')))) && !hidden(join(tr, slug(join(ws, '.worktrees', 'alpha', me)))),
    '...and the other projects\' transcripts are empty, a project whose name starts another\'s included, while its own stay');
+// A project this one reads (prefs.reads) is in the view too, read-only and
+// nothing of it but the tree; itself, or a name that is no project, refused.
+{
+  const r = plan({ reads: 'beta' });
+  const rs = r.code === 0 ? JSON.parse(r.out) : [];
+  ok(r.code === 0 && rs.some(x => x[0] === 'bindro' && x[1] === `${STAGE}/ws/beta` && x[2] === join(ws, 'beta'))
+     && !rs.some(x => x[0] === 'bind' && x[2] === join(ws, 'beta')) && !rs.some(x => x[2] === join(ws, '.worktrees', 'beta')),
+     `--reads binds that project's tree into the view read-only, and none of its worktrees (${r.code})`);
+  const self = plan({ reads: 'alpha' }), none = plan({ reads: 'nowhere' });
+  ok(self.code !== 0 && /not a project this one could read/.test(self.out) && none.code !== 0 && /is not a project directory/.test(none.out),
+     `...and refuses itself or a name that is no project (${self.out.trim().slice(0, 60)})`);
+}
 ok(has('tmpfs', users, 'mode=0755') && has('bind', `${STAGE}/home`, myHome) && hidden(join(homeRoot, '.claude'))
    && hidden(join(homeRoot, '.claude.json')),
    'the account\'s home is the only home, and the base home\'s Claude login and history are out of sight');

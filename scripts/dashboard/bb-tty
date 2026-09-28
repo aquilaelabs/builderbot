@@ -120,6 +120,10 @@ GRANT
     BB_ACCOUNT_NAME="$(printf '%s' "$grant" | jq -r '.name // empty')"
     BB_ACCOUNT_UID="$account"
     export BB_ACCOUNT_NAME BB_ACCOUNT_UID
+    # The projects this one reads, from the same answer: their trees go
+    # into the view read-only, and Claude's walls let it read them.
+    BB_READS="$(printf '%s' "$grant" | jq -r '(.reads // []) | join(" ")')"
+    export BB_READS
     if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
         export BB_TREE_OWNER=1
     else
@@ -287,11 +291,15 @@ in_view() {
     envf="$(cache_project_dir "$proj")/session.env"
     ( umask 077; env -0 > "$envf.new" && mv -f "$envf.new" "$envf" ) \
         || bad "Could not write this session's environment to $envf, so its view cannot start."
+    # The projects this one reads, one --reads each: the helper binds their
+    # trees read-only, and repeated words keep the launcher line respawnable.
+    local reads=() r
+    for r in ${BB_READS:-}; do reads+=(--reads "$r"); done
     why="$("$SESSION_BIN" plan --project "$proj" --account "${account:-}" --home "$HOME" \
-               --cwd "$dir" 2>&1 >/dev/null)" \
+               --cwd "$dir" "${reads[@]}" 2>&1 >/dev/null)" \
         || bad "This node keeps each session to its own project, and could not for this one:" "$why"
     RUN=(sudo -n "$SESSION_BIN" enter --project "$proj" --account "${account:-}" --home "$HOME"
-         --cwd "$dir" --env "$envf" -- "$@")
+         --cwd "$dir" "${reads[@]}" --env "$envf" -- "$@")
 }
 
 # claude_scope PROJECT - write a settings file that walls this session into its
@@ -396,8 +404,12 @@ claude_scope() {
             [ "$(readlink -f "${bundle%/*}/current" 2>/dev/null)" = "$bundle" ] \
                 && hooks="${bundle%/*}/current/scripts/dashboard" ;;
     esac
+    # A project this one reads is a wall to Edit and not to Read: its tree
+    # is in the view read-only, and the deny list says the same.
+    local readsq
+    readsq="$(for r in ${BB_READS:-}; do printf '%s\n' "$WORKSPACE/$r"; done | jq -R . | jq -s .)"
     if walls_around "$proj" "$here" | jq -R . \
-         | jq -s --arg ws "$WORKSPACE" --arg here "$here" \
+         | jq -s --arg ws "$WORKSPACE" --arg here "$here" --argjson reads "${readsq:-[]}" \
                --arg state "${DASHBOARD_STATE:-/config}" \
                --arg gate "$hooks/bb-gate" \
                --arg note "$hooks/bb-work-note" \
@@ -407,7 +419,8 @@ claude_scope() {
                --arg proj "$proj" --arg who "${account:-owner}" '
            {permissions: {
               additionalDirectories: [],
-              deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
+              deny: (map(select(. as $d | $reads | index($d) | not) | "Read(\(.)/**)", "Edit(\(.)/**)")
+                     + map(select(. as $d | $reads | index($d)) | "Edit(\(.)/**)")
                      + ["Edit(\($here)/VERSION)",
                         "Edit(\($here)/**/VERSION)",
                         "Edit(\($state)/rules.json)",
