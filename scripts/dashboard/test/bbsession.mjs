@@ -109,6 +109,26 @@ ok(hidden(join(tr, slug(join(ws, 'beta')))) && hidden(join(tr, slug(join(ws, 'al
   ok(self.code !== 0 && /not a project this one could read/.test(self.out) && none.code !== 0 && /is not a project directory/.test(none.out),
      `...and refuses itself or a name that is no project (${self.out.trim().slice(0, 60)})`);
 }
+// ...and applying it makes the target under the fresh /workspace before
+// the read-only bind, as the writable bind always did: the first session
+// with a read project met "mount: No such file or directory" (28 Sep).
+{
+  const said = execFileSync('python3', ['-c', `
+import importlib.machinery, importlib.util, json, os, tempfile
+loader = importlib.machinery.SourceFileLoader('bbs', ${JSON.stringify(HELPER)})
+m = importlib.util.module_from_spec(importlib.util.spec_from_loader('bbs', loader)); loader.exec_module(m)
+calls = []
+m._mount = lambda *a: calls.append(a[:2])
+root = tempfile.mkdtemp()
+src = os.path.join(root, 'src'); os.makedirs(src)
+target = os.path.join(root, 'ws', 'hello')
+m.apply([('bindro', src, target)], os.getuid(), os.getgid())
+print(json.dumps({'made': os.path.isdir(target), 'mounts': len(calls), 'onto': calls[0][1] if calls else ''}))
+`], { encoding: 'utf8' }).trim();
+  const r = JSON.parse(said);
+  ok(r.made && r.mounts === 2 && r.onto.endsWith('/ws/hello'),
+     `a read-only bind makes its target under the view before mounting, as a writable one does (${said})`);
+}
 ok(has('tmpfs', users, 'mode=0755') && has('bind', `${STAGE}/home`, myHome) && hidden(join(homeRoot, '.claude'))
    && hidden(join(homeRoot, '.claude.json')),
    'the account\'s home is the only home, and the base home\'s Claude login and history are out of sight');

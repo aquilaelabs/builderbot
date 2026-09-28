@@ -447,6 +447,12 @@ def apply(steps, uid, gid):
             # The view's root is private, so this is read-only here and nowhere
             # else, and the agent still writes the bundle from outside the view.
             src = step[1]
+            # Onto a place the view has yet to make, when it is a project
+            # this one reads under the fresh /workspace: the writable bind
+            # makes its target, and this one did not, so the first session
+            # with a read project met "mount: No such file or directory".
+            if not os.path.isdir(target):
+                _mkdirs(target, uid, gid)
             _mount(src, target, None, MS_BIND | MS_REC)
             _mount(src, target, None, MS_BIND | MS_REMOUNT | MS_RDONLY)
         elif kind == "bindrw":
