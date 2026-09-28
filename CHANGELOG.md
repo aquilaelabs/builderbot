@@ -18,6 +18,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Changed
 
+- BuilderBot's own design language lives in its notebook's Design view now: its thirteen schemes as themes, its prose as twenty named rules with triggers, and four of its surfaces as pages; docs/design-language.md is written from it by bb design file
 - BuilderBot is 0.7: the compatibility window moved, so a node whose agent is from 0.6 is held until Update agent on its row, which the bell and the Nodes tab say (a32a0a5)
 - The Questions pick under Yours on this project gains more, for a person who wants the judgment calls put to them, and reads more, Claude's default, fewer, rarely; the Replies pick is Claude's default or minimal, the normal choice having said nothing (0d3a6f0)
 - The Settings tab says a change applies at once or at the next start, in those words, where it said takes now (21462b7)

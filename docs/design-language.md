@@ -1,11 +1,227 @@
-# The dashboard's design language
+# The design language
+
+What this project looks like, in one place. Written by BuilderBot's Design view from the notebook, so edit it there, or edit here and say so in the notebook. Every surface follows it; a change to the look is a change to this file first.
+
+It governs the dashboard (scripts/dashboard: index.html and the scripts beside it), which the companion app mirrors.
+
+## Colour
+
+Colour comes only from these tokens, named once in the stylesheet. The app starts on Default; a theme picker, where the app has one, offers the themes by name, and every theme names the same tokens:
+
+### Default (dark, the default)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#1a1f26` | the page |
+| `--panel` | `#212730` | a raised box: a card, a pane, a modal |
+| `--ink` | `#e6edf3` | the text, and text on a filled accent |
+| `--dim` | `#9fa9b4` | secondary text and field labels |
+| `--line` | `#4d5c6f` | hairlines and borders, 1px |
+| `--accent` | `#3fb950` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#d29922` | a warning, and the amber marks |
+| `--bad` | `#f8524a` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#58a6ff` | an informational mark, the low level |
+
+### Abyss (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#111d20` | the page |
+| `--panel` | `#18262a` | a raised box: a card, a pane, a modal |
+| `--ink` | `#dcecee` | the text, and text on a filled accent |
+| `--dim` | `#93a9ac` | secondary text and field labels |
+| `--line` | `#3e5e66` | hairlines and borders, 1px |
+| `--accent` | `#2fb8c6` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#d7ab4c` | a warning, and the amber marks |
+| `--bad` | `#ef6a63` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#6fb3e0` | an informational mark, the low level |
+
+### Ash (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#1b1b1b` | the page |
+| `--panel` | `#222322` | a raised box: a card, a pane, a modal |
+| `--ink` | `#e2e4e0` | the text, and text on a filled accent |
+| `--dim` | `#a1a59f` | secondary text and field labels |
+| `--line` | `#555955` | hairlines and borders, 1px |
+| `--accent` | `#a3b18a` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#cfa94a` | a warning, and the amber marks |
+| `--bad` | `#e26d60` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#82a7b8` | an informational mark, the low level |
+
+### Carbon (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#141417` | the page |
+| `--panel` | `#1c1c1f` | a raised box: a card, a pane, a modal |
+| `--ink` | `#e8e8ea` | the text, and text on a filled accent |
+| `--dim` | `#9d9da4` | secondary text and field labels |
+| `--line` | `#53535b` | hairlines and borders, 1px |
+| `--accent` | `#e64e53` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#d9a441` | a warning, and the amber marks |
+| `--bad` | `#ff6b6b` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#7aa2f7` | an informational mark, the low level |
+
+### Ember (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#1f1814` | the page |
+| `--panel` | `#271f1a` | a raised box: a card, a pane, a modal |
+| `--ink` | `#f0e4d8` | the text, and text on a filled accent |
+| `--dim` | `#af9f90` | secondary text and field labels |
+| `--line` | `#67533e` | hairlines and borders, 1px |
+| `--accent` | `#f0873f` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#e8bb50` | a warning, and the amber marks |
+| `--bad` | `#ef5f52` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#8fb4d9` | an informational mark, the low level |
+
+### Ice (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#151c21` | the page |
+| `--panel` | `#1c252c` | a raised box: a card, a pane, a modal |
+| `--ink` | `#e3edf5` | the text, and text on a filled accent |
+| `--dim` | `#9aa8ae` | secondary text and field labels |
+| `--line` | `#465b6c` | hairlines and borders, 1px |
+| `--accent` | `#58c7e8` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#d3ab52` | a warning, and the amber marks |
+| `--bad` | `#ee6a68` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#7cc0ff` | an informational mark, the low level |
+
+### Moss (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#161f1b` | the page |
+| `--panel` | `#1d2920` | a raised box: a card, a pane, a modal |
+| `--ink` | `#dfe9df` | the text, and text on a filled accent |
+| `--dim` | `#9daba0` | secondary text and field labels |
+| `--line` | `#48604f` | hairlines and borders, 1px |
+| `--accent` | `#63c98a` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#d6ad4e` | a warning, and the amber marks |
+| `--bad` | `#e8695f` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#74b3d8` | an informational mark, the low level |
+
+### Nocturne (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#181825` | the page |
+| `--panel` | `#202031` | a raised box: a card, a pane, a modal |
+| `--ink` | `#e4e2f5` | the text, and text on a filled accent |
+| `--dim` | `#a2a0c1` | secondary text and field labels |
+| `--line` | `#53537b` | hairlines and borders, 1px |
+| `--accent` | `#9d7cff` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#e0b24d` | a warning, and the amber marks |
+| `--bad` | `#f2637b` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#7cb0ff` | an informational mark, the low level |
+
+### Nostromo (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#101712` | the page |
+| `--panel` | `#162018` | a raised box: a card, a pane, a modal |
+| `--ink` | `#d7e3c8` | the text, and text on a filled accent |
+| `--dim` | `#95a488` | secondary text and field labels |
+| `--line` | `#405b37` | hairlines and borders, 1px |
+| `--accent` | `#ffb000` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#ffd166` | a warning, and the amber marks |
+| `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#9ad07a` | an informational mark, the low level |
+
+### Plum (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#1e1623` | the page |
+| `--panel` | `#261d2d` | a raised box: a card, a pane, a modal |
+| `--ink` | `#eddff2` | the text, and text on a filled accent |
+| `--dim` | `#ae9cb7` | secondary text and field labels |
+| `--line` | `#654d73` | hairlines and borders, 1px |
+| `--accent` | `#c874d8` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#dfae52` | a warning, and the amber marks |
+| `--bad` | `#ee6183` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#83aee8` | an informational mark, the low level |
+
+### Rust (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#1e1614` | the page |
+| `--panel` | `#261d1a` | a raised box: a card, a pane, a modal |
+| `--ink` | `#ecdedb` | the text, and text on a filled accent |
+| `--dim` | `#ae9d99` | secondary text and field labels |
+| `--line` | `#6a4e4a` | hairlines and borders, 1px |
+| `--accent` | `#cf6a4c` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#d9a441` | a warning, and the amber marks |
+| `--bad` | `#e8544a` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#7fa8c9` | an informational mark, the low level |
+
+### Sepia (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#1f1b14` | the page |
+| `--panel` | `#272219` | a raised box: a card, a pane, a modal |
+| `--ink` | `#ece0cb` | the text, and text on a filled accent |
+| `--dim` | `#b0a28c` | secondary text and field labels |
+| `--line` | `#63563e` | hairlines and borders, 1px |
+| `--accent` | `#d3a94f` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#e3c069` | a warning, and the amber marks |
+| `--bad` | `#e0705f` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#9db98c` | an informational mark, the low level |
+
+### Slate (dark)
+
+| token | value | for |
+|---|---|---|
+| `--bg` | `#181c23` | the page |
+| `--panel` | `#1f242d` | a raised box: a card, a pane, a modal |
+| `--ink` | `#dfe5ec` | the text, and text on a filled accent |
+| `--dim` | `#9fa6ae` | secondary text and field labels |
+| `--line` | `#4f5a68` | hairlines and borders, 1px |
+| `--accent` | `#6ea8fe` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--warn` | `#d9a441` | a warning, and the amber marks |
+| `--bad` | `#ef6f6c` | an error, a destructive verb, the reason under a dead control |
+| `--note` | `#7fb8ff` | an informational mark, the low level |
+
+A filled accent surface carries the text colour on it, at AA contrast.
+
+## Type
+
+The platform's own sans-serif: system-ui on Web, Roboto on Android, SF Pro on iOS, the desktop's own on Linux, SF Pro on macOS, Segoe UI Variable on Windows, set as system-ui for the page; a monospace stack (--mono) for data: names, paths, versions, anything a terminal could print; --f-note, --f-ui and --f-tag for the three secondary voices. Monospace for data: names, paths, numbers.
+
+## Shape
+
+Small radii: 6px on controls, 8px on boxes, 4px on tags. Hairlines are 1px in `--line`.
+
+## Space
+
+An ordinary rhythm: 11px by 14px bands, 10px between fields.
+
+## Motion
+
+Short eases on state changes, nothing decorative, and none under prefers-reduced-motion.
+
+## Rules
+
+Each is one rule of the design, by name; a session is handed one on the turn it edits a file or is asked about a word the rule names, and `bb design show NAME` reads one.
+
+### design-language
 
 The page's visual rules, in one place. Read this before adding or restyling
 any surface, and extend the group selectors named here rather than restyling
 locally. `test/uniform.mjs` measures most of what follows on every tab and
 fails by name; the house rule `design` points here and runs it.
 
-## Colour
+### colour
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/static; colour, color, scheme, theme, palette, hex, contrast
 
 Colour comes only from the tokens in `:root`: surfaces `--bg` / `--panel` /
 `--sunk` / `--flyout` (page, raised box, set-into-the-panel, and what the
@@ -33,7 +249,9 @@ Watch the class the words wear. A tab's name is a `.lbl`, which is also the
 field-label helper, so it arrived wearing the quiet colour meant for "Your
 email" above a text box, on an accent fill, at 2.51:1.
 
-## Shape
+### shape
+
+Applies to: scripts/dashboard/index.html; corner, radius, rounded, hairline, border
 
 Three corners, as tokens: `--r-surface` (8px) for boxes (cards, panes,
 modals), `--r-control` (6px) for controls (buttons, fields, tabs), `--r-small`
@@ -47,7 +265,9 @@ accent is `--bg`, and a hover shade is `color-mix()` of the scheme's own.
 A hex outside the scheme blocks is the default scheme leaking into the
 other eleven, and the check counts them.
 
-## Type
+### type
+
+Applies to: scripts/dashboard/index.html; font, mono, typography, text, size
 
 `--mono` for data: names, paths, versions, anything a terminal could print.
 Three secondary voices: `--f-note` (a quiet explainer, in `var(--dim)`),
@@ -55,7 +275,9 @@ Three secondary voices: `--f-note` (a quiet explainer, in `var(--dim)`),
 colours agree everywhere: error and high are red, warning and medium yellow,
 note and low blue.
 
-## Space
+### space
+
+Applies to: scripts/dashboard/index.html; padding, spacing, gap, inset, margin
 
 A band of a document surface is inset `var(--row-y) var(--row-x)`, 11px 14px,
 and `.field` applies it, so a band is a `.field` rather than a local padding.
@@ -73,7 +295,9 @@ form measured 0, 10, 15, 16 and 22 down its length and read as several forms
 stacked together. `uniform.mjs` measures every gap in every dialog against
 the two tokens, so a dialog that invents a third fails rather than shipping.
 
-## Controls
+### controls
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js, scripts/dashboard/page-*.js; control, field, input, select, button, listbox, label, placeholder, textarea, picker
 
 The field skin (ground, edge, radius) is applied to the elements globally,
 so a new surface's controls match by existing. What a surface adds is
@@ -206,7 +430,9 @@ projects with no node read as broken after an update (23 Sep) with the
 reason sitting in a tooltip the whole time. `shortWhy()` cuts the clause;
 `cards.mjs` holds the no-node and out-of-window rows to it.
 
-## Settings
+### settings
+
+Applies to: scripts/dashboard/tab-settings.js, scripts/dashboard/page-projsettings.js; setting, apply, save, checkbox, switch, toggle
 
 Nothing on a tab takes effect until Save or Apply is pressed. A select that
 saves the moment it is changed, a checkbox that writes on the click, is a
@@ -219,7 +445,9 @@ swatch that needed a second press to be seen would be answering a question
 nobody asked. Buttons that *do* something (install, build, connect, end)
 are actions, not settings, and act on the press.
 
-## Files
+### files
+
+Applies to: scripts/dashboard/index.html; script, module, file, load
 
 The page is `index.html` (the markup, the stylesheet, and the wiring that
 runs at load) and classic scripts beside it, loaded before its own
@@ -240,7 +468,9 @@ tag in `index.html`. `bb map sections FILE` reads a file by its
 headers, with each section's outside callers, what runs at load and what
 the suite covers.
 
-## Document tabs
+### document-tabs
+
+Applies to: scripts/dashboard/tab-*.js; tab, document, docsurface, bar
 
 Reading surfaces, not terminals. A new kind does not write its own chrome: it
 calls `docSurface(i, kind)`, which builds the standard skeleton (a
@@ -263,7 +493,9 @@ in `TABKINDS` there and `TAB_KINDS` in `server.py`, its top-level names in
 its siblings. Renderers run inside `renderGuarded`, so a throwing renderer is
 an error band in its own tab, never a dead dashboard.
 
-## Sections and action bars
+### sections-and-action-bars
+
+Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; section, fold, action, bar, actbar, hidden
 
 A long surface is sections: `docSection(kind, id, title, status, body)`, one
 fold per concern with its status on the heading, open on a desktop and
@@ -287,7 +519,9 @@ sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
 text are exempt.
 
-## Dialogs
+### dialogs
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/page-*.js; dialog, modal, popup, pop-up, foot
 
 A dialog is `.modal > .box` (`.wide` for a list or an editor), titled by its
 `h3`. Every line of its body is a `.field` band, which is where the inset
@@ -303,7 +537,9 @@ beside the thing it names, the way the Settings tab draws them
 hidden rather than disabled: a dialog with an empty list says so in one
 sentence and offers Close.
 
-## Rows you open
+### rows-you-open
+
+Applies to: scripts/dashboard/nb-*.js; row, fold, edit, cancel
 
 A row with detail behind it is a fold, the shape a bug report has: the name
 on the line with its pills, the fields under labels when opened, its action
@@ -316,7 +552,9 @@ fields in; Cancel (`.stop`) puts them away and drops what was typed, and
 Save puts them away having written it. A row Add made has nothing to go
 back to, so cancelling it removes it.
 
-## Long lists
+### long-lists
+
+Applies to: scripts/dashboard/nb-*.js, scripts/dashboard/tab-*.js; list, page, paginate, pagination
 
 A list that can outgrow a screen shows a page at a time, through `paginate`
 and nothing else: one helper applied to the DOM after a list draws, rather
@@ -343,7 +581,9 @@ template, so its ids belong to every open notebook at once; a key that
 forgets which notebook it is in is one bucket shared by all of them, which
 is how a page came to turn itself back.
 
-## The notebook
+### the-notebook
+
+Applies to: scripts/dashboard/nb-*.js; notebook, view, head, row, strip
 
 Every view opens with the same head row: its one-line summary on the left
 and its controls, History where it has one, on the right. That row is the
@@ -377,7 +617,9 @@ that lines up at the bottom, colours as a chip beside a seven-character
 field, prose in a proseline, and the prompt in a read-only textarea, which
 is a page of text and not a control.
 
-## Both sizes
+### both-sizes
+
+Applies to: scripts/dashboard/index.html; phone, mobile, touch, tap, width, responsive, fold, cover
 
 The phone and the desktop are both first-class. A surface is not done until
 it has been looked at at both widths: sections open on a desktop and shut on
@@ -394,7 +636,9 @@ rather than each taking its text's, so the last one is never cut off: at
 a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
 840, still the phone layout) and a desktop.
 
-## Motion
+### motion
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/page-motion.js; motion, animation, animate, fade, transition, tween
 
 Everything that appears, leaves, opens or changes state moves: a panel or
 menu arrives (`menuIn`), a document brought to the front fades in over its
@@ -409,8 +653,8 @@ controls out on a phone slides over the height that takes. A change that
 snaps is a change the eye has to find. Every one of them is off under
 `prefers-reduced-motion`. A scheme may ask for a different fold with
 `--fold: fade` on the card (nostromo does: its smoked glass sliding into
-the title bar read as a bug): the body fades where it stands, then the gap
-closes, and the cards below still ride the height.
+the title bar read as a bug): the body fades where it
+stands, then the gap closes, and the cards below still ride the height.
 
 **What fades is what is drawn, never the ground under it.** A document's
 ground (the page colour, the panel colour, nostromo's glass and scanlines)
@@ -428,14 +672,18 @@ as long as that took. Until then `body.booting` gives the pane the page's
 ground and the same quiet `loading…` line every other surface waits with, and
 the first draw that had state to draw takes the class off.
 
-## Progress
+### progress
+
+Applies to: scripts/dashboard/page-docs.js; progress, busy, spinner, percentage
 
 Something that is running says so with a word and an animated ellipsis,
 `busy(btn, verb)`, never a bar or a percentage: nothing here can honestly
 measure how far along a build or a pull is, and a bar that guesses is a lie
 with a scale on it.
 
-## Meters
+### meters
+
+Applies to: scripts/dashboard/tab-nodes.js; meter, gauge, bar, track
 
 A bar that measures something real (a disk, memory, a load) is a meter:
 a label, a track, a value. Meters come in stacks, and a stack is read as
@@ -446,7 +694,9 @@ each row sizes its bar to whatever its own number leaves it, the long
 values shorten their bars, and the stack reads as a ragged edge instead of
 a comparison. `uniform.mjs` measures every stack on every tab for this.
 
-## When a view re-reads
+### when-a-view-re-reads
+
+Applies to: scripts/dashboard/page-poll.js, scripts/dashboard/nb-*.js, scripts/dashboard/tab-*.js; poll, refresh, revision, redraw, re-read, timer
 
 Three ways a view changes, and each has one answer.
 
@@ -509,7 +759,9 @@ identity (a memory, a bug, a test, a rule) keeps its open set in its view
 instead. `uniform.mjs` fails any `<details>` on any tab or notebook view that
 has neither.
 
-## Words on the screen
+### words-on-the-screen
+
+Applies to: scripts/dashboard; hint, wording, text, copy, sentence, empty, state, state, line
 
 One sentence that tells the person what they need to know to act, in their
 words: what the control does, and the one consequence they could not guess.
@@ -520,3 +772,48 @@ line or an empty state is a line, about 25 words. The why goes in a code
 comment, the README or Help, never inline. A stacked row
 is `flex-wrap: nowrap`; a long token in it wraps or scrolls inside its own
 box, and nothing scrolls the page or the pane sideways on a phone.
+
+## Pages
+
+Each page is a layout of labelled blocks on a frame, named for what it is for, on the platform it is built for.
+
+### the dashboard (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the dashboard on a desktop frame (12 columns by 8 rows), from the App shell template:
+  Header (the top bar with the name and the account): the brand, the build stamp, the bell, the gear and sign out, across the top, row 1 of 8
+  Sidebar (a side column of links or filters): the cards: Doctor, Tools, Administration, Runner, Projects; folding, the one arrangement stored, on the left, columns 1 to 3 of 12, rows 2 to 8 of 8
+  Tabs (a strip of tabs switching one area): the tab strip: terminals and document tabs, a + to open one, on the right, columns 4 to 12 of 12, row 2 of 8
+  Content (the main reading or working area): the pane: a terminal or a document tab, one on show, two panes side by side on a wide desk, on the right, columns 4 to 12 of 12, rows 3 to 7 of 8
+  Footer (a footer with the quiet links): the bottom bar: Commands, Sessions, Chat, on the right, columns 4 to 12 of 12, row 8 of 8
+Notes:
+  A document tab is a reading surface built by docSurface: a bar band, the band list, a quiet footer. Everything that appears or changes state moves, and nothing fades its own ground.
+
+### a notebook (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Content (the main reading or working area): the view: its head row first, then its sections (docSection folds) and lists, adding at the top, across the middle, rows 2 to 7 of 8
+  Footer (a footer with the quiet links): Save and Revert, only on the views that stage something, across the bottom, row 8 of 8
+Notes:
+  One notebook per project, a clone of one template. Every view opens with the same head row at one height. A row with detail behind it is a fold that opens to be read, never as a form.
+
+### the dashboard on a phone (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the dashboard on a phone on a phone frame (6 columns by 12 rows), from the Blank template:
+  Header (the top bar with the name and the account): the brand, the uptime, the bell, the gear and sign out, across the top, row 1 of 12
+  Tabs (a strip of tabs switching one area): Dashboard or Terminal: the two panels take turns, across the middle, row 2 of 12
+  Content (the main reading or working area): the sidebar's cards, or the tab strip and the pane, across the middle, rows 3 to 11 of 12
+  Footer (a footer with the quiet links): Keys, Commands, Sessions, Chat, sharing the width, across the bottom, row 12 of 12
+Notes:
+  Sections open on a desktop and shut on a phone. The notebook's strip wraps into rows of equal tabs. A bar of buttons shares the width so the last is never cut off, down to a 344px fold cover.
+
+### a dialog (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a dialog on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Overlay (a dialog, sheet, drawer, popover or toast over the page): a modal: its h3, every line a field band, groups headed by a label, the foot with the state, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Notes:
+  Two gaps down a dialog and no others: the field gap between the things in a band, the label gap between a label and its control. It scrolls in one place; a text box and a listbox are the only things that scroll inside it.
