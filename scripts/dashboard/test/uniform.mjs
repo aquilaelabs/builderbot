@@ -1319,9 +1319,11 @@ async function dialogShape(pg = page){
     // too is the half-a-line wobble About had on every size (18 Sep).
     const scrolls = e => e.scrollHeight > e.clientHeight + 1;
     // A text box scrolling its own text is an editor doing its job, not a
-    // second scroller in the dialog's layout.
+    // second scroller in the dialog's layout; so is a listbox scrolling its
+    // rows past four (the design language, Controls), which is what keeps
+    // a dialog of forty projects short.
     const inner = [...box.querySelectorAll('*')].filter(e => e.offsetHeight && scrolls(e)
-      && e.tagName !== 'TEXTAREA' && /auto|scroll/.test(getComputedStyle(e).overflowY));
+      && e.tagName !== 'TEXTAREA' && !e.classList.contains('lbox') && /auto|scroll/.test(getComputedStyle(e).overflowY));
     const nested = scrolls(box) && inner.length
       ? `the box scrolls ${box.scrollHeight - box.clientHeight}px around ${inner[0].id || inner[0].className || inner[0].tagName}, which scrolls too` : '';
     // A dialog of prose (About) may have headings; one of fields may not.

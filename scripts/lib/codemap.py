@@ -785,17 +785,24 @@ def build(root, prior=None):
                                 if p["name"] in names and (p["name"], p["line"]) not in own]
     idx = {"format": FORMAT, "built": time.time(), "root": str(root), "scanned": scanned,
            "dropped": len(set(kept) - set(files)), "files": files}
+    # Kept in the tree when the tree takes it. A project this session only
+    # READS (prefs.reads) is bound read-only into its view, so the map of
+    # one is built here and answers from memory, and the next question
+    # builds it again: a second's cost, never a refusal.
     out = root / INDEX_DIR
-    out.mkdir(exist_ok=True)
-    exclude(root)
-    tmp = out / (INDEX_FILE + ".tmp")
-    tmp.write_text(json.dumps(idx))
-    tmp.replace(out / INDEX_FILE)
-    # The index an older reader wrote stays behind otherwise, and two of
-    # them were sitting beside this one at seven megabytes each.
-    for old in out.glob("*.json"):
-        if old.name != INDEX_FILE and (old.name == "index.json" or re.fullmatch(r"map\d+\.json", old.name)):
-            old.unlink(missing_ok=True)
+    try:
+        out.mkdir(exist_ok=True)
+        exclude(root)
+        tmp = out / (INDEX_FILE + ".tmp")
+        tmp.write_text(json.dumps(idx))
+        tmp.replace(out / INDEX_FILE)
+        # The index an older reader wrote stays behind otherwise, and two of
+        # them were sitting beside this one at seven megabytes each.
+        for old in out.glob("*.json"):
+            if old.name != INDEX_FILE and (old.name == "index.json" or re.fullmatch(r"map\d+\.json", old.name)):
+                old.unlink(missing_ok=True)
+    except OSError:
+        pass
     return flat(idx)
 
 
