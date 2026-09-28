@@ -2551,7 +2551,12 @@ def new_refusal(project, key):
     if not key:
         return "an instance needs a name with a letter or digit in it"
     if compose_file(project) is None:
-        return f"{project} has no compose file to make an instance of"
+        # Where BuilderBot looks, said: a session that wrote its compose
+        # somewhere else read "no compose file" as not having one at all,
+        # and went to bb container new, which builds from an empty
+        # directory (B329).
+        return (f"{project} has no compose file at its root to make an instance of: "
+                f"{', '.join(COMPOSE_NAMES)} is where it is looked for")
     return _taken(project, key, _load())
 
 

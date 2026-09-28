@@ -2372,6 +2372,7 @@ if not NODES_OK:
 phone.rebuilder = devactions.rebuild
 phone.container_maker = containers.create_container
 phone.container_free = containers.name_free
+phone.container_builds = containers.build_refusal
 phone.instance_maker = devactions.make_instance
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
 phone.ctl_runner = containers.ctl_on

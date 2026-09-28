@@ -229,7 +229,12 @@ You have no Docker socket of your own, because the daemon is the node's
 and its group is root there. A container that does not exist yet is an ask
 (`bb container new`, above): it belongs to this project unless `--for`
 names another, lives on one of the project's nodes, and either of those
-is always asked.
+is always asked. It has no project tree behind it: compose resolves its
+relative paths, `build: .` included, against its own empty data
+directory, so one that builds from a path is refused. This project's own
+code goes into Docker from a compose file at the project's root
+(`docker-compose.yml` or `compose.yml`) with `bb devapp new`, which builds
+from this tree, and `bb devapp rebuild` after a change.
 
 <!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
 This project has a compose file, so it can have a container built from it:

@@ -32,7 +32,8 @@ def status():
         sys.exit(f"[builderbot] ERROR: {d['error']}")
     st = d.get("state") if isinstance(d.get("state"), dict) else d
     if not st.get("compose"):
-        print("no compose file here, so there is no dev instance")
+        print("no compose file at this project's root (docker-compose.yml or compose.yml), so there is "
+              "no dev instance: with one there, bb devapp new builds it from this tree")
         raise SystemExit(0)
     print(f"  {'instance':<12} {st.get('name') or '-'}")
     print(f"  {'running':<12} {'yes' if st.get('running') else 'no'}")

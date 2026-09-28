@@ -57,6 +57,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container's row names its node rather than an ssh address in brackets after a refusal on an agent node; and bb devapp env ends its output with a newline, so a line appended to it stands on its own (8bdeafa)
 - A rebuild no longer re-owns a compose's bind-mount source directories that already exist: only a directory it makes is given to the session account, so another container's config folder keeps its owner (a3f82b7)
 - Switching to a document tab (a notebook, Projects, Docker and the rest) no longer opens on a black pane: the tab's own background is there from the first frame in every theme, and only its contents fade in (b3b3ad8)
+- A container written on the Docker tab or asked for with bb container new that would build from a relative path is refused, naming the way in for a project's own code (a compose file at its root and Send to Docker, or bb devapp new): with no tree behind it, it built from an empty directory (6f28fbd)
 
 ### Security
 
