@@ -54,6 +54,16 @@ def fail(msg):
     raise SystemExit(1)
 
 
+def lands_line(prefix=""):
+    """Where the number here lives against the branch builds come from,
+    when they differ: version.lands, the same words the Artifacts tab's
+    version row shows. A bump on a branch already merged, unpushed, looked
+    like the project's version while main still had the old one (B338)."""
+    now = version.lands(proj, comp).get("now")
+    if now:
+        print(prefix + now)
+
+
 def policy_line():
     pol = version.policy(proj)
     allowed = version.allows(pol)
@@ -79,6 +89,7 @@ if argv and argv[0] == "bump":
           f"({r['part']}, committed {r['commit']}, not pushed)")
     if r.get("note"):
         print(f"note: {r['note']}")
+    lands_line()
     raise SystemExit(0)
 
 if argv and argv[0] == "unbump":
@@ -88,6 +99,7 @@ if argv and argv[0] == "unbump":
     print(f"{proj}{'/' + comp if comp else ''} {r['was']} -> {r['target']}  "
           f"(returned, committed {r['commit']}, not pushed); its changelog "
           "section is back in Unreleased")
+    lands_line()
     raise SystemExit(0)
 
 if argv and argv[0] == "init":
@@ -98,6 +110,7 @@ if argv and argv[0] == "init":
         fail(r["error"])
     print(f"{proj}{'/' + comp if comp else ''} is now {r['target']}  "
           f"(committed {r['commit']}, not pushed)")
+    lands_line()
     raise SystemExit(0)
 
 if argv and argv[0] == "policy":
@@ -175,6 +188,7 @@ if v["ordinal"] is not None:
 if v["sha"]:
     print(f"  commit            {v['sha']}"
           + ("  (working tree dirty)" if v["dirty"] else ""))
+    lands_line("  branch            ")
 
 # What this container is running, but only where that is a comparison rather
 # than a coincidence: BB_VERSION is the image's, and the image is built from

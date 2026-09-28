@@ -801,6 +801,14 @@ this directory">Send to Claude</button>
     // window (the server decides that, from the files that move it). A
     // COMPONENT's version is its own and carries none of it.
     const cost = v.component ? null : ver?.window_cost;
+    // Where the number here lives against the branch builds come from, and
+    // where a staged bump would land: the server's sentences (version.lands),
+    // so the row and bb version say the same thing. A bump on a branch
+    // already merged, unpushed, read as the project's version here while
+    // main still had the old one, and nothing on the row said so (B338).
+    const lands = v.lands || {};
+    const mark = (text, bad) => text ? `<div class="verln"><span></span><span class="vermark${
+      bad ? " bad" : ""}">${esc(text)}</span></div>` : "";
     const line = (label, value, cls = "") => value
       ? `<div class="verln ${cls}"><span>${label}</span><code>${esc(value)}</code></div>`
       : "";
@@ -837,11 +845,13 @@ this directory">Send to Claude</button>
               ? line(v.released ? "released as" : "building towards", v.target)
               : line("version", "none yet: no VERSION file; Set one below"))
       + (v.released ? line("tag", v.tag) : "")
+      + mark(lands.now, lands.bad)
       + (staged ? `<div class="verln"><span></span><span class="vermark">
            staged: ${esc(v.next[staged] || "")} on Save: ${esc(staged)}${
              v.unreleased ? `, dating ${v.unreleased} changelog entr${
                v.unreleased === 1 ? "y" : "ies"}`
              : `, with no changelog entries to date`}</span></div>` : "")
+      + (staged ? mark(lands.staged, lands.staged_bad) : "")
       // What a MINOR bump costs everything else, said BEFORE Save rather than
       // discovered after it (B92): the minor is the compatibility window, so
       // moving it ends the Claude sessions on every project whose block is

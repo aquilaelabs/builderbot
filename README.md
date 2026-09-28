@@ -98,7 +98,9 @@ bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    --file, --semver, --json
 bb version bump major|minor|patch    move the target, if the policy allows it.
                    A bump decides the number and closes the changelog under
-                   it; it does not release anything. **Release** on the
+                   it; it does not release anything. It commits on the branch
+                   the checkout is on and pushes nothing, and says so when
+                   that is not the branch builds come from. **Release** on the
                    Artifacts tab is the second gesture: an annotated tag
                    (vX.Y.Z, or DIR-vX.Y.Z for a component) on the commit you
                    are on, pushed to the remote. Until that tag exists every

@@ -493,6 +493,84 @@ def _ships_from(project):
     return ""
 
 
+def _branch_facts(project):
+    """Where this checkout stands against the branch builds come from, or
+    None when the remote names none: that branch (`_ships_from`, as this
+    checkout last fetched it), the branch HEAD is on ("" when detached), and
+    whether HEAD is already in the one builds come from."""
+    ships = _ships_from(project)
+    if not ships:
+        return None
+    return {"ships": ships, "base": ships.split("/", 1)[-1],
+            "branch": _git(project, "symbolic-ref", "--short", "-q", "HEAD") or "",
+            "in_base": _git(project, "merge-base", "--is-ancestor",
+                            "HEAD", ships) is not None}
+
+
+def lands(project, comp="", facts=None):
+    """Where this block's number lives against the branch builds come from,
+    in the words the version row and `bb version` both print (B338).
+
+    A bump commits on whatever branch the checkout is on and never pushes,
+    and that stays: a bump can belong in a release branch's pull request.
+    What was missing is saying so. A project released from main was bumped
+    to 0.8.0 on a branch already merged into main, unpushed, while the tab
+    showed 0.8.0 and main still read 0.7.0, so its release found nothing
+    new to tag. Release refuses the same situation (B94); the bump only
+    has to say it.
+
+    `now` is said whenever the number here and the one builds come from
+    differ, `staged` beside a staged bump when Save would commit off that
+    branch, and each `bad` when it is the reported case in the making: a
+    number on no remote, or a bump headed for a branch already merged or
+    for no branch at all. The remote is as last fetched: the tab reads it
+    on every open, and a fetch there would make every open wait on it.
+    """
+    f = _branch_facts(project) if facts is None else facts
+    where = _sub(project, comp)
+    if not f or where is None:
+        return {}
+    tgt, _ = target(project, comp)
+    rel = str((where / VERSION_FILE).relative_to(root(project).resolve()))
+    base, ships, branch = f["base"], f["ships"], f["branch"]
+    on_base = branch == base
+    out = {"now": "", "bad": False, "staged": "", "staged_bad": False}
+    if not on_base:
+        if not branch:
+            out.update(staged="Save commits it on no branch: this checkout is detached.",
+                       staged_bad=True)
+        elif f["in_base"]:
+            out.update(staged=(f"Save commits it on {branch}, which is already in "
+                               f"{base}, where builds come from, so it reaches "
+                               f"them only through another merge. To bump {base} "
+                               f"itself, switch to {base} on the Git view and "
+                               f"pull first."),
+                       staged_bad=True)
+        else:
+            out["staged"] = (f"Save commits it on {branch}. Builds come from "
+                             f"{base}, which gets it when {branch} is merged.")
+    theirs = _git(project, "show", f"{ships}:{rel}")
+    theirs = theirs.strip() if theirs is not None else None
+    if not tgt or theirs == tgt:
+        return out
+    # The commit that set the number here: whether it is in the branch
+    # builds come from, and whether any remote has it at all.
+    vsha = _git(project, "log", "-1", "--format=%H", "--", rel) or ""
+    first = ""
+    if vsha and _git(project, "merge-base", "--is-ancestor", vsha, ships) is None:
+        pushed = bool(_git(project, "for-each-ref", "--count=1",
+                           "--contains", vsha, "refs/remotes"))
+        spot = "here" if on_base else (f"on {branch}" if branch else "on a detached checkout")
+        first = f"{tgt} is committed {spot}" + ("." if pushed else " and not pushed.")
+        out["bad"] = not pushed
+    elif not on_base:
+        first = f"This checkout is on {branch}." if branch else "This checkout is on no branch."
+    second = (f"Builds come from {base}, which reads {theirs} as last fetched." if theirs
+              else f"Builds come from {base}, which has no {VERSION_FILE} as last fetched.")
+    out["now"] = f"{first} {second}".strip()
+    return out
+
+
 def release(project, comp="", env=None, may_push=True, push=True):
     """Cut the release: an annotated tag on this commit, pushed.
 
@@ -947,13 +1025,17 @@ def payload(project):
     answers.
     """
     repo = _repo(project)
-    out = one(project, repo=repo)
-    out["versions"] = [one(project, c, repo=repo) for c in components(project)]
+    facts = _branch_facts(project) if repo is not None else None
+    out = one(project, repo=repo, facts=facts)
+    out["versions"] = [one(project, c, repo=repo, facts=facts)
+                       for c in components(project)]
     return out
 
 
-def one(project, comp="", repo=None):
-    """One version block: the project's, or a component's."""
+def one(project, comp="", repo=None, facts=None):
+    """One version block: the project's, or a component's. `facts` is the
+    checkout against the branch builds come from, gathered once for every
+    block (payload), and None where there is nothing to compare with."""
     v = render(project, comp, repo=repo)
     pol = policy(project)
     d = _sub(project, comp)
@@ -992,6 +1074,9 @@ def one(project, comp="", repo=None):
         "prev": prev_target(project, comp) if v["target"] else None,
         "sealed": (_release_tag_exists(project, v["target"], comp)
                    if v["target"] else False),
+        # Where the number here lives against the branch builds come from,
+        # and where a staged bump would land (B338): {} with no remote.
+        "lands": lands(project, comp, facts=facts) if facts else {},
     }
 
 
