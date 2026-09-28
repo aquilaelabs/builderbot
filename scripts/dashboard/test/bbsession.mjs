@@ -123,11 +123,14 @@ root = tempfile.mkdtemp()
 src = os.path.join(root, 'src'); os.makedirs(src)
 target = os.path.join(root, 'ws', 'hello')
 m.apply([('bindro', src, target)], os.getuid(), os.getgid())
-print(json.dumps({'made': os.path.isdir(target), 'mounts': len(calls), 'onto': calls[0][1] if calls else ''}))
+# ...and onto a file that is there (the claude binary's link) it makes nothing.
+link = os.path.join(root, 'claude'); os.symlink(os.path.join(src, 'x'), link)
+m.apply([('bindro', src, link)], os.getuid(), os.getgid())
+print(json.dumps({'made': os.path.isdir(target), 'mounts': len(calls), 'onto': calls[0][1] if calls else '', 'link': os.path.islink(link)}))
 `], { encoding: 'utf8' }).trim();
   const r = JSON.parse(said);
-  ok(r.made && r.mounts === 2 && r.onto.endsWith('/ws/hello'),
-     `a read-only bind makes its target under the view before mounting, as a writable one does (${said})`);
+  ok(r.made && r.mounts === 4 && r.onto.endsWith('/ws/hello') && r.link,
+     `a read-only bind makes its target under the view before mounting, as a writable one does, and leaves a file that is there alone (${said})`);
 }
 ok(has('tmpfs', users, 'mode=0755') && has('bind', `${STAGE}/home`, myHome) && hidden(join(homeRoot, '.claude'))
    && hidden(join(homeRoot, '.claude.json')),
