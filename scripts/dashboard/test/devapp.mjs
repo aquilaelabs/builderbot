@@ -679,7 +679,11 @@ ok(!existsSync(`${DIR}/dockerstate/ep-silon.exited`),
 // with no account of why it had not started, and its tail gone.
 writeFileSync(`${DIR}/dockerstate/up.fail`, '1');
 await dmClick('up');
-await page.waitForFunction(() => dockerList?.job?.error, null, { timeout: 20000 })
+// The job first, then the row: the reason reaches the row only once the
+// job has released, and a flat wait on the row ran out under load while
+// the job was still running (B340).
+await idle(60000);
+await page.waitForFunction(() => dockerList?.job?.error, null, { timeout: patience(20000) })
   .catch(() => {});
 const failed = await page.evaluate(() => dockerList?.job || {});
 ok(/up failed/.test(failed.error || ''),
