@@ -2434,11 +2434,19 @@ prefs.configure_dialog(WORKSPACE=WORKSPACE, pin_instances=devapp.pin_to_current_
 # An account's own settings, read and saved: profiletab.py.
 import profiletab                                                # noqa: E402
 
+# An account's conversations with Claude as a download: transcripts.py.
+import transcripts                                               # noqa: E402
+
+transcripts.configure(workspace=WORKSPACE,
+                      root_for=lambda uid: (Path(home_for(uid)) / ".claude" / "projects")
+                      if home_for(uid) else CLAUDE_PROJECTS)
 profiletab.configure(users=users,
                      claude_email=lambda uid: claude_auth(home=home_for(uid)).get("email") or "",
                      plugins_of=plugins.of,
                      node_names=lambda: {n["id"]: n["name"]
-                                         for n in ([] if NODES_OK else nodes.node_list())})
+                                         for n in ([] if NODES_OK else nodes.node_list())},
+                     logs_of=lambda me: transcripts.mine(
+                         users.uid_of(me), [p["name"] for p in project_list(me)]))
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -3075,6 +3083,7 @@ GET_ROUTES = (
     ("prefix", "/api/status", "_get_status"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
+    ("prefix", "/api/transcript", "_get_transcript"),
     ("prefix", "/api/git", "_get_git"),
     ("prefix", "/api/project-sessions", "_get_project_sessions"),
     ("prefix", "/api/changelog", "_get_changelog"),
@@ -5397,6 +5406,28 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*profiletab.view(me))
         payload, status, renamed = profiletab.verb(me, field(req, "action"), req)
         return self._json(payload, status, cookie=make_token(renamed) if renamed else None)
+
+    def _get_transcript(self):
+        """GET /api/transcript?project=NAME&id=SESSION: one of the signed-in
+        account's own conversations with Claude on that project as a text
+        file, every command and answer in it (transcripts.render). Anybody
+        signed in, their own only: the file is looked for under their own
+        transcripts directory and nowhere else, so another account's id is
+        simply not found."""
+        me = self._who()
+        uid = users.uid_of(me) if me else ""
+        if not me or not uid:
+            return self._json({"error": "not an account"}, 403)
+        if me.get("session"):
+            return self._json({"error": "a session has the transcript already"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        text, fname = transcripts.render(uid, name, q.get("id", [""])[0])
+        if text is None:
+            return self._json({"error": fname}, 404)
+        return self._attachment(fname, text.encode("utf-8"), "text/plain; charset=utf-8")
 
     def _git_act(self, req):
         """The Git view's actions (roadmap R36 step 2): fixed git commands on

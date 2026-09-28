@@ -146,6 +146,7 @@ scripts/
     hooks.py                     what a node session's hooks post: overlap notes, the chat feed, the catch-up, the turn queue
     macros.py                    what the page may type into a terminal: the command and key tables, the pins, custom lists
     profiletab.py                an account's own settings, the Profile tab
+    transcripts.py               an account's conversations with Claude as a text to download, from the Profile tab
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
     layout.py                    what the page keeps here: each account's tab strip and panes, and the sidebar's cards
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot

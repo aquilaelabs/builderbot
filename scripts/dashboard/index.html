@@ -589,12 +589,18 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .logacts{display:flex;flex-wrap:wrap;gap:6px}
 /* An anchor, because a download is a link and a link is what a browser knows
    how to save. Dressed as a button so the row reads as three controls. */
-.logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
+.logacts .btnish,.cvlog .btnish{display:inline-flex;align-items:center;justify-content:center;
   flex:0 0 auto;min-height:var(--tap);padding:0 10px;border-radius:var(--r-surface);
   border:1px solid var(--line);background:var(--btn);color:var(--ink);
   text-decoration:none;font:var(--f-ui);cursor:pointer}
 .logacts button{flex:0 0 auto;min-height:var(--tap)}
-@media(hover:hover){ .logacts .btnish:hover{background:var(--btn-hi)} }
+@media(hover:hover){ .logacts .btnish:hover,.cvlog .btnish:hover{background:var(--btn-hi)} }
+/* The Profile's conversation logs: one row a conversation, its words on
+   the left and the download on the right, wrapping under it on a phone. */
+.cvlogs{display:flex;flex-direction:column;gap:6px}
+.cvlog{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cvlog .cvwhat{flex:1 1 14em;min-width:0}
+.cvlog .cvfirst{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* A swatch renders in its own scheme: the tokens above are defined for
    .sw[data-theme=...] as well as for the page, so this is the palette itself
    at 1cm rather than a hand-kept copy of it. */
