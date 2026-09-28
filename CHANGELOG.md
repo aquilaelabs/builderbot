@@ -11,6 +11,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A Claude session can send its project to Docker the way the Artifacts tab's Send to Docker manager does: bb devapp new [NAME] [--branch REF] makes a container from the project's compose file, builds and starts it, and waits for the result, under the project's Claude may: Run its container setting (f02a9a8)
 - bb capture: shot, one picture at rest (shots a quarter second apart until a second of them match), and reel, the frames that changed on one sheet with a JSON of when; each from a page, the running emulator or an X display. bb emu shot is bb capture shot --emu (60d809c, 0a56328)
 - The notebook has a Design view: a project's design language (colours as tokens, type, shape, space, motion, your rules) and pages laid out as labelled blocks on a phone or desktop frame, each named for what it is for and its platform; Send to Claude, bb design and docs/design-language.md carry it (8d6375a)
+- A project's settings name other projects a session on it may read: their code read-only in its view on a node, their notebooks through bb from inside them, every write refused by name. That list, and the nodes a project also works on, are checkbox listboxes (206c6d6)
 
 ### Changed
 
