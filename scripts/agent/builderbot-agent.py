@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.112"
+AGENT_VERSION = "0.7.113"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3476,10 +3476,13 @@ class Agent:
             return
         # The copy already unpacked for this node's sessions, never a fetch:
         # this runs on the heartbeat, and `bundle()` pulls from the controller
-        # every time it is called. `.bb/current` is what a shell here puts on
-        # its PATH, so it is the same bb the session itself runs.
+        # every time it is called. `.bb/current/scripts` is what a shell here
+        # puts on its PATH, so it is the same bb the session itself runs. It
+        # looked for `.bb/current/bb`, which no bundle has, found nothing and
+        # returned, so no idle session's token was ever refreshed and each
+        # ran out twelve hours after its last call (B335).
         store = tc_root(self.state)
-        bb = os.path.join(store, ".bb", "current", "bb") if store else ""
+        bb = os.path.join(store, ".bb", "current", "scripts", "bb") if store else ""
         if not bb or not os.access(bb, os.X_OK):
             return
         env0 = dict(os.environ)
