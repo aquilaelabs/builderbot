@@ -460,6 +460,11 @@ def may_work(u, name):
         return True
     if not u:
         return False
+    # A session works on the one project its token was minted for. The
+    # others in its list are the ones that project reads (prefs.reads),
+    # there to be seen and never changed.
+    if u.get("session"):
+        return name == u["session"]
     have = u.get("projects") or []
     return "*" in have or name in have
 
@@ -504,6 +509,16 @@ def may(u, action, project=None):
     # the sentence says so.
     if project is not None and not may_see(u, project):
         return "not a project"              # the same answer a typo gets
+    # A session on a project that reads this one: every read goes through,
+    # and every write is refused with the reason, which is the whole of
+    # what "reads" means. `bb` is the relay, whose own door keeps the
+    # relayed words to reads (bbrelay.admit).
+    if project is not None and u.get("session") and project != u["session"] \
+            and project in (u.get("reads") or []):
+        if action in READ_ACTIONS:
+            return ""
+        return (f"{project} is read-only from a session on {u['session']}: it reads "
+                f"{project}'s code and notebook, and a session on {project} is what changes them")
     if project is not None and not may_work(u, project):
         return ("you have not taken this project on: add it to your own list "
                 "on the Users tab" if is_admin(u) else
@@ -647,6 +662,21 @@ def renewal(tok):
     if exp - time.time() > SESSION_TTL / 2:
         return ""
     return mint_session(p["session"], uid=p.get("uid", ""))
+
+
+# What a session may do to a project it reads: look, and relay the reading
+# verbs (checked word by word in bbrelay.admit). Everything else is a write.
+READ_ACTIONS = ("read", "bb")
+
+
+def with_reads(u, reads):
+    """The session principal widened to the projects its own reads: they
+    join its list, so the visibility gates let them through, and `reads`
+    says which they are, so the write gates refuse them by name."""
+    if not u or not u.get("session"):
+        return u
+    reads = [r for r in (reads or []) if r and r != u["session"]]
+    return {**u, "projects": [u["session"], *reads], "reads": reads}
 
 
 def session_principal(tok):

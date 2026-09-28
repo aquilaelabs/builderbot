@@ -274,8 +274,7 @@ The Projects card is the list of folders in the projects share, and it says
 what is wrong with each one rather than hiding it. Errors fold away behind a
 button: no git repository, or ownership the container cannot work with, in red.
 Warnings stay in the list in amber, because they are asking for something: no
-`CLAUDE.md`, or one whose environment block has fallen behind the image. Both
-are underlined links that fix themselves in place. A row with an error carries
+`CLAUDE.md`, as an underlined link that writes one in place. A row with an error carries
 no Claude button, since a session cannot start there; a *locked* one keeps its
 button, ghosted, and a closed padlock after the name.
 A directory with a `.bbignore` file in it is not treated as a project: the

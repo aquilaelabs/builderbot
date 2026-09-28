@@ -1131,7 +1131,11 @@ function wireNodesTab(root){
       // having to remember the flag.
       const user = body.querySelector("#ndEnUser").value.trim() || "bb";
       const r = await nodeAct({action: "enroll", name, user});
-      if (r.error){ mintForm(); return; }   // nodeAct has said why
+      // nodeAct has said why; the form comes back holding what was typed,
+      // since a redraw to its defaults lost the name and the account on
+      // every refusal (B331's shape: an account read as bb after joe).
+      if (r.error){ mintForm(); body.querySelector("#ndEnName").value = name;
+                    body.querySelector("#ndEnUser").value = user; unbusy(go, "Mint a token"); return; }
       // The URL the node should dial: this page's origin, which is the only
       // address the browser knows the controller by. A proxy in front is the
       // operator's to substitute.

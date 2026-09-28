@@ -1,6 +1,6 @@
 // New project: the button at the foot of the Projects card, the dialog, and
 // /api/create behind it. The local path runs for real (git init in the
-// scratch workspace, CLAUDE.md built from the checkout's template) while the
+// scratch workspace, the brief kept for the first session) while the
 // clone path is tested up to its URL allow-list: the list is the thing under
 // test, and a real clone would need GitHub on the other end.
 import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring, tmuxNew, tmuxKill,
@@ -150,15 +150,22 @@ ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
      && log[0] === 'Add VERSION at 0.1.0' && log[1] === 'Start zeta',
      `a new project is committed and given its first version (${log.join(' | ')})`);
 }
-// One file, and it is the project's own (R63 step 3): what a session is told
-// about the environment is assembled per session now, so nothing is rendered
-// into the tree and there is no second file to exclude from git.
-ok(readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8').includes('A widget frobnicator'),
-   'CLAUDE.md is the notes that were typed, and is the project\'s own');
-ok(!existsSync(`${DIR}/ws/zeta/CLAUDE.local.md`),
-   '...and no environment block is rendered beside it');
-ok(!readFileSync(`${DIR}/ws/zeta/CLAUDE.md`, 'utf8').includes('BUILDERBOT:ENV:BEGIN'),
-   '...nor put inside it, so the file is entirely theirs to commit');
+// The brief is a task for the first session, not standing instructions:
+// not CLAUDE.md, which every session reads, but a file of BuilderBot's that
+// the first Claude press offers in a dialog and that leaves the tree then
+// (brief.py). Out of git from the start, so the starting version's commit
+// does not take it and its leaving is not a deletion.
+{
+  const tracked = execFileSync('git', ['-C', `${DIR}/ws/zeta`, 'ls-files'], { encoding: 'utf8' });
+  const st = execFileSync('git', ['-C', `${DIR}/ws/zeta`, 'status', '--porcelain'], { encoding: 'utf8' });
+  ok(readFileSync(`${DIR}/ws/zeta/BUILDERBOT-BRIEF.md`, 'utf8').includes('A widget frobnicator')
+     && !existsSync(`${DIR}/ws/zeta/CLAUDE.md`) && !existsSync(`${DIR}/ws/zeta/CLAUDE.local.md`),
+     'the brief typed is kept as BUILDERBOT-BRIEF.md, and no CLAUDE.md is written');
+  ok(!/BUILDERBOT-BRIEF/.test(tracked) && !/BUILDERBOT-BRIEF/.test(st),
+     `...kept out of git, so the first commit does not take it (${JSON.stringify(st.trim())})`);
+  ok(await page.evaluate(() => state.projects.find(p => p.name === 'zeta')?.brief === true),
+     '...and the project row says a brief is waiting');
+}
 
 // A project made after anything has been pinned is pinned itself. Without
 // that it lands on disk and never reaches the sidebar: created, and to the
@@ -195,13 +202,16 @@ ok(true, 'a project created while a pins file exists still reaches the sidebar')
   execFileSync('tar', ['czf', `${fx}/app.tgz`, '-C', fx, 'app']);
   await page.click('#bNewProj');
   await page.waitForSelector('#pmodal:not([hidden])');
-  ok(await page.$eval('#pArchiveField', el => !el.hidden),
-     'a new local repo offers an archive to start from');
+  ok(await page.$eval('#pArchiveField', el => !el.hidden) && await page.$eval('#pAboutField', el => !el.hidden),
+     'a new local repo offers an archive to start from, and a brief');
   await page.click('#pClone');
   ok(await page.$eval('#pArchiveField', el => el.hidden), '...and a clone does not');
   await page.click('#pLocal');
   await page.fill('#pName', 'fromtar');
+  await page.fill('#pAbout', 'typed before the archive was picked');
   await page.setInputFiles('#pArchive', `${fx}/app.tgz`);
+  ok(await page.$eval('#pAboutField', el => el.hidden) && await page.$eval('#pAbout', el => el.value === ''),
+     '...and once an archive is picked, no brief: the archive is where the project starts');
   await page.click('#pCreate');
   await page.waitForFunction(() => document.getElementById('pmodal').hidden, { timeout: 20000 });
   await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
@@ -212,8 +222,18 @@ ok(true, 'a project created while a pins file exists still reaches the sidebar')
      '...without the wrapper folder or the desktop junk');
   ok((statSync(`${DIR}/ws/fromtar/build.sh`).mode & 0o111) !== 0,
      '...and a script keeps its executable bit');
-  ok(!existsSync(`${DIR}/ws/fromtar/CLAUDE.md`) && !existsSync(`${DIR}/ws/fromtar/CLAUDE.local.md`),
-     'with no notes typed, no CLAUDE.md is written: nothing is drafted for a tree that arrived (23 Sep)');
+  ok(!existsSync(`${DIR}/ws/fromtar/CLAUDE.md`) && !existsSync(`${DIR}/ws/fromtar/BUILDERBOT-BRIEF.md`),
+     'a project from an archive gets neither a CLAUDE.md nor a brief: nothing is drafted for a tree that arrived');
+  // The server holds the same line: a brief beside an archive is refused
+  // before anything is made.
+  const both = await page.evaluate(async () => {
+    const r = await fetch('/api/create', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'bothways', mode: 'init', about: 'build this', archive: 'x' }) });
+    return { status: r.status, body: await r.json() };
+  });
+  ok(both.status === 400 && /started from an archive has no brief/.test(both.body.error || '')
+     && !existsSync(`${DIR}/ws/bothways`),
+     `...and the server refuses a brief sent beside an archive, making nothing (${both.status}: ${both.body.error})`);
 
   // A zip with no wrapper folder lands as it is.
   execFileSync('python3', ['-c', `
@@ -444,8 +464,8 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
 {
   await refreshUntil(page, () => state?.mapping?.['My-New-App'] && !state.mapping['My-New-App'].running, { timeout: 15000 });
   const m = await page.evaluate(() => state.mapping['My-New-App']);
-  // Zero files is the true count: a fresh repo holds its CLAUDE.md and nothing
-  // the map indexes. What is proved is that the build ran and wrote the index.
+  // Zero files is the true count: a fresh repo holds nothing the map
+  // indexes. What is proved is that the build ran and wrote the index.
   ok(!m.error && m.files === 0 && existsSync(`${DIR}/ws/My-New-App/.bb-map/map3.json`),
      `a new project is mapped as it is created, in the background (${m.files} files in ${m.took}s${m.error ? '; ' + m.error : ''})`);
   ok(/^\.bb-map\/$/m.test(readFileSync(`${DIR}/ws/My-New-App/.git/info/exclude`, 'utf8')),

@@ -133,31 +133,37 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
      `...and leaves nothing behind once it has settled (${JSON.stringify(settled)})`);
   // The rings hold still while the cards scroll over them, and the two
   // halves of the page wear one glass (the operator, 24 Sep): the cards,
-  // the tab strip, a pane's bar and the document in it, over a pane left
-  // open so it is the hull that shows through.
+  // the tab strip, a pane's bar and the ground under a document, over a pane
+  // left open so it is the hull that shows through. The ground is the
+  // stack's and the document box paints none, so the document fading in
+  // does not take the glass with it (27 Sep).
   const glass = await page.evaluate(() => {
     const alpha = c => {
       const m = /\/\s*([0-9.]+)\s*\)$/.exec(c || '') || /^rgba\([^,]+,[^,]+,[^,]+,\s*([0-9.]+)\)$/.exec(c || '');
       return m ? Number(m[1]) : 1;
     };
     const bg = e => e ? getComputedStyle(e).backgroundColor : '';
-    // A document, as the tab side draws one, read and taken away again.
+    // A document on show, as the tab side draws one, read and taken away
+    // again in the same task, so it is never painted.
     const pane = document.querySelector('.pane');
-    const doc = document.createElement('div');
-    doc.className = 'doc'; doc.style.visibility = 'hidden';
-    pane?.appendChild(doc);
+    const st = document.createElement('div'), doc = document.createElement('div');
+    st.className = 'stack'; st.style.visibility = 'hidden';
+    doc.className = 'doc on';
+    st.appendChild(doc);
+    pane?.appendChild(st);
     const out = { rings: getComputedStyle(document.querySelector('.col.side')).backgroundAttachment,
                   card: bg(document.querySelector('.card[data-card="doctor"]')),
                   tabbar: bg(document.querySelector('.tabbar')),
                   bar: bg(document.querySelector('.pane .bar')) || 'no bar',
-                  doc: bg(doc), pane: bg(pane) };
-    doc.remove();
+                  ground: bg(st), doc: bg(doc), pane: bg(pane) };
+    st.remove();
     out.alpha = alpha(out.card);
     return out;
   });
   ok(glass.rings === 'scroll',
      `the rings stay where the column is while the cards scroll over them (${glass.rings})`);
-  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.card === glass.tabbar && glass.card === glass.doc
+  ok(glass.alpha > 0 && glass.alpha < 0.8 && glass.card === glass.tabbar && glass.card === glass.ground
+     && glass.doc === 'rgba(0, 0, 0, 0)'
      && (glass.bar === 'no bar' || glass.bar === glass.card) && glass.pane === 'rgba(0, 0, 0, 0)',
      `...and the tab side wears the cards' own glass, over a pane left open (${JSON.stringify(glass)})`);
   await page.evaluate(() => {
@@ -474,6 +480,39 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await refreshUntil(page, () => state?.reports_ok === true, { timeout: 20000 });
   ok(await page.$eval('#bFindings', b => !b.disabled),
      '...and a readable one lights it again');
+  // A fourth way to have nothing: a mount gone stale under the container.
+  // The directory is fine on the host and every read of it here raises
+  // (NFS errno 116), and counts() runs on every /api/status, so the whole
+  // poll answered with the error and the page never left loading (B326).
+  // No NFS in the harness to go stale, so the module is handed a reports
+  // path that raises what a stale one does, on the look and on the listing.
+  {
+    const { execFileSync } = await import('node:child_process');
+    const dash = new globalThis.URL('..', import.meta.url).pathname;
+    const said = JSON.parse(execFileSync('python3', ['-c', `
+import errno, json, os, sys
+sys.path.insert(0, ${JSON.stringify(dash)})
+import findings
+class Stale(type(findings.REPORTS)):
+    def is_dir(self, *a, **k): raise OSError(errno.ESTALE, os.strerror(errno.ESTALE), str(self))
+    def glob(self, *a, **k): raise OSError(errno.ESTALE, os.strerror(errno.ESTALE), str(self))
+class Listless(type(findings.REPORTS)):
+    def is_dir(self, *a, **k): return True
+    def glob(self, *a, **k): raise OSError(errno.ESTALE, os.strerror(errno.ESTALE), str(self))
+out = {}
+for name, cls in (("stale", Stale), ("listless", Listless)):
+    findings.REPORTS = cls("/reports")
+    try:
+        out[name] = {"counts": findings.counts([]), "ok": findings.reports_ok(), "mounted": findings.mounted(),
+                     "available": findings.payload([]).get("available")}
+    except OSError as e:
+        out[name] = {"raised": str(e)}
+print(json.dumps(out))
+`], { encoding: 'utf8' }));
+    ok(JSON.stringify(said.stale) === JSON.stringify({ counts: {}, ok: false, mounted: false, available: false })
+       && JSON.stringify(said.listless) === JSON.stringify({ counts: {}, ok: false, mounted: true, available: false }),
+       `a reports mount gone stale reads as nothing to read rather than raising into every status poll (${JSON.stringify(said)})`);
+  }
   await page.click('#bFindings');
   await page.waitForSelector('.fxtab #fxProject', { timeout: 15000 });
 }
@@ -764,16 +803,18 @@ ok(await page.evaluate(() => {
      const st = getComputedStyle(document.querySelector('header'), '::after');
      return /repeating-linear-gradient/.test(st.backgroundImage);
    }), '...and Nostromo brings its hazard stripe with it, as a gradient');
-// The notebook's scanlines sit on the pane's scrolling box, not on the tall
-// content inside it (bug #57): a gradient rasterized across a long roadmap's
-// whole scroll height is what Firefox for Android was painting as yellow
-// striped tiles. One viewport of gradient, on the box that stays put.
+// The notebook's scanlines sit on the pane's box, not on the tall content
+// inside it (bug #57): a gradient rasterized across a long roadmap's whole
+// scroll height is what Firefox for Android was painting as yellow striped
+// tiles. One viewport of gradient, on the box that stays put: the stack
+// under the document, with the glass, since both are the ground the
+// notebook arrives on rather than part of what fades in.
 await page.evaluate(() => openNotebook(state.projects[0].name));
 await page.waitForSelector('.pane .doc > .nb');
 const scan = await page.evaluate(() => {
   const nb = document.querySelector('.pane .doc > .nb');
   const g = e => /repeating-linear-gradient/.test(getComputedStyle(e).backgroundImage);
-  return { box: g(nb.parentElement), content: g(nb) };
+  return { box: g(nb.closest('.stack')), content: g(nb) || g(nb.parentElement) };
 });
 ok(scan.box && !scan.content,
    `...and the notebook's scanlines are on the pane's box, not across the scroll height (${JSON.stringify(scan)})`);

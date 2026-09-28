@@ -40,7 +40,7 @@ function nbPendingView({$, nb, project, root}){
     el.hidden = !n;
     if (!n){ el.innerHTML = ""; return; }
     const c = nb.pendData.counts || {};
-    const parts = [["roadmap", "roadmap"], ["bugs", "bug"], ["rules", "rule"], ["settings", "setting"]]
+    const parts = [["roadmap", "roadmap"], ["bugs", "bug"], ["rules", "rule"], ["settings", "setting"], ["design", "design save"]]
       .filter(([k]) => c[k]).map(([k, w]) => `${c[k]} ${w}${c[k] === 1 || w === "roadmap" ? "" : "s"}`);
     el.innerHTML = `<div><span>${n} change${n === 1 ? "" : "s"} from a session
         ${n === 1 ? "is" : "are"} waiting for your approval${parts.length ? ": " + esc(parts.join(", ")) : ""}.</span>
@@ -117,7 +117,7 @@ function drawPendingModal(j){
   $("pendHintF").hidden = !rows.length && !$("pendHint").textContent;
   $("pendApprove").disabled = $("pendDeny").disabled = !rows.length;
   $("pendApprove").hidden = $("pendDeny").hidden = !rows.length;
-  const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules", settings: "Build and test"};
+  const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules", settings: "Build and test", design: "Design"};
   const tag = r => r.kind === "roadmap" && r.number != null ? `R${r.number}`
              : r.kind === "bugs" && r.number != null ? `B${r.number}`
              : r.kind === "rules" && r.number ? String(r.number) : "";
@@ -136,6 +136,11 @@ function drawPendingModal(j){
       if (a.words) bits.push(`words: ${Array.isArray(a.words) ? a.words.join(", ") : a.words}`);
     } else if (r.kind === "settings"){
       for (const k of ["build", "test", "outputs"]) if (a[k]) bits.push(`${k}: ${Array.isArray(a[k]) ? a[k].join(", ") : a[k]}`);
+    } else if (r.kind === "design"){
+      const L = a.language || {};
+      (L.themes || []).forEach(t => bits.push(`theme ${t.name} (${t.mode}): ${(t.colors || []).length} colours`));
+      (L.rules || []).forEach(r2 => bits.push(`rule ${r2.name}: ${(r2.text || "").slice(0, 120)}`));
+      (a.pages || []).forEach(p => bits.push(`page ${p.name || "(unnamed)"}: ${(p.blocks || []).length} blocks on a ${p.frame || "desktop"}`));
     }
     return bits.filter(Boolean).join("\n");
   };

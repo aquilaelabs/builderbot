@@ -4,9 +4,10 @@
 // this repository's own code makes, a definition's file and line, the ids a
 // suite names. Run over this copy of the tree, so the index it writes lands
 // beside the copy and never in the checkout.
-import { ok, done } from './lib.mjs';
+import { ok, done, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
+import { join } from 'node:path';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const map = (...args) => execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, '--root', REPO, ...args],
@@ -258,6 +259,21 @@ let said = '';
 try { execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, '--root', REPO, 'nope'], { encoding: 'utf8', stdio: 'pipe' }); }
 catch (e) { said = String(e.stderr); }
 ok(/no verb called nope; bb map -h lists them/.test(said), 'an unknown verb is refused with the way out');
+// A tree the map cannot write into (a project this session only reads,
+// bound read-only into its view) still answers: the map is built in
+// memory and nothing is left behind.
+{
+  const ro = join(DIR, 'ro-tree');
+  mkdirSync(ro, { recursive: true });
+  writeFileSync(join(ro, 'thing.py'), 'def only_here_fn():\n    return 1\n');
+  chmodSync(ro, 0o555);
+  let out = '', err = '';
+  try { out = execFileSync('python3', [`${REPO}/scripts/lib/codemap.py`, '--root', ro, 'find', 'only_here_fn'], { encoding: 'utf8', stdio: 'pipe' }); }
+  catch (e) { err = `${e.stdout || ''}${e.stderr || ''}`; }
+  chmodSync(ro, 0o755);
+  ok(/thing\.py:1/.test(out) && !err && !existsSync(join(ro, '.bb-map')),
+     `a tree the map cannot write into is answered from a map built in memory, with nothing written (${(out || err).trim().slice(0, 60)})`);
+}
 ok(/nothing defines noSuchFunctionAnywhere/.test(map('find', 'noSuchFunctionAnywhere')),
    'an unknown name gets a sentence, not an empty screen');
 

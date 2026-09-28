@@ -91,6 +91,8 @@ two optional ones: `/secrets` (ro, shielded credentials) and `/logs`
 Bare `bb` prints this list; `bb status` is the tool-version wall.
 
 ```
+bb -p NAME VERB    any verb, about another project this one reads (its
+                   settings name them): bb -p NAME roadmap, bb -p NAME map find X
 bb status          tool versions, runner registration, mounted projects
 bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:
@@ -98,7 +100,9 @@ bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    --file, --semver, --json
 bb version bump major|minor|patch    move the target, if the policy allows it.
                    A bump decides the number and closes the changelog under
-                   it; it does not release anything. **Release** on the
+                   it; it does not release anything. It commits on the branch
+                   the checkout is on and pushes nothing, and says so when
+                   that is not the branch builds come from. **Release** on the
                    Artifacts tab is the second gesture: an annotated tag
                    (vX.Y.Z, or DIR-vX.Y.Z for a component) on the commit you
                    are on, pushed to the remote. Until that tag exists every
@@ -217,7 +221,9 @@ bb devapp rebuild [--why "..."]
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Allow) or auto. Up, Down and a container of
-                   any other shape stay the operator's
+                   any other shape stay the operator's. The build sees BB_BUILD_REV,
+                   BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
+                   interpolate them; its other options are the compose file's own
 bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts tab's Send to Docker
                    manager does, under the same setting: a container made from its
@@ -318,6 +324,16 @@ bb rules check [NAME|--all]   run the checks of the rules whose files you change
 bb rules history   what has changed them, by either of you
 bb rules pending   rules a session added that are waiting for your approval
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb brief           the brief this project was started from: waiting for its first
+                   Claude session, or kept after that session started
+bb design          what this project looks like, from the notebook's Design view:
+                   its design language in a line, and its pages
+bb design show [ID|NAME]   the prompt for one page, or for the language alone:
+                   the colours as tokens, the type, the shape, the layout
+bb design file     docs/design-language.md as the notebook writes it
+bb design json     the record: the language, the pages, and the presets by key
+bb design save FILE   write a record of that shape back, whole: how a session
+                   puts a design language it was given into the notebook
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -430,7 +446,19 @@ bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [-
                    page Playwright records while --drive FILE.mjs works it, the
                    running emulator's screenrecord (with gfxinfo framestats beside
                    it), or an X display grabbed while a shell script drives it with
-                   xdotool; the provisioner installs Xvfb and xdotool for that
+                   xdotool; the provisioner installs Xvfb and xdotool for that.
+                   Only the sheet and frames.json land in dist/: the recording
+                   and the full-size frames are on this machine's disk, where
+                   frames.json says
+bb capture ls      the captures in this project's dist/ (reels and emulator
+                   shots), each with who asked and when: the Artifacts tab's
+                   Captures fold, in the terminal
+bb capture prune [--days N] [NAME...]
+                   remove those named now, or every capture older than N days.
+                   A capture is somebody's until the project's "captures kept"
+                   days are up (7 unless its settings say otherwise), and the
+                   controller sweeps them when the Artifacts tab draws: name
+                   yours here to let them go sooner
 bb tool            the tools toolchains add to a session, each under its own name
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,

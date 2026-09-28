@@ -883,6 +883,9 @@ def _project_columns(who, facts):
                     # dialog can offer to change one without offering to
                     # invent one for a local repo that never had any.
                     "has_token": (STATE / "gitcreds" / d.name).is_file(),
+                    # A brief waiting for the first Claude session: the
+                    # Claude button opens its dialog rather than a session.
+                    "brief": brief.pending(d.name),
                     "push": projects.may_push(d.name),
                     # The project's own settings: its node, what build and
                     # test run, the gates. NOT the model, the effort or the
@@ -2253,6 +2256,21 @@ def live_block():
 
 preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, live=live_block)
 
+# ---- a new project's brief -----------------------------------------------------
+# What its maker wants built, kept out of CLAUDE.md and handed to the first
+# session instead, through a dialog on the first Claude press: brief.py.
+import brief                                                     # noqa: E402
+
+brief.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
+
+# ---- a project's design language and its pages ------------------------------
+# What the project looks like, kept: colours as tokens, type, shape, space and
+# the operator's rules, and pages laid out as labelled blocks; a prompt a
+# session is pointed at and docs/design-language.md written from it: design.py.
+import design                                                    # noqa: E402
+
+design.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
+
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card; see the module docstring
 # for why it stopped being a question inside each send box.
@@ -2372,6 +2390,7 @@ if not NODES_OK:
 phone.rebuilder = devactions.rebuild
 phone.container_maker = containers.create_container
 phone.container_free = containers.name_free
+phone.container_builds = containers.build_refusal
 phone.instance_maker = devactions.make_instance
 phone.env_writer = lambda project, text, instance: devapp.write_env(project, text, instance or devapp.MAIN)
 phone.ctl_runner = containers.ctl_on
@@ -2402,6 +2421,7 @@ artifacts.account_names = account_names
 artifacts.build_state = build_state
 
 artifacts.instance_states = devactions.row_states
+artifacts.capture_days = lambda name: prefs.get(name)["capture_days"]
 artifacts.phone_summary = lambda name, uid: phone.summary(
     prefs.get(name)["node"], uid,
     nodes.node(prefs.get(name)["node"]) if prefs.get(name)["node"] and not NODES_OK else None)
@@ -2413,11 +2433,19 @@ prefs.configure_dialog(WORKSPACE=WORKSPACE, pin_instances=devapp.pin_to_current_
 # An account's own settings, read and saved: profiletab.py.
 import profiletab                                                # noqa: E402
 
+# An account's conversations with Claude as a download: transcripts.py.
+import transcripts                                               # noqa: E402
+
+transcripts.configure(workspace=WORKSPACE,
+                      root_for=lambda uid: (Path(home_for(uid)) / ".claude" / "projects")
+                      if home_for(uid) else CLAUDE_PROJECTS)
 profiletab.configure(users=users,
                      claude_email=lambda uid: claude_auth(home=home_for(uid)).get("email") or "",
                      plugins_of=plugins.of,
                      node_names=lambda: {n["id"]: n["name"]
-                                         for n in ([] if NODES_OK else nodes.node_list())})
+                                         for n in ([] if NODES_OK else nodes.node_list())},
+                     logs_of=lambda me: transcripts.mine(
+                         users.uid_of(me), [p["name"] for p in project_list(me)]))
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir, field=field,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -2513,11 +2541,15 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    write_json=write_json,
                    rename_project_data=devapp.rename_project_data,
                    after_create=mapping.start)
+projects.prefs_mod = prefs
+# The session network reaches the containers of the projects a project reads.
+devapp.reads_of = lambda p: (prefs.get(p) or {}).get("reads") or []
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
 projects.lock = _state_lock
 projects.take_on = users.take_on
 projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
 projects.live_sessions = tmux_sessions
+projects.brief_writer = brief.write
 
 # ---- a node's git, relayed --------------------------------------------------
 # Push, fetch, pull and ls-remote from a session on a node, done in a
@@ -2676,6 +2708,9 @@ doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes
 nodes.came_back = lambda nid: threading.Thread(target=doctor.refresh, name="doctor-after-hello",
                                                daemon=True).start()
 # The Docker tab's first pick is derived from where the projects are bound.
+# A job of a container written for a project is that project's (B321).
+nodes.job_owner = lambda j: devapp.owner_of(j.get("project") or "",
+                                           (j.get("spec") or {}).get("instance") or devapp.MAIN)
 nodes.project_nodes = lambda: {p: (v or {}).get("node") or ""
                                for p, v in prefs.all_projects(WORKSPACE).items()}
 devapp.all_project_nodes = lambda: {p: (v or {}).get("nodes") or []
@@ -2926,7 +2961,7 @@ def snapshot(who):
         # and nothing else, since CI left this container (phase 7). Read from
         # the census, which already carries it.
         "node_runners": runners.listing(),
-        "reports": findings.REPORTS.is_dir(),
+        "reports": findings.mounted(),
         "reports_mtime": findings.reports_mtime(),
         "findings_counts": _findings_counts(who, ps),
         # ...and, for the row they land on, what those paths actually look
@@ -3047,6 +3082,7 @@ GET_ROUTES = (
     ("prefix", "/api/status", "_get_status"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
+    ("prefix", "/api/transcript", "_get_transcript"),
     ("prefix", "/api/git", "_get_git"),
     ("prefix", "/api/project-sessions", "_get_project_sessions"),
     ("prefix", "/api/changelog", "_get_changelog"),
@@ -3073,6 +3109,8 @@ GET_ROUTES = (
     ("prefix", "/api/rules", "_get_rules"),
     ("prefix", "/api/global-rules", "_get_global_rules"),
     ("prefix", "/api/preamble", "_get_preamble"),
+    ("prefix", "/api/brief", "_get_brief"),
+    ("prefix", "/api/design", "_get_design"),
     ("prefix", "/api/codebase", "_get_codebase"),
     ("prefix", "/api/pending", "_get_pending"),
     ("prefix", "/api/memory", "_get_memory"),
@@ -3135,6 +3173,8 @@ POST_ROUTES = (
     ("prefix", "/api/pending", "_pending"),
     ("prefix", "/api/memory", "_memory"),
     ("prefix", "/api/prefs", "_prefs_post"),
+    ("prefix", "/api/brief", "_brief"),
+    ("prefix", "/api/design", "_design"),
     ("prefix", "/api/devapp", "_devapp"),
     ("prefix", "/api/changelog", "_changelog"),
     ("prefix", "/api/version", "_version"),
@@ -3191,6 +3231,11 @@ class Handler(BaseHTTPRequestHandler):
             # and nothing else (bug #16).
             tok = hdr[7:].strip()
             who = users.session_principal(tok)
+            # ...widened to the projects its own reads (prefs.reads), read
+            # from the settings on every request rather than baked into the
+            # token, so a change in the dialog reaches a running session.
+            if who:
+                who = users.with_reads(who, (prefs.get(who["session"]) or {}).get("reads") or [])
             # Past half its life, the answer to this request carries a fresh
             # one (users.renewal): set here, sent by _json, so a session in
             # use never runs out. Reset per request, because the handler instance
@@ -3875,7 +3920,6 @@ class Handler(BaseHTTPRequestHandler):
         # else. Same allow-list, same rule.
         "/static/nostromo/plate.svg": ("nostromo/plate.svg", "image/svg+xml"),
         "/static/nostromo/rings.svg": ("nostromo/rings.svg", "image/svg+xml"),
-        "/static/nostromo/corner.svg": ("nostromo/corner.svg", "image/svg+xml"),
         "/static/nostromo/glyphs.svg": ("nostromo/glyphs.svg", "image/svg+xml"),
     }
 
@@ -4286,6 +4330,59 @@ class Handler(BaseHTTPRequestHandler):
         mine = prefs.all_for_user(users.uid_of(self._who())).get(name) or {}
         return self._json(preamble.payload(name, reply=mine.get("reply") or "", asks=mine.get("asks") or ""))
 
+    def _get_brief(self):
+        """GET /api/brief: brief.view, the brief waiting in a project's tree
+        and the one kept after it left, for a project this account sees."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(brief.view(name, users.uid_of(self._who())))
+
+    def _brief(self, req):
+        """POST /api/brief: the first Claude press's Build it and Start
+        without it, and a session's take as it starts: brief.verb, behind the
+        gates here."""
+        name = field(req, "project")
+        if self._not_project(name):
+            return
+        who = self._who() or {}
+        # A take is a session starting on its own project; the dialog's two
+        # change the project's tree, so they are asked of an account that
+        # works on it.
+        if field(req, "action") != "take" and self._readonly(name):
+            return
+        return self._json(*brief.verb(name, req, users.uid_of(who), who.get("name") or "somebody",
+                                      bool(who.get("session"))))
+
+    def _get_design(self):
+        """GET /api/design: design.view, a project's design language, its
+        pages and the vocabulary they are drawn from, for a project this
+        account sees; a session reads it too, through bb design."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        # ?show= is bb design's: the words rather than the record, so a
+        # session prints what the tab shows and nothing is assembled twice.
+        show = q.get("show", [""])[0]
+        if show:
+            text, err = design.text_for(name, show)
+            return self._json({"error": err} if err else {"text": text}, 404 if err else 200)
+        return self._json(design.view(name))
+
+    def _design(self, req):
+        """POST /api/design: the notebook's Save of the language and the
+        pages, a prompt preview and the file written into the tree:
+        design.verb, for an account that works on the project."""
+        name = field(req, "project")
+        if self._not_project(name) or self._readonly(name):
+            return
+        who = self._who() or {}
+        req["mine"] = users.tmux_prefix(who)
+        return self._json(*design.verb(name, req, who.get("name") or "somebody",
+                                       bool(who.get("session"))))
+
     def _get_codebase(self):
         """GET /api/codebase."""
         # What git tracks in the project, by language: the Briefing
@@ -4645,8 +4742,12 @@ class Handler(BaseHTTPRequestHandler):
         if not req.get("ro") and users.may(me, "terminal"):
             return self._json({"error": f"{me['name']} has no shell, so this terminal is the "
                                         "read-only one"}, 403)
+        # ...and the projects this one reads, for the view bb-session builds
+        # (their trees read-only) and the walls bb-tty gives Claude.
         return self._json({"uid": me["uid"], "name": me["name"], "project": project,
-                           "owner": me.get("role") == "owner"})
+                           "owner": me.get("role") == "owner",
+                           "reads": [r for r in (prefs.get(project) or {}).get("reads") or []
+                                     if (WORKSPACE / r).is_dir()]})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24):
@@ -5105,10 +5206,12 @@ class Handler(BaseHTTPRequestHandler):
         # A session asks for a phone (bb phone run) and a person answers; it
         # does not push or install by itself, and uid_of answering the
         # session's account made the owner check pass for it (the audit of
-        # 26 Sep).
+        # 26 Sep). A capture it lets go of with bb capture prune, in the tree.
         if who.get("session"):
-            return self._json({"error": "a session asks for the phone with bb phone run; "
-                                        "it does not push to it by itself"}, 403)
+            return self._json({"error": "a session asks for the phone with bb phone run and lets a "
+                                        "capture go with bb capture prune NAME; neither is done from here"}, 403)
+        if field(req, "action") == "forget-capture":
+            return self._json(*artifacts.forget_capture(name, field(req, "name")))
         return self._json(*phone.artifact_verb(name, field(req, "action"), req,
                                                uid=users.uid_of(who), me=who.get("name") or "somebody",
                                                by=self._principal()))
@@ -5302,6 +5405,29 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*profiletab.view(me))
         payload, status, renamed = profiletab.verb(me, field(req, "action"), req)
         return self._json(payload, status, cookie=make_token(renamed) if renamed else None)
+
+    def _get_transcript(self):
+        """GET /api/transcript?project=NAME&id=SESSION: one of the signed-in
+        account's own conversations with Claude on that project as a text
+        file, every command and answer in it (transcripts.render). Anybody
+        signed in, their own only: the file is looked for under their own
+        transcripts directory and nowhere else, so another account's id is
+        simply not found."""
+        me = self._who()
+        uid = users.uid_of(me) if me else ""
+        if not me or not uid:
+            return self._json({"error": "not an account"}, 403)
+        if me.get("session"):
+            return self._json({"error": "a session has the transcript already"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        text, fname = transcripts.render(uid, name, q.get("id", [""])[0],
+                                         transcripts.zone(q.get("tz", [""])[0]))
+        if text is None:
+            return self._json({"error": fname}, 404)
+        return self._attachment(fname, text.encode("utf-8"), "text/plain; charset=utf-8")
 
     def _git_act(self, req):
         """The Git view's actions (roadmap R36 step 2): fixed git commands on

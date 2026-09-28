@@ -989,6 +989,8 @@ ok(await page.$eval('.editbox textarea', t => t.value) === 'first, widen it',
    'the pencil opens the line as it stands, ready to change');
 await page.fill('.editbox textarea', 'first, widen it a lot');
 await page.click('.editbox .primary');
+await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
+  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .txt`)?.textContent
   === 'first, widen it a lot', plainId, { timeout: patience(20000) });
@@ -1004,6 +1006,8 @@ await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed
 await page.waitForSelector('.editbox textarea', { timeout: 10000 });
 await page.fill('.editbox textarea', 'widen the select\n\nand check it at 412px');
 await page.click('.editbox .primary');
+await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
+  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
 await page.waitForFunction(id => /\n/.test(document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .txt`)?.textContent || ''),
   plainId, { timeout: 10000 });
@@ -1057,6 +1061,8 @@ await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .ed
 await page.waitForSelector('.editbox textarea', { timeout: 10000 });
 await page.fill('.editbox textarea', 'first, widen it a lot');
 await page.click('.editbox .primary');
+await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
+  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .txt`)?.textContent
   === 'first, widen it a lot', plainId, { timeout: patience(20000) });
@@ -1126,6 +1132,8 @@ ok(await page.$eval('.editbox .dta', t => t.value) === 'the select is built in s
    'the reword box opens with the details as they stand');
 await page.fill('.editbox .dta', 'stepRow(), and the CSS at .roadmap .dinfo');
 await page.click('.editbox .primary');
+await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
+  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
 await page.waitForFunction(id => /CSS at/.test(document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"] .dinfo`)?.textContent || ''),
   plainId, { timeout: 10000 });
@@ -1159,9 +1167,11 @@ await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .e
 await page.waitForSelector('.editbox textarea', { timeout: 10000 });
 await page.fill('.editbox textarea', 'a wording nobody asked for');
 await page.click('.editbox .primary');
+await page.waitForFunction(() => !document.querySelector('.editbox'), { timeout: patience(10000) })
+  .catch(() => { throw new Error('the reword box is still open after Save was pressed: its handler did not run (B311)'); });
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="-1"] .txt`)?.textContent
-  === 'a wording nobody asked for', plainId, { timeout: 10000 });
+  === 'a wording nobody asked for', plainId, { timeout: patience(20000) });   // late under load (B311)
 await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="0"] .rm`);
 await page.waitForSelector('.dropbox .danger', { timeout: 10000 });
 await page.click('.dropbox .danger');

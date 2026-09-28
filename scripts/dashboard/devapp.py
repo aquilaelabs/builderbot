@@ -106,6 +106,7 @@ log_dir = None
 project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
 project_nodes = None  # ...and the set it works on, primary first (R82)
 all_project_nodes = None  # () -> {project: [node ids]}, every project's set
+reads_of = None           # project -> [projects it reads] (prefs.reads), set by the server
 node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
 # The daemon is a sandbox VM and nothing else. The node record names the
@@ -2551,7 +2552,12 @@ def new_refusal(project, key):
     if not key:
         return "an instance needs a name with a letter or digit in it"
     if compose_file(project) is None:
-        return f"{project} has no compose file to make an instance of"
+        # Where BuilderBot looks, said: a session that wrote its compose
+        # somewhere else read "no compose file" as not having one at all,
+        # and went to bb container new, which builds from an empty
+        # directory (B329).
+        return (f"{project} has no compose file at its root to make an instance of: "
+                f"{', '.join(COMPOSE_NAMES)} is where it is looked for")
     return _taken(project, key, _load())
 
 
@@ -2713,30 +2719,54 @@ def session_net_own(node_id):
     # to. The project's set is the operator's; a node outside it is never
     # named, so a session reaches its own project's things and no other.
     sets = all_project_nodes() if all_project_nodes else {}
+
+    def held_on(project, nid):
+        """The compose projects and container names `project` owns on `nid`."""
+        mine = {_pname(p, i) for p, insts in _load().items() for i, rec in insts.items()
+                if owner_of(p, i, rec) == project and _instance_node(p, i) == nid}
+        return mine | {name for name, owner in (_owners().get(nid) or {}).items() if owner == project}
+
+    def reach(o, project, other):
+        """Into `o`, what `project` holds on another node: the whole address
+        of a node that is not a sandbox, else its containers' published ports."""
+        n = queue.node(other) if queue else None
+        if not n:
+            return
+        addr = str((n.get("agent") or {}).get("addr") or "").strip()
+        if not re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", addr):
+            return
+        rep = n.get("reported") or {}
+        if not rep.get("sandbox"):
+            o["hosts"].add(addr)
+            return
+        pub = rep.get("published") or {}
+        for key in held_on(project, other):
+            for port in pub.get(key) or []:
+                o["peers"].add((addr, int(port)))
+
     for project, nids in sets.items():
         if node_id not in (nids or []):
             continue
         o = out.setdefault(project, blank())
         for other in nids:
-            if other == node_id:
+            if other != node_id:
+                reach(o, project, other)
+        # ...and the containers of the projects this one READS (prefs.reads),
+        # here and on this project's other nodes, so a session can open
+        # their pages and photograph them: read-only is about the tree and
+        # the notebook, and a running page is there to be looked at. On
+        # this project's nodes only: a read project's node this one is not
+        # on stays out, until the operator adds this project to it.
+        for r in (reads_of(project) if reads_of else []) or []:
+            if r == project:
                 continue
-            n = queue.node(other) if queue else None
-            if not n:
-                continue
-            addr = str((n.get("agent") or {}).get("addr") or "").strip()
-            if not re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", addr):
-                continue
-            rep = n.get("reported") or {}
-            if not rep.get("sandbox"):
-                o["hosts"].add(addr)
-                continue
-            pub = rep.get("published") or {}
-            mine = {_pname(p, i) for p, insts in _load().items() for i, rec in insts.items()
-                    if owner_of(p, i, rec) == project and _instance_node(p, i) == other}
-            mine |= {name for name, owner in (_owners().get(other) or {}).items() if owner == project}
-            for key in mine:
-                for port in pub.get(key) or []:
-                    o["peers"].add((addr, int(port)))
+            o["compose"] |= held_on(r, node_id) & {c for c in out.get(r, blank())["compose"]}
+            o["compose"] |= {_pname(p, i) for p, insts in _load().items() for i, rec in insts.items()
+                             if owner_of(p, i, rec) == r and _instance_node(p, i) == node_id}
+            o["names"] |= {name for name, owner in (_owners().get(node_id) or {}).items() if owner == r}
+            for other in nids:
+                if other != node_id:
+                    reach(o, r, other)
     return {p: {k: sorted(v) for k, v in o.items()} for p, o in sorted(out.items())}
 
 

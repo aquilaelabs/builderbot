@@ -21,6 +21,14 @@ toolchain store; and the notebook, the controller's. Everything else,
 including /tmp and your home, is this machine's own disk and nobody's
 backup. Uncommitted work is on the share, so a restart cannot eat it.
 
+This briefing is the whole of what BuilderBot tells you, assembled fresh
+for each session. A block between BUILDERBOT:ENV:BEGIN and END in the
+project's CLAUDE.md, or a CLAUDE.local.md beside it, is a copy an older
+BuilderBot rendered into the tree and nothing updates any more: where it
+and this disagree, this is true, and the verbs and paths it names may be
+gone. Removing it is an ordinary edit to the project's own file, committed
+like any other; say in your reply that you did.
+
 ## Where this project runs
 
 A project works on the nodes its settings name: a primary, and any others
@@ -31,6 +39,8 @@ this project's containers on this node, and its containers on the
 project's other nodes by their published ports: nothing else on the
 machine or the LAN answers, by design, so a connection refused to another
 address is the firewall, not a fault.
+
+<!-- BUILDERBOT:READS -->
 
 ## Finding your way
 
@@ -105,9 +115,11 @@ Two ways to look, and which one is the question you are asking:
   what a screen looks like.
 - `bb capture reel` is change over time: the frames of a recording that changed,
   each stamped with its time, tiled into `dist/reel/NAME/sheet.png`, with
-  `frames.json` beside it saying when each change came and how much moved,
-  and every kept frame full-size under `frames/` to pick from afterwards.
-  Reach for it when the question is what happened between two moments: an
+  `frames.json` beside it saying when each change came and how much moved.
+  The recording and every kept frame full-size stay on this machine's disk,
+  at the paths `frames.json` names, to pick from afterwards; only the sheet
+  and the record are in `dist/`. Reach for it when the question is what
+  happened between two moments: an
   element popping in, a transition, a screen that was blank and then was
   not. Read the sheet as one image; the last tile is the settled state.
   `--url URL --seconds N --drive FILE.mjs` records a page while your script
@@ -121,6 +133,14 @@ Two ways to look, and which one is the question you are asking:
   Xvfb the node has: `Xvfb :9 -screen 0 1280x800x24 & DISPLAY=:9 the-app &`);
   `--video FILE` reels a recording you already have.
 
+What either leaves in `dist/` (a reel's sheet, an emulator shot) is a
+capture, not something the project ships: the Artifacts tab lists them apart
+under Captures, each with your account's name and when it was taken, and
+the project's settings say how many days they are kept (7 unless changed;
+0 keeps them). They go by age and never by need, since another session on
+the project may still be reading one. `bb capture ls` names them, and
+`bb capture prune NAME` lets one of yours go sooner; leave anybody else's.
+
 ## Asking a person
 
 A question for the person is asked in your reply: they read it in this
@@ -133,16 +153,24 @@ command as root on this node; `bb phone run` for a phone connected here;
 `bb container new --why "..." --name NAME --compose FILE` for a container
 that does not exist yet. A node can have root asks turned off, and the ask
 then says so. Every one of the project's dials (Claude may: add to the
-roadmap, file bugs, add rules, fill in build and test, run its container,
-report BuilderBot bugs) reads the same way: auto lands it, ask holds it
+roadmap, file bugs, add rules, fill in build and test, add to the design,
+run its container, report BuilderBot bugs) reads the same way: auto lands
+it, ask holds it
 for the operator, deny refuses it and the refusal names the setting;
 `bb settings` shows each dial as it stands for this project. Never route
 around a refusal.
 
 ## The notebook
 
-`bb roadmap`, `bb bug`, `bb rules`, `bb tests`, `bb changelog`, and
-`bb <verb> -h` for the rest of any of them. The record's verbs, as you
+`bb roadmap`, `bb bug`, `bb rules`, `bb tests`, `bb changelog`, `bb design`,
+and `bb <verb> -h` for the rest of any of them. `bb design` is what the
+project looks like as the operator laid it out on the notebook's Design
+view, its language and its pages: read it before styling or laying out
+anything, `bb design show NAME` for one page, one theme or one rule (a
+theme's or a page's own rule is named under it, `nostromo/hull`), and
+`bb design file` prints the docs/design-language.md it writes.
+<!-- BUILDERBOT:DESIGN -->
+The record's verbs, as you
 meet things: `bb bug add "..." --sev medium --area "..." --repro "..."` for
 a bug, `bb roadmap add "..."` for work worth doing, `bb bug note B7 "..."`
 for what you learn about an open one, and `bb bug fix B7 "what fixed it"`
@@ -211,7 +239,12 @@ You have no Docker socket of your own, because the daemon is the node's
 and its group is root there. A container that does not exist yet is an ask
 (`bb container new`, above): it belongs to this project unless `--for`
 names another, lives on one of the project's nodes, and either of those
-is always asked.
+is always asked. It has no project tree behind it: compose resolves its
+relative paths, `build: .` included, against its own empty data
+directory, so one that builds from a path is refused. This project's own
+code goes into Docker from a compose file at the project's root
+(`docker-compose.yml` or `compose.yml`) with `bb devapp new`, which builds
+from this tree, and `bb devapp rebuild` after a change.
 
 <!-- BUILDERBOT:IF devapp docker-compose.yml compose.yml docker-compose.yaml -->
 This project has a compose file, so it can have a container built from it:
@@ -228,6 +261,11 @@ set FILE` and `bb devapp remove`, which leaves its env and data for a
 remake. Its env is kept by BuilderBot, not as a file in the tree:
 `bb devapp env` prints it, and a compose line `env_file: .env` is pointed
 at it when the container runs, so a missing `.env` in the project is
-expected. The project's Tests run setting decides whether `bb test` runs
-inside it or on the node.
+expected. A build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`
+in its environment (the commit it is built from, when, and the project's
+version), so a compose whose `build.args` interpolate them (`GIT_SHA:
+${BB_BUILD_REV}`) stamps the image without reading `.git`; the rest of a
+build (its args, target and Dockerfile) is the compose file's own to say.
+The project's Tests run setting decides whether `bb test` runs inside it or
+on the node.
 <!-- BUILDERBOT:END -->

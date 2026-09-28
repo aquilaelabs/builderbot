@@ -16,6 +16,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/status` | prefix | `_get_status` | GET /api/status. |  |
 | GET | `/api/findings` | prefix | `_get_findings` | GET /api/findings: findings.view, scoped to the projects this account sees, and for a session to its own. |  |
 | GET | `/api/profile` | prefix | `_profile` | The signed-in account's own settings (the Profile tab): read on GET, saved on POST, by profiletab.py. |  |
+| GET | `/api/transcript` | prefix | `_get_transcript` | GET /api/transcript?project=NAME&id=SESSION: one of the signed-in account's own conversations with Claude on that project as a text file, every command and answer in it (transcripts.render). |  |
 | GET | `/api/git` | prefix | `_get_git` | GET /api/git: the notebook's Git view (gitview.view), for a project this account may see. |  |
 | GET | `/api/project-sessions` | prefix | `_get_project_sessions` | GET /api/project-sessions?project=NAME: every account's sessions on the project, for its settings dialog. | refused: admin |
 | GET | `/api/changelog` | prefix | `_get_changelog` | GET /api/changelog: changelog.reading, for a project this account sees. |  |
@@ -42,6 +43,8 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/rules` | prefix | `_get_rules` | GET /api/rules. |  |
 | GET | `/api/global-rules` | prefix | `_get_global_rules` | GET /api/global-rules. |  |
 | GET | `/api/preamble` | prefix | `_get_preamble` | GET /api/preamble. |  |
+| GET | `/api/brief` | prefix | `_get_brief` | GET /api/brief: brief.view, the brief waiting in a project's tree and the one kept after it left, for a project this account sees. |  |
+| GET | `/api/design` | prefix | `_get_design` | GET /api/design: design.view, a project's design language, its pages and the vocabulary they are drawn from, for a project this account sees; a session reads it too, through bb design. |  |
 | GET | `/api/codebase` | prefix | `_get_codebase` | GET /api/codebase. |  |
 | GET | `/api/pending` | prefix | `_get_pending` | GET /api/pending. |  |
 | GET | `/api/memory` | prefix | `_get_memory` | GET /api/memory. |  |
@@ -91,6 +94,8 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/pending` | prefix | `_pending` | Approve or deny what a session has waiting (roadmap #27): pending.verb. | refused: pending |
 | POST | `/api/memory` | prefix | `_memory` | Edit, create or delete one of this project's memories, rewrite their index, or read the history: memory.verb, behind the gates here. |  |
 | POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: docker-write |
+| POST | `/api/brief` | prefix | `_brief` | POST /api/brief: the first Claude press's Build it and Start without it, and a session's take as it starts: brief.verb, behind the gates here. |  |
+| POST | `/api/design` | prefix | `_design` | POST /api/design: the notebook's Save of the language and the pages, a prompt preview and the file written into the tree: design.verb, for an account that works on the project. |  |
 | POST | `/api/devapp` | prefix | `_devapp` | The dev-instance controls: the Docker tab's buttons, and `bb devapp` from a session. | refused: docker-write |
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |

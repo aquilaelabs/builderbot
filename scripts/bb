@@ -29,6 +29,8 @@ usage() {
     cat <<'EOF'
 bb: BuilderBot helper
 
+bb -p NAME VERB    any verb, about another project this one reads (its
+                   settings name them): bb -p NAME roadmap, bb -p NAME map find X
 bb status          tool versions, runner registration, mounted projects
 bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:
@@ -36,7 +38,9 @@ bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    --file, --semver, --json
 bb version bump major|minor|patch    move the target, if the policy allows it.
                    A bump decides the number and closes the changelog under
-                   it; it does not release anything. **Release** on the
+                   it; it does not release anything. It commits on the branch
+                   the checkout is on and pushes nothing, and says so when
+                   that is not the branch builds come from. **Release** on the
                    Artifacts tab is the second gesture: an annotated tag
                    (vX.Y.Z, or DIR-vX.Y.Z for a component) on the commit you
                    are on, pushed to the remote. Until that tag exists every
@@ -155,7 +159,9 @@ bb devapp rebuild [--why "..."]
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Allow) or auto. Up, Down and a container of
-                   any other shape stay the operator's
+                   any other shape stay the operator's. The build sees BB_BUILD_REV,
+                   BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
+                   interpolate them; its other options are the compose file's own
 bb devapp new [NAME] [--branch REF] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts tab's Send to Docker
                    manager does, under the same setting: a container made from its
@@ -256,6 +262,16 @@ bb rules check [NAME|--all]   run the checks of the rules whose files you change
 bb rules history   what has changed them, by either of you
 bb rules pending   rules a session added that are waiting for your approval
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb brief           the brief this project was started from: waiting for its first
+                   Claude session, or kept after that session started
+bb design          what this project looks like, from the notebook's Design view:
+                   its design language in a line, and its pages
+bb design show [ID|NAME]   the prompt for one page, or for the language alone:
+                   the colours as tokens, the type, the shape, the layout
+bb design file     docs/design-language.md as the notebook writes it
+bb design json     the record: the language, the pages, and the presets by key
+bb design save FILE   write a record of that shape back, whole: how a session
+                   puts a design language it was given into the notebook
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -368,7 +384,19 @@ bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [-
                    page Playwright records while --drive FILE.mjs works it, the
                    running emulator's screenrecord (with gfxinfo framestats beside
                    it), or an X display grabbed while a shell script drives it with
-                   xdotool; the provisioner installs Xvfb and xdotool for that
+                   xdotool; the provisioner installs Xvfb and xdotool for that.
+                   Only the sheet and frames.json land in dist/: the recording
+                   and the full-size frames are on this machine's disk, where
+                   frames.json says
+bb capture ls      the captures in this project's dist/ (reels and emulator
+                   shots), each with who asked and when: the Artifacts tab's
+                   Captures fold, in the terminal
+bb capture prune [--days N] [NAME...]
+                   remove those named now, or every capture older than N days.
+                   A capture is somebody's until the project's "captures kept"
+                   days are up (7 unless its settings say otherwise), and the
+                   controller sweeps them when the Artifacts tab draws: name
+                   yours here to let them go sooner
 bb tool            the tools toolchains add to a session, each under its own name
 bb tool graphics CMD  pictures a session can make and then read back, with the
                    graphics toolchain on its node: info, resize, crop, compose,
@@ -1640,6 +1668,40 @@ cmd_history() {
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nb-history.py" "$dir" "$proj" "$@"
 }
 
+# bb brief [take]: a new project's brief, through the API as the caller.
+# take is bb-tty's, as it starts a new session: the brief the account staged
+# with Build it, printed for the launcher to hand claude, or nothing; it
+# never fails, because a brief is not a reason for a session not to start.
+# `bb design`: the project's design language and pages, as the notebook's
+# Design view keeps them. Read only from here: a session applies a design,
+# and the words it is handed are the controller's (design.py), so what it
+# prints is what the tab shows.
+cmd_design() {
+    local verb="${1:-list}" auth proj
+    case "$verb" in list|show|file|json|save) ;; -h|--help)
+        echo "bb design [list | show [ID|NAME] | file | json | save FILE]: what this project looks like, from the notebook's Design view"; return 0 ;;
+        *) die "bb design [list | show [ID|NAME] | file | json | save FILE]" ;; esac
+    proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
+    auth="$(bb_auth_or_die)"
+    BB_DESIGN_AUTH="$auth" BB_DESIGN_PROJECT="$proj" python3 "$BB_LIB/design-verbs.py" "$@"
+}
+
+cmd_brief() {
+    local verb="${1:-show}" auth proj
+    case "$verb" in show|take) ;; -h|--help) echo "bb brief: the brief this project was started from"; return 0 ;;
+        *) die "bb brief: the brief this project was started from (take is bb-tty's)" ;; esac
+    proj="$(bb_project 2>/dev/null)" \
+        || { [ "$verb" = take ] && return 0; die "not inside a project under ${WORKSPACE}; cd into one first"; }
+    if [ "$verb" = take ]; then
+        auth="$(bb_auth_header 2>/dev/null)" || return 0
+        [ -n "$auth" ] || return 0
+    else
+        auth="$(bb_auth_or_die)"
+    fi
+    BB_BRIEF_AUTH="$auth" BB_BRIEF_PROJECT="$proj" python3 "$BB_LIB/brief-verbs.py" "$verb" \
+        || [ "$verb" = take ]
+}
+
 cmd_preamble() {
     # What a session started on this project is handed: the house rules, the
     # open roadmap and the open bugs, in the order it reads them. bb-tty asks
@@ -1946,6 +2008,13 @@ cmd_tests() {
                 rc=3
             fi
         fi
+        # The verdict in words, last. A caller that reads the output rather
+        # than the status (a session whose pipeline ends in tail, and whose
+        # own tool then reports tail's zero) read a failed npm ci followed
+        # by an exit of 0 that was not this command's (B330).
+        if [ "$rc" = 0 ]; then log "bb tests run exits 0: the test command passed"
+        else log "bb tests run exits $rc: the tests did not pass"
+        fi
         return "$rc"
     fi
     [ -f "$py" ] || die "testreg.py is missing from this image"
@@ -2170,6 +2239,16 @@ cmd_devapp() {
                 case "$1" in
                     --why) [ $# -ge 2 ] || die "--why needs the sentence after it"
                            why="$2"; shift 2 ;;
+                    -h|--help) cat <<'EOT'
+bb devapp rebuild [--why "what it is for"]
+  build this project's dev instance from its compose file and bring it up,
+  under the project's dial (Claude may: Run its container). The build sees
+  BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION in its environment (the
+  commit, when, the version), so a compose whose build.args interpolate them
+  (GIT_SHA: ${BB_BUILD_REV}) stamps the image without reading .git. Its other
+  options (args, target, Dockerfile) are the compose file's own to say.
+EOT
+                        return 0 ;;
                     *) die "usage: bb devapp rebuild [--why \"what it is for\"]" ;;
                 esac
             done
@@ -2426,7 +2505,7 @@ bb_auth_or_die() {
     # tab mints a fresh one, which bb-tty writes where bb_token_now reads it.
     if [ -n "${BB_TOKEN:-}" ] && bb_token_dead "$(bb_token_now)"; then
         local e; e="$(bb_token_exp "$BB_TOKEN")"
-        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null). They last 12 hours and a conversation can outlast one. ask the person to reopen this session's tab on the dashboard, which mints a fresh token; the next command then works and the next command works: that mints a fresh token and leaves it where bb looks."
+        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null). A token lasts 12 hours and is renewed by every answer the controller gives, and the node's agent renews an idle one; a session left idle before that fix ran out. Ask the person to reopen this session's tab on the dashboard: that mints a fresh token and leaves it where bb looks, and the next command works."
     fi
     if [ -z "$h" ]; then
         # Which of the two is actually wrong. Everything that reaches a node
@@ -2505,10 +2584,21 @@ revalidate_tree() {
     return 0
 }
 
+# bb_project: the project a verb acts on: BB_PROJECT, which is the session's
+# own or what `bb -p NAME` named, else the working directory's when it is
+# inside a project. The switch and not the directory, because a checkout of
+# BuilderBot itself sits under /workspace on the controller and the harness
+# runs bb from it with the project in the environment.
+bb_project() {
+    [ -n "${BB_PROJECT:-}" ] && { printf '%s' "$BB_PROJECT"; return 0; }
+    project_here
+}
+
 bb_relay() {
     local auth proj rc
     auth="$(bb_auth_or_die)"
-    proj="${BB_PROJECT:-${BB_ROADMAP_PROJECT:-${BB_BUG_PROJECT:-${BB_VERSION_PROJECT:-$(project_here || true)}}}}"
+    proj="$(bb_project 2>/dev/null || true)"
+    [ -n "$proj" ] || proj="${BB_ROADMAP_PROJECT:-${BB_BUG_PROJECT:-${BB_VERSION_PROJECT:-}}}"
     BB_RELAY_PROJECT="$proj" BB_AUTH_HEADER="$auth" python3 "$BB_LIB/relay.py" "" "$@"
     rc=$?
     revalidate_tree
@@ -2523,7 +2613,15 @@ run_here() {
     while [ $# -gt 0 ]; do
         case "$1" in --) shift; break ;; *) outs+=("$1"); shift ;; esac
     done
-    log "$role: running here, on ${BB_NODE:-this node}: $*"
+    # A role's command arrives as sh -c 'CMD "$@"' ROLE ARGS...: shown as
+    # the command that was set, with anything appended after it, and not as
+    # the wrapper, whose quotes the log drops: "sh -c npm ci && npm test
+    # "$@" test" read as a different command from the one that ran (B330).
+    local shown="$*"
+    if [ "${1:-}" = sh ] && [ "${2:-}" = -c ] && [ $# -ge 4 ]; then
+        shown="${3% \"\$@\"}${5:+ ${*:5}}"
+    fi
+    log "$role: running here, on ${BB_NODE:-this node}: $shown"
     local code=0
     "$@" || code=$?
     if [ "$code" -eq 0 ] && [ "${#outs[@]}" -gt 0 ]; then
@@ -3556,15 +3654,29 @@ cmd_capture() {
     case "${1:-}" in
         shot) shift; capture_shot "$@" ;;
         reel) shift; capture_reel "$@" ;;
+        # The captures in dist/ and their removal (R96): capture.py reads
+        # and applies the one rule the Artifacts tab's sweep also does.
+        ls|prune)
+            local verb="$1"; shift
+            local proj; proj="$(project_here 2>/dev/null || true)"
+            local dist="${proj:+${WORKSPACE}/${proj}/dist}"
+            [ -n "$dist" ] || dist="$PWD/dist"
+            python3 "$BB_LIB/capture.py" "$verb" "$dist" "$@"
+            ;;
         *) cat <<'EOT'
 bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]   [--drive F] [--settle|--now]
 bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N   [--seconds N] [--drive F] [--name N]
-  shot: one picture at rest (shots a quarter second apart until a second of
-        them match; --now takes it at once)
-  reel: the frames that changed, stamped with their times, on one sheet in
-        dist/reel/NAME/ with frames.json beside it (bb capture reel -h)
+bb capture ls
+bb capture prune [--days N] [NAME...]
+  shot:  one picture at rest (shots a quarter second apart until a second of
+         them match; --now takes it at once)
+  reel:  the frames that changed, stamped with their times, on one sheet in
+         dist/reel/NAME/ with frames.json beside it (bb capture reel -h)
+  ls:    the captures in this project's dist/, with who asked and when
+  prune: remove the captures named, or every one older than --days N; the
+         controller sweeps them after the project's "captures kept" days
 EOT
-           [ -z "${1:-}" ] || [ "$1" = -h ] || [ "$1" = --help ] || die "bb capture shot|reel"
+           [ -z "${1:-}" ] || [ "$1" = -h ] || [ "$1" = --help ] || die "bb capture shot|reel|ls|prune"
            ;;
     esac
 }
@@ -3587,6 +3699,10 @@ bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N  [--second
   the frames that changed, each stamped with its time, tiled into
   dist/reel/NAME/sheet.png beside frames.json (when, and how much moved):
   what a screenshot cannot show, one image a session reads at a glance.
+  The recording and the full-size frames stay on this machine's disk, at
+  the paths frames.json names; dist/ keeps the sheet and the record, listed
+  under Captures on the Artifacts tab and swept after the project's
+  "captures kept" days (bb capture prune NAME lets yours go sooner).
   --video    any recording
   --url      a page, recorded for --seconds while --drive FILE.mjs works it
              (export default async (page, {seconds}) => {...})
@@ -3649,9 +3765,14 @@ capture_shot() {
     done
     if [ -n "$src" ]; then
         [ "${#urls[@]}" -eq 0 ] || die "one source: --emu or --display, not a URL as well"
-        [ -z "$out" ] || [ -d "$out" ] && { mkdir -p "${out:-dist/emu}"; out="${out:-dist/emu}/shot-$(date +%Y%m%d-%H%M%S).png"; }
-        # Emulator shots into dist/, so the Artifacts tab lists them.
+        # Into dist/emu/ when no file is named, with a record beside it
+        # saying whose it is (--mark): the Artifacts tab lists those under
+        # Captures and the project's sweep removes them by age (R96).
         local -a args=()
+        if [ -z "$out" ] || [ -d "$out" ]; then
+            mkdir -p "${out:-dist/emu}"; out="${out:-dist/emu}/shot-$(date +%Y%m%d-%H%M%S).png"
+            args+=(--mark)
+        fi
         [ "$src" = emu ] && args+=(--emu "$pkg") || args+=(--display "$disp")
         [ -z "$drive" ] || args+=(--drive "$drive")
         [ "$settle" = 0 ] && args+=(--now)
@@ -4433,6 +4554,18 @@ cmd_changelog() {
 # On a node, the verbs whose state is the controller's go there whole (see
 # bb_relay); BB_RELAYED marks the controller's own run so a relayed verb that
 # calls bb again cannot bounce.
+# `bb -p NAME VERB`: the verb about another project, one this project reads
+# (prefs.reads, read-only from here). It moves every project the verbs read,
+# and the tree bb map reads, before the relay decides where the words go:
+# the controller's door is what refuses a project this one does not read.
+if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
+    [ -n "${2:-}" ] || die "bb -p NAME VERB: which project?"
+    case "$2" in */*|.*) die "bb -p: '$2' is not a project name" ;; esac
+    export BB_PROJECT="$2" BB_ROADMAP_PROJECT="$2" BB_BUG_PROJECT="$2" BB_VERSION_PROJECT="$2"
+    export BB_TREE="$WORKSPACE/$2"
+    shift 2
+fi
+
 if on_node && [ -z "${BB_RELAYED:-}" ]; then
     # One verb is relayed except for one of its subcommands. `bb tests` reads
     # and writes the registry, which is the controller's; `bb tests run` RUNS
@@ -4440,9 +4573,11 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
     # relays its own ingest afterwards, which is the half that is state.
     case "${1:-} ${2:-}" in
         # `run` runs the suite, which belongs where the toolchain and the tree
-        # are; `last` reads the log that run wrote, which is beside the
-        # project on the share both machines mount. Neither is the
-        # controller's to answer.
+        # are; `last` and `log` read the log that run wrote, which is beside
+        # the project on the share both machines mount. Neither is the
+        # controller's to answer, and `log` relayed read the controller's
+        # stale view of a file this machine had just rewritten in place:
+        # half the lines, starting mid-way (B324).
         # `lab` runs the lab suites against a real service reachable from
         # here, the same reason.
         # `rules check` runs each rule's check command, which belongs where
@@ -4455,7 +4590,7 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # to the real controller it would be a session planting findings in
         # somebody else's report directory.
         # `probe` and `keep` drive the dashboard fixture, which runs here.
-        "tests run"|"tests last"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests coverage"|"rules check"|"findings sample") : ;;
+        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests coverage"|"rules check"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and
@@ -4506,6 +4641,8 @@ case "${1:-help}" in
     bug) shift; cmd_bug "$@" ;;
     tests)    shift; cmd_tests "$@" ;;
     preamble) shift; cmd_preamble "$@" ;;
+    brief) shift; cmd_brief "$@" ;;
+    design) shift; cmd_design "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;

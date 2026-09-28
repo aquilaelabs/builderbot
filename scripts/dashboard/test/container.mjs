@@ -10,6 +10,7 @@
 // asking, the routing, the reading and the answering.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
+import { writeFileSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -153,6 +154,71 @@ ok(dup.status === 400 && /sonarr-for-alpha already exists here/.test(dup.body.er
    && !asks.some(a => a.kind === 'container' && a.name === 'sonarr-for-alpha' && a.state === 'pending'),
    `a name the store already has is refused before the bell, naming the ways forward (${dup.status}: ${
       (dup.body.error || '').slice(0, 70)})`);
+
+// ---- a build from nowhere is refused before anybody is asked -----------------
+// A container written here has no project tree behind it, and compose
+// resolves its relative paths against its own data directory, which is
+// empty: a new project's session wrote its compose at docker/ with
+// build: . and asked for it this way, and the build ran in an empty
+// directory (B329). Refused before the bell, and by create and Edit, with
+// the way a project's own code goes in.
+{
+  const BUILT = 'services:\n  app:\n    build: .\n    ports:\n      - "8080:80"\n';
+  const r = await ask({ name: 'd2-armor-web', compose: BUILT });
+  const asks = (await api('/api/phone')).body.asks || [];
+  ok(r.status === 400 && /builds app from a relative path/.test(r.body.error || '')
+     && /own data directory, which is empty/.test(r.body.error || '')
+     && /bb devapp new/.test(r.body.error || '') && /docker-compose\.yml or compose\.yml/.test(r.body.error || '')
+     && !asks.some(a => a.kind === 'container' && a.name === 'd2-armor-web'),
+     `an ask whose compose builds from a relative path is refused before the bell, naming bb devapp new (${
+        r.status}: ${(r.body.error || '').slice(0, 90)})`);
+  const made = await api('/api/container', { action: 'create', name: 'd2-armor-web', compose: BUILT, env: '' });
+  ok(/builds app from a relative path/.test(made.body.error || '')
+     && !(await api('/api/docker')).body.instances.some(i => i.project === 'd2-armor-web'),
+     `...and so is the Docker tab's New container, leaving nothing registered (${(made.body.error || '').slice(0, 60)})`);
+  // An absolute path is a tree the daemon has: made, as before. The stub
+  // stands in for compose's answer, since it does not read the file.
+  writeFileSync(`${DIR}/dockerstate/bb-buildcheck.config`,
+                JSON.stringify({ services: { app: { build: { context: '/srv/app' } } } }));
+  const abs = await api('/api/container', { action: 'create', name: 'd2-armor-abs',
+                                            compose: 'services:\n  app:\n    build: /srv/app\n', env: '' });
+  rmSync(`${DIR}/dockerstate/bb-buildcheck.config`, { force: true });
+  ok(abs.body.ok, `...while one building from an absolute path is made as before (${JSON.stringify(abs.body).slice(0, 80)})`);
+  // Edit: the same words, and the file it had is kept.
+  const ed = await api('/api/container', { action: 'save', name: 'd2-armor-abs', compose: BUILT, env: '' });
+  const kept = await api('/api/container', { action: 'read', name: 'd2-armor-abs' });
+  ok(/builds app from a relative path/.test(ed.body.error || '') && /\/srv\/app/.test(kept.body.compose || ''),
+     `...and Edit refuses the same change, keeping the file it had (${(ed.body.error || '').slice(0, 50)})`);
+}
+// What counts as relative is compose's own answer, measured against the real
+// compose where the node has one: every way of writing a path that moves with
+// the project directory, and none of the ways that do not.
+{
+  const real = ['/usr/bin/docker', '/usr/local/bin/docker'].find(f => existsSync(f));
+  if (!real) ok(true, 'skipped: no docker CLI here to ask compose what is relative');
+  else {
+    const dash = new globalThis.URL('..', import.meta.url).pathname;
+    const said = JSON.parse(execFileSync('python3', ['-c', `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(dash)})
+import devapp, containers
+devapp.DOCKER = ${JSON.stringify(real)}
+devapp.docker_host = lambda: ""
+devapp.log_dir = None
+b = lambda body: "services:\\n  app:\\n" + body
+cases = {"dot": b("    build: .\\n"), "context": b("    build:\\n      context: ./web\\n"),
+         "default": b("    build:\\n      dockerfile: Dockerfile\\n"), "up": b("    build: ..\\n"),
+         "var": b("    build: \${SRC:-.}\\n"), "absolute": b("    build: /srv/app\\n"),
+         "url": b("    build: https://github.com/docker/getting-started.git\\n"),
+         "inline": b("    build:\\n      dockerfile_inline: |\\n        FROM alpine\\n"),
+         "image": b("    image: nginx\\n"), "envfile": b("    build: .\\n    env_file: .env\\n")}
+print(json.dumps({k: containers.relative_builds(v) for k, v in cases.items()}))
+`], { encoding: 'utf8', env: { ...process.env, PATH: process.env.PATH } }).trim().split('\n').pop());
+    const rel = Object.keys(said).filter(k => said[k].length);
+    ok(JSON.stringify(rel.sort()) === JSON.stringify(['context', 'default', 'dot', 'envfile', 'up', 'var']),
+       `compose's own answer: relative for . ./web .. the default context and a variable, not for an absolute path, a URL, an inline Dockerfile or an image (${JSON.stringify(said)})`);
+  }
+}
 
 ok(page.errors.length === 0, 'zero console errors');
 await done(browser);

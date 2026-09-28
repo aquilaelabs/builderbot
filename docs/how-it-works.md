@@ -573,7 +573,7 @@ is this tab's, so a reload draws a line under it; the asks are the server's and
 are read live, which is why they leave the list the moment they are answered or
 time out.
 
-Pinned above that log, and not the Clear button's to dismiss, is what is waiting on you or stopping work: a session's phone request with Approve and Deny beside it, a notebook holding a session's changes for approval, a node whose agent has an update available, and (in red) a node whose agent is from another compatibility window, naming the projects that cannot build there until it is updated, or a project whose CLAUDE.md environment block is from another window, with its update beside it. Those rows come from the state on every poll and leave the moment they stop being true; nothing is stored to dismiss.
+Pinned above that log, and not the Clear button's to dismiss, is what is waiting on you or stopping work: a session's phone request with Approve and Deny beside it, a notebook holding a session's changes for approval, a node whose agent has an update available, and (in red) a node whose agent is from another compatibility window, naming the projects that cannot build there until it is updated. Those rows come from the state on every poll and leave the moment they stop being true; nothing is stored to dismiss.
 
 The **About** control beside it is the version, and where the header is too
 narrow for a version string it becomes a **?** rather than a truncated number
@@ -698,9 +698,17 @@ lives in its body. The cards:
   you would rather not see. It *hides*; the padlock **blocks**, which is a
   different promise.
   At the foot of the card, **New project** creates one. A fresh local repo
-  (`git init`) asks for a name and a free-text *About this project*, which
-  becomes its `CLAUDE.md`, which is the project's own from that moment
-  on. When nodes are
+  (`git init`) asks for a name and a free-text *Brief*: what you want
+  built. The brief is not the project's `CLAUDE.md`, which every session
+  reads as standing instructions and which would go on asserting the first
+  day's decisions after the project moved past them. It is kept in the tree
+  as `BUILDERBOT-BRIEF.md`, out of git through the repository's own exclude
+  file, for the first Claude session: pressing Claude on the project opens
+  it in a dialog, editable, beside the model and effort that session starts
+  on. **Build it** starts the session with the brief as its first prompt;
+  **Start without it** starts one that was not given it. Either way the
+  brief leaves the tree then, and the notebook's Briefing view keeps it,
+  as `bb brief` prints it. When nodes are
   enrolled it also asks which node the project runs on (the only one is
   picked for you; *none* is an option), the same setting the project's
   settings dialog changes later, so a new project can build and start a
@@ -716,8 +724,9 @@ lives in its body. The cards:
   a Claude session on that project waits for it, so its first question
   about the tree is answered from an index rather than by building one. A single
   top-level folder inside is dropped (the project directory *is* that
-  folder), desktop junk like `__MACOSX` is skipped, and a `CLAUDE.md` is
-  written only from notes you typed.
+  folder), desktop junk like `__MACOSX` is skipped, and no brief is asked
+  for: an archive is where that project starts, so the field goes when one
+  is picked, and a request carrying both is refused.
   Nothing is committed; the first session, or you, decides what the first
   commit is. Paths that would land outside the directory are refused whole. A clone
   of a GitHub repository asks for nothing but the URL: it is fetched with the
@@ -1208,6 +1217,19 @@ node's cache size beside **Clear cache**, and the Toolchains tab gains a node
 picker: installing a toolchain there is a job that carries `bb` and the
 catalog to the node's own toolchain store.
 
+**Reads.** Under the nodes, a project's settings name the other projects a
+session on it may read: their trees, bound read-only at `/workspace/NAME`
+into the session's view on a node, and their notebooks, which `bb roadmap`,
+`bb bug`, `bb rules`, `bb design` and the rest answer for with `bb -p NAME`
+in front. Their running containers answer the session too, on its own
+project's nodes, so a page of theirs can be opened and photographed with
+`bb capture`; a read project's node the reading project is not on stays
+out until the operator adds it. Every write is refused by name, on the API
+and on the relayed verbs alike, and a session's Claude gets the same wall:
+Read allowed, Edit denied. The briefing names the projects a session reads,
+and the shipped "stay in project" rule carries the exception. Set by the
+operator in the dialog, never by a session.
+
 **Compose runs on the node, not from here.** A dev instance's Up, Down,
 Rebuild and Remove are executed by the agent with the node's own docker: the
 dashboard sends the plan and the compose file, the node runs it. So an
@@ -1367,7 +1389,17 @@ for the current one first. Neither a Claude session nor a shell starts for an ac
 name and email for commits, and `bb git` refuses for it: every project is a
 repository, and a shell is where git is typed, and the row's buttons say so
 until the Profile has them. Blank git fields fall back to the name and email
-above and to nothing else; no address is ever made up. The commit identity is per account rather than per project, and
+above and to nothing else; no address is ever made up. **Conversation logs**
+on the same tab lists the account's own conversations with Claude, newest
+first with the first thing typed, and each downloads as a text file: what
+was said on both sides, every command Claude ran and what the command
+answered, `bb roadmap` and its reply included, from the transcript Claude
+Code writes as the session goes (transcripts.py reads the account's
+`~/.claude/projects` directory, the one on the share). Each line is
+stamped in the browser's own zone, the one the page shows times in, so the
+log and the page agree; a line headed System is what BuilderBot or Claude
+Code put in front of Claude. Claude's private reasoning is not conversation
+and is left out, and another account's file is simply not found. The commit identity is per account rather than per project, and
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured, so two people on one
 project are two authors. The **Administration** card on the sidebar, shown
@@ -1565,7 +1597,29 @@ Every project has one, reachable from the **Notebook** button on its row: a tab
 of its own, one per project, and as many open at once as you have projects;
 each is its own instance, so what is half-typed in one survives working in
 another, and the button lights green while that project's is open. Its tab
-strip: **Briefing** (the rules, and what Claude remembers here), the
+strip: **Briefing** (the rules, and what Claude remembers here), **Design**
+(what the project looks like, in four folds: the pages, laid out as
+labelled blocks on a phone or desktop frame, each named for what it is for
+and the platform it is built for, a web app or an Android, iOS, Linux,
+macOS or Windows app, since one project can be several; the design
+language, type and the exact families, shape, space, motion and what it
+governs; the themes, each a named set of colours, dark or light, that a
+preset fills and you add to or cut, the app starting on the first; and
+your own design rules; a theme and a page each carry rules of their own
+as well, for what holds for that theme or that page alone (the Nostromo
+scheme's textures, say), which reach a session named under their holder,
+`nostromo/hull`; the folds that hold a list show one of it at a
+time, chosen on a pulldown at the top; a project designed before it is
+built is built to the design: its briefing says the notebook holds one,
+what is in it, and that on a tree with no code yet the design, the rules
+and the roadmap are the specification; every edit is
+staged behind Save, the prompt under each is the server's words to copy
+into a session when you want it applied, and nothing on the view reaches
+into one: a session meets the design by itself, through the rules its
+briefing names and `bb design show`; a session asked to put a design into
+the notebook writes the same record with `bb design save`, and Write the
+file puts `docs/design-language.md` into the tree for every session to
+read), the
 **Roadmap** (the shared list of design work and ordered plans), **Bugs**,
 **Git**, **Artifacts**, **Docker** (every container that belongs to this
 project, with the manager's rows and controls, so a dev radarr for a media
@@ -1734,8 +1788,8 @@ detail. Steps only exist because of one physical constraint: each is a message
 it is a point at which the previous work has to have finished before the next
 can start, and a session that splits work into more steps than that costs you
 round trips for nothing. A step can be several lines, blank lines and all, so
-the cheap unit is the line and the expensive one is the step. The template
-CLAUDE.md every project gets says this to sessions in as many words.
+the cheap unit is the line and the expensive one is the step. The briefing
+every session gets says this in as many words.
 
 **Items are handed to the session one at a time, by the arrow beside them.**
 Sending types the line into the running Claude session and submits it, but
@@ -1974,6 +2028,23 @@ things means the copy step is missing, and it says so.
 
 Each row is labeled by kind (apk, xpi, whatever the extension says) with
 its size and age, newest first. Everything can be **downloaded**.
+
+What a session looked with lands in `dist/` too: a reel's sheet under
+`dist/reel/NAME` and an emulator shot under `dist/emu`, each with a record
+of who asked and when (`bb capture`, R96). Those are not what ships, so the
+list leaves them out and the tab draws them as one **Captures** fold, shut,
+saying how many and how long they are kept; open, each row says whose it is
+and offers Download and Remove. The recording and the full-size frames never
+reach the share at all: they are working files on the node's own disk, at
+the paths the reel's `frames.json` names.
+
+They go by age and never by need. Nothing can tell whether a capture is done
+with: two sessions on one project may each be reading a reel the other made,
+and a session ending is not evidence that its reel is. So the project's
+settings carry **Captures kept for N days** (7; 0 keeps them), the server
+sweeps what is older on the read that draws the tab, a person removes one
+from the fold, and a session lets one of its own go with `bb capture prune
+NAME`, the same rule applied from the node.
 
 A **script** is the one kind the extension cannot settle on its own: a shipped
 shell installer is as often `dist/install` as `dist/install.sh`, so a file
@@ -2275,8 +2346,8 @@ twice.
 
 **Delete** is separate and narrower: for a report that should never have
 existed: mis-filed, duplicated, aimed at the wrong project. It takes the row
-and leaves the reason in the log. The template CLAUDE.md tells sessions that
-this is the only case for it; anything that was a real bug gets closed.
+and leaves the reason in the log. The briefing tells sessions that this is
+the only case for it; anything that was a real bug gets closed.
 
 **Send to Claude** hands one bug to the session running there, from the same
 box the roadmap opens under a step: the same note field for anything to send

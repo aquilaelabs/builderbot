@@ -5,11 +5,26 @@ at rest (frames a quarter second apart until a second of them match); a
 reel is its recording, which reel.py turns into the frames that changed.
 
 As a program: `capture.py shot --emu [PKG] | --display :N [--settle|--now]
-[--drive FILE] OUT` takes the picture. BB_CAPTURE_FFMPEG is the ffmpeg binary,
+[--drive FILE] [--mark] OUT` takes the picture; `capture.py ls DIST` lists the
+captures under a project's dist/ and `capture.py prune DIST [--days N]
+[NAME...]` removes them (R96). BB_CAPTURE_FFMPEG is the ffmpeg binary,
 BB_CAPTURE_ADB the emulator's adb, BB_CAPTURE_NODE_PATH and BB_CAPTURE_CHROME what a
-page needs, BB_CAPTURE_AUTH the credential a dashboard page takes.
+page needs, BB_CAPTURE_AUTH the credential a dashboard page takes, and
+BB_CAPTURE_SCRATCH where the working files go.
+
+What stays and what goes (R96): dist/ is what a project ships and the
+Artifacts tab lists it, so a capture leaves there only what a person reads
+(a reel's sheet.png and frames.json, a shot's png), each with a record of who
+asked and when, and the working files (the recording, the full-size frames)
+go to this machine's own disk under BB_CAPTURE_SCRATCH. Nothing knows when
+a capture is done with: two sessions on one project may each be reading a
+reel the other made, so nothing is removed by need. They go by age, the
+project's "captures kept" days (artifacts.py sweeps when the tab draws, prune
+here does it from a node), or by name when the one who made it says so.
 """
+import getpass
 import argparse
+import json
 import os
 import re
 import shutil
@@ -39,6 +54,108 @@ def run(argv, timeout=600, **kw):
 
 def font():
     return next((f for f in FONTS if os.path.exists(f)), "")
+
+
+def maker():
+    """Who asked and when, written into a capture's record so the Artifacts
+    tab can say whose it is: the session's account (BB_ACCOUNT_NAME), else
+    the unix user, and the node (R96)."""
+    try:
+        user = getpass.getuser()
+    except (KeyError, OSError):
+        user = ""
+    return {"by": os.environ.get("BB_ACCOUNT_NAME") or user, "at": int(time.time()),
+            "node": os.environ.get("BB_NODE", "")}
+
+
+def scratch(name):
+    """The working files' directory for one capture: the recording and the
+    full-size frames live on this machine's own disk (BB_CAPTURE_SCRATCH,
+    else /tmp/bb-capture-UID), never in dist/ on the share, which lists
+    what ships (R96). Made empty: a capture made again under the same name
+    starts over."""
+    base = os.environ.get("BB_CAPTURE_SCRATCH") or os.path.join(
+        os.environ.get("TMPDIR") or "/tmp", f"bb-capture-{os.getuid()}")
+    d = os.path.join(base, name)
+    shutil.rmtree(d, ignore_errors=True)
+    os.makedirs(d)
+    return d
+
+
+# ---- what is under dist/: the captures, and their sweep -------------------------
+
+CAPTURE_DIRS = ("reel", "emu")
+
+
+def record_of(path):
+    """A capture's record, {} when it has none: a reel's frames.json, a
+    shot's dot-file beside it (.NAME.json, which the tab's listing skips)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def captures(dist):
+    """Every capture under a project's dist/, newest first: a reel is a
+    directory under reel/ with sheet.png, a shot a png under emu/. Each is
+    {name, kind, path (relative to dist), file, at, by, node, size}, with
+    at and by from its record when it has one, else the file's own time and
+    nobody. The same rule on both sides: artifacts.py reads this for the
+    tab, prune below applies it on a node."""
+    out = []
+    reel = os.path.join(dist, "reel")
+    if os.path.isdir(reel):
+        for name in sorted(os.listdir(reel)):
+            d = os.path.join(reel, name)
+            sheet = os.path.join(d, "sheet.png")
+            if name.startswith(".") or not os.path.isdir(d) or not os.path.isfile(sheet):
+                continue
+            rec = record_of(os.path.join(d, "frames.json"))
+            st = os.stat(sheet)
+            out.append({"name": name, "kind": "reel", "path": f"reel/{name}/sheet.png", "file": d,
+                        "at": int(rec.get("at") or st.st_mtime), "by": str(rec.get("by") or ""),
+                        "node": str(rec.get("node") or ""), "size": st.st_size,
+                        "frames": len(rec.get("frames") or [])})
+    emu = os.path.join(dist, "emu")
+    if os.path.isdir(emu):
+        for fn in sorted(os.listdir(emu)):
+            p = os.path.join(emu, fn)
+            if fn.startswith(".") or not os.path.isfile(p):
+                continue
+            rec = record_of(os.path.join(emu, f".{fn}.json"))
+            st = os.stat(p)
+            out.append({"name": fn, "kind": "shot", "path": f"emu/{fn}", "file": p,
+                        "at": int(rec.get("at") or st.st_mtime), "by": str(rec.get("by") or ""),
+                        "node": str(rec.get("node") or ""), "size": st.st_size})
+    return sorted(out, key=lambda c: -c["at"])
+
+
+def remove(c):
+    """One capture gone: a reel's directory, a shot and its record."""
+    if c["kind"] == "reel":
+        shutil.rmtree(c["file"], ignore_errors=True)
+    else:
+        for p in (c["file"], os.path.join(os.path.dirname(c["file"]), f".{c['name']}.json")):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
+def prune(dist, days=None, names=()):
+    """The captures removed: those named, and every one older than `days`
+    (0 or None keeps them all). By age and never by need: a capture is
+    somebody's until the project's days are up, whoever else is on the
+    project. Returns the removed rows."""
+    gone = []
+    for c in captures(dist):
+        if c["name"] in names or (days and c["at"] < time.time() - days * 86400):
+            remove(c)
+            gone.append(c)
+    return gone
 
 
 
@@ -119,6 +236,8 @@ def drive(script, env):
 
 
 def shot(a):
+    """One picture at rest into a.out; with --mark, a record beside it
+    (.NAME.json: who, when, from what) for the Artifacts tab and the sweep."""
     if a.emu is not None:
         adb = _adb()
         emu_ready(adb)
@@ -134,18 +253,24 @@ def shot(a):
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
     with open(a.out, "wb") as f:
         f.write(png)
+    if a.mark:
+        rec = maker() | {"source": f"emu {a.emu}".strip() if a.emu is not None else f"display {a.display}"}
+        with open(os.path.join(os.path.dirname(os.path.abspath(a.out)), f".{os.path.basename(a.out)}.json"),
+                  "w", encoding="utf-8") as f:
+            json.dump(rec, f)
     print(a.out)
 
 
 # ---- the sources: each ends with a video file ---------------------------------------
 
-def from_url(url, seconds, drive, out):
+def from_url(url, seconds, drive, work):
     """A page recorded by Playwright while a script drives it, the way bb
-    capture shot opens one. The driver gets the page and the seconds it has."""
+    capture shot opens one. The driver gets the page and the seconds it has.
+    The recording lands under `work`, the capture's scratch directory."""
     node_path, chrome = os.environ.get("BB_CAPTURE_NODE_PATH", ""), os.environ.get("BB_CAPTURE_CHROME", "")
     if not chrome:
         die("no browser here: Playwright's Chromium is a toolchain recipe on the Tools tab")
-    vdir = os.path.join(out, "video")
+    vdir = os.path.join(work, "video")
     shutil.rmtree(vdir, ignore_errors=True)
     os.makedirs(vdir)
     script = r"""
@@ -184,10 +309,11 @@ const [exe, url, seconds, drive, vdir, auth] = process.argv.slice(2);
     return vids[0]
 
 
-def from_emu(pkg, seconds, drive, out):
-    """The running emulator's screenrecord while an adb-input script drives
-    the app, with gfxinfo's framestats beside the reel: a software-rendered
-    capture is about 10fps, so the timing is read there, not off the frames."""
+def from_emu(pkg, seconds, drive, work, out):
+    """The running emulator's screenrecord (into `work`) while an adb-input
+    script drives the app, with gfxinfo's framestats beside the reel (in
+    `out`): a software-rendered capture is about 10fps, so the timing is
+    read there, not off the frames."""
     adb = os.environ.get("BB_CAPTURE_ADB") or shutil.which("adb") or die(
         "adb is not on this node: bb emu says what the emulator needs")
     r = run([adb, "get-state"], timeout=20)
@@ -202,7 +328,7 @@ def from_emu(pkg, seconds, drive, out):
         subprocess.run(["sh", drive], timeout=seconds + 60, check=False,
                        env=dict(os.environ, ADB=adb, BB_CAPTURE_SECONDS=str(seconds)))
     rec.wait(timeout=seconds + 60)
-    video = os.path.join(out, "screen.mp4")
+    video = os.path.join(work, "screen.mp4")
     r = run([adb, "pull", "/sdcard/bb-reel.mp4", video], timeout=120)
     if r.returncode:
         die(f"could not pull the recording: {(r.stderr or r.stdout).strip()[-200:]}")
@@ -213,15 +339,16 @@ def from_emu(pkg, seconds, drive, out):
     return video
 
 
-def from_display(display, seconds, drive, out):
-    """An X display grabbed with x11grab while xdotool drives it. A server
-    install has no X server: Xorg or Xvfb is the provisioner's to add."""
+def from_display(display, seconds, drive, work):
+    """An X display grabbed with x11grab (into `work`) while xdotool drives
+    it. A server install has no X server: Xorg or Xvfb is the provisioner's
+    to add."""
     num = display.lstrip(":").split(".")[0]
     if not num.isdigit() or not os.path.exists(f"/tmp/.X11-unix/X{num}"):
         die(f"no X display {display} on this node: a server install has none, and the "
             "provisioner adds Xvfb and xdotool (nodes/provision-linux.sh); bb capture reel --display "
             "then records one an app was started on (Xvfb :9 & DISPLAY=:9 the-app &)")
-    video = os.path.join(out, "display.mp4")
+    video = os.path.join(work, "display.mp4")
     # The display's size from xdpyinfo where the node has it; without it the
     # grab is of the size an Xvfb started for this is given (1280x800).
     size = "1280x800"
@@ -243,16 +370,43 @@ def from_display(display, seconds, drive, out):
 
 
 
+def ago(t):
+    """An age as a person says it, for ls."""
+    s = max(0, int(time.time() - t))
+    return (f"{s}s" if s < 60 else f"{s // 60}m" if s < 3600 else f"{s // 3600}h" if s < 86400
+            else f"{s // 86400}d") + " ago"
+
+
 def main():
     ap = argparse.ArgumentParser(add_help=False)
-    ap.add_argument("what", choices=["shot"])
+    ap.add_argument("what", choices=["shot", "ls", "prune"])
     ap.add_argument("--emu", nargs="?", const="")
     ap.add_argument("--display")
     ap.add_argument("--drive")
     ap.add_argument("--settle", dest="settle", action="store_true", default=True)
     ap.add_argument("--now", dest="settle", action="store_false")
+    ap.add_argument("--mark", action="store_true")
+    ap.add_argument("--days", type=int)
     ap.add_argument("out")
+    ap.add_argument("names", nargs="*")
     a = ap.parse_args()
+    if a.what in ("ls", "prune"):
+        # `out` is the project's dist/ here, and the names are captures to
+        # remove now whatever their age.
+        if a.what == "prune" and not a.names and a.days is None:
+            die("bb capture prune NAME... removes those; --days N removes every capture older than that")
+        rows = prune(a.out, a.days, set(a.names)) if a.what == "prune" else captures(a.out)
+        missing = set(a.names) - {c["name"] for c in rows}
+        if missing:
+            die(f"no such capture: {', '.join(sorted(missing))}; bb capture ls names them")
+        for c in rows:
+            print(f"  {c['kind']:<5} {c['name']:<32} {ago(c['at']):>8}  {c['by'] or 'nobody'}"
+                  + (f"  {c['frames']} frames" if c["kind"] == "reel" else ""))
+        if a.what == "prune":
+            print(f"[builderbot] {len(rows)} capture{'s' if len(rows) != 1 else ''} removed", file=sys.stderr)
+        elif not rows:
+            print("[builderbot] no captures in dist/reel or dist/emu", file=sys.stderr)
+        return
     if (a.emu is None) == (a.display is None):
         die("one source: --emu [PKG] or --display :N")
     if a.drive and not os.path.isfile(a.drive):

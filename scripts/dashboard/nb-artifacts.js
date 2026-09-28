@@ -240,6 +240,48 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           </span>
         </div>`).join(""));
     paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
+    // What a session looked with (R96): a reel's sheet, an emulator shot.
+    // One fold apart from the files, since they are not what ships, each
+    // row saying whose it is and when. They go by age (the project's
+    // "captures kept" days, swept by the server on this read) or by Remove
+    // here: never by need, because nothing can tell whether another
+    // session is still reading one. Hidden when there are none: nothing to
+    // act on.
+    const capBox = $("artCaptures");
+    const caps = art.captures || [];
+    if (capBox){
+      capBox.hidden = !caps.length;
+      const days = art.capture_days ?? 7;
+      capBox.innerHTML = !caps.length ? "" : docSection("artifacts", "captures", "Captures",
+        `${caps.length}, kept ${days ? `${days} day${days === 1 ? "" : "s"}` : "until removed"}`,
+        `<div class="hint">What a session looked with: a reel's sheet (<b>bb capture reel</b>) or an
+           emulator shot, not what the project ships. ${days
+             ? `Each is removed ${days} day${days === 1 ? "" : "s"} after it was taken`
+             : "Kept until somebody removes one"}; the project's settings say how long.</div>`
+        + caps.map((c, i) => `
+        <div class="artrow">
+          <span class="grow">
+            <span class="top"><span class="pill">${esc(c.kind)}</span> <b>${esc(c.name)}</b></span>
+            <span class="dim">${esc(c.by ? `by ${c.by}` : "by nobody known")} · ${esc(ago(c.at))} · ${esc(human(c.size))}${
+              c.kind === "reel" ? ` · ${c.frames} frame${c.frames === 1 ? "" : "s"}` : ""}</span></span>
+          <span class="acts">
+            <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
+              }&path=${encodeURIComponent(c.path)}" download>Download</a>
+            <button type="button" data-artcap="${i}" title="remove it from dist/ now, for everybody">Remove</button>
+          </span>
+        </div>`).join(""), {open: false});
+      wireSections(capBox);
+      capBox.querySelectorAll("[data-artcap]").forEach(b => b.onclick = async () => {
+        const c = caps[+b.dataset.artcap];
+        if (!c) return;
+        busy(b, "Removing");
+        try{
+          const j = await (await postJSON("/api/artifacts", {project, action: "forget-capture", name: c.name})).json();
+          if (j.error) return notify(j.error, true);
+        }catch(e){ return notify(String(e), true); }
+        loadArtifacts();
+      });
+    }
     // Builds made on a branch, in each account's worktree (B237): Download
     // and View, carrying the tree. Install and Push stay with dist/, whose
     // files the phone's node is sent by their path in the project.
@@ -759,6 +801,14 @@ this directory">Send to Claude</button>
     // window (the server decides that, from the files that move it). A
     // COMPONENT's version is its own and carries none of it.
     const cost = v.component ? null : ver?.window_cost;
+    // Where the number here lives against the branch builds come from, and
+    // where a staged bump would land: the server's sentences (version.lands),
+    // so the row and bb version say the same thing. A bump on a branch
+    // already merged, unpushed, read as the project's version here while
+    // main still had the old one, and nothing on the row said so (B338).
+    const lands = v.lands || {};
+    const mark = (text, bad) => text ? `<div class="verln"><span></span><span class="vermark${
+      bad ? " bad" : ""}">${esc(text)}</span></div>` : "";
     const line = (label, value, cls = "") => value
       ? `<div class="verln ${cls}"><span>${label}</span><code>${esc(value)}</code></div>`
       : "";
@@ -795,11 +845,13 @@ this directory">Send to Claude</button>
               ? line(v.released ? "released as" : "building towards", v.target)
               : line("version", "none yet: no VERSION file; Set one below"))
       + (v.released ? line("tag", v.tag) : "")
+      + mark(lands.now, lands.bad)
       + (staged ? `<div class="verln"><span></span><span class="vermark">
            staged: ${esc(v.next[staged] || "")} on Save: ${esc(staged)}${
              v.unreleased ? `, dating ${v.unreleased} changelog entr${
                v.unreleased === 1 ? "y" : "ies"}`
              : `, with no changelog entries to date`}</span></div>` : "")
+      + (staged ? mark(lands.staged, lands.staged_bad) : "")
       // What a MINOR bump costs everything else, said BEFORE Save rather than
       // discovered after it (B92): the minor is the compatibility window, so
       // moving it ends the Claude sessions on every project whose block is

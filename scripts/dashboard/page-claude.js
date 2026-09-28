@@ -74,7 +74,17 @@ function openClaude(name, ev){
   drawProjects(state.projects);
 }
 
+// A new project's first session goes through its brief's dialog: a new
+// conversation (no transcript picked), nothing running, and a brief still
+// waiting in the tree (brief.py). Everything else starts at once.
 function startClaude(name, sessionId, node){
+  const p = (state?.projects || []).find(x => x.name === name);
+  if (!sessionId && p?.brief && !liveSessions().has(myClaude(name)))
+    return openBrief(name, node || "");
+  launchClaude(name, sessionId, node);
+}
+
+function launchClaude(name, sessionId, node){
   resumeFor = null;
   delete claudeNodePick[name];
   // Redraw the card, not just the tabs: the chooser is a child of it and would
@@ -85,6 +95,77 @@ function startClaude(name, sessionId, node){
   openTab({kind:"term",
            arg: `claude:${name}` + (sessionId ? `:r:${sessionId}` : "") + (node ? `:n:${node}` : ""),
            label: `Claude: ${name}` + (nn ? ` (${nn})` : "")});
+}
+
+// ---- a new project's first session ------------------------------------------
+// The brief the project was made with, editable, and the model and effort the
+// session starts on, since nothing has started yet. Build it stages the brief
+// for this account and opens the session, which takes it as its first prompt
+// as it starts; Start without it opens one that was not given it and puts the
+// brief away. Either way the brief leaves the project's tree then, and its
+// notebook keeps it.
+let briefFor = null;
+
+async function openBrief(name, node){
+  resumeFor = null;
+  delete claudeNodePick[name];
+  if (state) drawProjects(state.projects);
+  briefFor = {name, node};
+  const p = (state?.projects || []).find(x => x.name === name);
+  $("briefTitle").textContent = `First session on ${name}`;
+  $("briefErrWrap").hidden = true;
+  $("briefText").value = "";
+  for (const [id, table, cur] of [["briefModel", MODELS, p?.yours?.model || ""],
+                                  ["briefEffort", EFFORTS, p?.yours?.effort || ""]]){
+    $(id).innerHTML = table.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+    $(id).value = cur;
+  }
+  for (const b of ["briefGo", "briefSkip"]) $(b).disabled = true;
+  $("briefModal").hidden = false;
+  try{
+    const j = await (await fetch("/api/brief?project=" + encodeURIComponent(name))).json();
+    if (briefFor?.name !== name) return;
+    if (j.error) throw new Error(j.error);
+    $("briefText").value = j.text || "";
+  }catch(e){
+    $("briefErr").textContent = "could not read the brief: " + e.message;
+    $("briefErrWrap").hidden = false;
+  }
+  for (const b of ["briefGo", "briefSkip"]) $(b).disabled = false;
+}
+
+function closeBrief(){ $("briefModal").hidden = true; briefFor = null; }
+
+// Build it (skip false) or Start without it (skip true). The model and the
+// effort are saved first, as the settings dialog saves them, so the session
+// the press opens starts on them.
+async function briefGo(skip){
+  const f = briefFor;
+  if (!f) return;
+  const p = (state?.projects || []).find(x => x.name === f.name);
+  const text = $("briefText").value.trim();
+  const model = $("briefModel").value, effort = $("briefEffort").value;
+  const fail = m => { $("briefErr").textContent = m; $("briefErrWrap").hidden = false; };
+  if (!skip && !text) return fail("the brief is empty: Start without it starts a session with no brief");
+  const b = $(skip ? "briefSkip" : "briefGo");
+  const was = b.textContent;
+  busy(b, "Starting");
+  try{
+    if (model !== (p?.yours?.model || "") || effort !== (p?.yours?.effort || "")){
+      const j = await (await postJSON("/api/prefs", {project: f.name, model, effort})).json();
+      if (j.error) throw new Error(j.error);
+    }
+    const j = await (await postJSON("/api/brief", skip ? {project: f.name, action: "aside"}
+                                                       : {project: f.name, action: "stage", text})).json();
+    if (j.error) throw new Error(j.error);
+  }catch(e){
+    unbusy(b, was);
+    return fail(e.message);
+  }
+  unbusy(b, was);
+  closeBrief();
+  launchClaude(f.name, null, f.node);
+  refreshSoon();
 }
 
 // What a node has and how busy it is, on its button in the chooser: the

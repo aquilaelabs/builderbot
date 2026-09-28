@@ -651,7 +651,7 @@ for (const kind of kinds){
   // Save and Revert only where something can be staged behind them: a Save
   // under a list that writes through read as a button that did nothing.
   const foots = {};
-  for (const v of ['roadmap', 'briefing', 'artifacts', 'bugs', 'analysis', 'tests', 'git']){
+  for (const v of ['roadmap', 'briefing', 'artifacts', 'design', 'bugs', 'analysis', 'tests', 'git']){
     await page.evaluate(w => getNotebook('alpha').view(w), v);
     await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"]`)?.checkVisibility(),
                                v, { timeout: 20000 });
@@ -660,7 +660,7 @@ for (const kind of kinds){
     foots[v] = await page.evaluate(() => [...document.querySelectorAll('.nb')]
       .find(n => n.checkVisibility())?.querySelector('#nbFoot')?.checkVisibility() || false);
   }
-  ok(foots.roadmap && foots.briefing && foots.artifacts && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
+  ok(foots.roadmap && foots.briefing && foots.artifacts && foots.design && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
      `the notebook's foot shows on the views that stage and on no other (${JSON.stringify(foots)})`);
 }
 
@@ -844,6 +844,101 @@ for (const kind of kinds){
   ok(bad.length === 0,
      `the active tab's words read on the accent fill in all ${SCHEMES.length} schemes${
        bad.length ? `; under ${AA}:1: ${bad.join(', ')}` : ''}`);
+}
+
+// ---- a document arrives on its own ground, on every scheme ------------------
+// A document tab brought to the front fades in (docIn), and the fade was
+// on the document box, which painted its own ground: the ground faded in
+// with the content, over the pane's black, so every switch to a notebook
+// opened on a black pane for its first frames, and nostromo's on the bare
+// hull (the operator, 27 Sep). The ground is the stack's now. Measured on
+// the first frame itself: whatever the switch starts is held at its start,
+// the pane is photographed and its pixels read through a canvas, and that
+// frame has to be the ground the settled tab stands on (its commonest
+// colour) with no black in it. Every kind in one scheme, the notebook in
+// every scheme, the schemes read off the page's own list.
+{
+  const frame = async () => {
+    const box = await page.$eval('.pane .doc.on', e => {
+      const r = e.closest('.stack').getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    });
+    const png = await page.screenshot({ clip: box });
+    return page.evaluate(async b64 => {
+      const img = new Image();
+      img.src = 'data:image/png;base64,' + b64;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let black = 0, n = 0; const count = new Map();
+      // Every fourth pixel each way: the ground is most of the pane.
+      for (let y = 0; y < c.height; y += 4) for (let x = 0; x < c.width; x += 4){
+        const i = (y * c.width + x) * 4; n++;
+        if (d[i] < 4 && d[i + 1] < 4 && d[i + 2] < 4) black++;
+        const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+        count.set(k, (count.get(k) || 0) + 1);
+      }
+      let mode = 0, most = 0;
+      for (const [k, m] of count) if (m > most){ most = m; mode = k; }
+      return { black: +(black / n).toFixed(3), ground: [mode >> 16, (mode >> 8) & 255, mode & 255] };
+    }, png.toString('base64'));
+  };
+  const atRest = () => page.waitForFunction(() => !document.querySelector('.pane .doc.on')?.getAnimations().length,
+                                          null, { timeout: 10000 });
+  // The switch and the hold in one task, so no frame is painted between them.
+  const switchHeld = id => page.evaluate(id => {
+    focusTab(id);
+    window.__held = document.getAnimations().filter(a => a.playState === 'running' || a.pending);
+    window.__held.forEach(a => { a.pause(); a.currentTime = 0; });
+    return window.__held.map(a => a.animationName || '').filter(Boolean);
+  }, id);
+  const release = () => page.evaluate(() => { (window.__held || []).forEach(a => a.play()); window.__held = []; });
+  const tabIdOf = kind => page.evaluate(k => tabs.find(t => t.kind === k)?.id, kind);
+  // Only the two document tabs switched between: bring() makes room under
+  // the page's tab ceiling by closing one, and the one it closed could be
+  // the tab about to be switched to, which then never arrived.
+  const onlyDocs = keep => page.evaluate(keep => {
+    for (const t of [...tabs]) if (t.kind !== 'term' && !keep.includes(t.kind)) dropTab(t.id);
+  }, keep);
+  const arrive = async (kind, from) => {
+    await onlyDocs([kind, from.split(':')[0]]);
+    await bring(kind);
+    await bring(from);
+    await atRest();
+    const id = await tabIdOf(kind);
+    if (!id) return { ok: false, said: `no ${kind} tab to switch to` };
+    const held = await switchHeld(id);
+    const first = await frame();
+    await release();
+    await atRest();
+    await sleep(150);
+    const settled = await frame();
+    const off = first.ground.some((v, i) => Math.abs(v - settled.ground[i]) > 2);
+    return { ok: first.black < 0.005 && !off && held.includes('docIn'),
+             said: `first frame ${first.black * 100}% black on rgb(${first.ground}), settled on rgb(${settled.ground}); ${
+                   held.includes('docIn') ? 'faded' : 'nothing faded'}` };
+  };
+  for (const kind of tabKinds){
+    if (!DRIVERS[kind]) continue;
+    const r = await arrive(kind, kind === 'projects' ? 'notebook:roadmap' : 'projects');
+    ok(r.ok, `[${kind}] brought to the front, its first frame is its own ground and only its content fades in (${r.said})`);
+  }
+  const schemes = await page.evaluate(() => THEMES.map(t => t[0]));
+  const bad = [];
+  for (const t of schemes){
+    await page.evaluate(th => { document.documentElement.dataset.theme = th; }, t);
+    await sleep(120);
+    const r = await arrive('notebook', 'projects');
+    if (!r.ok) bad.push(`${t}: ${r.said}`);
+  }
+  await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+  await sleep(120);
+  ok(schemes.length > 1 && bad.length === 0,
+     `a notebook brought to the front opens on its scheme's ground in all ${schemes.length} schemes, never black${
+       bad.length ? `: ${bad.join('; ')}` : ''}`);
 }
 
 // The same page, held to the same rules at phone width: nothing may scroll
@@ -1031,7 +1126,7 @@ const sideways = () => page.evaluate(() => {
     overflow: Math.max(document.documentElement.scrollWidth - document.documentElement.clientWidth,
                        box ? box.scrollWidth - box.clientWidth : 0),
     widest,
-    // Every control on a phone is the field size (12px mono): a 16px mono
+    // Every control on a phone is the field size (--f-field, 11px mono): a 16px mono
     // field beside an 11px label is the loudest thing on the tab, and the
     // operator asked for smaller text in every box (25 Sep). The 16px that
     // stops iOS Safari zooming the page into a typed field is iOS's alone,
@@ -1193,6 +1288,9 @@ const DIALOGS = {
   about: () => openAbout(), newproject: () => openNewProject(), trash: () => openTrash(),
   globalrules: () => openGlobalRules(), pending: () => openPending('alpha'),
   newcontainer: () => openNewContainer(), custom: () => editCustom(),
+  // A new project's first session: opened for a project with no brief, which
+  // draws the same dialog with an empty text box.
+  firstsession: () => openBrief('alpha', ''),
   senddocker: () => openSendToDocker('ep.silon'), devenv: () => openDevEnv('ep.silon', 'main'),
   projsettings: () => document.querySelector('[data-rn="alpha"]')?.click(),
   // The Debugging group's dialog. It draws from SETTING_GROUPS rather than
@@ -1221,9 +1319,11 @@ async function dialogShape(pg = page){
     // too is the half-a-line wobble About had on every size (18 Sep).
     const scrolls = e => e.scrollHeight > e.clientHeight + 1;
     // A text box scrolling its own text is an editor doing its job, not a
-    // second scroller in the dialog's layout.
+    // second scroller in the dialog's layout; so is a listbox scrolling its
+    // rows past four (the design language, Controls), which is what keeps
+    // a dialog of forty projects short.
     const inner = [...box.querySelectorAll('*')].filter(e => e.offsetHeight && scrolls(e)
-      && e.tagName !== 'TEXTAREA' && /auto|scroll/.test(getComputedStyle(e).overflowY));
+      && e.tagName !== 'TEXTAREA' && !e.classList.contains('lbox') && /auto|scroll/.test(getComputedStyle(e).overflowY));
     const nested = scrolls(box) && inner.length
       ? `the box scrolls ${box.scrollHeight - box.clientHeight}px around ${inner[0].id || inner[0].className || inner[0].tagName}, which scrolls too` : '';
     // A dialog of prose (About) may have headings; one of fields may not.

@@ -14,6 +14,12 @@ surface meanwhile, --name NAME for the reel's directory under dist/reel/,
 --fps N (how often the recording is looked at). BB_CAPTURE_OUT is dist/reel,
 BB_CAPTURE_FFMPEG the ffmpeg binary, BB_CAPTURE_NODE_PATH and BB_CAPTURE_CHROME what
 the page source needs, BB_CAPTURE_ADB the emulator's adb.
+
+Only the sheet and frames.json land in dist/reel/NAME (R96): the recording
+and the full-size frames are working files, under the capture's scratch
+directory (capture.scratch), which frames.json names in `work` and in each
+frame's `file`. frames.json also says who asked and when (capture.maker),
+which is what the Artifacts tab shows and what the sweep goes by.
 """
 import argparse
 import json
@@ -26,18 +32,20 @@ import time
 COLS, WIDTH = 4, 480          # the sheet: four frames across, each 480px wide
 
 
-from capture import die, ffmpeg, font, from_display, from_emu, from_url, run  # noqa: F401
+from capture import die, ffmpeg, font, from_display, from_emu, from_url, maker, run, scratch  # noqa: F401
 
 
 # ---- the reel itself: from a video to a sheet and a log ------------------------
 
-def reel(video, out, threshold, fps):
-    """The frames that changed, stamped and tiled. Returns the log."""
+def reel(video, out, work, threshold, fps):
+    """The frames that changed, stamped and tiled: the sheet and frames.json
+    into `out` (the reel's directory under dist/), the frames themselves
+    under `work`. Returns the log."""
     os.makedirs(out, exist_ok=True)
-    frames = os.path.join(out, "frames")
+    frames = os.path.join(work, "frames")
     shutil.rmtree(frames, ignore_errors=True)
     os.makedirs(frames)
-    meta = os.path.join(out, "meta.txt")
+    meta = os.path.join(work, "meta.txt")
     # ffmpeg picks the frames: the first, and each whose scene score against
     # the one before is over the threshold. `metadata=print` writes that
     # score per kept frame and showinfo its time; both are read back below.
@@ -60,7 +68,7 @@ def reel(video, out, threshold, fps):
     files = sorted(x for x in os.listdir(frames) if x.endswith(".png"))
     log = []
     for i, name in enumerate(files):
-        log.append({"frame": i, "file": f"frames/{name}",
+        log.append({"frame": i, "file": os.path.join(frames, name),
                     "t": round(times[i], 2) if i < len(times) else None,
                     # One score per kept frame, in order; the first is kept
                     # whatever it scored, and its score is against nothing.
@@ -76,7 +84,7 @@ def reel(video, out, threshold, fps):
                  f"fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=6") if fnt else ""
         # The stamps come from the frames' own times: fed back at the same
         # timestamps by concat, so drawtext's pts is the time in the video.
-        listing = os.path.join(out, "list.txt")
+        listing = os.path.join(work, "list.txt")
         with open(listing, "w", encoding="utf-8") as f:
             for i, name in enumerate(files):
                 t = log[i]["t"] or 0.0
@@ -96,7 +104,8 @@ def reel(video, out, threshold, fps):
             pass
         os.unlink(x)
     with open(os.path.join(out, "frames.json"), "w", encoding="utf-8") as f:
-        json.dump({"source": video, "threshold": threshold, "fps": fps, "frames": log}, f, indent=1)
+        json.dump(maker() | {"source": video, "work": work, "threshold": threshold, "fps": fps,
+                             "frames": log}, f, indent=1)
     return log
 
 
@@ -123,16 +132,18 @@ def main():
     os.makedirs(out, exist_ok=True)
     if a.drive and not os.path.isfile(a.drive):
         die(f"no such driver: {a.drive}")
+    if a.video and not os.path.isfile(a.video):
+        die(f"no such video: {a.video}")
     drive = os.path.abspath(a.drive) if a.drive else ""
-    video = (a.video if a.video else from_url(a.url, a.seconds, drive, out) if a.url
-             else from_emu(a.emu, a.seconds, drive, out) if a.emu is not None
-             else from_display(a.display, a.seconds, drive, out))
-    if a.video and not os.path.isfile(video):
-        die(f"no such video: {video}")
-    log = reel(video, out, a.threshold, a.fps)
+    work = scratch(name)
+    video = (a.video if a.video else from_url(a.url, a.seconds, drive, work) if a.url
+             else from_emu(a.emu, a.seconds, drive, work, out) if a.emu is not None
+             else from_display(a.display, a.seconds, drive, work))
+    log = reel(video, out, work, a.threshold, a.fps)
     print(f"[builderbot] {len(log)} frame{'s' if len(log) != 1 else ''} changed"
           + (f" over {log[-1]['t']}s" if log and log[-1]['t'] else "")
-          + f": {os.path.join(out, 'sheet.png')} and frames.json beside it", file=sys.stderr)
+          + f": {os.path.join(out, 'sheet.png')} and frames.json beside it; the frames are under {work}",
+          file=sys.stderr)
     for f in log:
         print(f"  {f['frame']:>3}  {f['t'] if f['t'] is not None else '?':>7}s  change {f['change']:.3f}")
 

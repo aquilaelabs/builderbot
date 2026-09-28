@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -357,6 +357,13 @@ ok(yb('changelog', 'add', 'Worked before any version existed', '--cat', 'Added')
   ok(own.code === 0 && /### Upgrading/.test(body) && body.indexOf('### Added') < body.indexOf('### Fixed')
      && body.indexOf('### Fixed') < body.indexOf('### Upgrading'),
      "a project's own category is kept as typed and goes on the end, while the six keep their usual order among themselves");
+  // The verb stamps HEAD, and an entry that names HEAD itself was written
+  // with the hash twice (B336): a stamp typed on the end is the entry's own.
+  const head = execFileSync('git', ['-C', Y, 'rev-parse', '--short=7', 'HEAD'], { env }).toString().trim();
+  yb('changelog', 'add', `Named its own commit (${head})`, '--cat', 'Fixed');
+  const once = readFileSync(`${Y}/CHANGELOG.md`, 'utf8').split('\n').find(l => l.includes('Named its own commit'));
+  ok(once === `- Named its own commit (${head})`,
+     `an entry that already ends with the commit it is stamped with carries it once (${once})`);
 }
 setPolicyFor('young', 'open');
 yb('version', 'init', '0.1.0');
@@ -1514,6 +1521,95 @@ ok(/no session is running/.test(askDead.error || ''),
 
 ok((await page.errors).every(e => /400/.test(e)),
    '...and the only failed request afterwards is the refusal just asked for');
+
+// ---- where a bump lands (B338) -----------------------------------------------
+// A bump commits on whatever branch the checkout is on and never pushes, and
+// that stays. What a project released from main met was the row not saying
+// so: it was bumped to 0.8.0 on a branch already merged into main, unpushed,
+// while the tab showed 0.8.0 and main still read 0.7.0. Built here for real,
+// with a bare remote, the branch merged the way a pull request merges it.
+{
+  const L = `${WS}/landproj`, REMOTE = `${DIR}/landproj.git`;
+  rmSync(L, { recursive: true, force: true });
+  rmSync(REMOTE, { recursive: true, force: true });
+  const g = (...a) => execFileSync('git', ['-C', L, ...a], { encoding: 'utf8', env }).trim();
+  execFileSync('git', ['init', '-q', '--bare', REMOTE], { env });
+  mkdirSync(L, { recursive: true });
+  g('init', '-q', '-b', 'main', '.');
+  writeFileSync(`${L}/VERSION`, '0.7.0\n');
+  writeFileSync(`${L}/f`, 'one');
+  g('add', '-A'); g('commit', '-qm', 'one');
+  g('remote', 'add', 'origin', REMOTE);
+  g('push', '-q', '-u', 'origin', 'main');
+  g('checkout', '-q', '-b', 'claude/polish');
+  writeFileSync(`${L}/f`, 'two');
+  g('commit', '-qam', 'polish');
+  g('checkout', '-q', 'main');
+  g('merge', '-q', '--no-ff', '-m', 'Merge claude/polish', 'claude/polish');
+  g('push', '-q', 'origin', 'main');
+  g('checkout', '-q', 'claude/polish');
+
+  const LNB = nb('landproj');
+  await refreshUntil(page, () => state?.projects?.some(p => p.name === 'landproj'), { timeout: 20000 });
+  await page.evaluate(() => openNotebook('landproj', 'artifacts'));
+  await page.waitForSelector(`${LNB} #verBox [data-verbump="minor"]`, { timeout: 20000 });
+  const marks = () => page.$$eval(`${LNB} #verBox .vermark`, ms => ms.map(m =>
+    ({ text: m.textContent.replace(/\s+/g, ' ').trim(), bad: m.classList.contains('bad') })));
+  ok(!(await marks()).some(m => /builds come from/i.test(m.text)),
+     'a checkout whose number matches the branch builds come from says nothing about it');
+  await page.click(`${LNB} #verBox [data-verbump="minor"]`);
+  await page.waitForFunction(sel => [...document.querySelectorAll(sel)]
+    .some(m => /Save commits it on/.test(m.textContent)), `.nb #verBox .vermark`, { timeout: 20000 }).catch(() => {});
+  const staged = (await marks()).find(m => /Save commits it on/.test(m.text));
+  ok(staged?.bad && /Save commits it on claude\/polish, which is already in main, where builds come from/.test(staged.text)
+     && /switch to main on the Git view and pull first/.test(staged.text),
+     `a bump staged on a branch already merged into main says where Save would commit it and how to bump main (${staged?.text})`);
+  // Red as an error is everywhere, beside the plain staged line's yellow, and
+  // in the value column with it: the class drew nothing until B338, and a
+  // long line dropped under the label.
+  const look = await page.$$eval(`${LNB} #verBox .vermark`, ms => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--bad)';
+    document.body.appendChild(probe);
+    const red = getComputedStyle(probe).color;
+    probe.remove();
+    const of = re => ms.find(m => re.test(m.textContent));
+    const [warn, plain] = [of(/Save commits it on/), of(/staged: 0\.8\.0/)];
+    return { red, warn: warn && getComputedStyle(warn).color, plain: plain && getComputedStyle(plain).color,
+             lefts: [warn, plain].map(m => m && Math.round(m.getBoundingClientRect().left)) };
+  });
+  ok(look.warn === look.red && look.plain !== look.red && look.lefts[0] === look.lefts[1],
+     `...in red beside the staged line's yellow, and in the same column (${JSON.stringify(look)})`);
+  await page.click(`${LNB} #roadmapSaveQuiet`);
+  await page.waitForFunction(sel => [...document.querySelectorAll(sel)]
+    .some(m => /0\.8\.0 is committed on/.test(m.textContent)), `.nb #verBox .vermark`, { timeout: 20000 }).catch(() => {});
+  const now = (await marks()).find(m => /is committed on/.test(m.text));
+  ok(now?.bad && now.text === '0.8.0 is committed on claude/polish, on top of work main already has, and not pushed. '
+                               + 'Builds come from main, which reads 0.7.0 as last fetched, so it reaches them only through another merge.',
+     `...and once saved, the row says in red that the number sits unpushed on work main already has, while main still reads the old one (${now?.text})`);
+  ok(g('rev-parse', '--abbrev-ref', 'HEAD') === 'claude/polish' && g('show', 'origin/main:VERSION') === '0.7.0',
+     '...the bump itself committed where the checkout stands and pushed nothing, as it always has');
+
+  // A session bumping from its terminal reads the same sentence.
+  setPolicyFor('landproj', 'open');
+  const lb = (...a) => { try {
+      return { out: execFileSync('bash', [BB, 'version', ...a], { cwd: L, env }).toString(), code: 0 };
+    } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; } };
+  const bumped = lb('bump', 'patch');
+  ok(bumped.code === 0 && bumped.out.includes('0.8.1 is committed on claude/polish and not pushed. '
+                                              + 'Builds come from main, which reads 0.7.0 as last fetched.'),
+     `bb version bump says the same where a session bumps (${bumped.out.trim().split('\n').pop()})`);
+  g('push', '-q', 'origin', 'claude/polish');
+  const shown = lb().out;
+  ok(/branch\s+0\.8\.1 is committed on claude\/polish\. Builds come from main, which reads 0\.7\.0 as last fetched\./.test(shown),
+     `...and bb version, once the branch is pushed, drops "not pushed" and still says what main reads (${
+       (shown.match(/branch\s+.*/) || [''])[0].trim()})`);
+  g('checkout', '-q', 'main');
+  ok(!/branch\s/.test(lb().out), '...and on main, level with the remote, it says nothing');
+  await page.evaluate(() => { tabs.filter(t => t.kind === 'notebook' && t.arg === 'landproj').forEach(t => dropTab(t.id)); });
+  rmSync(L, { recursive: true, force: true });
+  rmSync(REMOTE, { recursive: true, force: true });
+}
 
 // The briefing every session is handed. It is read into the prompt of every
 // session on every project, so a rendered example version in it is a number

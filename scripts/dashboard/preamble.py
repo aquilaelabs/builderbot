@@ -194,6 +194,76 @@ def _brief_mode(project):
         return "full"
 
 
+# The projects this one reads (prefs.reads), said where the session will
+# act on it: their trees are at /workspace/NAME read-only, and their
+# notebooks answer to bb from inside them. Nothing when there are none:
+# the shipped rule already says to stay in the project.
+_READS = "<!-- BUILDERBOT:READS -->"
+
+
+def reads_line(project):
+    reads = []
+    if prefs_mod is not None:
+        try:
+            reads = list((prefs_mod.get(project) or {}).get("reads") or [])
+        except Exception:                                            # noqa: BLE001
+            reads = []
+    if not reads:
+        return ""
+    names = ", ".join(reads)
+    return (f"This project reads {names}: each is at /workspace/NAME, read-only, and "
+            f"`bb -p NAME` in front of `bb roadmap`, `bb bug`, `bb rules`, `bb design`, "
+            f"`bb tests` or `bb map` makes the verb answer for it, so its notebook and its code "
+            f"are yours to read, and its containers answer from here on this project's nodes, so "
+            f"`bb -p NAME devapp` says where its page is and `bb capture shot` photographs it. "
+            f"Nothing there is yours to change: a write to its tree fails, a write to its notebook is "
+            f"refused, and its containers are not yours to start or stop; a session on that project is "
+            f"what changes them.")
+
+
+# What the notebook's Design view holds, said in the briefing when there is
+# one, so a project designed before its first line of code is built to the
+# design from the start (the operator, 28 Sep): the themes, the pages by
+# name, the rules, and where bb design show reads each.
+_DESIGN = "<!-- BUILDERBOT:DESIGN -->"
+
+
+def design_line(project):
+    try:
+        import design                                    # beside this module
+        rec = design.saved(project)
+    except Exception:                                    # noqa: BLE001
+        return ""
+    if not rec:
+        return ""
+    lang, pages = rec["language"], rec["pages"]
+    themes = ", ".join(t["name"] for t in lang["themes"])
+    own = sum(len(t.get("rules") or []) for t in lang["themes"]) + sum(len(p.get("rules") or []) for p in pages)
+    bits = [f"{len(lang['themes'])} theme{'' if len(lang['themes']) == 1 else 's'} ({themes})"]
+    if pages:
+        bits.append(f"{len(pages)} page{'' if len(pages) == 1 else 's'}: "
+                    + ", ".join(p["name"] or f"page {p['id']}" for p in pages[:8]) + (", ..." if len(pages) > 8 else ""))
+    if lang["rules"] or own:
+        bits.append(f"{len(lang['rules'])} design rule{'' if len(lang['rules']) == 1 else 's'}"
+                    + (f" and {own} of a theme's or a page's own" if own else ""))
+    empty = _no_code_yet(project)
+    return (f"This project's notebook holds a design already: {'; '.join(bits)}. "
+            + ("The tree has no code yet, so the design, the rules and the roadmap are the "
+               "specification: build to them from the first file. " if empty else "")
+            + "Read `bb design show` before laying out or styling anything, `bb design show NAME` for "
+              "one page or one theme, and keep docs/design-language.md in step (`bb design file`).")
+
+
+def _no_code_yet(project):
+    """True when the tree holds nothing but its git, its docs and its
+    notes: a project made on the dashboard and designed before it is built."""
+    try:
+        names = [n for n in os.listdir(os.path.join(str(WORKSPACE), project)) if not n.startswith(".")]
+    except OSError:
+        return False
+    return all(n in ("docs", "README.md", "CLAUDE.md", "LICENSE", "dist") for n in names)
+
+
 def test_change_line(project):
     mode = "wait"
     if prefs_mod is not None:
@@ -263,6 +333,13 @@ def briefing(project):
             # A block skipped between two blank lines leaves one of them,
             # not both: the template has no double blank of its own.
             if not line.strip() and out and not out[-1].strip():
+                continue
+            if line.strip() in (_READS, _DESIGN):
+                said = reads_line(project) if line.strip() == _READS else design_line(project)
+                if said:
+                    out.append(said)
+                elif out and not out[-1].strip():
+                    continue
                 continue
             out.append(test_change_line(project) if line.strip() == _TESTCHANGE else line)
     return "\n".join(out).strip("\n")

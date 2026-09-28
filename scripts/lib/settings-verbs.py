@@ -92,7 +92,7 @@ def show():
         print(json.dumps(rec))
         raise SystemExit(0)
     print(f"{proj}:")
-    for k in ("node", "model", "effort", "build", "test", "outputs", "policy", "locked"):
+    for k in ("node", "nodes", "reads", "model", "effort", "build", "test", "outputs", "policy", "locked"):
         v = rec.get(k)
         if v in (None, "", [], False):
             continue
@@ -104,8 +104,10 @@ def show():
     print(f"    During a test run, a change asked for   {rec.get('test_change') or 'wait'}")
     print(f"    Briefing a session reads                {rec.get('brief') or 'full'}")
     print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
+    print(f"    Captures kept (days; 0 keeps them)      {rec.get('capture_days', 7)}")
     for label, key in (("Add to roadmap", "roadmap"), ("File bugs", "bugs"), ("Add rules", "rules"),
-                       ("Fill in build and test", "settings"), ("Run its container", "devbuild"),
+                       ("Fill in build and test", "settings"), ("Add to the design", "design"),
+                       ("Run its container", "devbuild"),
                        ("Report BuilderBot bugs", "report")):
         if rec.get(key) not in (None, ""):
             print(f"    Claude may: {label:<28} {rec.get(key)}")

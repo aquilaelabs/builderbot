@@ -5,7 +5,7 @@
 //
 // The writes run for real against the scratch home, so this also checks the
 // part that matters most: a delete takes the index line out with the file.
-import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR, openFold, animatedDuring, refreshUntil, closePage } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR, openFold, animatedDuring, refreshUntil, closePage, patience } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replaceAll('/', '-')}/memory`;
@@ -378,9 +378,13 @@ await page.$eval('#memList .mem[open] textarea[data-file]', t => {
 // that passes through nothing this module could count.
 writeFileSync(`${MEM}/clash.md`,
   '---\nname: clash\ndescription: two writers\nmetadata:\n  type: project\n---\n\nwhat the session wrote\n');
+// Save once it is live (the typing wakes it a tick later) and give the
+// refusal's band the patient wait: a flat one ran out under load with the
+// save still in flight (B332).
+await page.waitForFunction(() => !document.getElementById('roadmapSaveQuiet').disabled, null, { timeout: patience(10000) });
 await page.click('#roadmapSaveQuiet');
 await page.waitForFunction(() => !document.getElementById('memClash').hidden,
-                           { timeout: 15000 });
+                           { timeout: patience(30000) });
 const memBand = () => page.$eval('#memClash', el => el.textContent.replace(/\s+/g, ' '));
 ok(/changed on disk while you had it open/.test(await memBand()),
    'a memory saved over one that moved on disk is refused');

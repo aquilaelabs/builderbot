@@ -3637,17 +3637,35 @@ def run_job(name, req, principal):
     return r | {"node": nid, "snapshot": snap["digest"], "files": snap["files"]}, 200
 
 
+# The project a job belongs to when it is not the one it names: a container
+# written for a project (bb container new --for) carries the container's own
+# name as its project, and its owner is the record's. Set by server.py to
+# devapp.owner_of; None reads every job as its own project's.
+job_owner = None
+
+
+def _job_mine(j, mine):
+    """Whether this account sees a job: its project's, or one of a
+    container that belongs to its project (B321)."""
+    if j.get("project") in mine:
+        return True
+    return bool(job_owner) and job_owner(j) in mine
+
+
 def jobs_view(jid, q, mine):
     """The Jobs tab's whole read surface, and a test's: one job with its log
     so far, or the recent ones narrowed by the query's node, project, type,
     active and n. `mine` is None for an administrator, or the projects this
-    account may see: a job and its log are the project's, and a job with no
-    project (a node's own: an update, a store move) is an administrator's,
-    with the same answer as a typo so the listing says nothing about what
-    else is queued on the box. (payload, status)."""
+    account may see: a job and its log are the project's, or its project's
+    container's (B321), and a job with no project (a node's own: an update,
+    a store move) is an administrator's, with the same answer as a typo so
+    the listing says nothing about what else is queued on the box. n counts
+    what this account sees, not the node's last n before the filter, which
+    showed one job of twelve and read as history pruned (B321).
+    (payload, status)."""
     if jid:
         j = job(jid)
-        if j and mine is not None and j.get("project") not in mine:
+        if j and mine is not None and not _job_mine(j, mine):
             j = None
         return (j, 200) if j else ({"error": "no such job"}, 404)
     try:
@@ -3655,12 +3673,12 @@ def jobs_view(jid, q, mine):
     except ValueError:
         n = 100
     rows = jobs_for(
-        q.get("node", [""])[0] or None, n=n,
+        q.get("node", [""])[0] or None, n=500 if mine is not None else n,
         project=q.get("project", [""])[0] or None,
         type=q.get("type", [""])[0] or None,
         active=q.get("active", [""])[0] == "1")
     if mine is not None:
-        rows = [j for j in rows if j.get("project") in mine]
+        rows = [j for j in rows if _job_mine(j, mine)][:n]
     # The names of the nodes these rows run on, and for an account that
     # is not an administrator no other: the whole registry rode here
     # past the scoping the nodes listing keeps (the probe of 26 Sep).

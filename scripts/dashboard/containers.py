@@ -19,8 +19,11 @@ routes.
 """
 
 import contextlib
+import json
 import os
+import re
 import sys
+import tempfile
 import time
 
 _here = os.path.dirname(os.path.abspath(__file__))
@@ -160,6 +163,90 @@ def name_free(name):
     return devapp.name_clash(slug, devapp.MAIN)
 
 
+# A build declared anywhere in the text, flow style included: the only case
+# the check below has anything to ask compose about.
+_BUILD_KEY = re.compile(r"\bbuild\s*:")
+
+
+def _contexts(compose_text, env, where):
+    """{service: (build context, inline)} as compose resolves them with
+    `where` as the project directory and `env` as the env file, the way
+    create's own call is made; None when compose cannot read the file."""
+    cf = os.path.join(os.path.dirname(env), os.path.basename(where) + ".yml")
+    try:
+        with open(cf, "w", encoding="utf-8") as fh:
+            fh.write(devapp.env_to_instance(compose_text, env))
+    except OSError:
+        return None
+    r = devapp._run([devapp.DOCKER, "compose", "--project-name", "bb-buildcheck",
+                     "--project-directory", where, "-f", cf, "--env-file", env,
+                     "config", "--format", "json"], timeout=30)
+    raw = r["out"] or ""
+    i = raw.find("{")
+    if r["code"] != 0 or i < 0:
+        return None
+    try:
+        cfg = json.JSONDecoder().raw_decode(raw[i:])[0]
+    except ValueError:
+        return None
+    out = {}
+    for svc, sv in ((cfg.get("services") if isinstance(cfg, dict) else None) or {}).items():
+        b = sv.get("build") if isinstance(sv, dict) else None
+        if isinstance(b, dict):
+            out[svc] = (str(b.get("context") or "."), bool(b.get("dockerfile_inline")))
+    return out
+
+
+def relative_builds(compose_text, env_text=""):
+    """The services of a compose file that would build from a relative
+    context: for a container written here that is its own data directory,
+    which is empty, since compose resolves a relative path against the
+    project directory it is handed and such a container has no project tree
+    behind it (B329). Asked of compose itself, twice, with two scratch
+    directories standing in for the data directory: a context that moves
+    with the project directory is relative, however it was written (a bare
+    `build: .`, `..`, a context key, the default context, a variable), and
+    one that stays put is an absolute path or a URL. A context compose
+    leaves unresolved (the harness's stub) counts as relative. Empty when
+    nothing is built from a path, for a dockerfile_inline, and when compose
+    cannot read the file, which create refuses in its own words."""
+    if not _BUILD_KEY.search(compose_text or ""):
+        return []
+    with tempfile.TemporaryDirectory(prefix="bb-buildcheck-") as tmp:
+        env = os.path.join(tmp, ".env")
+        try:
+            with open(env, "w", encoding="utf-8") as fh:
+                fh.write(env_text or "")
+        except OSError:
+            return []
+        one = _contexts(compose_text, env, os.path.join(tmp, "one"))
+        two = _contexts(compose_text, env, os.path.join(tmp, "two", "deeper"))
+    if one is None or two is None:
+        return []
+    out = []
+    for svc, (ctx, inline) in sorted(one.items()):
+        if inline or "://" in ctx or ctx.startswith("git@"):
+            continue
+        if not ctx.startswith("/") or two.get(svc, (ctx, False))[0] != ctx:
+            out.append(svc)
+    return out
+
+
+def build_refusal(name, compose_text, env_text=""):
+    """Why a container written here would build nothing, or "": said by
+    create and by Edit, and before a session's ask reaches anybody's bell."""
+    svcs = relative_builds(compose_text, env_text)
+    if not svcs:
+        return ""
+    return (f"{name or 'this container'} builds {', '.join(svcs)} from a relative path, and a "
+            "container written here has no project tree behind it: compose resolves that path "
+            "against the container's own data directory, which is empty, so there is nothing to "
+            "build. A project's own code goes into Docker from a compose file at the project's "
+            "root (docker-compose.yml or compose.yml), with Send to Docker on its Artifacts tab "
+            "or bb devapp new from a session, and builds from the tree. A container written "
+            "here builds from an absolute path or a git URL.")
+
+
 def create_container(name, compose_text, env_text="", node="", for_project=""):
     """A container from a compose file written here, with no project behind it.
 
@@ -225,6 +312,12 @@ def create_container(name, compose_text, env_text="", node="", for_project=""):
     if r["code"] != 0:
         devapp.forget_container(slug)
         return {"error": ("compose will not read that:\n" + r["out"]).strip()[-600:]}
+    # ...and a file that reads but builds from its own empty data directory
+    # is a container that can never be built (B329), taken away the same way.
+    why = build_refusal(name, compose_text, env_text)
+    if why:
+        devapp.forget_container(slug)
+        return {"error": why}
     with devapp._lock:
         d3 = devapp._load()
         ((d3.get(slug) or {}).get(devapp.MAIN) or {}).pop("pending", None)
@@ -269,10 +362,11 @@ def update_container(name, compose_text, env_text):
         return {"error": f"could not write it: {e}"}
     with devapp.on_node(devapp._instance_node(name, devapp.MAIN)):
         r = devapp._run(devapp._compose(name, devapp.MAIN, "config", "-q"), timeout=30)
-    if r["code"] != 0:
+    why = "" if r["code"] != 0 else build_refusal(name, compose_text, env_text)
+    if r["code"] != 0 or why:
         with contextlib.suppress(OSError):
             f.write_text(was, encoding="utf-8")
-        return {"error": ("compose will not read that:\n" + r["out"]).strip()[-600:]}
+        return {"error": why or ("compose will not read that:\n" + r["out"]).strip()[-600:]}
     devapp.write_env(name, env_text or "", devapp.MAIN)
     devapp._bump()
     return {"ok": True, "project": name, "instance": devapp.MAIN,

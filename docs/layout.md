@@ -53,6 +53,8 @@ scripts/
   lib/dash.py                    the dashboard's modules loaded by path for the notebook verbs, and the account name and "who wrote it" they share
   lib/roadmap-verbs.py           `bb roadmap`
   lib/bug-verbs.py               `bb bug`
+  lib/brief-verbs.py             `bb brief`: a new project's brief, and bb-tty's take of it for a first session
+  lib/design-verbs.py            `bb design`: a project's design language and pages, as the notebook's Design view keeps them
   lib/nb-history.py              `bb history`: the notebook's logs merged
   lib/rules-verbs.py             `bb rules`, except check
   lib/rules-check.py             `bb rules check`: a rule's check command, run in this tree
@@ -98,6 +100,8 @@ scripts/
     memory.py                    everything behind the memory book: what Claude remembers per project
     rules.py                     house rules: what has been decided about working on a project
     preamble.py                  what every session on a project starts with, assembled once
+    brief.py                     a new project's brief: kept out of CLAUDE.md, handed to its first session through a dialog
+    design.py                    the notebook's Design view: a project's design language and pages, the prompts a session is pointed at, and docs/design-language.md written from them
     names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
@@ -142,6 +146,7 @@ scripts/
     hooks.py                     what a node session's hooks post: overlap notes, the chat feed, the catch-up, the turn queue
     macros.py                    what the page may type into a terminal: the command and key tables, the pins, custom lists
     profiletab.py                an account's own settings, the Profile tab
+    transcripts.py               an account's conversations with Claude as a text to download, from the Profile tab
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
     layout.py                    what the page keeps here: each account's tab strip and panes, and the sidebar's cards
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot

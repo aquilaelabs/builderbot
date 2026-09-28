@@ -88,14 +88,24 @@ cmd_tests_preflight() {
     # verb before its checks: the harness is run as a child here.
     local rc=0 here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh"
     [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
-    if [ "${suites[*]:-}" = ALL ]; then bash "$here" || rc=1
-    elif [ "${#suites[@]}" -gt 0 ]; then bash "$here" "${suites[@]}" || rc=1; fi
+    # Kept whole in the same log bb tests run writes, so bb tests log prints
+    # this run when it was the last: a flake named only in the terminal's
+    # scroll was gone with the scroll (B328).
+    local rl="${BB_REPO:-$PWD}/.bb-test-run.log"
+    printf '[builderbot] preflight over %s, %s: %s\n' "$base" "$(date '+%d %b %H:%M')" "${suites[*]:-nothing}" > "$rl" 2>/dev/null || rl=/dev/null
+    # As conditions, so set -e and pipefail read a failed suite as rc=1
+    # rather than ending this verb before its checks.
+    if [ "${suites[*]:-}" = ALL ]; then
+        if bash "$here" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+    elif [ "${#suites[@]}" -gt 0 ]; then
+        if bash "$here" "${suites[@]}" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+    fi
     [ "${#unplaced[@]}" -eq 0 ] || rc=1
     local c
     for c in "${checks[@]}"; do
         # design is uniform.mjs, already in the run when it is listed
         case "$c" in design) case " ${suites[*]:-} " in *" uniform "*|*" ALL "*) continue ;; esac ;; esac
-        bash "$0" rules check "$c" || rc=1
+        if bash "$0" rules check "$c" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
     done
     [ "$rc" = 0 ] && log "preflight: clean" || warn "preflight: something above failed"
     return "$rc"

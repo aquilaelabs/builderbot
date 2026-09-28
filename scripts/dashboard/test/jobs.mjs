@@ -234,6 +234,27 @@ await ready(page);
   ok(!theirs.some(id => mineOut.includes(id)) && (theirs.length ? /no such job/.test(bbs(theirs[0])) : true),
      `a session's bb jobs lists its own project's jobs and answers "no such job" for another project's (${
         theirs.length} of others' kept out; ${mineOut.trim().split('\n')[0].slice(0, 70)})`);
+  // A container written for alpha (bb container new --for alpha) carries
+  // its own name as its jobs' project, and those are alpha's to see (B321):
+  // its record says whose it is. And -n counts what the session sees, not
+  // the node's last n before the filter: three of beta's queued after
+  // alpha's used to leave bb jobs -n 2 with nothing of alpha's.
+  const { readFileSync: rf, writeFileSync: wf } = await import('node:fs');
+  const store = `${DIR}/state/devapps.json`;
+  let dev = {}; try { dev = JSON.parse(rf(store, 'utf8')); } catch {}
+  dev['alpha-box'] = { main: { source: 'file', for: 'alpha', node: 'local' } };
+  wf(store, JSON.stringify(dev));
+  const box = await exec({ id: 'local', project: 'alpha-box', argv: ['true'] });
+  const own = await exec({ id: 'local', project: 'alpha', argv: ['true'] });
+  for (let i = 0; i < 3; i++) await exec({ id: 'local', project: 'beta', argv: ['true'] });
+  await settled(box.job); await settled(own.job);
+  const withBox = bbs();
+  ok(withBox.includes(box.job) && /exec true/.test(withBox),
+     `a session sees the jobs of a container written for its project (${box.job})`);
+  ok(!/no such job/.test(bbs(box.job)), '...and reads one of those by id');
+  const two = bbs('-n', '2').trim().split('\n').filter(l => /^\s*j_/.test(l));
+  ok(two.length === 2 && two.some(l => l.includes(box.job)) && two.some(l => l.includes(own.job)),
+     `bb jobs -n 2 is the session's own last two, whatever else the node ran since (${two.map(l => l.trim().slice(0, 12)).join(', ')})`);
 }
 
 ok(page.errors.length === 0,

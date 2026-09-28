@@ -151,6 +151,14 @@ const pillIs = async (want) => {
 // described a path that was not taken (B264).
 {
   await openManager();
+  // Waited for: the header comes from the manager's own listing, which a
+  // whole run can land after the rows the poll drew, or bring back as "the
+  // daemon did not answer" once, and a read that did not wait crashed the
+  // file at its first check (B334). Asked for again once if it has not come.
+  await page.waitForSelector('.dmtab .dmsrc', { timeout: 20000 }).catch(async () => {
+    await page.evaluate(() => { dockerList = null; loadDocker(); });
+    await page.waitForSelector('.dmtab .dmsrc', { timeout: 20000 });
+  });
   const src = await page.$eval('.dmtab .dmsrc', e => e.textContent.replace(/\s+/g, ' ').trim());
   ok(/^on sandbox, through its agent/.test(src),
      `the manager's header names an agent node's daemon by the node, through its agent (${src.slice(0, 60)})`);
@@ -376,6 +384,11 @@ print(json.dumps(m._build_env('verstamp', '')))
        got.BB_BUILD_VERSION || 'unstamped'})`);
   rmSync(vrepo, { recursive: true, force: true });
 }
+// Waited for, not read once: the manager's Up and Down follow its own
+// listing, a fetch behind the artifacts row's, and under a whole run the
+// row still read the state from before the up when this looked (B319).
+await page.waitForFunction(sel => document.querySelector(sel + ' [data-dm="up"]')?.disabled
+  && document.querySelector(sel + ' [data-dm="down"]')?.disabled === false, DM, { timeout: patience(20000) });
 r = await row();
 ok(!r.down && r.up, 'running: Down is live, Up is dead');
 // Rebuild does NOT go to sleep when the build matches the code, which it used
@@ -666,7 +679,11 @@ ok(!existsSync(`${DIR}/dockerstate/ep-silon.exited`),
 // with no account of why it had not started, and its tail gone.
 writeFileSync(`${DIR}/dockerstate/up.fail`, '1');
 await dmClick('up');
-await page.waitForFunction(() => dockerList?.job?.error, null, { timeout: 20000 })
+// The job first, then the row: the reason reaches the row only once the
+// job has released, and a flat wait on the row ran out under load while
+// the job was still running (B340).
+await idle(60000);
+await page.waitForFunction(() => dockerList?.job?.error, null, { timeout: patience(20000) })
   .catch(() => {});
 const failed = await page.evaluate(() => dockerList?.job || {});
 ok(/up failed/.test(failed.error || ''),
@@ -1858,12 +1875,21 @@ m.all_project_nodes = lambda: {'alpha': ['n1', 'n2', 'n3'], 'beta': ['n1'], 'gam
 m._load = lambda: {'alpha': {'main': {'node': 'n2'}, 'aux': {}}, 'beta': {'main': {}}, 'gamma': {'main': {}}}
 m._owners = lambda: {'n2': {'plex': 'alpha', 'other': 'beta'}}
 print(json.dumps(m.session_net_own('n1')))
+# ...and with alpha reading beta and gamma (prefs.reads): beta's instance
+# here and its container on alpha's other node join alpha's set; gamma's
+# node is not alpha's, so gamma stays out.
+m.reads_of = lambda p: {'alpha': ['beta', 'gamma']}.get(p, [])
+print(json.dumps(m.session_net_own('n1')))
 `], { encoding: 'utf8' });
-  const own = JSON.parse(sn.trim().split('\n').pop());
+  const [own, withReads] = sn.trim().split('\n').slice(-2).map(l => JSON.parse(l));
   const same = (a, b) => JSON.stringify(Object.keys(a).sort().map(k => [k, a[k]])) === JSON.stringify(Object.keys(b).sort().map(k => [k, b[k]]));
   ok(same(own.alpha, { compose: ['aux'], hosts: ['192.168.1.40'], names: [],
        peers: [['192.168.1.17', 8088], ['192.168.1.17', 8443], ['192.168.1.17', 32400]] }),
      `a project's sessions on one node reach its containers' published ports on its other node and its Mac whole (${JSON.stringify(own.alpha)})`);
+  ok(same(withReads.alpha, { compose: ['aux', 'beta'], hosts: ['192.168.1.40'], names: [],
+       peers: [['192.168.1.17', 1234], ['192.168.1.17', 8088], ['192.168.1.17', 8443], ['192.168.1.17', 32400]] })
+     && same(withReads.beta, own.beta),
+     `a project that reads others reaches their containers here and on its own other nodes, never on a node it is not on, and the read project's own set is unchanged (${JSON.stringify(withReads.alpha)})`);
   ok(same(own.beta, { compose: ['beta'], hosts: [], names: [], peers: [] }) && !own.gamma,
      `...a project on this node alone reaches nothing else, and one not on this node is not named at all (${JSON.stringify(own.beta)}; gamma ${JSON.stringify(own.gamma)})`);
 }

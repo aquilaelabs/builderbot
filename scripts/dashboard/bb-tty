@@ -120,6 +120,10 @@ GRANT
     BB_ACCOUNT_NAME="$(printf '%s' "$grant" | jq -r '.name // empty')"
     BB_ACCOUNT_UID="$account"
     export BB_ACCOUNT_NAME BB_ACCOUNT_UID
+    # The projects this one reads, from the same answer: their trees go
+    # into the view read-only, and Claude's walls let it read them.
+    BB_READS="$(printf '%s' "$grant" | jq -r '(.reads // []) | join(" ")')"
+    export BB_READS
     if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
         export BB_TREE_OWNER=1
     else
@@ -287,11 +291,15 @@ in_view() {
     envf="$(cache_project_dir "$proj")/session.env"
     ( umask 077; env -0 > "$envf.new" && mv -f "$envf.new" "$envf" ) \
         || bad "Could not write this session's environment to $envf, so its view cannot start."
+    # The projects this one reads, one --reads each: the helper binds their
+    # trees read-only, and repeated words keep the launcher line respawnable.
+    local reads=() r
+    for r in ${BB_READS:-}; do reads+=(--reads "$r"); done
     why="$("$SESSION_BIN" plan --project "$proj" --account "${account:-}" --home "$HOME" \
-               --cwd "$dir" 2>&1 >/dev/null)" \
+               --cwd "$dir" "${reads[@]}" 2>&1 >/dev/null)" \
         || bad "This node keeps each session to its own project, and could not for this one:" "$why"
     RUN=(sudo -n "$SESSION_BIN" enter --project "$proj" --account "${account:-}" --home "$HOME"
-         --cwd "$dir" --env "$envf" -- "$@")
+         --cwd "$dir" "${reads[@]}" --env "$envf" -- "$@")
 }
 
 # claude_scope PROJECT - write a settings file that walls this session into its
@@ -396,8 +404,12 @@ claude_scope() {
             [ "$(readlink -f "${bundle%/*}/current" 2>/dev/null)" = "$bundle" ] \
                 && hooks="${bundle%/*}/current/scripts/dashboard" ;;
     esac
+    # A project this one reads is a wall to Edit and not to Read: its tree
+    # is in the view read-only, and the deny list says the same.
+    local readsq
+    readsq="$(for r in ${BB_READS:-}; do printf '%s\n' "$WORKSPACE/$r"; done | jq -R . | jq -s .)"
     if walls_around "$proj" "$here" | jq -R . \
-         | jq -s --arg ws "$WORKSPACE" --arg here "$here" \
+         | jq -s --arg ws "$WORKSPACE" --arg here "$here" --argjson reads "${readsq:-[]}" \
                --arg state "${DASHBOARD_STATE:-/config}" \
                --arg gate "$hooks/bb-gate" \
                --arg note "$hooks/bb-work-note" \
@@ -407,7 +419,8 @@ claude_scope() {
                --arg proj "$proj" --arg who "${account:-owner}" '
            {permissions: {
               additionalDirectories: [],
-              deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
+              deny: (map(select(. as $d | $reads | index($d) | not) | "Read(\(.)/**)", "Edit(\(.)/**)")
+                     + map(select(. as $d | $reads | index($d)) | "Edit(\(.)/**)")
                      + ["Edit(\($here)/VERSION)",
                         "Edit(\($here)/**/VERSION)",
                         "Edit(\($state)/rules.json)",
@@ -564,6 +577,14 @@ PY
         printf 'fi\n'
         printf 'case "$m" in opus|sonnet|haiku|fable) extra+=(--model "$m") ;; esac\n'
         printf 'case "$e" in low|medium|high|xhigh|max) extra+=(--effort "$e") ;; esac\n'
+        # A new project's brief, handed over once: bb-tty took it as this
+        # session was made and left it beside this file, and the first exec
+        # that is not a respawn gives it to claude as the first prompt and
+        # removes it, so a respawn onto a changed model never sends it again.
+        # After `--` because a brief can open with a dash.
+        printf 'first=""\n'
+        printf 'fp=%q\n' "$dir/first-prompt.txt"
+        printf 'if [ "${1:-}" != --respawn ] && [ -s "$fp" ]; then first="$(cat "$fp")"; rm -f "$fp"; fi\n'
         # Only when the base command does not already name one: a session
         # opened from the resume chooser carries its own --resume, and claude
         # would be handed the flag twice.
@@ -575,7 +596,7 @@ PY
         fi
         printf 'exec'
         printf ' %q' "$@"
-        printf ' "${extra[@]}"\n'
+        printf ' "${extra[@]}" ${first:+--} ${first:+"$first"}\n'
     } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
     chmod +x "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
     mv -f "$tmp" "$out" 2>/dev/null || { rm -f "$tmp"; return 1; }
@@ -1094,6 +1115,21 @@ case "$target" in
         if on_node && ! tmux has-session -t "=$mysess" 2>/dev/null; then
             "$(dirname "$(readlink -f "$0")")/bb-prompt-relay" --started "$proj" "$account" \
                 >/dev/null 2>&1 || true
+        fi
+        # A new project's brief, when whoever pressed Claude chose Build it:
+        # taken now, as this session is made, which is the moment it leaves
+        # the project's tree, and left beside the launcher for its first exec
+        # to hand claude (brief.py). A reattach or a resume is not a new
+        # session and takes nothing.
+        # Only what a take that succeeded printed: a bb too old to know the
+        # verb prints its help and fails, and that is not a prompt.
+        if [ -z "$resume" ] && ! tmux has-session -t "=$mysess" 2>/dev/null; then
+            first="$(BB_PROJECT="$proj" bb brief take 2>/dev/null)" || first=""
+            if [ -n "$first" ]; then
+                fpf="$(cache_project_dir "$proj")/first-prompt.txt"
+                ( umask 077; printf '%s\n' "$first" > "$fpf.new" ) 2>/dev/null \
+                    && mv -f "$fpf.new" "$fpf" 2>/dev/null || true
+            fi
         fi
         # Through a launcher, always, not only when the prompt happens to be
         # long today. A path that is exercised on every session is one that

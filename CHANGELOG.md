@@ -6,13 +6,24 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Added
 
+- A theme and a page on the Design view carry rules of their own, for what holds for that theme or that page alone; a session meets one named under its holder (nostromo/hull), bb design show THEME prints a theme with its rules, and the file and the prompts carry them under the theme or the page
+- A project's briefing says when its notebook holds a design, what is in it and to read it before building, and on a tree with no code yet that the design, the rules and the roadmap are the specification, so a project designed before its first line is built to the design
+- Conversation logs on the Profile tab: your own conversations with Claude, newest first, each downloadable as a text of what was said on both sides, every command Claude ran and what it answered
 - Reboot and Shut down on a node's row, under Advanced: the agent schedules the machine's own reboot or power-off a few seconds out so the job reports first. The press names the sessions it ends; dead with the reason while the agent is away; an administrator's only (0d3a6f0)
 - Set up GPU display on a node's row (Health): the NVIDIA driver and a headless X server on the card, as bb-sandbox gpu and a unit of the machine's own; after the one reboot it asks for, an emulator there renders on the card and bb emu gpu says so, and a session sees the display (6afdb2e)
 - A Claude session can send its project to Docker the way the Artifacts tab's Send to Docker manager does: bb devapp new [NAME] [--branch REF] makes a container from the project's compose file, builds and starts it, and waits for the result, under the project's Claude may: Run its container setting (f02a9a8)
 - bb capture: shot, one picture at rest (shots a quarter second apart until a second of them match), and reel, the frames that changed on one sheet with a JSON of when; each from a page, the running emulator or an X display. bb emu shot is bb capture shot --emu (60d809c, 0a56328)
+- The notebook has a Design view: a project's design language (colours as tokens, type, shape, space, motion, your rules) and pages laid out as labelled blocks on a phone or desktop frame, each named for what it is for and its platform; a prompt to copy, bb design and docs/design-language.md carry it, and nothing on the view reaches into a session (8d6375a)
+- A project's settings name other projects a session on it may read: their code read-only in its view on a node, their notebooks through bb from inside them, every write refused by name. That list, and the nodes a project also works on, are checkbox listboxes (206c6d6)
+- The Design view holds themes: each a name, dark or light, and its own colours, added and cut one by one with what each is for; a preset fills the ten, the app starts on the first, and a theme picker asked of a session takes them from here (2a6b656, 74e517a)
+- A session's save of a project's design goes through its own dial, Claude may: Add to the design, auto by default; a design's notes are named rules with triggers a session is handed one at a time, like house rules; and a session reaches the containers of the projects its own reads, for bb capture (d8338f5)
 
 ### Changed
 
+- The Design view is four folds, Pages first, and a fold that holds a list shows one of it at a time on a pulldown; the theme, rule and page shown are plain fields rather than a box, the sizing corner shows on the selected block only, and nothing on the view reaches into a session
+- The Profile's conversation logs are the Artifacts tab's rows: a hairline between each, the download at the right
+- The Doctor stops warning the operator that other accounts have no commit identity: an account without one is told on its own Claude buttons and Profile, and the Doctor's line is a green count
+- BuilderBot's own design language lives in its notebook's Design view now: its thirteen schemes as themes, its prose as twenty named rules with triggers, and four of its surfaces as pages; docs/design-language.md is written from it by bb design file
 - BuilderBot is 0.7: the compatibility window moved, so a node whose agent is from 0.6 is held until Update agent on its row, which the bell and the Nodes tab say (a32a0a5)
 - The Questions pick under Yours on this project gains more, for a person who wants the judgment calls put to them, and reads more, Claude's default, fewer, rarely; the Replies pick is Claude's default or minimal, the normal choice having said nothing (0d3a6f0)
 - The Settings tab says a change applies at once or at the next start, in those words, where it said takes now (21462b7)
@@ -24,6 +35,11 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session's build follows the project's Run its container setting even when the compose asks for more than its own directory: auto builds, ask puts it to you and Allow is the confirmation, deny refuses. Your own Build on the row still shows the list (52b1ba3)
 - A test run on a node sits below its other work (nice 10), so the emulator, a docker build and a session keep the CPU when they want it; and the dashboard's own suite gives a slow page the same wait again rather than failing a check that passes alone (4c62d77)
 - The sidebar's project pins are each person's own: any signed-in account pins and unpins for its own card, an administrator's pins no longer decide everyone's, and the set everybody had until now stays as each account's starting point until they pin (337ca53)
+- Captures (a reel's sheet, an emulator shot) are listed apart on the Artifacts tab, each saying whose it is, and removed after the project's 'captures kept' days (7; 0 keeps them) or by Remove there; bb capture ls and prune do the same from a session. Only the sheet and the record land in dist/ (83417b4)
+- bb tests run ends by saying what it exits with, and a role's command is shown as it was set rather than inside its sh -c wrapper (88280f0)
+- New project's brief is no longer written into CLAUDE.md: the first Claude press opens it in a dialog to change, with the model and effort, Build it starts that session on it, and it then leaves the project for the notebook's Briefing view (18634bc)
+- Starting a project from an archive no longer offers a brief: the archive is where it starts (18634bc)
+- Text fields and pickers are a size smaller, one step below the text beside them; typed fields on an iPhone stay 16px so Safari does not zoom (5730757)
 
 ### Removed
 
@@ -55,6 +71,11 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container's log, start, stop and restart run through the node's agent, so bb devapp log and the Docker tab's Log work on a node that is not the controller's machine; and bb devapp rebuild follows its job, so a quick rebuild of the same commit reads as built (e559a4a)
 - A container's row names its node rather than an ssh address in brackets after a refusal on an agent node; and bb devapp env ends its output with a newline, so a line appended to it stands on its own (8bdeafa)
 - A rebuild no longer re-owns a compose's bind-mount source directories that already exist: only a directory it makes is given to the session account, so another container's config folder keeps its owner (a3f82b7)
+- Switching to a document tab (a notebook, Projects, Docker and the rest) no longer opens on a black pane: the tab's own background is there from the first frame in every theme, and only its contents fade in (b3b3ad8)
+- A container written on the Docker tab or asked for with bb container new that would build from a relative path is refused, naming the way in for a project's own code (a compose file at its root and Send to Docker, or bb devapp new): with no tree behind it, it built from an empty directory (6f28fbd)
+- A Claude session left idle on a node keeps its access to the notebook: the agent never refreshed an idle session's token, so after twelve hours without a call it had expired. Each node needs Update agent on its row (B335) (b5f3863)
+- The Artifacts tab's version row says where a bump will land when the checkout is not on the branch builds come from, in red when that branch is already merged, and says when the number there is unpushed or differs from main's; bb version says the same (B338) (4d0bcd5)
+- bb says what renews a session's token and what reopening its tab does when one has run out, once; bb tests preflight keeps its whole output in the run log, so bb tests log prints the last preflight when that was the last run (B337, B328) (750f78d)
 
 ### Security
 
@@ -485,4 +506,3 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On a node the toolchains and the shared base home are read-only inside a session, and each person keeps their own build caches, so no session can change a command another person or a job runs; a person's first build on a node downloads its own dependencies (B163, B157) (57cac69)
 - A plain account can no longer queue a job on a node: a job runs outside every session's view with the node's own rights, so running one is an administrator's (d221eff)
 - Nobody can end, type into or press keys in another person's session any more, and locking a project, moving the shared pins, and moving or releasing a version are an administrator's (549b376)
-

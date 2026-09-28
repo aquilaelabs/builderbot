@@ -915,7 +915,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
 }
 
 // ---- the strip on a phone -------------------------------------------------
-// Seven views do not fit 393px in one row: the strip wraps, and every tab
+// Nine views do not fit 393px in one row: the strip wraps, and every tab
 // stays on screen rather than the last two hiding behind an edge.
 await page.setViewportSize({ width: 393, height: 851 });
 await page.evaluate(() => setView('terminal'));
@@ -927,7 +927,7 @@ const strip = await page.$eval('.nb .nbtabs', el => {
            inside: bs.every(b => b.left >= box.left - 1 && b.right <= box.right + 1),
            over: el.scrollWidth - el.clientWidth };
 });
-ok(strip.n === 8 && strip.rows >= 2 && strip.inside && strip.over <= 0,
+ok(strip.n === 9 && strip.rows >= 2 && strip.inside && strip.over <= 0,
    `on a phone the strip wraps into rows and every tab is on screen (${JSON.stringify(strip)})`);
 
 // bb projects lists what the dashboard lists: a directory carrying .bbignore

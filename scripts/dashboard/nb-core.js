@@ -106,7 +106,8 @@ function makeNotebook(project){
   // this closure calls by name.
   const {loadGit} = nbGitView({$, nb, project});
   const {loadArtifacts, loadVersion, drawVersion, postArtifacts, postVersion} = Object.assign(nb, nbArtifactsView({$, nb, project, root, sheet}));
-  const {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection} = Object.assign(nb, nbAnalysisView({$, nb, project}));
+  const {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection, loadBrief, briefSection} = Object.assign(nb, nbAnalysisView({$, nb, project}));
+  const {loadDesign} = Object.assign(nb, nbDesignView({$, nb, project, root}));
   const {loadRules, drawRules, saveRules, ruleDirty} = Object.assign(nb, nbRulesView({$, nb, project}));
   const {loadTests} = Object.assign(nb, nbTestsView({$, nb, project}));
   const {loadBugs, drawBugs, postBug} = Object.assign(nb, nbBugsView({$, nb, project}));
@@ -309,7 +310,7 @@ function makeNotebook(project){
     if (!q) return;
     const dirty = nb.roadmapUnsaved.roadmap || nb.roadmapUnsaved.memory || memDirty()
                   || nb.roadmapPending.length > 0 || nb.verStagedCount() > 0
-                  || nb.ruleStagedCount() > 0;
+                  || nb.ruleStagedCount() > 0 || nb.designStagedCount() > 0;
     // Held while a session is mid-batch, and again until the list is re-read
     // after one finishes. Reverting is still allowed either way: throwing away
     // your own unsaved work never depends on what anybody else is doing.
@@ -331,7 +332,7 @@ function makeNotebook(project){
     const rv = $("roadmapRevert");
     if (rv){
       rv.disabled = !(nb.roadmapPending.length || memDirty() || nb.verStagedCount()
-                      || nb.ruleStagedCount());
+                      || nb.ruleStagedCount() || nb.designStagedCount());
       rv.title = rv.disabled ? "nothing unsaved to throw away"
         : "throw away what has not been saved: the list and the memory editors "
           + "go back to what is on disk";
@@ -375,7 +376,7 @@ function makeNotebook(project){
   // identify; the whole value of this line is knowing WHO, and on a phone the
   // names are shorter than the sentence explaining there are two of them.
   const WHERE_IS = {memory: "Memory", roadmap: "Roadmap", bugs: "Bugs",
-                    analysis: "Analysis", artifacts: "Artifacts"};
+                    analysis: "Analysis", artifacts: "Artifacts", design: "Design"};
 
   function drawHere(){
     const el = $("nbHere");
@@ -402,6 +403,7 @@ function makeNotebook(project){
     return [n ? `${n} change${n === 1 ? "" : "s"} to the list` : "",
             memDirty() ? "an edited memory" : "",
             nb.ruleStagedCount() ? "an edited rule" : "",
+            nb.designStagedCount() ? "an unsaved design" : "",
             v ? `${v} staged version bump${v === 1 ? "" : "s"}` : ""]
       .filter(Boolean).join(" and ");
   }
@@ -424,6 +426,7 @@ function makeNotebook(project){
     revertPending();
     nb.verClearStaged();
     nb.ruleClearStaged();
+    nb.designClearStaged();
     nb.roadmapOrdering = false;
     redrawRoadmap();
     nb.memEditing.clear();
@@ -468,6 +471,7 @@ function makeNotebook(project){
     // operator should hear that instead of "saved".
     const verMsg = await nb.verCommitStaged();
     await nb.ruleCommitStaged();
+    const dsMsg = await nb.designCommitStaged();
     if (memDirty()) await saveMemory(true);
     const j = await postRoadmap({action: "save"});
     await loadMemory(nb.memGen);
@@ -479,7 +483,7 @@ function makeNotebook(project){
     b.textContent = was;
     // Committed, so there is nothing left for a Cancel to go back to.
     nb.roadmapWas = null;
-    if (j) notify([verMsg, "saved: the session reads it on its next prompt"]
+    if (j) notify([verMsg, dsMsg, "saved: the session reads it on its next prompt"]
                   .filter(Boolean).join(" · "));
   }
   $("roadmapSaveQuiet").onclick = () => saveAll();
@@ -520,6 +524,7 @@ function makeNotebook(project){
     if (v === "docker") loadNbDocker();
     if (v === "bugs" && !nb.bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
+    if (v === "design") loadDesign();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
     if (v === "tests" && !nb.tests) loadTests();
     // The rules once; the code base every time the view is shown, since a
@@ -529,6 +534,9 @@ function makeNotebook(project){
       // Once, on the first show. It is re-read when one of the three stores
       // behind it moves, and only while this view is the one on screen.
       if (!nb.preData) loadPreamble();
+      // Every show: the brief leaves the tree when the first session starts,
+      // which can be while this notebook sits open.
+      loadBrief();
     }
   }
   // Unsaved work does not follow you to another tab.
@@ -554,6 +562,7 @@ function makeNotebook(project){
     revertPending();
     nb.verClearStaged();
     nb.ruleClearStaged();
+    nb.designClearStaged();
     nb.roadmapOrdering = false;
     redrawRoadmap();
     nb.memEditing.clear();

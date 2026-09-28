@@ -130,6 +130,11 @@
      into two: 13px in some rows and 12.5px in others, for the same job, a
      half-pixel apart and nobody's decision. */
   --f-row:13px/1.45 system-ui,sans-serif;      /* what a row says */
+  /* WHAT YOU TYPE INTO: every text field and picker, named once. Mono, and
+     a step below --f-ui, because mono at the size of the text beside it
+     reads a size larger (the operator, 25 Sep and again 28 Sep). The 16px
+     iOS needs on a typed field is its own rule, further down. */
+  --f-field:11px/1.5 var(--mono);
   --f-tag:600 10px/1 system-ui,sans-serif;     /* pills and badges */
   /* The badge palette: who/what colors used by tags across the notebook.
      Hex was retyped at every site, and the day one shade drifts is the day
@@ -213,8 +218,8 @@ html[data-theme="ash"],.sw[data-theme="ash"]{
 /* ---- Nostromo -----------------------------------------------------------
    The one scheme that is more than a recolour. Amber phosphor on a green-black
    hull, after the ship's own screens. The flare is gradients; the hull's
-   plating, the binding rings down the gutter, the plate mark on a card and the
-   glyph strip in the header are four hand-written SVG files under
+   plating, the binding rings down the gutter and the
+   glyph strip in the header are three hand-written SVG files under
    static/nostromo, text in the tree like the favicon's source, served by
    the same allow-list. No raster: a PNG would be a binary in the repository,
    shipped in the layer that gets rebuilt weekly, for something a few paths
@@ -272,29 +277,31 @@ html[data-theme="nostromo"] .card h2{
   background:var(--glass);
   outline:1px solid var(--line);outline-offset:-1px}
 /* The tab side in the same glass: its strip, each pane's bar and the
-   document in it, with the pane behind them left open so it is the hull
-   that shows, as it does behind a card. A terminal keeps its own solid
+   ground under a document (the stack's, so the document fading in does not
+   take its glass with it), with the pane behind them left open so it is the
+   hull that shows, as it does behind a card. A terminal keeps its own solid
    ground, drawn by the terminal itself: output read through a pattern is
    output misread. */
 html[data-theme="nostromo"] .tabbar,
 html[data-theme="nostromo"] .pane .bar{background:var(--glass)}
 html[data-theme="nostromo"] .pane{background:transparent}
-html[data-theme="nostromo"] .pane .doc{background-color:var(--glass)}
+html[data-theme="nostromo"] .pane .stack:has(> .doc.on){background-color:var(--glass)}
 html[data-theme="nostromo"] .card.closed h2{border-radius:calc(var(--r-surface) - 1px) 0 0 calc(var(--r-surface) - 1px)}
 
 /* CRT scanlines, on the panels only: never over a terminal pane, where they
    would sit on top of somebody's actual output at the exact size of its text.
    3px pitch and 4% black: visible on a flat fill, gone under text.
-   The notebook's are on the pane's scrolling BOX, not on the tall content
-   inside it (bug #57). A repeating gradient on the content is rasterized
-   across the whole scroll height: a long roadmap is thousands of pixels of
-   1px stripes for the GPU to tile, and Firefox for Android was painting
-   some of those tiles as yellow striped blocks. On the box it is one
-   viewport of gradient, painted once, and the lines hold still under the
-   scrolling text the way a screen's would. */
+   The notebook's are on the pane's BOX, not on the tall content inside it
+   (bug #57). A repeating gradient on the content is rasterized across the
+   whole scroll height: a long roadmap is thousands of pixels of 1px stripes
+   for the GPU to tile, and Firefox for Android was painting some of those
+   tiles as yellow striped blocks. On the box it is one viewport of
+   gradient, painted once, and the lines hold still under the scrolling text
+   the way a screen's would. The stack's box, with the glass, since they are
+   the ground a notebook arrives on and not part of what fades in. */
 html[data-theme="nostromo"] .card,
 html[data-theme="nostromo"] .modal>.box,
-html[data-theme="nostromo"] .pane .doc:has(>.nb){
+html[data-theme="nostromo"] .pane .stack:has(> .doc.on > .nb){
   background-image:repeating-linear-gradient(180deg,
     rgba(0,0,0,.04) 0 1px, rgba(0,0,0,0) 1px 3px)}
 
@@ -331,37 +338,19 @@ html[data-theme="nostromo"] .col.side{
   background-attachment:scroll}
 /* Folding a card here fades the card away, fill, frame and body, and then
    closes the gap, rather than sliding the body up under the header: the
-   plate mark in the corner is a decal, and a decal sliding into the title
-   bar looks like a bug. The header keeps its own fill and frame (above) and
-   is what is left standing. Read by slideCard (page-motion.js). */
+   smoked glass sliding into the title bar read as a bug when the corner
+   carried a decal, and the fade reads as this scheme's own. The header
+   keeps its own fill and frame (above) and is what is left standing. Read
+   by slideCard (page-motion.js). */
 html[data-theme="nostromo"] .card{--fold:fade}
 html[data-theme="nostromo"] .card.fading{
   background-color:transparent;box-shadow:inset 0 0 0 1px transparent}
-/* The plate mark is a pseudo-element, which no script can animate, so it
-   fades on a class the fold puts on the card for the body's fade and takes
-   off with the body's return; while the gap closes the mark is already gone,
-   and nothing rides the bottom edge up. */
-html[data-theme="nostromo"] .card::after{transition:opacity .12s ease}
-html[data-theme="nostromo"] .card.fading::after{opacity:0}
 @media(max-width:900px){
   html[data-theme="nostromo"] .col.side{
     margin-left:-8px;padding-left:8px;background-position:-2px 6px}
 }
-/* A stencilled plate mark in an open card's bottom-right corner, the way
-   a ship numbers its panels. Absolute in the card's own box (already
-   position:relative for the resume chooser), pointer-events off, and
-   BEHIND the card's content: the card isolates so z-index:-1 lands above
-   its own background and under its buttons, where the first cut painted
-   the mark over Sign out. Open cards only: on a closed card it sat in the
-   title row beside the fold mark. Hidden there by opacity, not removed:
-   the fold measures the closed height by flipping the class for a frame,
-   and a mark that is removed and re-created across that cannot fade. */
-html[data-theme="nostromo"] .card{isolation:isolate}
-html[data-theme="nostromo"] .card::after{
-  content:"";position:absolute;right:6px;bottom:4px;width:64px;height:26px;
-  z-index:-1;pointer-events:none;
-  background:url(/static/nostromo/corner.svg) no-repeat}
-html[data-theme="nostromo"] .card.closed::after{opacity:0}
+/* The plate mark that sat in an open card's bottom-right corner is gone
+   (the operator, 28 Sep): the hull, the rings and the glyphs stay. */
 @media(min-width:901px){
   /* The ship's glyphs across the header's empty middle. The two flat bands
      of panel colour keep them out from under the title on the left and the
@@ -606,6 +595,10 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   text-decoration:none;font:var(--f-ui);cursor:pointer}
 .logacts button{flex:0 0 auto;min-height:var(--tap)}
 @media(hover:hover){ .logacts .btnish:hover{background:var(--btn-hi)} }
+/* The Profile's conversation logs are the Artifacts tab's rows (.artrow):
+   a hairline between each, the words left, the download right. */
+.cvlogs{display:flex;flex-direction:column}
+.cvlogs .artrow .first{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* A swatch renders in its own scheme: the tokens above are defined for
    .sw[data-theme=...] as well as for the page, so this is the palette itself
    at 1cm rather than a hand-kept copy of it. */
@@ -1188,7 +1181,7 @@ textarea,select{
 .doctab input:where(:not([type="checkbox"],[type="radio"])),
 .doctab select,.doctab textarea,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
-  padding:8px 9px;font:12px/1.5 var(--mono)}
+  padding:8px 9px;font:var(--f-field)}
 /* The sidebar's own selects: the Claude card's pickers. A phone gives them
    the finger height and nothing else: a select does not zoom iOS, so it keeps
    the size of the text beside it. */
@@ -1218,6 +1211,9 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    a phone stops needing a sideways scroll to read the notes that are the
    whole reason the box is seeded. */
 #devEnvModal textarea{white-space:pre-wrap;overflow-wrap:anywhere}
+/* A brief is prose, in New project and in the first session's dialog: it
+   wraps, where the dialogs' default keeps a shell line on one line. */
+#pAbout,#briefText{white-space:pre-wrap;overflow-wrap:anywhere}
 /* The env on the send dialog is the same kind of content and gets the same
    treatment: it wraps rather than running off the right edge, where an
    .env.example's comment lines are long enough to lose half of themselves.
@@ -1443,7 +1439,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    next value, so it is a button; a starting number is arbitrary and nothing
    can derive it, so it is a field: validated here and again on the server. */
 .verinit{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
-.verinit .vstart{font:12px/1.5 var(--mono);flex:0 0 auto;width:8em}
+.verinit .vstart{font:var(--f-field);flex:0 0 auto;width:8em}
 /* A `font:` shorthand carries the SIZE with it, and this selector outranks
    the shared phone rule, so this field alone stayed 12px on a phone and iOS
    zoomed into a layout that cannot zoom back. Every other control that sets
@@ -1528,7 +1524,10 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    own rule) and only its hit area widens. */
 @media(pointer:coarse){
   .pcpick{gap:6px}
-  .pcpick button{width:30px;height:30px;min-height:30px}   /* nine in a row at 375px */
+  /* Named with .modal: the rule below giving every dialog button the tap
+     height comes later at the same weight and stretched each circle into
+     an oval on a phone (the operator, 28 Sep). */
+  .pcpick button,.modal .pcpick button{width:30px;height:30px;min-height:30px;flex:0 0 auto}   /* nine in a row at 375px */
   #bBell{padding:0 8px}
   .tab .ic{display:inline-flex;align-items:center;justify-content:center;min-width:32px}
   .tabbar .newtab{min-width:36px;min-height:36px}
@@ -1592,6 +1591,12 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .verln code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
 .verln.off code{color:var(--dim)}
 .vermark{font:var(--f-note);color:var(--warn)}
+/* An error on the version row is red and a warning yellow, as everywhere
+   (docs/design-language.md): the class was on the window-move line from
+   the start and drew nothing (B338). And a long line wraps in the value
+   column rather than dropping under the label. */
+.vermark.bad{color:var(--bad)}
+.verln .vermark{flex:1 1 0;min-width:0}
 .verwhy{color:var(--dim);font:var(--f-note);margin:7px 0 0;max-width:70ch}
 .verbtns{gap:6px;margin-top:8px}
 /* Claude access: a labelled control on its own line rather than a stray
@@ -1878,7 +1883,7 @@ pre.diff .d-ctx{color:var(--dim)}
   color:var(--dim);padding:11px 13px;font:600 12px/1 system-ui,sans-serif;
   min-height:var(--tap);border-radius:0;flex:0 0 auto}
 .nbtabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
-/* Seven labels do not fit a phone, and a strip that scrolls sideways hides
+/* Nine labels do not fit a phone, and a strip that scrolls sideways hides
    its last two behind an edge nobody pulls: it wraps into rows of tabs of
    one width instead, so every view is on screen (docs/design-language.md,
    The notebook). */
@@ -1888,6 +1893,51 @@ pre.diff .d-ctx{color:var(--dim)}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
+/* ---- the Design view (nb-design.js) --------------------------------------
+   A language's choices in labelled controls, its colours as chips beside
+   their hex, and a page's layout as blocks on a frame the finger moves
+   them around. The board's colours are the design's own, painted inline
+   from the language, which is the one place a hex is data and not chrome. */
+.dsrow{display:flex;flex-wrap:wrap;gap:var(--field-gap);align-items:flex-end}
+.dsctl{display:flex;flex-direction:column;gap:var(--label-gap);flex:0 1 auto;min-width:0}
+.dsctl select{width:auto;min-width:9em}
+/* The row's prose field grows, but only to the width the other tabs give a
+   field (the Profile's, the settings'), so what follows it stays beside it
+   rather than at the far edge of a wide window. */
+.dsctl.grow{flex:1 1 14em;max-width:26em}
+.dsc{display:flex;gap:6px;align-items:center}
+.dschip{width:22px;height:22px;flex:0 0 auto;border-radius:var(--r-small);border:1px solid var(--line)}
+.dsboard{position:relative;display:grid;gap:4px;padding:6px;box-sizing:border-box;
+  border:1px solid var(--line);border-radius:var(--r-surface);touch-action:none;user-select:none}
+.dsboard[data-frame="desktop"]{aspect-ratio:16/10;max-width:640px}
+.dsboard[data-frame="phone"]{aspect-ratio:9/16;max-width:290px}
+.dsboard[data-frame="landscape"]{aspect-ratio:16/9;max-width:520px}
+/* The theme and the rule the section's pulldown shows: fields like any
+   tab's, not a box of their own (the operator, 28 Sep). */
+.dstheme,.dsrule{display:flex;flex-direction:column;gap:var(--field-gap)}
+.dsrule .dsctl input{width:12em}
+.dscolours{display:flex;flex-direction:column;gap:var(--field-gap)}
+.dscolours .dsctl input{width:9em}
+.dscolours .dsctl .dsc input{width:7.5em}
+.dsblock{position:relative;display:flex;flex-direction:column;gap:2px;padding:5px 7px;min-width:0;min-height:0;
+  border:1px solid;border-radius:var(--r-control);overflow:hidden;cursor:grab;
+  transition:outline-color .15s ease}
+.dsblock b{font:600 11px/1.3 system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsblock span{font:10px/1.3 system-ui,sans-serif;opacity:.85;overflow:hidden;display:-webkit-box;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical}
+.dsblock.on{outline:2px solid var(--accent);outline-offset:1px}
+.dsblock:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.dsblock.dragging{cursor:grabbing;opacity:.85}
+/* The sizing corner is the selected block's only: a tap selects a block
+   before anything drags it, and a corner on every block was a picture of
+   grips rather than of the page. */
+.dsgrip{display:none;position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;
+  background:linear-gradient(135deg,transparent 50%,var(--accent) 50%)}
+.dsblock.on .dsgrip{display:block}
+@media(pointer:coarse){ .dsgrip{width:26px;height:26px} }
+.dsempty{grid-column:1/-1;grid-row:1/-1;display:flex;align-items:center;justify-content:center;
+  text-align:center;color:var(--dim);font:var(--f-note);padding:8px}
+.dsprompt{white-space:pre-wrap}
 /* The roadmap's summary is a full sentence where the other three are a few
    words, so it is the one that has to be allowed to wrap inside the header
    rather than shoving History off the end. */
@@ -2144,7 +2194,8 @@ pre.diff .d-ctx{color:var(--dim)}
    notebook beside them did not. One language, and this is it.
    Scoped through .pane, or `.pane .doc` further down the sheet wins on
    source order at equal specificity and the inset comes back. */
-.pane .doc.nbhost,.pane .doc.flush{padding:0;background:var(--panel)}
+.pane .doc.nbhost,.pane .doc.flush{padding:0}
+.pane .stack:has(> .doc.on:is(.nbhost,.flush)){background:var(--panel)}
 /* The same reading width the notebook's bands take, so a row's controls do
    not end up an ultrawide pane away from the name they act on. */
 .projtab,.dmtab,.fxtab,.doctab{display:block;max-width:var(--doc-w)}
@@ -2445,6 +2496,19 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndtools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .ndcap{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
   color:var(--ink)}
+/* A set of things to pick from is a listbox (docs/design-language.md,
+   Controls): a bordered box of checkbox rows, a thumb high each, scrolling
+   past four so it stays small, never a select multiple or a loose column of
+   checkboxes. */
+.lbox{display:flex;flex-direction:column;max-height:calc(4 * var(--tap));overflow-y:auto;
+  border:1px solid var(--line);border-radius:var(--r-control);background:var(--sunk)}
+.lbox label.lrow{display:flex;gap:8px;align-items:center;min-height:var(--tap);padding:0 10px;
+  margin:0;font:var(--f-ui);color:var(--ink);border-bottom:1px solid var(--line);cursor:pointer}
+.lbox label.lrow:last-child{border-bottom:0}
+.lbox label.lrow input{width:15px;height:15px;flex:0 0 auto;margin:0}
+.lbox .lsub{color:var(--dim);font:var(--f-note);margin-left:auto;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:50%}
+.lbox .empty{padding:8px 10px}
 .ndcap input{width:15px;height:15px;flex:0 0 auto}
 .docbarrow .sp{flex:1}
 .ndtest.warn,.ndcheck.warn,#logDaysSaid.warn{color:var(--warn)}
@@ -2540,7 +2604,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    each adding their own inset to the body's. */
 .nb .sect>.body>.field,.nb .sect>.body>.fnote,.nb .sect>.body>.row,
 .nb .sect>.body .sect>summary,.nb .sect>.body .sect>.body,
-.nb .sect>.body .loading,.nb .sect>.body .empty{padding-left:0;padding-right:0}
+.nb .sect>.body .loading,.nb .sect>.body .empty,
+.nb .sect>.body .dstheme>.field,.nb .sect>.body .dsrule>.field,
+.nb .sect>.body [data-dspage]>.field{padding-left:0;padding-right:0}
 /* A control never spans its container. The cap goes on the ROW where there
    is one (an action bar, a filter bar, a picker row, an add form), so the
    controls in it stop short together and are not capped a second time
@@ -2714,7 +2780,7 @@ button[aria-busy="true"]{opacity:.75}
    renders: .dmtab predates the scaffold's groups. Not inflated on a phone: a
    select never zooms iOS, so it keeps the size of the text beside it and
    takes the finger height instead (uniform.mjs measures both ways). */
-.dmpick select{font:12px/1.5 var(--mono);padding:8px 9px}
+.dmpick select{font:var(--f-field);padding:8px 9px}
 @media(max-width:900px){ .dmpick select{min-height:var(--tap)} }
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
@@ -2797,7 +2863,7 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 #docAuth{flex-wrap:wrap}
 .codebox{display:flex;gap:8px;flex:1 1 100%}
 .codebox input{flex:1;min-width:0;padding:7px 9px;
-  font:12px/1.4 var(--mono);min-height:var(--tap)}
+  font:var(--f-field);min-height:var(--tap)}
 .codebox button{flex:0 0 auto;min-height:var(--tap)}
 @media(max-width:900px){ @supports (-webkit-touch-callout:none){ .codebox input{font-size:16px} } }
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
@@ -3023,10 +3089,22 @@ body.booting .pane>.loading{margin:auto}
    Not color-scheme:dark on the frame; that is what turns the canvas white,
    which is the opposite of what it sounds like it would do. */
 .pane iframe{flex:1;border:0;width:100%;display:block;background:#2b2b2b}
-/* A document brought to the front fades in, the way painted content does. */
-.pane .doc.on{animation:contentIn .18s ease}
-.pane .doc{overflow:auto;background:var(--bg);padding:12px;
+/* A document brought to the front fades in, the way painted content does,
+   over its own ground. The ground is the stack's, painted while a document is
+   the child on show, and never the document's own: the fade is on the
+   document, so a document that painted its ground faded it in with the rest,
+   over the pane's black, and every switch to a notebook opened on a black
+   pane for the first frames (the operator, 27 Sep). The ground is there on
+   the first frame now, in every scheme, and only what is drawn on it
+   arrives. The frames are contentIn's under a name of their own: a document
+   that paint() drew straight into wears .justpainted for good, a class that
+   asks for the name an element already has starts nothing, and Projects,
+   drawn that way, snapped to the front while every other document faded. */
+@keyframes docIn{from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none}}
+.pane .doc.on{animation:docIn .18s ease}
+.pane .doc{overflow:auto;padding:12px;
   -webkit-overflow-scrolling:touch}
+.pane .stack:has(> .doc.on){background:var(--bg)}
 /* A document has a reading width. Left to fill an ultrawide pane, every row
    here becomes a name at one end of two thousand pixels and the control that
    acts on it at the other (the bin, the Revert, the version pill) with the
@@ -3245,13 +3323,15 @@ body.booting .pane>.loading{margin:auto}
          #27). Above the strip like the batch note, because it is about the
          notebook and not one tab of it: the modal it opens lists every tab's. -->
     <div class="field mdrift" id="nbPending" hidden></div>
-    <!-- In the order a project is worked: what to know (Briefing), what to
-         do (Roadmap), what is broken (Bugs), the code as it stands (Git),
-         what it produced (Artifacts, with the version), whether it holds
-         (Tests), and what a scanner says about it (Analysis): the last
-         because it is read least, and only when a report exists. -->
+    <!-- In the order a project is worked: what to know (Briefing), what it
+         should look like (Design), what to do (Roadmap), what is broken
+         (Bugs), the code as it stands (Git), what it produced (Artifacts,
+         with the version), whether it holds (Tests), and what a scanner
+         says about it (Analysis): the last because it is read least, and
+         only when a report exists. -->
     <div class="nbtabs" role="tablist">
       <button type="button" data-v="briefing">Briefing</button>
+      <button type="button" data-v="design">Design</button>
       <button type="button" data-v="roadmap">Roadmap</button>
       <button type="button" data-v="bugs">Bugs</button>
       <button type="button" data-v="git">Git</button>
@@ -3453,6 +3533,10 @@ body.booting .pane>.loading{margin:auto}
            artifacts it stamps are one subject; those filenames carry it. -->
       <div id="verBox"></div>
       <div class="field" id="artList"></div>
+      <!-- What a session looked with (R96): reels and emulator shots, in one
+           fold apart from what ships, each saying whose it is, and swept
+           after the project's "captures kept" days. -->
+      <div id="artCaptures" hidden></div>
       <!-- Builds made on a branch, in each account's own worktree (B237):
            listed apart from dist/, which is what the project ships. -->
       <div class="field" id="artBranches" hidden></div>
@@ -3485,6 +3569,22 @@ body.booting .pane>.loading{margin:auto}
         <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
       <div id="gitBody"></div>
+    </div>
+    <div class="nbview" data-view="design" hidden>
+      <!-- What the project looks like (design.py, nb-design.js): one design
+           language, and pages laid out as labelled blocks, each named for
+           what it is for and the platform it is built for. Staged behind
+           the notebook's Save like the roadmap; the prompts and the file
+           are generated on the server, so the tab, bb design and
+           docs/design-language.md say one thing. -->
+      <div class="field nbhead vbar"><span id="dsHint">loading…</span><span class="sp"></span>
+        <button type="button" id="dsWrite"
+          title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></div>
+      <div class="field"><div class="addbar" data-add="design">
+        <select id="dsPlatform" aria-label="the platform the new page is for"></select>
+        <select id="dsTemplate" aria-label="the layout the new page starts from"></select>
+        <button id="dsAdd" class="primary" type="button">Add page</button></div></div>
+      <div id="dsBody"></div>
     </div>
     <div class="nbview" data-view="analysis" hidden>
       <div class="field nbhead vbar"><span id="anaHint">loading…</span>
@@ -3669,8 +3769,18 @@ body.booting .pane>.loading{margin:auto}
       <label for="rnNode">Node<span class="help" data-tip="where this project's work runs: builds, tests, CI, the emulator" tabindex="0">?</span></label>
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
-      <div id="rnNodesMore" hidden></div>
-      <div class="hint" id="rnNodesMoreHint" hidden>Also works on these: a session can start on any of them, and its containers may live on any of them.</div>
+      <label id="rnNodesLabel" hidden>Also works on</label>
+      <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
+      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them.</div>
+    </div>
+    <!-- The projects a session here may read (prefs.reads): their trees
+         bound read-only into its view on a node, their notebooks answering
+         to bb from inside them, every write refused. The operator's to
+         name, never a session's. -->
+    <div class="field" id="rnReadsField" hidden>
+      <label id="rnReadsLabel">Reads<span class="help" data-tip="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
+      <div class="lbox" id="rnReads" role="group" aria-labelledby="rnReadsLabel"></div>
+      <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
     </div>
     <div class="field" id="rnBuildField">
       <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
@@ -3681,6 +3791,12 @@ body.booting .pane>.loading{margin:auto}
       <input id="rnOutputs" autocomplete="off" spellcheck="false"
              placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
       <div class="hint">Run from the tree's root on the node; files matching the outputs land in dist/.</div>
+      <!-- What a session looks with lands in dist/ too (a reel's sheet, an
+           emulator shot), under the Artifacts tab's Captures fold, and goes
+           by age rather than by need: nothing can tell whether another
+           session is still reading one (R96). -->
+      <div class="logdays setrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-tip="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
+        <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
       <!-- Where the tests run, which is this project's business and used to
            be set on the Docker tab, a machine surface it has no other reason
            to visit (R68 step 6). Only for a project that HAS a container to
@@ -3724,6 +3840,8 @@ body.booting .pane>.loading{margin:auto}
           aria-label="new house rules from a session"></select></label>
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
+        <label class="pick">Add to the design <select id="rnGateDesign"
+          aria-label="the design language and pages saved from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
              when there is none, remove it (devbuild; the Docker row says
              what it is set to). Deny by default. -->
@@ -4006,6 +4124,34 @@ body.booting .pane>.loading{margin:auto}
     <div id="grBody"></div>
   </div>
 </div>
+<!-- A new project's first Claude session: its brief, editable, and the
+     model and effort that session starts on, since nothing has started yet.
+     Its declarations are page-claude.js. -->
+<div id="briefModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="briefTitle">
+  <div class="box">
+    <h3 id="briefTitle">First session</h3>
+    <div class="field">
+      <label for="briefText">Brief</label>
+      <textarea id="briefText" spellcheck="false" aria-describedby="briefHint"></textarea>
+      <div class="hint" id="briefHint">Build it starts the session on this. The brief then leaves the project, and its notebook keeps it.</div>
+    </div>
+    <div class="field">
+      <label id="briefMineLabel">Yours on this project</label>
+      <div class="prefrow" role="group" aria-labelledby="briefMineLabel">
+        <label class="pick">Model <select id="briefModel"
+          aria-label="model your sessions here start on"></select></label>
+        <label class="pick">Effort <select id="briefEffort"
+          aria-label="effort your sessions here start on"></select></label>
+      </div>
+    </div>
+    <div class="field" id="briefErrWrap" hidden><div class="hint bad" id="briefErr"></div></div>
+    <div class="foot">
+      <button id="briefGo" class="primary">Build it</button>
+      <button id="briefSkip">Start without it</button>
+      <button id="briefCancel">Cancel</button>
+    </div>
+  </div>
+</div>
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
@@ -4152,11 +4298,16 @@ body.booting .pane>.loading{margin:auto}
         <button id="pCopy" type="button">Copy public key</button>
       </div>
     </div>
+    <!-- The brief: what is wanted, for a project started from nothing. Not
+         CLAUDE.md, which every session reads as standing instructions: it is
+         handed to the first session through a dialog, and kept outside the
+         tree after that (brief.py). Hidden once an archive is picked: an
+         archive is the start. -->
     <div class="field" id="pAboutField">
-      <label for="pAbout">About this project</label>
+      <label for="pAbout">Brief</label>
       <textarea id="pAbout" spellcheck="false"
-                placeholder="What it is, how to build and test it; anything a new session should know."></textarea>
-      <div class="hint">Saved as the project's briefing, read by every session.</div>
+                placeholder="What you want built, and anything the first session should know."></textarea>
+      <div class="hint">The first Claude session starts on this, and you can change it then.</div>
     </div>
     <div class="field" id="pErrWrap" hidden><div class="hint bad" id="pErr"></div></div>
     <div class="foot">
@@ -4387,6 +4538,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="nb-git.js"></script>
 <script src="nb-artifacts.js"></script>
 <script src="nb-analysis.js"></script>
+<script src="nb-design.js"></script>
 <script src="nb-rules.js"></script>
 <script src="nb-tests.js"></script>
 <script src="nb-bugs.js"></script>
@@ -4823,10 +4975,18 @@ addEventListener("pagehide", () => notebooks.forEach(n => n.leave()));
 // ---- a project's notebook: one closure each -----------------------------
 // Its declarations are nb-core.js; nothing of it runs at load.
 
+// ---- a new project's first session ----------------------------------------
+// Its declarations are page-claude.js; what runs at load is below.
+$("briefGo").onclick = () => briefGo(false);
+$("briefSkip").onclick = () => briefGo(true);
+$("briefCancel").onclick = closeBrief;
+$("briefModal").onclick = e => { if (e.target.id === "briefModal") closeBrief(); };
+addEventListener("keydown", e => { if (e.key === "Escape" && !$("briefModal").hidden) closeBrief(); });
+
 // ---- the new-project dialog ---------------------------------------------
 // Its declarations are tab-projects.js; what runs at load is below.
 $("pArchivePick").onclick = () => $("pArchive").click();
-$("pArchive").onchange = () => { $("pArchiveName").textContent = $("pArchive").files[0]?.name || "none picked"; };
+$("pArchive").onchange = pArchivePicked;
 $("pLocal").onclick = () => pSwitch("init");
 $("pClone").onclick = () => pSwitch("clone");
 $("pLinkKey").onclick = () => { pLinkAuth = "key"; pDraw(); };

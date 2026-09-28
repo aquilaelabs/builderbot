@@ -14,6 +14,7 @@ users = None
 claude_email = None      # uid -> the Claude account signed in for it, or ""
 plugins_of = None        # (uid, {node id: name}) -> its plugins, as the nodes last said
 node_names = None        # () -> {node id: name}
+logs_of = None           # me -> the account's conversations with Claude (transcripts.mine)
 
 
 def configure(**deps):
@@ -32,7 +33,10 @@ def view(me):
             "claude": claude_email(uid),
             # The Claude plugins this account installed, per
             # node, as the nodes last said (plugins.py).
-            "plugins": plugins_of(uid, node_names())}, 200
+            "plugins": plugins_of(uid, node_names()),
+            # The account's own conversations with Claude, newest first,
+            # each a download of the whole exchange (transcripts.py).
+            "logs": logs_of(me)}, 200
 
 
 def verb(me, act, req):

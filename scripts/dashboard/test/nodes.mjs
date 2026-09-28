@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -1368,12 +1368,13 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.selectOption('#rnNode', minted.id);
   await page.fill('#rnBuildCmd', './gradlew assembleDebug');
   await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
+  await page.fill('#rnCaptureDays', '3');
   await page.click('#rnGo');
   await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
   const saved = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha;
   ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
-     && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi',
-     'Save writes the project\'s node, the command and the outputs onto the project record');
+     && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi' && saved.capture_days === 3,
+     'Save writes the project\'s node, the command, the outputs and the days captures are kept onto the project record');
 
   // ---- saved is not applied ----------------------------------------------
   // Apply used to be live whenever anything had been saved, so a node that
@@ -1786,6 +1787,11 @@ ok(await page.$eval('#ndBody #ndEnUser', i => i.value) === 'bb',
    'Enroll node opens on bb as the account jobs run as');
 await page.fill('#ndBody #ndEnName', 'joesbox');
 await page.fill('#ndBody #ndEnUser', 'joe');
+// Read back before the press: a run under load once minted joesbox for bb
+// (B331), and whether the field still held joe at the press is the fact
+// that says where to look.
+ok(await page.$eval('#ndBody #ndEnUser', i => i.value) === 'joe' && await page.$eval('#ndBody #ndEnName', i => i.value) === 'joesbox',
+   'the enroll dialog holds the name and the account typed into it');
 await page.click('#ndBody #ndEnGo');
 await page.waitForSelector('#ndBody .ndtoken', { timeout: 15000 });
 ok(await page.$eval('#ndBody .ndtoken', el => /--user joe/.test(el.textContent)),

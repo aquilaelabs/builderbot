@@ -525,6 +525,36 @@ os.unlink(stamp)
       ok(r.off[0] === false && r.off[1].length === 0 && r.guest[0] === false && r.guest[1].length === 0,
          '...and leaves it alone when it is already off, and on a guest, whose services are its owner\'s');
     }
+    // R27's refresh, run against the bundle's real layout: bb is at
+    // <store>/.bb/current/scripts/bb. The agent looked for .bb/current/bb,
+    // which no bundle has, and returned in silence, so no idle session's
+    // token was ever refreshed (B335). A stand-in bb records what it was
+    // handed, for each live session the controller named.
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json, os, stat, tempfile
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+store = tempfile.mkdtemp()
+os.makedirs(os.path.join(store, '.bb', 'current', 'scripts'))
+seen = os.path.join(store, 'seen')
+bb = os.path.join(store, '.bb', 'current', 'scripts', 'bb')
+with open(bb, 'w') as f:
+    f.write('#!/bin/sh\\nprintf "%s %s %s %s\\\\n" "$1 $2" "$BB_PROJECT" "$BB_ACCOUNT_UID" "$BB_TOKEN" >> ' + seen + '\\n')
+os.chmod(bb, 0o755)
+m.tc_root = lambda st: store
+a = object.__new__(m.Agent)
+a.state = {}
+a.session_account = lambda: 'whoever'
+a.keep_session_tokens([{'project': 'alpha', 'uid': 'u_12345678', 'token': 'bbs_fresh'},
+                       {'project': '../x', 'uid': 'u_1', 'token': 'bbs_no'}])
+print(json.dumps(open(seen).read().splitlines() if os.path.exists(seen) else []))
+`], { encoding: 'utf8' }).trim();
+      const rows = JSON.parse(said);
+      ok(rows.length === 1 && rows[0] === 'token keep alpha u_12345678 bbs_fresh',
+         `the agent hands each live session's fresh token to the bundle's own bb, found where the bundle keeps it (${said})`);
+    }
     // The session's view (R35): the helper travels in the bundle, and what
     // the agent writes for it is one rule for one command, the layout, and a
     // respawn that runs again only a launcher it recognises.
@@ -536,6 +566,10 @@ spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 home = '/home/builder/users/u_0000abcd/.cache/builderbot/u/u_0000abcd/project'
 ok = lambda c: re.fullmatch(m.RESPAWNABLE, c) is not None
+# A launcher line with the projects the session reads, one --reads each
+# (prefs.reads), is still a line a respawn may run again.
+assert ok('sudo -n /opt/fake/bb-session enter --project alpha --account u_0000abcd --home /home/x --cwd /w/alpha --reads beta --reads gamma --env /e -- ' + home + '/alpha/claude-run.sh'), 'reads'
+
 def respawn(start):
     # tmux_ops against a tmux that records what it was asked and answers the
     # pane's start command, which is all a respawn reads.

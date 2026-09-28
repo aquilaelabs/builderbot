@@ -211,10 +211,11 @@ by hand cost four commands and still could not see the failed builds.
     gets the row's update link and its Claude button stays live; an agent
     behind gets Update on the Nodes tab and its sessions keep running).
     Across a window the controller ends the Claude sessions on a project
-    whose block, or whose own node's agent, is from the old window, ghosts
-    that project's button and `bb-tty` refuses, per project, until the block
-    and that node's agent are updated (`server.compat_holds`,
-    `compat_reap_once`, `bb claude-md --out-of-window`). BUILD is the
+    whose own node's agent is from the old window, ghosts that project's
+    button and `bb-tty` refuses, per project, until that node's agent is
+    updated (`server.compat_holds`, `compat_reap_once`). The briefing is
+    assembled per session (R63 step 3), so nothing in a project's tree can
+    be from another window any more. BUILD is the
     agent's own counter and never resets: 0.5.28 follows 0.4.27. Moving
     the minor is the one moment superseded paths (an old verb, a fallback
     for a pre-window agent) are removed, and `test/version.mjs` holds both
@@ -248,7 +249,13 @@ by hand cost four commands and still could not see the failed builds.
     or by an attribute the server sets (R77).
   - **The dashboard's design language is `docs/design-language.md`**, held
     by the house rule `design`, which names it and runs `test/uniform.mjs`
-    as its check. A new tab kind declares `multi` (a notebook is per
+    as its check. Since 28 Sep the file is written by this project's own
+    Design view in the notebook: its themes are the dashboard's schemes,
+    its notes are the prose, and its pages are the dashboard's surfaces.
+    Change the design there, or as a session with `bb design json`, an
+    edit, and `bb design save`, then `bb design file > docs/design-language.md`
+    and commit the file with the change; a hand edit to the file alone is
+    overwritten by the next write. A new tab kind declares `multi` (a notebook is per
     project; everything else is one window onto one thing), `live`
     ("always" for a kind rendering from `state`, a revision function for one
     whose data arrives on its own schedule), and `open` for whatever its

@@ -196,6 +196,15 @@ let pForgeHosts = {};
 // question rather than the last one's answer.
 let pAskedHost = "";
 
+// An archive picked, or picked again: its name beside the button, and the
+// brief put away, since the archive is where the project starts.
+function pArchivePicked(){
+  const f = $("pArchive").files[0];
+  $("pArchiveName").textContent = f?.name || "none picked";
+  if (f) $("pAbout").value = "";
+  pDraw();
+}
+
 function pDraw(){
   const m = PMODES[pMode];
   $("pTitle").textContent = m.title();
@@ -206,6 +215,9 @@ function pDraw(){
                    "pUrlField", "pLinkAuthField", "pPushField",
                    "pTokenField", "pKeyField", "pAboutField", "pGateField"])
     $(f).hidden = !m.fields.includes(f);
+  // A brief says what to build from nothing; an archive is the start, so the
+  // field goes once one is picked (the server refuses the pair as well).
+  if (pMode === "init" && $("pArchive").files[0]) $("pAboutField").hidden = true;
   pDrawForge();
   // The deploy-key picker only appears when the agent actually holds keys:
   // an empty dropdown would be a question with no answers.
@@ -562,7 +574,7 @@ async function createProject() {
                                 token: linkToken})})
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({name, mode, url, about: $("pAbout").value, archive,
+          body: JSON.stringify({name, mode, url, about: $("pAboutField").hidden ? "" : $("pAbout").value, archive,
                                 node: $("pNodeField").hidden ? "" : $("pNode").value,
                                 // A starting version, for a fresh tree only: a
                                 // clone keeps the history it came with.

@@ -1,0 +1,399 @@
+// The notebook's Design view (design.py, nb-design.js): a project's design
+// language and its pages, laid out as labelled blocks on a frame and named
+// for what they are for. Staged behind the notebook's Save; the prompts and
+// docs/design-language.md are the server's words, which is what bb design
+// prints. The view is passive: nothing on it reaches into a session.
+import { launch, newPage, ok, done, ready, patience, URL, DIR } from './lib.mjs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+
+const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+const P = 'alpha';
+const NB = `.nb:has(#memTitle:text-is("Notebook: ${P}"))`;
+const browser = await launch();
+const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
+await page.goto(URL);
+await ready(page);
+// Save at the notebook's foot, waited on until the view says it landed:
+// the button goes busy at the press, so "disabled" alone is too early.
+const saved = async () => {
+  await page.click(`${NB} #roadmapSaveQuiet`);
+  await page.waitForFunction(() => document.querySelector('.nb #roadmapSaveQuiet')?.disabled
+    && !/unsaved/.test(document.querySelector('.nb #dsHint')?.textContent || ''), null, { timeout: 20000 });
+  await page.waitForTimeout(300);
+};
+const api = (path, body) => page.evaluate(async ([p, b]) => {
+  const r = await fetch(p, b ? { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                 body: JSON.stringify(b) } : {});
+  return { status: r.status, ...(await r.json()) };
+}, [path, body]);
+
+// ---- the record, empty --------------------------------------------------------------
+{
+  const d = await api(`/api/design?project=${P}`);
+  ok(d.status === 200 && d.pages.length === 0 && d.language.themes.length === 1 && d.language.themes[0].name === 'Default' && d.language.themes[0].colors.length === 10
+     && d.presets.schemes.length >= 12 && d.presets.templates.some(t => t.key === 'dashboard')
+     && d.presets.platforms.map(p => p.key).join(',') === 'web,android,ios,linux,macos,windows'
+     && d.file.exists === false,
+     `a project starts with the default language, no pages and no file, and the vocabulary comes with it (${
+        d.presets.schemes.length} schemes, ${d.presets.templates.length} templates)`);
+  ok(d.presets.schemes[0].key === 'default' && d.presets.schemes.slice(1).map(s => s.key).join()
+       === d.presets.schemes.slice(1).map(s => s.key).sort().join(),
+     'the schemes lead with Default and are alphabetical after it');
+}
+
+// ---- the view: add a page, lay it out, save ------------------------------------------
+await page.evaluate(n => openNotebook(n, 'design'), P);
+await page.waitForSelector(`${NB} #dsBody .sect`, { timeout: 20000 });
+ok(/no pages yet/.test(await page.$eval(`${NB} #dsHint`, e => e.textContent))
+   && await page.$eval(`${NB} #nbFoot`, e => e.checkVisibility()),
+   'the view opens on its head row, saying there are no pages, with the notebook\'s Save at its foot');
+await page.selectOption(`${NB} #dsTemplate`, 'dashboard');
+await page.click(`${NB} #dsAdd`);
+await page.waitForSelector(`${NB} [data-dspage] .dsboard .dsblock`, { timeout: 10000 });
+const labels = await page.$$eval(`${NB} [data-dspage] .dsblock b`, bs => bs.map(b => b.textContent));
+ok(labels.join(',') === 'Header,Card,Card,Card,Chart,List'
+   && await page.$eval(`${NB} #roadmapSaveQuiet`, b => !b.disabled),
+   `Add page lays the Dashboard template out as blocks on a desktop frame and wakes Save (${labels.join(',')})`);
+await page.fill(`${NB} [data-dspage] [data-dsf="name"]`, 'the home dashboard');
+await page.waitForFunction(() => /^the home dashboard \(/.test(document.querySelector('.nb #dsPagePick option:checked')?.textContent || ''), null, { timeout: 5000 });
+ok(true, "naming the page names its line on the Pages pulldown: the name is what the page is for");
+// Drag: the chart one column to the right, by the pointer.
+const blocks = await page.$$(`${NB} [data-dspage] .dsblock`);
+await blocks[4].click();
+await page.waitForSelector(`${NB} [data-dsselected]`, { timeout: 5000 });
+const sel = await page.$(`${NB} [data-dspage] .dsblock.on`);
+const r = await sel.boundingBox();
+const board = await (await page.$(`${NB} [data-dspage] .dsboard`)).boundingBox();
+const cw = (board.width - 12) / 12;
+await page.mouse.move(r.x + 20, r.y + 20);
+await page.mouse.down();
+await page.mouse.move(r.x + 20 + cw * 1.2, r.y + 20, { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(300);
+ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridColumn) === '2 / span 8',
+   'a block dragged a column to the right moves a column on the grid');
+await page.fill(`${NB} [data-dspage] [data-dsb="label"]`, 'orders per day');
+await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsblock.on span')?.textContent === 'orders per day', null, { timeout: 5000 });
+ok(true, "what a block is for is typed once and shows on the block");
+// Keyboard: Shift and an arrow size the focused block.
+await page.focus(`${NB} [data-dspage] .dsblock.on`);
+await page.keyboard.press('Shift+ArrowUp');
+ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridRow) === '4 / span 4',
+   'Shift with an arrow key sizes the focused block a row');
+await page.keyboard.press('Shift+ArrowDown'); await page.keyboard.press('Shift+ArrowDown');
+ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridRow) === '4 / span 5',
+   '...and sizing it past the frame\'s edge caps it there rather than sliding it up');
+// Nothing on the view reaches into a session: the prompt's row offers Copy
+// and nothing that sends (the operator, 28 Sep).
+ok(!(await page.$(`${NB} [data-dssend]`)) && !(await page.$(`${NB} button:has-text("Send to Claude")`))
+   && await page.$(`${NB} [data-dspage] [data-dscopy]`),
+   'the prompt row has Copy and no Send to Claude: the view is passive');
+await saved();
+const rec = await api(`/api/design?project=${P}`);
+const pg = rec.pages[0];
+ok(rec.pages.length === 1 && pg.id === 1 && pg.name === 'the home dashboard' && pg.platform === 'web'
+   && pg.blocks[4].x === 1 && pg.blocks[4].y === 3 && pg.blocks[4].h === 5 && pg.blocks[4].label === 'orders per day',
+   `Save writes the page with its id, its name, its platform and the blocks as arranged (${JSON.stringify(pg.blocks[4])})`);
+// ---- the prompt, the server's words ------------------------------------------------
+const promptText = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
+ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
+   && /Platform: a responsive web app/.test(promptText)
+   && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 9 of 12, rows 4 to 8 of 8/.test(promptText)
+   && /accent #3fb950/.test(promptText) && /Type: system-ui, the platform's own sans-serif/.test(promptText),
+   `the page's prompt names the page, its platform, each block with what it is for and where, and the language (${promptText.split('\n')[3]})`);
+
+// ---- the language: themes, each a named set of colours ------------------------------
+// A theme is a name, dark or light, and colours that are added, changed
+// and taken away one by one; a preset fills one with the ten roles.
+await page.selectOption(`${NB} [data-dstheme="0"] [data-dst="from"]`, 'moss');
+await page.waitForFunction(() => document.querySelector('.nb #dst-0-hex-5')?.value === '#63c98a', null, { timeout: 5000 });
+ok(await page.$eval(`${NB} [data-dspage] .dsboard`, e => e.style.backgroundColor.replace(/\s/g, '')) === 'rgb(22,31,27)'
+   && await page.$eval(`${NB} [data-dstheme="0"] [data-dst="from"]`, e => e.value) === '',
+   'filling a theme from a preset sets its ten colours and repaints the boards in it, and the picker goes back to keeping them');
+await page.fill(`${NB} #dst-0-hex-5`, '#ff8800');
+await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsblock[data-i="0"]')?.style.backgroundColor === 'rgb(29, 41, 32)', null, { timeout: 5000 }).catch(() => {});
+await page.fill(`${NB} #dst-0-name-0`, 'page');
+await page.selectOption(`${NB} #dsThemeFrom`, 'paper');
+await page.click(`${NB} #dsThemeAdd`);
+await page.waitForSelector(`${NB} [data-dstheme="1"]`, { timeout: 5000 });
+ok(await page.$eval(`${NB} [data-sect="design:themes"] > summary .sst`, e => e.textContent) === '2 themes'
+   && await page.$eval(`${NB} #dst-name-1`, e => e.value) === 'Paper' && await page.$eval(`${NB} #dst-mode-1`, e => e.value) === 'light'
+   && await page.$eval(`${NB} #dsThemePick`, e => e.value === '1' && e.options.length === 2) && !(await page.$(`${NB} [data-dstheme="0"]`)),
+   'Add theme adds one from a preset, named for it, light or dark as it is, the Themes section counts them and its pulldown shows the new one alone');
+await page.selectOption(`${NB} [data-dspage] [data-dsf="platform"]`, 'android');
+await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'phone', null, { timeout: 5000 });
+const frames = await page.$$eval(`${NB} [data-dspage] [data-dsf="frame"] option`, os => os.map(o => o.value));
+ok(frames.join() === 'phone,landscape' && await page.$eval(`${NB} [data-dspage] .dsblock[data-i="4"]`, e => e.style.gridColumn) === '2 / span 5',
+   `an Android page has the phone frames only, upright and sideways, and its blocks are clamped into the upright one (${frames.join()})`);
+await saved();
+const again = await api(`/api/design?project=${P}`);
+ok(again.language.themes.length === 2 && again.language.themes[0].colors.find(c => c.name === 'accent')?.hex === '#ff8800'
+   && again.language.themes[0].colors[0].name === 'page' && again.language.themes[1].mode === 'light' && again.pages[0].frame === 'phone',
+   'the language and the page save together: the changed hex, the renamed colour and the second theme');
+// From here rather than the page, so the refusal is not a console error.
+const badR = await fetch(URL.replace(/\/$/, '') + '/api/design', { method: 'POST',
+  headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+  body: JSON.stringify({ project: P, action: 'save', language: { ...again.language, themes: [{ name: 'A', colors: [{ name: 'bg', hex: 'blue' }] }] }, pages: [] }) });
+const bad = { status: badR.status, ...(await badR.json()) };
+ok(bad.status === 400 && /a colour is #rrggbb/.test(bad.error), `a colour that is not a hex is refused by name (${bad.error})`);
+
+// ---- the file, and bb design -----------------------------------------------------------
+await page.click(`${NB} #dsWrite`);
+await page.waitForFunction(() => /is written and current/.test(document.querySelector('.nb #dsHint')?.textContent || ''), null, { timeout: 10000 });
+const file = `${DIR}/ws/${P}/docs/design-language.md`;
+const written = existsSync(file) ? readFileSync(file, 'utf8') : '';
+ok(/^# The design language/.test(written) && /\| `--accent` \| `#ff8800` \|/.test(written)
+   && /### the home dashboard \(Android app\)/.test(written) && /Chart \(a chart or a meter\): orders per day/.test(written),
+   'Write the file puts docs/design-language.md in the tree: the tokens as a table, and each page under Pages');
+const token = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', P, 'test'],
+  { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+const bb = (...a) => execFileSync('bash', [`${REPO}/scripts/bb`, 'design', ...a], { encoding: 'utf8',
+  env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token, BB_PROJECT: P,
+         XDG_CACHE_HOME: `${DIR}/cache-design` } });
+ok(/Default \(dark\), Paper \(light\); system sans/.test(bb()) && /1  the home dashboard  \(android app, phone, 6 blocks\)/.test(bb()),
+   `bb design lists the language and the pages (${bb().split('\n')[1].trim()})`);
+const shown = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
+ok(bb('show', '1').trim() === shown.trim() && bb('show', 'the home dashboard') === bb('show', '1')
+   && /Platform: an Android app/.test(shown),
+   'bb design show prints the prompt the tab shows, by id or by name');
+ok(bb('file') === written, 'bb design file prints the file as the notebook wrote it');
+let err = '';
+try { bb('show', 'nowhere'); } catch (e) { err = String(e.stderr); }
+ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that is not there is refused by name (${err.trim()})`);
+
+// ---- beyond the ten: a colour of the design's own, the families, an overlay, a sideways frame
+// What ten real projects needed that the first vocabulary had no slot for
+// (the survey of 28 Sep): a success colour, a second surface or a chart
+// ramp by name, the exact font stacks, a dialog over the page, a phone
+// held sideways.
+{
+  const pre = (await api(`/api/design?project=${P}`)).presets;
+  ok(pre.tokens.map(t => t.key).join() === 'bg,panel,ink,dim,line,accent,warn,bad,note,good'
+     && pre.kinds.some(k => k.key === 'overlay') && pre.frames.landscape.cols === 12,
+     'the vocabulary carries a good role, an overlay kind and a sideways phone frame');
+  await page.selectOption(`${NB} #dsThemePick`, '0');
+  await page.waitForSelector(`${NB} [data-dstheme="0"]`, { timeout: 5000 });
+  ok(!(await page.$(`${NB} [data-dstheme="1"]`)), 'the Themes pulldown shows the theme chosen and no other');
+  await page.click(`${NB} [data-dstheme="0"] [data-dstcadd]`);
+  await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dstc="10"]`, { timeout: 5000 });
+  await page.fill(`${NB} #dst-0-name-10`, 'surface 2');
+  await page.fill(`${NB} #dst-0-hex-10`, '#f0efec');
+  await page.fill(`${NB} #dst-0-for-10`, 'a second surface tier');
+  await page.fill(`${NB} #dsFonts`, 'Inter for text, JetBrains Mono for code');
+  await page.selectOption(`${NB} [data-dspage] [data-dsf="frame"]`, 'landscape');
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'landscape', null, { timeout: 5000 });
+  await page.selectOption(`${NB} [data-dspage] [data-dsf="newkind"]`, 'overlay');
+  await page.click(`${NB} [data-dspage] [data-dsblockadd]`);
+  await page.waitForSelector(`${NB} [data-dspage] .dsblock.on`, { timeout: 5000 });
+  await page.fill(`${NB} [data-dspage] [data-dsb="label"]`, 'the card picker');
+  await saved();
+  const grown = await api(`/api/design?project=${P}`);
+  const text = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
+  ok(grown.language.themes[0].colors.length === 11 && grown.language.themes[0].colors[10].hex === '#f0efec' && grown.language.fonts.startsWith('Inter')
+     && grown.pages[0].frame === 'landscape' && grown.pages[0].blocks.some(b => b.kind === 'overlay' && b.label === 'the card picker'),
+     'a colour of the design\'s own, the families, a sideways frame and an overlay block all save');
+  ok(/Themes, each a set of the same tokens/.test(text) && /The app starts on Default; a theme picker, where the app has one, offers them by name/.test(text)
+     && /  Default \(dark, the default\):\n    page #/.test(text) && /    surface 2 #f0efec: a second surface tier/.test(text)
+     && /  Paper \(light\):/.test(text) && /set as Inter for text, JetBrains Mono for code/.test(text) && /good #/.test(text)
+     && /on a landscape frame \(12 columns by 6 rows\)/.test(text) && /Overlay \(a dialog, sheet, drawer, popover or toast over the page\): the card picker/.test(text),
+     'and the prompt says each of them, the themes by name with the default first, and no word on where a picker goes');
+  const file = bb('file');
+  ok(/### Default \(dark, the default\)/.test(file) && /### Paper \(light\)/.test(file) && /\| `--surface-2` \| `#f0efec` \| a second surface tier \|/.test(file),
+     '...as does the file, a table per theme, the colour as a token of its own');
+  await page.click(`${NB} [data-dstheme="0"] [data-dstcrm="10"]`);
+  await page.waitForFunction(() => !document.querySelector('.nb [data-dstheme="0"] [data-dstc="10"]'), null, { timeout: 5000 });
+  await page.selectOption(`${NB} #dsThemePick`, '1');
+  await page.waitForSelector(`${NB} [data-dstheme="1"]`, { timeout: 5000 });
+  await page.click(`${NB} [data-dstheme="1"] [data-dstdefault]`);
+  await page.waitForFunction(() => document.querySelector('.nb #dst-name-0')?.value === 'Paper', null, { timeout: 5000 });
+  await page.selectOption(`${NB} #dsThemePick`, '1');
+  await page.waitForSelector(`${NB} [data-dstheme="1"]`, { timeout: 5000 });
+  await page.click(`${NB} [data-dstheme="1"] [data-dstrm]`);
+  await page.waitForFunction(() => document.querySelector('.nb #dsThemePick')?.options.length === 1, null, { timeout: 5000 });
+  await page.fill(`${NB} #dsFonts`, '');
+  await saved();
+  const back = (await api(`/api/design?project=${P}`)).language;
+  ok(back.themes.length === 1 && back.themes[0].name === 'Paper' && back.themes[0].colors.length === 10,
+     'Remove takes a colour out, Make default moves a theme first, and Remove theme takes the other away');
+  ok(await page.$eval(`${NB} [data-dstheme="0"] [data-dstrm]`, b => b.disabled), '...and the last theme cannot be removed');
+}
+
+// ---- a session writes one: bb design json, edited, and bb design save --------------------
+// Asked to put a design language into the notebook, a session reads the
+// record with json, changes it, and saves it back whole: a page without
+// an id is new, one with its id replaces that page.
+{
+  const rec = JSON.parse(bb('json'));
+  ok(rec.language.themes[0].name === 'Paper' && rec.pages.length === 1 && rec.presets.kinds.length > 10,
+     'bb design json prints the record with the presets it is drawn from');
+  rec.language.themes = [{ name: 'Night', mode: 'dark', colors: Object.entries(rec.presets.schemes.find(s => s.key === 'carbon').colors).map(([name, hex]) => ({ name, hex, means: '' })) },
+                         { name: 'Day', mode: 'light', colors: [{ name: 'bg', hex: '#ffffff', means: 'the page' }] }];
+  rec.language.rules = [{ name: 'Lists', text: 'Every list pages at fifty.', words: 'list, paging' }, { name: 'voice', text: 'One sentence that tells the person what to do.' }];
+  rec.pages[0].notes = 'The chart is the first thing read.';
+  rec.pages.push({ name: 'the login screen', platform: 'ios', template: 'blank',
+                   blocks: [{ kind: 'form', label: 'email, password, one Sign in', x: 0, y: 4, w: 6, h: 4 }] });
+  const tmp = `${DIR}/design-save.json`;
+  writeFileSync(tmp, JSON.stringify(rec));
+  const said = bb('save', tmp);
+  const after = await api(`/api/design?project=${P}`);
+  ok(/saved alpha's design: 2 pages/.test(said) && after.language.themes.map(t => t.name).join() === 'Night,Day' && after.language.rules.map(r => r.name).join() === 'lists,voice'
+     && after.pages[0].id === 1 && after.pages[0].notes === 'The chart is the first thing read.'
+     && after.pages[1].id === 2 && after.pages[1].name === 'the login screen' && after.pages[1].frame === 'phone' && after.by === 'session:alpha',
+     `a session's bb design save writes the record back: the language, the page by its id, a new page with the next (${said.trim()})`);
+  await page.evaluate(n => getNotebook(n).view('design'), P);
+  await page.waitForFunction(() => document.querySelector('.nb #dsPagePick')?.options.length === 2, null, { timeout: 15000 });
+  ok(await page.$eval(`${NB} [data-sect="design:themes"] > summary .sst`, e => e.textContent) === '2 themes'
+     && /^the login screen \(/.test(await page.$eval(`${NB} #dsPagePick option[value="p2"]`, e => e.textContent))
+     && await page.$eval(`${NB} [data-sect="design:pages"] > summary .sst`, e => e.textContent) === '2 pages',
+     '...and the tab shows what the session saved when it is shown again: two themes, and the new page on the Pages pulldown');
+  let refused = '';
+  try { bb('save', '/nonexistent.json'); } catch (e) { refused = String(e.stderr); }
+  ok(/could not read \/nonexistent.json/.test(refused), 'a file that is not there is refused by name');
+  await page.selectOption(`${NB} #dsPagePick`, 'p2');
+  await page.waitForSelector(`${NB} [data-dspage="p2"] .dsboard`, { timeout: 5000 });
+  ok(!(await page.$(`${NB} [data-dspage="p1"]`)), 'the Pages pulldown shows the page chosen and no other');
+  await page.click(`${NB} [data-dspage="p2"] [data-dspagerm]`);
+  await page.waitForFunction(() => document.querySelector('.nb #dsPagePick')?.options.length === 1 && document.querySelector('.nb [data-dspage="p1"]'), null, { timeout: 5000 });
+  ok(true, 'Remove page takes it off the pulldown, which shows the first page again');
+}
+
+// ---- the design's rules reach a session the way house rules do ---------------------------
+// A rule with a trigger is named in the briefing and arrives on its turn
+// (rules.matching, through the hooks); one without stands in every
+// briefing whole. bb rules show reads it like any rule; bb design show too.
+{
+  const rulesOut = execFileSync('bash', [`${REPO}/scripts/bb`, 'rules', '--json'], { encoding: 'utf8',
+    env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: P } });
+  const eff = JSON.parse(rulesOut);
+  ok(eff.some(r => r.name === 'lists' && r.design && r.words.join() === 'list,paging'),
+     'a design rule is among the rules a session works under, marked as the design\'s, with its triggers');
+  const pre = await api(`/api/preamble?project=${P}`);
+  ok(/  lists: list, paging \(the design's: bb design show reads it/.test(pre.text) && /One sentence that tells the person what to do\. \(the design's/.test(pre.text)
+     && !/Every list pages at fifty/.test(pre.text),
+     'the briefing names the triggered rule and how to read it, carries the standing one whole, and never the triggered one\'s text');
+  ok(/^lists \(applies to: list, paging\)\n\nEvery list pages at fifty\./.test(bb('show', 'lists')),
+     `bb design show NAME prints one rule with what fires it (${bb('show', 'lists').split('\n')[0]})`);
+  // In the view: the Rules section, one shown at a time, added and removed.
+  await page.evaluate(n => getNotebook(n).view('design'), P);
+  await page.waitForFunction(() => document.querySelector('.nb #dsRulePick')?.options.length === 2, null, { timeout: 15000 });
+  await page.selectOption(`${NB} #dsRulePick`, '1');
+  await page.waitForSelector(`${NB} [data-dsrule="1"]`, { timeout: 5000 });
+  ok(await page.$eval(`${NB} #dsr-name-1`, e => e.value) === 'voice' && !(await page.$(`${NB} [data-dsrule="0"]`)),
+     'the Rules pulldown shows the rule chosen and no other');
+  await page.click(`${NB} #dsRuleAdd`);
+  await page.waitForSelector(`${NB} [data-dsrule="2"]`, { timeout: 5000 });
+  // The preview asked for while the new rule has no text yet leaves it out
+  // rather than refusing (B341): the prompt box never says it could not.
+  await page.waitForTimeout(patience(600));
+  ok(!/could not build the prompt/.test(await page.$eval(`${NB} #dsPromptL`, e => e.value)),
+     'the prompt preview skips a rule still being typed rather than refusing it');
+  await page.fill(`${NB} #dsr-name-2`, 'Tap targets');
+  await page.fill(`${NB} #dsr-words-2`, 'tap, phone');
+  await page.fill(`${NB} #dsr-files-2`, 'scripts/dashboard');
+  await page.fill(`${NB} #dsr-text-2`, 'Every button on a touch screen is a thumb high.');
+  await saved();
+  const now = (await api(`/api/design?project=${P}`)).language.rules;
+  ok(now.length === 3 && now[2].name === 'tap-targets' && now[2].words.join() === 'tap,phone' && now[2].paths.join() === 'scripts/dashboard',
+     `a rule typed in the view saves with its slug name and triggers (${JSON.stringify(now[2]).slice(0, 90)})`);
+  const bad = await fetch(URL.replace(/\/$/, '') + '/api/design', { method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: P, action: 'save', language: { ...(await api(`/api/design?project=${P}`)).language, rules: [{ name: 'empty' }] }, pages: [] }) });
+  ok(bad.status === 400 && /the rule empty says nothing/.test((await bad.json()).error || ''), 'a rule with no text is refused by name');
+
+  // ---- a theme's own rules and a page's own: named under their holder ------------------
+  // The Nostromo scheme has needs no other theme shares (the operator, 28
+  // Sep): a rule of a theme's own lives under the theme, a page's under the
+  // page, reaches a session as HOLDER/RULE, and bb design show reads it so.
+  await page.selectOption(`${NB} #dsThemePick`, '0');
+  await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dsown="t0"]`, { timeout: 5000 });
+  await page.click(`${NB} [data-dsown="t0"] [data-dsownadd]`);
+  await page.waitForSelector(`${NB} #t0-r-name-0`, { timeout: 5000 });
+  await page.fill(`${NB} #t0-r-name-0`, 'Hull');
+  await page.fill(`${NB} #t0-r-words-0`, 'texture, hull');
+  await page.fill(`${NB} #t0-r-text-0`, 'Night alone carries drawn textures behind the page.');
+  await page.click(`${NB} [data-dspage="p1"] [data-dsown="p1"] [data-dsownadd]`);
+  await page.waitForSelector(`${NB} #p1-r-name-0`, { timeout: 5000 });
+  await page.fill(`${NB} #p1-r-name-0`, 'first read');
+  await page.fill(`${NB} #p1-r-text-0`, 'The chart is read before anything else on this page.');
+  await saved();
+  const own = await api(`/api/design?project=${P}`);
+  ok(own.language.themes[0].rules?.[0]?.name === 'hull' && own.language.themes[0].rules[0].words.join() === 'texture,hull'
+     && own.pages[0].rules?.[0]?.name === 'first-read' && own.pages[0].rules[0].paths.length === 0,
+     `a rule typed under a theme saves with the theme, and one under a page with the page (${JSON.stringify(own.language.themes[0].rules)})`);
+  const eff2 = JSON.parse(execFileSync('bash', [`${REPO}/scripts/bb`, 'rules', '--json'], { encoding: 'utf8',
+    env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: P } }));
+  ok(eff2.some(r => r.name === 'night/hull' && r.design && /^For the Night theme\. Night alone/.test(r.text))
+     && eff2.some(r => r.name === 'the-home-dashboard/first-read' && /^For the home dashboard\. The chart/.test(r.text)),
+     'both reach a session as rules named under their holder, the text saying whose they are');
+  ok(/^night\/hull \(for the Night theme\) \(applies to: texture, hull\)\n\nNight alone carries/.test(bb('show', 'night/hull')),
+     `bb design show THEME/RULE prints the theme's rule (${bb('show', 'night/hull').split('\n')[0]})`);
+  const themeOut = bb('show', 'Night');
+  ok(/^Night \(dark\), one theme of 2:\n  bg #/.test(themeOut) && /night\/hull \(applies to: texture, hull\)\nNight alone carries/.test(themeOut),
+     'bb design show THEME prints the theme: its colours and its own rules');
+  const pre2 = await api(`/api/preamble?project=${P}`);
+  ok(/  night\/hull: texture, hull \(the design's: bb design show reads it/.test(pre2.text)
+     && /This project's notebook holds a design already: 2 themes \(Night, Day\); 1 page: the home dashboard; 3 design rules and 2 of a theme's or a page's own\./.test(pre2.text)
+     && /Read `bb design show` before laying out or styling anything/.test(pre2.text),
+     "the briefing names the theme's rule under it, and says the notebook holds a design, what is in it, and to read it before building");
+  const file2 = bb('file');
+  ok(/#### Rules of Night's own\n\n##### night\/hull\n\nApplies to: texture, hull\n\nNight alone carries/.test(file2)
+     && /##### the-home-dashboard\/first-read\n\nThe chart is read/.test(file2),
+     "the file carries a theme's rules under the theme and a page's under the page");
+  const pagePrompt = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
+  ok(/This page's own rules:\n  the-home-dashboard\/first-read: The chart is read before/.test(pagePrompt) && /    Night's own rules:\n      night\/hull: texture, hull \(`bb design show night\/hull` reads it\)/.test(pagePrompt),
+     "the page's prompt carries its own rules whole and names the theme's under the theme");
+  await page.selectOption(`${NB} #dsThemePick`, '0');
+  await page.waitForSelector(`${NB} [data-dsownrule="0"]`, { timeout: 5000 });
+  await page.click(`${NB} [data-dsown="t0"] + [data-dsownrule] [data-dsrrm]`);
+  await page.waitForFunction(() => !document.querySelector('.nb #t0-r-name-0'), null, { timeout: 5000 });
+  await page.click(`${NB} [data-dsown="p1"] + [data-dsownrule] [data-dsrrm]`);
+  await page.waitForFunction(() => !document.querySelector('.nb #p1-r-name-0'), null, { timeout: 5000 });
+  await saved();
+  const gone2 = await api(`/api/design?project=${P}`);
+  ok(gone2.language.themes[0].rules.length === 0 && gone2.pages[0].rules.length === 0, 'Remove rule under a theme or a page takes it out');
+}
+
+// ---- the dial: Claude may: Add to the design -------------------------------------------
+// A session's save goes through the project's setting: auto lands it (as
+// above), ask holds it for the operator's approval, deny refuses it by name.
+{
+  const gate = mode => api('/api/prefs', { project: P, gate: { design: mode } });
+  const rec = JSON.parse(bb('json'));
+  rec.pages[0].notes = 'saved under ask';
+  const tmp = `${DIR}/design-ask.json`;
+  writeFileSync(tmp, JSON.stringify(rec));
+  await gate('deny');
+  let refused = '';
+  try { bb('save', tmp); } catch (e) { refused = String(e.stderr); }
+  ok(/Claude may: Add to the design is deny/.test(refused), `under deny a session's save is refused naming the setting (${refused.trim().slice(0, 80)})`);
+  await gate('ask');
+  const held = bb('save', tmp);
+  const queue = await api(`/api/pending?project=${P}`);
+  const mine = (queue.rows || queue.pending || queue.items || []).find(r => r.kind === 'design');
+  ok(/held for the operator's approval/.test(held) && mine && /theme/.test(mine.summary) && (await api(`/api/design?project=${P}`)).pages[0].notes !== 'saved under ask',
+     `under ask the save waits on the notebook with a summary and nothing has landed (${(mine || {}).summary})`);
+  const ok2 = await api('/api/pending', { project: P, action: 'approve', ids: [mine.id] });
+  ok(!ok2.error && (await api(`/api/design?project=${P}`)).pages[0].notes === 'saved under ask',
+     `...and Approve lands it as the session's save (${ok2.error || 'ok'})`);
+  await gate('auto');
+}
+
+// ---- a page removed, and the record put back ------------------------------------------
+await page.click(`${NB} [data-dspage] [data-dspagerm]`);
+await page.waitForFunction(() => !document.querySelector('.nb [data-dspage]'), null, { timeout: 5000 });
+await page.selectOption(`${NB} #dsThemePick`, '0');
+await page.waitForSelector(`${NB} [data-dstheme="0"]`, { timeout: 5000 });
+await page.selectOption(`${NB} [data-dstheme="0"] [data-dst="from"]`, 'default');
+await page.waitForFunction(() => document.querySelector('.nb #dst-0-hex-0')?.value === '#1a1f26', null, { timeout: 5000 });
+await page.selectOption(`${NB} #dsThemePick`, '1');
+await page.waitForSelector(`${NB} [data-dstheme="1"]`, { timeout: 5000 });
+await page.click(`${NB} [data-dstheme="1"] [data-dstrm]`);
+await page.waitForFunction(() => document.querySelector('.nb #dsThemePick')?.options.length === 1, null, { timeout: 5000 });
+await saved();
+const gone = await api(`/api/design?project=${P}`);
+ok(gone.pages.length === 0 && gone.language.themes.length === 1 && gone.language.themes[0].colors[0].hex === '#1a1f26',
+   'Remove page and Save take the page out, and the language goes back to one theme filled from Default');
+rmSync(`${DIR}/ws/${P}/docs`, { recursive: true, force: true });
+ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
+await done(browser);
