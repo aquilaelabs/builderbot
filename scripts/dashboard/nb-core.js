@@ -106,7 +106,7 @@ function makeNotebook(project){
   // this closure calls by name.
   const {loadGit} = nbGitView({$, nb, project});
   const {loadArtifacts, loadVersion, drawVersion, postArtifacts, postVersion} = Object.assign(nb, nbArtifactsView({$, nb, project, root, sheet}));
-  const {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection} = Object.assign(nb, nbAnalysisView({$, nb, project}));
+  const {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection, loadBrief, briefSection} = Object.assign(nb, nbAnalysisView({$, nb, project}));
   const {loadRules, drawRules, saveRules, ruleDirty} = Object.assign(nb, nbRulesView({$, nb, project}));
   const {loadTests} = Object.assign(nb, nbTestsView({$, nb, project}));
   const {loadBugs, drawBugs, postBug} = Object.assign(nb, nbBugsView({$, nb, project}));
@@ -529,6 +529,9 @@ function makeNotebook(project){
       // Once, on the first show. It is re-read when one of the three stores
       // behind it moves, and only while this view is the one on screen.
       if (!nb.preData) loadPreamble();
+      // Every show: the brief leaves the tree when the first session starts,
+      // which can be while this notebook sits open.
+      loadBrief();
     }
   }
   // Unsaved work does not follow you to another tab.

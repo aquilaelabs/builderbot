@@ -698,9 +698,17 @@ lives in its body. The cards:
   you would rather not see. It *hides*; the padlock **blocks**, which is a
   different promise.
   At the foot of the card, **New project** creates one. A fresh local repo
-  (`git init`) asks for a name and a free-text *About this project*, which
-  becomes its `CLAUDE.md`, which is the project's own from that moment
-  on. When nodes are
+  (`git init`) asks for a name and a free-text *Brief*: what you want
+  built. The brief is not the project's `CLAUDE.md`, which every session
+  reads as standing instructions and which would go on asserting the first
+  day's decisions after the project moved past them. It is kept in the tree
+  as `BUILDERBOT-BRIEF.md`, out of git through the repository's own exclude
+  file, for the first Claude session: pressing Claude on the project opens
+  it in a dialog, editable, beside the model and effort that session starts
+  on. **Build it** starts the session with the brief as its first prompt;
+  **Start without it** starts one that was not given it. Either way the
+  brief leaves the tree then, and the notebook's Briefing view keeps it,
+  as `bb brief` prints it. When nodes are
   enrolled it also asks which node the project runs on (the only one is
   picked for you; *none* is an option), the same setting the project's
   settings dialog changes later, so a new project can build and start a
@@ -716,8 +724,9 @@ lives in its body. The cards:
   a Claude session on that project waits for it, so its first question
   about the tree is answered from an index rather than by building one. A single
   top-level folder inside is dropped (the project directory *is* that
-  folder), desktop junk like `__MACOSX` is skipped, and a `CLAUDE.md` is
-  written only from notes you typed.
+  folder), desktop junk like `__MACOSX` is skipped, and no brief is asked
+  for: an archive is where that project starts, so the field goes when one
+  is picked, and a request carrying both is refused.
   Nothing is committed; the first session, or you, decides what the first
   commit is. Paths that would land outside the directory are refused whole. A clone
   of a GitHub repository asks for nothing but the URL: it is fetched with the

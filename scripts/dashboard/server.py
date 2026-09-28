@@ -883,6 +883,9 @@ def _project_columns(who, facts):
                     # dialog can offer to change one without offering to
                     # invent one for a local repo that never had any.
                     "has_token": (STATE / "gitcreds" / d.name).is_file(),
+                    # A brief waiting for the first Claude session: the
+                    # Claude button opens its dialog rather than a session.
+                    "brief": brief.pending(d.name),
                     "push": projects.may_push(d.name),
                     # The project's own settings: its node, what build and
                     # test run, the gates. NOT the model, the effort or the
@@ -2253,6 +2256,13 @@ def live_block():
 
 preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, live=live_block)
 
+# ---- a new project's brief -----------------------------------------------------
+# What its maker wants built, kept out of CLAUDE.md and handed to the first
+# session instead, through a dialog on the first Claude press: brief.py.
+import brief                                                     # noqa: E402
+
+brief.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
+
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card; see the module docstring
 # for why it stopped being a question inside each send box.
@@ -2520,6 +2530,7 @@ projects.lock = _state_lock
 projects.take_on = users.take_on
 projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
 projects.live_sessions = tmux_sessions
+projects.brief_writer = brief.write
 
 # ---- a node's git, relayed --------------------------------------------------
 # Push, fetch, pull and ls-remote from a session on a node, done in a
@@ -3078,6 +3089,7 @@ GET_ROUTES = (
     ("prefix", "/api/rules", "_get_rules"),
     ("prefix", "/api/global-rules", "_get_global_rules"),
     ("prefix", "/api/preamble", "_get_preamble"),
+    ("prefix", "/api/brief", "_get_brief"),
     ("prefix", "/api/codebase", "_get_codebase"),
     ("prefix", "/api/pending", "_get_pending"),
     ("prefix", "/api/memory", "_get_memory"),
@@ -3140,6 +3152,7 @@ POST_ROUTES = (
     ("prefix", "/api/pending", "_pending"),
     ("prefix", "/api/memory", "_memory"),
     ("prefix", "/api/prefs", "_prefs_post"),
+    ("prefix", "/api/brief", "_brief"),
     ("prefix", "/api/devapp", "_devapp"),
     ("prefix", "/api/changelog", "_changelog"),
     ("prefix", "/api/version", "_version"),
@@ -4290,6 +4303,31 @@ class Handler(BaseHTTPRequestHandler):
         # session bb-tty starts for them.
         mine = prefs.all_for_user(users.uid_of(self._who())).get(name) or {}
         return self._json(preamble.payload(name, reply=mine.get("reply") or "", asks=mine.get("asks") or ""))
+
+    def _get_brief(self):
+        """GET /api/brief: brief.view, the brief waiting in a project's tree
+        and the one kept after it left, for a project this account sees."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(brief.view(name, users.uid_of(self._who())))
+
+    def _brief(self, req):
+        """POST /api/brief: the first Claude press's Build it and Start
+        without it, and a session's take as it starts: brief.verb, behind the
+        gates here."""
+        name = field(req, "project")
+        if self._not_project(name):
+            return
+        who = self._who() or {}
+        # A take is a session starting on its own project; the dialog's two
+        # change the project's tree, so they are asked of an account that
+        # works on it.
+        if field(req, "action") != "take" and self._readonly(name):
+            return
+        return self._json(*brief.verb(name, req, users.uid_of(who), who.get("name") or "somebody",
+                                      bool(who.get("session"))))
 
     def _get_codebase(self):
         """GET /api/codebase."""

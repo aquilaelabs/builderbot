@@ -26,6 +26,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The sidebar's project pins are each person's own: any signed-in account pins and unpins for its own card, an administrator's pins no longer decide everyone's, and the set everybody had until now stays as each account's starting point until they pin (337ca53)
 - Captures (a reel's sheet, an emulator shot) are listed apart on the Artifacts tab, each saying whose it is, and removed after the project's 'captures kept' days (7; 0 keeps them) or by Remove there; bb capture ls and prune do the same from a session. Only the sheet and the record land in dist/ (83417b4)
 - bb tests run ends by saying what it exits with, and a role's command is shown as it was set rather than inside its sh -c wrapper (88280f0)
+- New project's brief is no longer written into CLAUDE.md: the first Claude press opens it in a dialog to change, with the model and effort, Build it starts that session on it, and it then leaves the project for the notebook's Briefing view (18634bc)
+- Starting a project from an archive no longer offers a brief: the archive is where it starts (18634bc)
 
 ### Removed
 

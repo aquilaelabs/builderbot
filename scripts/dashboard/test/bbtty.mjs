@@ -79,6 +79,11 @@ if capped:
     t = c[:c.rfind("\\n") + 1] + "[the rest of this list did not fit in the prompt]"
 print(json.dumps({"text": t, "bytes": len(b), "max": MAX, "capped": capped, "parts": []}))' ;;
   settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid","git_ready":%s}\\n' "$([ "\${FAKE_GIT_READY:-1}" = 0 ] && echo false || echo true)" ;;
+  # A brief staged with Build it, taken once, the way the controller hands
+  # it over (brief.py): the file is the stage, and taking it clears it.
+  brief) if [ "\${2:-}" = take ] && [ -n "\${FAKE_BRIEF:-}" ] && [ -f "$FAKE_BRIEF" ]; then
+           cat "$FAKE_BRIEF"; rm -f "$FAKE_BRIEF"
+         fi ;;
 esac
 exit 0
 `);
@@ -353,6 +358,37 @@ ok(/--model\0opus\0/.test(a) && /--effort\0low\0/.test(a),
 ok(/--resume\0the-live-one\0/.test(a),
    '...and resumes the newest transcript, so the conversation continues');
 rmSync(join(DIR, 'state', 'claude-prefs.json'), { force: true });
+
+// ---- a new project's brief, handed to its first session once -------------------
+// Build it stages the brief; bb-tty takes it as it makes a NEW session and
+// leaves it beside the launcher, whose first exec gives it to claude as the
+// first prompt, after `--` since a brief can open with a dash, and removes it.
+// A respawn onto a changed model never sends it again (brief.py).
+{
+  const staged = join(DIR, 'brief-staged');
+  const BRIEF = '- a planner for armor stats\n\n"quoted" and $HOME, as typed';
+  writeFileSync(staged, BRIEF + '\n');
+  connect(0, { FAKE_BRIEF: staged });
+  await sleep(400);
+  a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
+  const args = a.split('\0').filter(Boolean);
+  ok(args[args.length - 2] === '--' && args[args.length - 1] === BRIEF && !existsSync(staged),
+     `a new session is handed the staged brief as its first prompt, after --, verbatim (${JSON.stringify(args.slice(-2)).slice(0, 80)})`);
+  ok(!existsSync(join(DIR, 'home', '.cache', 'builderbot', 'u', '_none', 'project', 'alpha', 'first-prompt.txt')),
+     '...and the copy the launcher read is gone once it has');
+  try {
+    execFileSync('timeout', ['5', 'bash', LAUNCHER, '--respawn'], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    });
+  } catch { /* the stub holds the pane open; timeout ending it is the success */ }
+  a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
+  ok(!a.includes('armor stats'), 'a respawn of that session is not handed the brief again');
+  connect(0);
+  await sleep(400);
+  a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
+  ok(!a.includes('armor stats') && !/\0--\0/.test(a), '...nor is the next session, with nothing staged');
+}
 
 tmuxKill('claude-alpha');
 // ---- a home and a shell of one's own (roadmap #26) --------------------------

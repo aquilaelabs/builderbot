@@ -258,6 +258,8 @@ bb rules check [NAME|--all]   run the checks of the rules whose files you change
 bb rules history   what has changed them, by either of you
 bb rules pending   rules a session added that are waiting for your approval
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb brief           the brief this project was started from: waiting for its first
+                   Claude session, or kept after that session started
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -1652,6 +1654,27 @@ cmd_history() {
             || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nb-history.py" "$dir" "$proj" "$@"
+}
+
+# bb brief [take]: a new project's brief, through the API as the caller.
+# take is bb-tty's, as it starts a new session: the brief the account staged
+# with Build it, printed for the launcher to hand claude, or nothing; it
+# never fails, because a brief is not a reason for a session not to start.
+cmd_brief() {
+    local verb="${1:-show}" auth proj
+    case "$verb" in show|take) ;; -h|--help) echo "bb brief: the brief this project was started from"; return 0 ;;
+        *) die "bb brief: the brief this project was started from (take is bb-tty's)" ;; esac
+    proj="${BB_PROJECT:-}"
+    [ -n "$proj" ] || proj="$(project_here 2>/dev/null)" \
+        || { [ "$verb" = take ] && return 0; die "not inside a project under ${WORKSPACE}; cd into one first"; }
+    if [ "$verb" = take ]; then
+        auth="$(bb_auth_header 2>/dev/null)" || return 0
+        [ -n "$auth" ] || return 0
+    else
+        auth="$(bb_auth_or_die)"
+    fi
+    BB_BRIEF_AUTH="$auth" BB_BRIEF_PROJECT="$proj" python3 "$BB_LIB/brief-verbs.py" "$verb" \
+        || [ "$verb" = take ]
 }
 
 cmd_preamble() {
@@ -4570,6 +4593,7 @@ case "${1:-help}" in
     bug) shift; cmd_bug "$@" ;;
     tests)    shift; cmd_tests "$@" ;;
     preamble) shift; cmd_preamble "$@" ;;
+    brief) shift; cmd_brief "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;

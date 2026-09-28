@@ -162,5 +162,33 @@ function nbAnalysisView({$, nb, project}){
                       status, body, {open: false, cls});
   }
 
-  return {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection};
+  // ---- the brief it was started from -----------------------------------------
+  // What the project was made with, from New project: waiting in the tree
+  // for the first Claude session, or kept here once that session started,
+  // sent or set aside (brief.py). Read on every show of this view, since it
+  // changes once, when the first session starts, and nothing after that.
+  nb.briefData = null;
+  async function loadBrief(){
+    try{
+      const j = await (await fetch(`/api/brief?project=${encodeURIComponent(project)}`)).json();
+      nb.briefData = j.error ? null : j;
+    }catch(e){ nb.briefData = null; }
+    nb.drawRules();
+  }
+  function briefSection(){
+    const d = nb.briefData, k = d?.kept;
+    if (!d || (!d.pending && !k)) return "";
+    const by = k?.by ? ` by ${k.by}` : "";
+    const line = d.pending
+      ? "Waiting for the first Claude session: pressing Claude on this project opens it to change before it is sent."
+      : k.sent ? `Sent as the first session's first prompt ${ago(k.at)}${by}. No session after that one reads it.`
+      : `Set aside ${ago(k.at)}${by}, when the first session started without it.`;
+    const body = `<div class="field"><div class="hint">${esc(line)}</div>
+      <textarea id="briefKept" readonly rows="8" spellcheck="false"
+        aria-label="the brief this project was started from">${esc(d.pending ? d.text : k.text)}</textarea></div>`;
+    return docSection("briefing", "brief", "Brief",
+                      d.pending ? "waiting" : k.sent ? "sent" : "set aside", body, {open: false});
+  }
+
+  return {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection, loadBrief, briefSection};
 }

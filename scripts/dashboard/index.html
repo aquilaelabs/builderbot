@@ -4031,6 +4031,34 @@ body.booting .pane>.loading{margin:auto}
     <div id="grBody"></div>
   </div>
 </div>
+<!-- A new project's first Claude session: its brief, editable, and the
+     model and effort that session starts on, since nothing has started yet.
+     Its declarations are page-claude.js. -->
+<div id="briefModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="briefTitle">
+  <div class="box">
+    <h3 id="briefTitle">First session</h3>
+    <div class="field">
+      <label for="briefText">Brief</label>
+      <textarea id="briefText" spellcheck="false" aria-describedby="briefHint"></textarea>
+      <div class="hint" id="briefHint">Build it starts the session on this. The brief then leaves the project, and its notebook keeps it.</div>
+    </div>
+    <div class="field">
+      <label id="briefMineLabel">Yours on this project</label>
+      <div class="prefrow" role="group" aria-labelledby="briefMineLabel">
+        <label class="pick">Model <select id="briefModel"
+          aria-label="model your sessions here start on"></select></label>
+        <label class="pick">Effort <select id="briefEffort"
+          aria-label="effort your sessions here start on"></select></label>
+      </div>
+    </div>
+    <div class="field" id="briefErrWrap" hidden><div class="hint bad" id="briefErr"></div></div>
+    <div class="foot">
+      <button id="briefGo" class="primary">Build it</button>
+      <button id="briefSkip">Start without it</button>
+      <button id="briefCancel">Cancel</button>
+    </div>
+  </div>
+</div>
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
@@ -4177,11 +4205,16 @@ body.booting .pane>.loading{margin:auto}
         <button id="pCopy" type="button">Copy public key</button>
       </div>
     </div>
+    <!-- The brief: what is wanted, for a project started from nothing. Not
+         CLAUDE.md, which every session reads as standing instructions: it is
+         handed to the first session through a dialog, and kept outside the
+         tree after that (brief.py). Hidden once an archive is picked: an
+         archive is the start. -->
     <div class="field" id="pAboutField">
-      <label for="pAbout">About this project</label>
+      <label for="pAbout">Brief</label>
       <textarea id="pAbout" spellcheck="false"
-                placeholder="What it is, how to build and test it; anything a new session should know."></textarea>
-      <div class="hint">Saved as the project's briefing, read by every session.</div>
+                placeholder="What you want built, and anything the first session should know."></textarea>
+      <div class="hint">The first Claude session starts on this, and you can change it then.</div>
     </div>
     <div class="field" id="pErrWrap" hidden><div class="hint bad" id="pErr"></div></div>
     <div class="foot">
@@ -4848,10 +4881,18 @@ addEventListener("pagehide", () => notebooks.forEach(n => n.leave()));
 // ---- a project's notebook: one closure each -----------------------------
 // Its declarations are nb-core.js; nothing of it runs at load.
 
+// ---- a new project's first session ----------------------------------------
+// Its declarations are page-claude.js; what runs at load is below.
+$("briefGo").onclick = () => briefGo(false);
+$("briefSkip").onclick = () => briefGo(true);
+$("briefCancel").onclick = closeBrief;
+$("briefModal").onclick = e => { if (e.target.id === "briefModal") closeBrief(); };
+addEventListener("keydown", e => { if (e.key === "Escape" && !$("briefModal").hidden) closeBrief(); });
+
 // ---- the new-project dialog ---------------------------------------------
 // Its declarations are tab-projects.js; what runs at load is below.
 $("pArchivePick").onclick = () => $("pArchive").click();
-$("pArchive").onchange = () => { $("pArchiveName").textContent = $("pArchive").files[0]?.name || "none picked"; };
+$("pArchive").onchange = pArchivePicked;
 $("pLocal").onclick = () => pSwitch("init");
 $("pClone").onclick = () => pSwitch("clone");
 $("pLinkKey").onclick = () => { pLinkAuth = "key"; pDraw(); };

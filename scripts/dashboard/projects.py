@@ -222,6 +222,9 @@ set_prefs = None
 # ...and a lock's, which ends the project's own Claude session: this
 # container's tmux sessions (the server's tmux_sessions).
 live_sessions = None
+# brief.write: the brief a new project is made with, kept in its tree for the
+# first Claude session rather than written into CLAUDE.md.
+brief_writer = None
 
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
@@ -264,6 +267,8 @@ _KEYED = {
     # to move with a rename or the renamed project silently reverts to claude's
     # own default the next time a session starts in it.
     "claude-prefs.json":  ["projects"],
+    # A new project's brief, staged or kept after it left the tree (brief.py).
+    "briefs.json":        [None],
 }
 
 # Files holding a flat list of project names.
@@ -1300,6 +1305,11 @@ def create(req, env=None):
     else:
         name = sanitize_name(_field(req, "name"))
         about = _field(req, "about").strip()
+        # A brief says what to build from nothing; an archive IS the start,
+        # so the dialog stops offering one once a file is picked, and a
+        # request carrying both is refused rather than half obeyed.
+        if about and _field(req, "archive"):
+            return {"error": "a project started from an archive has no brief: its code is where it starts"}, 400
     # After sanitizing, the only way to fail this is an empty name: every
     # other shape has already been turned into something legal. Kept as the
     # gate rather than replaced by `if not name`, because it is the invariant
@@ -1324,9 +1334,9 @@ def create(req, env=None):
             return {"error": f"cannot create {name}: {e}"}, 500
     if mode == "init":
         # An archive to start from: unpacked into the directory just claimed,
-        # BEFORE git init, so the tree is there for the CLAUDE.md draft and
-        # the first status. Anything wrong with it removes that directory,
-        # made a moment ago, so nobody else's.
+        # BEFORE git init, so the tree is there for the first status.
+        # Anything wrong with it removes that directory, made a moment ago,
+        # so nobody else's.
         arch = _field(req, "archive")
         if arch:
             r = unpack_archive(arch, dest)
@@ -1362,16 +1372,20 @@ def _init(dest, name, about, version="", env=None):
     if r["code"] != 0:
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
         return {"error": r["out"].strip()[-2000:] or "git init failed"}, 500
-    note = _write_md(dest, about)
+    note = brief_writer(dest, about) if brief_writer else ""
     # A starting version (the operator, 25 Sep): the tree as made is the
     # first commit, and VERSION at that number the second, the way the
     # Artifacts tab gives a project its first version, so a new project has
     # a history to count from the moment it exists. Blank asks for neither.
+    # The first may be empty: a project started from nothing has no files
+    # (its brief is kept out of git), and git refusing an empty commit left
+    # it with no history and no version at all.
     version = str(version or "").strip()
     if version and first_version:
         r = run(["git", "-C", str(dest), "add", "-A"], timeout=60)
         if r["code"] == 0:
-            r = run(["git", "-C", str(dest), "commit", "-q", "-m", f"Start {name}"], timeout=60, env=env)
+            r = run(["git", "-C", str(dest), "commit", "-q", "--allow-empty", "-m", f"Start {name}"],
+                    timeout=60, env=env)
         if r["code"] != 0:
             note = f"{note or 'ready'}; not committed: {r['out'].strip()[-300:] or 'git commit failed'}"
         else:
@@ -1625,7 +1639,7 @@ def _untar(src, dest):
 
 
 def _clone(dest, url, helper="", may_push_=False):
-    """The worker half of a clone: fetch, then draft the CLAUDE.md.
+    """The worker half of a clone: the fetch, and the wiring after it.
 
     With a token, the fetch itself runs under this project's helper and
     nothing else: the empty value ahead of it resets the list, so the
@@ -1647,43 +1661,9 @@ def _clone(dest, url, helper="", may_push_=False):
     if helper:
         _scope_to_token(dest, helper)
     set_push_hook(dest, may_push_)
-    _step("reading the repository")
-    note = _write_md(dest, "")
     if after_create:
         after_create(dest.name)     # the map, in the background, from here on
-    return "", note
-
-
-def _write_md(dest, about):
-    """A CLAUDE.md for a new project, and the sentence saying what happened.
-
-    Only the project's OWN notes, and only typed ones. The environment block
-    that used to go in beside them is assembled per session from the
-    controller instead (R63), so there is nothing here to render, push or
-    keep in step: a project that brought its own CLAUDE.md keeps it
-    untouched, one with none and no notes gets nothing, and one with notes
-    gets a short file it owns from that moment on.
-    """
-    md = dest / "CLAUDE.md"
-    if md.is_file():
-        return "kept the repository's own CLAUDE.md"
-    # Only what was typed. A project that arrived (a clone, an archive) used
-    # to get notes drafted from its README and build files, untracked, with
-    # a note to commit or delete them; the operator dropped that on 23 Sep:
-    # an unasked-for file in somebody's checkout, for a briefing the
-    # controller assembles per session anyway (R63).
-    text = (about.strip() + "\n") if about.strip() else ""
-    if not text:
-        return "no CLAUDE.md written; this project's notes are yours to start"
-    try:
-        md.write_text(text)
-    except OSError as e:
-        return f"could not write CLAUDE.md: {e}"
-    # Said out loud because it is a file this dashboard added to somebody
-    # else's tree: it is not in the repository's history, and a `git status`
-    # that opens with an unexpected untracked file is a small mystery worth
-    # not creating.
-    return "CLAUDE.md created from your notes"
+    return "", ""
 
 
 # ---- linking --------------------------------------------------------------
@@ -2142,11 +2122,10 @@ def save_locks(names):
 # READS are never refused, and the list of what stays is the point of the
 # feature: the notebook opens, the findings and their history are there, the
 # artifacts list and a dev instance still work. What goes is everything that
-# writes on Claude's behalf: the notebook's three tabs, and creating or
-# refreshing a CLAUDE.md, which is a file put into somebody else's project.
+# writes on Claude's behalf: the notebook's three tabs.
 LOCKED_REFUSAL = ("{name} is locked: yours to run. Unlock it to change its "
-                  "notebook or its CLAUDE.md; everything you read here still "
-                  "works while it stays locked.")
+                  "notebook; everything you read here still works while it "
+                  "stays locked.")
 
 
 def locked_out(name):

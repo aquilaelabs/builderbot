@@ -203,6 +203,20 @@ is derived from where the projects are bound (the node most of them use)
 rather than from enrolment order. Doctor reports each node's daemon on its
 own line.
 
+## A new project's brief is the first session's, not CLAUDE.md
+
+What New project was told to build used to become the project's CLAUDE.md,
+and Claude Code reads CLAUDE.md at the start of every session as standing
+instructions that override its defaults. So a request written on the first
+day (a stack, a layout, three tabs) went on asserting itself after the
+project had moved past it, and nothing kept it current (the operator, 28
+Sep). A request is a task for one session. It is kept as
+BUILDERBOT-BRIEF.md, a name Claude Code does not load, out of git; the first
+Claude press shows it in a dialog to change, with the model and effort, since
+nothing has started; the session takes it as its first prompt, and it leaves
+the tree then, kept outside the codebase rather than deleted. CLAUDE.md is
+left for the project to write about what it is.
+
 ## Captures go by age, never by need
 
 A reel's sheet and an emulator shot land in the project's `dist/`, because

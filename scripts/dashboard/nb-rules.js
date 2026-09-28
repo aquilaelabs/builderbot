@@ -178,6 +178,7 @@ function nbRulesView({$, nb, project}){
           <button type="button" id="rlKeepTheirs">Keep theirs</button>
           <button type="button" class="primary" id="rlUseMine">Use mine</button></div></div>`;
     box.innerHTML = nb.codebaseSection()
+      + nb.briefSection()
       + docSection("briefing", "rules", "Your rules",
       rows.length ? `${rows.length}` : "none", clash + body,
       // Shut on both sizes: the rules are read once and edited rarely, and

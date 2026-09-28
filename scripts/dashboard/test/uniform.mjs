@@ -1288,6 +1288,9 @@ const DIALOGS = {
   about: () => openAbout(), newproject: () => openNewProject(), trash: () => openTrash(),
   globalrules: () => openGlobalRules(), pending: () => openPending('alpha'),
   newcontainer: () => openNewContainer(), custom: () => editCustom(),
+  // A new project's first session: opened for a project with no brief, which
+  // draws the same dialog with an empty text box.
+  firstsession: () => openBrief('alpha', ''),
   senddocker: () => openSendToDocker('ep.silon'), devenv: () => openDevEnv('ep.silon', 'main'),
   projsettings: () => document.querySelector('[data-rn="alpha"]')?.click(),
   // The Debugging group's dialog. It draws from SETTING_GROUPS rather than

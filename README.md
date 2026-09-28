@@ -320,6 +320,8 @@ bb rules check [NAME|--all]   run the checks of the rules whose files you change
 bb rules history   what has changed them, by either of you
 bb rules pending   rules a session added that are waiting for your approval
 bb preamble        what a session started here is handed: rules, roadmap, bugs (--json for its size)
+bb brief           the brief this project was started from: waiting for its first
+                   Claude session, or kept after that session started
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
