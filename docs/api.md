@@ -95,7 +95,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/memory` | prefix | `_memory` | Edit, create or delete one of this project's memories, rewrite their index, or read the history: memory.verb, behind the gates here. |  |
 | POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: docker-write |
 | POST | `/api/brief` | prefix | `_brief` | POST /api/brief: the first Claude press's Build it and Start without it, and a session's take as it starts: brief.verb, behind the gates here. |  |
-| POST | `/api/design` | prefix | `_design` | POST /api/design: the notebook's Save of the language and the pages, a prompt preview, the file written into the tree, and Send to Claude: design.verb, for an account that works on the project. |  |
+| POST | `/api/design` | prefix | `_design` | POST /api/design: the notebook's Save of the language and the pages, a prompt preview and the file written into the tree: design.verb, for an account that works on the project. |  |
 | POST | `/api/devapp` | prefix | `_devapp` | The dev-instance controls: the Docker tab's buttons, and `bb devapp` from a session. | refused: docker-write |
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |

@@ -753,8 +753,6 @@ function makeNotebook(project){
       if (now !== nb.roadmapSession){ nb.roadmapSession = now; redrawRoadmap(); }
       // The Docker view follows a running job the way the tab does.
       if (!root.querySelector('[data-view="docker"]').hidden) loadNbDocker();
-      // The Design view's Send to Claude follows the session being there.
-      if (!root.querySelector('[data-view="design"]').hidden) nb.dsPoll?.();
       // What this notebook re-reads and when is declared once, up where the
       // watches are taken; nothing here decides it. All six halves are on
       // the revisions poll; this poll carries only what /api/status alone

@@ -1605,11 +1605,13 @@ space, motion and your own design notes; and pages laid out as
 labelled blocks on a phone or desktop frame, each named for what it is for
 and the platform it is built for, a web app or an Android, iOS, Linux,
 macOS or Windows app, since one project can be several; every edit is
-staged behind Save, the prompt under each is the server's words, Send to
-Claude points the running session at it, `bb design show` prints it, a
-session asked to put a design into the notebook writes the same record
-with `bb design save`, and Write the file puts `docs/design-language.md`
-into the tree for every session to read), the
+staged behind Save, the prompt under each is the server's words to copy
+into a session when you want it applied, and nothing on the view reaches
+into one: a session meets the design by itself, through the rules its
+briefing names and `bb design show`; a session asked to put a design into
+the notebook writes the same record with `bb design save`, and Write the
+file puts `docs/design-language.md` into the tree for every session to
+read), the
 **Roadmap** (the shared list of design work and ordered plans), **Bugs**,
 **Git**, **Artifacts**, **Docker** (every container that belongs to this
 project, with the manager's rows and controls, so a dev radarr for a media

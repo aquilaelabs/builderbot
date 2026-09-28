@@ -2269,8 +2269,7 @@ brief.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
 # session is pointed at and docs/design-language.md written from it: design.py.
 import design                                                    # noqa: E402
 
-design.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
-                 tell=notify.tell, sessions=sessions_anywhere, claude_session=claude_session)
+design.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
 
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card; see the module docstring
@@ -4374,8 +4373,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _design(self, req):
         """POST /api/design: the notebook's Save of the language and the
-        pages, a prompt preview, the file written into the tree, and Send to
-        Claude: design.verb, for an account that works on the project."""
+        pages, a prompt preview and the file written into the tree:
+        design.verb, for an account that works on the project."""
         name = field(req, "project")
         if self._not_project(name) or self._readonly(name):
             return

@@ -2,8 +2,8 @@
 // language and its pages, laid out as labelled blocks on a frame and named
 // for what they are for. Staged behind the notebook's Save; the prompts and
 // docs/design-language.md are the server's words, which is what bb design
-// prints and Send to Claude points a session at.
-import { launch, newPage, ok, done, ready, tmuxCapture, URL, DIR } from './lib.mjs';
+// prints. The view is passive: nothing on it reaches into a session.
+import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -85,21 +85,17 @@ ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridRow) ===
 await page.keyboard.press('Shift+ArrowDown'); await page.keyboard.press('Shift+ArrowDown');
 ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridRow) === '4 / span 5',
    '...and sizing it past the frame\'s edge caps it there rather than sliding it up');
-// Send is dead, with the reason on its row, until the design is saved.
-const state = () => page.$eval(`${NB} [data-dspage] [data-dsstate]`, e => e.textContent);
-ok(/Save first/.test(await state()) && await page.$eval(`${NB} [data-dspage] [data-dssend]`, b => b.disabled),
-   `Send to Claude is dead until the design is saved, and the row says so (${await state()})`);
+// Nothing on the view reaches into a session: the prompt's row offers Copy
+// and nothing that sends (the operator, 28 Sep).
+ok(!(await page.$(`${NB} [data-dssend]`)) && !(await page.$(`${NB} button:has-text("Send to Claude")`))
+   && await page.$(`${NB} [data-dspage] [data-dscopy]`),
+   'the prompt row has Copy and no Send to Claude: the view is passive');
 await saved();
 const rec = await api(`/api/design?project=${P}`);
 const pg = rec.pages[0];
 ok(rec.pages.length === 1 && pg.id === 1 && pg.name === 'the home dashboard' && pg.platform === 'web'
    && pg.blocks[4].x === 1 && pg.blocks[4].y === 3 && pg.blocks[4].h === 5 && pg.blocks[4].label === 'orders per day',
    `Save writes the page with its id, its name, its platform and the blocks as arranged (${JSON.stringify(pg.blocks[4])})`);
-// The fixture runs a claude-alpha session on the harness's private tmux,
-// so once saved there is nothing left in the way.
-ok(await state() === '' && await page.$eval(`${NB} [data-dspage] [data-dssend]`, b => !b.disabled),
-   `...and once saved, with a session running here, Send is live (${await state()})`);
-
 // ---- the prompt, the server's words ------------------------------------------------
 const promptText = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
 ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
@@ -141,14 +137,6 @@ const badR = await fetch(URL.replace(/\/$/, '') + '/api/design', { method: 'POST
   body: JSON.stringify({ project: P, action: 'save', language: { ...again.language, themes: [{ name: 'A', colors: [{ name: 'bg', hex: 'blue' }] }] }, pages: [] }) });
 const bad = { status: badR.status, ...(await badR.json()) };
 ok(bad.status === 400 && /a colour is #rrggbb/.test(bad.error), `a colour that is not a hex is refused by name (${bad.error})`);
-
-// ---- Send to Claude, into a session ----------------------------------------------------
-await page.waitForFunction(() => !document.querySelector('.nb [data-dspage] [data-dssend]')?.disabled, null, { timeout: 10000 });
-await page.click(`${NB} [data-dspage] [data-dssend]`);
-let typed = '';
-for (let i = 0; i < 40 && !/bb design show 1/.test(typed); i++){ await page.waitForTimeout(250); typed = tmuxCapture(`claude-${P}`); }
-ok(/From the operator, on the Design view: build or restyle the home dashboard to the saved design\. `bb design show 1` prints/.test(typed),
-   'Send to Claude types a short pointer at the saved page into the session, naming what it is for');
 
 // ---- the file, and bb design -----------------------------------------------------------
 await page.click(`${NB} #dsWrite`);

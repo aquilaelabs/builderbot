@@ -13,9 +13,10 @@ Two things come out of it, both generated here and nowhere else, so the
 tab, `bb design` and the file cannot drift:
 
   * a prompt, one for the language and one per page, which the tab shows
-    and Send to Claude points a session at. A prompt is typed into a
-    terminal a character at a time, so what is typed is a short pointer at
-    `bb design show`, and this text is what that prints;
+    for a person to copy into a session when they want it applied, and
+    which `bb design show` prints for a session that reads it by itself.
+    The view is passive (the operator, 28 Sep): nothing on it reaches
+    into a session;
   * docs/design-language.md in the project's tree, the same shape as
     BuilderBot's own, written on request from the saved state. A session
     reads it as the standing description of the look, which is what the
@@ -36,9 +37,6 @@ import statefile
 WORKSPACE = None
 FILE = None
 write_json = None
-tell = None
-sessions = None
-claude_session = None
 git_env = None
 
 FILE_PATH = "docs/design-language.md"
@@ -272,10 +270,9 @@ LANGUAGE_DEFAULT = {"themes": [], "font": "system", "corners": "soft", "density"
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
-def configure(*, workspace, state, write_json, tell, sessions, claude_session, git_env=None):
+def configure(*, workspace, state, write_json, git_env=None):
     globals().update(WORKSPACE=Path(workspace), FILE=Path(state) / "designs.json",
-                     write_json=write_json, tell=tell, sessions=sessions,
-                     claude_session=claude_session, git_env=git_env)
+                     write_json=write_json, git_env=git_env)
     # The approval queue (roadmap #27): a session's save under ask waits
     # for the operator, who approves it on the notebook, and it lands then.
     pending.configure(write_json=write_json, state=state)
@@ -774,42 +771,16 @@ def write_file(project, who=""):
     return {"ok": True, "path": FILE_PATH, "file": _file_state(project, rec)}, 200
 
 
-def send(project, page_id, mine=""):
-    """Send to Claude: a short pointer typed into this account's session
-    on the project. Short because it is typed a character at a time; the
-    whole text is what bb design show prints. (payload, status)."""
-    if tell is None or sessions is None or claude_session is None:
-        return {"error": "no way to reach a session from here"}, 400
-    rec = _record(_load(), project)
-    page = next((p for p in rec["pages"] if p["id"] == page_id), None) if page_id else None
-    if page_id and page is None:
-        return {"error": "no such page: save it first"}, 400
-    if page is None:
-        scope = rec["language"].get("scope") or "the project's user interface"
-        line = (f"From the operator, on the Design view: apply the project's design language to "
-                f"{scope}. `bb design show` prints it in full; read it, apply it, keep "
-                f"{FILE_PATH} in step, and say what you changed.")
-    else:
-        line = (f"From the operator, on the Design view: build or restyle {page['name'] or 'the page'} "
-                f"to the saved design. `bb design show {page['id']}` prints its layout and the "
-                f"language; read it, apply it there, keep {FILE_PATH} in step, and say what you changed.")
-    session = (mine or "") + claude_session(project)
-    r = tell(session, line, sessions())
-    if r.get("error"):
-        return r, 400
-    return {"ok": True, "sent": bool(r.get("sent")), "text": line}, 200
-
-
 def verb(project, req, who, session):
     """POST /api/design. A person saves from the tab; a session saves the
     same record through `bb design save`, asked to put a design language
-    it was given, or found in the tree, into the notebook. The send and the
-    file are a person's: a session is the one being sent to, and writes the
-    file itself with bb design file. (payload, status)."""
+    it was given, or found in the tree, into the notebook. The file is a
+    person's: a session writes it itself with bb design file.
+    (payload, status)."""
     act = str(req.get("action") or "")
-    if session and act in ("write", "send"):
+    if session and act == "write":
         return {"error": "a session reads the design with bb design and writes the file with "
-                         "bb design file; Send to Claude and Write the file are the tab's"}, 403
+                         "bb design file; Write the file is the tab's"}, 403
     if act == "preview":
         try:
             lang = _clean_language(req.get("language") or {})
@@ -842,9 +813,6 @@ def verb(project, req, who, session):
         return save(project, req, who)
     if act == "write":
         return write_file(project, who)
-    if act == "send":
-        pid = req.get("page")
-        return send(project, pid if isinstance(pid, int) else 0, str(req.get("mine") or ""))
     return {"error": f"unknown action: {act}"}, 400
 
 

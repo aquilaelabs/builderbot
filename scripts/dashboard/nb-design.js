@@ -111,7 +111,6 @@ function nbDesignView({$, nb, project, root}){
     nb.dsDirty = true;
     nb.syncSave();
     drawHint();
-    refreshStates();
   }
 
   // ---- drawing --------------------------------------------------------------------
@@ -132,7 +131,6 @@ function nbDesignView({$, nb, project, root}){
     if (root.classList.contains("ro"))
       body.querySelectorAll("input,select,textarea,button:not([data-dscopy])").forEach(e => e.disabled = true);
     drawHint();
-    refreshStates();
     refreshPrompt("lang");
     nb.dsPages.forEach(p => refreshPrompt(keyOf(p)));
   }
@@ -170,11 +168,10 @@ function nbDesignView({$, nb, project, root}){
         <div class="actbar"><span class="state">${(r.words || []).length || (r.paths || []).length ? "named in the briefing; its text arrives when it applies" : "standing: in every briefing whole"}</span>
           <button type="button" class="danger" data-dsrrm title="take this rule out">Remove rule</button></div>
       </div>`).join("")}
-      <div class="field">${lbl("dsPromptL", "Prompt", "what a session is asked to do; Send to Claude points the session at it")}
+      <div class="field">${lbl("dsPromptL", "Prompt", "what the saved language asks of a session, to copy into one when you want it applied; a session also reads it by itself, through the rules and bb design show")}
         <textarea id="dsPromptL" class="dsprompt" readonly rows="10" spellcheck="false"></textarea>
-        <div class="actbar"><span class="state" data-dsstate="lang"></span>
-          <button type="button" data-dscopy="lang" title="copy the prompt">Copy</button>
-          <button type="button" class="primary" data-dssend="lang">Send to Claude</button></div></div>`;
+        <div class="actbar"><span class="state"></span>
+          <button type="button" data-dscopy="lang" title="copy the prompt">Copy</button></div></div>`;
     return docSection("design", "language", "Design language", status, body);
   }
 
@@ -234,11 +231,10 @@ function nbDesignView({$, nb, project, root}){
       : `<div class="field"><div class="hint">${n ? "Tap a block to name what it is for." : "Add a block, or start again from a template with Add page."}</div></div>`}
       <div class="field">${ctl(`${key}-notes`, "Notes", "what the blocks cannot say: what a tap does, where the data comes from",
             `<textarea id="${key}-notes" rows="3" maxlength="65536" data-dsf="notes">${esc(p.notes)}</textarea>`, true)}</div>
-      <div class="field">${lbl(`${key}-prompt`, "Prompt", "what a session is asked to do for this page; Send to Claude points the session at it")}
+      <div class="field">${lbl(`${key}-prompt`, "Prompt", "what this page asks of a session, to copy into one when you want it built; a session also reads it by itself, with bb design show")}
         <textarea id="${key}-prompt" class="dsprompt" readonly rows="10" spellcheck="false" data-dsprompt></textarea>
-        <div class="actbar"><span class="state" data-dsstate="${key}"></span>
+        <div class="actbar"><span class="state"></span>
           <button type="button" data-dscopy="${key}" title="copy the prompt">Copy</button>
-          <button type="button" class="primary" data-dssend="${key}">Send to Claude</button>
           <button type="button" class="danger" data-dspagerm title="take this page out; Save makes it final, Revert brings it back">Remove page</button></div></div>`;
     return `<div data-dspage="${key}">${docSection("design", `page:${key}`,
       p.name || "unnamed page", `${plat?.label || p.platform} · ${n} block${n === 1 ? "" : "s"}`, body,
@@ -357,7 +353,6 @@ function nbDesignView({$, nb, project, root}){
       touched(); drawDesign();
     };
     el.querySelector("[data-dscopy]").onclick = e => copyPrompt(el.querySelector("[data-dsprompt]").value, e.target);
-    el.querySelector("[data-dssend]").onclick = e => sendTo(p, e.target);
     wireBoard(el.querySelector(".dsboard"), p);
   }
 
@@ -509,7 +504,6 @@ function nbDesignView({$, nb, project, root}){
     });
     sst();
     body.querySelector('[data-dscopy="lang"]').onclick = e => copyPrompt(body.querySelector("#dsPromptL").value, e.target);
-    body.querySelector('[data-dssend="lang"]').onclick = e => sendTo(null, e.target);
   }
 
   // ---- the prompts, from the server ---------------------------------------------------
@@ -540,45 +534,10 @@ function nbDesignView({$, nb, project, root}){
     btn?.blur();
   }
 
-  // Why Send to Claude is dead, on its row: what is sent is a pointer at the
-  // SAVED design, into a running session of this account's.
-  const running = () => (state?.sessions || []).some(x => x.name === myClaude(project));
-  function sendWhy(p){
-    if (nb.dsDirty) return "Save first: the session reads what is saved";
-    if (p && !p.name.trim()) return "name the page first: what it is for";
-    if (!running()) return "no Claude session of yours is running on this project: press Claude on its card";
-    return "";
-  }
-  function refreshStates(){
-    const body = $("dsBody");
-    if (!body) return;
-    for (const b of body.querySelectorAll("[data-dssend]")){
-      const key = b.dataset.dssend;
-      const p = key === "lang" ? null : nb.dsPages.find(x => keyOf(x) === key);
-      const why = sendWhy(p);
-      b.disabled = !!why || root.classList.contains("ro");
-      b.title = why || (p ? `type a line into the session: build or restyle ${p.name.trim()} to this design`
-                          : "type a line into the session: apply the language to the project");
-      const st = body.querySelector(`[data-dsstate="${key}"]`);
-      if (st){ st.textContent = why; st.classList.toggle("bad", !!why); }
-    }
-  }
-  // The poll: a session starting or ending changes what the rows say.
-  nb.dsPoll = () => { if (nb.dsData) refreshStates(); };
-
-  async function sendTo(p, btn){
-    const why = sendWhy(p);
-    if (why){ notify(why, true); return; }
-    busy(btn, "Sending");
-    try{
-      const j = await (await postJSON("/api/design", {project, action: "send", page: p ? p.id : 0})).json();
-      if (j.error) notify(j.error, true);
-      else notify(j.sent ? "sent: the session reads the saved design with bb design show"
-                         : "typed into the session's input box, but not sent: press Enter there");
-    }catch(e){ notify("design: " + e, true); }
-    unbusy(btn, "Send to Claude");
-    refreshStates();
-  }
+  // The view is passive by design (the operator, 28 Sep): nothing here
+  // reaches into a session. A session meets the design on its own, through
+  // the rules the briefing names and bb design show, and a person who wants
+  // it applied now copies the prompt into one.
 
   // ---- what the notebook's Save and Revert do here ----------------------------------
   nb.designStagedCount = () => nb.dsDirty ? 1 : 0;
