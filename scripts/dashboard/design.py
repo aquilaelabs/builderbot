@@ -256,7 +256,8 @@ def _record(d, project):
         rec = {}
     lang = _clean_language(rec.get("language") or {})
     pages = [p for p in (rec.get("pages") or []) if isinstance(p, dict)]
-    return {"language": lang, "pages": pages, "next": int(rec.get("next") or 1)}
+    return {"language": lang, "pages": pages, "next": int(rec.get("next") or 1),
+            "by": str(rec.get("by") or ""), "at": int(rec.get("at") or 0)}
 
 
 # ---- validation: what is kept is what the vocabulary allows -------------------
@@ -349,7 +350,7 @@ def presets():
     return {"kinds": [{"key": k, "label": l, "means": m} for k, l, m in KINDS],
             "frames": {k: dict(v) for k, v in FRAMES.items()},
             "templates": [{"key": t["key"], "label": t["label"], "frame": t["frame"],
-                           "blocks": [dict(zip(("kind", "label", "x", "y", "w", "h"), b)) for b in t["blocks"]]}
+                           "blocks": [dict(zip(("kind", "label", "x", "y", "w", "h"), b, strict=True)) for b in t["blocks"]]}
                           for t in TEMPLATES],
             "platforms": [{"key": k, "label": l, "frames": list(f), "system": sf, "means": m}
                           for k, l, f, sf, m in PLATFORMS],
@@ -377,7 +378,7 @@ def view(project):
     state. Whether a session is running to send to is the page's poll."""
     rec = _record(_load(), project)
     return {"language": rec["language"], "pages": rec["pages"], "presets": presets(),
-            "file": _file_state(project, rec)}
+            "file": _file_state(project, rec), "by": rec["by"], "at": rec["at"]}
 
 
 # ---- the words ------------------------------------------------------------------
@@ -526,9 +527,10 @@ def file_text(rec):
 
 
 # ---- writes ----------------------------------------------------------------------
-def save(project, req):
-    """The notebook's Save: the whole record replaced by what was staged,
-    each page keeping its id (a new one gets the next). (payload, status)."""
+def save(project, req, who=""):
+    """The notebook's Save, and a session's bb design save: the whole record
+    replaced by what was staged, each page keeping its id (a new one gets
+    the next), with who saved it and when. (payload, status)."""
     try:
         lang = _clean_language(req.get("language") or {})
         raw = req.get("pages") if isinstance(req.get("pages"), list) else []
@@ -554,7 +556,8 @@ def save(project, req):
             if p["id"] in seen:
                 return {"error": "two pages carry one id"}, 400
             seen.add(p["id"])
-        d[project] = {"language": lang, "pages": pages, "next": nxt}
+        d[project] = {"language": lang, "pages": pages, "next": nxt,
+                      "by": str(who or ""), "at": int(time.time())}
         write_json(FILE, d)
     return {"ok": True, "language": lang, "pages": pages}, 200
 
@@ -600,11 +603,15 @@ def send(project, page_id, mine=""):
 
 
 def verb(project, req, who, session):
-    """POST /api/design. A session reads through GET and bb design; the
-    writes and the send are a person's. (payload, status)."""
+    """POST /api/design. A person saves from the tab; a session saves the
+    same record through `bb design save`, asked to put a design language
+    it was given, or found in the tree, into the notebook. The send and the
+    file are a person's: a session is the one being sent to, and writes the
+    file itself with bb design file. (payload, status)."""
     act = str(req.get("action") or "")
-    if session:
-        return {"error": "the Design view is a person's; a session reads it with bb design"}, 403
+    if session and act in ("write", "send"):
+        return {"error": "a session reads the design with bb design and writes the file with "
+                         "bb design file; Send to Claude and Write the file are the tab's"}, 403
     if act == "preview":
         try:
             lang = _clean_language(req.get("language") or {})
@@ -613,7 +620,7 @@ def verb(project, req, who, session):
             return {"error": str(e)}, 400
         return {"text": prompt(lang, page)}, 200
     if act == "save":
-        return save(project, req)
+        return save(project, req, who)
     if act == "write":
         return write_file(project, who)
     if act == "send":
@@ -629,6 +636,9 @@ def text_for(project, which=""):
     rec = _record(_load(), project)
     if which == "list":
         return listing(project), ""
+    if which == "json":
+        return json.dumps({"language": rec["language"], "pages": rec["pages"],
+                           "presets": presets()}, indent=1), ""
     if which == "file":
         return file_text(rec), ""
     if which == "language":
@@ -652,7 +662,10 @@ def listing(project):
     for p in rec["pages"]:
         lines.append(f"  {p['id']:>3}  {p['name'] or '(unnamed)'}  ({_platform(p['platform'])[1].lower()}, {p['frame']}, {len(p['blocks'])} block"
                      f"{'' if len(p['blocks']) == 1 else 's'})")
-    lines.append(f"bb design show [ID|NAME] prints one in full; bb design file prints {FILE_PATH}")
+    if rec["by"]:
+        lines.append(f"  last saved by {rec['by']} {time.strftime('%d %b %H:%M', time.localtime(rec['at']))}")
+    lines.append(f"bb design show [ID|NAME] prints one in full; bb design file prints {FILE_PATH}; "
+                 "bb design json prints the record, and bb design save FILE writes one back")
     return "\n".join(lines)
 
 
@@ -662,4 +675,4 @@ for _k, _l, _c in SCHEMES:
     _clean_language({"scheme": _k, "colors": _c})
 for _t in TEMPLATES:
     _clean_page({"frame": _t["frame"], "template": _t["key"],
-                 "blocks": [dict(zip(("kind", "label", "x", "y", "w", "h"), b)) for b in _t["blocks"]]}, 1)
+                 "blocks": [dict(zip(("kind", "label", "x", "y", "w", "h"), b, strict=True)) for b in _t["blocks"]]}, 1)

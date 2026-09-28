@@ -336,10 +336,10 @@ is how a page came to turn itself back.
 
 Every view opens with the same head row: its one-line summary on the left
 and its controls, History where it has one, on the right. That row is the
-first band of the view and sits at one height on all seven views.
+first band of the view and sits at one height on all nine views.
 
 The view strip is one row on a desktop. On a phone it wraps into rows of
-equal-width tabs rather than scrolling sideways: seven labels do not fit
+equal-width tabs rather than scrolling sideways: nine labels do not fit
 393px, and a strip that hides its last two behind an edge is a strip whose
 last two views nobody opens. Every tab stays visible at every width. The
 view a notebook is on comes back with a reload, the way the tab strip and

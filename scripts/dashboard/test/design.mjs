@@ -4,7 +4,7 @@
 // docs/design-language.md are the server's words, which is what bb design
 // prints and Send to Claude points a session at.
 import { launch, newPage, ok, done, ready, tmuxCapture, URL, DIR } from './lib.mjs';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
@@ -164,6 +164,39 @@ ok(bb('file') === written, 'bb design file prints the file as the notebook wrote
 let err = '';
 try { bb('show', 'nowhere'); } catch (e) { err = String(e.stderr); }
 ok(/no page here called 'nowhere'/.test(err), `...and a page that is not there is refused by name (${err.trim()})`);
+
+// ---- a session writes one: bb design json, edited, and bb design save --------------------
+// Asked to put a design language into the notebook, a session reads the
+// record with json, changes it, and saves it back whole: a page without
+// an id is new, one with its id replaces that page.
+{
+  const rec = JSON.parse(bb('json'));
+  ok(rec.language.colors.accent === '#ff8800' && rec.pages.length === 1 && rec.presets.kinds.length > 10,
+     'bb design json prints the record with the presets it is drawn from');
+  rec.language.scheme = 'paper'; rec.language.colors = rec.presets.schemes.find(s => s.key === 'paper').colors;
+  rec.language.rules = 'Every list pages at fifty.';
+  rec.pages[0].notes = 'The chart is the first thing read.';
+  rec.pages.push({ name: 'the login screen', platform: 'ios', template: 'blank',
+                   blocks: [{ kind: 'form', label: 'email, password, one Sign in', x: 0, y: 4, w: 6, h: 4 }] });
+  const tmp = `${DIR}/design-save.json`;
+  writeFileSync(tmp, JSON.stringify(rec));
+  const said = bb('save', tmp);
+  const after = await api(`/api/design?project=${P}`);
+  ok(/saved alpha's design: 2 pages/.test(said) && after.language.scheme === 'paper' && after.language.rules === 'Every list pages at fifty.'
+     && after.pages[0].id === 1 && after.pages[0].notes === 'The chart is the first thing read.'
+     && after.pages[1].id === 2 && after.pages[1].name === 'the login screen' && after.pages[1].frame === 'phone' && after.by === 'session:alpha',
+     `a session's bb design save writes the record back: the language, the page by its id, a new page with the next (${said.trim()})`);
+  await page.evaluate(n => getNotebook(n).view('design'), P);
+  await page.waitForFunction(() => document.querySelectorAll('.nb [data-dspage]').length === 2, null, { timeout: 15000 });
+  ok(await page.$eval(`${NB} [data-sect="design:language"] > summary .sst`, e => e.textContent) === 'Paper (light)'
+     && await page.$eval(`${NB} [data-dspage="p2"] .sect > summary .t`, e => e.textContent) === 'the login screen',
+     '...and the tab shows what the session saved when it is shown again');
+  let refused = '';
+  try { bb('save', '/nonexistent.json'); } catch (e) { refused = String(e.stderr); }
+  ok(/could not read \/nonexistent.json/.test(refused), 'a file that is not there is refused by name');
+  await page.click(`${NB} [data-dspage="p2"] [data-dspagerm]`);
+  await page.waitForFunction(() => document.querySelectorAll('.nb [data-dspage]').length === 1, null, { timeout: 5000 });
+}
 
 // ---- a page removed, and the record put back ------------------------------------------
 await page.click(`${NB} [data-dspage] [data-dspagerm]`);

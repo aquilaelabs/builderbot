@@ -329,6 +329,9 @@ bb design          what this project looks like, from the notebook's Design view
 bb design show [ID|NAME]   the prompt for one page, or for the language alone:
                    the colours as tokens, the type, the shape, the layout
 bb design file     docs/design-language.md as the notebook writes it
+bb design json     the record: the language, the pages, and the presets by key
+bb design save FILE   write a record of that shape back, whole: how a session
+                   puts a design language it was given into the notebook
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
