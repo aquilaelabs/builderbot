@@ -14,6 +14,7 @@ out. The Profile tab offers each as a download; only the account's own.
 """
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 WORKSPACE = Path("/workspace")
@@ -22,9 +23,12 @@ WORKTREES = WORKSPACE / ".worktrees"
 # on the share (server.home_for through lib/common.sh's user_home).
 root_for = None
 MAX_LIST = 60
-# The largest transcript rendered whole: past this the text says so and
-# stops, since a person downloading a log wants a file that opens.
-MAX_BYTES = 64 * 1024 * 1024
+# The most text one download carries: past this it says so and stops, since
+# a person wants a file that opens. A day-long session's transcript runs to
+# hundreds of megabytes on disk (the briefing rides on every turn) and
+# renders to a tenth of that in a couple of seconds, so this is a fence,
+# not a limit anybody meets.
+MAX_OUT = 256 * 1024 * 1024
 
 
 def configure(*, workspace, root_for):
@@ -113,10 +117,16 @@ def _find(uid, project, sid):
 
 
 def _when(d):
+    """The line's stamp in the controller's own time: Claude Code writes
+    UTC, and a person reads the log beside a dashboard that shows local."""
     t = str(d.get("timestamp") or "")
-    if len(t) >= 16 and t[10] == "T":
-        return t[:16].replace("T", " ")
-    return ""
+    try:
+        at = datetime.fromisoformat(t.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return at.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def _tool_line(b):
@@ -158,14 +168,15 @@ def render(uid, project, sid):
     started = time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime))
     out = [f"Conversation on {project}, session {sid}, last written {started}",
            "What was said, every tool call with its command, and what each answered, as the "
-           "transcript Claude Code wrote holds them. Claude's private reasoning is not in it.", ""]
+           "transcript Claude Code wrote holds them. A line headed System is what BuilderBot "
+           "or Claude Code put in front of Claude (a hook's verdict, a subagent's report, a "
+           "summary after the context filled). Claude's private reasoning is not in it.", ""]
     total = 0
     try:
         with open(f, encoding="utf-8", errors="replace") as fh:
             for line in fh:
-                total += len(line)
-                if total > MAX_BYTES:
-                    out.append("[cut here: the transcript is larger than this download renders]")
+                if total > MAX_OUT:
+                    out.append("[cut here: the conversation is longer than this download carries]")
                     break
                 try:
                     d = json.loads(line)
@@ -181,11 +192,14 @@ def render(uid, project, sid):
                         if isinstance(b, dict) and b.get("type") == "tool_result":
                             text = _result_text(b)
                             out.append(("Result (error):" if b.get("is_error") else "Result:") + (("\n" + text) if text.strip() else " (nothing)"))
+                            total += len(text)
                             out.append("")
                     texts = [t for t in _texts(content) if t.strip()]
                     if texts:
-                        out.append(f"You ({stamp}):" if stamp else "You:")
+                        who = "System" if d.get("isMeta") or d.get("isCompactSummary") else "You"
+                        out.append(f"{who} ({stamp}):" if stamp else f"{who}:")
                         out.extend(texts)
+                        total += sum(len(t) for t in texts)
                         out.append("")
                 elif kind == "assistant":
                     content = msg.get("content")
@@ -195,6 +209,7 @@ def render(uid, project, sid):
                         if b.get("type") == "text" and str(b.get("text") or "").strip():
                             out.append(f"Claude ({stamp}):" if stamp else "Claude:")
                             out.append(str(b["text"]))
+                            total += len(b["text"])
                             out.append("")
                         elif b.get("type") == "tool_use":
                             out.append(_tool_line(b))

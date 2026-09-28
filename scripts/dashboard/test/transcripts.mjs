@@ -23,6 +23,7 @@ writeFileSync(join(tree, 'conv-one-2026.jsonl'), [
   line(msg('assistant', [{ type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/workspace/alpha/README.md' } }])),
   line(msg('user', [{ type: 'tool_result', tool_use_id: 't2', content: [{ type: 'text', text: 'hello readme' }], is_error: true }])),
   line(msg('user', 'SIDECHAIN WORDS', { isSidechain: true })),
+  line(msg('user', 'Stop hook feedback: a check failed', { isMeta: true })),
   line(msg('assistant', [{ type: 'text', text: 'Done: R4 is ticked.' }])),
 ].join(''));
 // An older one from a worktree session, listed after the newer.
@@ -33,6 +34,10 @@ const old = new Date('2025-01-01T00:00:00Z');
 const { utimesSync } = await import('node:fs');
 utimesSync(join(wt, 'conv-two-2025.jsonl'), old, old);
 
+// The stamps are the controller's local time; the server runs on this box.
+const local = t => { const d = new Date(t), p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const AT = local('2026-09-28T10:15:00.000Z');
 const browser = await launch();
 const page = await newPage(browser);
 await page.goto(URL); await ready(page);
@@ -56,12 +61,13 @@ const got = await page.evaluate(async href => {
 ok(got.status === 200 && /^text\/plain/.test(got.type), `the download is plain text (${got.status} ${got.type})`);
 ok(/attachment; filename="claude-alpha-\d{8}-\d{4}-conv-one.txt"/.test(got.disp), `named for the project, the time and the session: ${got.disp}`);
 ok(/^Conversation on alpha, session conv-one-2026/.test(got.text), 'headed with the project and the session');
-ok(/You \(2026-09-28 10:15\):\nPlease tick the roadmap item off for me/.test(got.text), 'what you said, stamped');
-ok(/Claude \(2026-09-28 10:15\):\nReading the roadmap first\./.test(got.text), 'what Claude said');
+ok(got.text.includes(`You (${AT}):\nPlease tick the roadmap item off for me`), `what you said, stamped in local time (${AT})`);
+ok(got.text.includes(`Claude (${AT}):\nReading the roadmap first.`), 'what Claude said');
 ok(/\$ bb roadmap show R4\n  \(Read item four\)/.test(got.text), 'a shell command as typed, with what it was for');
 ok(/Result:\nR4  The thing to do\n  1\. a step/.test(got.text), 'and what bb answered, whole');
 ok(/Read: \/workspace\/alpha\/README\.md\nResult \(error\):\nhello readme/.test(got.text), 'a file read by its path, and a failed result marked');
-ok(/Claude \(2026-09-28 10:15\):\nDone: R4 is ticked\./.test(got.text), 'the closing words');
+ok(got.text.includes(`Claude (${AT}):\nDone: R4 is ticked.`), 'the closing words');
+ok(got.text.includes(`System (${AT}):\nStop hook feedback: a check failed`), 'what a hook put in front of Claude is headed System, not You');
 ok(!/SECRET REASONING/.test(got.text), "Claude's private reasoning is not in it");
 ok(!/SIDECHAIN WORDS/.test(got.text), 'a subagent side chain is not in it');
 ok(!/not a turn/.test(got.text), 'a summary line is not in it');
