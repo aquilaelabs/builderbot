@@ -10,6 +10,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Set up GPU display on a node's row (Health): the NVIDIA driver and a headless X server on the card, as bb-sandbox gpu and a unit of the machine's own; after the one reboot it asks for, an emulator there renders on the card and bb emu gpu says so, and a session sees the display (6afdb2e)
 - A Claude session can send its project to Docker the way the Artifacts tab's Send to Docker manager does: bb devapp new [NAME] [--branch REF] makes a container from the project's compose file, builds and starts it, and waits for the result, under the project's Claude may: Run its container setting (f02a9a8)
 - bb capture: shot, one picture at rest (shots a quarter second apart until a second of them match), and reel, the frames that changed on one sheet with a JSON of when; each from a page, the running emulator or an X display. bb emu shot is bb capture shot --emu (60d809c, 0a56328)
+- The notebook has a Design view: a project's design language (colours as tokens, type, shape, space, motion, your rules) and pages laid out as labelled blocks on a phone or desktop frame, each named for what it is for and its platform; Send to Claude, bb design and docs/design-language.md carry it (8d6375a)
 
 ### Changed
 
