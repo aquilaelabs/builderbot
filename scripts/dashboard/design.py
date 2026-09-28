@@ -837,6 +837,19 @@ def write_file(project, who=""):
     return {"ok": True, "path": FILE_PATH, "file": _file_state(project, rec)}, 200
 
 
+def _unfinished_out(holder):
+    """`holder` (a language, a theme or a page as sent) without the rules
+    that have no text yet, at every level, for a preview asked mid-typing."""
+    if not isinstance(holder, dict):
+        return holder
+    out = dict(holder)
+    if isinstance(out.get("rules"), list):
+        out["rules"] = [r for r in out["rules"] if isinstance(r, dict) and str(r.get("text") or "").strip()]
+    if isinstance(out.get("themes"), list):
+        out["themes"] = [_unfinished_out(t) for t in out["themes"]]
+    return out
+
+
 def verb(project, req, who, session):
     """POST /api/design. A person saves from the tab; a session saves the
     same record through `bb design save`, asked to put a design language
@@ -848,9 +861,13 @@ def verb(project, req, who, session):
         return {"error": "a session reads the design with bb design and writes the file with "
                          "bb design file; Write the file is the tab's"}, 403
     if act == "preview":
+        # A preview is asked for mid-typing, a keystroke after Add rule, so
+        # a rule with no text yet is left out of it rather than refused:
+        # the refusal is Save's, and a 400 here was a console error and a
+        # flake in the whole run (B341).
         try:
-            lang = _clean_language(req.get("language") or {})
-            page = _clean_page(req["page"], 0) if isinstance(req.get("page"), dict) else None
+            lang = _clean_language(_unfinished_out(req.get("language") or {}))
+            page = _clean_page(_unfinished_out(req["page"]), 0) if isinstance(req.get("page"), dict) else None
         except _Refused as e:
             return {"error": str(e)}, 400
         return {"text": prompt(lang, page)}, 200

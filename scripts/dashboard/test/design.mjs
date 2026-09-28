@@ -3,7 +3,7 @@
 // for what they are for. Staged behind the notebook's Save; the prompts and
 // docs/design-language.md are the server's words, which is what bb design
 // prints. The view is passive: nothing on it reaches into a session.
-import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, patience, URL, DIR } from './lib.mjs';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -283,6 +283,11 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
      'the Rules pulldown shows the rule chosen and no other');
   await page.click(`${NB} #dsRuleAdd`);
   await page.waitForSelector(`${NB} [data-dsrule="2"]`, { timeout: 5000 });
+  // The preview asked for while the new rule has no text yet leaves it out
+  // rather than refusing (B341): the prompt box never says it could not.
+  await page.waitForTimeout(patience(600));
+  ok(!/could not build the prompt/.test(await page.$eval(`${NB} #dsPromptL`, e => e.value)),
+     'the prompt preview skips a rule still being typed rather than refusing it');
   await page.fill(`${NB} #dsr-name-2`, 'Tap targets');
   await page.fill(`${NB} #dsr-words-2`, 'tap, phone');
   await page.fill(`${NB} #dsr-files-2`, 'scripts/dashboard');
