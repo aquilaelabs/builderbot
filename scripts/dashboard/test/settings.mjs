@@ -166,6 +166,19 @@ const bare = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'set
   { encoding: 'utf8', env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '',
     DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: '', BB_ACCOUNT_UID: owner }, cwd: '/' }));
 ok(bare.git_name === 'T. Person', '...for a shell with no project too');
+// The projects this one reads (prefs.reads) show in bb settings, so a
+// session knows its own list without the briefing.
+{
+  const envs = { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha', BB_ACCOUNT_UID: owner };
+  await page.evaluate(async () => (await (await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'alpha', reads: ['beta'] }) })).json()));
+  const text = execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'settings'], { encoding: 'utf8', env: envs });
+  const asJson = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'settings', '--json'], { encoding: 'utf8', env: envs }));
+  ok(/^  reads\s+beta$/m.test(text) && asJson.reads.join() === 'beta',
+     `bb settings names the projects this one reads, as text and as JSON (${(text.match(/^  reads.*$/m) || [''])[0]})`);
+  await page.evaluate(async () => (await (await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'alpha', reads: [] }) })).json()));
+}
 await page.click('#projects [data-rn="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 // The dialog asks again (17 Sep), but for a different thing: the old field
