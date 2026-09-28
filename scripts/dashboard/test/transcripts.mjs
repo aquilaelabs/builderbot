@@ -38,6 +38,7 @@ utimesSync(join(wt, 'conv-two-2025.jsonl'), old, old);
 const local = t => { const d = new Date(t), p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 const AT = local('2026-09-28T10:15:00.000Z');
+const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const browser = await launch();
 const page = await newPage(browser);
 await page.goto(URL); await ready(page);
@@ -47,7 +48,7 @@ const rows = await page.$$eval('.profiletab .cvlog', els => els.map(e => ({
   text: e.textContent.replace(/\s+/g, ' ').trim(), href: e.querySelector('a.btnish')?.getAttribute('href') || '' })));
 ok(rows.length >= 2, `the Profile lists the account's conversations (${rows.length})`);
 ok(/^alpha .*Please tick the roadmap item off/.test(rows[0].text), `the newest first, with the first thing typed: ${rows[0].text.slice(0, 70)}`);
-ok(rows[0].href === '/api/transcript?project=alpha&id=conv-one-2026', `its Download is the transcript by project and id: ${rows[0].href}`);
+ok(rows[0].href === `/api/transcript?project=alpha&id=conv-one-2026&tz=${encodeURIComponent(ZONE)}`, `its Download is the transcript by project and id, in this browser's zone: ${rows[0].href}`);
 ok(rows.some(r => /An earlier chat from the worktree/.test(r.text)), 'a worktree session of the same project is listed with it');
 const i1 = rows.findIndex(r => /conv-one-2026/.test(r.href)), i2 = rows.findIndex(r => /conv-two-2025/.test(r.href));
 ok(i1 >= 0 && i2 > i1, 'newest first');
@@ -72,6 +73,10 @@ ok(!/SECRET REASONING/.test(got.text), "Claude's private reasoning is not in it"
 ok(!/SIDECHAIN WORDS/.test(got.text), 'a subagent side chain is not in it');
 ok(!/not a turn/.test(got.text), 'a summary line is not in it');
 
+const tokyo = await page.evaluate(async () => (await fetch('/api/transcript?project=alpha&id=conv-one-2026&tz=Asia/Tokyo')).text());
+ok(/You \(2026-09-28 19:15\):/.test(tokyo), 'the stamps follow the zone the link names');
+const nozone = await page.evaluate(async () => (await fetch('/api/transcript?project=alpha&id=conv-one-2026&tz=Mars%2FOlympus')).status);
+ok(nozone === 200, `a zone that is not one falls back to the controller's own (${nozone})`);
 const miss = await page.evaluate(async () => (await fetch('/api/transcript?project=alpha&id=nope')).status);
 ok(miss === 404, `an id the account has no transcript for is not found (${miss})`);
 const bad = await page.evaluate(async () => (await fetch('/api/transcript?project=alpha&id=..%2F..%2Fconv-one-2026')).status);

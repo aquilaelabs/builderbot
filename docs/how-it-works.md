@@ -1395,9 +1395,11 @@ first with the first thing typed, and each downloads as a text file: what
 was said on both sides, every command Claude ran and what the command
 answered, `bb roadmap` and its reply included, from the transcript Claude
 Code writes as the session goes (transcripts.py reads the account's
-`~/.claude/projects` directory, the one on the share). Claude's private
-reasoning is not conversation and is left out, and another account's file
-is simply not found. The commit identity is per account rather than per project, and
+`~/.claude/projects` directory, the one on the share). Each line is
+stamped in the browser's own zone, the one the page shows times in, so the
+log and the page agree; a line headed System is what BuilderBot or Claude
+Code put in front of Claude. Claude's private reasoning is not conversation
+and is left out, and another account's file is simply not found. The commit identity is per account rather than per project, and
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured, so two people on one
 project are two authors. The **Administration** card on the sidebar, shown

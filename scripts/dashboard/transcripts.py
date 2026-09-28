@@ -16,6 +16,7 @@ import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 WORKSPACE = Path("/workspace")
 WORKTREES = WORKSPACE / ".worktrees"
@@ -116,9 +117,19 @@ def _find(uid, project, sid):
     return None
 
 
-def _when(d):
-    """The line's stamp in the controller's own time: Claude Code writes
-    UTC, and a person reads the log beside a dashboard that shows local."""
+def zone(name):
+    """The zone a download's stamps are written in: the browser's, which
+    the link carries, since that is the zone the dashboard beside it shows
+    times in; the controller's own when the name is not a zone."""
+    try:
+        return ZoneInfo(name) if name and len(name) < 64 and "/" in name or name == "UTC" else None
+    except (KeyError, ValueError, OSError):
+        return None
+
+
+def _when(d, tz=None):
+    """The line's stamp: Claude Code writes UTC, and a person reads the log
+    beside a dashboard that shows their own time."""
     t = str(d.get("timestamp") or "")
     try:
         at = datetime.fromisoformat(t.replace("Z", "+00:00"))
@@ -126,7 +137,7 @@ def _when(d):
         return ""
     if at.tzinfo is None:
         at = at.replace(tzinfo=timezone.utc)
-    return at.astimezone().strftime("%Y-%m-%d %H:%M")
+    return at.astimezone(tz).strftime("%Y-%m-%d %H:%M")
 
 
 def _tool_line(b):
@@ -156,8 +167,9 @@ def _result_text(b):
     return "\n".join(parts)
 
 
-def render(uid, project, sid):
-    """(text, filename) for one of the account's sessions, or (None, why)."""
+def render(uid, project, sid, tz=None):
+    """(text, filename) for one of the account's sessions, or (None, why).
+    `tz` is the zone the stamps are written in (zone()), or the controller's."""
     f = _find(uid, project, sid)
     if f is None:
         return None, "no such conversation of yours on this project"
@@ -165,7 +177,7 @@ def render(uid, project, sid):
         mtime = f.stat().st_mtime
     except OSError as e:
         return None, f"could not read it: {e}"
-    started = time.strftime("%Y-%m-%d %H:%M", time.localtime(mtime))
+    started = datetime.fromtimestamp(mtime, timezone.utc).astimezone(tz).strftime("%Y-%m-%d %H:%M")
     out = [f"Conversation on {project}, session {sid}, last written {started}",
            "What was said, every tool call with its command, and what each answered, as the "
            "transcript Claude Code wrote holds them. A line headed System is what BuilderBot "
@@ -185,7 +197,7 @@ def render(uid, project, sid):
                 if d.get("isSidechain"):
                     continue
                 kind, msg = d.get("type"), d.get("message") or {}
-                stamp = _when(d)
+                stamp = _when(d, tz)
                 if kind == "user":
                     content = msg.get("content")
                     for b in content if isinstance(content, list) else []:

@@ -5424,7 +5424,8 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        text, fname = transcripts.render(uid, name, q.get("id", [""])[0])
+        text, fname = transcripts.render(uid, name, q.get("id", [""])[0],
+                                         transcripts.zone(q.get("tz", [""])[0]))
         if text is None:
             return self._json({"error": fname}, 404)
         return self._attachment(fname, text.encode("utf-8"), "text/plain; charset=utf-8")
