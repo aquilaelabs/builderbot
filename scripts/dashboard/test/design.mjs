@@ -120,8 +120,8 @@ ok(await page.$eval(`${NB} [data-sect="design:language"] > summary .sst`, e => e
 await page.selectOption(`${NB} [data-dspage] [data-dsf="platform"]`, 'android');
 await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'phone', null, { timeout: 5000 });
 const frames = await page.$$eval(`${NB} [data-dspage] [data-dsf="frame"] option`, os => os.map(o => o.value));
-ok(frames.join() === 'phone' && await page.$eval(`${NB} [data-dspage] .dsblock[data-i="4"]`, e => e.style.gridColumn) === '2 / span 5',
-   `an Android page has only the phone frame, and its blocks are clamped into it (${frames.join()})`);
+ok(frames.join() === 'phone,landscape' && await page.$eval(`${NB} [data-dspage] .dsblock[data-i="4"]`, e => e.style.gridColumn) === '2 / span 5',
+   `an Android page has the phone frames only, upright and sideways, and its blocks are clamped into the upright one (${frames.join()})`);
 await saved();
 const again = await api(`/api/design?project=${P}`);
 ok(again.language.scheme === 'custom' && again.language.colors.accent === '#ff8800' && again.pages[0].frame === 'phone',
@@ -164,6 +164,46 @@ ok(bb('file') === written, 'bb design file prints the file as the notebook wrote
 let err = '';
 try { bb('show', 'nowhere'); } catch (e) { err = String(e.stderr); }
 ok(/no page here called 'nowhere'/.test(err), `...and a page that is not there is refused by name (${err.trim()})`);
+
+// ---- beyond the ten: more colours, the families, an overlay, a sideways frame ------------
+// What ten real projects needed that the first vocabulary had no slot for
+// (the survey of 28 Sep): a success colour, a second surface or a chart
+// ramp by name, the exact font stacks, a dialog over the page, a phone
+// held sideways.
+{
+  ok((await api(`/api/design?project=${P}`)).presets.tokens.map(t => t.key).join() === 'bg,panel,ink,dim,line,accent,warn,bad,note,good'
+     && (await api(`/api/design?project=${P}`)).presets.kinds.some(k => k.key === 'overlay')
+     && (await api(`/api/design?project=${P}`)).presets.frames.landscape.cols === 12,
+     'the vocabulary carries a good token, an overlay kind and a sideways phone frame');
+  await page.click(`${NB} #dsMoreAdd`);
+  await page.waitForSelector(`${NB} [data-dsmore="0"]`, { timeout: 5000 });
+  await page.fill(`${NB} #dsm-name-0`, 'surface 2');
+  await page.fill(`${NB} #dsm-hex-0`, '#f0efec');
+  await page.fill(`${NB} #dsm-for-0`, 'a second surface tier');
+  await page.fill(`${NB} #dsFonts`, 'Inter for text, JetBrains Mono for code');
+  await page.selectOption(`${NB} [data-dspage] [data-dsf="frame"]`, 'landscape');
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'landscape', null, { timeout: 5000 });
+  await page.selectOption(`${NB} [data-dspage] [data-dsf="newkind"]`, 'overlay');
+  await page.click(`${NB} [data-dspage] [data-dsblockadd]`);
+  await page.waitForSelector(`${NB} [data-dspage] .dsblock.on`, { timeout: 5000 });
+  await page.fill(`${NB} [data-dspage] [data-dsb="label"]`, 'the card picker');
+  await saved();
+  const grown = await api(`/api/design?project=${P}`);
+  const text = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
+  ok(grown.language.more.length === 1 && grown.language.more[0].hex === '#f0efec' && grown.language.fonts.startsWith('Inter')
+     && grown.pages[0].frame === 'landscape' && grown.pages[0].blocks.some(b => b.kind === 'overlay' && b.label === 'the card picker'),
+     'a colour beyond the ten, the families, a sideways frame and an overlay block all save');
+  ok(/Other colours the design names, as tokens too:\n  surface 2 #f0efec: a second surface tier/.test(text)
+     && /set as Inter for text, JetBrains Mono for code/.test(text) && /good #/.test(text)
+     && /on a landscape frame \(12 columns by 6 rows\)/.test(text) && /Overlay \(a dialog, sheet, drawer, popover or toast over the page\): the card picker/.test(text),
+     'and the prompt says each of them');
+  ok(/\| `--surface-2` \| `#f0efec` \| a second surface tier \|/.test(bb('file')), '...as does the file, the colour as a token of its own');
+  await page.click(`${NB} [data-dsmorerm="0"]`);
+  await page.waitForFunction(() => !document.querySelector('.nb [data-dsmore="0"]'), null, { timeout: 5000 });
+  await page.fill(`${NB} #dsFonts`, '');
+  await saved();
+  ok((await api(`/api/design?project=${P}`)).language.more.length === 0, 'Remove takes a colour out again');
+}
 
 // ---- a session writes one: bb design json, edited, and bb design save --------------------
 // Asked to put a design language into the notebook, a session reads the

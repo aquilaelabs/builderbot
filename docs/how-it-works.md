@@ -1585,8 +1585,9 @@ of its own, one per project, and as many open at once as you have projects;
 each is its own instance, so what is half-typed in one survives working in
 another, and the button lights green while that project's is open. Its tab
 strip: **Briefing** (the rules, and what Claude remembers here), **Design**
-(what the project looks like: one design language of colours as tokens,
-type, shape, space, motion and your own rules, and pages laid out as
+(what the project looks like: one design language of ten colours as
+tokens plus any more the design names, type and the exact families, shape,
+space, motion and your own design notes, and pages laid out as
 labelled blocks on a phone or desktop frame, each named for what it is for
 and the platform it is built for, a web app or an Android, iOS, Linux,
 macOS or Windows app, since one project can be several; every edit is

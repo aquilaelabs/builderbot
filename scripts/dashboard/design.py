@@ -62,6 +62,7 @@ KINDS = [
     ("image", "Image", "a picture or a media block"),
     ("list", "List", "rows of things, each opening to detail"),
     ("nav", "Navigation", "the way around: tabs or a menu"),
+    ("overlay", "Overlay", "a dialog, sheet, drawer, popover or toast over the page"),
     ("search", "Search", "a search box"),
     ("sidebar", "Sidebar", "a side column of links or filters"),
     ("table", "Table", "columns of data"),
@@ -72,6 +73,7 @@ KIND_KEYS = [k for k, _, _ in KINDS]
 
 # The frames a page is laid out on: the grid a block's cells are counted in.
 FRAMES = {"phone": {"cols": 6, "rows": 12, "label": "Phone"},
+          "landscape": {"cols": 12, "rows": 6, "label": "Phone, sideways"},
           "desktop": {"cols": 12, "rows": 8, "label": "Desktop"}}
 
 # Preset layouts: a set of blocks on a frame, the starting point a page is
@@ -131,7 +133,12 @@ TOKENS = [
     ("warn", "Warning", "a warning"),
     ("bad", "Danger", "an error, a destructive verb"),
     ("note", "Note", "an informational mark"),
+    ("good", "Good", "success: a passing check, a legal move, a safe state"),
 ]
+# Colours a language names beyond the ten: a second surface, a chart ramp,
+# a game's card colours, a brand blue. Each a name, a hex and what it is
+# for, so nothing a project already names is lost to prose.
+MORE_MAX = 40
 TOKEN_KEYS = [k for k, _, _ in TOKENS]
 
 # Preset schemes. The dashboard's own twelve, so a project can wear what its
@@ -140,37 +147,37 @@ TOKEN_KEYS = [k for k, _, _ in TOKENS]
 # rest are alphabetical.
 SCHEMES = [
     ("default", "Default", {"bg": "#1a1f26", "panel": "#212730", "line": "#4d5c6f", "ink": "#e6edf3",
-                            "dim": "#9fa9b4", "accent": "#3fb950", "warn": "#d29922", "bad": "#f8524a", "note": "#58a6ff"}),
+                            "dim": "#9fa9b4", "accent": "#3fb950", "warn": "#d29922", "bad": "#f8524a", "note": "#58a6ff", "good": "#56d364"}),
     ("abyss", "Abyss", {"bg": "#111d20", "panel": "#18262a", "line": "#3e5e66", "ink": "#dcecee",
-                        "dim": "#93a9ac", "accent": "#2fb8c6", "warn": "#d7ab4c", "bad": "#ef6a63", "note": "#6fb3e0"}),
+                        "dim": "#93a9ac", "accent": "#2fb8c6", "warn": "#d7ab4c", "bad": "#ef6a63", "note": "#6fb3e0", "good": "#4fd1a1"}),
     ("ash", "Ash", {"bg": "#1b1b1b", "panel": "#222322", "line": "#555955", "ink": "#e2e4e0",
-                    "dim": "#a1a59f", "accent": "#a3b18a", "warn": "#cfa94a", "bad": "#e26d60", "note": "#82a7b8"}),
+                    "dim": "#a1a59f", "accent": "#a3b18a", "warn": "#cfa94a", "bad": "#e26d60", "note": "#82a7b8", "good": "#9ccf8a"}),
     ("carbon", "Carbon", {"bg": "#141417", "panel": "#1c1c1f", "line": "#53535b", "ink": "#e8e8ea",
-                          "dim": "#9d9da4", "accent": "#e64e53", "warn": "#d9a441", "bad": "#ff6b6b", "note": "#7aa2f7"}),
+                          "dim": "#9d9da4", "accent": "#e64e53", "warn": "#d9a441", "bad": "#ff6b6b", "note": "#7aa2f7", "good": "#57d17a"}),
     ("ember", "Ember", {"bg": "#1f1814", "panel": "#271f1a", "line": "#67533e", "ink": "#f0e4d8",
-                        "dim": "#af9f90", "accent": "#f0873f", "warn": "#e8bb50", "bad": "#ef5f52", "note": "#8fb4d9"}),
+                        "dim": "#af9f90", "accent": "#f0873f", "warn": "#e8bb50", "bad": "#ef5f52", "note": "#8fb4d9", "good": "#8fcf7a"}),
     ("ice", "Ice", {"bg": "#151c21", "panel": "#1c252c", "line": "#465b6c", "ink": "#e3edf5",
-                    "dim": "#9aa8ae", "accent": "#58c7e8", "warn": "#d3ab52", "bad": "#ee6a68", "note": "#7cc0ff"}),
+                    "dim": "#9aa8ae", "accent": "#58c7e8", "warn": "#d3ab52", "bad": "#ee6a68", "note": "#7cc0ff", "good": "#5fd39a"}),
     ("linen", "Linen (light)", {"bg": "#f6f1e8", "panel": "#fffaf2", "line": "#d5c9b6", "ink": "#2b2620",
-                                "dim": "#6f665b", "accent": "#b5562a", "warn": "#9a6a00", "bad": "#b8322b", "note": "#2d6a9f"}),
+                                "dim": "#6f665b", "accent": "#b5562a", "warn": "#9a6a00", "bad": "#b8322b", "note": "#2d6a9f", "good": "#2e8b57"}),
     ("mint", "Mint (light)", {"bg": "#eef5f1", "panel": "#ffffff", "line": "#c3d6cb", "ink": "#1d2a24",
-                              "dim": "#5f6f67", "accent": "#1f8a5b", "warn": "#9a6a00", "bad": "#c0392b", "note": "#2a6f9e"}),
+                              "dim": "#5f6f67", "accent": "#1f8a5b", "warn": "#9a6a00", "bad": "#c0392b", "note": "#2a6f9e", "good": "#2f9e6b"}),
     ("moss", "Moss", {"bg": "#161f1b", "panel": "#1d2920", "line": "#48604f", "ink": "#dfe9df",
-                      "dim": "#9daba0", "accent": "#63c98a", "warn": "#d6ad4e", "bad": "#e8695f", "note": "#74b3d8"}),
+                      "dim": "#9daba0", "accent": "#63c98a", "warn": "#d6ad4e", "bad": "#e8695f", "note": "#74b3d8", "good": "#7fd67a"}),
     ("nocturne", "Nocturne", {"bg": "#181825", "panel": "#202031", "line": "#53537b", "ink": "#e4e2f5",
-                              "dim": "#a2a0c1", "accent": "#9d7cff", "warn": "#e0b24d", "bad": "#f2637b", "note": "#7cb0ff"}),
+                              "dim": "#a2a0c1", "accent": "#9d7cff", "warn": "#e0b24d", "bad": "#f2637b", "note": "#7cb0ff", "good": "#6fd39a"}),
     ("nostromo", "Nostromo", {"bg": "#101712", "panel": "#162018", "line": "#405b37", "ink": "#d7e3c8",
-                              "dim": "#95a488", "accent": "#ffb000", "warn": "#ffd166", "bad": "#ff5f45", "note": "#9ad07a"}),
+                              "dim": "#95a488", "accent": "#ffb000", "warn": "#ffd166", "bad": "#ff5f45", "note": "#9ad07a", "good": "#9ad07a"}),
     ("paper", "Paper (light)", {"bg": "#f4f5f7", "panel": "#ffffff", "line": "#cfd4dc", "ink": "#1f2328",
-                                "dim": "#59636e", "accent": "#0969da", "warn": "#9a6700", "bad": "#cf222e", "note": "#0550ae"}),
+                                "dim": "#59636e", "accent": "#0969da", "warn": "#9a6700", "bad": "#cf222e", "note": "#0550ae", "good": "#1a7f37"}),
     ("plum", "Plum", {"bg": "#1e1623", "panel": "#261d2d", "line": "#654d73", "ink": "#eddff2",
-                      "dim": "#ae9cb7", "accent": "#c874d8", "warn": "#dfae52", "bad": "#ee6183", "note": "#83aee8"}),
+                      "dim": "#ae9cb7", "accent": "#c874d8", "warn": "#dfae52", "bad": "#ee6183", "note": "#83aee8", "good": "#7fcf9a"}),
     ("rust", "Rust", {"bg": "#1e1614", "panel": "#261d1a", "line": "#6a4e4a", "ink": "#ecdedb",
-                      "dim": "#ae9d99", "accent": "#cf6a4c", "warn": "#d9a441", "bad": "#e8544a", "note": "#7fa8c9"}),
+                      "dim": "#ae9d99", "accent": "#cf6a4c", "warn": "#d9a441", "bad": "#e8544a", "note": "#7fa8c9", "good": "#8fcf7a"}),
     ("sepia", "Sepia", {"bg": "#1f1b14", "panel": "#272219", "line": "#63563e", "ink": "#ece0cb",
-                        "dim": "#b0a28c", "accent": "#d3a94f", "warn": "#e3c069", "bad": "#e0705f", "note": "#9db98c"}),
+                        "dim": "#b0a28c", "accent": "#d3a94f", "warn": "#e3c069", "bad": "#e0705f", "note": "#9db98c", "good": "#9db98c"}),
     ("slate", "Slate", {"bg": "#181c23", "panel": "#1f242d", "line": "#4f5a68", "ink": "#dfe5ec",
-                        "dim": "#9fa6ae", "accent": "#6ea8fe", "warn": "#d9a441", "bad": "#ef6f6c", "note": "#7fb8ff"}),
+                        "dim": "#9fa6ae", "accent": "#6ea8fe", "warn": "#d9a441", "bad": "#ef6f6c", "note": "#7fb8ff", "good": "#5fd39a"}),
 ]
 SCHEME_KEYS = [k for k, _, _ in SCHEMES]
 
@@ -181,13 +188,13 @@ SCHEME_KEYS = [k for k, _, _ in SCHEMES]
 # the conventions the prompt holds the session to. Alphabetical after Web
 # app, which leads because it is what a page is until it says otherwise.
 PLATFORMS = [
-    ("web", "Web app", ["desktop", "phone"], "system-ui, the platform's own sans-serif",
+    ("web", "Web app", ["desktop", "phone", "landscape"], "system-ui, the platform's own sans-serif",
      "a responsive web app: the layout holds at phone and desktop widths, and every tap "
      "target is at least 44px on a coarse pointer"),
-    ("android", "Android app", ["phone"], "Roboto, the platform's own",
+    ("android", "Android app", ["phone", "landscape"], "Roboto, the platform's own",
      "an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections "
      "as a bottom bar, and the system's back gesture respected"),
-    ("ios", "iOS app", ["phone"], "SF Pro, the platform's own",
+    ("ios", "iOS app", ["phone", "landscape"], "SF Pro, the platform's own",
      "an iOS app: the Human Interface Guidelines' tab bar and navigation bar, 44pt touch "
      "targets, and Dynamic Type respected"),
     ("linux", "Linux app", ["desktop"], "the desktop's own (Cantarell on GNOME, Noto Sans on KDE)",
@@ -230,7 +237,7 @@ CHOICES = {"font": FONTS, "corners": CORNERS, "density": DENSITY, "motion": MOTI
 
 LANGUAGE_DEFAULT = {"scheme": "default", "colors": dict(SCHEMES[0][2]),
                     "font": "system", "corners": "soft", "density": "comfortable",
-                    "motion": "quiet", "scope": "", "rules": ""}
+                    "motion": "quiet", "scope": "", "rules": "", "fonts": "", "more": []}
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
@@ -297,6 +304,22 @@ def _clean_language(lang):
     for key, rows in CHOICES.items():
         out[key] = _choice(lang.get(key), [k for k, _, _ in rows], key, LANGUAGE_DEFAULT[key])
     out["scope"] = _line(lang.get("scope"), NAME_MAX, "what the language governs")
+    out["fonts"] = _line(lang.get("fonts"), 200, "the font families")
+    more, seen = [], set()
+    for m in (lang.get("more") if isinstance(lang.get("more"), list) else [])[:MORE_MAX]:
+        if not isinstance(m, dict):
+            raise _Refused("a colour beyond the ten is an object: name, hex, means")
+        name = _line(m.get("name"), 40, "a colour's name")
+        hexv = str(m.get("hex") or "").strip().lower()
+        if not name:
+            continue
+        if not _HEX.match(hexv):
+            raise _Refused(f"{name}: a colour is #rrggbb, not {hexv!r}")
+        if name.lower() in seen:
+            raise _Refused(f"two colours are called {name}")
+        seen.add(name.lower())
+        more.append({"name": name, "hex": hexv, "means": _line(m.get("means"), NAME_MAX, "what a colour is for")})
+    out["more"] = more
     rules = str(lang.get("rules") or "").strip()
     if len(rules) > NOTES_MAX:
         raise _Refused(f"the design notes are at most {NOTES_MAX} characters")
@@ -358,6 +381,7 @@ def presets():
             "schemes": [{"key": k, "label": l, "colors": dict(c)} for k, l, c in SCHEMES],
             "choices": {key: [{"key": k, "label": l, "means": m} for k, l, m in rows]
                         for key, rows in CHOICES.items()},
+            "more_max": MORE_MAX,
             "file": FILE_PATH}
 
 
@@ -439,8 +463,13 @@ def language_text(lang, platform=""):
                  "and every surface reads, never a hex in a component:")
     for k, label, means in TOKENS:
         lines.append(f"  {label.lower()} {c[k]}: {means}")
+    if lang.get("more"):
+        lines.append("Other colours the design names, as tokens too:")
+        lines.extend(f"  {m['name']} {m['hex']}" + (f": {m['means']}" if m["means"] else "") for m in lang["more"])
     lines.append("A filled accent surface carries the text colour on it, at AA contrast.")
-    lines.append(f"Type: {_font_means(lang, platform)}; monospace for data (names, paths, numbers).")
+    lines.append(f"Type: {_font_means(lang, platform)}"
+                 + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
+                 + "; monospace for data (names, paths, numbers).")
     lines.append(f"Shape: {_means(CORNERS, lang['corners'])}; hairlines 1px in the edge colour.")
     lines.append(f"Space: {_means(DENSITY, lang['density'])}.")
     lines.append(f"Motion: {_means(MOTION, lang['motion'])}.")
@@ -448,6 +477,11 @@ def language_text(lang, platform=""):
         lines.append("Design notes, the operator's own:")
         lines.extend("  " + ln for ln in lang["rules"].splitlines() if ln.strip())
     return "\n".join(lines)
+
+
+def _slug(name):
+    """A colour's name as a CSS token: letters, digits and dashes."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "colour"
 
 
 def _cap(text):
@@ -509,8 +543,10 @@ def file_text(rec):
             "Colour comes only from these tokens, named once in the stylesheet:", "",
             "| token | value | for |", "|---|---|---|"]
     out += [f"| `--{k}` | `{c[k]}` | {means} |" for k, _, means in TOKENS]
+    out += [f"| `--{_slug(m['name'])}` | `{m['hex']}` | {m['means']} |" for m in lang.get("more") or []]
     out += ["", "A filled accent surface carries `--ink` on it, at AA contrast.", "",
-            "## Type", "", _cap(_font_means(lang)) + ". Monospace for data: names, paths, numbers.", "",
+            "## Type", "", _cap(_font_means(lang)) + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
+            + ". Monospace for data: names, paths, numbers.", "",
             "## Shape", "", _cap(_means(CORNERS, lang["corners"])) + ". Hairlines are 1px in `--line`.", "",
             "## Space", "", _cap(_means(DENSITY, lang["density"])) + ".", "",
             "## Motion", "", _cap(_means(MOTION, lang["motion"])) + "."]

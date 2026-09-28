@@ -155,6 +155,18 @@ function nbDesignView({$, nb, project, root}){
           <div class="dsc"><span class="dschip" style="background:${esc(L.colors[t.key])}"></span>
             <input id="dsc-${esc(t.key)}" data-tok="${esc(t.key)}" maxlength="7" spellcheck="false"
               autocomplete="off" value="${esc(L.colors[t.key])}"></div></div>`).join("")}</div></div>
+      <div class="field">${lbl("", "More colours", "everything the design names beyond the ten: a second surface, a chart ramp, a game's card colours; each a name, a hex and what it is for")}
+        <div class="dsmore">${(L.more || []).map((m, i) => `
+          <div class="dsrow" data-dsmore="${i}">
+            ${ctl(`dsm-name-${i}`, "Name", "", `<input id="dsm-name-${i}" data-dsm="name" maxlength="40" autocomplete="off" value="${esc(m.name)}">`)}
+            ${ctl(`dsm-hex-${i}`, "Hex", "", `<div class="dsc"><span class="dschip" style="background:${esc(m.hex)}"></span><input id="dsm-hex-${i}" data-dsm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(m.hex)}"></div>`)}
+            ${ctl(`dsm-for-${i}`, "For", "", `<textarea id="dsm-for-${i}" class="proseline" rows="1" maxlength="120" data-dsm="means">${esc(m.means)}</textarea>`, true)}
+            <button type="button" class="danger" data-dsmorerm="${i}" title="take this colour out">Remove</button>
+          </div>`).join("")}</div>
+        <div class="addbar"><button type="button" id="dsMoreAdd" ${(L.more || []).length >= (P.more_max || 40) ? "disabled" : ""}>Add colour</button></div></div>
+      <div class="field">${ctl("dsFonts", "Families",
+            "the exact font stacks when the choice above is not enough: Inter for text, JetBrains Mono for code",
+            `<textarea id="dsFonts" class="proseline" rows="1" maxlength="200">${esc(L.fonts || "")}</textarea>`, true)}</div>
       <div class="field">${ctl("dsScope", "Governs",
             "what the language covers when the project is more than one product: the web app in site/",
             `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope)}</textarea>`, true)}</div>
@@ -422,6 +434,26 @@ function nbDesignView({$, nb, project, root}){
     for (const [id, k] of [["dsFont", "font"], ["dsCorners", "corners"], ["dsDensity", "density"], ["dsMotion", "motion"]])
       body.querySelector("#" + id).onchange = e => { L[k] = e.target.value; touched(); refreshAllPrompts(); };
     body.querySelector("#dsScope").oninput = e => { L.scope = e.target.value; touched(); refreshAllPrompts(); };
+    body.querySelector("#dsFonts").oninput = e => { L.fonts = e.target.value; touched(); refreshAllPrompts(); };
+    // The colours beyond the ten: typed in place, added and removed with a
+    // redraw, since a row is a thing to place rather than a value to edit.
+    body.querySelectorAll("[data-dsmore]").forEach(row => {
+      const m = L.more[+row.dataset.dsmore]; if (!m) return;
+      row.querySelector('[data-dsm="name"]').oninput = e => { m.name = e.target.value; touched(); refreshAllPrompts(); };
+      row.querySelector('[data-dsm="means"]').oninput = e => { m.means = e.target.value; touched(); refreshAllPrompts(); };
+      row.querySelector('[data-dsm="hex"]').oninput = e => {
+        const v = e.target.value.trim().toLowerCase();
+        if (!/^#[0-9a-f]{6}$/.test(v)) return;
+        m.hex = v; e.target.previousElementSibling.style.background = v; touched(); refreshAllPrompts();
+      };
+      row.querySelector("[data-dsmorerm]").onclick = () => { L.more.splice(+row.dataset.dsmore, 1); touched(); drawDesign(); };
+    });
+    body.querySelector("#dsMoreAdd").onclick = () => {
+      L.more = L.more || [];
+      L.more.push({name: "", hex: L.colors.accent, means: ""});
+      touched(); drawDesign();
+      root.querySelector(`#dsm-name-${L.more.length - 1}`)?.focus();
+    };
     body.querySelector("#dsRules").oninput = e => { L.rules = e.target.value; touched(); refreshAllPrompts(); };
     body.querySelector('[data-dscopy="lang"]').onclick = e => copyPrompt(body.querySelector("#dsPromptL").value, e.target);
     body.querySelector('[data-dssend="lang"]').onclick = e => sendTo(null, e.target);
