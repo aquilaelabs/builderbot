@@ -301,7 +301,9 @@ def _record(d, project):
     if not isinstance(rec, dict):
         rec = {}
     lang = _clean_language(rec.get("language") or {})
-    pages = [p for p in (rec.get("pages") or []) if isinstance(p, dict)]
+    # A page saved before pages had rules of their own reads as one with none.
+    pages = [{**p, "rules": p.get("rules") if isinstance(p.get("rules"), list) else []}
+             for p in (rec.get("pages") or []) if isinstance(p, dict)]
     return {"language": lang, "pages": pages, "next": int(rec.get("next") or 1),
             "by": str(rec.get("by") or ""), "at": int(rec.get("at") or 0)}
 
@@ -356,7 +358,8 @@ def _clean_theme(t, n):
     if mode not in MODES:
         bg = _role({"colors": colors}, "bg")
         mode = "light" if bg and _luma(bg) > 0.5 else "dark"
-    return {"name": name, "mode": mode, "colors": colors}
+    return {"name": name, "mode": mode, "colors": colors,
+            "rules": _clean_rules(t.get("rules"), f"the theme {name}")}
 
 
 def _clean_language(lang):
@@ -390,21 +393,7 @@ def _clean_language(lang):
         out[key] = _choice(lang.get(key), [k for k, _, _ in rows], key, LANGUAGE_DEFAULT[key])
     out["scope"] = _line(lang.get("scope"), NAME_MAX, "what the language governs")
     out["fonts"] = _line(lang.get("fonts"), 200, "the font families")
-    raw = lang.get("rules")
-    if isinstance(raw, str):
-        # The notes from before rules: one standing rule, kept whole.
-        raw = [{"name": "design-notes", "text": raw}] if raw.strip() else []
-    raw = [r for r in (raw if isinstance(raw, list) else []) if isinstance(r, dict)]
-    if len(raw) > RULES_MAX:
-        raise _Refused(f"a language holds at most {RULES_MAX} rules")
-    rules, names = [], set()
-    for i, r in enumerate(raw):
-        r = _clean_rule(r, i)
-        if r["name"] in names:
-            raise _Refused(f"two design rules are called {r['name']}")
-        names.add(r["name"])
-        rules.append(r)
-    out["rules"] = rules
+    out["rules"] = _clean_rules(lang.get("rules"), "a language")
     return out
 
 
@@ -428,6 +417,48 @@ def _clean_rule(r, i):
             "paths": [p.replace("\\", "/").lstrip("/") for p in _bits(r.get("paths")) if ".." not in p.split("/")]}
 
 
+def _clean_rules(raw, whose):
+    """A list of rules as stored, each named once within `whose` (the
+    language, a theme or a page): the operator asked for rules of a theme's
+    own and a page's own (28 Sep), since the Nostromo scheme has needs no
+    other theme shares."""
+    if isinstance(raw, str):
+        # The notes from before rules: one standing rule, kept whole.
+        raw = [{"name": "design-notes", "text": raw}] if raw.strip() else []
+    raw = [r for r in (raw if isinstance(raw, list) else []) if isinstance(r, dict)]
+    if len(raw) > RULES_MAX:
+        raise _Refused(f"{whose} holds at most {RULES_MAX} rules")
+    rules, names = [], set()
+    for i, r in enumerate(raw):
+        r = _clean_rule(r, i)
+        if r["name"] in names:
+            raise _Refused(f"{whose} has two rules called {r['name']}")
+        names.add(r["name"])
+        rules.append(r)
+    return rules
+
+
+def scoped_rules(rec):
+    """Every rule the design carries, with the theme's or the page's rules
+    named under it: `nostromo/hull` is the Nostromo theme's rule hull, and
+    `bb design show nostromo/hull` reads it. [(name, rule, holder)]."""
+    lang = rec["language"]
+    out = [(r["name"], r, "") for r in lang["rules"]]
+    for t in lang["themes"]:
+        out += [(f"{_slug(t['name'])}/{r['name']}", r, f"the {t['name']} theme") for r in t.get("rules") or []]
+    for p in rec["pages"]:
+        out += [(f"{_slug(p['name'] or 'page-' + str(p['id']))}/{r['name']}", r, p["name"] or f"page {p['id']}")
+                for r in p.get("rules") or []]
+    return out
+
+
+def saved(project):
+    """The project's record when somebody saved one (the briefing's line),
+    None when the design is still the default nobody touched."""
+    rec = _record(_load(), project)
+    return rec if rec["at"] else None
+
+
 def rules_for(project, state=None):
     """The design's rules in the house rules' shape, for rules.effective:
     the operator's, marked as the design's, each pointing at the file the
@@ -440,12 +471,13 @@ def rules_for(project, state=None):
     except (OSError, ValueError, TypeError, AttributeError):
         return []
     try:
-        lang = _clean_language(rec.get("language") or {})
+        full = _record({project: rec}, project)
     except _Refused:
         return []
-    return [{"name": r["name"], "text": r["text"], "paths": r["paths"], "words": r["words"],
+    return [{"name": name, "text": r["text"] if not holder else f"For {holder}. {r['text']}",
+             "paths": list(r.get("paths") or []), "words": list(r.get("words") or []),
              "doc": "", "check": "", "by": "you", "at": int(rec.get("at") or 0), "design": True}
-            for r in lang["rules"]]
+            for name, r, holder in scoped_rules(full)]
 
 
 # What a colour is for, by the names a design gives it: the board and the
@@ -507,10 +539,12 @@ def _clean_page(p, pid):
     notes = str(p.get("notes") or "").strip()
     if len(notes) > NOTES_MAX:
         raise _Refused(f"a page's notes are at most {NOTES_MAX} characters")
-    return {"id": pid, "name": _line(p.get("name"), NAME_MAX, "a page's name"),
+    name = _line(p.get("name"), NAME_MAX, "a page's name")
+    return {"id": pid, "name": name,
             "platform": platform, "template": _choice(p.get("template"), TEMPLATE_KEYS, "template", "blank"),
             "frame": frame, "blocks": [_clean_block(b, frame) for b in blocks],
-            "notes": notes, "at": int(time.time())}
+            "notes": notes, "rules": _clean_rules(p.get("rules"), f"the page {name or pid}"),
+            "at": int(time.time())}
 
 
 # ---- what the tab and bb read ---------------------------------------------------
@@ -616,6 +650,9 @@ def language_text(lang, platform=""):
         for i, t in enumerate(themes):
             lines.append(f"  {t['name']} ({t['mode']}{', the default' if i == 0 else ''}):")
             lines.extend(f"    {c['name']} {c['hex']}" + (f": {c['means']}" if c["means"] else "") for c in t["colors"])
+            lines.extend(_rule_lines(t.get("rules") or [], f"{t['name']}'s own rules", _slug(t["name"]), "    "))
+    if len(themes) == 1:
+        lines.extend(_rule_lines(themes[0].get("rules") or [], f"{themes[0]['name']}'s own rules", _slug(themes[0]["name"]), "  "))
     lines.append("A filled accent surface carries the text colour on it, at AA contrast.")
     lines.append(f"Type: {_font_means(lang, platform)}"
                  + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
@@ -633,6 +670,18 @@ def language_text(lang, platform=""):
         lines.extend(f"  {r['name']}: " + "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
                      for r in named)
     return "\n".join(lines)
+
+
+def _rule_lines(rules, head, scope, indent):
+    """A theme's or a page's own rules as prose under it: a standing one
+    whole, a triggered one by its scoped name and what fires it."""
+    if not rules:
+        return []
+    out = [f"{indent}{head}:"]
+    for r in rules:
+        on = "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
+        out.append(f"{indent}  {scope}/{r['name']}: " + (f"{on} (`bb design show {scope}/{r['name']}` reads it)" if on else r["text"]))
+    return out
 
 
 def _slug(name):
@@ -661,6 +710,8 @@ def page_text(page):
     if page.get("notes"):
         lines.append("Notes:")
         lines.extend("  " + ln for ln in page["notes"].splitlines() if ln.strip())
+    lines.extend(_rule_lines(page.get("rules") or [], "This page's own rules",
+                             _slug(page["name"] or f"page-{page['id']}"), ""))
     return "\n".join(lines)
 
 
@@ -699,6 +750,7 @@ def file_text(rec):
             out += ["", f"### {t['name']} ({t['mode']}{', the default' if i == 0 else ''})"]
         out += ["", "| token | value | for |", "|---|---|---|"]
         out += [f"| `--{_slug(c['name'])}` | `{c['hex']}` | {c['means']} |" for c in t["colors"]]
+        out += _file_rules(t.get("rules") or [], _slug(t["name"]), f"Rules of {t['name']}'s own", "####")
     out += ["", "A filled accent surface carries the text colour on it, at AA contrast.", "",
             "## Type", "", _cap(_font_means(lang)) + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
             + ". Monospace for data: names, paths, numbers.", "",
@@ -718,7 +770,21 @@ def file_text(rec):
                 "on the platform it is built for."]
         for p in pages:
             out += ["", f"### {p['name'] or 'unnamed page'} ({_platform(p['platform'])[1]})", "", page_text(p)]
+            out += _file_rules(p.get("rules") or [], _slug(p["name"] or f"page-{p['id']}"),
+                               f"Rules of {p['name'] or 'this page'}'s own", "####")
     return "\n".join(out).rstrip() + "\n"
+
+
+def _file_rules(rules, scope, head, level):
+    """A theme's or a page's own rules in the file, each under its scoped
+    name, the way the language's rules are under Rules."""
+    if not rules:
+        return []
+    out = ["", f"{level} {head}"]
+    for r in rules:
+        on = "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
+        out += ["", f"{level}# {scope}/{r['name']}", ""] + ([f"Applies to: {on}", ""] if on else []) + [r["text"]]
+    return out
 
 
 # ---- writes ----------------------------------------------------------------------
@@ -830,13 +896,24 @@ def text_for(project, which=""):
         return file_text(rec), ""
     if which == "language":
         return prompt(rec["language"]), ""
-    rule = next((r for r in rec["language"]["rules"] if r["name"] == which.lower()), None)
-    if rule is not None:
+    hit = next(((n, r, h) for n, r, h in scoped_rules(rec) if n == which.lower()), None)
+    if hit is not None:
+        name, rule, holder = hit
         on = "; ".join(x for x in [", ".join(rule["paths"]), ", ".join(rule["words"])] if x)
-        return (f"{rule['name']}" + (f" (applies to: {on})" if on else "") + "\n\n" + rule["text"]), ""
+        return (name + (f" (for {holder})" if holder else "") + (f" (applies to: {on})" if on else "")
+                + "\n\n" + rule["text"]), ""
+    theme = next((t for t in rec["language"]["themes"] if t["name"].lower() == which.lower()
+                  or _slug(t["name"]) == which.lower()), None)
+    if theme is not None:
+        lines = [f"{theme['name']} ({theme['mode']}), one theme of {len(rec['language']['themes'])}:"]
+        lines.extend(f"  {c['name']} {c['hex']}" + (f": {c['means']}" if c["means"] else "") for c in theme["colors"])
+        for r in theme.get("rules") or []:
+            on = "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
+            lines += ["", f"{_slug(theme['name'])}/{r['name']}" + (f" (applies to: {on})" if on else ""), r["text"]]
+        return "\n".join(lines), ""
     page = next((p for p in rec["pages"] if str(p["id"]) == which or p["name"].lower() == which.lower()), None)
     if page is None:
-        return "", f"no page or rule here called {which!r}: bb design lists them"
+        return "", f"no page, theme or rule here called {which!r}: bb design lists them"
     return prompt(rec["language"], page), ""
 
 
@@ -851,6 +928,10 @@ def listing(project):
     if lang["rules"]:
         lines.append(f"  {len(lang['rules'])} design rule{'' if len(lang['rules']) == 1 else 's'}: "
                      + ", ".join(r["name"] for r in lang["rules"][:12]) + (", ..." if len(lang["rules"]) > 12 else ""))
+    own = [n for n, _, h in scoped_rules(rec) if h]
+    if own:
+        lines.append(f"  {len(own)} rule{'' if len(own) == 1 else 's'} of a theme's or a page's own: "
+                     + ", ".join(own[:8]) + (", ..." if len(own) > 8 else ""))
     if not rec["pages"]:
         lines.append("  no pages yet: the notebook's Design view adds one")
     for p in rec["pages"]:

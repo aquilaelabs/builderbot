@@ -160,7 +160,7 @@ ok(bb('show', '1').trim() === shown.trim() && bb('show', 'the home dashboard') =
 ok(bb('file') === written, 'bb design file prints the file as the notebook wrote it');
 let err = '';
 try { bb('show', 'nowhere'); } catch (e) { err = String(e.stderr); }
-ok(/no page or rule here called 'nowhere'/.test(err), `...and a page that is not there is refused by name (${err.trim()})`);
+ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that is not there is refused by name (${err.trim()})`);
 
 // ---- beyond the ten: a colour of the design's own, the families, an overlay, a sideways frame
 // What ten real projects needed that the first vocabulary had no slot for
@@ -295,6 +295,58 @@ ok(/no page or rule here called 'nowhere'/.test(err), `...and a page that is not
     headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: P, action: 'save', language: { ...(await api(`/api/design?project=${P}`)).language, rules: [{ name: 'empty' }] }, pages: [] }) });
   ok(bad.status === 400 && /the rule empty says nothing/.test((await bad.json()).error || ''), 'a rule with no text is refused by name');
+
+  // ---- a theme's own rules and a page's own: named under their holder ------------------
+  // The Nostromo scheme has needs no other theme shares (the operator, 28
+  // Sep): a rule of a theme's own lives under the theme, a page's under the
+  // page, reaches a session as HOLDER/RULE, and bb design show reads it so.
+  await page.selectOption(`${NB} #dsThemePick`, '0');
+  await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dsown="t0"]`, { timeout: 5000 });
+  await page.click(`${NB} [data-dsown="t0"] [data-dsownadd]`);
+  await page.waitForSelector(`${NB} #t0-r-name-0`, { timeout: 5000 });
+  await page.fill(`${NB} #t0-r-name-0`, 'Hull');
+  await page.fill(`${NB} #t0-r-words-0`, 'texture, hull');
+  await page.fill(`${NB} #t0-r-text-0`, 'Night alone carries drawn textures behind the page.');
+  await page.click(`${NB} [data-dspage="p1"] [data-dsown="p1"] [data-dsownadd]`);
+  await page.waitForSelector(`${NB} #p1-r-name-0`, { timeout: 5000 });
+  await page.fill(`${NB} #p1-r-name-0`, 'first read');
+  await page.fill(`${NB} #p1-r-text-0`, 'The chart is read before anything else on this page.');
+  await saved();
+  const own = await api(`/api/design?project=${P}`);
+  ok(own.language.themes[0].rules?.[0]?.name === 'hull' && own.language.themes[0].rules[0].words.join() === 'texture,hull'
+     && own.pages[0].rules?.[0]?.name === 'first-read' && own.pages[0].rules[0].paths.length === 0,
+     `a rule typed under a theme saves with the theme, and one under a page with the page (${JSON.stringify(own.language.themes[0].rules)})`);
+  const eff2 = JSON.parse(execFileSync('bash', [`${REPO}/scripts/bb`, 'rules', '--json'], { encoding: 'utf8',
+    env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: P } }));
+  ok(eff2.some(r => r.name === 'night/hull' && r.design && /^For the Night theme\. Night alone/.test(r.text))
+     && eff2.some(r => r.name === 'the-home-dashboard/first-read' && /^For the home dashboard\. The chart/.test(r.text)),
+     'both reach a session as rules named under their holder, the text saying whose they are');
+  ok(/^night\/hull \(for the Night theme\) \(applies to: texture, hull\)\n\nNight alone carries/.test(bb('show', 'night/hull')),
+     `bb design show THEME/RULE prints the theme's rule (${bb('show', 'night/hull').split('\n')[0]})`);
+  const themeOut = bb('show', 'Night');
+  ok(/^Night \(dark\), one theme of 2:\n  bg #/.test(themeOut) && /night\/hull \(applies to: texture, hull\)\nNight alone carries/.test(themeOut),
+     'bb design show THEME prints the theme: its colours and its own rules');
+  const pre2 = await api(`/api/preamble?project=${P}`);
+  ok(/  night\/hull: texture, hull \(the design's: bb design show reads it/.test(pre2.text)
+     && /This project's notebook holds a design already: 2 themes \(Night, Day\); 1 page: the home dashboard; 3 design rules and 2 of a theme's or a page's own\./.test(pre2.text)
+     && /Read `bb design show` before laying out or styling anything/.test(pre2.text),
+     "the briefing names the theme's rule under it, and says the notebook holds a design, what is in it, and to read it before building");
+  const file2 = bb('file');
+  ok(/#### Rules of Night's own\n\n##### night\/hull\n\nApplies to: texture, hull\n\nNight alone carries/.test(file2)
+     && /##### the-home-dashboard\/first-read\n\nThe chart is read/.test(file2),
+     "the file carries a theme's rules under the theme and a page's under the page");
+  const pagePrompt = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
+  ok(/This page's own rules:\n  the-home-dashboard\/first-read: The chart is read before/.test(pagePrompt) && /    Night's own rules:\n      night\/hull: texture, hull \(`bb design show night\/hull` reads it\)/.test(pagePrompt),
+     "the page's prompt carries its own rules whole and names the theme's under the theme");
+  await page.selectOption(`${NB} #dsThemePick`, '0');
+  await page.waitForSelector(`${NB} [data-dsownrule="0"]`, { timeout: 5000 });
+  await page.click(`${NB} [data-dsown="t0"] + [data-dsownrule] [data-dsrrm]`);
+  await page.waitForFunction(() => !document.querySelector('.nb #t0-r-name-0'), null, { timeout: 5000 });
+  await page.click(`${NB} [data-dsown="p1"] + [data-dsownrule] [data-dsrrm]`);
+  await page.waitForFunction(() => !document.querySelector('.nb #p1-r-name-0'), null, { timeout: 5000 });
+  await saved();
+  const gone2 = await api(`/api/design?project=${P}`);
+  ok(gone2.language.themes[0].rules.length === 0 && gone2.pages[0].rules.length === 0, 'Remove rule under a theme or a page takes it out');
 }
 
 // ---- the dial: Claude may: Add to the design -------------------------------------------

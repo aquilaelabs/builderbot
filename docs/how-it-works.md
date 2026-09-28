@@ -1605,8 +1605,14 @@ macOS or Windows app, since one project can be several; the design
 language, type and the exact families, shape, space, motion and what it
 governs; the themes, each a named set of colours, dark or light, that a
 preset fills and you add to or cut, the app starting on the first; and
-your own design rules; the folds that hold a list show one of it at a
-time, chosen on a pulldown at the top; every edit is
+your own design rules; a theme and a page each carry rules of their own
+as well, for what holds for that theme or that page alone (the Nostromo
+scheme's textures, say), which reach a session named under their holder,
+`nostromo/hull`; the folds that hold a list show one of it at a
+time, chosen on a pulldown at the top; a project designed before it is
+built is built to the design: its briefing says the notebook holds one,
+what is in it, and that on a tree with no code yet the design, the rules
+and the roadmap are the specification; every edit is
 staged behind Save, the prompt under each is the server's words to copy
 into a session when you want it applied, and nothing on the view reaches
 into one: a session meets the design by itself, through the rules its

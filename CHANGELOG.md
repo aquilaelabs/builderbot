@@ -6,6 +6,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Added
 
+- A theme and a page on the Design view carry rules of their own, for what holds for that theme or that page alone; a session meets one named under its holder (nostromo/hull), bb design show THEME prints a theme with its rules, and the file and the prompts carry them under the theme or the page
+- A project's briefing says when its notebook holds a design, what is in it and to read it before building, and on a tree with no code yet that the design, the rules and the roadmap are the specification, so a project designed before its first line is built to the design
 - Conversation logs on the Profile tab: your own conversations with Claude, newest first, each downloadable as a text of what was said on both sides, every command Claude ran and what it answered
 - Reboot and Shut down on a node's row, under Advanced: the agent schedules the machine's own reboot or power-off a few seconds out so the job reports first. The press names the sessions it ends; dead with the reason while the agent is away; an administrator's only (0d3a6f0)
 - Set up GPU display on a node's row (Health): the NVIDIA driver and a headless X server on the card, as bb-sandbox gpu and a unit of the machine's own; after the one reboot it asks for, an emulator there renders on the card and bb emu gpu says so, and a session sees the display (6afdb2e)

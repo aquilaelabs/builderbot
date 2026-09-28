@@ -27,7 +27,7 @@ function nbDesignView({$, nb, project, root}){
   // on the section's pulldown (the operator, 28 Sep: listing every page
   // and every theme at once was the whole view scrolled past). A theme and
   // a rule by index, a page by its key; what is added is shown.
-  nb.dsShow = {theme: 0, rule: 0, page: null};
+  nb.dsShow = {theme: 0, rule: 0, page: null, own: {}};
   let tmpN = 0;
   const keyOf = p => p.id > 0 ? `p${p.id}` : `t${p.tmp}`;
   const presets = () => nb.dsData?.presets || {};
@@ -214,17 +214,64 @@ function nbDesignView({$, nb, project, root}){
     return docSection("design", "rules", "Rules", `${rules.length} rule${rules.length === 1 ? "" : "s"}`, body);
   }
 
-  function ruleBand(r, i){
-    return `<div class="dsrule" data-dsrule="${i}">
+  // One rule's fields. `id` is the prefix its inputs are named by: the
+  // language's are dsr-NAME-i, a theme's or a page's own carry that
+  // holder's key too, so two rules shown at once never share an id.
+  function ruleBand(r, i, id = "dsr", attr = "data-dsrule"){
+    return `<div class="dsrule" ${attr}="${i}">
       <div class="field"><div class="dsrow">
-        ${ctl(`dsr-name-${i}`, "Rule", "a short name: dialogs, tap-targets", `<input id="dsr-name-${i}" data-dsr="name" maxlength="40" autocomplete="off" value="${esc(r.name)}">`)}
-        ${ctl(`dsr-words-${i}`, "Words", "words in a prompt that bring it up, comma-separated", `<textarea id="dsr-words-${i}" class="proseline" rows="1" maxlength="300" data-dsr="words">${esc((r.words || []).join(", "))}</textarea>`, true)}
-        ${ctl(`dsr-files-${i}`, "Files", "files or directories whose edit brings it up: src/ui, *.css", `<textarea id="dsr-files-${i}" class="proseline" rows="1" maxlength="300" data-dsr="paths">${esc((r.paths || []).join(", "))}</textarea>`, true)}
+        ${ctl(`${id}-name-${i}`, "Rule", "a short name: dialogs, tap-targets", `<input id="${id}-name-${i}" data-dsr="name" maxlength="40" autocomplete="off" value="${esc(r.name)}">`)}
+        ${ctl(`${id}-words-${i}`, "Words", "words in a prompt that bring it up, comma-separated", `<textarea id="${id}-words-${i}" class="proseline" rows="1" maxlength="300" data-dsr="words">${esc((r.words || []).join(", "))}</textarea>`, true)}
+        ${ctl(`${id}-files-${i}`, "Files", "files or directories whose edit brings it up: src/ui, *.css", `<textarea id="${id}-files-${i}" class="proseline" rows="1" maxlength="300" data-dsr="paths">${esc((r.paths || []).join(", "))}</textarea>`, true)}
       </div></div>
-      <div class="field">${ctl(`dsr-text-${i}`, "Text", "", `<textarea id="dsr-text-${i}" rows="${(r.text || "").length > 600 ? 12 : 4}" maxlength="20000" data-dsr="text">${esc(r.text)}</textarea>`, true)}
+      <div class="field">${ctl(`${id}-text-${i}`, "Text", "", `<textarea id="${id}-text-${i}" rows="${(r.text || "").length > 600 ? 12 : 4}" maxlength="20000" data-dsr="text">${esc(r.text)}</textarea>`, true)}
         <div class="actbar"><span class="state">${(r.words || []).length || (r.paths || []).length ? "named in the briefing; its text arrives when it applies" : "standing: in every briefing whole"}</span>
           <button type="button" class="danger" data-dsrrm title="take this rule out">Remove rule</button></div></div>
     </div>`;
+  }
+
+  // A theme's or a page's own rules (the operator, 28 Sep: the Nostromo
+  // scheme has needs no other theme shares): the same shape as the
+  // language's, under the holder, one shown at a time on its pulldown.
+  // A session meets one as HOLDER/RULE, and bb design show reads it so.
+  function ownRules(holder, key, what){
+    const rules = holder.rules || (holder.rules = []);
+    const i = Math.min(Math.max(0, nb.dsShow.own[key] || 0), Math.max(0, rules.length - 1));
+    nb.dsShow.own[key] = i;
+    const rows = rules.map((x, j) => ({key: String(j), label: x.name || "unnamed rule"}));
+    return `<div class="field" data-dsown="${key}"><div class="dsrow">
+        ${rules.length ? pick(`${key}-rulepick`, `${what}'s own rules`, rows, String(i),
+          `rules that hold for ${what} alone, delivered to a session like the design's, named under it`) : lbl("", `${what}'s own rules`, `rules that hold for ${what} alone, delivered to a session like the design's, named under it`)}
+        <button type="button" data-dsownadd ${rules.length >= (presets().rules_max || 60) ? "disabled" : ""}>Add rule</button>
+      </div></div>
+      ${rules.length ? ruleBand(rules[i], i, `${key}-r`, "data-dsownrule") : ""}`;
+  }
+  // The typing and the pulldown of one holder's own rules.
+  function wireOwnRules(el, holder, key){
+    const host = el.querySelector(`[data-dsown="${key}"]`);
+    if (!host) return;
+    const rules = holder.rules;
+    const split = v => v.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
+    const pk = host.querySelector("[data-dspick]");
+    if (pk) pk.onchange = e => { nb.dsShow.own[key] = +e.target.value; drawDesign(); };
+    host.querySelector("[data-dsownadd]").onclick = () => {
+      rules.push({name: "", text: "", words: [], paths: []});
+      nb.dsShow.own[key] = rules.length - 1;
+      touched(); drawDesign();
+      root.querySelector(`#${key}-r-name-${rules.length - 1}`)?.focus();
+    };
+    const band = host.nextElementSibling?.matches("[data-dsownrule]") ? host.nextElementSibling : null;
+    if (!band) return;
+    const r = rules[+band.dataset.dsownrule]; if (!r) return;
+    band.querySelector('[data-dsr="name"]').oninput = e => {
+      r.name = e.target.value; touched(); refreshAllPrompts();
+      const o = host.querySelector(`[data-dspick] option[value="${band.dataset.dsownrule}"]`);
+      if (o) o.textContent = r.name.trim() || "unnamed rule";
+    };
+    band.querySelector('[data-dsr="text"]').oninput = e => { r.text = e.target.value; touched(); refreshAllPrompts(); };
+    band.querySelector('[data-dsr="words"]').oninput = e => { r.words = split(e.target.value); touched(); refreshAllPrompts(); };
+    band.querySelector('[data-dsr="paths"]').oninput = e => { r.paths = split(e.target.value); touched(); refreshAllPrompts(); };
+    band.querySelector("[data-dsrrm]").onclick = () => { rules.splice(+band.dataset.dsownrule, 1); nb.dsShow.own[key] = 0; touched(); drawDesign(); };
   }
 
   // One theme: its name and mode, its colours as rows (a name, a hex and
@@ -247,8 +294,9 @@ function nbDesignView({$, nb, project, root}){
           ${ctl(`dst-${i}-hex-${j}`, "Hex", "", `<div class="dsc"><span class="dschip" style="background:${esc(c.hex)}"></span><input id="dst-${i}-hex-${j}" data-dsm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c.hex)}"></div>`)}
           ${ctl(`dst-${i}-for-${j}`, "For", "", `<textarea id="dst-${i}-for-${j}" class="proseline" rows="1" maxlength="120" data-dsm="means">${esc(c.means)}</textarea>`, true)}
           <button type="button" class="danger" data-dstcrm="${j}" title="take this colour out">Remove</button>
-        </div>`).join("")}</div>
-      <div class="actbar"><span class="state">${i === 0 ? "the default: the app starts on it" : ""}</span>
+        </div>`).join("")}</div></div>
+      ${ownRules(t, `t${i}`, t.name.trim() || "this theme")}
+      <div class="field"><div class="actbar"><span class="state">${i === 0 ? "the default: the app starts on it" : ""}</span>
         <button type="button" data-dstcadd ${(t.colors || []).length >= (P.colors_max || 40) ? "disabled" : ""}>Add colour</button>
         ${i === 0 ? "" : `<button type="button" data-dstdefault title="the app starts on this theme">Make default</button>`}
         <button type="button" class="danger" data-dstrm ${n === 1 ? "disabled" : ""} title="${n === 1 ? "a language keeps at least one theme" : "take this theme out"}">Remove theme</button></div></div>
@@ -298,6 +346,7 @@ function nbDesignView({$, nb, project, root}){
       : `<div class="field"><div class="hint">${n ? "Tap a block to name what it is for." : "Add a block, or start again from a template with Add page."}</div></div>`}
       <div class="field">${ctl(`${key}-notes`, "Notes", "what the blocks cannot say: what a tap does, where the data comes from",
             `<textarea id="${key}-notes" rows="3" maxlength="65536" data-dsf="notes">${esc(p.notes)}</textarea>`, true)}</div>
+      ${ownRules(p, key, p.name.trim() || "this page")}
       <div class="field">${lbl(`${key}-prompt`, "Prompt", "what this page asks of a session, to copy into one when you want it built; a session also reads it by itself, with bb design show")}
         <textarea id="${key}-prompt" class="dsprompt" readonly rows="10" spellcheck="false" data-dsprompt></textarea>
         <div class="actbar"><span class="state"></span>
@@ -422,6 +471,7 @@ function nbDesignView({$, nb, project, root}){
       touched(); drawDesign();
     };
     el.querySelector("[data-dscopy]").onclick = e => copyPrompt(el.querySelector("[data-dsprompt]").value, e.target);
+    wireOwnRules(el, p, key);
     wireBoard(el.querySelector(".dsboard"), p);
   }
 
@@ -594,6 +644,7 @@ function nbDesignView({$, nb, project, root}){
       if (L.themes.length === 1) return;
       L.themes.splice(i, 1); nb.dsShow.theme = 0; touched(); drawDesign();
     };
+    wireOwnRules(band, t, `t${i}`);
   }
 
   // ---- the prompts, from the server ---------------------------------------------------

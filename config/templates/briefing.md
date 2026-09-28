@@ -166,8 +166,11 @@ around a refusal.
 and `bb <verb> -h` for the rest of any of them. `bb design` is what the
 project looks like as the operator laid it out on the notebook's Design
 view, its language and its pages: read it before styling or laying out
-anything, `bb design show NAME` for one page, and `bb design file` prints
-the docs/design-language.md it writes. The record's verbs, as you
+anything, `bb design show NAME` for one page, one theme or one rule (a
+theme's or a page's own rule is named under it, `nostromo/hull`), and
+`bb design file` prints the docs/design-language.md it writes.
+<!-- BUILDERBOT:DESIGN -->
+The record's verbs, as you
 meet things: `bb bug add "..." --sev medium --area "..." --repro "..."` for
 a bug, `bb roadmap add "..."` for work worth doing, `bb bug note B7 "..."`
 for what you learn about an open one, and `bb bug fix B7 "what fixed it"`

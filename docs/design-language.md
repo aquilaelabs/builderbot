@@ -622,7 +622,9 @@ view scrolled past (the operator, 28 Sep). The one shown is fields like any
 tab's, never a box of its own. The view is passive: nothing on it reaches
 into a session; the prompt under the language and under each page is text
 to copy, and a session reads the design by itself through its rules and
-`bb design show`.
+`bb design show`. A theme and a page each carry rules of their own under
+them, one shown at a time like the language's, for what holds for that
+theme or that page alone; a session meets one as HOLDER/RULE.
 
 **The Design view's board is the one surface here whose colours are data.**
 A page's blocks are painted in the project's own language (`nb-design.js`,
