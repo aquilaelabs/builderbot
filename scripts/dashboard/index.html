@@ -1220,6 +1220,9 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    a phone stops needing a sideways scroll to read the notes that are the
    whole reason the box is seeded. */
 #devEnvModal textarea{white-space:pre-wrap;overflow-wrap:anywhere}
+/* A brief is prose, in New project and in the first session's dialog: it
+   wraps, where the dialogs' default keeps a shell line on one line. */
+#pAbout,#briefText{white-space:pre-wrap;overflow-wrap:anywhere}
 /* The env on the send dialog is the same kind of content and gets the same
    treatment: it wraps rather than running off the right edge, where an
    .env.example's comment lines are long enough to lose half of themselves.
