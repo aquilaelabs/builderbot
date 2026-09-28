@@ -2505,7 +2505,7 @@ bb_auth_or_die() {
     # tab mints a fresh one, which bb-tty writes where bb_token_now reads it.
     if [ -n "${BB_TOKEN:-}" ] && bb_token_dead "$(bb_token_now)"; then
         local e; e="$(bb_token_exp "$BB_TOKEN")"
-        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null). They last 12 hours and a conversation can outlast one. ask the person to reopen this session's tab on the dashboard, which mints a fresh token; the next command then works and the next command works: that mints a fresh token and leaves it where bb looks."
+        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null). A token lasts 12 hours and is renewed by every answer the controller gives, and the node's agent renews an idle one; a session left idle before that fix ran out. Ask the person to reopen this session's tab on the dashboard: that mints a fresh token and leaves it where bb looks, and the next command works."
     fi
     if [ -z "$h" ]; then
         # Which of the two is actually wrong. Everything that reaches a node
