@@ -7,9 +7,9 @@
 // language included, carries its rules as a section inside it, every rules
 // list the Briefing's.
 // Every edit is staged and the notebook's Save writes the whole record at
-// once, the way the roadmap saves; the prompt under each page and the
-// language is the server's (design.py), so the tab, `bb design show` and
-// docs/design-language.md say one thing. One classic script beside
+// once, the way the roadmap saves. Nothing here is a prompt: a session reads
+// the design piece by piece with bb design show (design.py), which is what
+// docs/design-language.md is written from too. One classic script beside
 // index.html (docs/design-language.md, Files): a factory makeNotebook calls
 // per notebook.
 
@@ -159,10 +159,8 @@ function nbDesignView({$, nb, project, root}){
     // A locked project reads its notebook: every control here is dead but
     // Copy, which takes nothing anywhere, and the pulldowns, which show.
     if (root.classList.contains("ro"))
-      body.querySelectorAll("input,select:not([data-dspick]),textarea,button:not([data-dscopy])").forEach(e => e.disabled = true);
+      body.querySelectorAll("input,select:not([data-dspick]),textarea,button").forEach(e => e.disabled = true);
     drawHint();
-    refreshPrompt("lang");
-    if (sh.page) refreshPrompt(keyOf(sh.page));
   }
 
   // A section's pulldown: which of its things is shown below it.
@@ -185,11 +183,7 @@ function nbDesignView({$, nb, project, root}){
       <div class="field">${ctl("dsScope", "Governs",
             "what the language covers when the project is more than one product: the web app in site/",
             `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope)}</textarea>`, true)}</div>
-      ${rulesFold()}
-      <div class="field">${lbl("dsPromptL", "Prompt", "what the saved language asks of a session, to copy into one when you want it applied; a session also reads it by itself, through the rules and bb design show")}
-        <textarea id="dsPromptL" class="dsprompt" readonly rows="10" spellcheck="false"></textarea>
-        <div class="actbar"><span class="state"></span>
-          <button type="button" data-dscopy="lang" title="copy the prompt">Copy</button></div></div>`;
+      ${rulesFold()}`;
     return docSection("design", "language", "Design language", status, body);
   }
 
@@ -285,7 +279,7 @@ function nbDesignView({$, nb, project, root}){
         kind.textContent = cond(r) ? "on its triggers" : "every session";
         kind.classList.toggle("cond", !!cond(r));
         row.querySelector(".actbar .state").textContent = `${ruleWhen(r)} · Save at the foot writes it`;
-        touched(); refreshAllPrompts();
+        touched();
       };
       const put = (sel, fn) => { const el = row.querySelector(sel); if (el) el.oninput = () => { fn(el.value); typed(); }; };
       put(".rlName", v => { r.name = v; row.querySelector(".rlNameRO").textContent = v.trim() || "(unnamed)"; });
@@ -398,10 +392,7 @@ function nbDesignView({$, nb, project, root}){
         `<div class="hint">What holds for ${esc(p.name.trim() || "this page")} alone. A session meets one as ${esc(holderSlug(p.name || `page-${p.id}`))}/NAME.</div>` + rulesList(key, p.rules || (p.rules = [])), {open: true})}
       <div class="field">${ctl(`${key}-notes`, "Notes", "what the blocks cannot say: what a tap does, where the data comes from",
             `<textarea id="${key}-notes" rows="3" maxlength="65536" data-dsf="notes">${esc(p.notes)}</textarea>`, true)}</div>
-      <div class="field">${lbl(`${key}-prompt`, "Prompt", "what this page asks of a session, to copy into one when you want it built; a session also reads it by itself, with bb design show")}
-        <textarea id="${key}-prompt" class="dsprompt" readonly rows="10" spellcheck="false" data-dsprompt></textarea>
-        <div class="actbar"><span class="state"></span>
-          <button type="button" data-dscopy="${key}" title="copy the prompt">Copy</button>
+      <div class="field"><div class="actbar"><span class="state"></span>
           <button type="button" class="danger" data-dspagerm title="take this page out; Save makes it final, Revert brings it back">Remove page</button></div></div>
     </div>`;
   }
@@ -472,9 +463,9 @@ function nbDesignView({$, nb, project, root}){
     el.querySelector('[data-dsf="name"]').oninput = e => {
       p.name = e.target.value;
       pageOption(p);
-      touched(); refreshPrompt(key);
+      touched();
     };
-    el.querySelector('[data-dsf="notes"]').oninput = e => { p.notes = e.target.value; touched(); refreshPrompt(key); };
+    el.querySelector('[data-dsf="notes"]').oninput = e => { p.notes = e.target.value; touched(); };
     el.querySelector('[data-dsf="platform"]').onchange = e => {
       p.platform = e.target.value;
       const frames = platformOf(p)?.frames || [];
@@ -503,11 +494,11 @@ function nbDesignView({$, nb, project, root}){
     el.querySelector("[data-dsblockrm]")?.addEventListener("click", () => removeBlock(p));
     el.querySelector('[data-dsb="kind"]')?.addEventListener("change", e => {
       const b = p.blocks[nb.dsSel[key]]; if (!b) return;
-      b.kind = e.target.value; touched(); repaintBoard(p); refreshPrompt(key);
+      b.kind = e.target.value; touched(); repaintBoard(p);
     });
     el.querySelector('[data-dsb="label"]')?.addEventListener("input", e => {
       const b = p.blocks[nb.dsSel[key]]; if (!b) return;
-      b.label = e.target.value; touched(); refreshPrompt(key);
+      b.label = e.target.value; touched();
       const on = el.querySelector(".dsblock.on");
       if (on){
         let s = on.querySelector("span");
@@ -521,7 +512,6 @@ function nbDesignView({$, nb, project, root}){
       nb.dsShow.page = null;
       touched(); drawDesign();
     };
-    el.querySelector("[data-dscopy]").onclick = e => copyPrompt(el.querySelector("[data-dsprompt]").value, e.target);
     wireBoard(el.querySelector(".dsboard"), p);
   }
 
@@ -568,7 +558,7 @@ function nbDesignView({$, nb, project, root}){
         el.removeEventListener("pointerup", up);
         el.removeEventListener("pointercancel", up);
         el.classList.remove("dragging");
-        if (moved){ touched(); refreshPrompt(key); }
+        if (moved){ touched(); }
       };
       el.addEventListener("pointermove", move);
       el.addEventListener("pointerup", up);
@@ -592,7 +582,7 @@ function nbDesignView({$, nb, project, root}){
       if (e.shiftKey){ b.w += d[0]; b.h += d[1]; } else { b.x += d[0]; b.y += d[1]; }
       clampBlock(b, P.frames?.[p.frame] || {cols: 12, rows: 8}, e.shiftKey);
       el.style.cssText = blockStyle(b);
-      touched(); refreshPrompt(key);
+      touched();
     });
   }
 
@@ -600,10 +590,9 @@ function nbDesignView({$, nb, project, root}){
   function wireLanguage(body){
     const L = nb.dsLang;
     for (const [id, k] of [["dsFont", "font"], ["dsCorners", "corners"], ["dsDensity", "density"], ["dsMotion", "motion"]])
-      body.querySelector("#" + id).onchange = e => { L[k] = e.target.value; touched(); refreshAllPrompts(); };
-    body.querySelector("#dsScope").oninput = e => { L.scope = e.target.value; touched(); refreshAllPrompts(); };
-    body.querySelector("#dsFonts").oninput = e => { L.fonts = e.target.value; touched(); refreshAllPrompts(); };
-    body.querySelector('[data-dscopy="lang"]').onclick = e => copyPrompt(body.querySelector("#dsPromptL").value, e.target);
+      body.querySelector("#" + id).onchange = e => { L[k] = e.target.value; touched(); };
+    body.querySelector("#dsScope").oninput = e => { L.scope = e.target.value; touched(); };
+    body.querySelector("#dsFonts").oninput = e => { L.fonts = e.target.value; touched(); };
     const pp = body.querySelector("#dsPagePick");
     if (pp) pp.onchange = e => { nb.dsShow.page = e.target.value; drawDesign(); };
   }
@@ -634,7 +623,7 @@ function nbDesignView({$, nb, project, root}){
     if (!band || !t) return;
     const i = +band.dataset.dstheme;
     band.querySelector('[data-dst="name"]').oninput = e => {
-      t.name = e.target.value; touched(); refreshAllPrompts();
+      t.name = e.target.value; touched();
       const o = body.querySelector(`#dsThemePick option[value="${i}"]`);
       if (o) o.textContent = `${t.name || "unnamed theme"} (${t.mode})${i === 0 ? ", the default" : ""}`;
     };
@@ -646,14 +635,14 @@ function nbDesignView({$, nb, project, root}){
     };
     band.querySelectorAll("[data-dstc]").forEach(row => {
       const c = t.colors[+row.dataset.dstc]; if (!c) return;
-      row.querySelector('[data-dsm="name"]').oninput = e => { c.name = e.target.value; touched(); if (i === 0) nb.dsPages.forEach(repaintBoard); refreshAllPrompts(); };
-      row.querySelector('[data-dsm="means"]').oninput = e => { c.means = e.target.value; touched(); refreshAllPrompts(); };
+      row.querySelector('[data-dsm="name"]').oninput = e => { c.name = e.target.value; touched(); if (i === 0) nb.dsPages.forEach(repaintBoard); };
+      row.querySelector('[data-dsm="means"]').oninput = e => { c.means = e.target.value; touched(); };
       row.querySelector('[data-dsm="hex"]').oninput = e => {
         const v = e.target.value.trim().toLowerCase();
         if (!/^#[0-9a-f]{6}$/.test(v)) return;
         c.hex = v; e.target.previousElementSibling.style.background = v;
         if (i === 0) nb.dsPages.forEach(repaintBoard);
-        touched(); refreshAllPrompts();
+        touched();
       };
       row.querySelector("[data-dstcrm]").onclick = () => { t.colors.splice(+row.dataset.dstc, 1); touched(); drawDesign(); };
     });
@@ -667,34 +656,6 @@ function nbDesignView({$, nb, project, root}){
     band.querySelector("[data-dstrm]").onclick = () => {
       L.themes.splice(i, 1); nb.dsShow.theme = 0; touched(); drawDesign();
     };
-  }
-
-  // ---- the prompts, from the server ---------------------------------------------------
-  // Asked a moment after the last keystroke, one request per prompt, and the
-  // answer lands in its box without a redraw so the typing is not disturbed.
-  const timers = {};
-  function refreshPrompt(key){
-    clearTimeout(timers[key]);
-    timers[key] = setTimeout(async () => {
-      const p = key === "lang" ? null : nb.dsPages.find(x => keyOf(x) === key);
-      if (key !== "lang" && !p) return;
-      const box = key === "lang" ? root.querySelector("#dsPromptL")
-                                 : root.querySelector(`[data-dspage="${key}"] [data-dsprompt]`);
-      if (!box) return;
-      try{
-        const j = await (await postJSON("/api/design", {project, action: "preview", language: nb.dsLang,
-                                                       ...(p ? {page: p} : {})})).json();
-        if (j.error){ box.value = "could not build the prompt: " + j.error; return; }
-        box.value = j.text;
-      }catch(e){ box.value = "could not reach the server: " + e; }
-    }, 250);
-  }
-  function refreshAllPrompts(){ refreshPrompt("lang"); nb.dsPages.forEach(p => refreshPrompt(keyOf(p))); }
-
-  async function copyPrompt(text, btn){
-    try{ await navigator.clipboard.writeText(text || ""); notify("copied"); }
-    catch(e){ notify("could not copy: select the text and copy it yourself", true); }
-    btn?.blur();
   }
 
   // The view is passive by design (the operator, 28 Sep): nothing here

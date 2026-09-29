@@ -1623,10 +1623,10 @@ is built is built to the design: its briefing says the notebook holds one,
 what is in it, that on a tree with no code yet the design, the rules
 and the roadmap are the specification, and that what the design leaves
 open goes back into it, under the project's dial; every edit is
-staged behind Save, the prompt under each is the server's words to copy
-into a session when you want it applied, and nothing on the view reaches
-into one: a session meets the design by itself, through the rules its
-briefing names and `bb design show`; a session asked to put a design into
+staged behind Save, nothing on the view is a prompt and nothing on it
+reaches into a session: a session meets the design by itself and piece by
+piece, through the rules its briefing names and `bb design show`, which
+prints the language, one page, one theme or one rule; a session asked to put a design into
 the notebook writes the same record with `bb design save`, and Write the
 file puts `docs/design-language.md` into the tree for every session to
 read), the

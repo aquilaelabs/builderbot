@@ -89,24 +89,25 @@ ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridRow) ===
 await page.keyboard.press('Shift+ArrowDown'); await page.keyboard.press('Shift+ArrowDown');
 ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridRow) === '4 / span 5',
    '...and sizing it past the frame\'s edge caps it there rather than sliding it up');
-// Nothing on the view reaches into a session: the prompt's row offers Copy
-// and nothing that sends (the operator, 28 Sep).
+// Nothing on the view reaches into a session, and nothing on it is a
+// prompt: a session reads the design piece by piece with bb design show
+// (the operator, 28 and 29 Sep).
 ok(!(await page.$(`${NB} [data-dssend]`)) && !(await page.$(`${NB} button:has-text("Send to Claude")`))
-   && await page.$(`${NB} [data-dspage] [data-dscopy]`),
-   'the prompt row has Copy and no Send to Claude: the view is passive');
+   && !(await page.$(`${NB} #dsBody textarea[readonly]`)) && !(await page.$(`${NB} #dsBody button:has-text("Copy")`)),
+   'the view has no Send to Claude, no prompt box and no Copy: it is passive, and read piece by piece');
 await saved();
 const rec = await api(`/api/design?project=${P}`);
 const pg = rec.pages[0];
 ok(rec.pages.length === 1 && pg.id === 1 && pg.name === 'the home dashboard' && pg.platform === 'web'
    && pg.blocks[4].x === 1 && pg.blocks[4].y === 3 && pg.blocks[4].h === 5 && pg.blocks[4].label === 'orders per day',
    `Save writes the page with its id, its name, its platform and the blocks as arranged (${JSON.stringify(pg.blocks[4])})`);
-// ---- the prompt, the server's words ------------------------------------------------
-const promptText = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
+// ---- the page's prose, the server's words, read with bb design show --------------------
+const promptText = (await api(`/api/design?project=${P}&show=1`)).text || '';
 ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
    && /Platform: a responsive web app/.test(promptText)
    && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 9 of 12, rows 4 to 8 of 8/.test(promptText)
    && /Colours: none chosen yet\. Choose them as tokens/.test(promptText) && /Type: system-ui, the platform's own sans-serif/.test(promptText),
-   `the page's prompt names the page, its platform, each block with what it is for and where, and the language, colours still to choose (${promptText.split('\n')[3]})`);
+   `bb design show PAGE names the page, its platform, each block with what it is for and where, and the language, colours still to choose (${promptText.split('\n')[3]})`);
 
 // ---- the language: themes, each a named set of colours ------------------------------
 // A theme is a name, dark or light, and colours that are added, changed
@@ -194,10 +195,10 @@ const bb = (...a) => execFileSync('bash', [`${REPO}/scripts/bb`, 'design', ...a]
          XDG_CACHE_HOME: `${DIR}/cache-design` } });
 ok(/Default \(dark\), Paper \(light\); system sans/.test(bb()) && /1  the home dashboard  \(android app, phone, 6 blocks\)/.test(bb()),
    `bb design lists the language and the pages (${bb().split('\n')[1].trim()})`);
-const shown = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
-ok(bb('show', '1').trim() === shown.trim() && bb('show', 'the home dashboard') === bb('show', '1')
+const shown = bb('show', '1');
+ok(bb('show', 'the home dashboard') === shown && /^Build or restyle the home dashboard to this layout/.test(shown)
    && /Platform: an Android app/.test(shown),
-   'bb design show prints the prompt the tab shows, by id or by name');
+   'bb design show prints a page by id or by name, the same words');
 ok(bb('file') === written, 'bb design file prints the file as the notebook wrote it');
 let err = '';
 try { bb('show', 'nowhere'); } catch (e) { err = String(e.stderr); }
@@ -230,7 +231,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   await page.fill(`${NB} [data-dspage] [data-dsb="label"]`, 'the card picker');
   await saved();
   const grown = await api(`/api/design?project=${P}`);
-  const text = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
+  const text = bb('show', '1');
   ok(grown.language.themes[0].colors.length === 11 && grown.language.themes[0].colors[10].hex === '#f0efec' && grown.language.fonts.startsWith('Inter')
      && grown.pages[0].frame === 'landscape' && grown.pages[0].blocks.some(b => b.kind === 'overlay' && b.label === 'the card picker'),
      'a colour of the design\'s own, the families, a sideways frame and an overlay block all save');
@@ -334,11 +335,6 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
      'a row opens to be read, with Edit and Remove under it');
   await page.click(`${NB} [data-sect="design:rules"] [data-dsruleadd]`);
   await page.waitForSelector(`${NB} [data-dsrules="lang"] .rulerow[data-i="2"].editing .rlName`, { timeout: 5000 });
-  // The preview asked for while the new rule has no text yet leaves it out
-  // rather than refusing (B341): the prompt box never says it could not.
-  await page.waitForTimeout(patience(600));
-  ok(!/could not build the prompt/.test(await page.$eval(`${NB} #dsPromptL`, e => e.value)),
-     'the prompt preview skips a rule still being typed rather than refusing it');
   const newRow = `${NB} [data-dsrules="lang"] .rulerow[data-i="2"]`;
   await page.fill(`${newRow} .rlName`, 'Tap targets');
   await page.fill(`${newRow} .rlWords`, 'tap, phone');
@@ -433,9 +429,9 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   ok(/#### Rules of Night's own\n\n##### night\/hull\n\nApplies to: texture, hull\n\nNight alone carries/.test(file2)
      && /##### the-home-dashboard\/first-read\n\nThe chart is read/.test(file2),
      "the file carries a theme's rules under the theme and a page's under the page");
-  const pagePrompt = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => e.value);
+  const pagePrompt = bb('show', '1');
   ok(/This page's own rules:\n  the-home-dashboard\/first-read: The chart is read before/.test(pagePrompt) && /    Night's own rules:\n      night\/hull: texture, hull \(`bb design show night\/hull` reads it\)/.test(pagePrompt),
-     "the page's prompt carries its own rules whole and names the theme's under the theme");
+     "bb design show PAGE carries the page's own rules whole and names the theme's under the theme");
   await page.selectOption(`${NB} #dsThemePick`, '0');
   await page.waitForSelector(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"]`, { timeout: 5000 });
   for (const key of ['t0', 'p1']){

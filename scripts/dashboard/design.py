@@ -12,11 +12,10 @@ means applying it there.
 Two things come out of it, both generated here and nowhere else, so the
 tab, `bb design` and the file cannot drift:
 
-  * a prompt, one for the language and one per page, which the tab shows
-    for a person to copy into a session when they want it applied, and
-    which `bb design show` prints for a session that reads it by itself.
-    The view is passive (the operator, 28 Sep): nothing on it reaches
-    into a session;
+  * the prose a session reads piece by piece with `bb design show`: the
+    language, one page, one theme or one rule. The tab shows none of it
+    (the operator, 29 Sep: a whole dump is not how a session should read
+    a design), and nothing on the view reaches into a session;
   * docs/design-language.md in the project's tree, the same shape as
     BuilderBot's own, written on request from the saved state. A session
     reads it as the standing description of the look, which is what the
@@ -925,19 +924,6 @@ def write_file(project, who=""):
     return {"ok": True, "path": FILE_PATH, "file": _file_state(project, rec)}, 200
 
 
-def _unfinished_out(holder):
-    """`holder` (a language, a theme or a page as sent) without the rules
-    that have no text yet, at every level, for a preview asked mid-typing."""
-    if not isinstance(holder, dict):
-        return holder
-    out = dict(holder)
-    if isinstance(out.get("rules"), list):
-        out["rules"] = [r for r in out["rules"] if isinstance(r, dict) and str(r.get("text") or "").strip()]
-    if isinstance(out.get("themes"), list):
-        out["themes"] = [_unfinished_out(t) for t in out["themes"]]
-    return out
-
-
 def verb(project, req, who, session):
     """POST /api/design. A person saves from the tab; a session saves the
     same record through `bb design save`, asked to put a design language
@@ -948,17 +934,6 @@ def verb(project, req, who, session):
     if session and act == "write":
         return {"error": "a session reads the design with bb design and writes the file with "
                          "bb design file; Write the file is the tab's"}, 403
-    if act == "preview":
-        # A preview is asked for mid-typing, a keystroke after Add rule, so
-        # a rule with no text yet is left out of it rather than refused:
-        # the refusal is Save's, and a 400 here was a console error and a
-        # flake in the whole run (B341).
-        try:
-            lang = _clean_language(_unfinished_out(req.get("language") or {}))
-            page = _clean_page(_unfinished_out(req["page"]), 0) if isinstance(req.get("page"), dict) else None
-        except _Refused as e:
-            return {"error": str(e)}, 400
-        return {"text": prompt(lang, page)}, 200
     if act == "save":
         # A session's save is the project's dial, Claude may: Add to the
         # design (auto lands it, ask holds it for the operator, deny refuses
