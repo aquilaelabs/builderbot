@@ -385,7 +385,10 @@ private fun Settings(api: dev.builderbot.app.Api, project: String) {
 @Composable
 private fun Git(api: dev.builderbot.app.Api, project: String) {
     val (g, reload) = load("git-$project") { api.git(project) }
-    val s = g.value?.obj("status") ?: g.value
+    // The answer carries the branch and the files at its top level. This
+    // read a `status` object first, through a helper that never answers
+    // null, so every project read "on no branch" with nothing changed.
+    val s = g.value
     Column(Modifier.fillMaxSize().padding(16.dp, 8.dp)) {
         if (g.error != null) Problem(g.error)
         if (s != null) {
