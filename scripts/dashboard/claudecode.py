@@ -46,6 +46,13 @@ audit = None
 auto = None                # () -> the claude_autoupdate setting
 _lock = threading.Lock()
 _latest = {"version": "", "at": 0, "error": "", "checking": False}
+# {node id: when} for an update pressed and not yet queued: ending the
+# node's sessions comes first and is a round trip each, and in those
+# seconds the hold read nothing, so a project's Claude button was live and
+# a press on it started a session the update was about to end (the
+# operator, 29 Sep). The job is the fact once it exists; this is the fact
+# until then.
+_pressed = {}
 
 
 def configure(*, nodes_module, node_sessions, tmux_base, audit=None, auto=None):
@@ -122,6 +129,8 @@ def updating(node_id):
     flag, so a restart cannot leave a hold up with nothing behind it."""
     if nodes is None:
         return False
+    if time.time() - _pressed.get(node_id, 0) < 120:
+        return True
     return any(j.get("type") == JOB for j in nodes.jobs_for(node_id, n=20, type=JOB, active=True))
 
 
@@ -183,14 +192,18 @@ def update(principal, node_id):
         return {"error": f"{n['name']} runs no session account, so there is no Claude Code there to update"}
     if updating(node_id):
         return {"error": f"an update is already queued on {n['name']}"}
-    ended = []
-    for s in node_sessions() if node_sessions else []:
-        if s.get("node_id") == node_id and tmux_base(s["name"]).startswith("claude-"):
-            r = nodes.session_kill(node_id, s.get("node_name") or s["name"])
-            if not r.get("error"):
-                ended.append(s["name"])
-    r = nodes.job_add(principal, {"node": node_id}, JOB,
-                      {"timeout": 900, "to": latest()["version"], "ended": ended})
+    _pressed[node_id] = time.time()
+    try:
+        ended = []
+        for s in node_sessions() if node_sessions else []:
+            if s.get("node_id") == node_id and tmux_base(s["name"]).startswith("claude-"):
+                r = nodes.session_kill(node_id, s.get("node_name") or s["name"])
+                if not r.get("error"):
+                    ended.append(s["name"])
+        r = nodes.job_add(principal, {"node": node_id}, JOB,
+                          {"timeout": 900, "to": latest()["version"], "ended": ended})
+    finally:
+        _pressed.pop(node_id, None)
     if r.get("ok"):
         if audit:
             audit(principal, "node-claude-update", node_id, {"to": latest()["version"], "ended": ended})

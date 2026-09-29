@@ -2208,6 +2208,31 @@ print(m.mint_session('alpha'))
      `Update ends the Claude session there and queues the job naming the version (${up.job || up.error}; ended ${JSON.stringify(up.ended)})`);
   const held = (await napi('/api/status')).projects.find(p => p.name === 'beta')?.held || '';
   ok(/Claude Code is updating on clbox/.test(held), `...and the node's project is held with the reason while it runs (${held.slice(0, 60)})`);
+  // ...from the press, not from the job: ending the sessions comes first,
+  // a round trip each, and the hold used to read nothing until the job
+  // existed, so a Claude button pressed in those seconds started a
+  // session the update was about to end (the operator, 29 Sep).
+  {
+    const said = execFileSync('python3', ['-c', `
+import sys, json
+sys.path.insert(0, ${JSON.stringify(REPO + '/scripts/dashboard')})
+import claudecode as m
+seen = []
+class N:
+    def node(self, i): return {"id": i, "name": "clbox", "kind": "agent", "live": True, "reported": {"session": {"up": True}}}
+    def jobs_for(self, *a, **k): return []
+    def session_kill(self, nid, name):
+        seen.append(m.updating(nid)); return {"ok": True}
+    def job_add(self, who, sel, typ, spec): return {"ok": True, "job": "j_1"}
+m.configure(nodes_module=N(), node_sessions=lambda: [{"node_id": "n1", "name": "u_1~claude-beta"}], tmux_base=lambda s: s.split("~")[-1])
+m._latest["version"] = "1.2.0"
+r = m.update("test", "n1")
+print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.get("ok")}))
+`], { encoding: 'utf8' }).trim();
+    const r = JSON.parse(said);
+    ok(r.ok && r.held_while_ending.length === 1 && r.held_while_ending[0] === true && r.after === false,
+       `the hold is up from the press, while the node's sessions are being ended, and is the job's alone once it is queued (${said})`);
+  }
   ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
      '...and the bell row is gone while the update is queued');
   const again = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });
