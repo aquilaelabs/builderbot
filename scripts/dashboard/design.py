@@ -888,7 +888,7 @@ def schema_text():
         f'    "frame": {" | ".join(FRAMES)},   one the platform allows: phone and landscape for a phone app',
         f'    "template": {" | ".join(TEMPLATE_KEYS)},',
         f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2 }} ],   at most {MAX_BLOCKS}, inside the frame',
-        f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the blocks sat on another frame, one place per block in order',
+        '    "layouts": { "phone": [ { "x": 0, "y": 0, "w": 6, "h": 2 } ] },   optional: where the blocks sat on another frame, one place per block in order',
         f'    "notes": "...",   at most {NOTES_MAX} characters',
         '    "rules": [RULE]',
         f'  }} ],   at most {MAX_PAGES} pages',
