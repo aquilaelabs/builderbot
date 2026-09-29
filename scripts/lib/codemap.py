@@ -28,6 +28,7 @@ script, tab-*.js, nb-*.js, test/*.mjs) and a line pass for shell.
                                  from outside, what runs at load, what the suite covers. The unit a
                                  cleanup moves.
     bb map coverage              what the last covered run reached, per file (bb tests coverage runs one)
+    bb map affected --base REF FILES...   the suites a change touches, by the functions its lines fall in and the covered run (--names for a script)
     bb map covered NAME          which suites ran NAME, and how often: the regression net for touching it
     bb map uncovered [FILE]      the functions no suite reached
     bb map build                 rescan everything now (a changed file is rescanned by itself on any question)
@@ -1330,6 +1331,112 @@ def targets(idx):
     return rows
 
 
+# ---- what a change touches, by coverage (the operator, 29 Sep) ---------------
+# A whole gate was 25 minutes of wall for a change to one handler, because
+# server.py, index.html and the briefing each read as "every suite". The
+# covered run already says which suites reach which function, so a change
+# is measured by the functions its lines fall in and the suites that
+# reached those, and by the ids and classes its lines draw. A changed
+# function no covered run has seen falls back to the file's own answer
+# (suites_for), and in server.py to every suite, as before.
+
+def changed_ranges(root, base, files):
+    """{file: [(start, end)]} of the lines changed against `base`, working
+    tree included; a file git cannot diff (untracked) is whole."""
+    out = {}
+    for f in files:
+        try:
+            diff = subprocess.run(["git", "-C", str(root), "diff", "-U0", base, "--", f],
+                                  capture_output=True, text=True, check=False).stdout
+        except OSError:
+            diff = ""
+        ranges = []
+        for m in re.finditer(r"(?m)^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", diff):
+            start, n = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
+            # A pure deletion has n == 0: the lines around it are what moved.
+            ranges.append((max(1, start - (1 if n == 0 else 0)), start + max(n, 1) - 1))
+        if not diff:
+            tracked = subprocess.run(["git", "-C", str(root), "ls-files", "--error-unmatch", f],
+                                     capture_output=True, text=True, check=False).returncode == 0
+            if not tracked:
+                ranges = [(1, 10 ** 9)]
+        out[f] = ranges
+    return out
+
+
+def affected(idx, cov, ranges):
+    """{suite stem: set of reasons}, plus the account: for each changed file,
+    the functions and the drawn things its changed lines fall in, the suites
+    coverage or the map say reach them, and what fell back to the file."""
+    hit = covered_ids(cov) if cov else {}
+    suites, notes, unknown = {}, [], []
+    every = False
+    for f, spans in ranges.items():
+        entry = idx["files"].get(f)
+        if entry is None:
+            notes.append(f"{f}: not indexed")
+            continue
+        if is_test(f):
+            suites.setdefault(Path(f).stem, set()).add("changed itself")
+            continue
+        def inside(line, spans=spans):
+            return any(a <= line <= b for a, b in spans)
+        fns = [d for d in entry["defs"] if not d["name"].startswith("(")
+               and any(a <= d.get("end", d["line"]) and d["line"] <= b for a, b in spans)]
+        # Nested functions sit inside their parent's span; the innermost that
+        # holds a changed line is the one that changed, but the parent's
+        # coverage still names the suites, so both count.
+        found = set()
+        for d in fns:
+            by = hit.get(fid(d))
+            if by:
+                for s_ in by:
+                    suites.setdefault(s_, set()).add(f"{d['name']}()")
+                found.add(d["name"])
+            else:
+                unknown.append(f"{f}:{d['line']} {d['name']}")
+        drawn = {(d["what"], d["kind"]) for d in entry.get("draws", []) if inside(d["line"])}
+        for d in idx["draws"]:
+            if is_test(d["file"]) and (d["what"], d["kind"]) in drawn:
+                mark = {"class": ".", "id": "#"}.get(d["kind"], "")
+                suites.setdefault(Path(d["file"]).stem, set()).add(mark + d["what"])
+        # Lines in no function and drawing nothing a suite names (a CSS rule,
+        # a comment, top-level wiring): the file's own answer, as before.
+        loose = [ln for a, b in spans for ln in range(a, min(b, a + 400) + 1)
+                 if not any(d["line"] <= ln <= d.get("end", d["line"]) for d in fns)
+                 and not any(dd["line"] == ln for dd in entry.get("draws", []))]
+        fell = bool(unknown and any(u.startswith(f + ":") for u in unknown)) or bool(loose)
+        if fell:
+            if f == "scripts/dashboard/server.py" and any(u.startswith(f + ":") for u in unknown):
+                every = True
+                notes.append(f"{f}: a changed function no covered run has seen, so every suite")
+                continue
+            _, byfile = suites_for(idx, [f])
+            names = {Path(t).stem for t in byfile if not Path(t).name.startswith("lab-")}
+            for s_ in names:
+                suites.setdefault(s_, set()).add(f"{Path(f).name} (file)")
+            why = "lines outside any function" if loose and not any(u.startswith(f + ":") for u in unknown) else "a function no covered run has seen"
+            notes.append(f"{f}: {why}, so the file's {len(names)} suite{'' if len(names) == 1 else 's'}")
+    return suites, notes, unknown, every
+
+
+def q_affected(idx, cov, root, base, files, names_only=False, ranges=None):
+    ranges = ranges if ranges is not None else changed_ranges(root, base, files)
+    suites, notes, unknown, every = affected(idx, cov, ranges)
+    if names_only:
+        return ["ALL"] if every else sorted(suites)
+    at = time.strftime("%d %b %H:%M", time.localtime(cov.get("at", 0))) if cov else "none"
+    out = [f"by coverage (last covered run {at}): {'every suite' if every else str(len(suites)) + ' suite' + ('' if len(suites) == 1 else 's')}"]
+    for s_, why in sorted(suites.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        w = sorted(why)
+        out.append(f"  {s_}  ({', '.join(w[:5])}{', ...' if len(w) > 5 else ''})")
+    out += [f"  {n}" for n in notes]
+    if unknown:
+        out.append(f"  unknown to coverage: {', '.join(unknown[:8])}{', ...' if len(unknown) > 8 else ''}"
+                   " (bb tests coverage, or a whole gate, refreshes it)")
+    return out
+
+
 def q_coverage(idx, cov):
     if not cov:
         return ["no covered run yet: bb tests coverage runs the suite with the counters in"]
@@ -1827,6 +1934,27 @@ def main(argv):
             print("bb map covered NAME", file=sys.stderr)
             return 2
         print("\n".join(q_covered(idx, coverage_load(root), rest[0])))
+        return 0
+    if verb == "affected":
+        # bb map affected --base REF [--names] [--ranges FILE:A-B ...] FILES...
+        base, names_only, ranges, files = "HEAD", False, None, []
+        i = 0
+        while i < len(rest):
+            if rest[i] == "--base" and i + 1 < len(rest):
+                base, i = rest[i + 1], i + 2
+            elif rest[i] == "--names":
+                names_only, i = True, i + 1
+            elif rest[i] == "--ranges" and i + 1 < len(rest):
+                ranges = ranges or {}
+                f_, _, span = rest[i + 1].rpartition(":")
+                a_, _, b_ = span.partition("-")
+                ranges.setdefault(f_, []).append((int(a_), int(b_ or a_)))
+                i += 2
+            else:
+                files.append(rest[i]); i += 1
+        if ranges is not None:
+            files = list(ranges)
+        print("\n".join(q_affected(idx, coverage_load(root), root, base, files, names_only, ranges)))
         return 0
     if verb == "addresses":
         texts = []

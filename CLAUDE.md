@@ -142,9 +142,16 @@ by hand cost four commands and still could not see the failed builds.
   which suites reach them, and runs those with the lint, voice and design
   checks the house rules name; `--dry` prints the plan, `--files F...`
   names the files instead, and `--base HEAD` measures the working tree
-  alone when the branch is long and the default would be everything. A
-  change to `server.py` is the whole suite, said as such. This exists because the one suite skipped by hand before
-  a push was the one that would have caught it.
+  alone when the branch is long and the default would be everything.
+  With a covered run on record (`.bb-map/coverage.json`) the suites are
+  picked by the functions the changed lines fall in and the suites that
+  reached them (`bb map affected`), so a change to one handler in
+  `server.py` is that handler's suites rather than all 49; a changed
+  function no covered run has seen falls back to the file's answer, and
+  in `server.py` to every suite, said as such. A whole run is made with
+  the counters in and refreshes the covered run, so the next preflight
+  measures by the last whole gate. This exists because the one suite
+  skipped by hand before a push was the one that would have caught it.
 - **Finding your way:** `bb map who-calls NAME`, `bb map find NAME`,
   `bb map draws ID` and `bb map suites FILE` answer "where would I look"
   from an index over this tree (`scripts/lib/codemap.py`, roadmap R75).

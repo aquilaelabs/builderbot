@@ -210,6 +210,14 @@ ok(/page-poll\.js:\d+  passed by name in refresh  \| .*drawCard\("linux", drawLi
   map('coverage-ingest', counts);
   ok(/loadDocker: reached by \d+ suites?: .*probe-suite \(3\)/.test(map('covered', 'loadDocker')),
      'covered NAME names the suite that ran it and how often');
+  // ...and a change measured by it (the operator, 29 Sep): the lines a
+  // change touched, the function they fall in, the suites that reached it.
+  const ldLine = readFileSync(`${REPO}/scripts/dashboard/tab-docker.js`, 'utf8').split('\n').findIndex(l => /^async function loadDocker\(/.test(l)) + 2;
+  const aff = map('affected', '--ranges', `scripts/dashboard/tab-docker.js:${ldLine}-${ldLine}`);
+  ok(/^by coverage \(last covered run .*\): \d+ suites?/.test(aff) && /  probe-suite  \(loadDocker\(\)\)/.test(aff),
+     `affected names the suite the covered run says reached the changed function (${aff.split('\n').slice(0, 2).join(' | ').slice(0, 120)})`);
+  ok(map('affected', '--names', '--ranges', `scripts/dashboard/tab-docker.js:${ldLine}-${ldLine}`).split('\n').includes('probe-suite'),
+     '...and --names prints it for a script');
   const unc = map('uncovered', 'scripts/dashboard/tab-docker.js');
   ok(/^\d+ functions? no suite reached in scripts\/dashboard\/tab-docker\.js:/.test(unc) || /every function here was reached/.test(unc),
      `uncovered FILE lists what no suite reached (${unc.split('\n')[0].slice(0, 60)})`);

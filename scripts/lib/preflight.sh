@@ -38,17 +38,23 @@ cmd_tests_preflight() {
             [ -n "$defaulted" ] && [ "${#files[@]}" -gt 20 ] && printf '%s' "; --base HEAD measures the working tree alone, --base HEAD~1 the last commit with it")"
     fi
     [ "${#files[@]}" -gt 0 ] || { log "nothing changed: nothing to run"; return 0; }
-    # The suites, from the map. Python under the dashboard reaches its
-    # suites through the API paths it names; server.py names them all,
-    # so a change there is the whole suite, said as such, and so do the
-    # harness's own lib.mjs and run.sh, which every suite runs on.
-    # A changed SUITE is itself and nothing more: what it names is what
-    # it asks of the page and the server, which it cannot change, and
-    # the map added every suite naming the same endpoint, 27 for one
-    # change to roles.mjs (B244).
+    # The suites, from the map. The harness's own lib.mjs and run.sh are
+    # every suite, which every suite runs on. A changed SUITE is itself
+    # and nothing more: what it names is what it asks of the page and the
+    # server, which it cannot change, and the map added every suite naming
+    # the same endpoint, 27 for one change to roles.mjs (B244). The rest
+    # is measured by the covered run when there is one (bb map affected,
+    # the operator, 29 Sep): the functions the changed lines fall in and
+    # the suites that reached them, so a change to one handler in
+    # server.py is that handler's suites and not, as it was, all 49 for
+    # 25 minutes; a changed function no covered run has seen falls back
+    # to the file's answer, and in server.py to every suite. Without a
+    # covered run, the file's answer as before, server.py meaning all.
+    local by="" mb_ref="${mb:-HEAD}"
     for f in "${files[@]}"; do
         case "$f" in
-            scripts/dashboard/server.py|scripts/dashboard/test/lib.mjs|scripts/dashboard/test/run.sh) all_dash=1 ;;
+            scripts/dashboard/test/lib.mjs|scripts/dashboard/test/run.sh) all_dash=1 ;;
+            scripts/dashboard/server.py) [ -f "${BB_REPO:-$PWD}/.bb-map/coverage.json" ] && mapped+=("$f") || all_dash=1 ;;
             scripts/dashboard/test/*.mjs) own+=("$(basename "$f" .mjs)") ;;
             *) mapped+=("$f") ;;
         esac
@@ -58,9 +64,17 @@ cmd_tests_preflight() {
     else
         suites=("${own[@]}")
         if [ "${#mapped[@]}" -gt 0 ]; then
-            while IFS= read -r f; do
-                [ -n "$f" ] && case " ${suites[*]:-} " in *" $f "*) ;; *) suites+=("$f") ;; esac
-            done < <(cmd_map suites "${mapped[@]}" --names)
+            if [ -f "${BB_REPO:-$PWD}/.bb-map/coverage.json" ]; then
+                by=coverage
+                while IFS= read -r f; do
+                    [ -n "$f" ] && case " ${suites[*]:-} " in *" $f "*) ;; *) suites+=("$f") ;; esac
+                done < <(cmd_map affected --base "$mb_ref" --names "${mapped[@]}")
+                case " ${suites[*]} " in *" ALL "*) suites=(ALL) ;; esac
+            else
+                while IFS= read -r f; do
+                    [ -n "$f" ] && case " ${suites[*]:-} " in *" $f "*) ;; *) suites+=("$f") ;; esac
+                done < <(cmd_map suites "${mapped[@]}" --names)
+            fi
         fi
     fi
     # The checks the house rules ask for before handing back.
@@ -71,6 +85,9 @@ cmd_tests_preflight() {
     printf '  files:   %s\n' "${files[*]}"
     printf '  suites:  %s\n' "${suites[*]:-none}"
     printf '  checks:  %s\n' "${checks[*]}"
+    # The account, when the covered run chose: which function and which
+    # drawn thing named each suite, and what fell back to a file.
+    [ -z "$by" ] || cmd_map affected --base "$mb_ref" "${mapped[@]}" | sed 's/^/  /'
     # Code the map could place with no suite is a hole in the map, not a
     # clean change (B280): named, and the verdict is not clean.
     local unplaced=()
@@ -96,7 +113,11 @@ cmd_tests_preflight() {
     # As conditions, so set -e and pipefail read a failed suite as rc=1
     # rather than ending this verb before its checks.
     if [ "${suites[*]:-}" = ALL ]; then
-        if bash "$here" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+        # A whole run is run with the counters in and merged after, so the
+        # covered run the next preflight measures by is never older than
+        # the last whole gate.
+        if BB_COVERAGE=1 bash "$here" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
+        cmd_map coverage 2>&1 | head -1 | tee -a "$rl"
     elif [ "${#suites[@]}" -gt 0 ]; then
         if bash "$here" "${suites[@]}" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
     fi

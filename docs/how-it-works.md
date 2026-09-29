@@ -99,11 +99,17 @@ map unused` what nothing calls or passes by name. R76: a refactor knows
 its regression net before it starts.
 
 `bb tests preflight` is what a session runs before a push: the files the
-branch changed, the suites the code map says reach them (a page function
-they call bare, an id or class they name, an API path a changed python
-module answers through the server's route table, a file named outright),
-and the lint, voice and design checks, run together; `--dry` prints the
-plan. R75's third step, so the suites are never picked by hand.
+branch changed, the suites that reach them, and the lint, voice and design
+checks, run together; `--dry` prints the plan. With a covered run on
+record the suites are the ones that reached the functions the changed
+lines fall in, and the ones naming an id or class those lines draw
+(`bb map affected`), which is why a change to one handler is a
+five-minute gate and not the whole suite; a changed function no covered
+run has seen falls back to what the code map says of the file (a page
+function a suite calls bare, an id or class it names, an API path a
+changed python module answers through the server's route table, a file
+named outright), and in `server.py` to every suite. A whole run refreshes
+the covered run. R75's third step, so the suites are never picked by hand.
 `tools/no-net-growth.sh` is a measurement beside it, not a gate: the four
 largest files against the ceilings in `tools/ratchet.txt`, which a change
 that shrinks one lowers with `--tighten` (roadmap R77).

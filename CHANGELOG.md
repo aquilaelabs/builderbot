@@ -21,6 +21,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Changed
 
+- bb tests preflight picks its suites by the covered run when there is one: the functions the changed lines fall in and the suites that reached them (bb map affected), so a change to one handler in server.py is that handler's suites rather than all 49; a whole run now refreshes the covered run
 - The Design view has no prompt box and no Copy: a session reads the design piece by piece with bb design show, and the view only records it
 - Every control on a row is one height, the finger's: a field, a pulldown, a one-line prose box and a button beside each other were four sizes; the design suite now fails a line of controls that differ
 - A project's design starts empty, no theme and no page; a session that builds such a project chooses the look and is told to put it into the design afterwards, and one that builds to a design is told to put back what the design left open, under the project's dial
