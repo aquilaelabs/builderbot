@@ -3804,6 +3804,14 @@ body.booting .pane>.loading{margin:auto}
       <div class="lbox" id="rnReads" role="group" aria-labeledby="rnReadsLabel"></div>
       <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
     </div>
+    <!-- The places on its node a session here is shown (prefs.sees). A
+         session's view is built from what it is given, so a share mounted
+         on the node is out of it unless it is named here. Whoever may set
+         the project's node may name one. -->
+    <div class="field" id="rnSeesField" hidden>
+      <label for="rnSees">Also sees<span class="help" data-tip="a share or a disk mounted on the node that a session here works with, by its path there. A session sees no other; one started after the save sees these" tabindex="0">?</span></label>
+      <input id="rnSees" autocomplete="off" spellcheck="false" placeholder="/mnt/media, /mnt/samples">
+    </div>
     <div class="field" id="rnBuildField">
       <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
       <input id="rnBuildCmd" autocomplete="off" spellcheck="false"

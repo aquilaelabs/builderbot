@@ -62,7 +62,7 @@ function rnLoadModelNow(name){
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
-                 node: "", nodes: "", reads: "", build: "", test: "", outputs: "",
+                 node: "", nodes: "", reads: "", sees: "", build: "", test: "", outputs: "",
                  capture_days: "7", gate: "", color: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
@@ -105,6 +105,7 @@ function rnFillPrefs(p){
                node: p?.prefs?.node || "",
                nodes: (p?.prefs?.nodes || []).join(","),
                reads: (p?.prefs?.reads || []).join(","),
+               sees: (p?.prefs?.sees || []).join(", "),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
@@ -123,6 +124,7 @@ function rnFillPrefs(p){
   $("rnGitHint").textContent = rnPrefWas.git_name || rnPrefWas.git_email
     ? "Your commits here use these instead of your Profile."
     : "Empty uses your Profile. Set these to commit here under a different name.";
+  $("rnSees").value = rnPrefWas.sees;
   rnFillNode();
   rnFillPrefsRest(p);
   rnFillReads();
@@ -149,6 +151,9 @@ function rnFillNode(){
     // Hidden with the rest of the project's own settings when this dialog was
     // opened by the chain, which asks about the remote and nothing else.
     wrap.hidden = rnMode === "git" || !pick.length;
+    // The places a session is shown are places on a node, so the field is
+    // there when a node is.
+    $("rnSeesField").hidden = wrap.hidden;
     // What each node carries, on its own option: the node does everything
     // for this project, so the only question left is what is installed on it.
     const tools = n => Object.keys(n.reported?.toolchains || {});
@@ -527,6 +532,7 @@ async function rnSubmit(){
   const node = $("rnNode").value;
   const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
   const reads = [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value);
+  const sees = $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean);
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const capture_days = $("rnCaptureDays").value.trim();
@@ -539,7 +545,7 @@ async function rnSubmit(){
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
-    || reads.join(",") !== rnPrefWas.reads
+    || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
     || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change
@@ -594,7 +600,7 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
-                              node, nodes, reads, build, test, gate, color,
+                              node, nodes, reads, sees, build, test, gate, color,
                               tests_in, test_change, reply, asks, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),

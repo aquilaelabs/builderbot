@@ -4599,6 +4599,12 @@ class Handler(BaseHTTPRequestHandler):
         # reaches every other project there.
         if ("node" in req or "nodes" in req) and self._refused("node", name):
             return
+        # ...and so are the places on it a session here is shown (sees): a
+        # share on a node is every project's there, so naming one is for
+        # whoever may set the node. Only a change is asked about.
+        if req.get("sees") is not None and prefs.sees_changed(name, req.get("sees")) \
+                and self._refused("node", name):
+            return
         # ...nor is the dial that hands a session this project's container:
         # it lets a session create one and set its env, which is Docker
         # configuration, an administrator's (docker-write). Only a CHANGE is
@@ -4757,11 +4763,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"{me['name']} has no shell, so this terminal is the "
                                         "read-only one"}, 403)
         # ...and the projects this one reads, for the view bb-session builds
-        # (their trees read-only) and the walls bb-tty gives Claude.
+        # (their trees read-only) and the walls bb-tty gives Claude; and the
+        # places on its node it is shown, which the view otherwise leaves out.
         return self._json({"uid": me["uid"], "name": me["name"], "project": project,
                            "owner": me.get("role") == "owner",
                            "reads": [r for r in (prefs.get(project) or {}).get("reads") or []
-                                     if (WORKSPACE / r).is_dir()]})
+                                     if (WORKSPACE / r).is_dir()],
+                           "sees": (prefs.get(project) or {}).get("sees") or []})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24):

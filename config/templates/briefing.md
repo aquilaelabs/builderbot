@@ -48,6 +48,14 @@ container answers there. A container answers at its node's address, which
 `bb devapp status` prints beside "answers at" for the dev instance, and
 `bb devapp ls` with each container's ports.
 
+Of the node's files a session has its own project, its home, the toolchains
+and its own logs and artifacts, and the system's own directories. A share or
+a disk mounted on the node, another project's build cache or container data,
+and the home of the account sessions run as are not in its view, by design:
+a path somebody names that is not there is the view, not a fault. A share
+this project works with is named in its settings (Also sees), which are the
+operator's, so say in your reply which path is needed and why.
+
 <!-- BUILDERBOT:READS -->
 
 ## Finding your way

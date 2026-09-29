@@ -25,6 +25,7 @@ case that cannot wait for a launch, so the dialog says so and the session is
 respawned onto the same transcript.
 """
 import json
+import re
 import threading
 from pathlib import Path
 
@@ -244,6 +245,12 @@ def _clean(rec):
             # to them refused. Named here by the operator, never by a
             # session; a project never reads itself.
             "reads": _reads_of(rec),
+            # The places on its node a session here is shown besides its own
+            # project: a share it works with. A session's view is built from
+            # what it is given (bb-session, B378), so a share mounted on the
+            # node is out of it unless it is named here, by whoever may set
+            # the project's node.
+            "sees": _sees_of(rec),
             # What `bb build` / `bb test` run there, and the globs whose
             # matches come back into dist/.
             "build": str(rec.get("build") or "")[:500],
@@ -353,6 +360,14 @@ def _reads_of(rec):
     return out[:16]
 
 
+def sees_changed(project, sees):
+    """Whether `sees`, as the dialog sends it, is another list than the one
+    stored: the dialog sends every field on every save."""
+    got = sees if isinstance(sees, list) else str(sees).split(",")
+    got = [str(p).strip().rstrip("/") for p in got if str(p).strip()]
+    return got != ((get(project) or {}).get("sees") or [])
+
+
 def rename_reads(old, new):
     """A project renamed is renamed in every other project's reads list, so
     a session on those keeps reading it. True when anything moved."""
@@ -382,10 +397,43 @@ def _nodes_of(rec):
     return out[:16]
 
 
+# A place on a node, as bb-session takes one: plain characters, from the
+# top, and nothing of the system's own, which the helper refuses whatever
+# the settings say. The first names here are the ones it keeps.
+SEES = re.compile(r"(?:/[A-Za-z0-9._-]{1,80}){1,12}")
+SEES_NEVER = ("bin", "boot", "dev", "etc", "home", "lib", "lib32", "lib64", "libx32",
+              "lost+found", "nix", "opt", "proc", "root", "run", "sbin", "snap", "sys",
+              "tmp", "usr", "var", "workspace")
+SEES_MAX = 8
+
+
+def sees_problem(path):
+    """Why `path` is not a place a project could be shown, or ""."""
+    if not SEES.fullmatch(path) or ".." in path.split("/"):
+        return (f"{path} is not a place on a node: a path from the top, in letters, "
+                f"digits, dots, dashes and underscores")
+    if path.split("/")[1] in SEES_NEVER:
+        return (f"{path} is the machine's own or BuilderBot's: a project is shown a share "
+                f"or a disk mounted on its node, like /mnt/media")
+    return ""
+
+
+def _sees_of(rec):
+    """The places this project sees, as stored: the ones that could be a
+    place, at most SEES_MAX, in the order given."""
+    got = rec.get("sees") if isinstance(rec.get("sees"), list) else []
+    out = []
+    for p in got:
+        p = str(p or "").strip().rstrip("/")
+        if p and p not in out and not sees_problem(p):
+            out.append(p)
+    return out[:SEES_MAX]
+
+
 def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None,
-              test_change=None, capture_days=None, reads=None):
+              test_change=None, capture_days=None, reads=None, sees=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -409,6 +457,15 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         if reads is not None:
             got = reads if isinstance(reads, list) else str(reads).split(",")
             cur["reads"] = [r for r in _reads_of({"reads": got}) if r != project]
+        if sees is not None:
+            got = sees if isinstance(sees, list) else str(sees).split(",")
+            got = [str(p).strip().rstrip("/") for p in got if str(p).strip()]
+            for p in got:
+                if sees_problem(p):
+                    return {"error": sees_problem(p)}
+            if len(set(got)) > SEES_MAX:
+                return {"error": f"a project is shown {SEES_MAX} places at most, not {len(set(got))}"}
+            cur["sees"] = _sees_of({"sees": got})
         if build is not None:
             cur["build"] = str(build)[:500].strip()
         if test is not None:
@@ -463,7 +520,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if (cur["node"] or cur["color"] or cur["reads"]
+        if (cur["node"] or cur["color"] or cur["reads"] or cur["sees"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
@@ -579,7 +636,7 @@ def dialog_save(name, req, uid):
                   tests_in=req.get("tests_in"),
                   test_change=req.get("test_change"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
-                  color=req.get("color"), reads=req.get("reads"),
+                  color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   workspace=WORKSPACE)
     # ...and what is the ASKING ACCOUNT's rather than the project's: the
     # model and effort its sessions launch on, and the author its commits

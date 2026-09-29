@@ -1236,6 +1236,15 @@ Read allowed, Edit denied. The briefing names the projects a session reads,
 and the shipped "stay in project" rule carries the exception. Set by the
 operator in the dialog, never by a session.
 
+**Also sees.** Beside them, a project's settings name the places on its
+node a session is shown: a share or a disk mounted there that the project
+works with, by its path (`/mnt/media`). A session's view holds no other
+(see the session's view, below), so this is how a project is given one. Set
+by whoever may set the project's node, never by a session; a path that is
+the system's own, the projects share, a home or the agent's is refused, and
+a session started after the save sees the place. A path one of the
+project's nodes does not have is passed over there.
+
 **Compose runs on the node, not from here.** A dev instance's Up, Down,
 Rebuild and Remove are executed by the agent with the node's own docker: the
 dashboard sends the plan and the compose file, the node runs it. So an
@@ -2847,11 +2856,36 @@ transcripts are empty); the account's home is the only home and its
 BuilderBot cache keeps only this project's folder; `/tmp`, `/var/tmp` and
 `/dev/shm` are the session's own; the agent's stores keep only the
 emulator's logs and the project's own CI logs and artifacts; the toolchain
-store and the base home are read-only, so nothing a session writes can reach
+store is read-only, so nothing a session writes can reach
 a command another account or a job runs (Flutter's own tree is the one
 exception, since it writes there on every run, with its `bin` still
 read-only); and the process list and tmux server of other sessions are out of
-reach. Each account on a node keeps its own tool caches and dotfiles
+reach.
+
+The view is built from what a session is given, not from a list of what to
+hide. At the top of the machine the system's own directories stay (`/usr`,
+`/etc`, `/var`, `/opt`, `/home` and the rest), and everything else there is
+out: a directory that holds one of the view's own places (the toolchain
+store under `/mnt`, say) is covered and that place put back inside it, and
+one that holds none is hidden whole, with the mounts inside either let go so
+the mount table names no export. The agent's own directory
+(`/var/lib/builderbot`) is covered the same way, so other projects' build
+caches, their containers' data and the agent's tools are not there. The
+base home, which belongs to the account every session runs as, is new in
+the view and holds what a session runs from it, read-only: the launchers on
+its `PATH` and Claude Code. Its keys, history and settings are not there. So
+a share mounted on the node next month is out of every view without anybody
+naming it. A share a project works with is named in the project's settings
+(**Also sees**, a path on the node, set by whoever may set the project's
+node); it is handed to the helper as `--sees` and put back as the node has
+it. The helper refuses one that names the system's own, the projects share,
+a home or the agent's stores, so the setting cannot bring back what the view
+leaves out on purpose. Two things are known to show through: the names of
+the account's own other projects, as empty folders under
+`~/.claude/projects`, and a share mounted under one of the system's own
+directories, which is left as the node has it.
+
+Each account on a node keeps its own tool caches and dotfiles
 (`.gradle`, `.m2`, `.npm`, `.cache`, the Rust crate cache and the rest)
 rather than sharing the base home's, so a person's first build on a node
 downloads its own dependencies. Java tools take their home from the session

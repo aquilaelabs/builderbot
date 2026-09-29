@@ -92,7 +92,7 @@ def show():
         print(json.dumps(rec))
         raise SystemExit(0)
     print(f"{proj}:")
-    for k in ("node", "nodes", "reads", "model", "effort", "build", "test", "outputs", "policy", "locked"):
+    for k in ("node", "nodes", "reads", "sees", "model", "effort", "build", "test", "outputs", "policy", "locked"):
         v = rec.get(k)
         if v in (None, "", [], False):
             continue

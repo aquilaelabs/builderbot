@@ -117,6 +117,22 @@ def person_part(reply, asks):
 _READS = "<!-- BUILDERBOT:READS -->"
 
 
+def sees_line(project):
+    """The places on its node this project is shown (prefs.sees), said so a
+    session knows they are there and that nothing else of the node is."""
+    sees = []
+    if prefs_mod is not None:
+        try:
+            sees = list((prefs_mod.get(project) or {}).get("sees") or [])
+        except Exception:                                            # noqa: BLE001
+            sees = []
+    if not sees:
+        return ""
+    return (f"Of the shares and disks mounted on its node, this project is shown "
+            f"{', '.join(sees)}, as the node has each; one that is missing here is not on "
+            f"this node.")
+
+
 def reads_line(project):
     reads = []
     if prefs_mod is not None:
@@ -281,7 +297,8 @@ def briefing(project):
             if not line.strip() and out and not out[-1].strip():
                 continue
             if line.strip() in (_READS, _DESIGN):
-                said = reads_line(project) if line.strip() == _READS else design_line(project)
+                said = "\n\n".join(x for x in (reads_line(project), sees_line(project)) if x) \
+                    if line.strip() == _READS else design_line(project)
                 if said:
                     out.append(said)
                 elif out and not out[-1].strip():

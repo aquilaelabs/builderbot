@@ -124,6 +124,10 @@ GRANT
     # into the view read-only, and Claude's walls let it read them.
     BB_READS="$(printf '%s' "$grant" | jq -r '(.reads // []) | join(" ")')"
     export BB_READS
+    # ...and the places on this node it is shown besides (prefs.sees): a
+    # share the view would otherwise leave out with every other.
+    BB_SEES="$(printf '%s' "$grant" | jq -r '(.sees // []) | join(" ")')"
+    export BB_SEES
     if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
         export BB_TREE_OWNER=1
     else
@@ -306,6 +310,13 @@ in_view() {
     # trees read-only, and repeated words keep the launcher line respawnable.
     local reads=() r
     for r in ${BB_READS:-}; do reads+=(--reads "$r"); done
+    # ...and the places it is shown, one --sees each, for a helper that
+    # takes them: one from before the setting would refuse the word and
+    # start no session at all, so it is asked first.
+    if [ -n "${BB_SEES:-}" ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
+            --home "$HOME" --cwd "$dir" --sees /nowhere-a-node-has >/dev/null 2>&1; then
+        for r in ${BB_SEES:-}; do reads+=(--sees "$r"); done
+    fi
     why="$("$SESSION_BIN" plan --project "$proj" --account "${account:-}" --home "$HOME" \
                --cwd "$dir" "${reads[@]}" 2>&1 >/dev/null)" \
         || bad "This node keeps each session to its own project, and could not for this one:" "$why"

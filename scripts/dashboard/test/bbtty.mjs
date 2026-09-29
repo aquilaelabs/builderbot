@@ -861,6 +861,35 @@ print(uid)`);
              readFileSync(envf, 'utf8').split('\0').find(l => l.startsWith('BB_READS=')) || 'unset'}; deny ${deny.filter(d => /alpha|beta/.test(d)).join(' ')})`);
         tmuxKill(`${ownerUid}~claude-${vproj}`);
         setReads([]);
+        // The places on the node it is shown (prefs.sees) ride the grant
+        // the same way, one --sees each (B378), to a helper that takes
+        // the word: one from before the setting is asked first and gets
+        // none, since it would refuse the word and start no session.
+        const setSees = sees => {
+          const d = existsSync(prefsFile) ? JSON.parse(readFileSync(prefsFile, 'utf8')) : { projects: {}, users: {} };
+          d.projects = d.projects || {};
+          d.projects[vproj] = { ...(d.projects[vproj] || {}), sees };
+          writeFileSync(prefsFile, JSON.stringify(d));
+        };
+        setSees(['/mnt/media', '/srv/samples']);
+        runView(`u:${ownerUid}:claude:${vproj}:b:${boot}`);
+        await sleep(400);
+        const scmd = tmuxFmt(`${ownerUid}~claude-${vproj}`, '#{pane_start_command}');
+        ok(scmd.includes(` --cwd ${join(DIR, 'ws', vproj)} --sees /mnt/media --sees /srv/samples --env `),
+           `a place the project is set to see goes to the helper as --sees (${scmd.slice(scmd.indexOf('--cwd'), scmd.indexOf('--cwd') + 160)})`);
+        tmuxKill(`${ownerUid}~claude-${vproj}`);
+        writeFileSync(helper, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${calls}\n`
+          + 'case " $* " in *" --sees "*) echo "bb-session: \'--sees\' is not an option it takes" >&2; exit 2 ;; esac\n'
+          + 'case "$1" in check|plan) exit 0 ;; esac\n'
+          + 'while [ "$1" != -- ]; do shift; done; shift\nexec "$@"\n', { mode: 0o755 });
+        runView(`u:${ownerUid}:claude:${vproj}:b:${boot}`);
+        await sleep(400);
+        const ocmd = tmuxFmt(`${ownerUid}~claude-${vproj}`, '#{pane_start_command}');
+        ok(alive(`${ownerUid}~claude-${vproj}`) && !ocmd.includes('--sees') && ocmd.includes(` --cwd ${join(DIR, 'ws', vproj)} --env `),
+           `...and a helper from before the setting is handed none and still starts the session (${ocmd.slice(ocmd.indexOf('--cwd'), ocmd.indexOf('--cwd') + 100)})`);
+        tmuxKill(`${ownerUid}~claude-${vproj}`);
+        writeFileSync(helper, helperSrc(false), { mode: 0o755 });
+        setSees([]);
       }
       writeFileSync(helper, helperSrc(true), { mode: 0o755 });
       tmuxKill(`${ownerUid}~shell-${vproj}`);
