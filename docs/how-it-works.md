@@ -3084,8 +3084,11 @@ rather than the page: the ttyd URL is reachable on its own, and so are the
 API paths, so a rule only the UI honored would be advice. Locking a project:
 
 - refuses `claude:<project>` at launch, with a message saying why
-- ends any Claude session already running there, rather than taking effect
-  "next time"
+- ends every Claude session already running there, whoever's and on
+  whatever node, rather than taking effect "next time"; the padlock's
+  question names who is running one before it does
+- is an administrator's: a user account sees the padlock dead and the
+  server refuses the request
 - makes its notebook **read-only**: the roadmap, the bugs and the memories
   open and cannot be changed, by you or by anything else
 - refuses to write a `CLAUDE.md` into it, so the `no CLAUDE.md: create one`

@@ -122,6 +122,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Claude button on a project's row is dead from the moment Update Claude Code is pressed on its node, not only once the update job is queued (d6b513f)
 - The companion app builds under the node's own disk rather than the projects share, so bb build no longer fails on a directory NFS could not delete (d6b513f)
 - The dot beside each person on a project's row is the same dot, in the same two colors, as the session's tab, the phone's Terminal tab and the Sessions card: blue and pulsing while Claude works, amber while it waits (37adf7d)
+- Locking a project names the Claude sessions running there before it ends them, and ends every one of them, whoever's and on whatever node; it used to end only the owner's, and only when it ran in the container (77226dd)
 
 ### Security
 

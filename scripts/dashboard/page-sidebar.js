@@ -452,19 +452,26 @@ async function pJobAct(action){
 // confirmation says the one thing that is different: the row survives whole.
 // Somebody reaching for this wants to keep the project, so the dialog has to
 // make clear it is not the other button.
+// ...and names who is running a Claude session here, since the lock ends
+// every one of them, whoever's and on whatever node (the operator, 29 Sep).
 async function setLocked(name, on){
-  if (on && !confirm(`Lock ${name}?\n\n`
-        + `No Claude session starts here, any running one ends, and its notebook `
-        + `goes read-only. Your shells, findings, artifacts and dev instance keep `
-        + `working. Unlock reverses it.`)) return;
+  const who = withMe(name);
+  const running = !who.length ? "No Claude session is running here."
+    : who.length === 1 ? `${who[0] === state?.me ? "Your" : who[0] + "'s"} Claude session here ends now.`
+    : `${who.length} Claude sessions here end now: ${who.map(w => w === state?.me ? "yours" : w).join(", ")}.`;
+  if (on && !confirm(`Lock ${name}?\n\n${running}\n\n`
+        + `No Claude session starts here and its notebook goes read-only. Your `
+        + `shells, findings, artifacts and dev instance keep working. Unlock `
+        + `reverses it.`)) return;
   try{
     const r = await postJSON("/api/lock", {name, locked:on});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
-    if (j.killed){
-      const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
+    for (const s of j.ended || (j.killed ? [j.killed] : [])){
+      const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === s);
       if (t) dropTab(t.id);
     }
+    if (on && j.ended?.length) notify(`${name} locked: ${j.ended.length === 1 ? "its Claude session" : `${j.ended.length} Claude sessions`} ended`);
     applyNow(p => { p.locked = (j.locked || []).includes(p.name); });
   }catch(e){ notify("lock failed: " + e, true); }
   refresh();

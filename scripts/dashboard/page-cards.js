@@ -186,7 +186,10 @@ function endCardDrag(){
 // here rather than taking the button away. What IS refused is a second session
 // on one Anthropic account, and that refusal comes from the server when the
 // terminal is opened, in its own words.
-const withMe = p => (state?.claude_with || {})[p] || [];
+// Keyed by the tmux-safe name (claude_with comes off the session names),
+// so a project with a dot in its name is looked up by that: by its own
+// name its row said nobody was here while a session ran (29 Sep).
+const withMe = p => (state?.claude_with || {})[tmuxName(p)] || (state?.claude_with || {})[p] || [];
 // The others, for the places that are about somebody else being here.
 const othersOn = p => withMe(p).filter(n => n !== state?.me);
 // Who has a conversation open here, one line each with a dot in front:

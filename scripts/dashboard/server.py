@@ -5760,7 +5760,22 @@ class Handler(BaseHTTPRequestHandler):
         # and not a session's.
         if self._not_project(name) or self._refused("lock", name):
             return None
-        return self._json(*projects.lock_verb(name, on))
+        body, code = projects.lock_verb(name, on)
+        # Every Claude session on the project, whoever's and wherever it
+        # runs: lock_verb ends the owner's here, from before sessions moved
+        # onto nodes (R47), and a lock that left another account's session
+        # running on a node was a lock that had not taken (the operator,
+        # 29 Sep). Named in the answer, so the page can say what went.
+        if on and code == 200:
+            want = claude_session(name)
+            ended = []
+            for s in [x for x in tmux_sessions() if tmux_base(x["name"]) == want] \
+                    + [x for x in node_tmux_sessions() if tmux_base(x["name"]) == want]:
+                r = end_session(s["name"], str(s.get("node_id") or ""))
+                if not r.get("error") and not r.get("gone") and s["name"] not in ended:
+                    ended.append(s["name"])
+            body = dict(body) | {"ended": ended}
+        return self._json(body, code)
 
     def _trash(self, req):
         """Move a project out of the workspace: projects.trash, once

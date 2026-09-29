@@ -7,7 +7,7 @@ import { launch, newPage, ok, done, ready, sleep, tmuxNew, tmuxKill, tmuxFmt, la
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -258,11 +258,23 @@ await page.click('#sessions [data-go="claude-ep_silon"]');
 await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));
 ok(true, 'dotted project: reopening from Sessions maps back to claude:ep.silon');
 ok(await page.evaluate(() => sessionOf('claude:ep.silon') === 'claude-ep_silon' && sessionOf('sh:2:ep.silon') === 'shell-ep_silon-2'), 'sessionOf applies the tmux rewrite');
+// ...and another account's session on the same project, which the lock
+// ends too: every Claude session there goes, whoever's and wherever it
+// runs, and the question names who is running one (the operator, 29 Sep).
+await page.evaluate(async () => (await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ action: 'add', name: 'w.lock', password: 'w.lock-pass-1', role: 'user' }) })).json());
+const lockUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.lock'].uid;
+// (The Sessions card lists this account's own sessions, so the other
+// account's is checked in tmux itself.)
+tmuxNew(`${lockUid}~claude-ep_silon`);
+await page.evaluate(() => refresh());
 const ndx = page.dialogs.length;
-await page.click('#projects [data-k="ep.silon"]');            // lock: asks, then the server ends the session
+await page.click('#projects [data-k="ep.silon"]');            // lock: asks, then the server ends the sessions
 await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
-ok(page.dialogs.length === ndx + 1 && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))),
-   'dotted project: locking it ends the session and drops its tab');
+const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };
+ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now/.test(page.dialogs[ndx]) && /Lock ep\.silon\?/.test(page.dialogs[ndx])
+   && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))) && gone('claude-ep_silon') && gone(`${lockUid}~claude-ep_silon`),
+   `dotted project: locking it asks, naming the sessions running there, ends every one of them and drops its tab (${(page.dialogs[ndx] || '').split('\n')[2]})`);
 await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
 await page.waitForFunction(() => document.querySelector('#projects [data-c="ep.silon"]'), { timeout: 15000 });
 
