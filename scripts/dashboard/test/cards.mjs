@@ -679,9 +679,23 @@ print(json.dumps(out))
   await page.evaluate(() => { state.claude_with = { alpha: ['test', 'alice'] }; state.claude_busy = { alpha: ['alice'] };
                               drawProjects(state.projects); });
   const rows = await page.$$eval('#projects .row:has(.name:text-is("alpha")) .sessone',
-    es => es.map(e => ({ text: e.textContent.trim(), on: e.querySelector('.sdot').classList.contains('on') })));
-  ok(rows.length === 2 && rows[0].text === 'alice' && rows[0].on && rows[1].text === 'test (you)' && !rows[1].on,
-     `who has a session here is one line per name, the working one's dot lit, yours last (${JSON.stringify(rows)})`);
+    es => es.map(e => ({ text: e.textContent.trim(), on: e.querySelector('.st').classList.contains('working'),
+                          waiting: e.querySelector('.st').classList.contains('waiting') })));
+  ok(rows.length === 2 && rows[0].text === 'alice' && rows[0].on && rows[1].text === 'test (you)' && !rows[1].on && rows[1].waiting,
+     `who has a session here is one line per name, the working one's dot the session dot's working, the waiting one's its waiting, yours last (${JSON.stringify(rows)})`);
+  // The same dot as the session's tab, the phone's Terminal tab and the
+  // Sessions card, in the same two colors (the operator, 29 Sep): the row
+  // had a dot of its own, lit in the accent when working and gray when
+  // not, beside three that pulse blue when working and are amber when
+  // waiting.
+  ok(await page.evaluate(() => {
+    const row = [...document.querySelectorAll('#projects .row')].find(r => r.querySelector('.name')?.textContent.trim() === 'alpha')
+      .querySelector('.sessone .st.working');
+    const tab = document.createElement('span'); tab.className = 'st working'; document.body.appendChild(tab);
+    const same = getComputedStyle(row).backgroundColor === getComputedStyle(tab).backgroundColor
+      && getComputedStyle(row).animationName === getComputedStyle(tab).animationName;
+    tab.remove(); return same && !document.querySelector('.sdot');
+  }), 'the row\'s dot is drawn by the one rule the session dots share, and no dot of its own is left');
   // ...and the two maps come back on their own light fetch when the revs
   // token says they moved, without waiting for the status poll.
   await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; drawProjects(state.projects); });
@@ -1814,23 +1828,62 @@ await page.click('#rnCancel');
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.selectOption('#rnModel', 'sonnet');
-  // The harness accepts every dialog; this one has to be refused, which is
-  // the whole case. Put the standing handler back afterwards.
-  const auto = page.listeners('dialog')[0];
-  page.off('dialog', auto);
-  let asked = '';
-  page.once('dialog', d => { asked = d.message(); page.dialogs.push(asked); d.dismiss(); });
+  await page.selectOption('#rnAsks', 'fewer');
+  // The question is the dialog's own now (the operator, 29 Sep): the first
+  // press of Save names what a running session takes only at its start,
+  // saves nothing, and puts the two answers in the foot.
+  const before = page.dialogs.length;
   await page.click('#rnGo');
-  await page.waitForFunction(() => document.getElementById('rnmodal').hidden,
-                             { timeout: 15000 });
-  page.on('dialog', auto);
-  ok(/Cancel saves the setting/.test(asked),
-     'a running session is asked about, and the question says Cancel still saves');
+  await page.waitForSelector('#rnRestartAsk:not([hidden])', { timeout: 10000 });
+  const asked = await page.evaluate(() => ({
+    what: document.getElementById('rnRestartWhat').textContent,
+    go: document.getElementById('rnGo').textContent, keep: document.getElementById('rnKeep').hidden,
+    open: !document.getElementById('rnmodal').hidden,
+    stored: (state?.projects || []).find(p => p.name === 'alpha')?.yours?.model || '' }));
+  ok(asked.open && asked.what === 'Changed: Model, Questions.' && asked.go === 'Save and end it' && !asked.keep
+     && asked.stored === '' && page.dialogs.length === before,
+     `a running session is asked about in the dialog, which names the changes it takes only at its start and saves nothing yet (${JSON.stringify(asked)})`);
+  await page.click('#rnKeep');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
   await refreshUntil(page, () => (state?.projects || [])
     .find(p => p.name === 'alpha')?.yours?.model === 'sonnet', { timeout: 20000 });
-  ok(true, '...and declining the restart still saves the setting');
+  ok(true, '...and keeping it running still saves the setting');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))),
      '...while the session it declined to restart is still running');
+  // The other answer: saved, and the session ended for the next press of
+  // Claude to start on the new setting.
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  ok(await page.$eval('#rnRestartAsk', e => e.hidden) && await page.$eval('#rnGo', e => e.textContent) === 'Save',
+     'opened again, the dialog has put the question away');
+  await page.selectOption('#rnAsks', '');
+  await page.click('#rnGo');
+  await page.waitForSelector('#rnRestartAsk:not([hidden])', { timeout: 10000 });
+  ok(await page.$eval('#rnRestartWhat', e => e.textContent) === 'Changed: Questions.',
+     '...and names only what changed this time');
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
+  await refreshUntil(page, () => !liveSessions().has(myClaude('alpha')), { timeout: 20000 });
+  ok(await page.evaluate(() => ((state?.projects || []).find(p => p.name === 'alpha')?.yours?.asks || '') === ''),
+     'Save and end it saves the setting and ends the session');
+  tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
+  await refreshUntil(page, () => liveSessions().has(myClaude('alpha')), { timeout: 20000 });
+  // A change a running session reads when it is used (the build command)
+  // asks nothing.
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  const wasBuild = await page.$eval('#rnBuildCmd', e => e.value);
+  await page.fill('#rnBuildCmd', wasBuild + ' && make all');
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
+  ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))) && page.dialogs.length === before
+     && await page.$eval('#rnRestartAsk', e => e.hidden),
+     'a change the session reads when it is used (the build command) asks nothing and ends nothing');
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  await page.fill('#rnBuildCmd', wasBuild);
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
   // Back to the default, so nothing after this runs against a project whose
   // sessions were left on another mode. The session goes FIRST: with nothing
   // running there is nothing to interrupt, so this save asks nothing and the
@@ -2056,7 +2109,13 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   await page.waitForTimeout(400);
   const odd = await page.evaluate(() => {
     // Every dialog at once, so this sees the fields that live inside them.
-    document.querySelectorAll('[hidden]').forEach(e => { e.hidden = false; });
+    // What was hidden is put back hidden afterwards, ALL of it: only the
+    // dialogs and the menu were, and the bell's panel stayed open over
+    // the header from here on, empty and harmless until the run had two
+    // more notes in it, when it covered the Settings tab's Apply button
+    // and every click on it was intercepted (29 Sep).
+    const shown = [...document.querySelectorAll('[hidden]')];
+    shown.forEach(e => { e.hidden = false; });
     const bad = [];
     for (const el of document.querySelectorAll('input,select,textarea')){
       const t = (el.type || el.tagName).toLowerCase();
@@ -2068,7 +2127,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
         bad.push(`${el.id || el.className || t}: r=${c.borderTopLeftRadius} `
                  + `b=${c.borderTopWidth} f=${c.fontFamily.split(',')[0]}`);
     }
-    document.querySelectorAll('.modal,.uimenu').forEach(e => { e.hidden = true; });
+    shown.forEach(e => { e.hidden = true; });
     return bad;
   });
   ok(odd.length === 0, `every text field wears the one skin (${odd.join(' | ') || 'all'})`);

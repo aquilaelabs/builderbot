@@ -213,7 +213,12 @@ function sessionRows(proj){
   if (!all.length) return "";
   const busy = new Set((state?.claude_busy || {})[proj] || []);
   const names = [...all].sort((a, b) => (a === state?.me) - (b === state?.me));
-  return names.map(n => `<div class="sessone"><span class="sdot${busy.has(n) ? " on" : ""}" title="${
+  // The session dot, the same one the session's tab, the phone's Terminal
+  // tab and the Sessions card wear (stateDot's rule): working pulses in
+  // the note color, waiting is the warn color. The row had a dot of its
+  // own in other colors, and the same state read differently in each
+  // place (the operator, 29 Sep).
+  return names.map(n => `<div class="sessone"><span class="st ${busy.has(n) ? "working" : "waiting"}" title="${
     busy.has(n) ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(n)}${
     n === state?.me ? " (you)" : ""}</div>`).join("");
 }

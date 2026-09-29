@@ -1050,9 +1050,8 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    that session is working and dim while it waits. */
 .row.stack2 .sesslist{width:100%;flex-basis:100%;min-width:0;color:var(--accent)}
 .sessone{display:flex;align-items:center;gap:6px;line-height:1.6}
-.sdot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
-.sdot.on{background:var(--accent);animation:pulse 1.6s ease-in-out infinite}
-@media(prefers-reduced-motion:reduce){ .sdot.on{animation:none} }
+/* Its dot is the session dot (.st, below): one rule for every place a
+   session's state is shown. */
 /* A reason line can carry a token nothing breaks (a node's name, a digest
    from the agent-window sentence), and at phone width that token was the
    21px the Projects tab scrolled sideways by. */
@@ -3925,9 +3924,21 @@ body.booting .pane>.loading{margin:auto}
       <label>Sessions on this project</label>
       <div id="rnSessList"></div>
     </div>
+    <!-- Save pressed with a change a running session takes only when it
+         starts (its model and effort, its author, the projects it reads
+         and the places it sees, its node, what its briefing says): named
+         here, with the choice in the foot. Saving and ending are two
+         decisions and the setting lands either way (B88); this used to be
+         a browser confirm that named none of the changes. -->
+    <div class="field" id="rnRestartAsk" hidden>
+      <label>A session of yours is running here</label>
+      <div class="hint" id="rnRestartWhat"></div>
+      <div class="hint">It takes these only when it starts: ending it costs the turn in flight, and Claude resumes the conversation.</div>
+    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
+      <button id="rnKeep" hidden>Save, keep it running</button>
       <button id="rnCancel">Cancel</button>
       <!-- Pushed to the far end, like every other verb here that cannot be
            undone. Only on the chain's door: it is about the remote, and the
@@ -5074,7 +5085,8 @@ $("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker()
 // ---- a project's settings dialog, wired ---------------------------------
 // Its declarations are page-projsettings.js; what runs at load is below.
 $("rnName").oninput = rnShow;
-$("rnGo").onclick = rnSubmit;
+$("rnGo").onclick = () => { if (!$("rnRestartAsk").hidden) rnAsked = "end"; rnSubmit(); };
+$("rnKeep").onclick = () => { rnAsked = "keep"; rnSubmit(); };
 $("rnColor").onclick = e => {
   const b = e.target.closest("[data-color]");
   if (!b) return;

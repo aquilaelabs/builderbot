@@ -58,6 +58,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Each choice of a design's language can be custom, which hands it to the design's rules; and what a session reads of a design is what the record says, with nothing added by BuilderBot (ed47d24)
 - A page on the Design view may run to 240 rows, twenty phone screens; at 60 a page of seven screens had to be drawn shorter than it is. A long board scrolls in a window of its own (39ba707)
 - bb design save refuses two blocks that partly cover each other, on a page's frame and in a layout, and the Design view outlines them in red with the reason before Save; a block may sit wholly inside another, and an overlay over anything (6bb5358)
+- Saving a project's settings with a change a running session takes only at its start (model, effort, author, reads, Also sees, node, the briefing's lines) names those changes in the dialog and asks whether to end the session now or keep it running (37adf7d)
 
 ### Removed
 
@@ -120,6 +121,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node installs the session helper a new bundle carries as it takes the bundle, not at its next hello ten minutes later (e522637)
 - The Claude button on a project's row is dead from the moment Update Claude Code is pressed on its node, not only once the update job is queued (d6b513f)
 - The companion app builds under the node's own disk rather than the projects share, so bb build no longer fails on a directory NFS could not delete (d6b513f)
+- The dot beside each person on a project's row is the same dot, in the same two colors, as the session's tab, the phone's Terminal tab and the Sessions card: blue and pulsing while Claude works, amber while it waits (37adf7d)
 
 ### Security
 

@@ -1962,13 +1962,21 @@ already on a list a session may still tick, note and reword under every
 setting, and the session is told on its next turn what you decided. The
 settled ones are in `bb history` under *waiting*.
 
-**Changing it while a session is running restarts that session**, and the
-dialog says so before you save. The restart is `tmux respawn-pane`, so the
-browser stays attached and the pane simply comes back: the launcher re-reads
-the setting and resumes the newest transcript, which continues the
-conversation on the new model rather than replacing it. Anything mid-turn is
-lost, which is the whole reason it asks. *Leave as is* passes no flag, and
-claude uses its own default.
+**Changing it while a session is running asks about that session.** Some
+settings a session takes only when it starts: the model and effort, the
+author it commits as, the projects it reads and the places it sees, its
+node, and what its briefing says (replies, questions, how a test run meets
+a change, how long captures are kept). Save with one of those changed while
+your session is running and the dialog names the changes and puts two
+answers in the foot: *Save and end it*, which ends the session so the next
+press of Claude starts it on the new setting with the conversation resumed,
+or *Save, keep it running*, which saves and leaves the session on what it
+started with until you end it yourself. The setting lands either way;
+only the interruption is asked about. Anything mid-turn is lost when it is
+ended, which is the whole reason it asks. Everything else in the dialog
+(the build and test commands, the dials, where tests run) is read when it
+is used, so those save without a question. *Leave as is* passes no flag,
+and claude uses its own default.
 
 A group's own arrow **stands for its next step**: picking either lights both,
 because they are one choice. A crossed-off line cannot be sent at all; put it

@@ -315,6 +315,16 @@ async function unlinkProject(name){
 // rather than hides: the alternative is a project whose roadmap silently
 // stayed behind under a name nothing points at any more.
 let rnFor = null;                        // the project the dialog is open on
+// The answer to the question at the foot (rnRestartAsk): "end" or "keep"
+// once one of its two buttons was pressed, null while it has not been asked.
+let rnAsked = null;
+
+// The question put away: on open, on close, and on a save that failed.
+function rnAskReset(){
+  rnAsked = null;
+  $("rnRestartAsk").hidden = true;
+  $("rnKeep").hidden = true;
+}
 let rnMode = "all";                      // "all" from the gear, "git" from the chain
 
 function renameProject(name, mode = "all"){
@@ -386,6 +396,7 @@ function renameProject(name, mode = "all"){
   if (!git && state?.admin) rnSessionsLoad(name);
   $("rnGo").disabled = false;
   $("rnGo").textContent = "Save";
+  rnAskReset();
   // Nothing to save is nothing to press: with no credential to set, Cancel is
   // the only honest way out of this door, but Unlink still is one.
   $("rnGo").hidden = !$("rnGitNone").hidden;
@@ -517,7 +528,7 @@ function rnShow(){
     : "That leaves nothing to name a directory after";
 }
 
-function closeRename(){ $("rnmodal").hidden = true; rnFor = null; }
+function closeRename(){ $("rnmodal").hidden = true; rnFor = null; rnAskReset(); }
 
 async function rnSubmit(){
   const name = rnFor, to = $("rnName").value, token = $("rnToken").value.trim();
@@ -554,11 +565,26 @@ async function rnSubmit(){
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
   // project's group: the same request, a different store on the server.
-  // Only the launch flags are worth interrupting a session for: the model and
-  // the effort are read when claude starts, the author is read per commit.
-  const launchChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
-  const prefChanged = launchChanged || reply !== rnPrefWas.reply || asks !== rnPrefWas.asks
+  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort
+    || reply !== rnPrefWas.reply || asks !== rnPrefWas.asks
     || git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email;
+  // What a running session takes only when it starts, named as the dialog
+  // labels it: the launch flags (model, effort), the author it commits as
+  // and the briefing it is handed (replies, questions, how a test run
+  // meets a change, how long captures are kept), the node it runs on, and
+  // the view it runs in (reads, sees). Everything else here is read when
+  // it is used (the build and test commands, the dials, where tests run),
+  // so a change to those reaches a running session without a restart.
+  const takesAtStart = [
+    [model !== rnPrefWas.model, "Model"], [effort !== rnPrefWas.effort, "Effort"],
+    [reply !== rnPrefWas.reply, "Replies"], [asks !== rnPrefWas.asks, "Questions"],
+    [git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email, "Commit name and email"],
+    [node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes, "Node"],
+    [reads.join(",") !== rnPrefWas.reads, "Reads"], [sees.join(", ") !== rnPrefWas.sees, "Also sees"],
+    [test_change !== rnPrefWas.test_change, "During a test run, a change asked for"],
+    [capture_days !== rnPrefWas.capture_days, "Captures kept"],
+  ].filter(([changed]) => changed).map(([, label]) => label);
+  const launchChanged = takesAtStart.length > 0;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
@@ -581,12 +607,22 @@ async function rnSubmit(){
   // landed, and restarting the session by hand afterwards changed nothing,
   // because there was nothing to read. Saving and interrupting are two
   // decisions and only one of them was being asked about.
-  const restartNow = !(launchChanged && running)
-    ? false
-    : confirm(`End the Claude session in ${name} now?\n\n`
-        + `OK ends it; press Claude to start it again on the new setting, with `
-        + `the conversation resumed. Cancel saves the setting and leaves it `
-        + `running.`);
+  //
+  // Asked in the dialog itself, naming the changes, with the two answers
+  // in the foot (the operator, 29 Sep): the first press of Save shows the
+  // question and saves nothing; the press that answers it saves.
+  let restartNow = false;
+  if (launchChanged && running){
+    if (rnAsked === null){
+      $("rnRestartWhat").textContent = `Changed: ${takesAtStart.join(", ")}.`;
+      $("rnRestartAsk").hidden = false;
+      $("rnKeep").hidden = false;
+      $("rnGo").textContent = "Save and end it";
+      $("rnRestartAsk").scrollIntoView({block: "nearest"});
+      return;
+    }
+    restartNow = rnAsked === "end";
+  }
   // Only what actually changed goes to the server. A rename request is
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
@@ -594,7 +630,7 @@ async function rnSubmit(){
   const needRename = renaming || !!token || !!auth || clear_token;
   $("rnGo").disabled = true; $("rnGo").textContent = "Saving…";
   const stop = m => { $("rnGo").disabled = false; $("rnGo").textContent = "Save";
-                      return fail(m); };
+                      rnAskReset(); return fail(m); };
   try{
     if (prefChanged || nodeChanged){
       const r = await fetch("/api/prefs", {method:"POST",
