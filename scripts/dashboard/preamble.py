@@ -246,8 +246,9 @@ def design_line(project):
         # session finds it there.
         return ("The notebook's Design view is empty: no theme, no page, no design rule. Build as you "
                 "would and choose the look yourself; then put what you arrived at into the design with "
-                "`bb design save` (the themes with their colors as tokens, the pages you built, the rules "
-                "you followed; `bb design schema` prints the shape) so the next session finds it there. "
+                "`bb design save` (the themes with their colors as tokens, the type, corners, space and "
+                "motion you settled on, the pages you built, the rules you followed; `bb design schema` "
+                "prints the shape) so the next session finds it there. "
                 f"Under the project's dial Claude may: Add to the design, {fill}.")
     lang, pages = rec["language"], rec["pages"]
     themes = ", ".join(t["name"] for t in lang["themes"])
@@ -259,6 +260,9 @@ def design_line(project):
     if lang["rules"] or own:
         bits.append(f"{len(lang['rules'])} design rule{'' if len(lang['rules']) == 1 else 's'}"
                     + (f" and {own} of a theme's or a page's own" if own else ""))
+    left = design.open_choices(lang)
+    if left:
+        bits.append(", ".join(left) + " not chosen yet")
     empty = _no_code_yet(project)
     return (f"This project's notebook holds a design already: {'; '.join(bits)}. "
             + ("The tree has no code yet, so the design, the rules and the roadmap are the "
@@ -266,7 +270,8 @@ def design_line(project):
             + "Read `bb design show` before laying out or styling anything, `bb design show NAME` for "
               "one page or one theme. docs/design-language.md is yours to write and commit with the work "
               "(`bb design file > docs/design-language.md`); the notebook never writes it into the tree by itself. What the "
-              "design leaves open and you had to decide (a color it does not name, a page it does not have) "
+              "design leaves open and you had to decide (a color it does not name, a page it does not have, "
+              "a choice of its language nobody has made) "
               f"goes back into it with `bb design save` so it is complete; under the project's dial, {fill}.")
 
 

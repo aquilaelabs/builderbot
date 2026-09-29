@@ -167,15 +167,21 @@ function nbDesignView({$, nb, project, root}){
   const pick = (id, text, rows, cur, help = "") =>
     ctl(id, text, help, `<select id="${id}" data-dspick>${opt(rows, cur)}</select>`);
 
+  // One of the language's four choices. Its first line is no choice at
+  // all, which is where a design starts (the operator, 29 Sep): each
+  // choice carries a sentence a session holds the work to, so one that
+  // nobody made must say nothing.
+  const choice = (rows, cur) => `<option value=""${cur ? "" : " selected"}>not chosen</option>` + opt(rows, cur);
+
   function languageSection(){
     const L = nb.dsLang, P = presets(), C = P.choices || {};
     const status = [byKey(C.font, L.font)?.label, byKey(C.corners, L.corners)?.label].filter(Boolean).join(" · ");
     const body = `
       <div class="field"><div class="dsrow">
-        ${ctl("dsFont", "Type", "", `<select id="dsFont">${opt(C.font, L.font)}</select>`)}
-        ${ctl("dsCorners", "Corners", "", `<select id="dsCorners">${opt(C.corners, L.corners)}</select>`)}
-        ${ctl("dsDensity", "Space", "", `<select id="dsDensity">${opt(C.density, L.density)}</select>`)}
-        ${ctl("dsMotion", "Motion", "", `<select id="dsMotion">${opt(C.motion, L.motion)}</select>`)}
+        ${ctl("dsFont", "Type", "", `<select id="dsFont">${choice(C.font, L.font)}</select>`)}
+        ${ctl("dsCorners", "Corners", "", `<select id="dsCorners">${choice(C.corners, L.corners)}</select>`)}
+        ${ctl("dsDensity", "Space", "", `<select id="dsDensity">${choice(C.density, L.density)}</select>`)}
+        ${ctl("dsMotion", "Motion", "", `<select id="dsMotion">${choice(C.motion, L.motion)}</select>`)}
       </div></div>
       <div class="field">${ctl("dsFonts", "Families",
             "the exact font stacks when the choice above is not enough: Inter for text, JetBrains Mono for code",

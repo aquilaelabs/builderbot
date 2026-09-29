@@ -49,6 +49,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Starting a project from an archive no longer offers a brief: the archive is where it starts (18634bc)
 - Text fields and pickers are a size smaller, one step below the text beside them; typed fields on an iPhone stay 16px so Safari does not zoom (5730757)
 - American spelling throughout: what the dashboard and the app put on screen, the docs and the design language say color, gray, center and labeled, and the design's two rules about color are named color and project-color (478ab50)
+- A design starts with nothing chosen: type, corners, space and motion read 'not chosen' until somebody picks them, so a session is not held to a default (quiet motion's reduced-motion clause was reported as a broken promise); the briefing names the choices still open (469899d)
 
 ### Removed
 

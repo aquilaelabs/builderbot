@@ -196,8 +196,11 @@ fun DesignView(api: Api, project: String) {
                 if (d != null && themes.isEmpty() && pages.isEmpty() && rules.isEmpty())
                     Dim("nothing designed yet: a session that builds this project chooses the look and puts it here, or it is laid out on the dashboard's Design view")
                 if (lang != null && (themes.isNotEmpty() || pages.isNotEmpty() || rules.isNotEmpty())) {
-                    Dim(listOf(lang.str("font"), lang.str("corners") + " corners", lang.str("density"),
-                               lang.str("motion") + " motion").joinToString(" · "))
+                    // A choice nobody has made is left out: a design starts with none.
+                    val made = listOf(lang.str("font"), lang.str("corners").let { if (it.isBlank()) "" else "$it corners" },
+                                      lang.str("density"), lang.str("motion").let { if (it.isBlank()) "" else "$it motion" })
+                        .filter { it.isNotBlank() }
+                    if (made.isNotEmpty()) Dim(made.joinToString(" · "))
                     if (lang.str("fonts").isNotBlank()) Dim("set as " + lang.str("fonts"))
                     if (lang.str("scope").isNotBlank()) Dim("governs " + lang.str("scope"))
                 }

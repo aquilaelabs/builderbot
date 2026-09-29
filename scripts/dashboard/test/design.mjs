@@ -31,15 +31,17 @@ const api = (path, body) => page.evaluate(async ([p, b]) => {
 // ---- the record, empty --------------------------------------------------------------
 {
   const d = await api(`/api/design?project=${P}`);
-  ok(d.status === 200 && d.pages.length === 0 && d.language.themes.length === 0 && d.language.rules.length === 0 && d.language.font === 'system'
+  ok(d.status === 200 && d.pages.length === 0 && d.language.themes.length === 0 && d.language.rules.length === 0
+     && ['font', 'corners', 'density', 'motion'].every(k => d.language[k] === '')
      && d.presets.schemes.length >= 12 && d.presets.templates.some(t => t.key === 'dashboard')
      && d.presets.platforms.map(p => p.key).join(',') === 'web,android,ios,linux,macos,windows'
      && d.file.exists === false,
-     `a project starts with an empty design: no theme, no page, no rule, no file, and the vocabulary comes with it (${
+     `a project starts with an empty design: no theme, no page, no rule, no choice of type, corners, space or motion, no file, and the vocabulary comes with it (${
         d.presets.schemes.length} schemes, ${d.presets.templates.length} templates)`);
   // Nothing designed beforehand: the briefing says so, and what to do after.
   const pre0 = await api(`/api/preamble?project=${P}`);
   ok(/The notebook's Design view is empty: no theme, no page, no design rule\. Build as you would and choose the look yourself; then put what you arrived at into the design with `bb design save`/.test(pre0.text)
+     && /the type, corners, space and motion you settled on/.test(pre0.text)
      && /Under the project's dial Claude may: Add to the design, a save of yours lands\./.test(pre0.text),
      'the briefing of an undesigned project says to build as usual and put the look into the design afterwards, and what the dial does with that');
   ok(d.presets.schemes[0].key === 'default' && d.presets.schemes.slice(1).map(s => s.key).join()
@@ -107,8 +109,37 @@ ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
    && /docs\/design-language\.md is yours to write and commit with the work, from what is saved here: `bb design file > docs\/design-language\.md`; the notebook never writes it into the tree by itself/.test(promptText)
    && /Platform: a responsive web app/.test(promptText)
    && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 9 of 12, rows 4 to 8 of 8/.test(promptText)
-   && /Colors: none chosen yet\. Choose them as tokens/.test(promptText) && /Type: system-ui, the platform's own sans-serif/.test(promptText),
+   && /Colors: none chosen yet\. Choose them as tokens/.test(promptText)
+   && /Not chosen yet: type, corners, space, motion\. Choose each from what you build/.test(promptText)
+   && !/prefers-reduced-motion|Type:|Shape:|Space:|Motion:|AA contrast/.test(promptText),
    `bb design show PAGE names the page, its platform, each block with what it is for and where, whose the file is, and the language, colors still to choose (${promptText.split('\n')[3]})`);
+// A choice nobody made promises nothing (the operator, 29 Sep): "quiet"
+// was the default, its sentence ends "none under prefers-reduced-motion",
+// and a session reported a stylesheet as falling short of it. The four
+// start on "not chosen", and each says what it means once it is chosen.
+{
+  if (!(await page.$eval(`${NB} [data-sect="design:language"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:language"]`);
+  const first = await page.$$eval(`${NB} #dsFont, ${NB} #dsCorners, ${NB} #dsDensity, ${NB} #dsMotion`,
+    ss => ss.map(x => `${x.value}|${x.options[0].textContent}`).join());
+  ok(first === '|not chosen,|not chosen,|not chosen,|not chosen',
+     `the four choices of the language start on not chosen (${first})`);
+  await page.selectOption(`${NB} #dsMotion`, 'quiet');
+  await saved();
+  const one = (await api(`/api/design?project=${P}&show=1`)).text || '';
+  ok(/Motion: short eases on state changes, nothing decorative, and none under prefers-reduced-motion\./.test(one)
+     && /Not chosen yet: type, corners, space\. Choose each/.test(one),
+     'a choice that is made says what it means, and the ones still open are named as open');
+  const pre1 = await api(`/api/preamble?project=${P}`);
+  ok(/This project's notebook holds a design already:[^.]*type, corners, space not chosen yet/.test(pre1.text),
+     '...and the briefing of a designed project names the choices still open');
+  await page.selectOption(`${NB} #dsFont`, 'system');
+  await page.selectOption(`${NB} #dsCorners`, 'soft');
+  await page.selectOption(`${NB} #dsDensity`, 'comfortable');
+  await saved();
+  const all = (await api(`/api/design?project=${P}&show=1`)).text || '';
+  ok(/Type: system-ui, the platform's own sans-serif/.test(all) && /Shape: /.test(all) && /Space: /.test(all) && !/Not chosen yet/.test(all),
+     '...and with all four chosen nothing is left open');
+}
 
 // ---- the language: themes, each a named set of colors ------------------------------
 // A theme is a name, dark or light, and colors that are added, changed

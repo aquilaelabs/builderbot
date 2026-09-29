@@ -263,8 +263,31 @@ def _luma(hexcol):
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
 
-LANGUAGE_DEFAULT = {"themes": [], "font": "system", "corners": "soft", "density": "comfortable",
-                    "motion": "quiet", "scope": "", "rules": [], "fonts": ""}
+# A design nobody has touched chooses nothing (the operator, 29 Sep): no
+# theme, and no type, corners, space or motion either. Each of those four
+# carries a sentence a session holds the work to, and while "quiet" was
+# here by default a project's stylesheet was reported as falling short of
+# a promise nobody had made.
+LANGUAGE_DEFAULT = {"themes": [], "font": "", "corners": "", "density": "",
+                    "motion": "", "scope": "", "rules": [], "fonts": ""}
+# The four choices by the word the view labels each with.
+CHOICE_WORDS = (("font", "type"), ("corners", "corners"), ("density", "space"), ("motion", "motion"))
+
+
+def open_choices(lang):
+    """The choices of a language nobody has made yet, by the view's words."""
+    return [word for key, word in CHOICE_WORDS if not lang.get(key)]
+
+
+def _open_line(lang):
+    """What is said of the choices still open, or "": a session makes them
+    from what it builds and puts them into the design."""
+    left = open_choices(lang)
+    if not left:
+        return ""
+    return ("Not chosen yet: " + ", ".join(left) + ". Choose " + ("it" if len(left) == 1 else "each")
+            + " from what you build, and put it into the design with `bb design save` "
+              "(`bb design schema` names the choices).")
 
 # Six hex digits, or eight when a color carries its alpha: a glass theme's
 # tokens do (B342), and a stylesheet reads #rrggbbaa as it reads #rrggbb.
@@ -315,8 +338,9 @@ class _Refused(Exception):
 
 
 def _choice(value, keys, what, dflt):
+    """One of the vocabulary's, or "" for a choice nobody has made."""
     v = str(value or dflt)
-    if v not in keys:
+    if v and v not in keys:
         raise _Refused(f"{what}: no such choice, {v!r}")
     return v
 
@@ -653,6 +677,8 @@ def _font_means(lang, platform=""):
     """What the font choice means: the system font is a different face on
     each platform, so a page's prompt names the one its platform has, and
     the language alone names them all."""
+    if not lang["font"]:
+        return ""
     if lang["font"] != "system":
         return _means(FONTS, lang["font"])
     if platform:
@@ -683,13 +709,24 @@ def language_text(lang, platform=""):
             lines.extend(_rule_lines(t.get("rules") or [], f"{t['name']}'s own rules", _slug(t["name"]), "    "))
     if len(themes) == 1:
         lines.extend(_rule_lines(themes[0].get("rules") or [], f"{themes[0]['name']}'s own rules", _slug(themes[0]["name"]), "  "))
-    lines.append("A filled accent surface carries the text color on it, at AA contrast.")
-    lines.append(f"Type: {_font_means(lang, platform)}"
-                 + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
-                 + "; monospace for data (names, paths, numbers).")
-    lines.append(f"Shape: {_means(CORNERS, lang['corners'])}; hairlines 1px in the edge color.")
-    lines.append(f"Space: {_means(DENSITY, lang['density'])}.")
-    lines.append(f"Motion: {_means(MOTION, lang['motion'])}.")
+    if themes:
+        lines.append("A filled accent surface carries the text color on it, at AA contrast.")
+    # Each choice says what it means once somebody has made it; one still
+    # open says nothing the work could be held to.
+    if lang["font"]:
+        lines.append(f"Type: {_font_means(lang, platform)}"
+                     + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
+                     + "; monospace for data (names, paths, numbers).")
+    elif lang.get("fonts"):
+        lines.append(f"Type: set as {lang['fonts']}.")
+    if lang["corners"]:
+        lines.append(f"Shape: {_means(CORNERS, lang['corners'])}; hairlines 1px in the edge color.")
+    if lang["density"]:
+        lines.append(f"Space: {_means(DENSITY, lang['density'])}.")
+    if lang["motion"]:
+        lines.append(f"Motion: {_means(MOTION, lang['motion'])}.")
+    if _open_line(lang):
+        lines.append(_open_line(lang))
     standing = [r for r in lang["rules"] if not (r["words"] or r["paths"])]
     named = [r for r in lang["rules"] if r["words"] or r["paths"]]
     for r in standing:
@@ -787,12 +824,22 @@ def file_text(rec):
         out += ["", "| token | value | for |", "|---|---|---|"]
         out += [f"| `--{_slug(c['name'])}` | `{c['hex']}` | {c['means']} |" for c in t["colors"]]
         out += _file_rules(t.get("rules") or [], _slug(t["name"]), f"Rules of {t['name']}'s own", "####")
-    out += ["", "A filled accent surface carries the text color on it, at AA contrast.", "",
-            "## Type", "", _cap(_font_means(lang)) + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
-            + ". Monospace for data: names, paths, numbers.", "",
-            "## Shape", "", _cap(_means(CORNERS, lang["corners"])) + ". Hairlines are 1px in `--line`.", "",
-            "## Space", "", _cap(_means(DENSITY, lang["density"])) + ".", "",
-            "## Motion", "", _cap(_means(MOTION, lang["motion"])) + "."]
+    if themes:
+        out += ["", "A filled accent surface carries the text color on it, at AA contrast."]
+    if lang["font"]:
+        out += ["", "## Type", "", _cap(_font_means(lang)) + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
+                + ". Monospace for data: names, paths, numbers."]
+    elif lang.get("fonts"):
+        out += ["", "## Type", "", f"Set as {lang['fonts']}."]
+    if lang["corners"]:
+        out += ["", "## Shape", "", _cap(_means(CORNERS, lang["corners"])) + ". Hairlines are 1px in `--line`."]
+    if lang["density"]:
+        out += ["", "## Space", "", _cap(_means(DENSITY, lang["density"])) + "."]
+    if lang["motion"]:
+        out += ["", "## Motion", "", _cap(_means(MOTION, lang["motion"])) + "."]
+    if open_choices(lang):
+        out += ["", "## Not chosen yet", "", _cap(", ".join(open_choices(lang)))
+                + ": nobody has chosen these, so nothing here holds the work to one."]
     if lang["rules"]:
         out += ["", "## Rules", "",
                 "Each is one rule of the design, by name; a session is handed one on the turn it edits a "
@@ -873,7 +920,7 @@ def schema_text():
         "{",
         '  "language": {',
         f'    "themes": [ {{ "name": "Night", "mode": "dark" | "light", "colors": [ {{ "name": "bg", "hex": "#1a1f26" or "#1a1f26cc", "means": "the page" }} ], "rules": [RULE] }} ],   at most {THEMES_MAX} themes, {COLORS_MAX} colors each, a color name once per theme',
-        f'    "font": {" | ".join(k for k, _, _ in FONTS)},',
+        f'    "font": {" | ".join(k for k, _, _ in FONTS)},   each of these four may be "" while nobody has chosen it',
         f'    "corners": {" | ".join(k for k, _, _ in CORNERS)},',
         f'    "density": {" | ".join(k for k, _, _ in DENSITY)},',
         f'    "motion": {" | ".join(k for k, _, _ in MOTION)},',
@@ -1027,8 +1074,13 @@ def listing(project):
     rec = _record(_load(), project)
     lang = rec["language"]
     themes = ", ".join(f"{t['name']} ({t['mode']})" for t in lang["themes"]) or "no theme yet"
-    lines = [f"{project}'s design language: {themes}; {_label(FONTS, lang['font']).lower()}, "
-             f"{lang['corners']} corners, {lang['density']}, {lang['motion']} motion"
+    made = [x for x in (_label(FONTS, lang["font"]).lower() if lang["font"] else "",
+                        f"{lang['corners']} corners" if lang["corners"] else "",
+                        lang["density"], f"{lang['motion']} motion" if lang["motion"] else "") if x]
+    left = open_choices(lang)
+    lines = [f"{project}'s design language: {themes}"
+             + (f"; {', '.join(made)}" if made else "")
+             + (f"; {', '.join(left)} not chosen yet" if left else "")
              + (f"; it governs {lang['scope']}" if lang.get("scope") else "")]
     if lang["rules"]:
         lines.append(f"  {len(lang['rules'])} design rule{'' if len(lang['rules']) == 1 else 's'}: "
