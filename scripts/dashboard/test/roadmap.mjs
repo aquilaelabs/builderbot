@@ -859,7 +859,19 @@ ok(await page.$eval('#roadmapList .roadmap:has(.who) .body',
 // pressed and nothing is crossed out.
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'stty -echo']);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
-await new Promise(r => setTimeout(r, 400));
+// Waited for on the pane's own tty rather than slept for (B345): under a
+// whole run's load the shell had not run stty when the send began, the line
+// echoed, and Enter followed. This check failed in five whole runs in a row
+// and passed alone every time.
+{
+  const tty = execFileSync('tmux', ['display-message', '-p', '-t', 'claude-alpha', '#{pane_tty}'], { encoding: 'utf8' }).trim();
+  let off = false;
+  for (let i = 0; i < 100 && !off; i++){
+    try { off = /(^|\s)-echo(\s|$)/.test(execFileSync('stty', ['-a', '-F', tty], { encoding: 'utf8' })); } catch { off = false; }
+    if (!off) await new Promise(r => setTimeout(r, 100));
+  }
+  ok(off, 'the stand-in session has echo off, read from its tty, before the send');
+}
 const quiet = await post({ action: 'send', project: 'alpha', id: Number(mine.id) });
 ok(quiet.status === 200 && quiet.body.typed && !quiet.body.sent,
    'a session that does not echo gets the line typed but not submitted');
