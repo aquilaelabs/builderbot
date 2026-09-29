@@ -134,6 +134,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The companion app asks for the phone to be unlocked before Approve or Deny on a root ask and keeps the command off the lock screen; it warns at sign-in over http, and checks the self-update APK against the dashboard's sha256 before installing (B272, B273) (df92882)
 - The companion app reads a node's projects and defaults nobody to administrator until the dashboard says so (B275); its CI signs a release when the keystore secrets are set and pins its actions and gradle by checksum (B274) (df92882)
 - A session's bb report says a report was filed without naming the bug in BuilderBot's tracker, and bb jobs lists a session's own project's jobs only: both showed another project's notebook from a session on the controller's machine (a843036)
+- A session on a node sees its own project, its home and the toolchains: other projects' container data and build caches, shares mounted on the node and the session account's keys are out of its view. A share a project works with is named in its settings (Also sees) (d134a6d)
 
 ## 0.7.0: 2026-09-25
 
