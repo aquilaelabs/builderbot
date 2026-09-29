@@ -67,11 +67,6 @@ class Store(context: Context) {
     var lastWorking: Set<String>
         get() = plain.getStringSet("working", emptySet()) ?: emptySet()
         set(v) { plain.edit().putStringSet("working", v).apply() }
-    // Seen waiting once since they were working: told about on the next
-    // look, if they are waiting still.
-    var settling: Set<String>
-        get() = plain.getStringSet("settling", emptySet()) ?: emptySet()
-        set(v) { plain.edit().putStringSet("settling", v).apply() }
 
     fun api(): Api? = if (signedIn) Api(server, user, password) else null
 }

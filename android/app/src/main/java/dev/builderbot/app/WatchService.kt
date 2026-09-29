@@ -75,23 +75,21 @@ object Watch {
             store.lastPending = pendKey
         }
         // A turn finished: a session of the account's own that was working
-        // and has now been seen waiting on two looks running. Two, because
-        // the dashboard reads a session as waiting while it runs a command
-        // (B353), and one look would announce every build as the end of
-        // the turn; a session already waiting when the watch first looks
-        // is not news.
+        // at the last look and is waiting now. Told once, on the change; a
+        // session already waiting when the watch first looks is not news.
+        // A session that put a command in the background and handed the
+        // turn back is waiting too, as the dashboard says it is, and takes
+        // the note back by itself when the command ends and it works again.
         val prefix = st.str("tmux_prefix")
         val own = st.arr("projects").mapNotNull { p ->
             val want = prefix + ("claude-" + p.str("name")).replace(Regex("[.:]"), "_")
             st.arr("sessions").firstOrNull { it.str("name") == want }?.let { p.str("name") to it.obj("claude") }
         }
         val working = own.filter { it.second.str("state") == "working" }.map { it.first }.toSet()
-        val settling = mutableSetOf<String>()
         for ((project, claude) in own) {
             val note = ID_TURN_BASE + (project.hashCode() and 0xfff)
             if (project in working) { nm.cancel(note); continue }
-            if (project in store.lastWorking) { settling.add(project); continue }
-            if (project !in store.settling || !store.turns) continue
+            if (project !in store.lastWorking || !store.turns) continue
             nm.notify(note, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
                 .setContentTitle("Claude is waiting on you in $project")
@@ -101,7 +99,6 @@ object Watch {
                 .build())
         }
         store.lastWorking = working
-        store.settling = settling
         // Nodes that need attention: an agent behind or out of window, or
         // Claude Code behind what is out.
         val att = st.arr("attention")
