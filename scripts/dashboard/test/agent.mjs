@@ -494,6 +494,46 @@ print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
       ok(Number(tool[0]) > 5000 && /^#!/.test(tool[1]) && tool[2] === 'True',
          `the agent lifts bb-sandbox out of the provisioner's heredoc whole, uninstall verb included (${tool.join(' | ').slice(0, 80)})`);
     }
+    // B377: the helper a new bundle carries goes in with the bundle. The
+    // loop refreshes it before its hello and the bundle arrives after, so
+    // it waited ten minutes for the next hello, and a session restarted in
+    // between lost what the new helper keeps. Driven in process: a hello
+    // whose answer names a bundle the node does not have, then one that
+    // names the one it has.
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+m.share_images = lambda *a, **k: None
+m.census = lambda state: {}
+m.own_digest = lambda: 'sha256:agent'
+m.save_state = lambda s: None
+def case(have, shipped):
+    a = object.__new__(m.Agent)
+    a.state, a.warned_caps, a.session_bundle, did = {}, True, have, []
+    class Ctl:
+        def call(self, verb, body, timeout=30):
+            return 200, {'bundle': shipped, 'node': {'id': 'n1', 'name': 'n', 'state': 'online'}}
+    a.ctl = Ctl()
+    a.running_ids = lambda: []
+    a.keep_session_tokens = lambda rows: None
+    a.runner_env_sync = lambda: did.append('runners')
+    a.refresh_session_tool = lambda: did.append('helper')
+    def take(digest):
+        did.append('bundle ' + digest)
+        a.session_bundle = digest
+    a.session_try = take
+    a.hello()
+    return did
+print(json.dumps({'moved': case('sha256:old', 'sha256:new'), 'same': case('sha256:new', 'sha256:new')}))
+`], { encoding: 'utf8' }).trim();
+      const r = JSON.parse(said);
+      ok(r.moved.indexOf('helper') === r.moved.indexOf('bundle sha256:new') + 1,
+         `a bundle that moved has its helper installed in the same hello, straight after it is taken (${r.moved.join(', ')})`);
+      ok(!r.same.includes('helper'), `...and one that did not move installs nothing (${r.same.join(', ')})`);
+    }
     // B167: the distribution's own root ttyd is switched off by the agent on
     // a managed node, not only by a provisioner run that may never come
     // again; left alone when it is already off, and never on a guest.
