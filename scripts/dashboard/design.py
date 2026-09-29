@@ -731,13 +731,17 @@ def prompt(lang, page=None):
     """What a session is asked to do, in full: the text the tab shows under
     a page and `bb design show` prints. The language alone when no page."""
     scope = lang.get("scope") or "the project's user interface"
+    # Whose the file is, said outright: a session read "keep it in step",
+    # found no file in the tree, and had to guess whether to make one (B344).
+    keep = (f"{FILE_PATH} is yours to write and commit with the work, from what is saved here: "
+            f"`bb design file > {FILE_PATH}`; the notebook never writes it into the tree by itself.")
     if page is None:
         head = (f"Apply this design language to {scope}. Put the tokens in one place the whole "
-                f"stylesheet reads, and keep {FILE_PATH} in step with what you build.")
+                f"stylesheet reads. {keep}")
         return head + "\n\n" + language_text(lang)
     target = page["name"] or "this page"
     head = (f"Build or restyle {target} to this layout, in the project's design language. "
-            f"Keep what the blocks are for, at every width, and keep {FILE_PATH} in step.")
+            f"Keep what the blocks are for, at every width. {keep}")
     return head + "\n\n" + page_text(page) + "\n\n" + language_text(lang, page["platform"])
 
 

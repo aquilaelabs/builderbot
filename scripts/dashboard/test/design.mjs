@@ -104,10 +104,11 @@ ok(rec.pages.length === 1 && pg.id === 1 && pg.name === 'the home dashboard' && 
 // ---- the page's prose, the server's words, read with bb design show --------------------
 const promptText = (await api(`/api/design?project=${P}&show=1`)).text || '';
 ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
+   && /docs\/design-language\.md is yours to write and commit with the work, from what is saved here: `bb design file > docs\/design-language\.md`; the notebook never writes it into the tree by itself/.test(promptText)
    && /Platform: a responsive web app/.test(promptText)
    && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 9 of 12, rows 4 to 8 of 8/.test(promptText)
    && /Colours: none chosen yet\. Choose them as tokens/.test(promptText) && /Type: system-ui, the platform's own sans-serif/.test(promptText),
-   `bb design show PAGE names the page, its platform, each block with what it is for and where, and the language, colours still to choose (${promptText.split('\n')[3]})`);
+   `bb design show PAGE names the page, its platform, each block with what it is for and where, whose the file is, and the language, colours still to choose (${promptText.split('\n')[3]})`);
 
 // ---- the language: themes, each a named set of colours ------------------------------
 // A theme is a name, dark or light, and colours that are added, changed

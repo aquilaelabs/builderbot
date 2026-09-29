@@ -53,6 +53,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- bb design show and the briefing say whose docs/design-language.md is: the session's to write with bb design file and commit with the work; the notebook never writes it into the tree by itself (B344)
 - bb report says when the operator cleared a project's reports, how many and when, instead of 'no reports' after ones it was told were reported (B343)
 - A notebook's pane bar has the same ground as every other tab's bar and only the project's stripe: the tint turned it black beside a Docker tab's
 - bb design save reports every problem with a record at once, refuses a rule given as a bare string instead of dropping it, takes a colour with alpha (#rrggbbaa), and bb design save -h and bb design schema print the record's shape with every limit (B342)

@@ -264,7 +264,8 @@ def design_line(project):
             + ("The tree has no code yet, so the design, the rules and the roadmap are the "
                "specification: build to them from the first file. " if empty else "")
             + "Read `bb design show` before laying out or styling anything, `bb design show NAME` for "
-              "one page or one theme, and keep docs/design-language.md in step (`bb design file`). What the "
+              "one page or one theme. docs/design-language.md is yours to write and commit with the work "
+              "(`bb design file > docs/design-language.md`); the notebook never writes it into the tree by itself. What the "
               "design leaves open and you had to decide (a colour it does not name, a page it does not have) "
               f"goes back into it with `bb design save` so it is complete; under the project's dial, {fill}.")
 
