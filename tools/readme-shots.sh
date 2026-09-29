@@ -224,7 +224,7 @@ BASE="http://127.0.0.1:$PORT"
 # carry it there (bug #49). Without it the staged instance on $PORT is not
 # the dashboard as far as the flag is concerned, and every picture is the
 # sign-in page.
-shot() { DASHBOARD_PORT="$PORT" bash "$REPO/scripts/bb" shot "$@" --auth "$AUTH" --wait "${SHOT_WAIT:-9000}"; }
+shot() { DASHBOARD_PORT="$PORT" bash "$REPO/scripts/bb" capture shot "$@" --auth "$AUTH" --wait "${SHOT_WAIT:-9000}"; }
 # Scale 1 wherever a terminal is in frame: ttyd's xterm canvas renders
 # blank, at doubled font metrics, under deviceScaleFactor 2 in headless
 # Chromium, as found by taking these very screenshots. The phone dashboard
