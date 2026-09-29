@@ -707,6 +707,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
     val (meta, _) = load("meta") { api.meta() }
     var watch by remember { mutableStateOf(store.watch) }
     var turns by remember { mutableStateOf(store.turns) }
+    var watchSaid by remember { mutableStateOf("") }
     var poll by remember { mutableStateOf(store.pollSeconds.toString()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -754,21 +755,35 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
         }
         SectionHead("The watch", inset = false)
         Dim("The app asks the dashboard what the bell would show and posts it, with Approve and Deny on the notification: on the interval below while the app is open, and about once a minute in the background. Nothing stays in the shade between questions. No push service: the phone reaches your BuilderBot directly.")
+        // A draft until Save, as every group of settings is: a switch that
+        // stopped the watch on a mis-tap had nothing to look at first.
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Watch for questions", modifier = Modifier.weight(1f))
-            Switch(checked = watch, onCheckedChange = { watch = it; store.watch = it
-                if (it) Watch.startIfWanted(context) else Watch.stop(context) })
+            Switch(checked = watch, onCheckedChange = { watch = it; watchSaid = "" })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Tell me when Claude finishes")
                 Dim("a note when a session of yours goes from working to waiting on you")
             }
-            Switch(checked = turns, enabled = watch, onCheckedChange = { turns = it; store.turns = it })
+            Switch(checked = turns, enabled = watch, onCheckedChange = { turns = it; watchSaid = "" })
         }
-        OutlinedTextField(poll, { poll = it; it.toIntOrNull()?.let { n -> store.pollSeconds = n } },
+        OutlinedTextField(poll, { poll = it; watchSaid = "" },
             label = { Text("Poll every (seconds, 10 to 300)") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+        val every = poll.trim().toIntOrNull()
+        val pollOk = every != null && every in 10..300
+        val changed = watch != store.watch || turns != store.turns || every != store.pollSeconds
+        Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (!pollOk) "the poll is a number of seconds from 10 to 300" else watchSaid,
+                 color = if (!pollOk) Bad else Note, style = MaterialTheme.typography.bodySmall,
+                 modifier = Modifier.weight(1f))
+            Button(enabled = changed && pollOk, onClick = {
+                store.watch = watch; store.turns = turns; store.pollSeconds = every ?: store.pollSeconds
+                if (watch) Watch.startIfWanted(context) else Watch.stop(context)
+                watchSaid = "saved"
+            }) { Text("Save") }
+        }
         // The look: the dashboard's own schemes, by their names. Kept on
         // this device, as the dashboard keeps its own per browser.
         SectionHead("Colors", inset = false)
