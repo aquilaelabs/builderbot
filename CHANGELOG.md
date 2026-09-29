@@ -20,6 +20,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session's save of a project's design goes through its own dial, Claude may: Add to the design, auto by default; a design's notes are named rules with triggers a session is handed one at a time, like house rules; and a session reaches the containers of the projects its own reads, for bb capture (d8338f5)
 - The companion app has a Claude view per project: whether your session is working or waiting on you, a box to say something to it, and your conversations to read or share; and it notifies when a session of yours finishes its turn (7194e97)
 - The companion app carries the Design, Docker and Tests views, fetch, pull and push, artifacts and captures that open on the phone (an APK goes to the installer), the project's color, the jobs, What's new, and the dashboard's thirteen color schemes (7194e97)
+- A page on the Design view may be longer than one screen: Rows beside its frame, up to sixty, and the board grows with them (ed47d24)
 
 ### Changed
 
@@ -52,6 +53,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A design starts with nothing chosen: type, corners, space and motion read 'not chosen' until somebody picks them, so a session is not held to a default (quiet motion's reduced-motion clause was reported as a broken promise); the briefing names the choices still open (469899d)
 - A project's notebook can keep growing: the roadmap takes two hundred open items with the parked ones not counted (it refused a 31st), and what a session is sent keeps to a share per part, saying less per row before it leaves a row out and never losing its end (3b428a9)
 - The roadmap a session is sent counts the steps that are done and prints the ones still open (3b428a9)
+- Each choice of a design's language can be custom, which hands it to the design's rules; and what a session reads of a design is what the record says, with nothing added by BuilderBot (ed47d24)
 
 ### Removed
 
@@ -101,6 +103,12 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb changelog add, edit and rm work beside an entry already longer than the limit, and a refusal for length says which entry it means (7194e97)
 - A session started on a project with a design is told so: its briefing said the Design view was empty whatever it held, while the Briefing tab showed the right line (6b1d0eb)
 - The companion app's Tools screen lists the nodes and never the controller: toolchains are installed on nodes, as on the dashboard's Tools tab (7375db4)
+- bb design save keeps a record as it was sent or refuses it whole, listing everything wrong with it: a block or a layout outside its frame, a layout about another number of blocks and two blocks in one place were changed or dropped without a word (ed47d24)
+- bb design show and docs/design-language.md say where a page's blocks sit on every other frame it has a layout for, which was kept and never said (ed47d24)
+- bb settings lists every dial as it stands; it showed two of seven (ed47d24)
+- bb devapp status says where the instance answers, and the briefing says that localhost in a session is the session's own: a session that asked 127.0.0.1 for its containers took them for down (ed47d24)
+- A design of any size its own limits allow saves; one of forty pages was refused as too large (ed47d24)
+- The New project dialog offers Add to the design with the other dials (ed47d24)
 
 ### Security
 

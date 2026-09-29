@@ -426,7 +426,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
      && mj.problems.some(x => /a rule of the language is an object with a name and a text, not 'a bare string'/.test(x))
      && mj.problems.some(x => /a color is #rrggbb or #rrggbbaa, not 'blue'/.test(x))
      && mj.problems.some(x => /what the language governs is at most 120 characters/.test(x))
-     && mj.problems.some(x => /^page 1: a block's label is at most 120 characters/.test(x))
+     && mj.problems.some(x => /^p, block 1's label is at most 120 characters, and this is 130/.test(x))
      && !mj.problems.some(x => /1e232be0/.test(x)),
      `a save is refused with every problem at once, a bare-string rule and a hex with alpha among what it says and does not (${mj.problems?.length}: ${(mj.problems || []).join(' | ').slice(0, 160)})`);
   const alpha = await api('/api/design', { project: P, action: 'save', language: { ...cur,
@@ -437,6 +437,89 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   const help = execFileSync('bash', [`${REPO}/scripts/bb`, 'design', 'save', '-h'], { encoding: 'utf8',
     env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token, BB_PROJECT: P, XDG_CACHE_HOME: `${DIR}/cache-design` } });
   ok(/^bb design save FILE/.test(help) && /The record bb design save takes/.test(help), 'bb design save -h is help, not a file called -h');
+
+  // ---- what sessions on other projects met, 29 Sep ------------------------------------------
+  // Six reports and a save of this project's own. A save changed what it
+  // was sent and said only that it had saved; a refusal left problems
+  // out; a phone layout was kept and never said; the words carried
+  // sentences no record could turn off; bb settings showed two dials of
+  // seven; and a design inside every limit was too large to send.
+  const post = async body => { const r = await fetch(URL.replace(/\/$/, '') + '/api/design', { method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: P, action: 'save', ...body }) }); return { status: r.status, ...(await r.json()) }; };
+  const was = await api(`/api/design?project=${P}`);
+  const faulty = await post({ language: { ...was.language, corners: 'pill', rules: ['a bare rule', ...was.language.rules],
+      themes: [{ name: 'A', colors: [{ name: 'bg', hex: 'blue' }, { name: 'bg', hex: '#101010' }] }] },
+    pages: [{ name: 'Home', platform: 'web', frame: 'desktop', blocks: [{ kind: 'slider', x: 0, y: 0, w: 13, h: 1 },
+        { kind: 'card', x: 0, y: 1, w: 4, h: 1 }, { kind: 'card', x: 0, y: 1, w: 4, h: 1 }],
+      layouts: { phone: [{ x: 0, y: 0, w: 6, h: 1 }], tablet: [],
+                 landscape: [{ x: 0, y: 0, w: 12, h: 1 }, { x: 0, y: 7, w: 8, h: 60 }, { x: 0, y: 2, w: 1, h: 1 }] } }] });
+  const said = faulty.problems || [];
+  const has = rx => said.some(x => rx.test(x));
+  ok(faulty.status === 400 && said.length === 10
+     && has(/a color is #rrggbb or #rrggbbaa, not 'blue'/) && has(/^A names bg twice/) && has(/corners: no such choice, 'pill'; it is one of square, soft, round, custom/)
+     && has(/not 'a bare rule'/) && has(/Home, block 1's kind: no such choice, 'slider'/)
+     && has(/Home, block 1 runs from column 1 to 13, and the frame has 12/) && has(/Home, blocks 2 and 3 sit in the same place/)
+     && has(/Home's phone layout has 1 place for 3 blocks: one place per block/) && has(/a layout for 'tablet', which is not a frame/)
+     && has(/place 2 of its landscape layout runs from row 8 to 67/),
+     `a record with ten things wrong is refused with all ten, the duplicate color, the frame and the layouts among them (${said.length}: ${said.join(' | ').slice(0, 200)})`);
+  ok(JSON.stringify((await api(`/api/design?project=${P}`)).pages) === JSON.stringify(was.pages),
+     '...and nothing of it was kept: a block is never moved to fit, a layout never dropped to save the rest');
+  // A page longer than one screen, with where its blocks sit on a phone.
+  const stack = Array.from({ length: 12 }, (_, i) => ({ kind: i ? 'card' : 'header', label: `part ${i + 1}`, x: 0, y: i, w: 12, h: 1 }));
+  const tall = await post({ language: { ...was.language, corners: 'custom' }, pages: [...was.pages,
+    { name: 'a long page', platform: 'web', frame: 'desktop', rows: 12, blocks: stack,
+      layouts: { phone: stack.map((_, i) => ({ x: 0, y: i * 2, w: 6, h: 2 })) } }] });
+  const made = (tall.pages || []).find(x => x.name === 'a long page') || {};
+  ok(tall.status === 200 && made.rows === 12 && made.blocks[11].y === 11 && made.layouts?.phone?.[11]?.y === 22,
+     `a page may be longer than its frame: twelve rows on the desktop's eight, and twenty-four on a phone (${JSON.stringify(made.layouts?.phone?.[11])})`);
+  const over = await post({ language: was.language, pages: [{ name: 'too long', platform: 'web', frame: 'desktop', blocks: [stack[0], { ...stack[9] }] }] });
+  ok(over.status === 400 && /too long, block 2 runs from row 10 to 10, and the page has 8: give the page more rows \(rows, up to 60\)/.test(over.error || ''),
+     `...and a block past the rows a page has is refused, saying how a page is made longer (${(over.error || '').slice(0, 90)})`);
+  const shown2 = bb('show', 'a long page');
+  ok(/on a desktop frame \(12 columns by 12 rows: the frame shows 8 of them, and the page scrolls\)/.test(shown2)
+     && /The same blocks on a phone frame \(6 columns by 24 rows: the frame shows 12 of them, and the page scrolls\):/.test(shown2)
+     && /Card \(a box holding one thing\): part 12, across the bottom, rows 23 to 24 of 24/.test(shown2)
+     && /The same blocks on a phone frame/.test(bb('file')),
+     'bb design show and the file say where the same blocks sit on every other frame the page has a layout for');
+  ok(/Header \(the band at the top\): part 1/.test(shown2) && /Shape: as the design's own rules say\./.test(shown2)
+     && !/monospace for data|hairlines 1px|AA contrast|one Save or Submit|each opening to detail|the top bar with/.test(shown2 + bb('file')),
+     `the words say what the record says: a kind is what it is, custom hands a choice to the rules, and nothing is added that no record could turn off (${
+        ((shown2 + bb('file')).match(/monospace for data|hairlines 1px|AA contrast|one Save or Submit|each opening to detail|the top bar with/) || ['none added'])[0]}, ${
+        (shown2.match(/^(Shape|Type): .*$/m) || ['no Shape line'])[0].slice(0, 60)}, ${(shown2.match(/^ {2}Header .*$/m) || ['no Header line'])[0].slice(0, 60)})`);
+  // Rows, in the view: a draft like the rest, and the board grows with it.
+  await page.evaluate(n => { openNotebook(n, 'briefing'); openNotebook(n, 'design'); }, P);
+  await page.waitForFunction(() => [...(document.querySelector('.nb #dsPagePick')?.options || [])].some(o => /^a long page/.test(o.textContent)), null, { timeout: 10000 });
+  await page.selectOption(`${NB} #dsPagePick`, { label: await page.$eval(`${NB} #dsPagePick`, e => [...e.options].find(o => /^a long page/.test(o.textContent)).textContent) });
+  await page.waitForSelector(`${NB} [data-dspage] [data-dsf="rows"]`, { timeout: 5000 });
+  const board = () => page.$eval(`${NB} [data-dspage] .dsboard`, e => ({ rows: e.style.gridTemplateRows, tall: e.getBoundingClientRect().height / e.getBoundingClientRect().width }));
+  const b12 = await board();
+  ok(await page.$eval(`${NB} [data-dspage] [data-dsf="rows"]`, e => e.value === '12' && e.min === '8' && e.max === '60')
+     && /repeat\(12/.test(b12.rows) && b12.tall > 0.9,
+     `the view has the page's rows beside its frame, and the board is as many rows and as much taller (${b12.tall.toFixed(2)} of its width)`);
+  await page.fill(`${NB} [data-dspage] [data-dsf="rows"]`, '16');
+  await page.dispatchEvent(`${NB} [data-dspage] [data-dsf="rows"]`, 'change');
+  await page.waitForFunction(() => /repeat\(16/.test(document.querySelector('.nb [data-dspage] .dsboard')?.style.gridTemplateRows || ''), null, { timeout: 5000 });
+  ok((await api(`/api/design?project=${P}`)).pages.find(x => x.name === 'a long page').rows === 12
+     && await page.$eval(`${NB} #roadmapSaveQuiet`, b => !b.disabled),
+     '...a change to them is a draft until Save');
+  await page.click(`${NB} #roadmapRevert`);
+  await page.waitForFunction(() => document.querySelector('.nb #roadmapSaveQuiet')?.disabled, null, { timeout: 10000 });
+  // A design inside every one of its limits is one the server takes.
+  const big = await post({ language: { ...was.language, rules: Array.from({ length: 30 }, (_, i) => ({ name: `long-${i}`, text: 'x'.repeat(19000), words: ['w'] })) }, pages: was.pages });
+  ok(big.status === 200 && (big.language?.rules || []).length === 30,
+     `a design of half a megabyte saves: the design is the one body here that is a document (${big.status} ${(big.error || '').slice(0, 60)})`);
+  ok((await post({ language: was.language, pages: was.pages })).status === 200, '...and the record is put back');
+  await page.evaluate(n => { openNotebook(n, 'briefing'); openNotebook(n, 'design'); }, P);
+  await page.waitForFunction(() => ![...(document.querySelector('.nb #dsPagePick')?.options || [])].some(o => /^a long page/.test(o.textContent))
+    && document.querySelector('.nb #dsPagePick')?.options.length > 0, null, { timeout: 10000 });
+  await page.selectOption(`${NB} #dsPagePick`, 'p1');
+  await page.waitForSelector(`${NB} [data-dspage="p1"]`, { timeout: 5000 });
+  const dials = execFileSync('bash', [`${REPO}/scripts/bb`, 'settings'], { encoding: 'utf8',
+    env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: P }, cwd: `${DIR}/ws/${P}` });
+  ok(['Add to roadmap', 'File bugs', 'Add rules', 'Fill in build and test', 'Add to the design', 'Run its container', 'Report BuilderBot bugs']
+       .every(d => new RegExp(`Claude may: ${d}\\s+(auto|ask|deny)`).test(dials)),
+     `bb settings lists every dial as it stands, Add to the design among them (${(dials.match(/Claude may: [^\n]+/g) || []).length} of 7)`);
 
   // ---- a theme's own rules and a page's own: a Rules section inside each ------------------
   // The Nostromo scheme has needs no other theme shares (the operator, 28

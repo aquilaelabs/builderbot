@@ -138,8 +138,12 @@ private fun role(theme: JSONObject?, name: String, fallback: Color): Color {
 private fun Board(page: JSONObject, frames: JSONObject, theme: JSONObject?) {
     val g = frames.obj(page.str("frame"))
     val cols = g.int("cols", 12).coerceAtLeast(1)
-    val rows = g.int("rows", 8).coerceAtLeast(1)
-    val ratio = when (page.str("frame")) { "phone" -> 9f / 16f; "landscape" -> 16f / 9f; else -> 16f / 10f }
+    val screen = g.int("rows", 8).coerceAtLeast(1)
+    // A frame is one screen and a page may be longer than one: the board
+    // is as many rows as the page has, and as much taller.
+    val rows = maxOf(screen, page.int("rows"))
+    val ratio = when (page.str("frame")) { "phone" -> 9f / 16f; "landscape" -> 16f / 9f; else -> 16f / 10f } *
+        screen / rows
     val bg = role(theme, "bg", Bg)
     val panel = role(theme, "panel", Panel)
     val ink = role(theme, "ink", Ink)
@@ -216,7 +220,10 @@ fun DesignView(api: Api, project: String) {
                     Board(page, frames, themes.firstOrNull())
                     Column(Modifier.padding(16.dp, 4.dp)) {
                         Dim(listOf(page.str("platform"), page.str("frame"),
-                                   "${page.arr("blocks").size} block${if (page.arr("blocks").size == 1) "" else "s"}").joinToString(" · "))
+                                   "${page.arr("blocks").size} block${if (page.arr("blocks").size == 1) "" else "s"}",
+                                   if (page.obj("layouts").length() > 0)
+                                       "also laid out for " + page.obj("layouts").keys().asSequence().joinToString(", ")
+                                   else "").filter { it.isNotBlank() }.joinToString(" · "))
                         if (page.str("notes").isNotBlank()) Text(page.str("notes"), color = Ink, modifier = Modifier.padding(top = 4.dp))
                     }
                 }

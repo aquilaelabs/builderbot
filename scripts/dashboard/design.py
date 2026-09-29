@@ -27,6 +27,7 @@ are staged in the notebook and land as one save of the whole record.
 """
 import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -58,21 +59,25 @@ NAME_MAX = 120
 # What a block can be. A label a person reads, and one line of what the
 # kind means, which is what the prompt says about it. Alphabetical by key,
 # as every list of choices here is (docs/design-language.md).
+# What a kind IS, and no more than that: a session reads the meaning beside
+# every block, and one that said what the block must contain ("fields with
+# one Save or Submit at the foot", "each opening to detail") held a page to
+# things its design never said (a report from another project, 29 Sep).
 KINDS = [
-    ("button", "Button", "a primary action"),
-    ("card", "Card", "a raised box holding one thing"),
+    ("button", "Button", "an action to press"),
+    ("card", "Card", "a box holding one thing"),
     ("chart", "Chart", "a chart or a meter"),
     ("content", "Content", "the main reading or working area"),
-    ("footer", "Footer", "a footer with the quiet links"),
-    ("form", "Form", "fields with one Save or Submit at the foot"),
-    ("header", "Header", "the top bar with the name and the account"),
-    ("hero", "Hero", "a large opening block with one message"),
+    ("footer", "Footer", "the band at the foot"),
+    ("form", "Form", "fields a person fills in"),
+    ("header", "Header", "the band at the top"),
+    ("hero", "Hero", "a large opening block"),
     ("image", "Image", "a picture or a media block"),
-    ("list", "List", "rows of things, each opening to detail"),
+    ("list", "List", "rows of like things"),
     ("nav", "Navigation", "the way around: tabs or a menu"),
     ("overlay", "Overlay", "a dialog, sheet, drawer, popover or toast over the page"),
     ("search", "Search", "a search box"),
-    ("sidebar", "Sidebar", "a side column of links or filters"),
+    ("sidebar", "Sidebar", "a side column"),
     ("table", "Table", "columns of data"),
     ("tabs", "Tabs", "a strip of tabs switching one area"),
     ("text", "Text", "a block of prose"),
@@ -83,6 +88,10 @@ KIND_KEYS = [k for k, _, _ in KINDS]
 FRAMES = {"phone": {"cols": 6, "rows": 12, "label": "Phone"},
           "landscape": {"cols": 12, "rows": 6, "label": "Phone, sideways"},
           "desktop": {"cols": 12, "rows": 8, "label": "Desktop"}}
+# A frame is one screen, and a page may be longer than one: it scrolls. Its
+# rows are the frame's unless it says more, up to this many. Twelve stacked
+# blocks did not fit the six rows of a phone held sideways at all.
+ROWS_MAX = 60
 
 # Preset layouts: a set of blocks on a frame, the starting point a page is
 # made from and then rearranged. Blocks are (kind, label, x, y, w, h).
@@ -230,21 +239,25 @@ FONTS = [
     ("geometric", "Geometric sans", "a geometric sans-serif such as Inter or Manrope"),
     ("serif", "Serif", "a readable serif such as Source Serif or Georgia, for prose"),
     ("mono", "Monospace", "a monospace such as JetBrains Mono, everywhere, for a terminal feel"),
+    ("custom", "Custom", "as the design's own rules say"),
 ]
 CORNERS = [
     ("square", "Square", "no rounding anywhere"),
     ("soft", "Soft", "small radii: 6px on controls, 8px on boxes, 4px on tags"),
     ("round", "Round", "generous radii: 10px on controls, 14px on boxes, and pills for tags"),
+    ("custom", "Custom", "as the design's own rules say"),
 ]
 DENSITY = [
     ("compact", "Compact", "tight rows and small gaps, for a tool used all day"),
     ("comfortable", "Comfortable", "an ordinary rhythm: 11px by 14px bands, 10px between fields"),
     ("spacious", "Spacious", "generous space around everything, for a page read rather than worked"),
+    ("custom", "Custom", "as the design's own rules say"),
 ]
 MOTION = [
     ("quiet", "Quiet", "short eases on state changes, nothing decorative, and none under prefers-reduced-motion"),
     ("none", "None", "no animation at all"),
     ("lively", "Lively", "things arrive and leave with motion, still off under prefers-reduced-motion"),
+    ("custom", "Custom", "as the design's own rules say"),
 ]
 CHOICES = {"font": FONTS, "corners": CORNERS, "density": DENSITY, "motion": MOTION}
 
@@ -287,7 +300,8 @@ def _open_line(lang):
         return ""
     return ("Not chosen yet: " + ", ".join(left) + ". Choose " + ("it" if len(left) == 1 else "each")
             + " from what you build, and put it into the design with `bb design save` "
-              "(`bb design schema` names the choices).")
+              "(`bb design schema` names the choices; custom is the one for a design whose "
+              "rules say it better than a choice can).")
 
 # Six hex digits, or eight when a color carries its alpha: a glass theme's
 # tokens do (B342), and a stylesheet reads #rrggbbaa as it reads #rrggbb.
@@ -337,28 +351,51 @@ class _Refused(Exception):
     pass
 
 
+# A save is refused whole with EVERYTHING wrong with it listed, so it is
+# corrected once. While problems() collects, a validator that meets a
+# problem notes it and goes on with a stand-in; outside that it refuses at
+# once. Per thread: the server answers several at a time.
+_collecting = threading.local()
+
+
+def _bad(msg):
+    found = getattr(_collecting, "found", None)
+    if found is None:
+        raise _Refused(msg)
+    if msg not in found:
+        found.append(msg)
+
+
 def _choice(value, keys, what, dflt):
     """One of the vocabulary's, or "" for a choice nobody has made."""
     v = str(value or dflt)
     if v and v not in keys:
-        raise _Refused(f"{what}: no such choice, {v!r}")
+        _bad(f"{what}: no such choice, {v!r}; it is one of {', '.join(keys)}")
+        return dflt
     return v
 
 
 def _line(value, cap, what):
     v = " ".join(str(value or "").split())
     if len(v) > cap:
-        raise _Refused(f"{what} is at most {cap} characters")
+        _bad(f"{what} is at most {cap} characters, and this is {len(v)}: {v[:40]}...")
+        return v[:cap]
     return v
 
 
 def _clean_color(m, what):
     if not isinstance(m, dict):
-        raise _Refused(f"a color in {what} is an object: name, hex, means")
+        _bad(f"a color in {what} is an object (name, hex, means), not {str(m)[:40]!r}")
+        return None
     name = _line(m.get("name"), 40, "a color's name")
     hexv = str(m.get("hex") or "").strip().lower()
+    if not name and not hexv:
+        return None                      # a row added and left blank
+    if not name:
+        _bad(f"a color in {what} has no name ({hexv})")
     if not _HEX.match(hexv):
-        raise _Refused(f"{name or 'a color'} in {what}: a color is #rrggbb or #rrggbbaa, not {hexv!r}")
+        _bad(f"{name or 'a color'} in {what}: a color is #rrggbb or #rrggbbaa, not {hexv!r}")
+        hexv = "#000000"
     return {"name": name, "hex": hexv, "means": _line(m.get("means"), NAME_MAX, "what a color is for")}
 
 
@@ -366,18 +403,24 @@ def _clean_theme(t, n):
     """A theme as stored: a name, dark or light, and its colors, each
     named once."""
     if not isinstance(t, dict):
-        raise _Refused("a theme is an object: name, mode, colors")
+        _bad(f"theme {n} is an object (name, mode, colors), not {str(t)[:40]!r}")
+        t = {}
     name = _line(t.get("name"), 40, "a theme's name") or f"Theme {n}"
     mode = str(t.get("mode") or "")
-    raw = [c for c in (t.get("colors") if isinstance(t.get("colors"), list) else []) if isinstance(c, dict)
-           and str(c.get("name") or "").strip()]
+    if mode and mode not in MODES:
+        _bad(f"{name}: a theme is {' or '.join(MODES)}, not {mode!r}")
+    raw = t.get("colors") if isinstance(t.get("colors"), list) else []
     if len(raw) > COLORS_MAX:
-        raise _Refused(f"{name} holds at most {COLORS_MAX} colors")
+        _bad(f"{name} holds at most {COLORS_MAX} colors, and this has {len(raw)}")
+        raw = raw[:COLORS_MAX]
     colors, seen = [], set()
     for c in raw:
         c = _clean_color(c, name)
+        if c is None:
+            continue
         if c["name"].lower() in seen:
-            raise _Refused(f"{name} names {c['name']} twice")
+            _bad(f"{name} names {c['name']} twice")
+            continue
         seen.add(c["name"].lower())
         colors.append(c)
     if mode not in MODES:
@@ -405,12 +448,14 @@ def _clean_language(lang):
         lang = {**lang, "themes": [base]}
     raw = lang.get("themes") if isinstance(lang.get("themes"), list) else []
     if len(raw) > THEMES_MAX:
-        raise _Refused(f"a language holds at most {THEMES_MAX} themes")
+        _bad(f"a language holds at most {THEMES_MAX} themes, and this has {len(raw)}")
+        raw = raw[:THEMES_MAX]
     themes, names = [], set()
     for i, t in enumerate(raw):
         t = _clean_theme(t, i + 1)
         if t["name"].lower() in names:
-            raise _Refused(f"two themes are called {t['name']}")
+            _bad(f"two themes are called {t['name']}")
+            continue
         names.add(t["name"].lower())
         themes.append(t)
     # None is a language too (the operator, 29 Sep): a project designed by
@@ -420,7 +465,7 @@ def _clean_language(lang):
         out[key] = _choice(lang.get(key), [k for k, _, _ in rows], key, LANGUAGE_DEFAULT[key])
     out["scope"] = _line(lang.get("scope"), NAME_MAX, "what the language governs")
     out["fonts"] = _line(lang.get("fonts"), 200, "the font families")
-    out["rules"] = _clean_rules(lang.get("rules"), "a language")
+    out["rules"] = _clean_rules(lang.get("rules"), "the language")
     return out
 
 
@@ -437,9 +482,10 @@ def _clean_rule(r, i):
         name = f"design-{i + 1}"
     text = str(r.get("text") or "").strip()
     if len(text) > RULE_TEXT_MAX:
-        raise _Refused(f"the rule {name} is at most {RULE_TEXT_MAX} characters")
+        _bad(f"the rule {name} is at most {RULE_TEXT_MAX} characters, and this is {len(text)}")
+        text = text[:RULE_TEXT_MAX]
     if not text:
-        raise _Refused(f"the rule {name} says nothing")
+        _bad(f"the rule {name} says nothing")
     # Each trigger once, in the order given: the briefing lists them, and a
     # word typed twice read "color, color" there.
     return {"name": name, "text": text,
@@ -462,14 +508,17 @@ def _clean_rules(raw, whose):
     # said (B342).
     for r in raw:
         if not isinstance(r, dict):
-            raise _Refused(f"a rule of {whose} is an object with a name and a text, not {str(r)[:60]!r}")
+            _bad(f"a rule of {whose} is an object with a name and a text, not {str(r)[:60]!r}")
+    raw = [r for r in raw if isinstance(r, dict)]
     if len(raw) > RULES_MAX:
-        raise _Refused(f"{whose} holds at most {RULES_MAX} rules")
+        _bad(f"{whose} holds at most {RULES_MAX} rules, and this has {len(raw)}")
+        raw = raw[:RULES_MAX]
     rules, names = [], set()
     for i, r in enumerate(raw):
         r = _clean_rule(r, i)
         if r["name"] in names:
-            raise _Refused(f"{whose} has two rules called {r['name']}")
+            _bad(f"{whose} has two rules called {r['name']}")
+            continue
         names.add(r["name"])
         rules.append(r)
     return rules
@@ -546,63 +595,119 @@ def _role(theme, role):
     return ""
 
 
-def _clean_block(b, frame):
-    if not isinstance(b, dict):
-        raise _Refused("a block is an object")
-    g = FRAMES[frame]
-    kind = _choice(b.get("kind"), KIND_KEYS, "block kind", "content")
+def _place(b, cols, rows, what):
+    """A place on a grid, as given or refused: never moved to fit. A block
+    sent 13 wide came back 12 wide and a place outside the frame came back
+    inside it, with the save saying only that it had saved (two reports
+    from other projects, 29 Sep)."""
     try:
         x, y, w, h = (int(b.get(k, 0)) for k in ("x", "y", "w", "h"))
-    except (TypeError, ValueError):
-        raise _Refused("a block's cells are whole numbers") from None
+    except (TypeError, ValueError, AttributeError):
+        _bad(f"{what}: x, y, w and h are whole numbers")
+        return {"x": 0, "y": 0, "w": 1, "h": 1}
+    if w < 1 or h < 1:
+        _bad(f"{what} is {w} wide and {h} high: a block is at least one cell each way")
+    if x < 0 or x + w > cols:
+        _bad(f"{what} runs from column {x + 1} to {x + w}, and the frame has {cols}")
+    if y < 0 or y + h > rows:
+        _bad(f"{what} runs from row {y + 1} to {y + h}, and the page has {rows}"
+             + (f": give the page more rows (rows, up to {ROWS_MAX}) where it is longer than one screen"
+                if rows < ROWS_MAX and 0 <= y and y + h <= ROWS_MAX else ""))
     w, h = max(1, w), max(1, h)
-    x = min(max(0, x), g["cols"] - 1)
-    y = min(max(0, y), g["rows"] - 1)
-    w = min(w, g["cols"] - x)
-    h = min(h, g["rows"] - y)
-    return {"kind": kind, "label": _line(b.get("label"), NAME_MAX, "a block's label"),
-            "x": x, "y": y, "w": w, "h": h}
+    x = min(max(0, x), cols - 1)
+    y = min(max(0, y), rows - 1)
+    return {"x": x, "y": y, "w": min(w, cols - x), "h": min(h, rows - y)}
+
+
+def _clean_block(b, cols, rows, what):
+    if not isinstance(b, dict):
+        _bad(f"{what} is an object (kind, label, x, y, w, h), not {str(b)[:40]!r}")
+        b = {}
+    return {"kind": _choice(b.get("kind"), KIND_KEYS, f"{what}'s kind", "content"),
+            "label": _line(b.get("label"), NAME_MAX, f"{what}'s label"), **_place(b, cols, rows, what)}
+
+
+def page_rows(p):
+    """How many rows a page has: its frame's, or more where it is longer
+    than one screen."""
+    return max(FRAMES[p["frame"]]["rows"], int(p.get("rows") or 0))
 
 
 def _clean_page(p, pid):
     if not isinstance(p, dict):
-        raise _Refused("a page is an object")
-    platform = _choice(p.get("platform"), PLATFORM_KEYS, "platform", "web")
-    # A frame the platform has: a page switched to Android keeps its
-    # blocks and takes the phone frame, where they are clamped.
+        _bad(f"a page is an object, not {str(p)[:40]!r}")
+        p = {}
+    name = _line(p.get("name"), NAME_MAX, "a page's name")
+    called = name or f"page {pid}"
+    platform = _choice(p.get("platform"), PLATFORM_KEYS, f"{called}'s platform", "web")
     frames = _platform(platform)[2]
     frame = str(p.get("frame") or frames[0])
     if frame not in frames:
+        _bad(f"{called} is on the {frame} frame, which {_platform(platform)[1].lower()} has not: "
+             f"it has {', '.join(frames)}")
         frame = frames[0]
+    g = FRAMES[frame]
+    try:
+        rows = int(p.get("rows") or g["rows"])
+    except (TypeError, ValueError):
+        rows = -1
+    if not g["rows"] <= rows <= ROWS_MAX:
+        _bad(f"{called} has {p.get('rows')!r} rows: a page on the {frame} frame has "
+             f"{g['rows']} (one screen) to {ROWS_MAX}")
+        rows = g["rows"]
     blocks = p.get("blocks") if isinstance(p.get("blocks"), list) else []
     if len(blocks) > MAX_BLOCKS:
-        raise _Refused(f"a page holds at most {MAX_BLOCKS} blocks")
+        _bad(f"{called} holds at most {MAX_BLOCKS} blocks, and this has {len(blocks)}")
+        blocks = blocks[:MAX_BLOCKS]
     notes = str(p.get("notes") or "").strip()
     if len(notes) > NOTES_MAX:
-        raise _Refused(f"a page's notes are at most {NOTES_MAX} characters")
-    name = _line(p.get("name"), NAME_MAX, "a page's name")
+        _bad(f"{called}'s notes are at most {NOTES_MAX} characters, and these are {len(notes)}")
+        notes = notes[:NOTES_MAX]
+    clean = [_clean_block(b, g["cols"], rows, f"{called}, block {i + 1}") for i, b in enumerate(blocks)]
+    # Two blocks in one place is one of them lost under the other. An
+    # overlay is over the page, so it may sit where something else does.
+    seen = {}
+    for i, b in enumerate(clean):
+        at = (b["x"], b["y"], b["w"], b["h"])
+        if b["kind"] != "overlay" and at in seen:
+            _bad(f"{called}, blocks {seen[at] + 1} and {i + 1} sit in the same place")
+        elif b["kind"] != "overlay":
+            seen[at] = i
     return {"id": pid, "name": name,
-            "platform": platform, "template": _choice(p.get("template"), TEMPLATE_KEYS, "template", "blank"),
-            "frame": frame, "blocks": [_clean_block(b, frame) for b in blocks],
-            "layouts": _clean_layouts(p.get("layouts"), frame, len(blocks)),
-            "notes": notes, "rules": _clean_rules(p.get("rules"), f"the page {name or pid}"),
+            "platform": platform, "template": _choice(p.get("template"), TEMPLATE_KEYS, f"{called}'s template", "blank"),
+            "frame": frame, "rows": rows, "blocks": clean,
+            "layouts": _clean_layouts(p.get("layouts"), frame, len(clean), called),
+            "notes": notes, "rules": _clean_rules(p.get("rules"), f"the page {called}"),
             "at": int(time.time())}
 
 
-def _clean_layouts(raw, frame, n):
-    """Where the page's blocks sat on the other frames it has been on, so a
-    frame changed and changed back is where it was (B348): per frame, one
-    place per block, in the blocks' order. A layout about another number
-    of blocks, or for the frame the page is on, is not kept."""
+def _clean_layouts(raw, frame, n, called):
+    """Where the page's blocks sit on the other frames it has: per frame,
+    one place per block, in the blocks' order (B348). A layout that is not
+    that is refused and says why: one about another number of blocks was
+    dropped whole, and the save said it had saved. One for a frame the
+    page's platform has not is kept and not said: a page moved to Android
+    and back to the web finds its desktop layout where it left it."""
     out = {}
-    for f, rows in (raw.items() if isinstance(raw, dict) else []):
-        if f not in FRAMES or f == frame or not isinstance(rows, list) or len(rows) != n:
+    if raw in (None, ""):
+        return out
+    if not isinstance(raw, dict):
+        _bad(f"{called}'s layouts are an object, a frame to its places, not {str(raw)[:40]!r}")
+        return out
+    for f, places in raw.items():
+        if f not in FRAMES:
+            _bad(f"{called} has a layout for {f!r}, which is not a frame: the frames are {', '.join(FRAMES)}")
             continue
-        try:
-            out[f] = [{k: v for k, v in _clean_block({**r, "kind": "content", "label": ""}, f).items()
-                       if k in ("x", "y", "w", "h")} for r in rows]
-        except (_Refused, TypeError):
+        if f == frame:
+            _bad(f"{called} has a layout for the {f} frame, which is the frame it is on: its blocks are that layout")
             continue
+        if not isinstance(places, list) or len(places) != n:
+            have = len(places) if isinstance(places, list) else 0
+            _bad(f"{called}'s {f} layout has {have} place{'' if have == 1 else 's'} "
+                 f"for {n} block{'' if n == 1 else 's'}: one place per block, in the blocks' order")
+            continue
+        out[f] = [_place(r, FRAMES[f]["cols"], ROWS_MAX, f"{called}, place {i + 1} of its {f} layout")
+                  for i, r in enumerate(places)]
     return out
 
 
@@ -654,10 +759,11 @@ def _label(rows, key):
     return next((label for k, label, _ in rows if k == key), key)
 
 
-def _where(b, frame):
-    """A block's place in words: which part of the frame, and how much."""
+def _where(b, frame, rows=0):
+    """A block's place in words: which part of the page, and how much.
+    `rows` is how long the page is where that is more than its frame."""
     g = FRAMES[frame]
-    cols, rows = g["cols"], g["rows"]
+    cols, rows = g["cols"], max(g["rows"], rows)
     full_w = b["w"] >= cols
     top = b["y"] == 0
     bottom = b["y"] + b["h"] >= rows
@@ -717,18 +823,19 @@ def language_text(lang, platform=""):
             lines.extend(_rule_lines(t.get("rules") or [], f"{t['name']}'s own rules", _slug(t["name"]), "    "))
     if len(themes) == 1:
         lines.extend(_rule_lines(themes[0].get("rules") or [], f"{themes[0]['name']}'s own rules", _slug(themes[0]["name"]), "  "))
-    if themes:
-        lines.append("A filled accent surface carries the text color on it, at AA contrast.")
-    # Each choice says what it means once somebody has made it; one still
-    # open says nothing the work could be held to.
+    # Each choice says what it means once somebody has made it, and only
+    # that: the sentences this used to add by itself (monospace for data,
+    # hairlines of 1px, AA contrast on a filled accent) were BuilderBot's
+    # own design said of every project's, and one of them contradicted a
+    # project's rules (a report from another project, 29 Sep). What a
+    # design holds to beyond its choices is in its rules.
     if lang["font"]:
         lines.append(f"Type: {_font_means(lang, platform)}"
-                     + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
-                     + "; monospace for data (names, paths, numbers).")
+                     + (f", set as {lang['fonts']}" if lang.get("fonts") else "") + ".")
     elif lang.get("fonts"):
         lines.append(f"Type: set as {lang['fonts']}.")
     if lang["corners"]:
-        lines.append(f"Shape: {_means(CORNERS, lang['corners'])}; hairlines 1px in the edge color.")
+        lines.append(f"Shape: {_means(CORNERS, lang['corners'])}.")
     if lang["density"]:
         lines.append(f"Space: {_means(DENSITY, lang['density'])}.")
     if lang["motion"]:
@@ -770,18 +877,45 @@ def _cap(text):
     return text[:1].upper() + text[1:]
 
 
+def _reach(places, frame):
+    """How many rows a set of places comes to on a frame: the frame's own,
+    or more where they run past one screen."""
+    return max([FRAMES[frame]["rows"]] + [r["y"] + r["h"] for r in places])
+
+
+def _frame_words(frame, rows):
+    g = FRAMES[frame]
+    return (f"{g['cols']} columns by {rows} rows"
+            + (f": the frame shows {g['rows']} of them, and the page scrolls" if rows > g["rows"] else ""))
+
+
 def page_text(page):
-    """A page's layout as prose: each block, what it is for, and where."""
-    g = FRAMES[page["frame"]]
+    """A page's layout as prose: each block, what it is for, and where, on
+    the frame it is on and then on every other frame it has a layout for.
+    Those were kept and never said: a phone layout a session saved reached
+    neither this nor the file (two reports from other projects, 29 Sep)."""
+    rows = page_rows(page)
     plat = _platform(page["platform"])
+    name = page["name"] or "this page"
+
+    def said(blocks, frame, n):
+        out = []
+        for b in sorted(blocks, key=lambda b: (b["y"], b["x"])):
+            what = f": {b['label']}" if b["label"] else ""
+            out.append(f"  {_label(KINDS, b['kind'])} ({_means(KINDS, b['kind'])}){what}, {_where(b, frame, n)}")
+        return out
     lines = [f"Platform: {plat[4]}.",
-             f"Layout of {page['name'] or 'this page'} on a {page['frame']} frame "
-             f"({g['cols']} columns by {g['rows']} rows), from the {_label([(t['key'], t['label'], '') for t in TEMPLATES], page['template'])} template:"]
+             f"Layout of {name} on a {page['frame']} frame ({_frame_words(page['frame'], rows)}), from the "
+             f"{_label([(t['key'], t['label'], '') for t in TEMPLATES], page['template'])} template:"]
     if not page["blocks"]:
         lines.append("  (no blocks placed yet)")
-    for b in sorted(page["blocks"], key=lambda b: (b["y"], b["x"])):
-        what = f": {b['label']}" if b["label"] else ""
-        lines.append(f"  {_label(KINDS, b['kind'])} ({_means(KINDS, b['kind'])}){what}, {_where(b, page['frame'])}")
+    lines += said(page["blocks"], page["frame"], rows)
+    for frame, places in (page.get("layouts") or {}).items():
+        if frame not in plat[2] or len(places) != len(page["blocks"]):
+            continue
+        n = _reach(places, frame)
+        lines.append(f"The same blocks on a {frame} frame ({_frame_words(frame, n)}):")
+        lines += said([{**b, **r} for b, r in zip(page["blocks"], places, strict=True)], frame, n)
     if page.get("notes"):
         lines.append("Notes:")
         lines.extend("  " + ln for ln in page["notes"].splitlines() if ln.strip())
@@ -832,22 +966,20 @@ def file_text(rec):
         out += ["", "| token | value | for |", "|---|---|---|"]
         out += [f"| `--{_slug(c['name'])}` | `{c['hex']}` | {c['means']} |" for c in t["colors"]]
         out += _file_rules(t.get("rules") or [], _slug(t["name"]), f"Rules of {t['name']}'s own", "####")
-    if themes:
-        out += ["", "A filled accent surface carries the text color on it, at AA contrast."]
     if lang["font"]:
-        out += ["", "## Type", "", _cap(_font_means(lang)) + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
-                + ". Monospace for data: names, paths, numbers."]
+        out += ["", "## Type", "", _cap(_font_means(lang)) + (f", set as {lang['fonts']}" if lang.get("fonts") else "") + "."]
     elif lang.get("fonts"):
         out += ["", "## Type", "", f"Set as {lang['fonts']}."]
     if lang["corners"]:
-        out += ["", "## Shape", "", _cap(_means(CORNERS, lang["corners"])) + ". Hairlines are 1px in `--line`."]
+        out += ["", "## Shape", "", _cap(_means(CORNERS, lang["corners"])) + "."]
     if lang["density"]:
         out += ["", "## Space", "", _cap(_means(DENSITY, lang["density"])) + "."]
     if lang["motion"]:
         out += ["", "## Motion", "", _cap(_means(MOTION, lang["motion"])) + "."]
     if open_choices(lang):
         out += ["", "## Not chosen yet", "", _cap(", ".join(open_choices(lang)))
-                + ": nobody has chosen these, so nothing here holds the work to one."]
+                + ": nobody has made " + ("this choice" if len(open_choices(lang)) == 1 else "these choices")
+                + ". What the rules say of " + ("it" if len(open_choices(lang)) == 1 else "them") + " holds."]
     if lang["rules"]:
         out += ["", "## Rules", "",
                 "Each is one rule of the design, by name; a session is handed one on the turn it edits a "
@@ -880,42 +1012,22 @@ def _file_rules(rules, scope, head, level):
 
 # ---- writes ----------------------------------------------------------------------
 def problems(lang, pages):
-    """Everything wrong with a record, in one pass: each theme, each rule
-    and each page checked on its own once the whole is refused, so a save
-    is corrected once rather than one refusal at a time (B342)."""
-    out = []
+    """Everything wrong with a record, in one pass, so a save is corrected
+    once rather than one refusal at a time (B342): every validator notes
+    what it meets and goes on (_bad)."""
+    found = _collecting.found = []
     try:
         _clean_language(lang)
-    except _Refused as e:
-        whole = str(e)
-        found = []
-        if isinstance(lang, dict):
-            for i, t in enumerate(lang.get("themes") if isinstance(lang.get("themes"), list) else []):
-                try:
-                    _clean_theme(t, i + 1)
-                except _Refused as e2:
-                    found.append(str(e2))
-            try:
-                _clean_rules(lang.get("rules"), "the language")
-            except _Refused as e2:
-                found.append(str(e2))
-            try:
-                _clean_language({k: v for k, v in lang.items() if k not in ("themes", "rules")})
-            except _Refused as e2:
-                found.append(str(e2))
-        out += found or [whole]
-    if len(pages) > MAX_PAGES:
-        out.append(f"a project holds at most {MAX_PAGES} pages")
-    for i, p in enumerate(pages):
-        try:
+        if len(pages) > MAX_PAGES:
+            _bad(f"a project holds at most {MAX_PAGES} pages, and this has {len(pages)}")
+        ids = [p.get("id") for p in pages if isinstance(p, dict) and isinstance(p.get("id"), int)]
+        for pid in sorted({i for i in ids if ids.count(i) > 1}):
+            _bad(f"two pages carry the id {pid}")
+        for i, p in enumerate(pages[:MAX_PAGES]):
             _clean_page(p, i + 1)
-        except _Refused as e:
-            out.append(f"page {i + 1}: {e}")
-    seen = []
-    for s in out:
-        if s not in seen:
-            seen.append(s)
-    return seen
+    finally:
+        _collecting.found = None
+    return found
 
 
 def schema_text():
@@ -928,7 +1040,7 @@ def schema_text():
         "{",
         '  "language": {',
         f'    "themes": [ {{ "name": "Night", "mode": "dark" | "light", "colors": [ {{ "name": "bg", "hex": "#1a1f26" or "#1a1f26cc", "means": "the page" }} ], "rules": [RULE] }} ],   at most {THEMES_MAX} themes, {COLORS_MAX} colors each, a color name once per theme',
-        f'    "font": {" | ".join(k for k, _, _ in FONTS)},   each of these four may be "" while nobody has chosen it',
+        f'    "font": {" | ".join(k for k, _, _ in FONTS)},   each of these four may be "" while nobody has chosen it, and custom where the rules say it',
         f'    "corners": {" | ".join(k for k, _, _ in CORNERS)},',
         f'    "density": {" | ".join(k for k, _, _ in DENSITY)},',
         f'    "motion": {" | ".join(k for k, _, _ in MOTION)},',
@@ -940,10 +1052,12 @@ def schema_text():
         '    "id": 3,   a saved page keeps its id; leave it out for a new page; a saved page left out is removed',
         f'    "name": "the settings page",   what it is for, at most {NAME_MAX} characters',
         f'    "platform": {" | ".join(PLATFORM_KEYS)},',
-        f'    "frame": {" | ".join(FRAMES)},   one the platform allows: phone and landscape for a phone app',
+        f'    "frame": {" | ".join(FRAMES)},   one the platform allows: phone and landscape for a phone app. '
+        + ", ".join(f"{k} is {v['cols']} columns by {v['rows']} rows" for k, v in FRAMES.items()),
+        f'    "rows": 14,   optional: how long the page is where it is longer than one screen, the frame\'s rows to {ROWS_MAX}',
         f'    "template": {" | ".join(TEMPLATE_KEYS)},',
-        f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2 }} ],   at most {MAX_BLOCKS}, inside the frame',
-        '    "layouts": { "phone": [ { "x": 0, "y": 0, "w": 6, "h": 2 } ] },   optional: where the blocks sat on another frame, one place per block in order',
+        f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2 }} ],   at most {MAX_BLOCKS}, each inside the frame\'s columns and the page\'s rows, no two in one place (an overlay may be)',
+        f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the same blocks sit on another frame, one place per block in the blocks\' order, up to {ROWS_MAX} rows; bb design show and the file say each',
         f'    "notes": "...",   at most {NOTES_MAX} characters',
         '    "rules": [RULE]',
         f'  }} ],   at most {MAX_PAGES} pages',

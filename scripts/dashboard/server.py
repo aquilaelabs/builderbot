@@ -249,6 +249,11 @@ CLAUDE_PROJECTS = Path(
 # Every request body here is a handful of short JSON fields. Anything larger is
 # a mistake or a probe, and reading it into memory unbounded helps neither.
 MAX_BODY = 64 * 1024
+# The one body that is a document: a project's whole design, which its own
+# limits let run to megabytes (forty pages, sixty rules of twenty thousand
+# characters). At 64 kB a design of forty pages and thirteen themes was
+# refused as "body too large" with every part of it inside its limit.
+MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024}
 
 # One field out of a request body, read the one way here and in every
 # module a handler calls into (fields.py).
@@ -4457,8 +4462,9 @@ class Handler(BaseHTTPRequestHandler):
         not at all. None means an answer was already sent."""
         try:
             n = int(self.headers.get("Content-Length", "0"))
-            if not 0 <= n <= MAX_BODY:
-                self._json({"error": "body too large"}, 413)
+            most = MAX_BODY_FOR.get(self.path.partition("?")[0], MAX_BODY)
+            if not 0 <= n <= most:
+                self._json({"error": f"body too large: {n} bytes, and this takes {most}"}, 413)
                 return None
             req = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, TypeError):

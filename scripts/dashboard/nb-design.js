@@ -380,6 +380,8 @@ function nbDesignView({$, nb, project, root}){
               `<textarea id="${key}-name" class="proseline" rows="1" maxlength="120" data-dsf="name">${esc(p.name)}</textarea>`, true)}
         ${ctl(`${key}-plat`, "Platform", "", `<select id="${key}-plat" data-dsf="platform">${opt(P.platforms, p.platform)}</select>`)}
         ${ctl(`${key}-frame`, "Frame", "", `<select id="${key}-frame" data-dsf="frame">${opt(frames, p.frame)}</select>`)}
+        ${ctl(`${key}-rows`, "Rows", "how long the page is: the frame is one screen, and a page with more rows scrolls",
+              `<input id="${key}-rows" type="number" inputmode="numeric" min="${frameOf(p.frame).rows}" max="${ROWS_MAX}" value="${gridOf(p).rows}" data-dsf="rows">`)}
       </div></div>
       <div class="field">${boardHtml(p)}</div>
       <div class="field"><div class="dsrow">
@@ -426,8 +428,18 @@ function nbDesignView({$, nb, project, root}){
     return `grid-column:${b.x + 1} / span ${b.w};grid-row:${b.y + 1} / span ${b.h};`
       + `background:${bg};color:${ink};border-color:${wear === "accent" ? bg : paint("line")}`;
   }
+  // A frame is one screen and a page may be longer than one: its grid is
+  // the frame's columns by its own rows, and the board grows with them.
+  const ROWS_MAX = 60;
+  const frameOf = f => presets().frames?.[f] || {cols: 12, rows: 8};
+  const reach = places => Math.max(0, ...(places || []).map(b => b.y + b.h));
+  const gridOf = p => ({cols: frameOf(p.frame).cols,
+                        rows: Math.min(ROWS_MAX, Math.max(frameOf(p.frame).rows, p.rows || 0))});
+  const SHAPE = {desktop: [16, 10], phone: [9, 16], landscape: [16, 9]};
   function boardHtml(p){
-    const g = presets().frames?.[p.frame] || {cols: 12, rows: 8};
+    const g = gridOf(p);
+    const [bw, bh] = SHAPE[p.frame] || SHAPE.desktop;
+    const tall = g.rows > frameOf(p.frame).rows ? `aspect-ratio:${bw} / ${(bh * g.rows / frameOf(p.frame).rows).toFixed(2)};` : "";
     const key = keyOf(p);
     const inner = p.blocks.length
       ? p.blocks.map((b, i) => `<div class="dsblock${nb.dsSel[key] === i ? " on" : ""}" tabindex="0" role="button"
@@ -435,7 +447,7 @@ function nbDesignView({$, nb, project, root}){
             <b>${esc(kindLabel(b.kind))}</b>${b.label ? `<span>${esc(b.label)}</span>` : ""}<i class="dsgrip" aria-hidden="true"></i></div>`).join("")
       : `<div class="dsempty">nothing on this ${esc(p.frame)} yet</div>`;
     return `<div class="dsboard" data-frame="${esc(p.frame)}" role="group" aria-label="the layout of ${esc(p.name || "this page")}"
-      style="grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div>`;
+      style="${tall}grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div>`;
   }
   const kindLabel = k => byKey(presets().kinds, k)?.label || k;
   function repaintBoard(p){
@@ -473,11 +485,12 @@ function nbDesignView({$, nb, project, root}){
     p.layouts = p.layouts || {};
     p.layouts[p.frame] = p.blocks.map(geometry);
     p.frame = frame;
-    const g = presets().frames?.[frame] || {cols: 12, rows: 8};
     const kept = p.layouts[frame];
-    if (Array.isArray(kept) && kept.length === p.blocks.length)
-      p.blocks.forEach((b, i) => Object.assign(b, kept[i]));
-    p.blocks.forEach(b => clampBlock(b, g, undefined));
+    const had = Array.isArray(kept) && kept.length === p.blocks.length;
+    if (had) p.blocks.forEach((b, i) => Object.assign(b, kept[i]));
+    // As long as its layout there was; a frame never visited is one screen.
+    p.rows = had ? Math.max(frameOf(frame).rows, reach(kept)) : frameOf(frame).rows;
+    p.blocks.forEach(b => clampBlock(b, gridOf(p), undefined));
     delete p.layouts[frame];
   }
   // A block added or taken away is added to or taken from every layout the
@@ -485,7 +498,7 @@ function nbDesignView({$, nb, project, root}){
   function layoutsAdd(p, b){
     for (const [f, rows] of Object.entries(p.layouts || {})){
       const nb_ = geometry(b);
-      clampBlock(nb_, presets().frames?.[f] || {cols: 12, rows: 8}, false);
+      clampBlock(nb_, {cols: frameOf(f).cols, rows: Math.max(frameOf(f).rows, reach(rows))}, false);
       rows.push(nb_);
     }
   }
@@ -497,7 +510,15 @@ function nbDesignView({$, nb, project, root}){
     if (!el) return;
     const key = keyOf(p);
     const P = presets();
-    const grid = () => P.frames?.[p.frame] || {cols: 12, rows: 8};
+    const grid = () => gridOf(p);
+    // Rows are a draft like the rest: shortening a page brings its blocks
+    // up into what is left, and never under the frame's one screen.
+    el.querySelector('[data-dsf="rows"]').onchange = e => {
+      const n = Math.round(Number(e.target.value)) || 0;
+      p.rows = Math.min(ROWS_MAX, Math.max(frameOf(p.frame).rows, n));
+      p.blocks.forEach(b => clampBlock(b, gridOf(p), undefined));
+      touched(); drawDesign();
+    };
     el.querySelector('[data-dsf="name"]').oninput = e => {
       p.name = e.target.value;
       pageOption(p);
@@ -576,7 +597,7 @@ function nbDesignView({$, nb, project, root}){
       const i = +el.dataset.i, b = p.blocks[i];
       if (!b) return;
       if (nb.dsSel[key] !== i){ nb.dsSel[key] = i; drawDesign(); return; }
-      const g = P.frames?.[p.frame] || {cols: 12, rows: 8};
+      const g = gridOf(p);
       const r = board.getBoundingClientRect();
       const cw = (r.width - 12) / g.cols, ch = (r.height - 12) / g.rows;
       const resize = e.target.classList.contains("dsgrip");
@@ -619,7 +640,7 @@ function nbDesignView({$, nb, project, root}){
       if (!d) return;
       e.preventDefault();
       if (e.shiftKey){ b.w += d[0]; b.h += d[1]; } else { b.x += d[0]; b.y += d[1]; }
-      clampBlock(b, P.frames?.[p.frame] || {cols: 12, rows: 8}, e.shiftKey);
+      clampBlock(b, gridOf(p), e.shiftKey);
       el.style.cssText = blockStyle(b);
       touched();
     });

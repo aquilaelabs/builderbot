@@ -1621,7 +1621,13 @@ scheme's textures, say), which reach a session named under their holder,
 `nostromo/hull`, and every rules list reads as the Briefing's does, a
 folded row a rule, inside the entry it holds for: the language's in its
 fold, a theme's above its colors, a page's under its board; the pages and
-the themes show one at a time, chosen on a pulldown at the top; a new project's
+the themes show one at a time, chosen on a pulldown at the top; a frame is
+one screen and a page may be longer than one, up to sixty rows, which
+scrolls, and a page keeps where its blocks sit on each frame it has been
+laid out for, which `bb design show` and the file say after the frame it is
+on; each of the language's four choices may be left not chosen, or be
+custom, which hands it to the design's rules; the words a session reads
+are the record's own and nothing is added to them; a new project's
 design is empty, no theme and no page, and a project built that way is
 built as a session sees fit, the session then putting the look it arrived
 at into the design so the next one finds it; a project designed before it
@@ -1633,7 +1639,9 @@ staged behind Save, nothing on the view is a prompt and nothing on it
 reaches into a session: a session meets the design by itself and piece by
 piece, through the rules its briefing names and `bb design show`, which
 prints the language, one page, one theme or one rule; a session asked to put a design into
-the notebook writes the same record with `bb design save`, and Write the
+the notebook writes the same record with `bb design save`, which keeps a
+record as it was sent or refuses it whole with everything wrong with it
+listed, never moving a block to fit or dropping a layout; and Write the
 file puts `docs/design-language.md` into the tree for every session to
 read), the
 **Roadmap** (the shared list of design work and ordered plans), **Bugs**,
