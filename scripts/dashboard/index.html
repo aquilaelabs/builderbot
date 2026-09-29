@@ -1560,8 +1560,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
   background:color-mix(in srgb, var(--pc) 10%, var(--btn))}
 .tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 55%, var(--line));border-left-color:var(--pc)}
-.row[data-row].pc,.pane .bar.pc{box-shadow:inset 3px 0 var(--pc);
+.row[data-row].pc{box-shadow:inset 3px 0 var(--pc);
   background-color:color-mix(in srgb, var(--pc) 6%, transparent)}
+/* A pane's bar keeps the ground every bar has and takes only the stripe:
+   the tint over transparent turned a notebook's bar black beside a Docker
+   tab's, the one bar on the page that looked like no other (the operator,
+   29 Sep). The stripe still says whose it is in a split. */
+.pane .bar.pc{box-shadow:inset 3px 0 var(--pc)}
 /* The containers under a dev instance's row: one line each, the running
    ones in the ok colour, the rest dim. */
 .dmsvcs{line-height:1.5}
