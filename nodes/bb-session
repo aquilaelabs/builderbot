@@ -30,7 +30,8 @@ mount, PID and IPC namespace in which:
     node gains later is out of it without anybody naming it. A share a
     project is meant to work with is named in the project's settings and
     handed over as --sees;
-  * the process list holds only the session's own processes.
+  * the process list holds only the session's own processes;
+  * the container daemon's socket is not there: the daemon is the node's.
 
 Then it drops to the session account for good (no_new_privs) and runs the
 session under a small init that forwards a stop and reaps what is orphaned.
@@ -564,6 +565,22 @@ def plan(c, a, uid):
     for t in ("/tmp", "/var/tmp", "/dev/shm"):
         if _real_dir(t):
             steps.append(("tmpfs", t, "mode=1777"))
+    # The container daemons' sockets (B308): the daemon is the node's and
+    # its group keeps a session out today, and the briefing says a session
+    # has no socket at all, which was not so. One usermod or chmod on the
+    # node and every session was root there; now there is nothing to widen.
+    # /var/run is a link to /run, so each is covered where it really is.
+    covered = set()
+    for sock in ("/run/docker.sock", "/var/run/docker.sock", "/run/containerd/containerd.sock",
+                 "/run/podman/podman.sock"):
+        real = os.path.realpath(f"{top}{sock}")
+        try:
+            is_sock = stat.S_ISSOCK(os.lstat(real).st_mode)
+        except OSError:
+            is_sock = False
+        if is_sock and real not in covered:
+            covered.add(real)
+            steps.append(("hidefile", real))
     if x11:
         steps.append(("bind", f"{STAGE}/x11", "/tmp/.X11-unix"))
     # What Claude Code keeps between the turns of one conversation (the

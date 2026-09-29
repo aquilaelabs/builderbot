@@ -7,6 +7,7 @@
 import { ok, done, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, symlinkSync, existsSync, rmSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { userInfo } from 'node:os';
 
@@ -334,6 +335,11 @@ ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0]
     mkdirSync(d, { recursive: true });
   symlinkSync('usr/bin', join(M, 'bin'));
   writeFileSync(join(M, 'swap.img'), '');
+  // The daemon's socket, at /run and through /var/run's link to it (B308).
+  mkdirSync(join(M, 'run'), { recursive: true });
+  symlinkSync('run', join(M, 'var', 'run'));
+  const sock = createServer();
+  await new Promise(r => sock.listen(join(M, 'run', 'docker.sock'), r));
   const mounts = join(M, 'mountinfo');
   const line = (n, at, kind, from) => `${n} 1 0:${n} / ${at} rw,relatime shared:${n} - ${kind} ${from} rw`;
   writeFileSync(mounts, [line(20, M, 'ext4', '/dev/vda2'), line(21, join(M, 'proc'), 'proc', 'proc'),
@@ -390,6 +396,11 @@ ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0]
      && let_.every(m => ix('letgo', m) < ix('tmpfs', mnt, 'mode=0755') && ix('letgo', m) > ix('bind', mstore, `${STAGE}/store`)),
      `the mounts inside them are let go, the topmost of each, one with a space in its name and one at the top that nothing can read any more, so the mount table names no export either; the machine's own and the projects share stay (${
        let_.map(m => m.slice(M.length)).join(' ')})`);
+
+  ok(st.filter(x => x[0] === 'hidefile' && x[1] === join(M, 'run', 'docker.sock')).length === 1
+     && !st.some(x => x[x.length - 1] === join(M, 'var', 'run', 'docker.sock')),
+     'the container daemon\'s socket is covered, once, where /var/run\'s link to /run really puts it (B308)');
+  sock.close();
 
   // A place the project is set to see (its settings, --sees): inside a
   // cover it is put back, at the top it is left as the node has it.
