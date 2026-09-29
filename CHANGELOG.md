@@ -98,6 +98,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The companion app's Git view names the branch and the changed files; it read 'on no branch' with nothing changed for every project (7194e97)
 - bb changelog add, edit and rm work beside an entry already longer than the limit, and a refusal for length says which entry it means (7194e97)
 - A session started on a project with a design is told so: its briefing said the Design view was empty whatever it held, while the Briefing tab showed the right line (6b1d0eb)
+- The companion app's Tools screen lists the nodes and never the controller: toolchains are installed on nodes, as on the dashboard's Tools tab (7375db4)
 
 ### Security
 

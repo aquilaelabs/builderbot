@@ -835,9 +835,13 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
     var said by remember { mutableStateOf("") }
     var ask by remember { mutableStateOf<Pair<String, JSONObject>?>(null) }
     val (nd, _) = load("tools-nodes") { api.nodes() }
-    val (pk, reload) = load("tools-$node") { api.toolchains(node) }
     val nodes = nd.value?.arr("nodes")
         ?.filter { it.str("kind") == "agent" && it.str("state") != "retired" } ?: emptyList()
+    // A node's store and never the controller's (B358): toolchains are
+    // installed on nodes. The screen opens on the first node there is, and
+    // asks nothing until it has one.
+    if (nodes.none { it.str("id") == node }) node = nodes.firstOrNull()?.str("id") ?: ""
+    val (pk, reload) = load("tools-$node") { if (node.isBlank()) JSONObject() else api.toolchains(node) }
     val job = pk.value?.obj("job")
     val busy = job?.bool("running") == true
 
@@ -864,7 +868,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             text = {
                 Column {
                     Text(if (action == "install")
-                            "It downloads onto the store " + (if (node.isBlank()) "here" else "on this node") +
+                            "It downloads onto this node's store" +
                             (if (size.isNotBlank()) " ($size)." else ".")
                          else "The files go; nothing that was built with it is touched.")
                     if (item.strs("needs").isNotEmpty())
@@ -888,17 +892,17 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
                 Modifier.fillMaxWidth().padding(16.dp, 0.dp)
                         .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = node.isBlank(), onClick = { node = "" },
-                           label = { Text("controller") })
                 for (n in nodes) FilterChip(selected = node == n.str("id"),
                                             onClick = { node = n.str("id") },
                                             label = { Text(n.str("name")) })
             }
             if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 8.dp), color = Note)
             if (pk.error != null) Problem(pk.error)
+            if (nd.value != null && nodes.isEmpty()) Column(Modifier.padding(horizontal = 16.dp)) {
+                Dim("no node is enrolled: toolchains are installed on a node, and the dashboard's Nodes tab enrolls one") }
             pk.value?.let { v ->
-                if (v.str("root").isNotBlank())
-                    Dim("store: ${v.str("root")}" + if (v.bool("shared")) " (a mapped share)" else "")
+                if (v.str("root").isNotBlank()) Column(Modifier.padding(16.dp, 6.dp, 16.dp, 0.dp)) {
+                    Dim("store: ${v.str("root")}" + if (v.bool("shared")) " (a mapped share)" else "") }
             }
             if (busy && job != null) Card(Modifier.fillMaxWidth().padding(16.dp, 6.dp)) {
                 Column(Modifier.padding(12.dp)) {
@@ -915,7 +919,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
                     job.strs("log").lastOrNull { it.isNotBlank() }?.let { Mono(it) }
                 }
             }
-            if (pk.value == null && pk.error == null) Loading()
+            if (pk.value == null && pk.error == null && node.isNotBlank()) Loading()
         }
         items(pk.value?.arr("items") ?: emptyList()) { p ->
             val installed = p.bool("installed")

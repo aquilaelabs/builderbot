@@ -101,13 +101,12 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun nodes() = get("/api/v1/nodes")
     suspend fun nodeAct(id: String, action: String) =
         post("/api/v1/nodes", json("action" to action, "id" to id))
-    // The toolchain store, and what may be added to it. The listing is NOT
-    // administrators-only: what a node carries decides whether a build can
-    // run there, and that is everybody's question; installing is theirs.
-    // `node` empty means the controller's own store, which is what the
-    // dashboard's picker calls the first entry.
-    suspend fun toolchains(node: String) =
-        get("/api/toolchains" + if (node.isBlank()) "" else "?node=${enc(node)}")
+    // A node's toolchain store, and what may be added to it. The listing is
+    // NOT administrators-only: what a node carries decides whether a build
+    // can run there, and that is everybody's question; installing is
+    // theirs. Always a node's: toolchains are installed on nodes, and the
+    // controller is never offered, here or on the dashboard's Tools tab.
+    suspend fun toolchains(node: String) = get("/api/toolchains?node=${enc(node)}")
     suspend fun toolchainAct(node: String, action: String, names: List<String>) =
         post("/api/toolchains", json("action" to action, "node" to node,
                                      "names" to JSONArray(names)))
