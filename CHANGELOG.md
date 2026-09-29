@@ -54,6 +54,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- devapp.mjs reads a one-shot's row as running whether or not the daemon's slow answer marked the list as last seen (B346)
 - bb design show and the briefing say whose docs/design-language.md is: the session's to write with bb design file and commit with the work; the notebook never writes it into the tree by itself (B344)
 - bb report says when the operator cleared a project's reports, how many and when, instead of 'no reports' after ones it was told were reported (B343)
 - A notebook's pane bar has the same ground as every other tab's bar and only the project's stripe: the tint turned it black beside a Docker tab's

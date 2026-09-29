@@ -3853,7 +3853,9 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
     el.innerHTML = dmRowsHtml([r], null, false); return el.textContent.replace(/\s+/g, ' '); }, row(svc));
   const seeded = await draw({ service: 'seed', name: 'seed', state: 'exited', status: 'Exited (0) 5 hours ago' });
   const broken = await draw({ service: 'seed', name: 'seed', state: 'exited', status: 'Exited (1) 5 hours ago' });
-  ok(/\(running\)/.test(seeded) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
+  // The pill may carry ", as last seen" when the daemon's answer is slow
+  // under load (B346); the check is about the one-shot's words, not that.
+  ok(/\(running(, as last seen)?\)/.test(seeded) && !/partly up/.test(seeded) && /seed: finished/.test(seeded) && /partly up: 2 of 3/.test(broken),
      `a one-shot that exited 0 leaves the row running and reads finished, while one that failed still reads partly up (${
        (seeded.match(/\([^)]*\)/) || [''])[0]} | ${(broken.match(/partly up: \d of \d/) || [''])[0]})`);
 }
