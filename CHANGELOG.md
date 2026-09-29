@@ -21,6 +21,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The companion app has a Claude view per project: whether your session is working or waiting on you, a box to say something to it, and your conversations to read or share; and it notifies when a session of yours finishes its turn (7194e97)
 - The companion app carries the Design, Docker and Tests views, fetch, pull and push, artifacts and captures that open on the phone (an APK goes to the installer), the project's color, the jobs, What's new, and the dashboard's thirteen color schemes (7194e97)
 - A page on the Design view may be longer than one screen: Rows beside its frame, up to sixty, and the board grows with them (ed47d24)
+- A custom choice of a design's language can name the rule that says it, and that rule's text is what a session reads in the choice's place (6bb5358)
+- A page on the Design view can have a short key of its own, which its rules are addressed under (now/live) in place of the whole of its name (6bb5358)
 
 ### Changed
 
@@ -55,6 +57,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The roadmap a session is sent counts the steps that are done and prints the ones still open (3b428a9)
 - Each choice of a design's language can be custom, which hands it to the design's rules; and what a session reads of a design is what the record says, with nothing added by BuilderBot (ed47d24)
 - A page on the Design view may run to 240 rows, twenty phone screens; at 60 a page of seven screens had to be drawn shorter than it is. A long board scrolls in a window of its own (39ba707)
+- bb design save refuses two blocks that partly cover each other, on a page's frame and in a layout, and the Design view outlines them in red with the reason before Save; a block may sit wholly inside another, and an overlay over anything (6bb5358)
 
 ### Removed
 
@@ -111,6 +114,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A design of any size its own limits allow saves; one of forty pages was refused as too large (ed47d24)
 - The New project dialog offers Add to the design with the other dials (ed47d24)
 - bb design save refuses two blocks in one place in a layout for another frame, as it does among a page's own blocks; and the design's one-line summary gives each choice its noun (39ba707)
+- A page's rows given out of range is one message: every block under it was reported as outside the page as well (6bb5358)
+- A session is not told that somebody else changed the bugs, the rules or the settings when the change was its own, made with bb bug add, bb rules add or bb settings set (6bb5358)
+- What Claude Code keeps in /tmp for a conversation (its scratchpad, its background commands' output) outlives a restart of the session; a controller update emptied it between two prompts (6bb5358)
 
 ### Security
 

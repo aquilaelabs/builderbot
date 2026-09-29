@@ -284,7 +284,7 @@ def _luma(hexcol):
 # here by default a project's stylesheet was reported as falling short of
 # a promise nobody had made.
 LANGUAGE_DEFAULT = {"themes": [], "font": "", "corners": "", "density": "",
-                    "motion": "", "scope": "", "rules": [], "fonts": ""}
+                    "motion": "", "scope": "", "rules": [], "fonts": "", "custom": {}}
 # The four choices by the word the view labels each with.
 CHOICE_WORDS = (("font", "type"), ("corners", "corners"), ("density", "space"), ("motion", "motion"))
 
@@ -292,6 +292,17 @@ CHOICE_WORDS = (("font", "type"), ("corners", "corners"), ("density", "space"), 
 def open_choices(lang):
     """The choices of a language nobody has made yet, by the view's words."""
     return [word for key, word in CHOICE_WORDS if not lang.get(key)]
+
+
+# The four choices as the words and the file head them.
+SAID = (("font", "Type", FONTS), ("corners", "Shape", CORNERS), ("density", "Space", DENSITY),
+        ("motion", "Motion", MOTION))
+
+
+def _custom_rule(lang, key):
+    """The rule a custom choice names, or None."""
+    name = (lang.get("custom") or {}).get(key) if lang.get(key) == "custom" else None
+    return next((r for r in lang["rules"] if r["name"] == name), None) if name else None
 
 
 def _open_line(lang):
@@ -468,6 +479,34 @@ def _clean_language(lang):
     out["scope"] = _line(lang.get("scope"), NAME_MAX, "what the language governs")
     out["fonts"] = _line(lang.get("fonts"), 200, "the font families")
     out["rules"] = _clean_rules(lang.get("rules"), "the language")
+    out["custom"] = _clean_custom(lang.get("custom"), out)
+    return out
+
+
+def _clean_custom(raw, lang):
+    """Which of the design's rules says each choice that is custom:
+    {choice: rule name}. 'Shape: as the design's own rules say' named no
+    rule, and the rule that held the radii was ninety lines further down
+    among thirty others (a report from another project, 29 Sep)."""
+    out = {}
+    if raw in (None, "", {}):
+        return out
+    if not isinstance(raw, dict):
+        _bad(f"custom is an object, a choice to the name of its rule, not {str(raw)[:40]!r}")
+        return out
+    names = {r["name"] for r in lang["rules"]}
+    for key, rule in raw.items():
+        rule = str(rule or "").strip().lower()
+        if key not in CHOICES:
+            _bad(f"custom names {key!r}, which is not a choice: the choices are {', '.join(CHOICES)}")
+        elif not rule:
+            continue
+        elif lang.get(key) != "custom":
+            _bad(f"custom names a rule for {key}, which is {lang.get(key) or 'not chosen'} and not custom")
+        elif rule not in names:
+            _bad(f"custom names the rule {rule} for {key}, and the language has no rule called that")
+        else:
+            out[key] = rule
     return out
 
 
@@ -535,7 +574,7 @@ def scoped_rules(rec):
     for t in lang["themes"]:
         out += [(f"{_slug(t['name'])}/{r['name']}", r, f"the {t['name']} theme") for r in t.get("rules") or []]
     for p in rec["pages"]:
-        out += [(f"{_slug(p['name'] or 'page-' + str(p['id']))}/{r['name']}", r, p["name"] or f"page {p['id']}")
+        out += [(f"{page_key(p)}/{r['name']}", r, p["name"] or f"page {p['id']}")
                 for r in p.get("rules") or []]
     return out
 
@@ -629,6 +668,27 @@ def _clean_block(b, cols, rows, what):
             "label": _line(b.get("label"), NAME_MAX, f"{what}'s label"), **_place(b, cols, rows, what)}
 
 
+PAGE_KEY = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")
+
+
+def _page_key(value, called):
+    """A page's short name for its rules' addresses, or "": a page is named
+    for what it is for, in as many words as that takes, and a rule of
+    'Now: who is listening, and is it safe to restart' reached a session
+    under all of them (a report from another project, 29 Sep)."""
+    key = str(value or "").strip().lower()
+    if key and not PAGE_KEY.fullmatch(key):
+        _bad(f"{called}'s key is {key!r}: a key is up to 24 lowercase letters, digits and dashes")
+        return ""
+    return key
+
+
+def page_key(p):
+    """What a page's rules are addressed under: its key where it has one,
+    else its name as a slug, which is what it always was."""
+    return p.get("key") or _slug(p["name"] or f"page-{p['id']}")
+
+
 def page_rows(p):
     """How many rows a page has: its frame's, or more where it is longer
     than one screen."""
@@ -656,7 +716,10 @@ def _clean_page(p, pid):
     if not g["rows"] <= rows <= ROWS_MAX:
         _bad(f"{called} has {p.get('rows')!r} rows: a page on the {frame} frame has "
              f"{g['rows']} (one screen) to {ROWS_MAX}")
-        rows = g["rows"]
+        # The most a page can have, for the rest of the look: held to the
+        # frame's one screen, every block under it was reported as outside
+        # the page, and one bad number came back as ten messages.
+        rows = ROWS_MAX
     blocks = p.get("blocks") if isinstance(p.get("blocks"), list) else []
     if len(blocks) > MAX_BLOCKS:
         _bad(f"{called} holds at most {MAX_BLOCKS} blocks, and this has {len(blocks)}")
@@ -669,6 +732,7 @@ def _clean_page(p, pid):
     _one_place_each(clean, clean, f"{called}, blocks", "")
     return {"id": pid, "name": name,
             "platform": platform, "template": _choice(p.get("template"), TEMPLATE_KEYS, f"{called}'s template", "blank"),
+            "key": _page_key(p.get("key"), called),
             "frame": frame, "rows": rows, "blocks": clean,
             "layouts": _clean_layouts(p.get("layouts"), frame, clean, called),
             "notes": notes, "rules": _clean_rules(p.get("rules"), f"the page {called}"),
@@ -676,20 +740,31 @@ def _clean_page(p, pid):
 
 
 def _one_place_each(blocks, places, what, where):
-    """Two blocks in one place is one of them lost under the other, on the
-    frame the page is on and on every other it has a layout for: the first
-    was refused and the second kept, which two sessions found the same
-    afternoon. An overlay is over the page, so it may sit where something
-    else does."""
-    seen = {}
-    for i, (b, r) in enumerate(zip(blocks, places, strict=True)):
-        if b["kind"] == "overlay":
-            continue
-        at = (r["x"], r["y"], r["w"], r["h"])
-        if at in seen:
-            _bad(f"{what} {seen[at] + 1} and {i + 1} sit in the same place{where}")
-        else:
-            seen[at] = i
+    """No two blocks cover the same cells, on the frame the page is on and
+    on every other it has a layout for: 'rows 1 to 3' and 'rows 3 to 5'
+    for two cards is a layout nobody can build. Two ways a block may share
+    cells with another: it lies wholly inside it (a card in a list, a form
+    in a card), or it is an overlay, which is over the page. Two in the
+    very same place are one lost under the other."""
+    rows = [(i, r) for i, (b, r) in enumerate(zip(blocks, places, strict=True)) if b["kind"] != "overlay"]
+    for n, (i, a) in enumerate(rows):
+        for j, b in rows[n + 1:]:
+            x0, x1 = max(a["x"], b["x"]), min(a["x"] + a["w"], b["x"] + b["w"])
+            y0, y1 = max(a["y"], b["y"]), min(a["y"] + a["h"], b["y"] + b["h"])
+            if x0 >= x1 or y0 >= y1:
+                continue
+            if (a["x"], a["y"], a["w"], a["h"]) == (b["x"], b["y"], b["w"], b["h"]):
+                _bad(f"{what} {i + 1} and {j + 1} sit in the same place{where}")
+                continue
+            inside = ((a["x"] <= b["x"] and a["y"] <= b["y"] and a["x"] + a["w"] >= b["x"] + b["w"]
+                       and a["y"] + a["h"] >= b["y"] + b["h"])
+                      or (b["x"] <= a["x"] and b["y"] <= a["y"] and b["x"] + b["w"] >= a["x"] + a["w"]
+                          and b["y"] + b["h"] >= a["y"] + a["h"]))
+            if not inside:
+                cols = f"column {x0 + 1}" if x1 - x0 == 1 else f"columns {x0 + 1} to {x1}"
+                lines = f"row {y0 + 1}" if y1 - y0 == 1 else f"rows {y0 + 1} to {y1}"
+                _bad(f"{what} {i + 1} and {j + 1} both cover {lines}, {cols}{where}: "
+                     "a block sits beside another or wholly inside it")
 
 
 def _clean_layouts(raw, frame, blocks, called):
@@ -843,17 +918,19 @@ def language_text(lang, platform=""):
     # own design said of every project's, and one of them contradicted a
     # project's rules (a report from another project, 29 Sep). What a
     # design holds to beyond its choices is in its rules.
-    if lang["font"]:
-        lines.append(f"Type: {_font_means(lang, platform)}"
-                     + (f", set as {lang['fonts']}" if lang.get("fonts") else "") + ".")
-    elif lang.get("fonts"):
-        lines.append(f"Type: set as {lang['fonts']}.")
-    if lang["corners"]:
-        lines.append(f"Shape: {_means(CORNERS, lang['corners'])}.")
-    if lang["density"]:
-        lines.append(f"Space: {_means(DENSITY, lang['density'])}.")
-    if lang["motion"]:
-        lines.append(f"Motion: {_means(MOTION, lang['motion'])}.")
+    for key, word, rows in SAID:
+        rule = _custom_rule(lang, key)
+        fonts = f", set as {lang['fonts']}" if key == "font" and lang.get("fonts") else ""
+        if rule:
+            # The rule itself, where the choice would have been: a session
+            # restyling a page reads this and has the figures in it.
+            lines.append(f"{word}{fonts}, as the rule {rule['name']} says:")
+            lines.extend("  " + ln for ln in rule["text"].splitlines() if ln.strip())
+        elif lang[key]:
+            lines.append(f"{word}: " + (_font_means(lang, platform) if key == "font" else _means(rows, lang[key]))
+                         + fonts + ".")
+        elif fonts:
+            lines.append(f"Type: set as {lang['fonts']}.")
     if _open_line(lang):
         lines.append(_open_line(lang))
     standing = [r for r in lang["rules"] if not (r["words"] or r["paths"])]
@@ -934,7 +1011,7 @@ def page_text(page):
         lines.append("Notes:")
         lines.extend("  " + ln for ln in page["notes"].splitlines() if ln.strip())
     lines.extend(_rule_lines(page.get("rules") or [], "This page's own rules",
-                             _slug(page["name"] or f"page-{page['id']}"), ""))
+                             page_key(page), ""))
     return "\n".join(lines)
 
 
@@ -980,16 +1057,16 @@ def file_text(rec):
         out += ["", "| token | value | for |", "|---|---|---|"]
         out += [f"| `--{_slug(c['name'])}` | `{c['hex']}` | {c['means']} |" for c in t["colors"]]
         out += _file_rules(t.get("rules") or [], _slug(t["name"]), f"Rules of {t['name']}'s own", "####")
-    if lang["font"]:
-        out += ["", "## Type", "", _cap(_font_means(lang)) + (f", set as {lang['fonts']}" if lang.get("fonts") else "") + "."]
-    elif lang.get("fonts"):
-        out += ["", "## Type", "", f"Set as {lang['fonts']}."]
-    if lang["corners"]:
-        out += ["", "## Shape", "", _cap(_means(CORNERS, lang["corners"])) + "."]
-    if lang["density"]:
-        out += ["", "## Space", "", _cap(_means(DENSITY, lang["density"])) + "."]
-    if lang["motion"]:
-        out += ["", "## Motion", "", _cap(_means(MOTION, lang["motion"])) + "."]
+    for key, word, rows in SAID:
+        rule = _custom_rule(lang, key)
+        fonts = f", set as {lang['fonts']}" if key == "font" and lang.get("fonts") else ""
+        if rule:
+            out += ["", f"## {word}", "", f"As the rule `{rule['name']}` says" + fonts + ":", "", rule["text"]]
+        elif lang[key]:
+            out += ["", f"## {word}", "", _cap(_font_means(lang) if key == "font" else _means(rows, lang[key]))
+                    + fonts + "."]
+        elif fonts:
+            out += ["", "## Type", "", f"Set as {lang['fonts']}."]
     if open_choices(lang):
         out += ["", "## Not chosen yet", "", _cap(", ".join(open_choices(lang)))
                 + ": nobody has made " + ("this choice" if len(open_choices(lang)) == 1 else "these choices")
@@ -1007,7 +1084,7 @@ def file_text(rec):
                 "on the platform it is built for."]
         for p in pages:
             out += ["", f"### {p['name'] or 'unnamed page'} ({_platform(p['platform'])[1]})", "", page_text(p)]
-            out += _file_rules(p.get("rules") or [], _slug(p["name"] or f"page-{p['id']}"),
+            out += _file_rules(p.get("rules") or [], page_key(p),
                                f"Rules of {p['name'] or 'this page'}'s own", "####")
     return "\n".join(out).rstrip() + "\n"
 
@@ -1034,6 +1111,9 @@ def problems(lang, pages):
         _clean_language(lang)
         if len(pages) > MAX_PAGES:
             _bad(f"a project holds at most {MAX_PAGES} pages, and this has {len(pages)}")
+        keys = [str(p.get("key") or "").strip().lower() for p in pages if isinstance(p, dict)]
+        for k in sorted({k for k in keys if k and keys.count(k) > 1}):
+            _bad(f"two pages carry the key {k}")
         ids = [p.get("id") for p in pages if isinstance(p, dict) and isinstance(p.get("id"), int)]
         for pid in sorted({i for i in ids if ids.count(i) > 1}):
             _bad(f"two pages carry the id {pid}")
@@ -1058,6 +1138,7 @@ def schema_text():
         f'    "corners": {" | ".join(k for k, _, _ in CORNERS)},',
         f'    "density": {" | ".join(k for k, _, _ in DENSITY)},',
         f'    "motion": {" | ".join(k for k, _, _ in MOTION)},',
+        '    "custom": { "corners": "radii" },   optional: for a choice that is custom, the name of the rule of this language that says it; its text is printed in the choice\'s place',
         '    "fonts": "Inter for text, JetBrains Mono for code",   the exact families, at most 200 characters',
         f'    "scope": "the web app in site/",   what the language governs, at most {NAME_MAX} characters',
         f'    "rules": [RULE]   at most {RULES_MAX}, each named once',
@@ -1065,13 +1146,14 @@ def schema_text():
         '  "pages": [ {',
         '    "id": 3,   a saved page keeps its id; leave it out for a new page; a saved page left out is removed',
         f'    "name": "the settings page",   what it is for, at most {NAME_MAX} characters',
+        '    "key": "settings",   optional: a short name of its own, up to 24 lowercase letters, digits and dashes, once per design; its rules are addressed KEY/RULE and bb design show KEY prints it. Without one they are addressed by the whole name as a slug',
         f'    "platform": {" | ".join(PLATFORM_KEYS)},',
         f'    "frame": {" | ".join(FRAMES)},   one the platform allows: phone and landscape for a phone app. '
         + ", ".join(f"{k} is {v['cols']} columns by {v['rows']} rows" for k, v in FRAMES.items()),
         f'    "rows": 14,   optional: how long the page is where it is longer than one screen, the frame\'s rows to {ROWS_MAX}',
         f'    "template": {" | ".join(TEMPLATE_KEYS)},',
-        f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2 }} ],   at most {MAX_BLOCKS}, each inside the frame\'s columns and the page\'s rows, no two in one place (an overlay may be)',
-        f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the same blocks sit on another frame, one place per block in the blocks\' order, no two in one place; a layout is as long as its places reach, up to {ROWS_MAX} rows, and rows above is the length on the page\'s own frame; bb design show and the file say each',
+        f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2 }} ],   at most {MAX_BLOCKS}, each inside the frame\'s columns and the page\'s rows; no two cover the same cells, unless one lies wholly inside the other (a card in a list) or is an overlay',
+        f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the same blocks sit on another frame, one place per block in the blocks\' order, held to the same rule on covering; a layout is as long as its places reach, up to {ROWS_MAX} rows, and rows above is the length on the page\'s own frame; bb design show and the file say each',
         f'    "notes": "...",   at most {NOTES_MAX} characters',
         '    "rules": [RULE]',
         f'  }} ],   at most {MAX_PAGES} pages',
@@ -1199,7 +1281,8 @@ def text_for(project, which=""):
             on = "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
             lines += ["", f"{_slug(theme['name'])}/{r['name']}" + (f" (applies to: {on})" if on else ""), r["text"]]
         return "\n".join(lines), ""
-    page = next((p for p in rec["pages"] if str(p["id"]) == which or p["name"].lower() == which.lower()), None)
+    page = next((p for p in rec["pages"] if str(p["id"]) == which or p["name"].lower() == which.lower()
+                 or (p.get("key") and p["key"] == which.lower())), None)
     if page is None:
         return "", f"no page, theme or rule here called {which!r}: bb design lists them"
     return prompt(rec["language"], page), ""

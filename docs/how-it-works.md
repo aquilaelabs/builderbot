@@ -1625,8 +1625,14 @@ the themes show one at a time, chosen on a pulldown at the top; a frame is
 one screen and a page may be longer than one, up to 240 rows, which
 scrolls, and a page keeps where its blocks sit on each frame it has been
 laid out for, which `bb design show` and the file say after the frame it is
-on; each of the language's four choices may be left not chosen, or be
-custom, which hands it to the design's rules; the words a session reads
+on; no two blocks cover the same cells, unless one lies wholly inside the
+other (a card in a list) or is an overlay, and the board outlines in red
+the ones that do, with the reason under it, before Save refuses them; a
+page may have a short key of its own, which its rules are addressed under
+(`now/live`) in place of its whole name; each of the language's four
+choices may be left not chosen, or be custom, which hands it to the
+design's rules and can name the one that says it, whose text a session
+then reads in the choice's place; the words a session reads
 are the record's own and nothing is added to them; a new project's
 design is empty, no theme and no page, and a project built that way is
 built as a session sees fit, the session then putting the look it arrived

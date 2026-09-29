@@ -173,6 +173,21 @@ function nbDesignView({$, nb, project, root}){
   // nobody made must say nothing.
   const choice = (rows, cur) => `<option value=""${cur ? "" : " selected"}>not chosen</option>` + opt(rows, cur);
 
+  // A choice that is custom is said by one of the design's own rules, and
+  // names which: its text is what a session reads in the choice's place.
+  const CUSTOM = [["font", "Type"], ["corners", "Corners"], ["density", "Space"], ["motion", "Motion"]];
+  function customRow(){
+    const L = nb.dsLang;
+    const mine = CUSTOM.filter(([k]) => L[k] === "custom");
+    if (!mine.length) return "";
+    const rules = (L.rules || []).filter(r => r.name);
+    const pickRule = k => `<option value=""${(L.custom || {})[k] ? "" : " selected"}>no rule named</option>`
+      + rules.map(r => `<option value="${esc(r.name)}"${(L.custom || {})[k] === r.name ? " selected" : ""}>${esc(r.name)}</option>`).join("");
+    return `<div class="field"><div class="dsrow">${mine.map(([k, word]) =>
+      ctl(`dsCustom-${k}`, `${word}, by the rule`, "which of the rules below says it: a session reads that rule where the choice would be",
+          `<select id="dsCustom-${k}" data-dscustom="${k}">${pickRule(k)}</select>`)).join("")}</div></div>`;
+  }
+
   function languageSection(){
     const L = nb.dsLang, P = presets(), C = P.choices || {};
     const status = [byKey(C.font, L.font)?.label, byKey(C.corners, L.corners)?.label].filter(Boolean).join(" · ");
@@ -183,6 +198,7 @@ function nbDesignView({$, nb, project, root}){
         ${ctl("dsDensity", "Space", "", `<select id="dsDensity">${choice(C.density, L.density)}</select>`)}
         ${ctl("dsMotion", "Motion", "", `<select id="dsMotion">${choice(C.motion, L.motion)}</select>`)}
       </div></div>
+      ${customRow()}
       <div class="field">${ctl("dsFonts", "Families",
             "the exact font stacks when the choice above is not enough: Inter for text, JetBrains Mono for code",
             `<textarea id="dsFonts" class="proseline" rows="1" maxlength="200">${esc(L.fonts || "")}</textarea>`, true)}</div>
@@ -378,6 +394,8 @@ function nbDesignView({$, nb, project, root}){
       <div class="field"><div class="dsrow">
         ${ctl(`${key}-name`, "For", "what this page is for: the settings page. Applying it means applying the design there",
               `<textarea id="${key}-name" class="proseline" rows="1" maxlength="120" data-dsf="name">${esc(p.name)}</textarea>`, true)}
+        ${ctl(`${key}-key`, "Key", "optional: a short name of the page's own, which its rules are addressed under (settings/save). Without one they go by the whole name",
+              `<textarea id="${key}-key" class="proseline" rows="1" maxlength="24" data-dsf="key">${esc(p.key || "")}</textarea>`)}
         ${ctl(`${key}-plat`, "Platform", "", `<select id="${key}-plat" data-dsf="platform">${opt(P.platforms, p.platform)}</select>`)}
         ${ctl(`${key}-frame`, "Frame", "", `<select id="${key}-frame" data-dsf="frame">${opt(frames, p.frame)}</select>`)}
         ${ctl(`${key}-rows`, "Rows", "how long the page is: the frame is one screen, and a page with more rows scrolls",
@@ -397,7 +415,7 @@ function nbDesignView({$, nb, project, root}){
       <div class="hint">Drag a block to move it and its corner to size it; the arrow keys move a focused one, with Shift to size.</div></div>`
       : `<div class="field"><div class="hint">${n ? "Tap a block to name what it is for." : "Add a block, or start again from a template with Add page."}</div></div>`}
       ${docSection("design", `rules:${key}`, "Rules", (p.rules || []).length ? `${p.rules.length}` : "none",
-        `<div class="hint">What holds for ${esc(p.name.trim() || "this page")} alone. A session meets one as ${esc(holderSlug(p.name || `page-${p.id}`))}/NAME.</div>` + rulesList(key, p.rules || (p.rules = [])), {open: true})}
+        `<div class="hint">What holds for ${esc(p.name.trim() || "this page")} alone. A session meets one as ${esc(p.key || holderSlug(p.name || `page-${p.id}`))}/NAME.</div>` + rulesList(key, p.rules || (p.rules = [])), {open: true})}
       <div class="field">${ctl(`${key}-notes`, "Notes", "what the blocks cannot say: what a tap does, where the data comes from",
             `<textarea id="${key}-notes" rows="3" maxlength="65536" data-dsf="notes">${esc(p.notes)}</textarea>`, true)}</div>
       <div class="field"><div class="actbar"><span class="state"></span>
@@ -436,25 +454,53 @@ function nbDesignView({$, nb, project, root}){
   const gridOf = p => ({cols: frameOf(p.frame).cols,
                         rows: Math.min(rowsMax(), Math.max(frameOf(p.frame).rows, p.rows || 0))});
   const SHAPE = {desktop: [16, 10], phone: [9, 16], landscape: [16, 9]};
+  // Which blocks partly cover another: the server refuses a save of them
+  // (no two cover the same cells, unless one lies wholly inside the other
+  // or is an overlay), so the board says so as they are moved, in red,
+  // and in words under it, before Save is pressed.
+  function clashes(p){
+    const hit = new Set();
+    const bs = p.blocks.map((b, i) => [b, i]).filter(([b]) => b.kind !== "overlay");
+    const holds = (a, b) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
+    bs.forEach(([a, i], n) => bs.slice(n + 1).forEach(([b, j]) => {
+      const over = Math.max(a.x, b.x) < Math.min(a.x + a.w, b.x + b.w) && Math.max(a.y, b.y) < Math.min(a.y + a.h, b.y + b.h);
+      const same = a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+      if (over && (same || !(holds(a, b) || holds(b, a)))){ hit.add(i); hit.add(j); }
+    }));
+    return hit;
+  }
+  function markClashes(p){
+    const page = root.querySelector(`[data-dspage="${keyOf(p)}"]`);
+    if (!page) return;
+    const hit = clashes(p);
+    page.querySelectorAll(".dsboard .dsblock").forEach(el => el.classList.toggle("clash", hit.has(+el.dataset.i)));
+    const said = page.querySelector(".dsclash");
+    if (said) said.hidden = !hit.size;
+  }
   function boardHtml(p){
     const g = gridOf(p);
     const [bw, bh] = SHAPE[p.frame] || SHAPE.desktop;
     const tall = g.rows > frameOf(p.frame).rows ? `aspect-ratio:${bw} / ${(bh * g.rows / frameOf(p.frame).rows).toFixed(2)};` : "";
     const key = keyOf(p);
+    const hit = clashes(p);
     const inner = p.blocks.length
-      ? p.blocks.map((b, i) => `<div class="dsblock${nb.dsSel[key] === i ? " on" : ""}" tabindex="0" role="button"
+      ? p.blocks.map((b, i) => `<div class="dsblock${nb.dsSel[key] === i ? " on" : ""}${hit.has(i) ? " clash" : ""}" tabindex="0" role="button"
             data-i="${i}" style="${blockStyle(b)}" aria-label="${esc(kindLabel(b.kind))}${b.label ? ": " + esc(b.label) : ""}">
             <b>${esc(kindLabel(b.kind))}</b>${b.label ? `<span>${esc(b.label)}</span>` : ""}<i class="dsgrip" aria-hidden="true"></i></div>`).join("")
       : `<div class="dsempty">nothing on this ${esc(p.frame)} yet</div>`;
     // A page of many screens is looked at through a window of its own,
     // so the fields under the board stay in reach.
     return `<div class="dsboardwrap"><div class="dsboard" data-frame="${esc(p.frame)}" role="group" aria-label="the layout of ${esc(p.name || "this page")}"
-      style="${tall}grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div></div>`;
+      style="${tall}grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div></div>
+      <div class="sub bad dsclash"${hit.size ? "" : " hidden"}>The blocks outlined in red partly cover each other, and Save refuses that: a block sits beside another, or wholly inside it.</div>`;
   }
   const kindLabel = k => byKey(presets().kinds, k)?.label || k;
   function repaintBoard(p){
     const host = root.querySelector(`[data-dspage="${keyOf(p)}"] .dsboard`);
-    if (host) host.parentElement.outerHTML = boardHtml(p);
+    if (host){
+      host.parentElement.nextElementSibling?.remove();
+      host.parentElement.outerHTML = boardHtml(p);
+    }
     pageOption(p);
   }
   // The page's line on the Pages pulldown: its name, platform and count.
@@ -527,6 +573,11 @@ function nbDesignView({$, nb, project, root}){
       touched();
     };
     el.querySelector('[data-dsf="notes"]').oninput = e => { p.notes = e.target.value; touched(); };
+    el.querySelector('[data-dsf="key"]').oninput = e => {
+      p.key = e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+/, "").slice(0, 24);
+      touched();
+    };
+    el.querySelector('[data-dsf="key"]').onchange = () => drawDesign();
     el.querySelector('[data-dsf="platform"]').onchange = e => {
       p.platform = e.target.value;
       const frames = platformOf(p)?.frames || [];
@@ -613,6 +664,7 @@ function nbDesignView({$, nb, project, root}){
         else { b.x = start.bx + dx; b.y = start.by + dy; }
         clampBlock(b, g, resize);
         el.style.cssText = blockStyle(b);
+        markClashes(p);
         moved = moved || dx !== 0 || dy !== 0;
       };
       const up = () => {
@@ -644,6 +696,7 @@ function nbDesignView({$, nb, project, root}){
       if (e.shiftKey){ b.w += d[0]; b.h += d[1]; } else { b.x += d[0]; b.y += d[1]; }
       clampBlock(b, gridOf(p), e.shiftKey);
       el.style.cssText = blockStyle(b);
+      markClashes(p);
       touched();
     });
   }
@@ -652,7 +705,19 @@ function nbDesignView({$, nb, project, root}){
   function wireLanguage(body){
     const L = nb.dsLang;
     for (const [id, k] of [["dsFont", "font"], ["dsCorners", "corners"], ["dsDensity", "density"], ["dsMotion", "motion"]])
-      body.querySelector("#" + id).onchange = e => { L[k] = e.target.value; touched(); };
+      body.querySelector("#" + id).onchange = e => {
+        const was = L[k];
+        L[k] = e.target.value;
+        // The rule a custom choice named goes with the choice.
+        if (L[k] !== "custom" && L.custom) delete L.custom[k];
+        touched();
+        if ((was === "custom") !== (L[k] === "custom")) drawDesign();
+      };
+    body.querySelectorAll("[data-dscustom]").forEach(s => s.onchange = e => {
+      L.custom = L.custom || {};
+      if (e.target.value) L.custom[s.dataset.dscustom] = e.target.value; else delete L.custom[s.dataset.dscustom];
+      touched();
+    });
     body.querySelector("#dsScope").oninput = e => { L.scope = e.target.value; touched(); };
     body.querySelector("#dsFonts").oninput = e => { L.fonts = e.target.value; touched(); };
     const pp = body.querySelector("#dsPagePick");

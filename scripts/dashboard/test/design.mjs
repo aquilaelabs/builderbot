@@ -91,6 +91,18 @@ ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridRow) ===
 await page.keyboard.press('Shift+ArrowDown'); await page.keyboard.press('Shift+ArrowDown');
 ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridRow) === '4 / span 5',
    '...and sizing it past the frame\'s edge caps it there rather than sliding it up');
+// Dragged a column to the right, the chart partly covers the list beside
+// it. A save of that is refused (no two blocks cover the same cells,
+// unless one lies wholly inside the other or is an overlay), so the board
+// says so as it happens: both outlined in red, and the words under it.
+ok(await page.$$eval(`${NB} [data-dspage] .dsblock.clash`, bs => bs.map(b => b.dataset.i).join()) === '4,5'
+   && await page.$eval(`${NB} [data-dspage] .dsclash`, e => !e.hidden && /partly cover each other, and Save refuses that/.test(e.textContent)),
+   'two blocks that partly cover each other are outlined in red on the board, with the reason under it');
+await page.keyboard.press('Shift+ArrowLeft');
+ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridColumn) === '2 / span 7'
+   && (await page.$$(`${NB} [data-dspage] .dsblock.clash`)).length === 0
+   && await page.$eval(`${NB} [data-dspage] .dsclash`, e => e.hidden),
+   '...and narrowed by a column it sits beside the list, and the outline and the words go');
 // Nothing on the view reaches into a session, and nothing on it is a
 // prompt: a session reads the design piece by piece with bb design show
 // (the operator, 28 and 29 Sep).
@@ -108,7 +120,7 @@ const promptText = (await api(`/api/design?project=${P}&show=1`)).text || '';
 ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
    && /docs\/design-language\.md is yours to write and commit with the work, from what is saved here: `bb design file > docs\/design-language\.md`; the notebook never writes it into the tree by itself/.test(promptText)
    && /Platform: a responsive web app/.test(promptText)
-   && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 9 of 12, rows 4 to 8 of 8/.test(promptText)
+   && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 8 of 12, rows 4 to 8 of 8/.test(promptText)
    && /Colors: none chosen yet\. Choose them as tokens/.test(promptText)
    && /Not chosen yet: type, corners, space, motion\. Choose each from what you build/.test(promptText)
    && !/prefers-reduced-motion|Type:|Shape:|Space:|Motion:|AA contrast/.test(promptText),
@@ -489,6 +501,37 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
      `a page of seven phone screens is kept at its length (${seven.status} ${(seven.error || '').slice(0, 60)})`);
   ok(/system sans, custom corners, comfortable spacing, quiet motion/.test(bb()),
      `the design's one-line summary gives each choice its noun (${bb().split('\n')[0].slice(-80)})`);
+  // Blocks that partly cover each other, a bad number that set off false
+  // errors, a custom choice that named no rule, and a page's rules under
+  // the whole of its name: the four reports of the build after.
+  const partly = await post({ language: was.language, pages: [{ name: 'partly', platform: 'web', frame: 'desktop', rows: 20,
+    blocks: [{ kind: 'card', label: 'a', x: 0, y: 0, w: 12, h: 3 }, { kind: 'card', label: 'b', x: 0, y: 2, w: 12, h: 3 },
+             { kind: 'list', label: 'c', x: 0, y: 6, w: 12, h: 5 }, { kind: 'card', label: 'd', x: 1, y: 7, w: 4, h: 2 },
+             { kind: 'overlay', label: 'e', x: 3, y: 1, w: 6, h: 6 }],
+    layouts: { phone: [{ x: 0, y: 0, w: 6, h: 3 }, { x: 0, y: 2, w: 6, h: 3 }, { x: 0, y: 6, w: 6, h: 5 }, { x: 1, y: 7, w: 4, h: 2 }, { x: 0, y: 0, w: 6, h: 12 }] } }] });
+  ok(partly.status === 400 && (partly.problems || []).length === 2
+     && /partly, blocks 1 and 2 both cover row 3, columns 1 to 12: a block sits beside another or wholly inside it/.test(partly.error)
+     && /partly, places 1 and 2 both cover row 3, columns 1 to 6 of its phone layout/.test(partly.error),
+     `two blocks that partly cover each other are refused, on the page's frame and in a layout; a card inside a list and an overlay are not (${(partly.problems || []).length}: ${(partly.error || '').slice(0, 90)})`);
+  const badRows = await post({ language: was.language, pages: [{ name: 'too many', platform: 'web', frame: 'desktop', rows: 241,
+    blocks: [{ kind: 'header', label: 'a', x: 0, y: 0, w: 12, h: 1 }, { kind: 'card', label: 'b', x: 0, y: 12, w: 12, h: 7 }, { kind: 'card', label: 'c', x: 0, y: 19, w: 12, h: 1 }] }] });
+  ok(badRows.status === 400 && (badRows.problems || []).length === 1 && /too many has 241 rows: a page on the desktop frame has 8 \(one screen\) to 240/.test(badRows.error),
+     `one bad number is one message: the blocks under it are not reported as outside the page (${(badRows.problems || []).length})`);
+  const gaps = { name: 'gaps', text: 'Bands are 12px by 16px.\nFields sit 8px apart.', words: ['gap'] };
+  const named = await post({ language: { ...seven.language, density: 'custom', rules: [...seven.language.rules, gaps], custom: { density: 'gaps' } },
+    pages: [...seven.pages, { name: 'Now: who is listening, and is it safe to restart (the default tab)', key: 'now', platform: 'web', frame: 'desktop',
+      blocks: [{ kind: 'list', label: 'who', x: 0, y: 0, w: 12, h: 4 }], rules: [{ name: 'live', text: 'It polls every ten seconds.' }] }] });
+  const nowPage = bb('show', 'now');
+  ok(named.status === 200 && /^Space, as the rule gaps says:\n {2}Bands are 12px by 16px\.\n {2}Fields sit 8px apart\.$/m.test(nowPage)
+     && /^Shape: as the design's own rules say\.$/m.test(nowPage) && /## Space\n\nAs the rule `gaps` says:\n\nBands are 12px/.test(bb('file')),
+     'a custom choice that names its rule is said by that rule, in the prompt and in the file, and one that names none says so');
+  ok(/now\/live/.test(bb()) && /^now\/live/m.test(bb('show', 'now/live')) && /It polls every ten seconds/.test(bb('show', 'now/live'))
+     && /#### Rules of Now: who is listening[^\n]*\n\n##### now\/live/.test(bb('file')) && /Layout of Now: who is listening/.test(nowPage),
+     'a page with a key of its own has its rules addressed under it, and bb design show KEY prints the page');
+  const noRule = await post({ language: { ...named.language, custom: { corners: 'nowhere', motion: 'gaps' } }, pages: named.pages });
+  ok(noRule.status === 400 && /custom names the rule nowhere for corners, and the language has no rule called that/.test(noRule.error)
+     && /custom names a rule for motion, which is quiet and not custom/.test(noRule.error),
+     `...and a custom that names a rule the language has not, or a choice that is not custom, is refused (${(noRule.error || '').slice(0, 80)})`);
   const shown2 = bb('show', 'a long page');
   ok(/on a desktop frame \(12 columns by 12 rows: the frame shows 8 of them, and the page scrolls\)/.test(shown2)
      && /The same blocks on a phone frame \(6 columns by 24 rows: the frame shows 12 of them, and the page scrolls\):/.test(shown2)
@@ -510,6 +553,14 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   ok(await page.$eval(`${NB} [data-dspage] [data-dsf="rows"]`, e => e.value === '12' && e.min === '8' && e.max === '240')
      && /repeat\(12/.test(b12.rows) && b12.tall > 0.9,
      `the view has the page's rows beside its frame, and the board is as many rows and as much taller (${b12.tall.toFixed(2)} of its width)`);
+  // The two the view grew with them: a page's key beside its name, and,
+  // for a choice that is custom, which rule says it.
+  ok(await page.$eval(`${NB} [data-dspage] [data-dsf="key"]`, e => e.value === '' && e.maxLength === 24),
+     'a page has a Key field beside its name, empty until somebody gives it one');
+  if (!(await page.$eval(`${NB} [data-sect="design:language"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:language"]`);
+  ok(await page.$eval(`${NB} #dsCustom-density`, e => e.value === 'gaps' && [...e.options].some(o => o.textContent === 'no rule named'))
+     && await page.$eval(`${NB} #dsCustom-corners`, e => e.value === '') && !(await page.$(`${NB} #dsCustom-motion`)),
+     'a choice that is custom has a pulldown of the rules beside it, on the rule it names, and one that is not has none');
   await page.fill(`${NB} [data-dspage] [data-dsf="rows"]`, '16');
   await page.dispatchEvent(`${NB} [data-dspage] [data-dsf="rows"]`, 'change');
   await page.waitForFunction(() => /repeat\(16/.test(document.querySelector('.nb [data-dspage] .dsboard')?.style.gridTemplateRows || ''), null, { timeout: 5000 });
