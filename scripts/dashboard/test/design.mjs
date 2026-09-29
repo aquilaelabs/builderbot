@@ -143,6 +143,35 @@ const again = await api(`/api/design?project=${P}`);
 ok(again.language.themes.length === 2 && again.language.themes[0].colors.find(c => c.name === 'accent')?.hex === '#ff8800'
    && again.language.themes[0].colors[0].name === 'page' && again.language.themes[1].mode === 'light' && again.pages[0].frame === 'phone',
    'the language and the page save together: the changed hex, the renamed colour and the second theme');
+
+// ---- nothing takes effect until Save -------------------------------------------------
+// Every control here stages (the operator, 29 Sep, and the design language's
+// Settings): a changed choice, a theme added, a page added and a rule typed
+// leave the record as it is until the foot's Save, and Revert puts the view
+// back to what is saved.
+{
+  const before = await api(`/api/design?project=${P}`);
+  await page.selectOption(`${NB} #dsFont`, 'serif');
+  await page.selectOption(`${NB} #dsThemeFrom`, 'moss');
+  await page.click(`${NB} #dsThemeAdd`);
+  await page.waitForSelector(`${NB} [data-dstheme="2"]`, { timeout: 5000 });
+  await page.click(`${NB} #dsAdd`);
+  await page.waitForFunction(() => document.querySelector('.nb #dsPagePick')?.options.length === 2, null, { timeout: 5000 });
+  if (!(await page.$eval(`${NB} [data-sect="design:rules"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:rules"]`);
+  await page.click(`${NB} [data-sect="design:rules"] [data-dsruleadd]`);
+  await page.waitForSelector(`${NB} [data-dsrules="lang"] .rulerow.editing .rlName`, { timeout: 5000 });
+  await page.fill(`${NB} [data-dsrules="lang"] .rulerow.editing .rlText`, 'A rule that is not saved.');
+  await page.waitForTimeout(patience(800));
+  const mid = await api(`/api/design?project=${P}`);
+  ok(JSON.stringify({ l: mid.language, p: mid.pages }) === JSON.stringify({ l: before.language, p: before.pages })
+     && await page.$eval(`${NB} #roadmapSaveQuiet`, b => !b.disabled),
+     'a changed choice, a theme added, a page added and a rule typed change nothing on the server until Save, which is awake');
+  await page.click(`${NB} #roadmapRevert`);
+  await page.waitForFunction(() => document.querySelector('.nb #dsFont')?.value === 'system' && document.querySelector('.nb #dsPagePick')?.options.length === 1, null, { timeout: 10000 });
+  ok(await page.$eval(`${NB} [data-sect="design:themes"] > summary .sst`, e => e.textContent) === '2 themes'
+     && !(await page.$(`${NB} [data-dsrules="lang"] .rulerow.editing`)) && await page.$eval(`${NB} #roadmapSaveQuiet`, b => b.disabled),
+     'Revert puts the view back to what is saved: the choice, the themes, the pages and the rules, and Save sleeps again');
+}
 // From here rather than the page, so the refusal is not a console error.
 const badR = await fetch(URL.replace(/\/$/, '') + '/api/design', { method: 'POST',
   headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
@@ -291,6 +320,8 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   await page.evaluate(n => getNotebook(n).view('design'), P);
   await page.waitForFunction(() => document.querySelectorAll('.nb [data-dsrules="lang"] .rulerow').length === 2, null, { timeout: 15000 });
   if (!(await page.$eval(`${NB} [data-sect="design:rules"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:rules"]`);
+  ok(await page.$(`${NB} [data-sect="design:language"] [data-sect="design:rules"]`) && !(await page.$(`${NB} #dsBody > [data-sect="design:rules"]`)),
+     "the language's rules are a section inside the Design language fold, not a fold below everything");
   ok(await page.$eval(`${NB} [data-dsrules="lang"] .rulerow[data-i="1"] .btitle`, e => e.textContent) === 'voice'
      && await page.$eval(`${NB} [data-dsrules="lang"] .rulerow[data-i="0"] .rlkind`, e => e.textContent) === 'on its triggers'
      && await page.$eval(`${NB} [data-dsrules="lang"] .rulerow[data-i="1"] .rlkind`, e => e.textContent) === 'every session'
@@ -355,9 +386,11 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   // session as HOLDER/RULE, and bb design show reads it so.
   await page.selectOption(`${NB} #dsThemePick`, '0');
   await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dsrules="t0"]`, { timeout: 5000 });
-  ok(await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .t`, e => e.textContent) === "Rules of Night's own"
-     && await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .sst`, e => e.textContent) === 'none',
-     "the theme shown carries a Rules section of its own, named for it, counting none");
+  ok(await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .t`, e => e.textContent) === "Rules"
+     && await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .sst`, e => e.textContent) === 'none'
+     && /What holds for Night alone/.test(await page.$eval(`${NB} [data-sect="design:rules:t0"] .hint`, e => e.textContent))
+     && await page.$eval(`${NB} [data-dstheme="0"]`, e => e.querySelector('[data-sect="design:rules:t0"]').compareDocumentPosition(e.querySelector('.dscolours')) & Node.DOCUMENT_POSITION_FOLLOWING),
+     "the theme shown carries a Rules section inside it, above its colours, counting none");
   if (!(await page.$eval(`${NB} [data-sect="design:rules:t0"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:rules:t0"]`);
   await page.click(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] [data-dsruleadd]`);
   await page.waitForSelector(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"].editing .rlName`, { timeout: 5000 });
@@ -366,7 +399,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   await page.fill(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"] .rlText`, 'Night alone carries drawn textures behind the page.');
   await page.selectOption(`${NB} #dsThemePick`, '1');
   await page.waitForSelector(`${NB} [data-dstheme="1"] [data-dsrules="t1"]`, { timeout: 5000 });
-  ok(!(await page.$(`${NB} [data-dsrules="t0"]`)) && await page.$eval(`${NB} [data-sect="design:rules:t1"] > summary .t`, e => e.textContent) === "Rules of Day's own",
+  ok(!(await page.$(`${NB} [data-dsrules="t0"]`)) && /What holds for Day alone/.test(await page.$eval(`${NB} [data-sect="design:rules:t1"] .hint`, e => e.textContent)),
      "the theme's Rules section follows the pulldown: Day's, with none, once Day is chosen");
   await page.selectOption(`${NB} #dsThemePick`, '0');
   await page.waitForSelector(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"]`, { timeout: 5000 });

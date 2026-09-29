@@ -347,6 +347,15 @@ inside, because there is nothing to mistake them for once typed in. A text
 field is wide enough for what goes in it: a name, an email, a password take
 the row up to the cap, and only a number field is a few characters wide.
 
+**Every control on a row is one height, the finger's (`--ctl`, which is
+`--tap`).** A field, a pulldown, a one-line prose box and a button beside
+each other were 35, 35, 38 and 30px (the operator, 29 Sep): now every
+input, select, proseline and button in a document, a notebook or a dialog
+takes `min-height: var(--ctl)`, the colour swatches alone keeping their
+circle, and `test/uniform.mjs` fails a line of controls that are not one
+height. The sidebar's cards and the header keep their own smaller buttons,
+which sit beside no field.
+
 **Controls on a row line up at their bottom edge.** A row mixes fields that
 carry a label above them with bare controls (a select, a button, a remove)
 and a centred line floats the bare one between its neighbour's label and its
@@ -633,16 +642,19 @@ something behind them (Roadmap, Briefing, Design, the version on
 Artifacts). A view that writes through or only reads (Bugs, Tests,
 Analysis, Git) has no foot.
 
-The Design view is four folds under its head row and add bar: Pages, Design
-language, Themes and Rules, in that order, so the boards are the first
+The Design view is three folds under its head row and add bar: Pages,
+Design language and Themes, in that order, so the boards are the first
 thing seen. The pages and the themes show one at a time, chosen on a
 pulldown at the fold's top, and what is added is what is shown: every page
 and every theme at once was the whole view scrolled past (the operator, 28
-Sep). The one shown is fields like any tab's, never a box of its own, and
-carries a rules section of its own inside it, which follows the pulldown.
-Every rules list here is the Briefing's (nb-rules.js): Add a rule first, a
-folded row a rule with its name and when it reaches a session, Edit turning
-the row into its form. A new project's design is empty, no theme and no
+Sep). The one shown is fields like any tab's, never a box of its own. Rules
+live inside the entry they hold for and nowhere else (the operator, 29
+Sep): a Rules section inside the Design language fold for the whole
+design, one inside each theme above its colours, one inside each page
+under its board, each following the pulldown; a rules fold below
+everything read as the rules. Every rules list here is the Briefing's
+(nb-rules.js): Add a rule first, a folded row a rule with its name and when
+it reaches a session, Edit turning the row into its form. A new project's design is empty, no theme and no
 page: the session that builds it chooses the look and puts it here after. The view is passive: nothing on it reaches
 into a session; the prompt under the language and under each page is text
 to copy, and a session reads the design by itself through its rules and

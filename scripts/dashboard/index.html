@@ -91,6 +91,11 @@
          "Noto Sans Mono","Droid Sans Mono",monospace;
   color-scheme:dark;
   --tap:38px;
+  /* One height for every control a person types into or presses beside
+     another, the finger's: a field, a pulldown, a one-line prose box and a
+     button on the same row were 35, 35, 38 and 30px (the operator, 29 Sep),
+     and the rows that already matched did so at --tap. */
+  --ctl:var(--tap);
   --doc-w:1080px;
   /* The three corners on the page: a surface (card, panel, dialog), a
      control (tab, button, field) and a small thing (a pill's box, a bar's
@@ -1182,6 +1187,16 @@ textarea,select{
 .doctab select,.doctab textarea,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
   padding:8px 9px;font:var(--f-field)}
+/* ...and one height for all of them, the buttons beside them included
+   (the sidebar's cards and the header keep their own smaller buttons: they
+   sit beside no field). */
+.modal input:where(:not([type="checkbox"],[type="radio"])),.modal select,
+.doc .row input,.doc .row select,.uimenu input,.uimenu select,
+.doctab input:where(:not([type="checkbox"],[type="radio"])),.doctab select,
+.nb input:where(:not([type="checkbox"],[type="radio"])),.nb select{min-height:var(--ctl)}
+.modal button,.nb button,.doctab button,.uimenu button,.doc .row button{min-height:var(--ctl)}
+/* Not the colour swatches: a circle, sized by its own rule. */
+.modal .pcpick button,.pcpick button{min-height:0}
 /* The sidebar's own selects: the Claude card's pickers. A phone gives them
    the finger height and nothing else: a select does not zoom iOS, so it keeps
    the size of the text beside it. */
@@ -1202,7 +1217,7 @@ textarea,select{
    at the same specificity, so a proseline in a sheet stopped wrapping and
    went back to being the one-line box this exists to replace. */
 textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
-  overflow-wrap:anywhere;min-height:var(--tap)}
+  overflow-wrap:anywhere;min-height:var(--ctl)}
 /* The env editor wraps where the command editor does not. The rule above is
    pre because a wrapped shell line lies about what runs, but this is an env
    file whose own lines are short KEY=value pairs, and what overflows is the

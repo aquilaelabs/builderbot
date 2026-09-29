@@ -1613,8 +1613,9 @@ your own design rules; a theme and a page each carry rules of their own
 as well, for what holds for that theme or that page alone (the Nostromo
 scheme's textures, say), which reach a session named under their holder,
 `nostromo/hull`, and every rules list reads as the Briefing's does, a
-folded row a rule; the pages and the themes show one at a time, chosen on
-a pulldown at the top, each with its rules section inside; a new project's
+folded row a rule, inside the entry it holds for: the language's in its
+fold, a theme's above its colours, a page's under its board; the pages and
+the themes show one at a time, chosen on a pulldown at the top; a new project's
 design is empty, no theme and no page, and a project built that way is
 built as a session sees fit, the session then putting the look it arrived
 at into the design so the next one finds it; a project designed before it

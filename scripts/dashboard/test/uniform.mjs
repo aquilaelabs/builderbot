@@ -418,7 +418,7 @@ async function lineup(){
     const host = document.querySelector('.doc.on');
     const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div');
     if (!box) return { err: 'no document box found' };
-    const CTL = 'input:not([type=checkbox]):not([type=radio]), select, button';
+    const CTL = 'input:not([type=checkbox]):not([type=radio]), select, button, textarea.proseline';
     const name = e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${
       e.className && typeof e.className === 'string' && e.className.trim()
         ? '.' + e.className.trim().split(/\s+/)[0] : ''}`;
@@ -438,15 +438,24 @@ async function lineup(){
       }));
       if (line) line.push(c); else lines.push([c]);
     }
-    const off = [];
+    const off = [], sizes = [];
     for (const line of lines){
       if (line.length < 2) continue;
       const lo = Math.min(...line.map(c => c.r.bottom));
       const hi = Math.max(...line.map(c => c.r.bottom));
       if (hi - lo > 1.5)
         off.push(`${line.map(c => `${name(c.e)}@${Math.round(c.r.bottom)}`).join(' ')}`);
+      // ...and one height (the operator, 29 Sep: a field, a pulldown and a
+      // button on one row were three sizes). A prose box that has wrapped
+      // to a second line is taller by design and left out; a swatch is a
+      // circle of its own.
+      const one = line.filter(c => !c.e.closest('.pcpick')
+        && !(c.e.matches('textarea.proseline') && c.e.scrollHeight > c.r.height + 2 && c.e.value.length));
+      const hs = one.map(c => c.r.height);
+      if (one.length > 1 && Math.max(...hs) - Math.min(...hs) > 1.5)
+        sizes.push(`${one.map(c => `${name(c.e)}:${Math.round(c.r.height)}`).join(' ')}`);
     }
-    return { off };
+    return { off, sizes };
   });
 }
 
@@ -492,6 +501,9 @@ for (const kind of kinds){
   ok(!L.err && L.off.length === 0,
      `[${kind}] every control on a line ends at the same height${
        L.err ? ` (${L.err})` : L.off.length ? `: ${L.off.join('; ')}` : ''}`);
+  ok(!L.err && L.sizes.length === 0,
+     `[${kind}] every control on a line is one height${
+       L.err ? ` (${L.err})` : L.sizes.length ? `: ${L.sizes.join('; ')}` : ''}`);
 }
 
 // ---- one loading line and one empty state -----------------------------------
@@ -1000,6 +1012,9 @@ for (const kind of kinds){
   ok(!L.err && L.off.length === 0,
      `[${kind}] every control on a line ends at the same height at phone width${
        L.err ? ` (${L.err})` : L.off.length ? `: ${L.off.join('; ')}` : ''}`);
+  ok(!L.err && L.sizes.length === 0,
+     `[${kind}] every control on a line is one height at phone width${
+       L.err ? ` (${L.err})` : L.sizes.length ? `: ${L.sizes.join('; ')}` : ''}`);
   const W = await unwrapped();
   ok(!W.err && W.tall.length === 0,
      `[${kind}] every select is one line high at phone width${

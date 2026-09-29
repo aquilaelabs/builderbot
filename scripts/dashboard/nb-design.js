@@ -2,9 +2,10 @@
 // language (colours as tokens, type, shape, space, motion and the operator's
 // own rules) and pages laid out as labelled blocks on a phone or desktop
 // frame, each named for what it is for and the platform it is built for.
-// Four folds: the pages, the language, the themes and the rules; the pages
-// and the themes show one at a time, chosen on a pulldown, each with a rules
-// section of its own inside it, and every rules list is the Briefing's.
+// Three folds: the pages, the language and the themes; the pages and the
+// themes show one at a time, chosen on a pulldown, and each entry, the
+// language included, carries its rules as a section inside it, every rules
+// list the Briefing's.
 // Every edit is staged and the notebook's Save writes the whole record at
 // once, the way the roadmap saves; the prompt under each page and the
 // language is the server's (design.py), so the tab, `bb design show` and
@@ -149,7 +150,7 @@ function nbDesignView({$, nb, project, root}){
     if (!nb.dsData){ body.innerHTML = `<div class="loading">loading…</div>`; return; }
     const sh = shown();
     nb.dsRuleLists = {};
-    body.innerHTML = pagesSection(sh.page) + languageSection() + themesSection(sh.theme) + rulesFold();
+    body.innerHTML = pagesSection(sh.page) + languageSection() + themesSection(sh.theme);
     wireSections(body);
     wireLanguage(body);
     wireThemes(body, sh.theme);
@@ -184,6 +185,7 @@ function nbDesignView({$, nb, project, root}){
       <div class="field">${ctl("dsScope", "Governs",
             "what the language covers when the project is more than one product: the web app in site/",
             `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope)}</textarea>`, true)}</div>
+      ${rulesFold()}
       <div class="field">${lbl("dsPromptL", "Prompt", "what the saved language asks of a session, to copy into one when you want it applied; a session also reads it by itself, through the rules and bb design show")}
         <textarea id="dsPromptL" class="dsprompt" readonly rows="10" spellcheck="false"></textarea>
         <div class="actbar"><span class="state"></span>
@@ -213,11 +215,14 @@ function nbDesignView({$, nb, project, root}){
   // Edit turning the row into its form. The same list serves the language's
   // rules, a theme's own and a page's own (the operator, 29 Sep): a rules
   // section inside the page and the theme, following the pulldown.
+  // The language's own rules, a section inside the Design language fold;
+  // a theme's and a page's are the same section inside each entry (the
+  // operator, 29 Sep: a rules fold below everything read as the rules).
   function rulesFold(){
     const L = nb.dsLang, rules = L.rules || (L.rules = []);
     return docSection("design", "rules", "Rules", rules.length ? `${rules.length}` : "none",
-      `<div class="hint">Everything the settings cannot say, as named rules: a session gets one on the turn it edits a file or is asked about a word the rule names; one with no trigger stands in every briefing whole.</div>`
-      + rulesList("lang", rules), {open: false});
+      `<div class="hint">What holds for the whole design and the settings cannot say: a session gets one on the turn it edits a file or is asked about a word the rule names; one with no trigger stands in every briefing whole.</div>`
+      + rulesList("lang", rules), {open: true});
   }
   const cond = r => (r.paths || []).length || (r.words || []).length;
   const ruleWhen = r => cond(r) ? "named in the briefing; its text arrives when it applies" : "standing: in every briefing whole";
@@ -331,6 +336,8 @@ function nbDesignView({$, nb, project, root}){
         ${ctl(`dst-from-${i}`, "Fill from", "replace this theme's colours with a preset's ten",
               `<select id="dst-from-${i}" data-dst="from"><option value="">keep as they are</option>${opt(P.schemes, "")}</select>`)}
       </div></div>
+      ${docSection("design", `rules:t${i}`, "Rules", (t.rules || []).length ? `${t.rules.length}` : "none",
+        `<div class="hint">What holds for ${esc(t.name.trim() || "this theme")} alone. A session meets one as ${esc(holderSlug(t.name))}/NAME.</div>` + rulesList(`t${i}`, t.rules || (t.rules = [])), {open: true})}
       <div class="field">${lbl("", "Colours", "each a name, a hex and what it is for; a session names them the same in the code")}
       <div class="dscolours">${(t.colors || []).map((c, j) => `
         <div class="dsrow" data-dstc="${j}">
@@ -339,9 +346,6 @@ function nbDesignView({$, nb, project, root}){
           ${ctl(`dst-${i}-for-${j}`, "For", "", `<textarea id="dst-${i}-for-${j}" class="proseline" rows="1" maxlength="120" data-dsm="means">${esc(c.means)}</textarea>`, true)}
           <button type="button" class="danger" data-dstcrm="${j}" title="take this colour out">Remove</button>
         </div>`).join("")}</div></div>
-      ${docSection("design", `rules:t${i}`, `Rules of ${t.name.trim() || "this theme"}'s own`,
-        (t.rules || []).length ? `${t.rules.length}` : "none",
-        `<div class="hint">What holds for this theme alone. A session meets one as ${esc(holderSlug(t.name))}/NAME.</div>` + rulesList(`t${i}`, t.rules || (t.rules = [])))}
       <div class="field"><div class="actbar"><span class="state">${i === 0 ? "the default: the app starts on it" : ""}</span>
         <button type="button" data-dstcadd ${(t.colors || []).length >= (P.colors_max || 40) ? "disabled" : ""}>Add colour</button>
         ${i === 0 ? "" : `<button type="button" data-dstdefault title="the app starts on this theme">Make default</button>`}
@@ -390,11 +394,10 @@ function nbDesignView({$, nb, project, root}){
       </div>
       <div class="hint">Drag a block to move it and its corner to size it; the arrow keys move a focused one, with Shift to size.</div></div>`
       : `<div class="field"><div class="hint">${n ? "Tap a block to name what it is for." : "Add a block, or start again from a template with Add page."}</div></div>`}
+      ${docSection("design", `rules:${key}`, "Rules", (p.rules || []).length ? `${p.rules.length}` : "none",
+        `<div class="hint">What holds for ${esc(p.name.trim() || "this page")} alone. A session meets one as ${esc(holderSlug(p.name || `page-${p.id}`))}/NAME.</div>` + rulesList(key, p.rules || (p.rules = [])), {open: true})}
       <div class="field">${ctl(`${key}-notes`, "Notes", "what the blocks cannot say: what a tap does, where the data comes from",
             `<textarea id="${key}-notes" rows="3" maxlength="65536" data-dsf="notes">${esc(p.notes)}</textarea>`, true)}</div>
-      ${docSection("design", `rules:${key}`, `Rules of ${p.name.trim() || "this page"}'s own`,
-        (p.rules || []).length ? `${p.rules.length}` : "none",
-        `<div class="hint">What holds for this page alone. A session meets one as ${esc(holderSlug(p.name || `page-${p.id}`))}/NAME.</div>` + rulesList(key, p.rules || (p.rules = [])))}
       <div class="field">${lbl(`${key}-prompt`, "Prompt", "what this page asks of a session, to copy into one when you want it built; a session also reads it by itself, with bb design show")}
         <textarea id="${key}-prompt" class="dsprompt" readonly rows="10" spellcheck="false" data-dsprompt></textarea>
         <div class="actbar"><span class="state"></span>

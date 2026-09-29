@@ -21,8 +21,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Changed
 
+- Every control on a row is one height, the finger's: a field, a pulldown, a one-line prose box and a button beside each other were four sizes; the design suite now fails a line of controls that differ
 - A project's design starts empty, no theme and no page; a session that builds such a project chooses the look and is told to put it into the design afterwards, and one that builds to a design is told to put back what the design left open, under the project's dial
-- Every rules list on the Design view reads as the Briefing's: a folded row a rule, Add a rule first, Edit turning a row into its form; a page's and a theme's rules are a section inside each, following the pulldown
+- Every rules list on the Design view reads as the Briefing's: a folded row a rule, Add a rule first, Edit turning a row into its form; rules live inside the entry they hold for, the language's in its fold, a theme's above its colours, a page's under its board, following the pulldown
 - The Design view is four folds, Pages first, and a fold that holds a list shows one of it at a time on a pulldown; the theme, rule and page shown are plain fields rather than a box, the sizing corner shows on the selected block only, and nothing on the view reaches into a session
 - The Profile's conversation logs are the Artifacts tab's rows: a hairline between each, the download at the right
 - The Doctor stops warning the operator that other accounts have no commit identity: an account without one is told on its own Claude buttons and Profile, and the Doctor's line is a green count
