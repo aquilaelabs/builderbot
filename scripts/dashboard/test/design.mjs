@@ -323,22 +323,59 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
     headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: P, action: 'save', language: { ...(await api(`/api/design?project=${P}`)).language, rules: [{ name: 'empty' }] }, pages: [] }) });
   ok(bad.status === 400 && /the rule empty says nothing/.test((await bad.json()).error || ''), 'a rule with no text is refused by name');
+  // B342: a bare string is refused rather than dropped, a colour may carry
+  // its alpha, every problem is reported at once, and the schema is printed.
+  const cur = (await api(`/api/design?project=${P}`)).language;
+  const multi = await fetch(URL.replace(/\/$/, '') + '/api/design', { method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: P, action: 'save', language: { ...cur, scope: 'x'.repeat(130), rules: ['a bare string', ...cur.rules],
+      themes: [{ ...cur.themes[0], colors: [{ name: 'glass', hex: '#1e232be0', means: 'a pane' }, { name: 'bad', hex: 'blue', means: '' }] }, ...cur.themes.slice(1)] },
+      pages: [{ name: 'p', platform: 'web', frame: 'desktop', template: 'blank', blocks: [{ kind: 'card', label: 'y'.repeat(130), x: 0, y: 0, w: 2, h: 2 }] }] }) });
+  const mj = await multi.json();
+  ok(multi.status === 400 && Array.isArray(mj.problems) && mj.problems.length >= 4
+     && mj.problems.some(x => /a rule of the language is an object with a name and a text, not 'a bare string'/.test(x))
+     && mj.problems.some(x => /a colour is #rrggbb or #rrggbbaa, not 'blue'/.test(x))
+     && mj.problems.some(x => /what the language governs is at most 120 characters/.test(x))
+     && mj.problems.some(x => /^page 1: a block's label is at most 120 characters/.test(x))
+     && !mj.problems.some(x => /1e232be0/.test(x)),
+     `a save is refused with every problem at once, a bare-string rule and a hex with alpha among what it says and does not (${mj.problems?.length}: ${(mj.problems || []).join(' | ').slice(0, 160)})`);
+  const alpha = await api('/api/design', { project: P, action: 'save', language: { ...cur,
+      themes: [{ ...cur.themes[0], colors: [...cur.themes[0].colors, { name: 'glass', hex: '#1e232be0', means: 'a pane' }] }, ...cur.themes.slice(1)] }, pages: (await api(`/api/design?project=${P}`)).pages });
+  ok(alpha.status === 200 && alpha.language.themes[0].colors.some(c => c.hex === '#1e232be0'), 'a colour with alpha saves as written');
+  ok(/^The record bb design save takes/.test(bb('schema')) && /at most 16 themes, 40 colours each/.test(bb('schema')) && /RULE is \{ "name"/.test(bb('schema')),
+     'bb design schema prints the shape with its limits');
+  const help = execFileSync('bash', [`${REPO}/scripts/bb`, 'design', 'save', '-h'], { encoding: 'utf8',
+    env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token, BB_PROJECT: P, XDG_CACHE_HOME: `${DIR}/cache-design` } });
+  ok(/^bb design save FILE/.test(help) && /The record bb design save takes/.test(help), 'bb design save -h is help, not a file called -h');
 
-  // ---- a theme's own rules and a page's own: named under their holder ------------------
+  // ---- a theme's own rules and a page's own: a Rules section inside each ------------------
   // The Nostromo scheme has needs no other theme shares (the operator, 28
-  // Sep): a rule of a theme's own lives under the theme, a page's under the
-  // page, reaches a session as HOLDER/RULE, and bb design show reads it so.
+  // Sep): a rules section inside the theme and inside the page, the
+  // Briefing's list again, following the pulldown; a rule there reaches a
+  // session as HOLDER/RULE, and bb design show reads it so.
   await page.selectOption(`${NB} #dsThemePick`, '0');
-  await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dsown="t0"]`, { timeout: 5000 });
-  await page.click(`${NB} [data-dsown="t0"] [data-dsownadd]`);
-  await page.waitForSelector(`${NB} #t0-r-name-0`, { timeout: 5000 });
-  await page.fill(`${NB} #t0-r-name-0`, 'Hull');
-  await page.fill(`${NB} #t0-r-words-0`, 'texture, hull');
-  await page.fill(`${NB} #t0-r-text-0`, 'Night alone carries drawn textures behind the page.');
-  await page.click(`${NB} [data-dspage="p1"] [data-dsown="p1"] [data-dsownadd]`);
-  await page.waitForSelector(`${NB} #p1-r-name-0`, { timeout: 5000 });
-  await page.fill(`${NB} #p1-r-name-0`, 'first read');
-  await page.fill(`${NB} #p1-r-text-0`, 'The chart is read before anything else on this page.');
+  await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dsrules="t0"]`, { timeout: 5000 });
+  ok(await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .t`, e => e.textContent) === "Rules of Night's own"
+     && await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .sst`, e => e.textContent) === 'none',
+     "the theme shown carries a Rules section of its own, named for it, counting none");
+  if (!(await page.$eval(`${NB} [data-sect="design:rules:t0"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:rules:t0"]`);
+  await page.click(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] [data-dsruleadd]`);
+  await page.waitForSelector(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"].editing .rlName`, { timeout: 5000 });
+  await page.fill(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"] .rlName`, 'Hull');
+  await page.fill(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"] .rlWords`, 'texture, hull');
+  await page.fill(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"] .rlText`, 'Night alone carries drawn textures behind the page.');
+  await page.selectOption(`${NB} #dsThemePick`, '1');
+  await page.waitForSelector(`${NB} [data-dstheme="1"] [data-dsrules="t1"]`, { timeout: 5000 });
+  ok(!(await page.$(`${NB} [data-dsrules="t0"]`)) && await page.$eval(`${NB} [data-sect="design:rules:t1"] > summary .t`, e => e.textContent) === "Rules of Day's own",
+     "the theme's Rules section follows the pulldown: Day's, with none, once Day is chosen");
+  await page.selectOption(`${NB} #dsThemePick`, '0');
+  await page.waitForSelector(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"]`, { timeout: 5000 });
+  ok(await page.$eval(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"] .btitle`, e => e.textContent) === 'Hull', "...and back to Night's, with the rule typed there");
+  if (!(await page.$eval(`${NB} [data-sect="design:rules:p1"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:rules:p1"]`);
+  await page.click(`${NB} [data-dspage="p1"] [data-sect="design:rules:p1"] [data-dsruleadd]`);
+  await page.waitForSelector(`${NB} [data-dsrules="p1"] .rulerow[data-i="0"].editing .rlName`, { timeout: 5000 });
+  await page.fill(`${NB} [data-dsrules="p1"] .rulerow[data-i="0"] .rlName`, 'first read');
+  await page.fill(`${NB} [data-dsrules="p1"] .rulerow[data-i="0"] .rlText`, 'The chart is read before anything else on this page.');
   await saved();
   const own = await api(`/api/design?project=${P}`);
   ok(own.language.themes[0].rules?.[0]?.name === 'hull' && own.language.themes[0].rules[0].words.join() === 'texture,hull'

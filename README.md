@@ -332,6 +332,7 @@ bb design show [ID|NAME]   the prompt for one page, or for the language alone:
                    the colours as tokens, the type, the shape, the layout
 bb design file     docs/design-language.md as the notebook writes it
 bb design json     the record: the language, the pages, and the presets by key
+bb design schema   the record's shape with every limit, for a save that lands first time
 bb design save FILE   write a record of that shape back, whole: how a session
                    puts a design language it was given into the notebook
 bb transcripts     your own conversations with Claude on this project, newest

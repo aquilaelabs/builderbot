@@ -267,7 +267,9 @@ def _luma(hexcol):
 LANGUAGE_DEFAULT = {"themes": [], "font": "system", "corners": "soft", "density": "comfortable",
                     "motion": "quiet", "scope": "", "rules": [], "fonts": ""}
 
-_HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+# Six hex digits, or eight when a colour carries its alpha: a glass theme's
+# tokens do (B342), and a stylesheet reads #rrggbbaa as it reads #rrggbb.
+_HEX = re.compile(r"^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$")
 
 
 def configure(*, workspace, state, write_json, git_env=None):
@@ -333,7 +335,7 @@ def _clean_colour(m, what):
     name = _line(m.get("name"), 40, "a colour's name")
     hexv = str(m.get("hex") or "").strip().lower()
     if not _HEX.match(hexv):
-        raise _Refused(f"{name or 'a colour'} in {what}: a colour is #rrggbb, not {hexv!r}")
+        raise _Refused(f"{name or 'a colour'} in {what}: a colour is #rrggbb or #rrggbbaa, not {hexv!r}")
     return {"name": name, "hex": hexv, "means": _line(m.get("means"), NAME_MAX, "what a colour is for")}
 
 
@@ -427,7 +429,13 @@ def _clean_rules(raw, whose):
     if isinstance(raw, str):
         # The notes from before rules: one standing rule, kept whole.
         raw = [{"name": "design-notes", "text": raw}] if raw.strip() else []
-    raw = [r for r in (raw if isinstance(raw, list) else []) if isinstance(r, dict)]
+    raw = raw if isinstance(raw, list) else []
+    # A rule that is not an object is refused by what it is, not dropped: a
+    # session that sent ["some rule"] found its rules gone with no word
+    # said (B342).
+    for r in raw:
+        if not isinstance(r, dict):
+            raise _Refused(f"a rule of {whose} is an object with a name and a text, not {str(r)[:60]!r}")
     if len(raw) > RULES_MAX:
         raise _Refused(f"{whose} holds at most {RULES_MAX} rules")
     rules, names = [], set()
@@ -795,30 +803,103 @@ def _file_rules(rules, scope, head, level):
 
 
 # ---- writes ----------------------------------------------------------------------
+def problems(lang, pages):
+    """Everything wrong with a record, in one pass: each theme, each rule
+    and each page checked on its own once the whole is refused, so a save
+    is corrected once rather than one refusal at a time (B342)."""
+    out = []
+    try:
+        _clean_language(lang)
+    except _Refused as e:
+        whole = str(e)
+        found = []
+        if isinstance(lang, dict):
+            for i, t in enumerate(lang.get("themes") if isinstance(lang.get("themes"), list) else []):
+                try:
+                    _clean_theme(t, i + 1)
+                except _Refused as e2:
+                    found.append(str(e2))
+            try:
+                _clean_rules(lang.get("rules"), "the language")
+            except _Refused as e2:
+                found.append(str(e2))
+            try:
+                _clean_language({k: v for k, v in lang.items() if k not in ("themes", "rules")})
+            except _Refused as e2:
+                found.append(str(e2))
+        out += found or [whole]
+    if len(pages) > MAX_PAGES:
+        out.append(f"a project holds at most {MAX_PAGES} pages")
+    for i, p in enumerate(pages):
+        try:
+            _clean_page(p, i + 1)
+        except _Refused as e:
+            out.append(f"page {i + 1}: {e}")
+    seen = []
+    for s in out:
+        if s not in seen:
+            seen.append(s)
+    return seen
+
+
+def schema_text():
+    """bb design schema: the record's shape and every limit, so a session
+    writes a record that saves the first time (B342)."""
+    kinds = ", ".join(k for k, _, _ in KINDS)
+    return "\n".join([
+        "The record bb design save takes (and bb design json prints), as JSON:",
+        "",
+        "{",
+        '  "language": {',
+        f'    "themes": [ {{ "name": "Night", "mode": "dark" | "light", "colors": [ {{ "name": "bg", "hex": "#1a1f26" or "#1a1f26cc", "means": "the page" }} ], "rules": [RULE] }} ],   at most {THEMES_MAX} themes, {COLORS_MAX} colours each, a colour name once per theme',
+        f'    "font": {" | ".join(k for k, _, _ in FONTS)},',
+        f'    "corners": {" | ".join(k for k, _, _ in CORNERS)},',
+        f'    "density": {" | ".join(k for k, _, _ in DENSITY)},',
+        f'    "motion": {" | ".join(k for k, _, _ in MOTION)},',
+        '    "fonts": "Inter for text, JetBrains Mono for code",   the exact families, at most 200 characters',
+        f'    "scope": "the web app in site/",   what the language governs, at most {NAME_MAX} characters',
+        f'    "rules": [RULE]   at most {RULES_MAX}, each named once',
+        "  },",
+        '  "pages": [ {',
+        '    "id": 3,   a saved page keeps its id; leave it out for a new page; a saved page left out is removed',
+        f'    "name": "the settings page",   what it is for, at most {NAME_MAX} characters',
+        f'    "platform": {" | ".join(PLATFORM_KEYS)},',
+        f'    "frame": {" | ".join(FRAMES)},   one the platform allows: phone and landscape for a phone app',
+        f'    "template": {" | ".join(TEMPLATE_KEYS)},',
+        f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2 }} ],   at most {MAX_BLOCKS}, inside the frame',
+        f'    "notes": "...",   at most {NOTES_MAX} characters',
+        '    "rules": [RULE]',
+        f'  }} ],   at most {MAX_PAGES} pages',
+        "}",
+        "",
+        f'RULE is {{ "name": "dialogs", "text": "...", "words": ["dialog", "modal"], "paths": ["src/ui"] }}: an object, never a bare string; '
+        f"the name a slug of at most 40 characters, the text at most {RULE_TEXT_MAX}, words and paths optional (a rule with neither stands in every briefing). "
+        "A rule of a theme's or a page's own reaches a session as HOLDER/NAME.",
+        "",
+        "A save is refused whole, with every problem it found listed; nothing is dropped silently. "
+        "A session's save goes through the project's dial, Claude may: Add to the design.",
+    ])
+
+
 def save(project, req, who=""):
     """The notebook's Save, and a session's bb design save: the whole record
     replaced by what was staged, each page keeping its id (a new one gets
     the next), with who saved it and when. (payload, status)."""
-    try:
-        lang = _clean_language(req.get("language") or {})
-        raw = req.get("pages") if isinstance(req.get("pages"), list) else []
-        if len(raw) > MAX_PAGES:
-            raise _Refused(f"a project holds at most {MAX_PAGES} pages")
-    except _Refused as e:
-        return {"error": str(e)}, 400
+    raw = req.get("pages") if isinstance(req.get("pages"), list) else []
+    bad = problems(req.get("language") or {}, raw)
+    if bad:
+        return {"error": "; ".join(bad), "problems": bad}, 400
+    lang = _clean_language(req.get("language") or {})
     with statefile.locked(FILE):
         d = _load()
         rec = _record(d, project)
         nxt = rec["next"]
         pages = []
-        try:
-            for p in raw:
-                pid = p.get("id") if isinstance(p, dict) else None
-                if not isinstance(pid, int) or pid < 1:
-                    pid, nxt = nxt, nxt + 1
-                pages.append(_clean_page(p, pid))
-        except _Refused as e:
-            return {"error": str(e)}, 400
+        for p in raw:
+            pid = p.get("id") if isinstance(p, dict) else None
+            if not isinstance(pid, int) or pid < 1:
+                pid, nxt = nxt, nxt + 1
+            pages.append(_clean_page(p, pid))
         seen = set()
         for p in pages:
             if p["id"] in seen:
@@ -918,6 +999,8 @@ def text_for(project, which=""):
                            "presets": presets()}, indent=1), ""
     if which == "file":
         return file_text(rec), ""
+    if which == "schema":
+        return schema_text(), ""
     if which == "language":
         return prompt(rec["language"]), ""
     hit = next(((n, r, h) for n, r, h in scoped_rules(rec) if n == which.lower()), None)
@@ -963,8 +1046,10 @@ def listing(project):
                      f"{'' if len(p['blocks']) == 1 else 's'})")
     if rec["by"]:
         lines.append(f"  last saved by {rec['by']} {time.strftime('%d %b %H:%M', time.localtime(rec['at']))}")
+    if not rec["at"]:
+        lines.insert(1, "  nothing saved here yet: build as you would, and put what you arrive at into it with bb design save")
     lines.append(f"bb design show [ID|NAME] prints one in full; bb design file prints {FILE_PATH}; "
-                 "bb design json prints the record, and bb design save FILE writes one back")
+                 "bb design json prints the record, bb design save FILE writes one back, and bb design schema says its shape")
     return "\n".join(lines)
 
 
