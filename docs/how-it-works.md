@@ -1634,10 +1634,14 @@ the themes show one at a time, chosen on a pulldown at the top; a frame is
 one screen and a page may be longer than one, up to 240 rows, which
 scrolls, and a page keeps where its blocks sit on each frame it has been
 laid out for, which `bb design show` and the file say after the frame it is
-on; no two blocks cover the same cells, unless one lies wholly inside the
-other (a card in a list) or is an overlay, and the board outlines in red
-the ones that do, with the reason under it, before Save refuses them; a
-page may have a short key of its own, which its rules are addressed under
+on; blocks may overlap, and the blocks' order is the drawing order, a
+later one over an earlier one, which a layers list beside the board shows
+top first, a row selecting a block another covers and its arrows moving it
+up or down the stack; a block may be set inside another (a card in a list,
+a form in a card), which it then stays within as either is moved or sized,
+on every frame, and the board takes the width the tab gives it, with
+Pages, Design language and Themes folded on a new tab and Add page inside
+Pages; a page may have a short key of its own, which its rules are addressed under
 (`now/live`) in place of its whole name; each of the language's four
 choices may be left not chosen, or be custom, which hands it to the
 design's rules and can name the one that says it, whose text a session
@@ -1822,7 +1826,8 @@ them alongside the words.
 
 **A group is one goal with an order to it.** Its title is that goal in plain
 words ("make the picker usable on a phone") and the steps under it carry the
-detail. Steps only exist because of one physical constraint: each is a message
+detail; the group folds like a bug's row, its title the heading and a tap on
+it opening every step under it. Steps only exist because of one physical constraint: each is a message
 *you* send by hand, one at a time, waiting on each. So a step is not a task,
 it is a point at which the previous work has to have finished before the next
 can start, and a session that splits work into more steps than that costs you

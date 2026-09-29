@@ -277,15 +277,29 @@ function nbRoadmapView({$, nb}){
     $("roadmapDone").hidden = !j.finished_n && !nb.roadmapDoneOn;
     if (nb.roadmapLogOn) nb.drawHistory();
     {
+    // A group is a fold, like a bug's row (the operator, 29 Sep): its own
+    // row is the summary, its steps open under it on a tap. Which were
+    // open before this redraw stay open, so acting on one does not fold
+    // it, and a group whose step is armed is open to show it.
+    const held = new Set([...$("roadmapList").querySelectorAll("details.grp[open]")].map(d => d.dataset.id));
     $("roadmapList").innerHTML = rows.map(r =>
       // The group's own row gets the same `live` as its steps now: its arrow
       // stands for the next one, so it is as clickable as that one is.
-      `<div class="grp${r.shelved ? " shelved" : ""}">${stepRow(r, -1, live)}${
+      `<details class="grp${r.shelved ? " shelved" : ""}" data-id="${r.id}"${
+        held.has(String(r.id)) || (nb.roadmapSel && String(nb.roadmapSel.id) === String(r.id)) ? " open" : ""}>
+        <summary>${stepRow(r, -1, live)}</summary>${
         (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}${
         // How a plain item becomes a plan: give it a step. Hidden while
         // reordering, where the question is only where things sit.
         nb.roadmapOrdering ? "" : `<div class="addstep" data-id="${r.id}"><button
-        type="button" class="link">+ step</button></div>`}</div>`).join("");
+        type="button" class="link">+ step</button></div>`}</details>`).join("");
+    // A control on the summary row acts and does not fold: the fold is
+    // the row's own ground and its words' margin.
+    $("roadmapList").querySelectorAll("details.grp > summary").forEach(sm => {
+      sm.addEventListener("click", e => {
+        if (e.target.closest("button, a, input, textarea, select, .go, .mv, .rm, .ed, .x, .txt, .dtog")) e.preventDefault();
+      });
+    });
     $("roadmapList").querySelectorAll(".addstep").forEach(box => {
       box.querySelector("button").onclick = () => openStepInput(box);
     });

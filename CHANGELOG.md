@@ -61,6 +61,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Saving a project's settings with a change a running session takes only at its start (model, effort, author, reads, Also sees, node, the briefing's lines) names those changes in the dialog and asks whether to end the session now or keep it running (37adf7d)
 - The Design view's board is as wide as the tab, with a layers list beside it: blocks may overlap, a later layer draws over an earlier one, a row selects a block another covers and moves it up or down, and a block can be set inside another, which it then stays within (cf8ec70)
 - On the Design view, Pages, Design language and Themes start folded, and Add page sits inside Pages (cf8ec70)
+- On the Briefing view the memories are folded, with their count on the heading; the code base and the rules stay as they were (30e57bb)
+- A roadmap item folds like a bug report: its row is the heading and a tap on it opens every step under it (30e57bb)
 
 ### Removed
 
@@ -125,6 +127,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The companion app builds under the node's own disk rather than the projects share, so bb build no longer fails on a directory NFS could not delete (d6b513f)
 - The dot beside each person on a project's row is the same dot, in the same two colors, as the session's tab, the phone's Terminal tab and the Sessions card: blue and pulsing while Claude works, amber while it waits (37adf7d)
 - Locking a project names the Claude sessions running there before it ends them, and ends every one of them, whoever's and on whatever node; it used to end only the owner's, and only when it ran in the container (77226dd)
+- The hint under the model picker says Save asks about a running session rather than restarting it (30e57bb)
 
 ### Security
 

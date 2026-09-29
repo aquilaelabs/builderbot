@@ -327,6 +327,26 @@ execFileSync(BB, ['roadmap', 'add', 'rework the picker',
            WORKSPACE: `${DIR}/ws` } });
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadmap[data-step="1"]').length === 1);
+// A group is a fold now (the operator, 29 Sep): its row is the summary and
+// its steps open under it on a tap. Checked once, then every group is
+// opened as it is drawn, since the rest of this file reaches into steps.
+{
+  await page.waitForSelector('#roadmapList details.grp:has(.roadmap[data-step="1"])', { timeout: 15000 });
+  const first = await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => ({ open: d.open, steps: d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])').length,
+    shown: [...d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])')].some(r => r.checkVisibility()) }));
+  ok(!first.open && !first.shown, `a group starts folded, its steps out of sight (${JSON.stringify(first)})`);
+  await page.click('#roadmapList details.grp:has(.roadmap[data-step="1"]) > summary .txt');
+  await page.waitForFunction(() => !document.querySelector('#roadmapList details.grp:has(.roadmap[data-step="1"])').open, null, { timeout: 5000 }).catch(() => {});
+  ok(await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => !d.open), '...the words on its row open the reword box, not the fold');
+  await page.keyboard.press('Escape');
+  await page.click('#roadmapList details.grp:has(.roadmap[data-step="1"]) > summary');
+  await page.waitForFunction(() => document.querySelector('#roadmapList details.grp:has(.roadmap[data-step="1"])').open, null, { timeout: 5000 });
+  ok(await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => d.open && [...d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])')].every(r => r.checkVisibility())),
+     '...and a tap on the row itself opens every step under it');
+  await page.evaluate(() => new MutationObserver(() => document.querySelectorAll('#roadmapList details.grp:not([open])').forEach(d => { d.open = true; }))
+    .observe(document.getElementById('roadmapList'), { childList: true, subtree: true }));
+  await page.evaluate(() => document.querySelectorAll('#roadmapList details.grp:not([open])').forEach(d => { d.open = true; }));
+}
 items = await open();
 const g = items.find(i => i.text === 'rework the picker');
 const s1 = items.find(i => i.text === 'widen the select');
@@ -1477,6 +1497,7 @@ ok(strip.clipped && strip.onScreen,
    'the notebook strip scrolls rather than spilling, with the current tab in view');
 
 await phone.click('.pane .nb .nbtabs [data-v="briefing"]'); // every control on screen at once
+await phone.evaluate(() => { document.getElementById('memSect').open = true; });
 await phone.waitForFunction(() => document.getElementById('memList').checkVisibility());
 const wide = await phone.evaluate(() => {
   const out = [];

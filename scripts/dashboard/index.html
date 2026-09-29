@@ -1421,16 +1421,18 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    grown its own hand-copied ::before; the component fold was added without
    one and silently had no triangle at all. Grouped here so a fold cannot be
    built without the arrow that says it opens. */
-.mem>summary,.bug>summary,.fx .grp>summary,.veradd>summary{
+.mem>summary,.bug>summary,details.grp>summary,.veradd>summary{
   cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
 .mem>summary::-webkit-details-marker,.bug>summary::-webkit-details-marker,
-.fx .grp>summary::-webkit-details-marker,
+details.grp>summary::-webkit-details-marker,
 .veradd>summary::-webkit-details-marker{display:none}
-.mem>summary::before,.bug>summary::before,.fx .grp>summary::before,
+.mem>summary::before,.bug>summary::before,details.grp>summary::before,
 .veradd>summary::before{content:"\25B8";color:var(--dim);font-size:11px;
   width:9px;flex:0 0 auto}
 .mem[open]>summary::before,.bug[open]>summary::before,
-.fx .grp[open]>summary::before,.veradd[open]>summary::before{content:"\25BE"}
+details.grp[open]>summary::before,.veradd[open]>summary::before{content:"\25BE"}
+/* A roadmap group's summary is its item row, which fills the line. */
+details.grp>summary>.roadmap{flex:1 1 auto;min-width:0}
 
 /* The "N to M of T" footer under a long list, with Previous and Next. Quiet:
    it is a fact about the list plus the controls that turn its page, not a
@@ -3481,13 +3483,18 @@ body.booting .pane>.loading{margin:auto}
     <!-- Above the list, and outside it: the list is hidden when there is
          nothing in it, and a project with no memories is exactly where
          writing the first one by hand is worth offering. -->
-    <div class="field">
-      <label id="memCount">Memories</label>
-      <div id="memAdd"></div>
-    </div>
-    <div class="field" id="memListField">
-      <div id="memList"></div>
-    </div>
+    <!-- The memories, folded (the operator, 29 Sep): what a session
+         happened to notice is read rarely and pushes the rules and the
+         code base off the first screen. The count is on the heading. -->
+    <details class="sect" id="memSect" data-sect="briefing:memories">
+      <summary><span class="t" id="memCount">Memories</span><span class="sst" id="memN"></span></summary>
+      <div class="body">
+        <div class="field"><div id="memAdd"></div></div>
+        <div class="field" id="memListField">
+          <div id="memList"></div>
+        </div>
+      </div>
+    </details>
     </div>
     <!-- The bug tracker. Deliberately write-through, unlike the roadmap:
          a bug report is a form submitted once, not a list curated in place,

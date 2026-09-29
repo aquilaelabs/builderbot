@@ -28,6 +28,11 @@ ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 1),
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
+// The memories are folded on a new tab (the operator, 29 Sep), the count
+// on the heading; opened here for the rest of the file.
+ok(await page.$eval('#memSect', d => !d.open) && await page.$eval('#memN', e => e.textContent) === '2',
+   'the memories start folded, with their count on the heading');
+await openFold(page, '#memSect');
 ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook: alpha'),
    'the panel opens on that project');
 // On the strip's FIRST tab, whichever that is: the default is read off the

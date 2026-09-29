@@ -272,10 +272,10 @@ function rnDrawPrefs(){
     ? "Locked; this project is yours to run, so no session starts here."
     : running
       ? (changed
-          ? "A session is running here. Saving restarts it onto this: the "
-            + "conversation is resumed, but anything mid-turn is lost."
-          : "Applies when a session starts; changing it restarts the one running "
-            + "here, on the same conversation." + dflt)
+          ? "A session is running here. Save asks whether to end it now (the "
+            + "conversation resumes from the Claude button) or keep it running."
+          : "Applies when a session starts; changing it asks about the one running "
+            + "here." + dflt)
       : "Applied the next time Claude starts here, and kept until you change it." + dflt;
   $("rnPrefHint").classList.toggle("bad", !shut && running && changed);
 }

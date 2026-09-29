@@ -62,6 +62,10 @@ function nbMemoryView({$, nb}){
     // The note is offered only when there is a session to put it in, and says
     // what it will do: the text is typed, not sent. See memory.py's notify().
     $("memCount").textContent = n ? "Memories: newest first" : "Memories";
+    $("memN").textContent = n ? String(n) : "none";
+    // Folded unless this page opened it (the operator, 29 Sep); the fold's
+    // state is the page's one toggle listener's, keyed like every section.
+    $("memSect").open = "briefing:memories" in sectOpen ? sectOpen["briefing:memories"] : false;
     // Which were open before this redraw. Saving reloads the book, and folding
     // away the memory that was just edited is the wrong answer to "did that
     // work?": the whole point is to look at it again.
