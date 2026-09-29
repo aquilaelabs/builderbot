@@ -144,7 +144,7 @@ This scheme alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
 served by the page's allow-list): hull plating behind the page, ribbing in
 the left gutter and a glyph strip in the header. Each bakes its own opacity, none sits under text above a third, and
 none moves the layout: a texture lives in space the page already leaves
-empty. The same suite measures the contrast with them in place.
+empty. The same suite measures the contrast with them in place. Its panels, the bar of a pane and the ground under a document are `--glass`: the panel colour at 70% over the hull, so the plating shows through.
 
 ##### nostromo/fold
 
@@ -269,6 +269,8 @@ Watch the class the words wear. A tab's name is a `.lbl`, which is also the
 field-label helper, so it arrived wearing the quiet colour meant for "Your
 email" above a text box, on an accent fill, at 2.51:1.
 
+The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mid`: the accent darkened by 14%, between the accent and `--accent-deep`.
+
 ### shape
 
 Applies to: scripts/dashboard/index.html; corner, radius, rounded, hairline, border
@@ -294,6 +296,8 @@ Three secondary voices: `--f-note` (a quiet explainer, in `var(--dim)`),
 `--f-ui` (secondary UI), `--f-tag` (pills and badges). Severity and level
 colours agree everywhere: error and high are red, warning and medium yellow,
 note and low blue.
+
+What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
 
 ### space
 
@@ -707,6 +711,18 @@ line or an empty state is a line, about 25 words. The why goes in a code
 comment, the README or Help, never inline. A stacked row
 is `flex-wrap: nowrap`; a long token in it wraps or scrolls inside its own
 box, and nothing scrolls the page or the pane sideways on a phone.
+
+### badges
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/nb-*.js; badge, pill, tag, severity, sev
+
+A tag that says who or what (a memory's type, a bug's severity and state, who wrote a history line) wears one of five badge colours, the same on every scheme, named once on `:root`, each with an edge for the pill's border: `--purple` `#b79ae0` (edge `--purple-edge` `#38294a`) for who did it, a reference and a state that does not apply; `--green2` `#7fc08a` (`--green2-edge` `#1f3f28`) for what is new, a project's own and fixed; `--blue2` `#77b7e8` (`--blue2-edge` `#1e3a4a`) for the user's, low and open; `--gold` `#d8b25c` (`--gold-edge` `#4a3c1e`) for a note, feedback, medium and a toggle that is on; `--red2` `#e0796f` (`--red2-edge` `#94423d`) for what is gone and high. Never a hex at the site: the day one shade drifts is the day two tags of one family stop looking like it. The pill's text is `--f-tag`.
+
+### project-colour
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/page-panes.js, scripts/dashboard/page-projsettings.js, scripts/dashboard/tab-docker.js; project colour, stripe, swatch, tone
+
+A project may carry a colour, one of the nine swatches in its settings, and the page says whose a thing is with it in four places and no others: its tab in the strip (a 3px stripe on the left, a tint of 10% at rest and 28% when it is the one in front), its row in the sidebar (the stripe and a 6% tint, on the card), the bar of the pane showing it (the stripe only), and the heading of its group in the Docker manager (a 4px stripe and a 16% tint, as `--gc`, the line colour for containers that belong to no project). The bar keeps the ground every bar has: a tint there sat over the pane's black and made a notebook's bar the one bar that looked like no other (the operator, 29 Sep). The colour arrives as `--pc` on the element; the swatches are circles of their own size, never the control height.
 
 ## Pages
 
