@@ -1191,7 +1191,13 @@ await page.evaluate(async () => {
   // ever with nothing on screen. The card repaints only when its html
   // changes and a refusal changes none of it, so the button is put back by
   // the press itself.
-  await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
+  // ...and only once the flow the block above started reads as over
+  // (B370): while state.signin still says running, the card's own watcher
+  // repaints the button as "Start over" every second, and the wait below
+  // for "Sign in" ran out under load, and once at a load of one, because
+  // the cancel had not landed before the press.
+  await refreshUntil(page, () => !state?.signin?.running && document.getElementById('bSignIn') !== null
+                                 && document.getElementById('bSignIn').textContent === 'Sign in');
   // Pressed IN THE PAGE rather than through Playwright's click. The card
   // repaints whenever its html changes, and while a sign-in flow is live its
   // own watcher changes that html, so the button Playwright had resolved kept
