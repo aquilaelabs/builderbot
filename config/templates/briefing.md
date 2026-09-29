@@ -38,7 +38,11 @@ nowhere else, and from a session you reach the controller, the internet,
 this project's containers on this node, and its containers on the
 project's other nodes by their published ports: nothing else on the
 machine or the LAN answers, by design, so a connection refused to another
-address is the firewall, not a fault.
+address is the firewall, not a fault. The session has a network of its own:
+`localhost` and the address `hostname -I` prints are the session's, and no
+container answers there. A container answers at its node's address, which
+`bb devapp status` prints beside "answers at" for the dev instance, and
+`bb devapp ls` with each container's ports.
 
 <!-- BUILDERBOT:READS -->
 
