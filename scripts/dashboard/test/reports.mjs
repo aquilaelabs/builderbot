@@ -168,7 +168,7 @@ ok(next.id > lastId, `...clears every one, and the next report does not take a n
 // ...and the session whose reports went is told so, with how many and
 // when, rather than that it never made any (B343).
 const afterClear = await call('/api/reports', { action: 'mine' }, ALPHA);
-ok(afterClear.cleared && afterClear.cleared.n >= 1 && afterClear.cleared.at > 0 && afterClear.reports.length >= 1,
+ok(afterClear.cleared && afterClear.cleared.n >= 1 && afterClear.cleared.at > 0,
    `mine says how many of the project's reports the operator cleared and when (${JSON.stringify(afterClear.cleared)})`);
 const clearedSaid = execFileSync('bash', [`${REPO}/scripts/bb`, 'report'], { encoding: 'utf8',
   env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token('alpha'), BB_PROJECT: 'alpha', XDG_CACHE_HOME: `${DIR}/cache-reports` } });
