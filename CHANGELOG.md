@@ -117,6 +117,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A page's rows given out of range is one message: every block under it was reported as outside the page as well (6bb5358)
 - A session is not told that somebody else changed the bugs, the rules or the settings when the change was its own, made with bb bug add, bb rules add or bb settings set (6bb5358)
 - What Claude Code keeps in /tmp for a conversation (its scratchpad, its background commands' output) outlives a restart of the session; a controller update emptied it between two prompts (6bb5358)
+- A node installs the session helper a new bundle carries as it takes the bundle, not at its next hello ten minutes later (e522637)
 
 ### Security
 
