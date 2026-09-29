@@ -90,8 +90,10 @@ FRAMES = {"phone": {"cols": 6, "rows": 12, "label": "Phone"},
           "desktop": {"cols": 12, "rows": 8, "label": "Desktop"}}
 # A frame is one screen, and a page may be longer than one: it scrolls. Its
 # rows are the frame's unless it says more, up to this many. Twelve stacked
-# blocks did not fit the six rows of a phone held sideways at all.
-ROWS_MAX = 60
+# blocks did not fit the six rows of a phone held sideways at all. Twenty
+# phone screens: at sixty, five of them, a page of 6012px on a phone (seven
+# screens) had to be drawn shorter than it is (two projects, 29 Sep).
+ROWS_MAX = 240
 
 # Preset layouts: a set of blocks on a frame, the starting point a page is
 # made from and then rearranged. Blocks are (kind, label, x, y, w, h).
@@ -664,24 +666,33 @@ def _clean_page(p, pid):
         _bad(f"{called}'s notes are at most {NOTES_MAX} characters, and these are {len(notes)}")
         notes = notes[:NOTES_MAX]
     clean = [_clean_block(b, g["cols"], rows, f"{called}, block {i + 1}") for i, b in enumerate(blocks)]
-    # Two blocks in one place is one of them lost under the other. An
-    # overlay is over the page, so it may sit where something else does.
-    seen = {}
-    for i, b in enumerate(clean):
-        at = (b["x"], b["y"], b["w"], b["h"])
-        if b["kind"] != "overlay" and at in seen:
-            _bad(f"{called}, blocks {seen[at] + 1} and {i + 1} sit in the same place")
-        elif b["kind"] != "overlay":
-            seen[at] = i
+    _one_place_each(clean, clean, f"{called}, blocks", "")
     return {"id": pid, "name": name,
             "platform": platform, "template": _choice(p.get("template"), TEMPLATE_KEYS, f"{called}'s template", "blank"),
             "frame": frame, "rows": rows, "blocks": clean,
-            "layouts": _clean_layouts(p.get("layouts"), frame, len(clean), called),
+            "layouts": _clean_layouts(p.get("layouts"), frame, clean, called),
             "notes": notes, "rules": _clean_rules(p.get("rules"), f"the page {called}"),
             "at": int(time.time())}
 
 
-def _clean_layouts(raw, frame, n, called):
+def _one_place_each(blocks, places, what, where):
+    """Two blocks in one place is one of them lost under the other, on the
+    frame the page is on and on every other it has a layout for: the first
+    was refused and the second kept, which two sessions found the same
+    afternoon. An overlay is over the page, so it may sit where something
+    else does."""
+    seen = {}
+    for i, (b, r) in enumerate(zip(blocks, places, strict=True)):
+        if b["kind"] == "overlay":
+            continue
+        at = (r["x"], r["y"], r["w"], r["h"])
+        if at in seen:
+            _bad(f"{what} {seen[at] + 1} and {i + 1} sit in the same place{where}")
+        else:
+            seen[at] = i
+
+
+def _clean_layouts(raw, frame, blocks, called):
     """Where the page's blocks sit on the other frames it has: per frame,
     one place per block, in the blocks' order (B348). A layout that is not
     that is refused and says why: one about another number of blocks was
@@ -701,6 +712,7 @@ def _clean_layouts(raw, frame, n, called):
         if f == frame:
             _bad(f"{called} has a layout for the {f} frame, which is the frame it is on: its blocks are that layout")
             continue
+        n = len(blocks)
         if not isinstance(places, list) or len(places) != n:
             have = len(places) if isinstance(places, list) else 0
             _bad(f"{called}'s {f} layout has {have} place{'' if have == 1 else 's'} "
@@ -708,6 +720,7 @@ def _clean_layouts(raw, frame, n, called):
             continue
         out[f] = [_place(r, FRAMES[f]["cols"], ROWS_MAX, f"{called}, place {i + 1} of its {f} layout")
                   for i, r in enumerate(places)]
+        _one_place_each(blocks, out[f], f"{called}, places", f" of its {f} layout")
     return out
 
 
@@ -726,6 +739,7 @@ def presets():
             "choices": {key: [{"key": k, "label": l, "means": m} for k, l, m in rows]
                         for key, rows in CHOICES.items()},
             "modes": list(MODES), "themes_max": THEMES_MAX, "colors_max": COLORS_MAX, "rules_max": RULES_MAX,
+            "rows_max": ROWS_MAX,
             "roles": {k: list(v) for k, v in ROLES.items()},
             "file": FILE_PATH}
 
@@ -1057,7 +1071,7 @@ def schema_text():
         f'    "rows": 14,   optional: how long the page is where it is longer than one screen, the frame\'s rows to {ROWS_MAX}',
         f'    "template": {" | ".join(TEMPLATE_KEYS)},',
         f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2 }} ],   at most {MAX_BLOCKS}, each inside the frame\'s columns and the page\'s rows, no two in one place (an overlay may be)',
-        f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the same blocks sit on another frame, one place per block in the blocks\' order, up to {ROWS_MAX} rows; bb design show and the file say each',
+        f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the same blocks sit on another frame, one place per block in the blocks\' order, no two in one place; a layout is as long as its places reach, up to {ROWS_MAX} rows, and rows above is the length on the page\'s own frame; bb design show and the file say each',
         f'    "notes": "...",   at most {NOTES_MAX} characters',
         '    "rules": [RULE]',
         f'  }} ],   at most {MAX_PAGES} pages',
@@ -1196,9 +1210,13 @@ def listing(project):
     rec = _record(_load(), project)
     lang = rec["language"]
     themes = ", ".join(f"{t['name']} ({t['mode']})" for t in lang["themes"]) or "no theme yet"
-    made = [x for x in (_label(FONTS, lang["font"]).lower() if lang["font"] else "",
+    # Each with its noun: "custom corners, custom, quiet motion" left the
+    # reader to work out what the second custom was.
+    made = [x for x in ((_label(FONTS, lang["font"]).lower() + (" type" if lang["font"] == "custom" else ""))
+                        if lang["font"] else "",
                         f"{lang['corners']} corners" if lang["corners"] else "",
-                        lang["density"], f"{lang['motion']} motion" if lang["motion"] else "") if x]
+                        f"{lang['density']} spacing" if lang["density"] else "",
+                        f"{lang['motion']} motion" if lang["motion"] else "") if x]
     left = open_choices(lang)
     lines = [f"{project}'s design language: {themes}"
              + (f"; {', '.join(made)}" if made else "")

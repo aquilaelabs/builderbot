@@ -453,7 +453,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
     pages: [{ name: 'Home', platform: 'web', frame: 'desktop', blocks: [{ kind: 'slider', x: 0, y: 0, w: 13, h: 1 },
         { kind: 'card', x: 0, y: 1, w: 4, h: 1 }, { kind: 'card', x: 0, y: 1, w: 4, h: 1 }],
       layouts: { phone: [{ x: 0, y: 0, w: 6, h: 1 }], tablet: [],
-                 landscape: [{ x: 0, y: 0, w: 12, h: 1 }, { x: 0, y: 7, w: 8, h: 60 }, { x: 0, y: 2, w: 1, h: 1 }] } }] });
+                 landscape: [{ x: 0, y: 0, w: 12, h: 1 }, { x: 0, y: 7, w: 8, h: 300 }, { x: 0, y: 2, w: 1, h: 1 }] } }] });
   const said = faulty.problems || [];
   const has = rx => said.some(x => rx.test(x));
   ok(faulty.status === 400 && said.length === 10
@@ -461,7 +461,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
      && has(/not 'a bare rule'/) && has(/Home, block 1's kind: no such choice, 'slider'/)
      && has(/Home, block 1 runs from column 1 to 13, and the frame has 12/) && has(/Home, blocks 2 and 3 sit in the same place/)
      && has(/Home's phone layout has 1 place for 3 blocks: one place per block/) && has(/a layout for 'tablet', which is not a frame/)
-     && has(/place 2 of its landscape layout runs from row 8 to 67/),
+     && has(/place 2 of its landscape layout runs from row 8 to 307, and the page has 240/),
      `a record with ten things wrong is refused with all ten, the duplicate color, the frame and the layouts among them (${said.length}: ${said.join(' | ').slice(0, 200)})`);
   ok(JSON.stringify((await api(`/api/design?project=${P}`)).pages) === JSON.stringify(was.pages),
      '...and nothing of it was kept: a block is never moved to fit, a layout never dropped to save the rest');
@@ -474,8 +474,21 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   ok(tall.status === 200 && made.rows === 12 && made.blocks[11].y === 11 && made.layouts?.phone?.[11]?.y === 22,
      `a page may be longer than its frame: twelve rows on the desktop's eight, and twenty-four on a phone (${JSON.stringify(made.layouts?.phone?.[11])})`);
   const over = await post({ language: was.language, pages: [{ name: 'too long', platform: 'web', frame: 'desktop', blocks: [stack[0], { ...stack[9] }] }] });
-  ok(over.status === 400 && /too long, block 2 runs from row 10 to 10, and the page has 8: give the page more rows \(rows, up to 60\)/.test(over.error || ''),
+  ok(over.status === 400 && /too long, block 2 runs from row 10 to 10, and the page has 8: give the page more rows \(rows, up to 240\)/.test(over.error || ''),
      `...and a block past the rows a page has is refused, saying how a page is made longer (${(over.error || '').slice(0, 90)})`);
+  // Two places in one spot is refused in a layout as it is among the
+  // page's own blocks, and a page may run to twenty phone screens: five
+  // was the limit, and a page of seven had to be drawn shorter than it is.
+  const twice = await post({ language: was.language, pages: [{ name: 'twice', platform: 'web', frame: 'desktop',
+    blocks: [stack[1], stack[2]], layouts: { phone: [{ x: 0, y: 0, w: 6, h: 1 }, { x: 0, y: 0, w: 6, h: 1 }] } }] });
+  ok(twice.status === 400 && /twice, places 1 and 2 sit in the same place of its phone layout/.test(twice.error || ''),
+     `two places in one spot are refused in a layout too (${(twice.error || '').slice(0, 80)})`);
+  const seven = await post({ language: tall.language, pages: [...tall.pages, { name: 'seven screens', platform: 'web', frame: 'phone', rows: 86,
+    blocks: [{ kind: 'table', label: 'the whole history', x: 0, y: 1, w: 6, h: 85 }, { kind: 'header', label: 'the top', x: 0, y: 0, w: 6, h: 1 }] }] });
+  ok(seven.status === 200 && (seven.pages || []).some(x => x.name === 'seven screens' && x.rows === 86 && x.blocks[0].h === 85),
+     `a page of seven phone screens is kept at its length (${seven.status} ${(seven.error || '').slice(0, 60)})`);
+  ok(/system sans, custom corners, comfortable spacing, quiet motion/.test(bb()),
+     `the design's one-line summary gives each choice its noun (${bb().split('\n')[0].slice(-80)})`);
   const shown2 = bb('show', 'a long page');
   ok(/on a desktop frame \(12 columns by 12 rows: the frame shows 8 of them, and the page scrolls\)/.test(shown2)
      && /The same blocks on a phone frame \(6 columns by 24 rows: the frame shows 12 of them, and the page scrolls\):/.test(shown2)
@@ -494,7 +507,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   await page.waitForSelector(`${NB} [data-dspage] [data-dsf="rows"]`, { timeout: 5000 });
   const board = () => page.$eval(`${NB} [data-dspage] .dsboard`, e => ({ rows: e.style.gridTemplateRows, tall: e.getBoundingClientRect().height / e.getBoundingClientRect().width }));
   const b12 = await board();
-  ok(await page.$eval(`${NB} [data-dspage] [data-dsf="rows"]`, e => e.value === '12' && e.min === '8' && e.max === '60')
+  ok(await page.$eval(`${NB} [data-dspage] [data-dsf="rows"]`, e => e.value === '12' && e.min === '8' && e.max === '240')
      && /repeat\(12/.test(b12.rows) && b12.tall > 0.9,
      `the view has the page's rows beside its frame, and the board is as many rows and as much taller (${b12.tall.toFixed(2)} of its width)`);
   await page.fill(`${NB} [data-dspage] [data-dsf="rows"]`, '16');

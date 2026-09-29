@@ -1622,7 +1622,7 @@ scheme's textures, say), which reach a session named under their holder,
 folded row a rule, inside the entry it holds for: the language's in its
 fold, a theme's above its colors, a page's under its board; the pages and
 the themes show one at a time, chosen on a pulldown at the top; a frame is
-one screen and a page may be longer than one, up to sixty rows, which
+one screen and a page may be longer than one, up to 240 rows, which
 scrolls, and a page keeps where its blocks sit on each frame it has been
 laid out for, which `bb design show` and the file say after the frame it is
 on; each of the language's four choices may be left not chosen, or be

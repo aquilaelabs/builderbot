@@ -54,6 +54,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's notebook can keep growing: the roadmap takes two hundred open items with the parked ones not counted (it refused a 31st), and what a session is sent keeps to a share per part, saying less per row before it leaves a row out and never losing its end (3b428a9)
 - The roadmap a session is sent counts the steps that are done and prints the ones still open (3b428a9)
 - Each choice of a design's language can be custom, which hands it to the design's rules; and what a session reads of a design is what the record says, with nothing added by BuilderBot (ed47d24)
+- A page on the Design view may run to 240 rows, twenty phone screens; at 60 a page of seven screens had to be drawn shorter than it is. A long board scrolls in a window of its own (39ba707)
 
 ### Removed
 
@@ -109,6 +110,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb devapp status says where the instance answers, and the briefing says that localhost in a session is the session's own: a session that asked 127.0.0.1 for its containers took them for down (ed47d24)
 - A design of any size its own limits allow saves; one of forty pages was refused as too large (ed47d24)
 - The New project dialog offers Add to the design with the other dials (ed47d24)
+- bb design save refuses two blocks in one place in a layout for another frame, as it does among a page's own blocks; and the design's one-line summary gives each choice its noun (39ba707)
 
 ### Security
 

@@ -381,7 +381,7 @@ function nbDesignView({$, nb, project, root}){
         ${ctl(`${key}-plat`, "Platform", "", `<select id="${key}-plat" data-dsf="platform">${opt(P.platforms, p.platform)}</select>`)}
         ${ctl(`${key}-frame`, "Frame", "", `<select id="${key}-frame" data-dsf="frame">${opt(frames, p.frame)}</select>`)}
         ${ctl(`${key}-rows`, "Rows", "how long the page is: the frame is one screen, and a page with more rows scrolls",
-              `<input id="${key}-rows" type="number" inputmode="numeric" min="${frameOf(p.frame).rows}" max="${ROWS_MAX}" value="${gridOf(p).rows}" data-dsf="rows">`)}
+              `<input id="${key}-rows" type="number" inputmode="numeric" min="${frameOf(p.frame).rows}" max="${rowsMax()}" value="${gridOf(p).rows}" data-dsf="rows">`)}
       </div></div>
       <div class="field">${boardHtml(p)}</div>
       <div class="field"><div class="dsrow">
@@ -430,11 +430,11 @@ function nbDesignView({$, nb, project, root}){
   }
   // A frame is one screen and a page may be longer than one: its grid is
   // the frame's columns by its own rows, and the board grows with them.
-  const ROWS_MAX = 60;
+  const rowsMax = () => presets().rows_max || 60;
   const frameOf = f => presets().frames?.[f] || {cols: 12, rows: 8};
   const reach = places => Math.max(0, ...(places || []).map(b => b.y + b.h));
   const gridOf = p => ({cols: frameOf(p.frame).cols,
-                        rows: Math.min(ROWS_MAX, Math.max(frameOf(p.frame).rows, p.rows || 0))});
+                        rows: Math.min(rowsMax(), Math.max(frameOf(p.frame).rows, p.rows || 0))});
   const SHAPE = {desktop: [16, 10], phone: [9, 16], landscape: [16, 9]};
   function boardHtml(p){
     const g = gridOf(p);
@@ -446,13 +446,15 @@ function nbDesignView({$, nb, project, root}){
             data-i="${i}" style="${blockStyle(b)}" aria-label="${esc(kindLabel(b.kind))}${b.label ? ": " + esc(b.label) : ""}">
             <b>${esc(kindLabel(b.kind))}</b>${b.label ? `<span>${esc(b.label)}</span>` : ""}<i class="dsgrip" aria-hidden="true"></i></div>`).join("")
       : `<div class="dsempty">nothing on this ${esc(p.frame)} yet</div>`;
-    return `<div class="dsboard" data-frame="${esc(p.frame)}" role="group" aria-label="the layout of ${esc(p.name || "this page")}"
-      style="${tall}grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div>`;
+    // A page of many screens is looked at through a window of its own,
+    // so the fields under the board stay in reach.
+    return `<div class="dsboardwrap"><div class="dsboard" data-frame="${esc(p.frame)}" role="group" aria-label="the layout of ${esc(p.name || "this page")}"
+      style="${tall}grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div></div>`;
   }
   const kindLabel = k => byKey(presets().kinds, k)?.label || k;
   function repaintBoard(p){
     const host = root.querySelector(`[data-dspage="${keyOf(p)}"] .dsboard`);
-    if (host) host.outerHTML = boardHtml(p);
+    if (host) host.parentElement.outerHTML = boardHtml(p);
     pageOption(p);
   }
   // The page's line on the Pages pulldown: its name, platform and count.
@@ -515,7 +517,7 @@ function nbDesignView({$, nb, project, root}){
     // up into what is left, and never under the frame's one screen.
     el.querySelector('[data-dsf="rows"]').onchange = e => {
       const n = Math.round(Number(e.target.value)) || 0;
-      p.rows = Math.min(ROWS_MAX, Math.max(frameOf(p.frame).rows, n));
+      p.rows = Math.min(rowsMax(), Math.max(frameOf(p.frame).rows, n));
       p.blocks.forEach(b => clampBlock(b, gridOf(p), undefined));
       touched(); drawDesign();
     };
