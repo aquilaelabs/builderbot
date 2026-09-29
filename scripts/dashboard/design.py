@@ -660,12 +660,51 @@ def _place(b, cols, rows, what):
     return {"x": x, "y": y, "w": min(w, cols - x), "h": min(h, rows - y)}
 
 
-def _clean_block(b, cols, rows, what):
+def _clean_block(b, cols, rows, what, n):
     if not isinstance(b, dict):
         _bad(f"{what} is an object (kind, label, x, y, w, h), not {str(b)[:40]!r}")
         b = {}
-    return {"kind": _choice(b.get("kind"), KIND_KEYS, f"{what}'s kind", "content"),
-            "label": _line(b.get("label"), NAME_MAX, f"{what}'s label"), **_place(b, cols, rows, what)}
+    out = {"kind": _choice(b.get("kind"), KIND_KEYS, f"{what}'s kind", "content"),
+           "label": _line(b.get("label"), NAME_MAX, f"{what}'s label"), **_place(b, cols, rows, what)}
+    # The block this one lies inside (its parent), by the number the
+    # messages count blocks by: a card in a list, a form in a card. The
+    # board keeps a child within its parent; here it is held to that.
+    inside = b.get("in")
+    if inside not in (None, "", 0):
+        try:
+            k = int(inside)
+        except (TypeError, ValueError):
+            k = -1
+        if not 1 <= k <= n:
+            _bad(f"{what} is inside block {inside!r}, and the page has blocks 1 to {n}")
+        elif what.endswith(f"block {k}"):
+            _bad(f"{what} is inside itself")
+        else:
+            out["in"] = k
+    return out
+
+
+def _inside_parents(blocks, places, what, where):
+    """A child lies within its parent, on the frame the page is on and on
+    every other it has a layout for, and no chain of parents loops."""
+    for i, b in enumerate(blocks):
+        seen, k = {i}, b.get("in")
+        while k:
+            j = k - 1
+            if j in seen:
+                _bad(f"{what} {i + 1} is inside a chain of blocks that comes back to itself")
+                b.pop("in", None)
+                break
+            seen.add(j)
+            k = blocks[j].get("in")
+    for i, (b, r) in enumerate(zip(blocks, places, strict=True)):
+        k = b.get("in")
+        if not k:
+            continue
+        p = places[k - 1]
+        if r["x"] < p["x"] or r["y"] < p["y"] or r["x"] + r["w"] > p["x"] + p["w"] or r["y"] + r["h"] > p["y"] + p["h"]:
+            _bad(f"{what} {i + 1} is inside block {k} but reaches outside it{where}: a block inside "
+                 "another stays within it")
 
 
 PAGE_KEY = re.compile(r"[a-z0-9][a-z0-9-]{0,23}")
@@ -728,8 +767,8 @@ def _clean_page(p, pid):
     if len(notes) > NOTES_MAX:
         _bad(f"{called}'s notes are at most {NOTES_MAX} characters, and these are {len(notes)}")
         notes = notes[:NOTES_MAX]
-    clean = [_clean_block(b, g["cols"], rows, f"{called}, block {i + 1}") for i, b in enumerate(blocks)]
-    _one_place_each(clean, clean, f"{called}, blocks", "")
+    clean = [_clean_block(b, g["cols"], rows, f"{called}, block {i + 1}", len(blocks)) for i, b in enumerate(blocks)]
+    _inside_parents(clean, clean, f"{called}, block", "")
     return {"id": pid, "name": name,
             "platform": platform, "template": _choice(p.get("template"), TEMPLATE_KEYS, f"{called}'s template", "blank"),
             "key": _page_key(p.get("key"), called),
@@ -737,34 +776,6 @@ def _clean_page(p, pid):
             "layouts": _clean_layouts(p.get("layouts"), frame, clean, called),
             "notes": notes, "rules": _clean_rules(p.get("rules"), f"the page {called}"),
             "at": int(time.time())}
-
-
-def _one_place_each(blocks, places, what, where):
-    """No two blocks cover the same cells, on the frame the page is on and
-    on every other it has a layout for: 'rows 1 to 3' and 'rows 3 to 5'
-    for two cards is a layout nobody can build. Two ways a block may share
-    cells with another: it lies wholly inside it (a card in a list, a form
-    in a card), or it is an overlay, which is over the page. Two in the
-    very same place are one lost under the other."""
-    rows = [(i, r) for i, (b, r) in enumerate(zip(blocks, places, strict=True)) if b["kind"] != "overlay"]
-    for n, (i, a) in enumerate(rows):
-        for j, b in rows[n + 1:]:
-            x0, x1 = max(a["x"], b["x"]), min(a["x"] + a["w"], b["x"] + b["w"])
-            y0, y1 = max(a["y"], b["y"]), min(a["y"] + a["h"], b["y"] + b["h"])
-            if x0 >= x1 or y0 >= y1:
-                continue
-            if (a["x"], a["y"], a["w"], a["h"]) == (b["x"], b["y"], b["w"], b["h"]):
-                _bad(f"{what} {i + 1} and {j + 1} sit in the same place{where}")
-                continue
-            inside = ((a["x"] <= b["x"] and a["y"] <= b["y"] and a["x"] + a["w"] >= b["x"] + b["w"]
-                       and a["y"] + a["h"] >= b["y"] + b["h"])
-                      or (b["x"] <= a["x"] and b["y"] <= a["y"] and b["x"] + b["w"] >= a["x"] + a["w"]
-                          and b["y"] + b["h"] >= a["y"] + a["h"]))
-            if not inside:
-                cols = f"column {x0 + 1}" if x1 - x0 == 1 else f"columns {x0 + 1} to {x1}"
-                lines = f"row {y0 + 1}" if y1 - y0 == 1 else f"rows {y0 + 1} to {y1}"
-                _bad(f"{what} {i + 1} and {j + 1} both cover {lines}, {cols}{where}: "
-                     "a block sits beside another or wholly inside it")
 
 
 def _clean_layouts(raw, frame, blocks, called):
@@ -795,7 +806,7 @@ def _clean_layouts(raw, frame, blocks, called):
             continue
         out[f] = [_place(r, FRAMES[f]["cols"], ROWS_MAX, f"{called}, place {i + 1} of its {f} layout")
                   for i, r in enumerate(places)]
-        _one_place_each(blocks, out[f], f"{called}, places", f" of its {f} layout")
+        _inside_parents(blocks, out[f], f"{called}, block", f" in its {f} layout")
     return out
 
 
@@ -989,15 +1000,23 @@ def page_text(page):
     plat = _platform(page["platform"])
     name = page["name"] or "this page"
 
+    # In the order they are drawn, first at the bottom: a block later in
+    # the list draws over an earlier one where the two overlap, and one
+    # inside another says so, which is how a card in a list is read.
     def said(blocks, frame, n):
         out = []
-        for b in sorted(blocks, key=lambda b: (b["y"], b["x"])):
+        for i, b in enumerate(blocks):
             what = f": {b['label']}" if b["label"] else ""
-            out.append(f"  {_label(KINDS, b['kind'])} ({_means(KINDS, b['kind'])}){what}, {_where(b, frame, n)}")
+            par = blocks[b["in"] - 1] if b.get("in") else None
+            inside = (f", inside block {b['in']} ({_label(KINDS, par['kind'])}"
+                      f"{': ' + par['label'] if par['label'] else ''})") if par else ""
+            out.append(f"  {i + 1}. {_label(KINDS, b['kind'])} ({_means(KINDS, b['kind'])}){what}, "
+                       f"{_where(b, frame, n)}{inside}")
         return out
     lines = [f"Platform: {plat[4]}.",
              f"Layout of {name} on a {page['frame']} frame ({_frame_words(page['frame'], rows)}), from the "
-             f"{_label([(t['key'], t['label'], '') for t in TEMPLATES], page['template'])} template:"]
+             f"{_label([(t['key'], t['label'], '') for t in TEMPLATES], page['template'])} template, "
+             "numbered in drawing order (a later block draws over an earlier one where they overlap):"]
     if not page["blocks"]:
         lines.append("  (no blocks placed yet)")
     lines += said(page["blocks"], page["frame"], rows)
@@ -1152,8 +1171,8 @@ def schema_text():
         + ", ".join(f"{k} is {v['cols']} columns by {v['rows']} rows" for k, v in FRAMES.items()),
         f'    "rows": 14,   optional: how long the page is where it is longer than one screen, the frame\'s rows to {ROWS_MAX}',
         f'    "template": {" | ".join(TEMPLATE_KEYS)},',
-        f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2 }} ],   at most {MAX_BLOCKS}, each inside the frame\'s columns and the page\'s rows; no two cover the same cells, unless one lies wholly inside the other (a card in a list) or is an overlay',
-        f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the same blocks sit on another frame, one place per block in the blocks\' order, held to the same rule on covering; a layout is as long as its places reach, up to {ROWS_MAX} rows, and rows above is the length on the page\'s own frame; bb design show and the file say each',
+        f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2, "in": 1 }} ],   at most {MAX_BLOCKS}, each inside the frame\'s columns and the page\'s rows, in drawing order (a later block draws over an earlier one where they overlap); "in" is optional: the number of the block this one lies inside, which it stays within',
+        f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the same blocks sit on another frame, one place per block in the blocks\' order, a block inside another still within it; a layout is as long as its places reach, up to {ROWS_MAX} rows, and rows above is the length on the page\'s own frame; bb design show and the file say each',
         f'    "notes": "...",   at most {NOTES_MAX} characters',
         '    "rules": [RULE]',
         f'  }} ],   at most {MAX_PAGES} pages',

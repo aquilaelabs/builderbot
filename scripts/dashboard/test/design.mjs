@@ -55,6 +55,14 @@ await page.waitForSelector(`${NB} #dsBody .sect`, { timeout: 20000 });
 ok(/no pages yet/.test(await page.$eval(`${NB} #dsHint`, e => e.textContent))
    && await page.$eval(`${NB} #nbFoot`, e => e.checkVisibility()),
    'the view opens on its head row, saying there are no pages, with the notebook\'s Save at its foot');
+// The three sections start shut on a new tab, and Add page is the Pages
+// section's own (the operator, 29 Sep).
+ok(await page.$$eval(`${NB} #dsBody > details.sect`, ds => ds.map(d => `${d.dataset.sect}:${d.open ? "open" : "shut"}`).join(' ')) === 'design:pages:shut design:language:shut design:themes:shut'
+   && !!(await page.$(`${NB} [data-sect="design:pages"] #dsAdd`)),
+   'the view opens with Pages, Design language and Themes folded, and Add page inside Pages');
+// The sections start shut, so each is opened before its controls are used.
+const openSect = async id => { if (!(await page.$eval(`${NB} [data-sect="design:${id}"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:${id}"]`); };
+await openSect('pages');
 await page.selectOption(`${NB} #dsTemplate`, 'dashboard');
 await page.click(`${NB} #dsAdd`);
 await page.waitForSelector(`${NB} [data-dspage] .dsboard .dsblock`, { timeout: 10000 });
@@ -92,17 +100,45 @@ await page.keyboard.press('Shift+ArrowDown'); await page.keyboard.press('Shift+A
 ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridRow) === '4 / span 5',
    '...and sizing it past the frame\'s edge caps it there rather than sliding it up');
 // Dragged a column to the right, the chart partly covers the list beside
-// it. A save of that is refused (no two blocks cover the same cells,
-// unless one lies wholly inside the other or is an overlay), so the board
-// says so as it happens: both outlined in red, and the words under it.
-ok(await page.$$eval(`${NB} [data-dspage] .dsblock.clash`, bs => bs.map(b => b.dataset.i).join()) === '4,5'
-   && await page.$eval(`${NB} [data-dspage] .dsclash`, e => !e.hidden && /partly cover each other, and Save refuses that/.test(e.textContent)),
-   'two blocks that partly cover each other are outlined in red on the board, with the reason under it');
+// it, which is allowed now (the operator, 29 Sep): a later layer draws
+// over an earlier one, and the layers beside the board are the way to a
+// block another covers, top first, the selected one marked.
+{
+  const layers = await page.$$eval(`${NB} [data-dspage] .dslayers .dslayer`, rs => rs.map(r => `${r.dataset.dsl}${r.classList.contains('on') ? '*' : ''}:${r.querySelector('b').textContent}`));
+  ok(layers.join(' ') === '5:List 4*:Chart 3:Card 2:Card 1:Card 0:Header' && !(await page.$(`${NB} .dsclash`)),
+     `blocks may overlap, and the layers list names them top first with the selected one marked (${layers.join(' ')})`);
+  await page.click(`${NB} [data-dspage] [data-dslup="4"]`);
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dslayer.on')?.dataset.dsl === '5', null, { timeout: 5000 });
+  ok(await page.$$eval(`${NB} [data-dspage] .dslayers .dslayer b`, bs => bs.map(b => b.textContent).join()) === 'Chart,List,Card,Card,Card,Header'
+     && await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridColumn) === '2 / span 8'
+     && await page.$eval(`${NB} [data-dspage] [data-dsb="label"]`, e => e.value) === 'orders per day',
+     'a layer up moves the block over the one above it, and it stays selected with its place and words');
+  await page.click(`${NB} [data-dspage] [data-dsldown="5"]`);
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dslayer.on')?.dataset.dsl === '4', null, { timeout: 5000 });
+  await page.click(`${NB} [data-dspage] .dslayer[data-dsl="1"]`);
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsblock.on')?.dataset.i === '1', null, { timeout: 5000 });
+  ok(true, 'a row of the list selects its block on the board');
+  // A block inside another: the second card inside the list, brought
+  // within it and kept there as it is moved.
+  await page.selectOption(`${NB} [data-dspage] [data-dsb="in"]`, '6');
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dslayer[data-dsl="1"]')?.style.paddingLeft === '22px', null, { timeout: 5000 });
+  const inside = await page.$eval(`${NB} [data-dspage] .dsblock[data-i="1"]`, e => ({ col: e.style.gridColumn, row: e.style.gridRow }));
+  const list = await page.$eval(`${NB} [data-dspage] .dsblock[data-i="5"]`, e => ({ col: e.style.gridColumn, row: e.style.gridRow }));
+  await page.focus(`${NB} [data-dspage] .dsblock.on`);
+  for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowLeft');
+  const after = await page.$eval(`${NB} [data-dspage] .dsblock[data-i="1"]`, e => e.style.gridColumn);
+  const span = v => { const [a, b] = v.split(/ \/ span /).map(Number); return [a, a + b]; };
+  const within = (c, p) => span(c)[0] >= span(p)[0] && span(c)[1] <= span(p)[1];
+  ok(within(inside.row, list.row) && within(inside.col, list.col) && after === list.col.replace(/ \/ span.*/, ' / span 4'),
+     `a block inside another is brought within it, indented under it in the list, and cannot be moved out of it (${JSON.stringify(inside)} in ${JSON.stringify(list)}; moved left: ${after})`);
+  await page.selectOption(`${NB} [data-dspage] [data-dsb="in"]`, '');
+  await page.click(`${NB} [data-dspage] .dslayer[data-dsl="4"]`);
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsblock.on')?.dataset.i === '4', null, { timeout: 5000 });
+  await page.focus(`${NB} [data-dspage] .dsblock.on`);
+}
 await page.keyboard.press('Shift+ArrowLeft');
-ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridColumn) === '2 / span 7'
-   && (await page.$$(`${NB} [data-dspage] .dsblock.clash`)).length === 0
-   && await page.$eval(`${NB} [data-dspage] .dsclash`, e => e.hidden),
-   '...and narrowed by a column it sits beside the list, and the outline and the words go');
+ok(await page.$eval(`${NB} [data-dspage] .dsblock.on`, e => e.style.gridColumn) === '2 / span 7',
+   '...and narrowed by a column it sits beside the list again');
 // Nothing on the view reaches into a session, and nothing on it is a
 // prompt: a session reads the design piece by piece with bb design show
 // (the operator, 28 and 29 Sep).
@@ -117,10 +153,10 @@ ok(rec.pages.length === 1 && pg.id === 1 && pg.name === 'the home dashboard' && 
    `Save writes the page with its id, its name, its platform and the blocks as arranged (${JSON.stringify(pg.blocks[4])})`);
 // ---- the page's prose, the server's words, read with bb design show --------------------
 const promptText = (await api(`/api/design?project=${P}&show=1`)).text || '';
-ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
+ok(/^Build or restyle the home dashboard to this layout/.test(promptText) && /numbered in drawing order/.test(promptText)
    && /docs\/design-language\.md is yours to write and commit with the work, from what is saved here: `bb design file > docs\/design-language\.md`; the notebook never writes it into the tree by itself/.test(promptText)
    && /Platform: a responsive web app/.test(promptText)
-   && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 8 of 12, rows 4 to 8 of 8/.test(promptText)
+   && /5\. Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 8 of 12, rows 4 to 8 of 8/.test(promptText)
    && /Colors: none chosen yet\. Choose them as tokens/.test(promptText)
    && /Not chosen yet: type, corners, space, motion\. Choose each from what you build/.test(promptText)
    && !/prefers-reduced-motion|Type:|Shape:|Space:|Motion:|AA contrast/.test(promptText),
@@ -168,6 +204,7 @@ ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
 ok(await page.$eval(`${NB} [data-sect="design:themes"] > summary .sst`, e => e.textContent) === '0 themes'
    && /No theme yet/.test(await page.$eval(`${NB} [data-sect="design:themes"] .hint`, e => e.textContent)),
    'the Themes fold starts empty, saying a session may choose the colors');
+await openSect('themes');
 await page.selectOption(`${NB} #dsThemeFrom`, 'default');
 await page.click(`${NB} #dsThemeAdd`);
 await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dst="from"]`, { timeout: 5000 });
@@ -227,10 +264,12 @@ ok(again.language.themes.length === 2 && again.language.themes[0].colors.find(c 
 // back to what is saved.
 {
   const before = await api(`/api/design?project=${P}`);
+  await openSect('language'); await openSect('themes');
   await page.selectOption(`${NB} #dsFont`, 'serif');
   await page.selectOption(`${NB} #dsThemeFrom`, 'moss');
   await page.click(`${NB} #dsThemeAdd`);
   await page.waitForSelector(`${NB} [data-dstheme="2"]`, { timeout: 5000 });
+  if (!(await page.$eval(`${NB} [data-sect="design:pages"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:pages"]`);
   await page.click(`${NB} #dsAdd`);
   await page.waitForFunction(() => document.querySelector('.nb #dsPagePick')?.options.length === 2, null, { timeout: 5000 });
   if (!(await page.$eval(`${NB} [data-sect="design:rules"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:rules"]`);
@@ -289,6 +328,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   ok(pre.tokens.map(t => t.key).join() === 'bg,panel,ink,dim,line,accent,warn,bad,note,good'
      && pre.kinds.some(k => k.key === 'overlay') && pre.frames.landscape.cols === 12,
      'the vocabulary carries a good role, an overlay kind and a sideways phone frame');
+  await openSect('themes');
   await page.selectOption(`${NB} #dsThemePick`, '0');
   await page.waitForSelector(`${NB} [data-dstheme="0"]`, { timeout: 5000 });
   ok(!(await page.$(`${NB} [data-dstheme="1"]`)), 'the Themes pulldown shows the theme chosen and no other');
@@ -297,6 +337,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   await page.fill(`${NB} #dst-0-name-10`, 'surface 2');
   await page.fill(`${NB} #dst-0-hex-10`, '#f0efec');
   await page.fill(`${NB} #dst-0-for-10`, 'a second surface tier');
+  await openSect('language');
   await page.fill(`${NB} #dsFonts`, 'Inter for text, JetBrains Mono for code');
   await page.selectOption(`${NB} [data-dspage] [data-dsf="frame"]`, 'landscape');
   await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'landscape', null, { timeout: 5000 });
@@ -468,13 +509,15 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
                  landscape: [{ x: 0, y: 0, w: 12, h: 1 }, { x: 0, y: 7, w: 8, h: 300 }, { x: 0, y: 2, w: 1, h: 1 }] } }] });
   const said = faulty.problems || [];
   const has = rx => said.some(x => rx.test(x));
-  ok(faulty.status === 400 && said.length === 10
+  // (Two blocks in one place are allowed since 29 Sep: a later one draws
+  // over an earlier one, so that is nine things wrong, not ten.)
+  ok(faulty.status === 400 && said.length === 9
      && has(/a color is #rrggbb or #rrggbbaa, not 'blue'/) && has(/^A names bg twice/) && has(/corners: no such choice, 'pill'; it is one of square, soft, round, custom/)
      && has(/not 'a bare rule'/) && has(/Home, block 1's kind: no such choice, 'slider'/)
-     && has(/Home, block 1 runs from column 1 to 13, and the frame has 12/) && has(/Home, blocks 2 and 3 sit in the same place/)
+     && has(/Home, block 1 runs from column 1 to 13, and the frame has 12/)
      && has(/Home's phone layout has 1 place for 3 blocks: one place per block/) && has(/a layout for 'tablet', which is not a frame/)
      && has(/place 2 of its landscape layout runs from row 8 to 307, and the page has 240/),
-     `a record with ten things wrong is refused with all ten, the duplicate color, the frame and the layouts among them (${said.length}: ${said.join(' | ').slice(0, 200)})`);
+     `a record with nine things wrong is refused with all nine, the duplicate color, the frame and the layouts among them (${said.length}: ${said.join(' | ').slice(0, 200)})`);
   ok(JSON.stringify((await api(`/api/design?project=${P}`)).pages) === JSON.stringify(was.pages),
      '...and nothing of it was kept: a block is never moved to fit, a layout never dropped to save the rest');
   // A page longer than one screen, with where its blocks sit on a phone.
@@ -488,13 +531,14 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   const over = await post({ language: was.language, pages: [{ name: 'too long', platform: 'web', frame: 'desktop', blocks: [stack[0], { ...stack[9] }] }] });
   ok(over.status === 400 && /too long, block 2 runs from row 10 to 10, and the page has 8: give the page more rows \(rows, up to 240\)/.test(over.error || ''),
      `...and a block past the rows a page has is refused, saying how a page is made longer (${(over.error || '').slice(0, 90)})`);
-  // Two places in one spot is refused in a layout as it is among the
-  // page's own blocks, and a page may run to twenty phone screens: five
-  // was the limit, and a page of seven had to be drawn shorter than it is.
+  // Two places in one spot are kept in a layout as among the page's own
+  // blocks (a later one draws over an earlier one, 29 Sep), and a page may
+  // run to twenty phone screens: five was the limit, and a page of seven
+  // had to be drawn shorter than it is.
   const twice = await post({ language: was.language, pages: [{ name: 'twice', platform: 'web', frame: 'desktop',
     blocks: [stack[1], stack[2]], layouts: { phone: [{ x: 0, y: 0, w: 6, h: 1 }, { x: 0, y: 0, w: 6, h: 1 }] } }] });
-  ok(twice.status === 400 && /twice, places 1 and 2 sit in the same place of its phone layout/.test(twice.error || ''),
-     `two places in one spot are refused in a layout too (${(twice.error || '').slice(0, 80)})`);
+  ok(twice.status === 200 && (twice.pages || []).some(x => x.name === 'twice' && x.layouts?.phone?.[1]?.y === 0),
+     `two places in one spot are kept in a layout too (${twice.status} ${(twice.error || '').slice(0, 80)})`);
   const seven = await post({ language: tall.language, pages: [...tall.pages, { name: 'seven screens', platform: 'web', frame: 'phone', rows: 86,
     blocks: [{ kind: 'table', label: 'the whole history', x: 0, y: 1, w: 6, h: 85 }, { kind: 'header', label: 'the top', x: 0, y: 0, w: 6, h: 1 }] }] });
   ok(seven.status === 200 && (seven.pages || []).some(x => x.name === 'seven screens' && x.rows === 86 && x.blocks[0].h === 85),
@@ -509,10 +553,18 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
              { kind: 'list', label: 'c', x: 0, y: 6, w: 12, h: 5 }, { kind: 'card', label: 'd', x: 1, y: 7, w: 4, h: 2 },
              { kind: 'overlay', label: 'e', x: 3, y: 1, w: 6, h: 6 }],
     layouts: { phone: [{ x: 0, y: 0, w: 6, h: 3 }, { x: 0, y: 2, w: 6, h: 3 }, { x: 0, y: 6, w: 6, h: 5 }, { x: 1, y: 7, w: 4, h: 2 }, { x: 0, y: 0, w: 6, h: 12 }] } }] });
-  ok(partly.status === 400 && (partly.problems || []).length === 2
-     && /partly, blocks 1 and 2 both cover row 3, columns 1 to 12: a block sits beside another or wholly inside it/.test(partly.error)
-     && /partly, places 1 and 2 both cover row 3, columns 1 to 6 of its phone layout/.test(partly.error),
-     `two blocks that partly cover each other are refused, on the page's frame and in a layout; a card inside a list and an overlay are not (${(partly.problems || []).length}: ${(partly.error || '').slice(0, 90)})`);
+  ok(partly.status === 200 && (partly.pages || []).some(x => x.name === 'partly' && x.blocks.length === 5),
+     `blocks that partly cover each other are kept: a later one draws over an earlier one (${partly.status} ${(partly.error || '').slice(0, 80)})`);
+  const nested = await post({ language: was.language, pages: [{ name: 'nested', platform: 'web', frame: 'desktop', rows: 20,
+    blocks: [{ kind: 'list', label: 'a', x: 0, y: 0, w: 12, h: 8 }, { kind: 'card', label: 'b', x: 1, y: 1, w: 4, h: 2, in: 1 },
+             { kind: 'card', label: 'c', x: 9, y: 6, w: 3, h: 4, in: 1 }, { kind: 'form', label: 'd', x: 0, y: 9, w: 6, h: 3, in: 5 },
+             { kind: 'card', label: 'e', x: 0, y: 9, w: 6, h: 3, in: 4 }],
+    layouts: { phone: [{ x: 0, y: 0, w: 4, h: 8 }, { x: 3, y: 1, w: 3, h: 2 }, { x: 0, y: 0, w: 2, h: 2 }, { x: 0, y: 9, w: 6, h: 3 }, { x: 0, y: 9, w: 6, h: 3 }] } }] });
+  ok(nested.status === 400 && (nested.problems || []).length === 3
+     && /nested, block 3 is inside block 1 but reaches outside it: a block inside another stays within it/.test(nested.error)
+     && /nested, block 2 is inside block 1 but reaches outside it in its phone layout/.test(nested.error)
+     && /nested, block 4 is inside a chain of blocks that comes back to itself/.test(nested.error),
+     `a block inside another is held within it on every frame, and a chain of parents that loops is refused (${(nested.problems || []).length}: ${(nested.error || '').slice(0, 100)})`);
   const badRows = await post({ language: was.language, pages: [{ name: 'too many', platform: 'web', frame: 'desktop', rows: 241,
     blocks: [{ kind: 'header', label: 'a', x: 0, y: 0, w: 12, h: 1 }, { kind: 'card', label: 'b', x: 0, y: 12, w: 12, h: 7 }, { kind: 'card', label: 'c', x: 0, y: 19, w: 12, h: 1 }] }] });
   ok(badRows.status === 400 && (badRows.problems || []).length === 1 && /too many has 241 rows: a page on the desktop frame has 8 \(one screen\) to 240/.test(badRows.error),
@@ -591,6 +643,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   // Briefing's list again, following the pulldown; a rule there reaches a
   // session as HOLDER/RULE, and bb design show reads it so.
   await page.selectOption(`${NB} #dsThemePick`, '0');
+  await openSect('themes');
   await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dsrules="t0"]`, { timeout: 5000 });
   ok(await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .t`, e => e.textContent) === "Rules"
      && await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .sst`, e => e.textContent) === 'none'

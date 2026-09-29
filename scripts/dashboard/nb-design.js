@@ -58,7 +58,6 @@ function nbDesignView({$, nb, project, root}){
       nb.dsPages = clone(nb.dsData.pages);
       nb.dsDirty = false;
     }
-    drawAdd();
     drawDesign();
   }
 
@@ -96,18 +95,26 @@ function nbDesignView({$, nb, project, root}){
     tpl.innerHTML = rows.map(t => `<option value="${esc(t.key)}">${esc(t.label)}</option>`).join("");
     if (was && rows.some(t => t.key === was)) tpl.value = was;
   }
-  $("dsPlatform").onchange = fillTemplates;
-  $("dsAdd").onclick = () => {
-    const t = byKey(presets().templates, $("dsTemplate").value);
-    if (!t) return;
-    const p = {id: 0, tmp: ++tmpN, name: "", platform: $("dsPlatform").value, template: t.key,
-               frame: t.frame, blocks: clone(t.blocks), notes: ""};
-    nb.dsPages.push(p);
-    nb.dsShow.page = keyOf(p);
-    touched();
-    drawDesign();
-    root.querySelector(`[data-dspage="${keyOf(p)}"] [data-dsf="name"]`)?.focus();
-  };
+  // The add bar is drawn at the top of the Pages section on every draw
+  // (the operator, 29 Sep), so it is wired then rather than once.
+  function wireAdd(){
+    if (!$("dsAdd")) return;
+    drawAdd();
+    $("dsPlatform").onchange = fillTemplates;
+    $("dsAdd").onclick = () => {
+      const t = byKey(presets().templates, $("dsTemplate").value);
+      if (!t) return;
+      const p = {id: 0, tmp: ++tmpN, name: "", platform: $("dsPlatform").value, template: t.key,
+                 frame: t.frame, blocks: clone(t.blocks), notes: ""};
+      nb.dsPages.push(p);
+      nb.dsShow.page = keyOf(p);
+      // The section opens on what was just added, whatever its fold said.
+      sectOpen["design:pages"] = true;
+      touched();
+      drawDesign();
+      root.querySelector(`[data-dspage="${keyOf(p)}"] [data-dsf="name"]`)?.focus();
+    };
+  }
   $("dsWrite").onclick = async () => {
     const b = $("dsWrite");
     busy(b, "Writing");
@@ -152,6 +159,7 @@ function nbDesignView({$, nb, project, root}){
     nb.dsRuleLists = {};
     body.innerHTML = pagesSection(sh.page) + languageSection() + themesSection(sh.theme);
     wireSections(body);
+    wireAdd();
     wireLanguage(body);
     wireThemes(body, sh.theme);
     if (sh.page) wirePage(body.querySelector(`[data-dspage="${keyOf(sh.page)}"]`), sh.page);
@@ -206,7 +214,7 @@ function nbDesignView({$, nb, project, root}){
             "what the language covers when the project is more than one product: the web app in site/",
             `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope)}</textarea>`, true)}</div>
       ${rulesFold()}`;
-    return docSection("design", "language", "Design language", status, body);
+    return docSection("design", "language", "Design language", status, body, {open: false});
   }
 
   // The themes: a pulldown of them, the add bar, and the chosen one's
@@ -222,7 +230,7 @@ function nbDesignView({$, nb, project, root}){
         <button type="button" id="dsThemeAdd" ${themes.length >= (P.themes_max || 8) ? "disabled" : ""}>Add theme</button>
       </div></div>
       ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet. Add one from a preset, or leave it: a session that builds the project chooses the colors and puts them here.</div></div>`}`;
-    return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}`, body);
+    return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}`, body, {open: false});
   }
 
   // The design's rules, the Briefing's shape (nb-rules.js, drawRules): Add a
@@ -369,18 +377,24 @@ function nbDesignView({$, nb, project, root}){
     </div>`;
   }
 
-  // The pages: a pulldown of them and the chosen one's board and fields.
-  // Adding one is the head row's (a platform, a template, Add page).
+  // The pages: the add bar (a platform, a template, Add page), a pulldown
+  // of them, and the chosen one's board and fields. Shut on a new tab,
+  // like the language and the themes (the operator, 29 Sep): the board is
+  // the big thing on this view, and it opens on what is added.
   function pagesSection(p){
     const n = nb.dsPages.length;
     const rows = nb.dsPages.map(x => ({key: keyOf(x), label: `${x.name.trim() || "unnamed page"} (${platformOf(x)?.label || x.platform}, ${x.blocks.length} block${x.blocks.length === 1 ? "" : "s"})`}));
-    const body = n ? `
+    const add = `<div class="field"><div class="addbar" data-add="design">
+        <select id="dsPlatform" aria-label="the platform the new page is for"></select>
+        <select id="dsTemplate" aria-label="the layout the new page starts from"></select>
+        <button id="dsAdd" class="primary" type="button">Add page</button></div></div>`;
+    const body = add + (n ? `
       <div class="field"><div class="dsrow">
         ${pick("dsPagePick", "Page", rows, nb.dsShow.page || "", "each laid out as blocks on a frame and named for what it is for")}
       </div></div>
       ${p ? pageBody(p) : ""}`
-      : `<div class="field"><div class="hint">No pages yet: pick a platform and a template above and press Add page.</div></div>`;
-    return docSection("design", "pages", "Pages", n ? `${n} page${n === 1 ? "" : "s"}` : "none yet", body);
+      : `<div class="field"><div class="hint">No pages yet: pick a platform and a template and press Add page.</div></div>`);
+    return docSection("design", "pages", "Pages", n ? `${n} page${n === 1 ? "" : "s"}` : "none yet", body, {open: false});
   }
 
   function pageBody(p){
@@ -410,9 +424,12 @@ function nbDesignView({$, nb, project, root}){
         ${ctl(`${key}-bkind`, "Kind", "", `<select id="${key}-bkind" data-dsb="kind">${opt(P.kinds, b.kind)}</select>`)}
         ${ctl(`${key}-blabel`, "What it's for", "one line a session reads: the account menu, the list of orders",
               `<textarea id="${key}-blabel" class="proseline" rows="1" maxlength="120" data-dsb="label">${esc(b.label)}</textarea>`, true)}
+        ${ctl(`${key}-bin`, "Inside", "the block this one lies in and stays within: a card in a list, a form in a card",
+              `<select id="${key}-bin" data-dsb="in"><option value="">none</option>${p.blocks.map((o, j) => j === sel || descends(p, j, sel) ? ""
+                : `<option value="${j + 1}"${b.in === j + 1 ? " selected" : ""}>${j + 1}: ${esc(kindLabel(o.kind))}${o.label ? ": " + esc(o.label.slice(0, 30)) : ""}</option>`).join("")}</select>`)}
         <button type="button" class="danger" data-dsblockrm>Remove block</button>
       </div>
-      <div class="hint">Drag a block to move it and its corner to size it; the arrow keys move a focused one, with Shift to size.</div></div>`
+      <div class="hint">Drag a block to move it and its corner to size it; the arrow keys move a focused one, with Shift to size. A later layer draws over an earlier one.</div></div>`
       : `<div class="field"><div class="hint">${n ? "Tap a block to name what it is for." : "Add a block, or start again from a template with Add page."}</div></div>`}
       ${docSection("design", `rules:${key}`, "Rules", (p.rules || []).length ? `${p.rules.length}` : "none",
         `<div class="hint">What holds for ${esc(p.name.trim() || "this page")} alone. A session meets one as ${esc(p.key || holderSlug(p.name || `page-${p.id}`))}/NAME.</div>` + rulesList(key, p.rules || (p.rules = [])), {open: true})}
@@ -454,52 +471,74 @@ function nbDesignView({$, nb, project, root}){
   const gridOf = p => ({cols: frameOf(p.frame).cols,
                         rows: Math.min(rowsMax(), Math.max(frameOf(p.frame).rows, p.rows || 0))});
   const SHAPE = {desktop: [16, 10], phone: [9, 16], landscape: [16, 9]};
-  // Which blocks partly cover another: the server refuses a save of them
-  // (no two cover the same cells, unless one lies wholly inside the other
-  // or is an overlay), so the board says so as they are moved, in red,
-  // and in words under it, before Save is pressed.
-  function clashes(p){
-    const hit = new Set();
-    const bs = p.blocks.map((b, i) => [b, i]).filter(([b]) => b.kind !== "overlay");
-    const holds = (a, b) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
-    bs.forEach(([a, i], n) => bs.slice(n + 1).forEach(([b, j]) => {
-      const over = Math.max(a.x, b.x) < Math.min(a.x + a.w, b.x + b.w) && Math.max(a.y, b.y) < Math.min(a.y + a.h, b.y + b.h);
-      const same = a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
-      if (over && (same || !(holds(a, b) || holds(b, a)))){ hit.add(i); hit.add(j); }
-    }));
-    return hit;
-  }
-  function markClashes(p){
-    const page = root.querySelector(`[data-dspage="${keyOf(p)}"]`);
-    if (!page) return;
-    const hit = clashes(p);
-    page.querySelectorAll(".dsboard .dsblock").forEach(el => el.classList.toggle("clash", hit.has(+el.dataset.i)));
-    const said = page.querySelector(".dsclash");
-    if (said) said.hidden = !hit.size;
-  }
   function boardHtml(p){
     const g = gridOf(p);
     const [bw, bh] = SHAPE[p.frame] || SHAPE.desktop;
     const tall = g.rows > frameOf(p.frame).rows ? `aspect-ratio:${bw} / ${(bh * g.rows / frameOf(p.frame).rows).toFixed(2)};` : "";
     const key = keyOf(p);
-    const hit = clashes(p);
+    // In the blocks' order, which is the drawing order: a later one draws
+    // over an earlier one where they overlap, and the layers beside the
+    // board are the way to one another covers (the operator, 29 Sep).
     const inner = p.blocks.length
-      ? p.blocks.map((b, i) => `<div class="dsblock${nb.dsSel[key] === i ? " on" : ""}${hit.has(i) ? " clash" : ""}" tabindex="0" role="button"
+      ? p.blocks.map((b, i) => `<div class="dsblock${nb.dsSel[key] === i ? " on" : ""}" tabindex="0" role="button"
             data-i="${i}" style="${blockStyle(b)}" aria-label="${esc(kindLabel(b.kind))}${b.label ? ": " + esc(b.label) : ""}">
             <b>${esc(kindLabel(b.kind))}</b>${b.label ? `<span>${esc(b.label)}</span>` : ""}<i class="dsgrip" aria-hidden="true"></i></div>`).join("")
       : `<div class="dsempty">nothing on this ${esc(p.frame)} yet</div>`;
     // A page of many screens is looked at through a window of its own,
     // so the fields under the board stay in reach.
-    return `<div class="dsboardwrap"><div class="dsboard" data-frame="${esc(p.frame)}" role="group" aria-label="the layout of ${esc(p.name || "this page")}"
-      style="${tall}grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div></div>
-      <div class="sub bad dsclash"${hit.size ? "" : " hidden"}>The blocks outlined in red partly cover each other, and Save refuses that: a block sits beside another, or wholly inside it.</div>`;
+    return `<div class="dsboardrow"><div class="dsboardwrap"><div class="dsboard" data-frame="${esc(p.frame)}" role="group" aria-label="the layout of ${esc(p.name || "this page")}"
+      style="${tall}grid-template-columns:repeat(${g.cols},1fr);grid-template-rows:repeat(${g.rows},1fr);background:${esc(paint("bg"))};border-color:${esc(paint("line"))}">${inner}</div></div>${layersHtml(p)}</div>`;
+  }
+  // Whether block j lies inside block i, however many parents up.
+  function descends(p, j, i){
+    const seen = new Set();
+    for (let k = p.blocks[j]?.in; k && !seen.has(k); k = p.blocks[k - 1]?.in){
+      if (k - 1 === i) return true;
+      seen.add(k);
+    }
+    return false;
+  }
+  const depthOf = (p, i) => { let d = 0; const seen = new Set(); for (let k = p.blocks[i]?.in; k && !seen.has(k); k = p.blocks[k - 1]?.in){ seen.add(k); d++; } return d; };
+  // The layers: one row per block, the top layer first, a child indented
+  // under its parent's depth, the selected one marked as its block is.
+  function layersHtml(p){
+    const key = keyOf(p), sel = nb.dsSel[key], n = p.blocks.length;
+    const rows = p.blocks.map((b, i) => [b, i]).reverse().map(([b, i]) => `<div class="dslayer${sel === i ? " on" : ""}" data-dsl="${i}" role="button" tabindex="0"
+        style="padding-left:${10 + depthOf(p, i) * 12}px" title="select this block${b.in ? `; inside block ${b.in}` : ""}">
+        <span class="t"><b>${esc(kindLabel(b.kind))}</b>${b.label ? ` <span>${esc(b.label)}</span>` : ""}</span>
+        <button type="button" class="ic" data-dslup="${i}" aria-label="a layer up"${i === n - 1 ? " disabled" : ""} title="a layer up: over the one above it">▲</button>
+        <button type="button" class="ic" data-dsldown="${i}" aria-label="a layer down"${i === 0 ? " disabled" : ""} title="a layer down: under the one below it">▼</button></div>`).join("");
+    return `<div class="lbox dslayers" role="group" aria-label="the layers of ${esc(p.name || "this page")}, top first">${rows || `<div class="hint">no layers yet</div>`}</div>`;
+  }
+  // A layer moved up or down the stack: the block and its place on every
+  // frame swap with the neighbor's, and every parent number follows.
+  function moveLayer(p, i, dir){
+    const j = i + dir;
+    if (j < 0 || j >= p.blocks.length) return;
+    const swap = arr => { [arr[i], arr[j]] = [arr[j], arr[i]]; };
+    swap(p.blocks);
+    for (const rows of Object.values(p.layouts || {})) swap(rows);
+    p.blocks.forEach(b => { if (b.in === i + 1) b.in = j + 1; else if (b.in === j + 1) b.in = i + 1; });
+    nb.dsSel[keyOf(p)] = j;
+    touched(); drawDesign();
+  }
+  function wireLayers(el, p){
+    el.querySelectorAll("[data-dsl]").forEach(row => {
+      const pick = () => { nb.dsSel[keyOf(p)] = +row.dataset.dsl; drawDesign(); };
+      row.onclick = pick;
+      row.onkeydown = e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); pick(); } };
+    });
+    el.querySelectorAll("[data-dslup]").forEach(b => b.onclick = e => { e.stopPropagation(); if (!root.classList.contains("ro")) moveLayer(p, +b.dataset.dslup, 1); });
+    el.querySelectorAll("[data-dsldown]").forEach(b => b.onclick = e => { e.stopPropagation(); if (!root.classList.contains("ro")) moveLayer(p, +b.dataset.dsldown, -1); });
   }
   const kindLabel = k => byKey(presets().kinds, k)?.label || k;
   function repaintBoard(p){
-    const host = root.querySelector(`[data-dspage="${keyOf(p)}"] .dsboard`);
-    if (host){
-      host.parentElement.nextElementSibling?.remove();
-      host.parentElement.outerHTML = boardHtml(p);
+    const row = root.querySelector(`[data-dspage="${keyOf(p)}"] .dsboardrow`);
+    if (row){
+      row.outerHTML = boardHtml(p);
+      const el = root.querySelector(`[data-dspage="${keyOf(p)}"]`);
+      wireBoard(el.querySelector(".dsboard"), p);
+      wireLayers(el, p);
     }
     pageOption(p);
   }
@@ -521,6 +560,31 @@ function nbDesignView({$, nb, project, root}){
     }
   };
 
+  // A block inside another stays within it: sized down to it where it is
+  // bigger, moved in where it reaches out.
+  const fitIn = (b, par) => {
+    b.w = Math.max(1, Math.min(b.w, par.w)); b.h = Math.max(1, Math.min(b.h, par.h));
+    b.x = Math.max(par.x, Math.min(b.x, par.x + par.w - b.w));
+    b.y = Math.max(par.y, Math.min(b.y, par.y + par.h - b.h));
+  };
+  const kidsOf = (p, i) => p.blocks.map((b, j) => j).filter(j => j !== i && descends(p, j, i))
+    .sort((a, b) => depthOf(p, a) - depthOf(p, b));
+  // Block i was just moved or sized from `before`: held within its parent,
+  // its children carried by the move (not by a sizing) and held within
+  // it in turn, parents before children. Returns the indexes that moved.
+  function settle(p, i, before, sizing){
+    const b = p.blocks[i];
+    if (b.in) fitIn(b, p.blocks[b.in - 1]);
+    const dx = b.x - before.x, dy = b.y - before.y;
+    const moved = [];
+    for (const j of kidsOf(p, i)){
+      const c = p.blocks[j];
+      if (!sizing){ c.x += dx; c.y += dy; }
+      fitIn(c, p.blocks[c.in - 1]);
+      moved.push(j);
+    }
+    return moved;
+  }
   // A page remembers where its blocks sat on each frame it has been on
   // (B348): to Phone and back to Desktop left them squeezed into the
   // phone's six columns, because the clamp that fits them to the smaller
@@ -608,6 +672,17 @@ function nbDesignView({$, nb, project, root}){
       const b = p.blocks[nb.dsSel[key]]; if (!b) return;
       b.kind = e.target.value; touched(); repaintBoard(p);
     });
+    el.querySelector('[data-dsb="in"]')?.addEventListener("change", e => {
+      const i = nb.dsSel[key], b = p.blocks[i]; if (!b) return;
+      if (e.target.value) b.in = +e.target.value; else delete b.in;
+      // Brought within its parent now, here and on every other frame's layout.
+      if (b.in){
+        fitIn(b, p.blocks[b.in - 1]);
+        for (const rows of Object.values(p.layouts || {})) fitIn(rows[i], rows[b.in - 1]);
+      }
+      touched(); drawDesign();
+    });
+    wireLayers(el, p);
     el.querySelector('[data-dsb="label"]')?.addEventListener("input", e => {
       const b = p.blocks[nb.dsSel[key]]; if (!b) return;
       b.label = e.target.value; touched();
@@ -630,8 +705,12 @@ function nbDesignView({$, nb, project, root}){
   function removeBlock(p){
     const key = keyOf(p);
     if (nb.dsSel[key] == null) return;
-    p.blocks.splice(nb.dsSel[key], 1);
-    layoutsRemove(p, nb.dsSel[key]);
+    const i = nb.dsSel[key];
+    p.blocks.splice(i, 1);
+    layoutsRemove(p, i);
+    // Its children are freed, keeping their place; the parent numbers
+    // above it move down one.
+    p.blocks.forEach(b => { if (b.in === i + 1) delete b.in; else if (b.in > i + 1) b.in -= 1; });
     delete nb.dsSel[key];
     touched(); drawDesign();
   }
@@ -660,11 +739,18 @@ function nbDesignView({$, nb, project, root}){
       el.classList.add("dragging");
       const move = ev => {
         const dx = Math.round((ev.clientX - start.x) / cw), dy = Math.round((ev.clientY - start.y) / ch);
+        const before = geometry(b);
         if (resize){ b.w = start.bw + dx; b.h = start.bh + dy; }
         else { b.x = start.bx + dx; b.y = start.by + dy; }
         clampBlock(b, g, resize);
+        // Settled (held within its parent, its children carried) before it
+        // is drawn, or the screen shows a place the block does not have.
+        const carried = settle(p, i, before, resize);
         el.style.cssText = blockStyle(b);
-        markClashes(p);
+        for (const j of carried){
+          const kid = board.querySelector(`.dsblock[data-i="${j}"]`);
+          if (kid) kid.style.cssText = blockStyle(p.blocks[j]);
+        }
         moved = moved || dx !== 0 || dy !== 0;
       };
       const up = () => {
@@ -693,10 +779,15 @@ function nbDesignView({$, nb, project, root}){
       if (e.key === "Delete" || e.key === "Backspace"){ e.preventDefault(); removeBlock(p); return; }
       if (!d) return;
       e.preventDefault();
+      const before = geometry(b);
       if (e.shiftKey){ b.w += d[0]; b.h += d[1]; } else { b.x += d[0]; b.y += d[1]; }
       clampBlock(b, gridOf(p), e.shiftKey);
+      const carried = settle(p, +el.dataset.i, before, e.shiftKey);
       el.style.cssText = blockStyle(b);
-      markClashes(p);
+      for (const j of carried){
+        const kid = board.querySelector(`.dsblock[data-i="${j}"]`);
+        if (kid) kid.style.cssText = blockStyle(p.blocks[j]);
+      }
       touched();
     });
   }

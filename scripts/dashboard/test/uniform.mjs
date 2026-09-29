@@ -422,9 +422,18 @@ async function lineup(){
     const name = e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${
       e.className && typeof e.className === 'string' && e.className.trim()
         ? '.' + e.className.trim().split(/\s+/)[0] : ''}`;
+    // ...and only what is on screen at its own place: a control scrolled
+    // under the notebook's foot inside the view's scroller still has a
+    // box, and it grouped with the foot's buttons as one line (29 Sep,
+    // when the Design view's board grew and pushed its rows down).
+    const shown = e => {
+      const r = e.getBoundingClientRect();
+      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return !!at && (at === e || e.contains(at) || at.contains(e));
+    };
     const ctls = [...box.querySelectorAll(CTL)]
       .filter(e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0
-                   && !e.closest('.slot, .dmlog, .pagemore'))
+                   && !e.closest('.slot, .dmlog, .pagemore') && shown(e))
       .map(e => ({ e, r: e.getBoundingClientRect() }))
       .sort((a, b) => a.r.top - b.r.top);
     // One line = boxes whose vertical spans overlap by more than half the

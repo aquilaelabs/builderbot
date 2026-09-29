@@ -59,6 +59,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A page on the Design view may run to 240 rows, twenty phone screens; at 60 a page of seven screens had to be drawn shorter than it is. A long board scrolls in a window of its own (39ba707)
 - bb design save refuses two blocks that partly cover each other, on a page's frame and in a layout, and the Design view outlines them in red with the reason before Save; a block may sit wholly inside another, and an overlay over anything (6bb5358)
 - Saving a project's settings with a change a running session takes only at its start (model, effort, author, reads, Also sees, node, the briefing's lines) names those changes in the dialog and asks whether to end the session now or keep it running (37adf7d)
+- The Design view's board is as wide as the tab, with a layers list beside it: blocks may overlap, a later layer draws over an earlier one, a row selects a block another covers and moves it up or down, and a block can be set inside another, which it then stays within (cf8ec70)
+- On the Design view, Pages, Design language and Themes start folded, and Add page sits inside Pages (cf8ec70)
 
 ### Removed
 
