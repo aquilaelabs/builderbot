@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -1369,8 +1369,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.fill('#rnBuildCmd', './gradlew assembleDebug');
   await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
   await page.fill('#rnCaptureDays', '3');
-  await page.click('#rnGo');
-  await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
+  await saveDialog(page);
   const saved = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha;
   ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
      && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi' && saved.capture_days === 3,

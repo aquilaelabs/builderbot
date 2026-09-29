@@ -4,7 +4,7 @@
 // the report waits on the controller, is read in the diagnostics behind their
 // gate, and is filed into a tracker or closed from there; the session that
 // made it reads what became of it. No browser: it is an API and a verb.
-import { launch, newPage, ready, ok, done, URL, DIR } from './lib.mjs';
+import { launch, newPage, ready, ok, done, saveDialog, URL, DIR } from './lib.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
@@ -135,7 +135,7 @@ await page.waitForSelector('#rnmodal:not([hidden]) #rnGateReport', { timeout: 15
 ok(await page.$eval('#rnGateReport', e => e.value === 'auto' && [...e.options].map(o => o.value).join() === 'auto,deny'),
    "the project's settings carry it under Claude may, on auto, with nothing to ask");
 await page.selectOption('#rnGateReport', 'deny');
-await page.click('#rnGo');
+await saveDialog(page);
 await page.waitForFunction(async () => {
   const j = await (await fetch('/api/status')).json();
   return (j.projects || []).find(p => p.name === 'alpha')?.prefs?.report === 'deny';

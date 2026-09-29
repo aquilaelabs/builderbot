@@ -4,7 +4,7 @@
 // Everything here drives the stub docker the harness provides; the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, URL, DIR, nbShown, nbTab } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -3193,7 +3193,7 @@ ok(await page.$('#devSend'),
   await page.selectOption('#rnReply', 'minimal');
   await page.selectOption('#rnAsks', 'fewer');
   await page.selectOption('#rnGateDocker', 'deny');
-  await page.click('#rnGo');
+  await saveDialog(page);
   // Read as the setting, not as the record's absence: a project on a node
   // keeps its record even with every gate at its default (R82).
   await refreshUntil(page, () => ((((state.projects || [])
@@ -3230,8 +3230,7 @@ ok(await page.$('#devSend'),
                                           && e.value === 'node'),
      'the project settings dialog carries where its tests run, beside its node and command');
   await page.selectOption('#rnDevTest', 'only');
-  await page.click('#rnGo');
-  await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
+  await saveDialog(page);
   await refreshUntil(page, () => ((state.projects || [])
     .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'only', { timeout: 20000 });
   ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].tests_in === 'only',

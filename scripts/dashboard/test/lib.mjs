@@ -337,6 +337,21 @@ export async function animatedDuring(page, act){
 export const SLOW = Number(process.env.BB_TEST_SLOW || 1) || 1;
 export const patience = ms => Math.round(ms * SLOW);
 
+// Save on a project's settings dialog, answering its question when it
+// asks one: with a session of this account's running on the project, a
+// change the session takes only at its start (the author, reads, the
+// model) makes the first press show the changes and two answers, and the
+// dialog stays open until one is pressed. Suites that save such a change
+// press Save through this; `end` picks Save and end it, the default keeps
+// the session running.
+export async function saveDialog(page, { end = false, timeout = 15000 } = {}){
+  await page.click('#rnGo');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden
+                                   || !document.getElementById('rnRestartAsk').hidden, null, { timeout });
+  if (await page.$eval('#rnmodal', e => !e.hidden)) await page.click(end ? '#rnGo' : '#rnKeep');
+  await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout });
+}
+
 export async function refreshUntil(page, fn, { timeout = 60000, every = 1000 } = {}){
   timeout = patience(timeout);
   const until = Date.now() + timeout;

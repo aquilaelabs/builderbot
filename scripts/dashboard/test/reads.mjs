@@ -4,7 +4,7 @@
 // as a field), the session token widened to the reads on every
 // request, every write refused by name, the relayed words kept to reads,
 // the grant carrying the reads for the view, and the briefing naming them.
-import { launch, newPage, ok, done, ready, refreshUntil, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, refreshUntil, saveDialog, URL, DIR } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -38,8 +38,7 @@ const look = await page.$eval('#rnReads', e => ({ overflow: getComputedStyle(e).
 ok(look.overflow === 'auto' && look.border === '1px' && look.row >= 38 && look.display === 'flex',
    `a listbox is a bordered box that scrolls, its rows a thumb high (${JSON.stringify(look)})`);
 await page.check('#rnReads input[value="beta"]');
-await page.click('#rnGo');
-await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
+await saveDialog(page);
 await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reads?.join() === 'beta', { timeout: 20000 });
 ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.reads.join() === 'beta',
    'Save keeps the ticked projects as the reads, in the settings store');
@@ -133,15 +132,19 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   ok(field.value === '/mnt/media, /srv/samples' && field.label === 'Also sees' && /share or a disk mounted on the node/.test(field.help) && !field.hint,
      `the project's settings carry the places in a field under the node, labeled above, its one sentence behind the ? (${JSON.stringify(field).slice(0, 140)})`);
   await page.fill('#rnSees', '/mnt/media');
-  await page.click('#rnGo');
-  await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
+  await saveDialog(page);
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.sees?.join() === '/mnt/media', { timeout: 20000 });
   ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.sees.join() === '/mnt/media',
      '...and Save keeps what the field says');
   await page.evaluate(() => renameProject('alpha', 'all'));
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   await page.fill('#rnSees', '/etc/ssh');
+  // With a session of this account's running here, Save asks first (Also
+  // sees is a change the session takes at its start); keeping it running
+  // is the answer, and the refusal comes back on the save that follows.
   await page.click('#rnGo');
+  await page.waitForFunction(() => !document.getElementById('rnErrWrap').hidden || !document.getElementById('rnRestartAsk').hidden, null, { timeout: 10000 });
+  if (await page.$eval('#rnRestartAsk', e => !e.hidden)) await page.click('#rnKeep');
   await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 10000 });
   const err = await page.$eval('#rnErrWrap', e => e.textContent);
   ok(/\/etc\/ssh is the machine's own or BuilderBot's/.test(err) && await page.$eval('#rnmodal', e => !e.hidden),
