@@ -335,14 +335,20 @@ await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadma
   const first = await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => ({ open: d.open, steps: d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])').length,
     shown: [...d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])')].some(r => r.checkVisibility()) }));
   ok(!first.open && !first.shown, `a group starts folded, its steps out of sight (${JSON.stringify(first)})`);
+  // The send is the Claude mark among the row's own buttons on the right,
+  // the caret is where the arrow was, and the words open the fold (the
+  // pencil rewords a group).
+  const shape = await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"]) > summary .roadmap', r => {
+    const kids = [...r.children].map(e => e.className.split(' ')[0]);
+    return { kids, goHasMark: !!r.querySelector('.go svg'), noBox: !r.querySelector('.rwbox, textarea') };
+  });
+  ok(shape.kids[0] === 'eye' && shape.kids.indexOf('body') < shape.kids.indexOf('eye', 1) && shape.goHasMark,
+     `the group row leads with the fold's caret, its words, then Send to Claude first among its buttons (${shape.kids.join(' ')})`);
   await page.click('#roadmapList details.grp:has(.roadmap[data-step="1"]) > summary .txt');
-  await page.waitForFunction(() => !document.querySelector('#roadmapList details.grp:has(.roadmap[data-step="1"])').open, null, { timeout: 5000 }).catch(() => {});
-  ok(await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => !d.open), '...the words on its row open the reword box, not the fold');
-  await page.keyboard.press('Escape');
-  await page.click('#roadmapList details.grp:has(.roadmap[data-step="1"]) > summary');
   await page.waitForFunction(() => document.querySelector('#roadmapList details.grp:has(.roadmap[data-step="1"])').open, null, { timeout: 5000 });
-  ok(await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => d.open && [...d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])')].every(r => r.checkVisibility())),
-     '...and a tap on the row itself opens every step under it');
+  ok(await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => d.open && !d.querySelector('textarea')
+       && [...d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])')].every(r => r.checkVisibility())),
+     '...and a tap on its words opens every step under it rather than a reword box');
   await page.evaluate(() => new MutationObserver(() => document.querySelectorAll('#roadmapList details.grp:not([open])').forEach(d => { d.open = true; }))
     .observe(document.getElementById('roadmapList'), { childList: true, subtree: true }));
   await page.evaluate(() => document.querySelectorAll('#roadmapList details.grp:not([open])').forEach(d => { d.open = true; }));

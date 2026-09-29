@@ -1426,13 +1426,20 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .mem>summary::-webkit-details-marker,.bug>summary::-webkit-details-marker,
 details.grp>summary::-webkit-details-marker,
 .veradd>summary::-webkit-details-marker{display:none}
-.mem>summary::before,.bug>summary::before,details.grp>summary::before,
+.mem>summary::before,.bug>summary::before,
 .veradd>summary::before{content:"\25B8";color:var(--dim);font-size:11px;
   width:9px;flex:0 0 auto}
 .mem[open]>summary::before,.bug[open]>summary::before,
-details.grp[open]>summary::before,.veradd[open]>summary::before{content:"\25BE"}
-/* A roadmap group's summary is its item row, which fills the line. */
+.veradd[open]>summary::before{content:"\25BE"}
+/* A roadmap group's summary is its item row, which fills the line, and its
+   caret is the row's own first control, in the place the send arrow had,
+   level with the first line of the words (the operator, 29 Sep). */
 details.grp>summary>.roadmap{flex:1 1 auto;min-width:0}
+.roadmap .fold{flex:0 0 auto;align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;
+  color:var(--dim);font-size:11px;cursor:pointer}
+.roadmap .fold::before{content:"\25B8"}
+details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
+.roadmap .txt{cursor:pointer}
 
 /* The "N to M of T" footer under a long list, with Previous and Next. Quiet:
    it is a fact about the list plus the controls that turn its page, not a

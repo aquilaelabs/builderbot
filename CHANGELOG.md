@@ -63,6 +63,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On the Design view, Pages, Design language and Themes start folded, and Add page sits inside Pages (cf8ec70)
 - On the Briefing view the memories are folded, with their count on the heading; the code base and the rules stay as they were (30e57bb)
 - A roadmap item folds like a bug report: its row is the heading and a tap on it opens every step under it (30e57bb)
+- On the roadmap, Send to Claude is the Claude mark first among a row's buttons on the right, the fold's caret takes its old place level with the words, and a tap on a group's words opens its steps on the same tween a bug's row uses; the pencil rewords (7d6dd63)
 
 ### Removed
 

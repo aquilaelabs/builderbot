@@ -53,9 +53,6 @@ function nbRoadmapView({$, nb}){
   // The send arrow. Crossing something out here does not mean "done"; it means
   // "handed to the session", which is the thing the operator actually needs to
   // see, because a step can be sent and then not carried out.
-  const SEND = `<svg viewBox="0 0 16 16" aria-hidden="true">
-  <path d="M2.6 8h9"/><path d="M8.2 4.6 11.6 8l-3.4 3.4"/>
-  <path d="M13.6 3.2v9.6"/></svg>`;
 
   const UP = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M8 12.6V3.7"/><path d="M4.4 7.3 8 3.7l3.6 3.6"/></svg>`;
@@ -161,12 +158,16 @@ function nbRoadmapView({$, nb}){
       aria-label="down"
       title="${fixed ? "a step that has gone stays where it is" : "move it down"}"
       >${DOWN}</button>`;
+    // The send is the Claude mark, first of the row's own buttons on the
+    // right (the operator, 29 Sep); the fold's caret takes the arrow's old
+    // place on a group's row, level with the first line of its words.
+    const send = nb.roadmapOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : ` aria-disabled="true"`}
+      title="${esc(why)}" aria-label="send to Claude"
+      aria-pressed="${on ? "true" : "false"}">${SPARK}</button>`;
     return `<div class="roadmap${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
          idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
        data-id="${r.id}" data-step="${idx}">
-    ${nb.roadmapOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : ` aria-disabled="true"`}
-      title="${esc(why)}" aria-label="send"
-      aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
+    ${idx < 0 ? `<span class="eye fold" aria-hidden="true"></span>` : ""}
     ${idx >= 0 ? (st.done
           ? `<span class="n tick" title="step ${idx + 1}: a session finished this ${nb.stamp(st.done)}">✓</span>`
           : `<span class="n">${idx + 1}</span>`)
@@ -180,7 +181,7 @@ function nbRoadmapView({$, nb}){
         title="the technical half: files, functions, approach">▸ details</button>
       <div class="dinfo" hidden>${esc(st.info)}</div>` : ""}
     </span>
-    ${nb.roadmapOrdering ? moves : `${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
+    ${nb.roadmapOrdering ? moves : `${send}${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
       aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
       title="${r.shelved
           ? "take it off the shelf: back among the live ones"
@@ -293,11 +294,15 @@ function nbRoadmapView({$, nb}){
         // reordering, where the question is only where things sit.
         nb.roadmapOrdering ? "" : `<div class="addstep" data-id="${r.id}"><button
         type="button" class="link">+ step</button></div>`}</details>`).join("");
-    // A control on the summary row acts and does not fold: the fold is
-    // the row's own ground and its words' margin.
+    // The row's ground and its words open and shut the fold, on the same
+    // tween a bug's row uses; a control on the row acts and does not fold.
+    // Bound on the summary rather than the toggle event, because toggle
+    // fires after the browser has already snapped it open.
     $("roadmapList").querySelectorAll("details.grp > summary").forEach(sm => {
       sm.addEventListener("click", e => {
-        if (e.target.closest("button, a, input, textarea, select, .go, .mv, .rm, .ed, .x, .txt, .dtog")) e.preventDefault();
+        e.preventDefault();
+        if (e.target.closest("button, a, input, textarea, select, .dtog, .dinfo")) return;
+        slideDetails(sm.parentElement, !sm.parentElement.open);
       });
     });
     $("roadmapList").querySelectorAll(".addstep").forEach(box => {
@@ -351,7 +356,9 @@ function nbRoadmapView({$, nb}){
       // unguarded one took the whole redraw down with it.
       const ed = row.querySelector(".ed");
       if (ed) ed.onclick = reword;
-      row.querySelector(".txt").onclick = reword;
+      // A step's words reword it; a group's words open its fold (the
+      // operator, 29 Sep), and the pencil is what rewords those.
+      if (step >= 0) row.querySelector(".txt").onclick = reword;
     });
     }
     nb.roadmapItems = rows;
