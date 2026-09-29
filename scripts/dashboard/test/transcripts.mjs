@@ -85,5 +85,42 @@ const bad = await page.evaluate(async () => (await fetch('/api/transcript?projec
 ok(bad === 404, `a path in the id is not found either (${bad})`);
 const none = await page.evaluate(async () => (await fetch('/api/transcript?project=nosuch&id=conv-one-2026')).status);
 ok(none === 400, `a project that is not one is refused as not a project (${none})`);
+
+// ---- a session reads its account's own conversations, on its project and on a read ----
+// The operator's ask (29 Sep): a session on alpha, with beta among alpha's
+// reads, reads the account's conversations on beta, through bb transcripts;
+// a project alpha does not read is not a project to it, and nothing of
+// another account's is ever found.
+const { execFileSync } = await import('node:child_process');
+const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+const betaTree = join(DIR, 'home', '.claude', 'projects', slug(join(DIR, 'ws', 'beta')));
+mkdirSync(betaTree, { recursive: true });
+writeFileSync(join(betaTree, 'beta-chat-1.jsonl'), line(msg('user', 'Make the beta page blue')) + line(msg('assistant', [{ type: 'text', text: 'Blue it is.' }])));
+const token = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'], { encoding: 'utf8',
+  env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+const asSession = { headers: { Authorization: 'Bearer ' + token } };
+const sfetch = (path, opts = {}) => fetch(URL.replace(/\/$/, '') + path, { ...opts, headers: { ...(opts.headers || {}), ...asSession.headers } });
+await page.evaluate(async () => { await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', reads: ['beta'] }) }); });
+const own = await (await sfetch('/api/transcripts?project=alpha')).json();
+ok(own.rows?.some(r => r.id === 'conv-one-2026'), `a session lists the account's conversations on its own project (${(own.rows || []).length})`);
+const onRead = await (await sfetch('/api/transcripts?project=beta')).json();
+ok(onRead.rows?.length === 1 && onRead.rows[0].id === 'beta-chat-1' && /Make the beta page blue/.test(onRead.rows[0].first),
+   `...and on a project its own reads (${JSON.stringify(onRead.rows?.[0] || onRead)})`);
+const readText = await sfetch('/api/transcript?project=beta&id=beta-chat-1&as=json');
+const rj = await readText.json();
+ok(readText.status === 200 && /You \(.*\):\nMake the beta page blue/.test(rj.text) && /Claude \(.*\):\nBlue it is\./.test(rj.text),
+   'and reads one there as text, the same text the Profile downloads');
+const notRead = await sfetch('/api/transcripts?project=delta');
+ok(notRead.status === 400, `a project alpha does not read is not a project to the session (${notRead.status})`);
+const cli = (...a) => execFileSync('bash', [`${REPO}/scripts/bb`, ...a], { encoding: 'utf8',
+  env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token, BB_PROJECT: 'alpha', XDG_CACHE_HOME: `${DIR}/cache-transcripts` } });
+const listed = cli('-p', 'beta', 'transcripts');
+ok(/^your conversations with Claude on beta, newest first:\n  beta-chat-1  /.test(listed) && /Make the beta page blue/.test(listed),
+   `bb -p NAME transcripts lists the account's conversations on a read project (${listed.split('\n')[1]?.trim()})`);
+const shown = cli('-p', 'beta', 'transcripts', 'show', 'beta-chat-1', '--tz', 'Asia/Tokyo');
+ok(/^Conversation on beta, session beta-chat-1/.test(shown) && /You \(2026-09-28 19:15\):\nMake the beta page blue/.test(shown),
+   'bb transcripts show ID prints one, stamped in the zone asked for');
+ok(/^your conversations with Claude on alpha/.test(cli('transcripts', 'list')), 'and with no -p it is the session\'s own project');
+await page.evaluate(async () => { await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', reads: [] }) }); });
 await page.close();
 await done(browser);

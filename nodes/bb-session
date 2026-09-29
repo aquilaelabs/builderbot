@@ -266,10 +266,17 @@ def plan(c, a, uid):
     # theirs beyond the tree: no worktrees, no caches, no stores.
     for r in reads:
         steps.append(("bindro", f"{STAGE}/ws/{r}", f"{ws}/{r}"))
+    # The account's transcripts: this project's stay, a read project's are
+    # there to read (the account's own conversations there, read-only, the
+    # operator's ask of 29 Sep), and every other project's are empty.
     transcripts = f"{ws}/.claude/{account}/projects"
     if _real_dir(transcripts):
         for entry in sorted(os.listdir(transcripts)):
-            if _real_dir(f"{transcripts}/{entry}") and not _ours(entry, ws, project):
+            if not _real_dir(f"{transcripts}/{entry}") or _ours(entry, ws, project):
+                continue
+            if any(_ours(entry, ws, r) for r in reads):
+                steps.append(("bindro", f"{STAGE}/ws/.claude/{account}/projects/{entry}", f"{transcripts}/{entry}"))
+            else:
                 steps.append(("hide", f"{transcripts}/{entry}"))
     # Homes: the account's own is the only one, and when it is not the base
     # home, the base home's Claude login and history are out of sight too.

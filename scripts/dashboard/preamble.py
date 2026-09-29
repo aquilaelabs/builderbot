@@ -215,7 +215,9 @@ def reads_line(project):
             f"`bb -p NAME` in front of `bb roadmap`, `bb bug`, `bb rules`, `bb design`, "
             f"`bb tests` or `bb map` makes the verb answer for it, so its notebook and its code "
             f"are yours to read, and its containers answer from here on this project's nodes, so "
-            f"`bb -p NAME devapp` says where its page is and `bb capture shot` photographs it. "
+            f"`bb -p NAME devapp` says where its page is and `bb capture shot` photographs it; "
+            f"`bb -p NAME transcripts` lists this account's own conversations with Claude there "
+            f"and `show ID` prints one, and their files are under ~/.claude/projects read-only. "
             f"Nothing there is yours to change: a write to its tree fails, a write to its notebook is "
             f"refused, and its containers are not yours to start or stop; a session on that project is "
             f"what changes them.")

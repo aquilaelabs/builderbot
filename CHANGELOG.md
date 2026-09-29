@@ -6,6 +6,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Added
 
+- bb transcripts lists the account's own conversations with Claude on the project and bb transcripts show ID prints one; with bb -p NAME a session reads the account's conversations on a project its own reads, whose files are in its view read-only, and never another account's
 - A theme and a page on the Design view carry rules of their own, for what holds for that theme or that page alone; a session meets one named under its holder (nostromo/hull), bb design show THEME prints a theme with its rules, and the file and the prompts carry them under the theme or the page
 - A project's briefing says when its notebook holds a design, what is in it and to read it before building, and on a tree with no code yet that the design, the rules and the roadmap are the specification, so a project designed before its first line is built to the design
 - Conversation logs on the Profile tab: your own conversations with Claude, newest first, each downloadable as a text of what was said on both sides, every command Claude ran and what it answered

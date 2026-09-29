@@ -55,6 +55,7 @@ scripts/
   lib/bug-verbs.py               `bb bug`
   lib/brief-verbs.py             `bb brief`: a new project's brief, and bb-tty's take of it for a first session
   lib/design-verbs.py            `bb design`: a project's design language and pages, as the notebook's Design view keeps them
+  lib/transcripts-verbs.py       `bb transcripts`: the account's own conversations with Claude on a project, listed and printed
   lib/nb-history.py              `bb history`: the notebook's logs merged
   lib/rules-verbs.py             `bb rules`, except check
   lib/rules-check.py             `bb rules check`: a rule's check command, run in this tree

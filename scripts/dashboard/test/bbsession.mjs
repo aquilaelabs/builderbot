@@ -105,6 +105,12 @@ ok(hidden(join(tr, slug(join(ws, 'beta')))) && hidden(join(tr, slug(join(ws, 'al
   ok(r.code === 0 && rs.some(x => x[0] === 'bindro' && x[1] === `${STAGE}/ws/beta` && x[2] === join(ws, 'beta'))
      && !rs.some(x => x[0] === 'bind' && x[2] === join(ws, 'beta')) && !rs.some(x => x[2] === join(ws, '.worktrees', 'beta')),
      `--reads binds that project's tree into the view read-only, and none of its worktrees (${r.code})`);
+  // The account's own conversations on a read project are there to read,
+  // read-only, while every other project's stay empty (29 Sep).
+  const betaTr = join(tr, slug(join(ws, 'beta')));
+  ok(rs.some(x => x[0] === 'bindro' && x[2] === betaTr && x[1] === `${STAGE}/ws/.claude/${me}/projects/${slug(join(ws, 'beta'))}`)
+     && !rs.some(x => (x[0] === 'hide') && x[1] === betaTr) && rs.some(x => x[0] === 'hide' && x[1] === join(tr, slug(join(ws, 'alpha-two')))),
+     "...and the account's transcripts on that project are bound read-only rather than hidden, the other projects' still hidden");
   const self = plan({ reads: 'alpha' }), none = plan({ reads: 'nowhere' });
   ok(self.code !== 0 && /not a project this one could read/.test(self.out) && none.code !== 0 && /is not a project directory/.test(none.out),
      `...and refuses itself or a name that is no project (${self.out.trim().slice(0, 60)})`);

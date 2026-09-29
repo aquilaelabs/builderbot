@@ -1399,7 +1399,11 @@ Code writes as the session goes (transcripts.py reads the account's
 stamped in the browser's own zone, the one the page shows times in, so the
 log and the page agree; a line headed System is what BuilderBot or Claude
 Code put in front of Claude. Claude's private reasoning is not conversation
-and is left out, and another account's file is simply not found. The commit identity is per account rather than per project, and
+and is left out, and another account's file is simply not found. A session
+reads the same: `bb transcripts` lists the account's own conversations on
+its project and `bb transcripts show ID` prints one, and with `bb -p NAME`
+the same on a project its own reads, whose transcript files of the account's
+are in the session's view read-only as well; nobody else's are anywhere. The commit identity is per account rather than per project, and
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured, so two people on one
 project are two authors. The **Administration** card on the sidebar, shown

@@ -272,6 +272,10 @@ bb design file     docs/design-language.md as the notebook writes it
 bb design json     the record: the language, the pages, and the presets by key
 bb design save FILE   write a record of that shape back, whole: how a session
                    puts a design language it was given into the notebook
+bb transcripts     your own conversations with Claude on this project, newest
+                   first, as the Profile tab lists them (bb -p NAME for one it reads)
+bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
+                   command Claude ran and what it answered
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -1684,6 +1688,20 @@ cmd_design() {
     proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
     auth="$(bb_auth_or_die)"
     BB_DESIGN_AUTH="$auth" BB_DESIGN_PROJECT="$proj" python3 "$BB_LIB/design-verbs.py" "$@"
+}
+
+# `bb transcripts`: this account's own conversations with Claude on the
+# project, as the Profile tab lists them; `bb -p NAME transcripts` for a
+# project this one reads (the operator, 29 Sep). Only the account's own:
+# the controller looks under its transcripts and nowhere else.
+cmd_transcripts() {
+    local verb="${1:-list}" auth proj
+    case "$verb" in list|show) ;; -h|--help)
+        echo "bb transcripts [list | show ID [--tz ZONE]]: your own conversations with Claude on this project, from the controller"; return 0 ;;
+        *) die "bb transcripts [list | show ID [--tz ZONE]]" ;; esac
+    proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
+    auth="$(bb_auth_or_die)"
+    BB_TRANSCRIPTS_AUTH="$auth" BB_TRANSCRIPTS_PROJECT="$proj" python3 "$BB_LIB/transcripts-verbs.py" "$@"
 }
 
 cmd_brief() {
@@ -4642,6 +4660,7 @@ case "${1:-help}" in
     tests)    shift; cmd_tests "$@" ;;
     preamble) shift; cmd_preamble "$@" ;;
     brief) shift; cmd_brief "$@" ;;
+    transcripts) shift; cmd_transcripts "$@" ;;
     design) shift; cmd_design "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;

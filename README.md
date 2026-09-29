@@ -334,6 +334,10 @@ bb design file     docs/design-language.md as the notebook writes it
 bb design json     the record: the language, the pages, and the presets by key
 bb design save FILE   write a record of that shape back, whole: how a session
                    puts a design language it was given into the notebook
+bb transcripts     your own conversations with Claude on this project, newest
+                   first, as the Profile tab lists them (bb -p NAME for one it reads)
+bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
+                   command Claude ran and what it answered
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs

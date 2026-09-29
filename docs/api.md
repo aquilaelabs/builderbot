@@ -16,7 +16,8 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/status` | prefix | `_get_status` | GET /api/status. |  |
 | GET | `/api/findings` | prefix | `_get_findings` | GET /api/findings: findings.view, scoped to the projects this account sees, and for a session to its own. |  |
 | GET | `/api/profile` | prefix | `_profile` | The signed-in account's own settings (the Profile tab): read on GET, saved on POST, by profiletab.py. |  |
-| GET | `/api/transcript` | prefix | `_get_transcript` | GET /api/transcript?project=NAME&id=SESSION: one of the signed-in account's own conversations with Claude on that project as a text file, every command and answer in it (transcripts.render). |  |
+| GET | `/api/transcripts` | prefix | `_get_transcripts` | GET /api/transcripts?project=NAME: the signed-in account's own conversations with Claude on that project, newest first (transcripts.mine). |  |
+| GET | `/api/transcript` | prefix | `_get_transcript` | GET /api/transcript?project=NAME&id=SESSION: one of the signed-in account's own conversations with Claude on that project as a text file, every command and answer in it (transcripts.render); as JSON with as=json, which i |  |
 | GET | `/api/git` | prefix | `_get_git` | GET /api/git: the notebook's Git view (gitview.view), for a project this account may see. |  |
 | GET | `/api/project-sessions` | prefix | `_get_project_sessions` | GET /api/project-sessions?project=NAME: every account's sessions on the project, for its settings dialog. | refused: admin |
 | GET | `/api/changelog` | prefix | `_get_changelog` | GET /api/changelog: changelog.reading, for a project this account sees. |  |

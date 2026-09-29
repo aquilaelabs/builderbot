@@ -3082,6 +3082,7 @@ GET_ROUTES = (
     ("prefix", "/api/status", "_get_status"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
+    ("prefix", "/api/transcripts", "_get_transcripts"),
     ("prefix", "/api/transcript", "_get_transcript"),
     ("prefix", "/api/git", "_get_git"),
     ("prefix", "/api/project-sessions", "_get_project_sessions"),
@@ -5406,19 +5407,35 @@ class Handler(BaseHTTPRequestHandler):
         payload, status, renamed = profiletab.verb(me, field(req, "action"), req)
         return self._json(payload, status, cookie=make_token(renamed) if renamed else None)
 
-    def _get_transcript(self):
-        """GET /api/transcript?project=NAME&id=SESSION: one of the signed-in
-        account's own conversations with Claude on that project as a text
-        file, every command and answer in it (transcripts.render). Anybody
-        signed in, their own only: the file is looked for under their own
-        transcripts directory and nowhere else, so another account's id is
-        simply not found."""
+    def _get_transcripts(self):
+        """GET /api/transcripts?project=NAME: the signed-in account's own
+        conversations with Claude on that project, newest first
+        (transcripts.mine). Anybody signed in, their own only, a session
+        included: on its own project and on one its project reads, it
+        lists the account's conversations there for `bb transcripts`."""
         me = self._who()
         uid = users.uid_of(me) if me else ""
         if not me or not uid:
             return self._json({"error": "not an account"}, 403)
-        if me.get("session"):
-            return self._json({"error": "a session has the transcript already"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json({"project": name, "rows": transcripts.mine(uid, [name])})
+
+    def _get_transcript(self):
+        """GET /api/transcript?project=NAME&id=SESSION: one of the signed-in
+        account's own conversations with Claude on that project as a text
+        file, every command and answer in it (transcripts.render); as JSON
+        with as=json, which is what `bb transcripts show` reads. Anybody
+        signed in, their own only, a session included on its own project
+        and on one its project reads: the file is looked for under the
+        account's own transcripts directory and nowhere else, so another
+        account's id is simply not found."""
+        me = self._who()
+        uid = users.uid_of(me) if me else ""
+        if not me or not uid:
+            return self._json({"error": "not an account"}, 403)
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
         if self._not_project(name):
@@ -5427,6 +5444,8 @@ class Handler(BaseHTTPRequestHandler):
                                          transcripts.zone(q.get("tz", [""])[0]))
         if text is None:
             return self._json({"error": fname}, 404)
+        if q.get("as", [""])[0] == "json":
+            return self._json({"name": fname, "text": text})
         return self._attachment(fname, text.encode("utf-8"), "text/plain; charset=utf-8")
 
     def _git_act(self, req):
