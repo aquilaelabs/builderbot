@@ -165,6 +165,15 @@ ok(page.dialogs.length === 1 && new RegExp(`Delete all ${before.all} reports`).t
    `Clear reports in Controller settings asks first, naming how many and how many are open (${page.dialogs[0]})`);
 const next = await call('/api/reports', { action: 'add', text: 'the first one after a clear' }, ALPHA);
 ok(next.id > lastId, `...clears every one, and the next report does not take a number already used (#${next.id} after #${lastId})`);
+// ...and the session whose reports went is told so, with how many and
+// when, rather than that it never made any (B343).
+const afterClear = await call('/api/reports', { action: 'mine' }, ALPHA);
+ok(afterClear.cleared && afterClear.cleared.n >= 1 && afterClear.cleared.at > 0 && afterClear.reports.length >= 1,
+   `mine says how many of the project's reports the operator cleared and when (${JSON.stringify(afterClear.cleared)})`);
+const clearedSaid = execFileSync('bash', [`${REPO}/scripts/bb`, 'report'], { encoding: 'utf8',
+  env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token('alpha'), BB_PROJECT: 'alpha', XDG_CACHE_HOME: `${DIR}/cache-reports` } });
+ok(/earlier reports? from alpha (was|were) cleared by the operator on .* \(Controller settings\)/.test(clearedSaid) && !/no reports from alpha/.test(clearedSaid),
+   `bb report says it too (${clearedSaid.split('\n')[0].slice(0, 100)})`);
 page.dialogs.length = 0;
 await call('/api/reports', { action: 'clear' });
 await page.click('#setReportsClear');

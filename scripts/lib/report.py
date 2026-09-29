@@ -55,7 +55,14 @@ elif sub == "mine":
     d = post({"action": "mine", "project": proj})
     fail(d)
     rows = d.get("reports") or []
-    if not rows:
+    gone = d.get("cleared") or {}
+    if gone.get("n"):
+        when = time.strftime("%d %b %H:%M", time.localtime(int(gone.get("at") or 0)))
+        print(f"{gone['n']} earlier report{'' if gone['n'] == 1 else 's'} from {proj or 'this project'} "
+              f"{'was' if gone['n'] == 1 else 'were'} cleared by the operator on {when} (Controller settings): "
+              "what became of each is in BuilderBot's own tracker, which a project that reads BuilderBot "
+              "opens with bb -p BuilderBot bug")
+    if not rows and not gone.get("n"):
         print(f"no reports from {proj or 'this project'} about BuilderBot")
     for r in rows:
         when = time.strftime("%d %b %H:%M", time.localtime(r.get("at") or 0))

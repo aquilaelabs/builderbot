@@ -183,7 +183,18 @@ def clear():
     with _lock:
         d = _load()
         n = len(d["reports"])
+        # What each project loses, kept as a count and a time, so its
+        # session is told its reports were cleared rather than that it
+        # never made any (B343): "no reports" after three acknowledged
+        # ones read as a fault in the listing.
+        gone = d.get("cleared") if isinstance(d.get("cleared"), dict) else {}
+        now = int(time.time())
+        for r in d["reports"]:
+            k = str(r.get("project") or "")
+            was = gone.get(k) or {"n": 0, "at": 0}
+            gone[k] = {"n": int(was.get("n") or 0) + 1, "at": now}
         d["reports"] = []
+        d["cleared"] = gone
         write_json(FILE, d)
     return {"ok": True, "cleared": n}
 
@@ -205,8 +216,12 @@ def own_verb(act, proj, req, *, by):
         # BuilderBot's own tracker, nor who filed it: a session sees nothing
         # of another project's notebook, and two reports filed as one bug
         # would show that tracker's triage (B317).
+        gone = (_load().get("cleared") or {}).get(str(proj)) if proj else None
         return {"reports": [{k: v for k, v in r.items() if k not in ("bug", "done_by")}
-                            for r in listing(None, proj, n=30)]}, 200
+                            for r in listing(None, proj, n=30)],
+                # ...and the ones the operator cleared, as a count and when,
+                # so an emptied list is not read as one that never filled.
+                "cleared": gone if isinstance(gone, dict) and gone.get("n") else None}, 200
     return _answer(add(proj, req.get("text"), by=by, node=node_name(proj),
                        area=req.get("area"), repro=req.get("repro")))
 

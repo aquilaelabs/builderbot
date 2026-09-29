@@ -53,6 +53,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- bb report says when the operator cleared a project's reports, how many and when, instead of 'no reports' after ones it was told were reported (B343)
 - A notebook's pane bar has the same ground as every other tab's bar and only the project's stripe: the tint turned it black beside a Docker tab's
 - bb design save reports every problem with a record at once, refuses a rule given as a bare string instead of dropping it, takes a colour with alpha (#rrggbbaa), and bb design save -h and bb design schema print the record's shape with every limit (B342)
 - A session's bb devapp log, start, stop and restart find the project's container on any of its nodes, not only the primary, so the project's own dev instance on its second node is its own again (B268) (21462b7)
