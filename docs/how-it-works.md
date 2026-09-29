@@ -2417,13 +2417,10 @@ fold cannot quietly stop describing what sessions get. Shut by default, since
 it is a thing to check rather than to read every time.
 
 Two settings shape that string without touching what you read in the
-notebook. A project's **Briefing a session reads** can be *terse*: the filler
-words are dropped from every part but the live line, deterministically and
-never by a model, with code, names, numbers and the words that turn a
-sentence kept, which takes a third off the block. And each person's
-**Replies** pick on a project, beside model and effort, says how wordy
-Claude's replies to them are there, and their **Questions** pick how often
-Claude asks them, more, fewer or rarely; both ride the block as its own part and
+notebook. Each person's **Replies** pick on a project, beside model and
+effort, says how wordy Claude's replies to them are there, and their
+**Questions** pick how often Claude asks them, more, fewer or rarely; both
+ride the block as its own part and
 govern the replies and the asks only, so the notebook, commits and files are
 written as ever.
 

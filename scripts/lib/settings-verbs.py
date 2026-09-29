@@ -102,7 +102,6 @@ def show():
     # names the setting, and nothing here showed it).
     print("  Claude settings:")
     print(f"    During a test run, a change asked for   {rec.get('test_change') or 'wait'}")
-    print(f"    Briefing a session reads                {rec.get('brief') or 'full'}")
     print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
     print(f"    Captures kept (days; 0 keeps them)      {rec.get('capture_days', 7)}")
     for label, key in (("Add to roadmap", "roadmap"), ("File bugs", "bugs"), ("Add rules", "rules"),

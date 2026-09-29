@@ -80,85 +80,6 @@ TEST_CHANGE_SAID = {
 }
 
 
-# ---- terse: the block with its filler words dropped ------------------------
-# What a person reads in the notebook and what a session reads need not be
-# the same text (the operator, 25 Sep): a third of the words in a block are
-# function words, and a model reads telegraphic prose fine. Deterministic on
-# purpose, never a model: a summarizer could rewrite meaning, and this only
-# removes words that carry none. What it never touches: code spans and
-# indented command lines, names and labels (nothing capitalised is dropped),
-# numbers, and the words that turn a sentence around, which are the KEEP
-# list and win over the filler list.
-# "or", "rather than", "by", "be", "then" and "so" turn a sentence too (the
-# review of 26 Sep read "rather than working from the title" tersed to the
-# opposite, and "Fixed or Security" to a list of one), so they are kept.
-_FILL = frozenset("the a an of to and is are was were been being it its this that "
-                  "these those there here which who whom in on at for with as from into "
-                  "very just also some such any each".split())
-_KEEP = frozenset("not never no nor unless only before after until if when while without "
-                  "except but must may cannot always first last same other another every "
-                  "all none or rather than by be then so".split())
-_PHRASES = [("in order to", "to"), ("as well as", "and"), ("so that", "so"),
-            ("make sure", "ensure"), ("at the moment", "now"), ("a number of", "several"),
-            ("the fact that", "that")]
-_PUNCT = ".,;:"
-
-
-def _terse_words(seg):
-    # The segment's own edges kept: a code span sits between two of these,
-    # and the space either side of it is what keeps it a word.
-    lead = seg[:len(seg) - len(seg.lstrip(" "))]
-    trail = seg[len(seg.rstrip(" ")):]
-    seg = seg.strip(" ")
-    for a, b in _PHRASES:
-        seg = re.sub(re.escape(a), b, seg, flags=re.IGNORECASE)
-    out = []
-    quoted = False
-    for tok in seg.split(" "):
-        core = tok.strip(_PUNCT + "()\"'")
-        # Inside double quotes nothing is dropped: a quoted label is a name.
-        # A token carrying a bracket or a quote stays whole: dropping it took
-        # the bracket with it, and the sentence lost its shape.
-        opens = tok.count('"')
-        keep_whole = any(c in tok for c in "()\"") or quoted
-        if (core and core.islower() and core in _FILL and core not in _KEEP
-                and "-" not in tok and not keep_whole):
-            punct = tok[len(tok.rstrip(_PUNCT)):]
-            if punct and out:
-                out[-1] = out[-1].rstrip(_PUNCT) + punct
-        else:
-            out.append(tok)
-        if opens % 2:
-            quoted = not quoted
-    return lead + " ".join(t for t in out if t != "") + trail
-
-
-def terse(text):
-    """`text` with its filler words dropped, outside code. A code span can
-    wrap onto the next line, so the backticks are counted across a
-    paragraph rather than a line: counted per line, the words after a
-    wrapped span were read as code, or code as words."""
-    out, para = [], []
-
-    def flush():
-        if not para:
-            return
-        segs = "\n".join(para).split("`")
-        for i in range(0, len(segs), 2):
-            segs[i] = "\n".join(_terse_words(ln) for ln in segs[i].split("\n"))
-        out.extend("`".join(segs).split("\n"))
-        para.clear()
-
-    for line in (text or "").split("\n"):
-        if not line.strip() or line.startswith(("    ", "\t")):
-            flush()
-            out.append(line)
-            continue
-        para.append(line)
-    flush()
-    return "\n".join(out)
-
-
 REPLY_SAID = {
     "minimal": ("Replies to the person: minimal, their setting. Answer in as few "
                 "words as carry it: the outcome, what to look at, what is left; no preamble, "
@@ -183,15 +104,6 @@ def person_part(reply, asks):
     writes to them and how often it asks them. "" when neither is set."""
     said = [t for t in (REPLY_SAID.get(reply or "", ""), ASKS_SAID.get(asks or "", "")) if t]
     return "## Replies\n\n" + "\n\n".join(said) if said else ""
-
-
-def _brief_mode(project):
-    if prefs_mod is None:
-        return "full"
-    try:
-        return (prefs_mod.get(project) or {}).get("brief") or "full"
-    except Exception:                                                # noqa: BLE001
-        return "full"
 
 
 # The projects this one reads (prefs.reads), said where the session will
@@ -393,7 +305,6 @@ def parts(project, reply="", asks=""):
     gap where the tracker would have been.
     """
     out = []
-    mode = _brief_mode(project)
     for name, fn in (("briefing", lambda: briefing(project)),
                      # What is running, as a fact rather than a guess (R75
                      # step 5): a session argued from a build it assumed once.
@@ -411,8 +322,6 @@ def parts(project, reply="", asks=""):
             text = ""
             print(f"dashboard: preamble: {name} for {project} left out: {type(e).__name__}: {e}",
                   file=sys.stderr, flush=True)
-        if text and mode == "terse" and name != "live":
-            text = terse(text)
         if text:
             out.append((name, text))
     return out

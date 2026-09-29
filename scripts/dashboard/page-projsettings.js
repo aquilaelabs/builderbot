@@ -111,7 +111,7 @@ function rnFillPrefs(p){
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
-               brief: p?.prefs?.brief || "full", reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
+               reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
                color: p?.prefs?.color || ""};
@@ -204,7 +204,6 @@ function rnFillPrefsRest(p){
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.tests_in || "node";
   $("rnTestChange").value = p?.prefs?.test_change || "wait";
-  $("rnBrief").value = p?.prefs?.brief || "full";
   $("rnReply").value = p?.yours?.reply || "";
   $("rnAsks").value = p?.yours?.asks || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
@@ -536,14 +535,14 @@ async function rnSubmit(){
   // With the node's group: nothing here restarts a session.
   const tests_in = $("rnDevTest").value || "node";
   const test_change = $("rnTestChange").value || "wait";
-  const brief = $("rnBrief").value || "full", reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
+  const reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || reads.join(",") !== rnPrefWas.reads
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
-    || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change || brief !== rnPrefWas.brief
+    || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change
     || devbuild !== rnPrefWas.devbuild
     || report !== rnPrefWas.report;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
@@ -596,7 +595,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, nodes, reads, build, test, gate, color,
-                              tests_in, test_change, brief, reply, asks, devbuild, report,
+                              tests_in, test_change, reply, asks, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
                               // The node binding never restarts a session;

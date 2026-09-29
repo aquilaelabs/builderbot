@@ -80,13 +80,6 @@ const more = await pre();
 ok(/Questions to the person: more/.test(more.text) && /before a judgment call/.test(more.text),
    '...and more, for a person who wants the judgment calls put to them (the operator, 25 Sep)');
 await setPref({ asks: '' });
-const full = await pre();
-await setPref({ brief: 'terse' });
-const tersed = await pre();
-ok(tersed.bytes < full.bytes * 0.85 && /Ask map before grepping/.test(tersed.text) && /bb map who-calls NAME/.test(tersed.text)
-   && /never holds reply/.test(tersed.text),
-   `terse drops the filler words and keeps the commands, the names and the words that turn a sentence (${tersed.bytes} of ${full.bytes} bytes)`);
-await setPref({ brief: 'full' });
 await setChange('wait');
 ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length <= 2,
    'an obligation reaches a session once, as a rule, and not again from the briefing; the shelf is said by the roadmap\'s own note');
