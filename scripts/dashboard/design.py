@@ -283,15 +283,29 @@ def _luma(hexcol):
 # carries a sentence a session holds the work to, and while "quiet" was
 # here by default a project's stylesheet was reported as falling short of
 # a promise nobody had made.
-LANGUAGE_DEFAULT = {"themes": [], "font": "", "corners": "", "density": "",
-                    "motion": "", "scope": "", "rules": [], "fonts": "", "custom": {}}
+# A language is its themes and what it governs; the choices (type, corners,
+# space, motion), the font families, the custom rule each choice may name
+# and the rules are each THEME's (the operator, 29 Sep). The first theme is
+# the default, and its choices and rules are the design's: said bare, as
+# the design's own; another theme's are said under it, where they differ.
+LANGUAGE_DEFAULT = {"themes": [], "scope": ""}
+THEME_CHOICES = {"font": "", "corners": "", "density": "", "motion": "", "fonts": "", "custom": {}}
 # The four choices by the word the view labels each with.
 CHOICE_WORDS = (("font", "type"), ("corners", "corners"), ("density", "space"), ("motion", "motion"))
 
 
+def lead(lang):
+    """The default theme, whose choices and rules are the design's, or a
+    theme with nothing chosen when there is none yet."""
+    themes = lang.get("themes") or []
+    return themes[0] if themes else {"name": "", "mode": "", "colors": [], "rules": [], **THEME_CHOICES}
+
+
 def open_choices(lang):
-    """The choices of a language nobody has made yet, by the view's words."""
-    return [word for key, word in CHOICE_WORDS if not lang.get(key)]
+    """The choices of a language nobody has made yet, by the view's words:
+    the default theme's."""
+    t = lead(lang)
+    return [word for key, word in CHOICE_WORDS if not t.get(key)]
 
 
 # The four choices as the words and the file head them.
@@ -299,10 +313,10 @@ SAID = (("font", "Type", FONTS), ("corners", "Shape", CORNERS), ("density", "Spa
         ("motion", "Motion", MOTION))
 
 
-def _custom_rule(lang, key):
-    """The rule a custom choice names, or None."""
-    name = (lang.get("custom") or {}).get(key) if lang.get(key) == "custom" else None
-    return next((r for r in lang["rules"] if r["name"] == name), None) if name else None
+def _custom_rule(theme, key):
+    """The rule a theme's custom choice names, or None."""
+    name = (theme.get("custom") or {}).get(key) if theme.get(key) == "custom" else None
+    return next((r for r in theme.get("rules") or [] if r["name"] == name), None) if name else None
 
 
 def _open_line(lang):
@@ -439,8 +453,13 @@ def _clean_theme(t, n):
     if mode not in MODES:
         bg = _role({"colors": colors}, "bg")
         mode = "light" if bg and _luma(bg) > 0.5 else "dark"
-    return {"name": name, "mode": mode, "colors": colors,
-            "rules": _clean_rules(t.get("rules"), f"the theme {name}")}
+    out = {"name": name, "mode": mode, "colors": colors,
+           "rules": _clean_rules(t.get("rules"), f"the theme {name}")}
+    for key, rows in CHOICES.items():
+        out[key] = _choice(t.get(key), [k for k, _, _ in rows], key, "")
+    out["fonts"] = _line(t.get("fonts"), 200, "the font families")
+    out["custom"] = _clean_custom(t.get("custom"), out)
+    return out
 
 
 def _clean_language(lang):
@@ -460,6 +479,24 @@ def _clean_language(lang):
         base["colors"] += [m for m in (lang.get("more") or []) if isinstance(m, dict)]
         lang = {**lang, "themes": [base]}
     raw = lang.get("themes") if isinstance(lang.get("themes"), list) else []
+    raw = [dict(t) if isinstance(t, dict) else t for t in raw]
+    # A record from before the choices and the rules were each theme's
+    # (29 Sep) carried them on the language: every theme takes a choice it
+    # has none of its own for, and the language's rules go to the default
+    # theme, ahead of its own. A language that made choices with no theme
+    # yet gets a theme to hold them.
+    carried = {k: lang.get(k) for k in ("font", "corners", "density", "motion", "fonts", "custom") if lang.get(k)}
+    old_rules = lang.get("rules") if isinstance(lang.get("rules"), list) else []
+    if (carried or old_rules) and not raw:
+        raw = [{"name": "Default", "mode": "dark", "colors": []}]
+    for i, t in enumerate(raw):
+        if not isinstance(t, dict):
+            continue
+        for k, v in carried.items():
+            if not t.get(k):
+                t[k] = v
+        if i == 0 and old_rules:
+            t["rules"] = old_rules + (t.get("rules") if isinstance(t.get("rules"), list) else [])
     if len(raw) > THEMES_MAX:
         _bad(f"a language holds at most {THEMES_MAX} themes, and this has {len(raw)}")
         raw = raw[:THEMES_MAX]
@@ -474,17 +511,12 @@ def _clean_language(lang):
     # None is a language too (the operator, 29 Sep): a project designed by
     # its first session starts empty, and the session fills it in.
     out["themes"] = themes
-    for key, rows in CHOICES.items():
-        out[key] = _choice(lang.get(key), [k for k, _, _ in rows], key, LANGUAGE_DEFAULT[key])
     out["scope"] = _line(lang.get("scope"), NAME_MAX, "what the language governs")
-    out["fonts"] = _line(lang.get("fonts"), 200, "the font families")
-    out["rules"] = _clean_rules(lang.get("rules"), "the language")
-    out["custom"] = _clean_custom(lang.get("custom"), out)
     return out
 
 
-def _clean_custom(raw, lang):
-    """Which of the design's rules says each choice that is custom:
+def _clean_custom(raw, theme):
+    """Which of the theme's rules says each choice that is custom:
     {choice: rule name}. 'Shape: as the design's own rules say' named no
     rule, and the rule that held the radii was ninety lines further down
     among thirty others (a report from another project, 29 Sep)."""
@@ -494,17 +526,17 @@ def _clean_custom(raw, lang):
     if not isinstance(raw, dict):
         _bad(f"custom is an object, a choice to the name of its rule, not {str(raw)[:40]!r}")
         return out
-    names = {r["name"] for r in lang["rules"]}
+    names = {r["name"] for r in theme["rules"]}
     for key, rule in raw.items():
         rule = str(rule or "").strip().lower()
         if key not in CHOICES:
             _bad(f"custom names {key!r}, which is not a choice: the choices are {', '.join(CHOICES)}")
         elif not rule:
             continue
-        elif lang.get(key) != "custom":
-            _bad(f"custom names a rule for {key}, which is {lang.get(key) or 'not chosen'} and not custom")
+        elif theme.get(key) != "custom":
+            _bad(f"custom names a rule for {key}, which is {theme.get(key) or 'not chosen'} and not custom")
         elif rule not in names:
-            _bad(f"custom names the rule {rule} for {key}, and the language has no rule called that")
+            _bad(f"custom names the rule {rule} for {key}, and {theme['name']} has no rule called that")
         else:
             out[key] = rule
     return out
@@ -570,8 +602,11 @@ def scoped_rules(rec):
     named under it: `nostromo/hull` is the Nostromo theme's rule hull, and
     `bb design show nostromo/hull` reads it. [(name, rule, holder)]."""
     lang = rec["language"]
-    out = [(r["name"], r, "") for r in lang["rules"]]
-    for t in lang["themes"]:
+    themes = lang["themes"]
+    # The default theme's rules are the design's, bare; the others' under
+    # their theme's slug.
+    out = [(r["name"], r, "") for r in (themes[0].get("rules") if themes else [])]
+    for t in themes[1:]:
         out += [(f"{_slug(t['name'])}/{r['name']}", r, f"the {t['name']} theme") for r in t.get("rules") or []]
     for p in rec["pages"]:
         out += [(f"{page_key(p)}/{r['name']}", r, p["name"] or f"page {p['id']}")
@@ -648,9 +683,13 @@ def _place(b, cols, rows, what):
         return {"x": 0, "y": 0, "w": 1, "h": 1}
     if w < 1 or h < 1:
         _bad(f"{what} is {w} wide and {h} high: a block is at least one cell each way")
-    if x < 0 or x + w > cols:
+    if x < 0:
+        _bad(f"{what} has x {x}, which is left of the frame: x is 0 at the first column")
+    elif x + w > cols:
         _bad(f"{what} runs from column {x + 1} to {x + w}, and the frame has {cols}")
-    if y < 0 or y + h > rows:
+    if y < 0:
+        _bad(f"{what} has y {y}, which is above the page: y is 0 at the first row")
+    elif y + h > rows:
         _bad(f"{what} runs from row {y + 1} to {y + h}, and the page has {rows}"
              + (f": give the page more rows (rows, up to {ROWS_MAX}) where it is longer than one screen"
                 if rows < ROWS_MAX and 0 <= y and y + h <= ROWS_MAX else ""))
@@ -701,6 +740,11 @@ def _inside_parents(blocks, places, what, where):
         k = b.get("in")
         if not k:
             continue
+        # ...and is drawn over it: a later block draws over an earlier one,
+        # so a child comes after its parent in the list (the operator, 29 Sep).
+        if k - 1 > i and not where:
+            _bad(f"{what} {i + 1} is inside block {k} but comes before it, so it would draw under it: "
+                 "a block comes after the one it is inside")
         p = places[k - 1]
         if r["x"] < p["x"] or r["y"] < p["y"] or r["x"] + r["w"] > p["x"] + p["w"] or r["y"] + r["h"] > p["y"] + p["h"]:
             _bad(f"{what} {i + 1} is inside block {k} but reaches outside it{where}: a block inside "
@@ -920,32 +964,23 @@ def language_text(lang, platform=""):
         for i, t in enumerate(themes):
             lines.append(f"  {t['name']} ({t['mode']}{', the default' if i == 0 else ''}):")
             lines.extend(f"    {c['name']} {c['hex']}" + (f": {c['means']}" if c["means"] else "") for c in t["colors"])
-            lines.extend(_rule_lines(t.get("rules") or [], f"{t['name']}'s own rules", _slug(t["name"]), "    "))
-    if len(themes) == 1:
-        lines.extend(_rule_lines(themes[0].get("rules") or [], f"{themes[0]['name']}'s own rules", _slug(themes[0]["name"]), "  "))
+            if i:
+                # Another theme's choices where they differ from the default's.
+                lines.extend("    " + ln for ln in _choice_lines(t, platform, themes[0]))
+                lines.extend(_rule_lines(t.get("rules") or [], f"{t['name']}'s own rules", _slug(t["name"]), "    "))
     # Each choice says what it means once somebody has made it, and only
     # that: the sentences this used to add by itself (monospace for data,
     # hairlines of 1px, AA contrast on a filled accent) were BuilderBot's
     # own design said of every project's, and one of them contradicted a
     # project's rules (a report from another project, 29 Sep). What a
-    # design holds to beyond its choices is in its rules.
-    for key, word, rows in SAID:
-        rule = _custom_rule(lang, key)
-        fonts = f", set as {lang['fonts']}" if key == "font" and lang.get("fonts") else ""
-        if rule:
-            # The rule itself, where the choice would have been: a session
-            # restyling a page reads this and has the figures in it.
-            lines.append(f"{word}{fonts}, as the rule {rule['name']} says:")
-            lines.extend("  " + ln for ln in rule["text"].splitlines() if ln.strip())
-        elif lang[key]:
-            lines.append(f"{word}: " + (_font_means(lang, platform) if key == "font" else _means(rows, lang[key]))
-                         + fonts + ".")
-        elif fonts:
-            lines.append(f"Type: set as {lang['fonts']}.")
+    # design holds to beyond its choices is in its rules. The default
+    # theme's, said as the design's.
+    first = lead(lang)
+    lines.extend(_choice_lines(first, platform))
     if _open_line(lang):
         lines.append(_open_line(lang))
-    standing = [r for r in lang["rules"] if not (r["words"] or r["paths"])]
-    named = [r for r in lang["rules"] if r["words"] or r["paths"]]
+    standing = [r for r in first["rules"] if not (r["words"] or r["paths"])]
+    named = [r for r in first["rules"] if r["words"] or r["paths"]]
     for r in standing:
         lines.append(f"{r['name']}: {r['text']}")
     if named:
@@ -954,6 +989,29 @@ def language_text(lang, platform=""):
         lines.extend(f"  {r['name']}: " + "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
                      for r in named)
     return "\n".join(lines)
+
+
+def _choice_lines(theme, platform="", against=None):
+    """A theme's four choices in words, each as it is made: the rule itself
+    where a choice is custom (a session restyling a page reads this and has
+    the figures in it). With `against`, only where this theme differs from
+    that one, which is how another theme is said under the default."""
+    lines = []
+    for key, word, rows in SAID:
+        if against is not None and theme.get(key) == against.get(key) and theme.get("fonts") == against.get("fonts") \
+                and (theme.get("custom") or {}).get(key) == (against.get("custom") or {}).get(key):
+            continue
+        rule = _custom_rule(theme, key)
+        fonts = f", set as {theme['fonts']}" if key == "font" and theme.get("fonts") else ""
+        if rule:
+            lines.append(f"{word}{fonts}, as the rule {rule['name']} says:")
+            lines.extend("  " + ln for ln in rule["text"].splitlines() if ln.strip())
+        elif theme.get(key):
+            lines.append(f"{word}: " + (_font_means(theme, platform) if key == "font" else _means(rows, theme[key]))
+                         + fonts + ".")
+        elif fonts:
+            lines.append(f"Type: set as {theme['fonts']}.")
+    return lines
 
 
 def _rule_lines(rules, head, scope, indent):
@@ -1008,8 +1066,11 @@ def page_text(page):
         for i, b in enumerate(blocks):
             what = f": {b['label']}" if b["label"] else ""
             par = blocks[b["in"] - 1] if b.get("in") else None
+            # The parent by its number and the first clause of its label:
+            # six children of one parent said its whole label six times (B384).
+            first = re.split(r"[:;,.] ", par["label"], 1)[0][:40] if par and par["label"] else ""
             inside = (f", inside block {b['in']} ({_label(KINDS, par['kind'])}"
-                      f"{': ' + par['label'] if par['label'] else ''})") if par else ""
+                      f"{': ' + first if first else ''})") if par else ""
             out.append(f"  {i + 1}. {_label(KINDS, b['kind'])} ({_means(KINDS, b['kind'])}){what}, "
                        f"{_where(b, frame, n)}{inside}")
         return out
@@ -1070,31 +1131,37 @@ def file_text(rec):
              "Color comes only from these tokens, named once in the stylesheet"
              + (f". The app starts on {themes[0]['name']}; a theme picker, where the app has one, "
                 "offers the themes by name, and every theme names the same tokens:" if len(themes) > 1 else ":"))]
+    first = lead(lang)
     for i, t in enumerate(themes):
         if len(themes) > 1:
             out += ["", f"### {t['name']} ({t['mode']}{', the default' if i == 0 else ''})"]
         out += ["", "| token | value | for |", "|---|---|---|"]
         out += [f"| `--{_slug(c['name'])}` | `{c['hex']}` | {c['means']} |" for c in t["colors"]]
-        out += _file_rules(t.get("rules") or [], _slug(t["name"]), f"Rules of {t['name']}'s own", "####")
+        if i:
+            # Where this theme's choices differ from the default's, and its own rules.
+            differs = _choice_lines(t, "", themes[0])
+            if differs:
+                out += ["", f"{t['name']} differs from the default in:", ""] + [f"- {ln}" for ln in differs]
+            out += _file_rules(t.get("rules") or [], _slug(t["name"]), f"Rules of {t['name']}'s own", "####")
     for key, word, rows in SAID:
-        rule = _custom_rule(lang, key)
-        fonts = f", set as {lang['fonts']}" if key == "font" and lang.get("fonts") else ""
+        rule = _custom_rule(first, key)
+        fonts = f", set as {first['fonts']}" if key == "font" and first.get("fonts") else ""
         if rule:
             out += ["", f"## {word}", "", f"As the rule `{rule['name']}` says" + fonts + ":", "", rule["text"]]
-        elif lang[key]:
-            out += ["", f"## {word}", "", _cap(_font_means(lang) if key == "font" else _means(rows, lang[key]))
+        elif first.get(key):
+            out += ["", f"## {word}", "", _cap(_font_means(first) if key == "font" else _means(rows, first[key]))
                     + fonts + "."]
         elif fonts:
-            out += ["", "## Type", "", f"Set as {lang['fonts']}."]
+            out += ["", "## Type", "", f"Set as {first['fonts']}."]
     if open_choices(lang):
         out += ["", "## Not chosen yet", "", _cap(", ".join(open_choices(lang)))
                 + ": nobody has made " + ("this choice" if len(open_choices(lang)) == 1 else "these choices")
                 + ". What the rules say of " + ("it" if len(open_choices(lang)) == 1 else "them") + " holds."]
-    if lang["rules"]:
+    if first["rules"]:
         out += ["", "## Rules", "",
                 "Each is one rule of the design, by name; a session is handed one on the turn it edits a "
                 "file or is asked about a word the rule names, and `bb design show NAME` reads one."]
-        for r in lang["rules"]:
+        for r in first["rules"]:
             on = "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
             out += ["", f"### {r['name']}", ""] + ([f"Applies to: {on}", ""] if on else []) + [r["text"]]
     if pages:
@@ -1152,15 +1219,18 @@ def schema_text():
         "",
         "{",
         '  "language": {',
-        f'    "themes": [ {{ "name": "Night", "mode": "dark" | "light", "colors": [ {{ "name": "bg", "hex": "#1a1f26" or "#1a1f26cc", "means": "the page" }} ], "rules": [RULE] }} ],   at most {THEMES_MAX} themes, {COLORS_MAX} colors each, a color name once per theme',
-        f'    "font": {" | ".join(k for k, _, _ in FONTS)},   each of these four may be "" while nobody has chosen it, and custom where the rules say it',
-        f'    "corners": {" | ".join(k for k, _, _ in CORNERS)},',
-        f'    "density": {" | ".join(k for k, _, _ in DENSITY)},',
-        f'    "motion": {" | ".join(k for k, _, _ in MOTION)},',
-        '    "custom": { "corners": "radii" },   optional: for a choice that is custom, the name of the rule of this language that says it; its text is printed in the choice\'s place',
-        '    "fonts": "Inter for text, JetBrains Mono for code",   the exact families, at most 200 characters',
+        f'    "themes": [ {{   at most {THEMES_MAX}; the first is the default, whose choices and rules are the design\'s',
+        '      "name": "Night", "mode": "dark" | "light",',
+        f'      "colors": [ {{ "name": "bg", "hex": "#1a1f26" or "#1a1f26cc", "means": "the page" }} ],   at most {COLORS_MAX}, a color name once per theme',
+        f'      "font": {" | ".join(k for k, _, _ in FONTS)},   each of these four may be "" while nobody has chosen it, and custom where the theme\'s rules say it',
+        f'      "corners": {" | ".join(k for k, _, _ in CORNERS)},',
+        f'      "density": {" | ".join(k for k, _, _ in DENSITY)},',
+        f'      "motion": {" | ".join(k for k, _, _ in MOTION)},',
+        '      "custom": { "corners": "radii" },   optional: for a choice that is custom, the name of the rule of this theme that says it; its text is printed in the choice\'s place',
+        '      "fonts": "Inter for text, JetBrains Mono for code",   the exact families, at most 200 characters',
+        f'      "rules": [RULE]   at most {RULES_MAX}, each named once; the default theme\'s are addressed bare, another\'s as THEME/RULE',
+        '    } ],',
         f'    "scope": "the web app in site/",   what the language governs, at most {NAME_MAX} characters',
-        f'    "rules": [RULE]   at most {RULES_MAX}, each named once',
         "  },",
         '  "pages": [ {',
         '    "id": 3,   a saved page keeps its id; leave it out for a new page; a saved page left out is removed',
@@ -1171,7 +1241,7 @@ def schema_text():
         + ", ".join(f"{k} is {v['cols']} columns by {v['rows']} rows" for k, v in FRAMES.items()),
         f'    "rows": 14,   optional: how long the page is where it is longer than one screen, the frame\'s rows to {ROWS_MAX}',
         f'    "template": {" | ".join(TEMPLATE_KEYS)},',
-        f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2, "in": 1 }} ],   at most {MAX_BLOCKS}, each inside the frame\'s columns and the page\'s rows, in drawing order (a later block draws over an earlier one where they overlap); "in" is optional: the number of the block this one lies inside, which it stays within',
+        f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2, "in": 1 }} ],   at most {MAX_BLOCKS}, each inside the frame\'s columns and the page\'s rows, in drawing order (a later block draws over an earlier one where they overlap); "in" is optional: the number of the block this one lies within and is drawn over, any block that is part of another (a card in a list, a cover in a card, a pill in a bar), which it then stays inside, and which comes before it in the list; a child can hold children of its own',
         f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the same blocks sit on another frame, one place per block in the blocks\' order, a block inside another still within it; a layout is as long as its places reach, up to {ROWS_MAX} rows, and rows above is the length on the page\'s own frame; bb design show and the file say each',
         f'    "notes": "...",   at most {NOTES_MAX} characters',
         '    "rules": [RULE]',
@@ -1256,10 +1326,11 @@ def verb(project, req, who, session):
                 except _Refused as e:
                     return {"error": str(e)}, 400
                 names = ", ".join(t["name"] for t in lang["themes"])
+                nrules = sum(len(t.get("rules") or []) for t in lang["themes"]) + sum(len(p.get("rules") or []) for p in pages)
                 r = pending.hold(project, "design", "save",
                                  {"language": req.get("language") or {}, "pages": req.get("pages") or []},
                                  summary=f"the design: {len(lang['themes'])} theme{'' if len(lang['themes']) == 1 else 's'} ({names}), "
-                                         f"{len(lang['rules'])} rule{'' if len(lang['rules']) == 1 else 's'}, {len(pages)} page{'' if len(pages) == 1 else 's'}")
+                                         f"{nrules} rule{'' if nrules == 1 else 's'}, {len(pages)} page{'' if len(pages) == 1 else 's'}")
                 if r.get("error"):
                     return r, 400
                 return {"ok": True, "held": r["held"]}, 202
@@ -1294,11 +1365,13 @@ def text_for(project, which=""):
     theme = next((t for t in rec["language"]["themes"] if t["name"].lower() == which.lower()
                   or _slug(t["name"]) == which.lower()), None)
     if theme is not None:
-        lines = [f"{theme['name']} ({theme['mode']}), one theme of {len(rec['language']['themes'])}:"]
+        first = rec["language"]["themes"][0] is theme
+        lines = [f"{theme['name']} ({theme['mode']}), {'the default of' if first else 'one theme of'} {len(rec['language']['themes'])}:"]
         lines.extend(f"  {c['name']} {c['hex']}" + (f": {c['means']}" if c["means"] else "") for c in theme["colors"])
+        lines.extend("  " + ln for ln in _choice_lines(theme))
         for r in theme.get("rules") or []:
             on = "; ".join(x for x in [", ".join(r["paths"]), ", ".join(r["words"])] if x)
-            lines += ["", f"{_slug(theme['name'])}/{r['name']}" + (f" (applies to: {on})" if on else ""), r["text"]]
+            lines += ["", (r['name'] if first else f"{_slug(theme['name'])}/{r['name']}") + (f" (applies to: {on})" if on else ""), r["text"]]
         return "\n".join(lines), ""
     page = next((p for p in rec["pages"] if str(p["id"]) == which or p["name"].lower() == which.lower()
                  or (p.get("key") and p["key"] == which.lower())), None)
@@ -1312,21 +1385,22 @@ def listing(project):
     rec = _record(_load(), project)
     lang = rec["language"]
     themes = ", ".join(f"{t['name']} ({t['mode']})" for t in lang["themes"]) or "no theme yet"
+    first = lead(lang)
     # Each with its noun: "custom corners, custom, quiet motion" left the
     # reader to work out what the second custom was.
-    made = [x for x in ((_label(FONTS, lang["font"]).lower() + (" type" if lang["font"] == "custom" else ""))
-                        if lang["font"] else "",
-                        f"{lang['corners']} corners" if lang["corners"] else "",
-                        f"{lang['density']} spacing" if lang["density"] else "",
-                        f"{lang['motion']} motion" if lang["motion"] else "") if x]
+    made = [x for x in ((_label(FONTS, first["font"]).lower() + (" type" if first["font"] == "custom" else ""))
+                        if first["font"] else "",
+                        f"{first['corners']} corners" if first["corners"] else "",
+                        f"{first['density']} spacing" if first["density"] else "",
+                        f"{first['motion']} motion" if first["motion"] else "") if x]
     left = open_choices(lang)
     lines = [f"{project}'s design language: {themes}"
              + (f"; {', '.join(made)}" if made else "")
              + (f"; {', '.join(left)} not chosen yet" if left else "")
              + (f"; it governs {lang['scope']}" if lang.get("scope") else "")]
-    if lang["rules"]:
-        lines.append(f"  {len(lang['rules'])} design rule{'' if len(lang['rules']) == 1 else 's'}: "
-                     + ", ".join(r["name"] for r in lang["rules"][:12]) + (", ..." if len(lang["rules"]) > 12 else ""))
+    if first["rules"]:
+        lines.append(f"  {len(first['rules'])} design rule{'' if len(first['rules']) == 1 else 's'}: "
+                     + ", ".join(r["name"] for r in first["rules"][:12]) + (", ..." if len(first["rules"]) > 12 else ""))
     own = [n for n, _, h in scoped_rules(rec) if h]
     if own:
         lines.append(f"  {len(own)} rule{'' if len(own) == 1 else 's'} of a theme's or a page's own: "

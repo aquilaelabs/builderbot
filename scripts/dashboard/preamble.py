@@ -189,8 +189,12 @@ def design_line(project):
     if pages:
         bits.append(f"{len(pages)} page{'' if len(pages) == 1 else 's'}: "
                     + ", ".join(p["name"] or f"page {p['id']}" for p in pages[:8]) + (", ..." if len(pages) > 8 else ""))
-    if lang["rules"] or own:
-        bits.append(f"{len(lang['rules'])} design rule{'' if len(lang['rules']) == 1 else 's'}"
+    # The default theme's rules are the design's; the other themes' and
+    # the pages' are their own.
+    mine = design.lead(lang)["rules"]
+    own -= len(mine)
+    if mine or own:
+        bits.append(f"{len(mine)} design rule{'' if len(mine) == 1 else 's'}"
                     + (f" and {own} of a theme's or a page's own" if own else ""))
     left = design.open_choices(lang)
     if left:

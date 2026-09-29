@@ -1617,20 +1617,25 @@ of its own, one per project, and as many open at once as you have projects;
 each is its own instance, so what is half-typed in one survives working in
 another, and the button lights green while that project's is open. Its tab
 strip: **Briefing** (the rules, and what Claude remembers here), **Design**
-(what the project looks like, in four folds: the pages, laid out as
+(what the project looks like, in two folds: the pages, laid out as
 labeled blocks on a phone or desktop frame, each named for what it is for
 and the platform it is built for, a web app or an Android, iOS, Linux,
-macOS or Windows app, since one project can be several; the design
-language, type and the exact families, shape, space, motion and what it
-governs; the themes, each a named set of colors, dark or light, that a
-preset fills and you add to or cut, the app starting on the first; and
-your own design rules; a theme and a page each carry rules of their own
-as well, for what holds for that theme or that page alone (the Nostromo
-scheme's textures, say), which reach a session named under their holder,
-`nostromo/hull`, and every rules list reads as the Briefing's does, a
-folded row a rule, inside the entry it holds for: the language's in its
-fold, a theme's above its colors, a page's under its board; the pages and
-the themes show one at a time, chosen on a pulldown at the top; a frame is
+macOS or Windows app, since one project can be several; and the themes,
+each a named set of colors, dark or light, that a preset fills and you add
+to or cut, the app starting on the first, and each carrying the design
+language of its own: type and the exact families, shape, space, motion,
+and its rules. The first theme is the default, and its choices and rules
+are the design's: said bare, as the design's own, in the briefing and the
+file; another theme's are said under it where they differ, and its rules
+reach a session named under the theme, `nostromo/hull`. What the language
+governs sits at the top of the themes. A page carries rules of its own as
+well, for what holds for that page alone, named under the page. Every
+rules list reads as the Briefing's does, a folded row a rule, inside the
+entry it holds for: a theme's under its choices, a page's under its
+board. A new theme starts blank, from a preset or as a copy of a theme
+here, choices and rules included, and a new page from a template or as a
+copy of a page here. The pages and the themes show one at a time, chosen
+on a pulldown; a frame is
 one screen and a page may be longer than one, up to 240 rows, which
 scrolls, and a page keeps where its blocks sit on each frame it has been
 laid out for, which `bb design show` and the file say after the frame it is

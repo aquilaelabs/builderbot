@@ -64,6 +64,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On the Briefing view the memories are folded, with their count on the heading; the code base and the rules stay as they were (30e57bb)
 - A roadmap item folds like a bug report: its row is the heading and a tap on it opens every step under it (30e57bb)
 - On the roadmap, Send to Claude is the Claude mark first among a row's buttons on the right, the fold's caret takes its old place level with the words, and a tap on a group's words opens its steps on the same tween a bug's row uses; the pencil rewords (7d6dd63)
+- The design language is each theme's: type, corners, space, motion, the families and the rules sit with the theme in the Themes section, the first theme's being the design's own; a new theme starts blank, from a preset or as a copy of a theme, and a new page can be a copy of a page (43710dd)
 
 ### Removed
 
@@ -129,6 +130,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The dot beside each person on a project's row is the same dot, in the same two colors, as the session's tab, the phone's Terminal tab and the Sessions card: blue and pulsing while Claude works, amber while it waits (37adf7d)
 - Locking a project names the Claude sessions running there before it ends them, and ends every one of them, whoever's and on whatever node; it used to end only the owner's, and only when it ran in the container (77226dd)
 - The hint under the model picker says Save asks about a running session rather than restarting it (30e57bb)
+- bb design show names a block's parent by the first clause of its label, a block placed left of or above the frame is refused saying so, and the schema says what a block's 'in' is for: any block that is part of another, drawn over it (43710dd)
 
 ### Security
 

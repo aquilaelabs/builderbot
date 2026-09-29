@@ -102,10 +102,13 @@ function nbDesignView({$, nb, project, root}){
     drawAdd();
     $("dsPlatform").onchange = fillTemplates;
     $("dsAdd").onclick = () => {
+      const src = nb.dsPages.find(x => keyOf(x) === ($("dsPageFrom")?.value || ""));
       const t = byKey(presets().templates, $("dsTemplate").value);
-      if (!t) return;
-      const p = {id: 0, tmp: ++tmpN, name: "", platform: $("dsPlatform").value, template: t.key,
-                 frame: t.frame, blocks: clone(t.blocks), notes: ""};
+      if (!t && !src) return;
+      const p = src
+        ? {...clone(src), id: 0, tmp: ++tmpN, name: "", key: ""}
+        : {id: 0, tmp: ++tmpN, name: "", platform: $("dsPlatform").value, template: t.key,
+           frame: t.frame, blocks: clone(t.blocks), notes: ""};
       nb.dsPages.push(p);
       nb.dsShow.page = keyOf(p);
       // The section opens on what was just added, whatever its fold said.
@@ -157,7 +160,7 @@ function nbDesignView({$, nb, project, root}){
     if (!nb.dsData){ body.innerHTML = `<div class="loading">loading…</div>`; return; }
     const sh = shown();
     nb.dsRuleLists = {};
-    body.innerHTML = pagesSection(sh.page) + languageSection() + themesSection(sh.theme);
+    body.innerHTML = pagesSection(sh.page) + themesSection(sh.theme);
     wireSections(body);
     wireAdd();
     wireLanguage(body);
@@ -181,56 +184,47 @@ function nbDesignView({$, nb, project, root}){
   // nobody made must say nothing.
   const choice = (rows, cur) => `<option value=""${cur ? "" : " selected"}>not chosen</option>` + opt(rows, cur);
 
-  // A choice that is custom is said by one of the design's own rules, and
+  // A choice that is custom is said by one of the theme's own rules, and
   // names which: its text is what a session reads in the choice's place.
   const CUSTOM = [["font", "Type"], ["corners", "Corners"], ["density", "Space"], ["motion", "Motion"]];
-  function customRow(){
-    const L = nb.dsLang;
-    const mine = CUSTOM.filter(([k]) => L[k] === "custom");
+  function customRow(t, i){
+    const mine = CUSTOM.filter(([k]) => t[k] === "custom");
     if (!mine.length) return "";
-    const rules = (L.rules || []).filter(r => r.name);
-    const pickRule = k => `<option value=""${(L.custom || {})[k] ? "" : " selected"}>no rule named</option>`
-      + rules.map(r => `<option value="${esc(r.name)}"${(L.custom || {})[k] === r.name ? " selected" : ""}>${esc(r.name)}</option>`).join("");
+    const rules = (t.rules || []).filter(r => r.name);
+    const pickRule = k => `<option value=""${(t.custom || {})[k] ? "" : " selected"}>no rule named</option>`
+      + rules.map(r => `<option value="${esc(r.name)}"${(t.custom || {})[k] === r.name ? " selected" : ""}>${esc(r.name)}</option>`).join("");
     return `<div class="field"><div class="dsrow">${mine.map(([k, word]) =>
-      ctl(`dsCustom-${k}`, `${word}, by the rule`, "which of the rules below says it: a session reads that rule where the choice would be",
-          `<select id="dsCustom-${k}" data-dscustom="${k}">${pickRule(k)}</select>`)).join("")}</div></div>`;
+      ctl(`dst-${i}-custom-${k}`, `${word}, by the rule`, "which of this theme's rules says it: a session reads that rule where the choice would be",
+          `<select id="dst-${i}-custom-${k}" data-dstcustom="${k}">${pickRule(k)}</select>`)).join("")}</div></div>`;
   }
 
-  function languageSection(){
-    const L = nb.dsLang, P = presets(), C = P.choices || {};
-    const status = [byKey(C.font, L.font)?.label, byKey(C.corners, L.corners)?.label].filter(Boolean).join(" · ");
-    const body = `
-      <div class="field"><div class="dsrow">
-        ${ctl("dsFont", "Type", "", `<select id="dsFont">${choice(C.font, L.font)}</select>`)}
-        ${ctl("dsCorners", "Corners", "", `<select id="dsCorners">${choice(C.corners, L.corners)}</select>`)}
-        ${ctl("dsDensity", "Space", "", `<select id="dsDensity">${choice(C.density, L.density)}</select>`)}
-        ${ctl("dsMotion", "Motion", "", `<select id="dsMotion">${choice(C.motion, L.motion)}</select>`)}
-      </div></div>
-      ${customRow()}
-      <div class="field">${ctl("dsFonts", "Families",
-            "the exact font stacks when the choice above is not enough: Inter for text, JetBrains Mono for code",
-            `<textarea id="dsFonts" class="proseline" rows="1" maxlength="200">${esc(L.fonts || "")}</textarea>`, true)}</div>
-      <div class="field">${ctl("dsScope", "Governs",
-            "what the language covers when the project is more than one product: the web app in site/",
-            `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope)}</textarea>`, true)}</div>
-      ${rulesFold()}`;
-    return docSection("design", "language", "Design language", status, body, {open: false});
-  }
-
-  // The themes: a pulldown of them, the add bar, and the chosen one's
-  // colors. The first theme is the one the app starts on.
+  // The themes: the add bar (blank, a preset, or a copy of a theme here),
+  // a pulldown of them, what the language governs, and the chosen theme
+  // whole: its colors, its choices (type, corners, space, motion), its
+  // families and its rules. The first theme is the default: the app starts
+  // on it, and its choices and rules are the design's (the operator, 29
+  // Sep, folding the Design language section into the themes).
   function themesSection(t){
-    const L = nb.dsLang, P = presets();
+    const L = nb.dsLang, P = presets(), C = P.choices || {};
     const themes = L.themes || [];
     const rows = themes.map((x, i) => ({key: String(i), label: `${x.name || "unnamed theme"} (${x.mode})${i === 0 ? ", the default" : ""}`}));
+    const first = themes[0];
+    const status = first ? [byKey(C.font, first.font)?.label, byKey(C.corners, first.corners)?.label].filter(Boolean).join(" · ") : "";
+    const from = `<option value="" selected>blank</option><optgroup label="a preset">${opt(P.schemes, "")}</optgroup>`
+      + (themes.length ? `<optgroup label="a copy of">${themes.map((x, i) => `<option value="copy:${i}">${esc(x.name || "unnamed theme")}</option>`).join("")}</optgroup>` : "");
     const body = `
       <div class="field"><div class="dsrow">
-        ${pick("dsThemePick", "Theme", rows, String(nb.dsShow.theme), "each a named set of colors, dark or light; the first is the one the app starts on, and a theme picker, where the app has one, offers them by name")}
-        ${ctl("dsThemeFrom", "Add one from", "", `<select id="dsThemeFrom">${opt(P.schemes, "default")}</select>`)}
+        ${ctl("dsThemeFrom", "Add one from", "blank, a preset's ten colors, or a copy of a theme here, choices and rules included", `<select id="dsThemeFrom">${from}</select>`)}
         <button type="button" id="dsThemeAdd" ${themes.length >= (P.themes_max || 8) ? "disabled" : ""}>Add theme</button>
       </div></div>
-      ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet. Add one from a preset, or leave it: a session that builds the project chooses the colors and puts them here.</div></div>`}`;
-    return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}`, body, {open: false});
+      <div class="field">${ctl("dsScope", "Governs",
+            "what the language covers when the project is more than one product: the web app in site/",
+            `<textarea id="dsScope" class="proseline" rows="1" maxlength="120">${esc(L.scope || "")}</textarea>`, true)}</div>
+      ${themes.length ? `<div class="field"><div class="dsrow">
+        ${pick("dsThemePick", "Theme", rows, String(nb.dsShow.theme), "each a named set of colors, dark or light, with its own type, corners, space, motion and rules; the first is the default, whose choices and rules are the design's")}
+      </div></div>` : ""}
+      ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet. Add one, or leave it: a session that builds the project chooses the colors, the type, corners, space and motion, and puts them here.</div></div>`}`;
+    return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}${status ? " · " + status : ""}`, body, {open: false});
   }
 
   // The design's rules, the Briefing's shape (nb-rules.js, drawRules): Add a
@@ -239,15 +233,6 @@ function nbDesignView({$, nb, project, root}){
   // Edit turning the row into its form. The same list serves the language's
   // rules, a theme's own and a page's own (the operator, 29 Sep): a rules
   // section inside the page and the theme, following the pulldown.
-  // The language's own rules, a section inside the Design language fold;
-  // a theme's and a page's are the same section inside each entry (the
-  // operator, 29 Sep: a rules fold below everything read as the rules).
-  function rulesFold(){
-    const L = nb.dsLang, rules = L.rules || (L.rules = []);
-    return docSection("design", "rules", "Rules", rules.length ? `${rules.length}` : "none",
-      `<div class="hint">What holds for the whole design and the settings cannot say: a session gets one on the turn it edits a file or is asked about a word the rule names; one with no trigger stands in every briefing whole.</div>`
-      + rulesList("lang", rules), {open: true});
-  }
   const cond = r => (r.paths || []).length || (r.words || []).length;
   const ruleWhen = r => cond(r) ? "named in the briefing; its text arrives when it applies" : "standing: in every briefing whole";
   function rulesList(key, rules){
@@ -351,7 +336,7 @@ function nbDesignView({$, nb, project, root}){
   // what it is for), and what can be done to it. Make default moves
   // another theme up to first.
   function themeBand(t, i, n){
-    const P = presets();
+    const P = presets(), C = P.choices || {};
     const modes = (P.modes || ["dark", "light"]).map(m => ({key: m, label: m[0].toUpperCase() + m.slice(1)}));
     return `<div class="dstheme" data-dstheme="${i}">
       <div class="field"><div class="dsrow">
@@ -360,8 +345,20 @@ function nbDesignView({$, nb, project, root}){
         ${ctl(`dst-from-${i}`, "Fill from", "replace this theme's colors with a preset's ten",
               `<select id="dst-from-${i}" data-dst="from"><option value="">keep as they are</option>${opt(P.schemes, "")}</select>`)}
       </div></div>
+      <div class="field"><div class="dsrow">
+        ${ctl(`dst-${i}-font`, "Type", "", `<select id="dst-${i}-font" data-dstchoice="font">${choice(C.font, t.font)}</select>`)}
+        ${ctl(`dst-${i}-corners`, "Corners", "", `<select id="dst-${i}-corners" data-dstchoice="corners">${choice(C.corners, t.corners)}</select>`)}
+        ${ctl(`dst-${i}-density`, "Space", "", `<select id="dst-${i}-density" data-dstchoice="density">${choice(C.density, t.density)}</select>`)}
+        ${ctl(`dst-${i}-motion`, "Motion", "", `<select id="dst-${i}-motion" data-dstchoice="motion">${choice(C.motion, t.motion)}</select>`)}
+      </div></div>
+      ${customRow(t, i)}
+      <div class="field">${ctl(`dst-${i}-fonts`, "Families",
+            "the exact font stacks when the choice above is not enough: Inter for text, JetBrains Mono for code",
+            `<textarea id="dst-${i}-fonts" class="proseline" rows="1" maxlength="200" data-dst="fonts">${esc(t.fonts || "")}</textarea>`, true)}</div>
       ${docSection("design", `rules:t${i}`, "Rules", (t.rules || []).length ? `${t.rules.length}` : "none",
-        `<div class="hint">What holds for ${esc(t.name.trim() || "this theme")} alone. A session meets one as ${esc(holderSlug(t.name))}/NAME.</div>` + rulesList(`t${i}`, t.rules || (t.rules = [])), {open: true})}
+        `<div class="hint">${i === 0
+          ? "The design's rules: what holds for the whole design and the settings cannot say. A session gets one on the turn it edits a file or is asked about a word the rule names; bb design show NAME reads one."
+          : `What holds for ${esc(t.name.trim() || "this theme")} alone. A session meets one as ${esc(holderSlug(t.name))}/NAME.`}</div>` + rulesList(`t${i}`, t.rules || (t.rules = [])), {open: true})}
       <div class="field">${lbl("", "Colors", "each a name, a hex and what it is for; a session names them the same in the code")}
       <div class="dscolors">${(t.colors || []).map((c, j) => `
         <div class="dsrow" data-dstc="${j}">
@@ -384,9 +381,14 @@ function nbDesignView({$, nb, project, root}){
   function pagesSection(p){
     const n = nb.dsPages.length;
     const rows = nb.dsPages.map(x => ({key: keyOf(x), label: `${x.name.trim() || "unnamed page"} (${platformOf(x)?.label || x.platform}, ${x.blocks.length} block${x.blocks.length === 1 ? "" : "s"})`}));
+    // A new page starts from a template, or as a copy of a page here (its
+    // blocks, layouts, rules and notes), blank by default (the operator,
+    // 29 Sep).
     const add = `<div class="field"><div class="addbar" data-add="design">
         <select id="dsPlatform" aria-label="the platform the new page is for"></select>
         <select id="dsTemplate" aria-label="the layout the new page starts from"></select>
+        <select id="dsPageFrom" aria-label="a page here to copy, or none"><option value="" selected>not a copy</option>${
+          nb.dsPages.map(x => `<option value="${keyOf(x)}">a copy of ${esc(x.name.trim() || "unnamed page")}</option>`).join("")}</select>
         <button id="dsAdd" class="primary" type="button">Add page</button></div></div>`;
     const body = add + (n ? `
       <div class="field"><div class="dsrow">
@@ -424,7 +426,7 @@ function nbDesignView({$, nb, project, root}){
         ${ctl(`${key}-bkind`, "Kind", "", `<select id="${key}-bkind" data-dsb="kind">${opt(P.kinds, b.kind)}</select>`)}
         ${ctl(`${key}-blabel`, "What it's for", "one line a session reads: the account menu, the list of orders",
               `<textarea id="${key}-blabel" class="proseline" rows="1" maxlength="120" data-dsb="label">${esc(b.label)}</textarea>`, true)}
-        ${ctl(`${key}-bin`, "Inside", "the block this one lies in and stays within: a card in a list, a form in a card",
+        ${ctl(`${key}-bin`, "Inside", "the block this one is part of and stays within, drawn over it: a card in a list, a cover in a card, a pill in a bar; a block inside another can hold blocks of its own",
               `<select id="${key}-bin" data-dsb="in"><option value="">none</option>${p.blocks.map((o, j) => j === sel || descends(p, j, sel) ? ""
                 : `<option value="${j + 1}"${b.in === j + 1 ? " selected" : ""}>${j + 1}: ${esc(kindLabel(o.kind))}${o.label ? ": " + esc(o.label.slice(0, 30)) : ""}</option>`).join("")}</select>`)}
         <button type="button" class="danger" data-dsblockrm>Remove block</button>
@@ -515,12 +517,22 @@ function nbDesignView({$, nb, project, root}){
   function moveLayer(p, i, dir){
     const j = i + dir;
     if (j < 0 || j >= p.blocks.length) return;
-    const swap = arr => { [arr[i], arr[j]] = [arr[j], arr[i]]; };
-    swap(p.blocks);
-    for (const rows of Object.values(p.layouts || {})) swap(rows);
-    p.blocks.forEach(b => { if (b.in === i + 1) b.in = j + 1; else if (b.in === j + 1) b.in = i + 1; });
-    nb.dsSel[keyOf(p)] = j;
+    // A child stays over its parent and a parent under its children.
+    if (dir < 0 && p.blocks[i].in === j + 1) return;
+    if (dir > 0 && p.blocks[j].in === i + 1) return;
+    moveTo(p, i, j);
     touched(); drawDesign();
+  }
+  // Block i taken out of the list and put at j: its place on every frame
+  // goes with it, and every parent number follows the move.
+  function moveTo(p, i, j){
+    if (i === j) return;
+    const shift = arr => { const [x] = arr.splice(i, 1); arr.splice(j, 0, x); };
+    shift(p.blocks);
+    for (const rows of Object.values(p.layouts || {})) shift(rows);
+    const at = k => k === i + 1 ? j + 1 : (i < j && k > i + 1 && k <= j + 1) ? k - 1 : (i > j && k >= j + 1 && k < i + 1) ? k + 1 : k;
+    p.blocks.forEach(b => { if (b.in) b.in = at(b.in); });
+    nb.dsSel[keyOf(p)] = j;
   }
   function wireLayers(el, p){
     el.querySelectorAll("[data-dsl]").forEach(row => {
@@ -675,10 +687,13 @@ function nbDesignView({$, nb, project, root}){
     el.querySelector('[data-dsb="in"]')?.addEventListener("change", e => {
       const i = nb.dsSel[key], b = p.blocks[i]; if (!b) return;
       if (e.target.value) b.in = +e.target.value; else delete b.in;
-      // Brought within its parent now, here and on every other frame's layout.
+      // Brought within its parent now, here and on every other frame's
+      // layout, and drawn over it: a block that came before its parent in
+      // the list moves to just after it (the operator, 29 Sep).
       if (b.in){
         fitIn(b, p.blocks[b.in - 1]);
         for (const rows of Object.values(p.layouts || {})) fitIn(rows[i], rows[b.in - 1]);
+        if (b.in - 1 > i) moveTo(p, i, b.in - 1);
       }
       touched(); drawDesign();
     });
@@ -795,22 +810,8 @@ function nbDesignView({$, nb, project, root}){
   // ---- the language's controls ------------------------------------------------------
   function wireLanguage(body){
     const L = nb.dsLang;
-    for (const [id, k] of [["dsFont", "font"], ["dsCorners", "corners"], ["dsDensity", "density"], ["dsMotion", "motion"]])
-      body.querySelector("#" + id).onchange = e => {
-        const was = L[k];
-        L[k] = e.target.value;
-        // The rule a custom choice named goes with the choice.
-        if (L[k] !== "custom" && L.custom) delete L.custom[k];
-        touched();
-        if ((was === "custom") !== (L[k] === "custom")) drawDesign();
-      };
-    body.querySelectorAll("[data-dscustom]").forEach(s => s.onchange = e => {
-      L.custom = L.custom || {};
-      if (e.target.value) L.custom[s.dataset.dscustom] = e.target.value; else delete L.custom[s.dataset.dscustom];
-      touched();
-    });
-    body.querySelector("#dsScope").oninput = e => { L.scope = e.target.value; touched(); };
-    body.querySelector("#dsFonts").oninput = e => { L.fonts = e.target.value; touched(); };
+    const sc = body.querySelector("#dsScope");
+    if (sc) sc.oninput = e => { L.scope = e.target.value; touched(); };
     const pp = body.querySelector("#dsPagePick");
     if (pp) pp.onchange = e => { nb.dsShow.page = e.target.value; drawDesign(); };
   }
@@ -826,12 +827,20 @@ function nbDesignView({$, nb, project, root}){
       return {name: name || sc.label.replace(" (light)", ""), mode: light ? "light" : "dark",
               colors: (P.tokens || []).map(x => ({name: x.key, hex: sc.colors[x.key], means: x.means}))};
     };
-    body.querySelector("#dsThemePick").onchange = e => { nb.dsShow.theme = +e.target.value; drawDesign(); };
+    const tp = body.querySelector("#dsThemePick");
+    if (tp) tp.onchange = e => { nb.dsShow.theme = +e.target.value; drawDesign(); };
     body.querySelector("#dsThemeAdd").onclick = () => {
       const key = body.querySelector("#dsThemeFrom").value;
-      const nt = fromScheme(key, "");
+      // Blank, a preset, or a copy of a theme here, choices and rules
+      // included (the operator, 29 Sep).
+      let nt, base;
+      if (key.startsWith("copy:")){
+        const src = L.themes[+key.slice(5)];
+        nt = clone(src); base = `${src.name} copy`; nt.name = base;
+      } else if (key){ nt = fromScheme(key, ""); base = byKey(P.schemes, key)?.label || "Theme"; }
+      else { nt = {name: "Theme", mode: "dark", colors: [], rules: []}; base = "Theme"; }
       const names = new Set(L.themes.map(x => x.name.toLowerCase()));
-      for (let k = 2; names.has(nt.name.toLowerCase()); k++) nt.name = `${byKey(P.schemes, key)?.label || "Theme"} ${k}`;
+      for (let k = 2; names.has(nt.name.toLowerCase()); k++) nt.name = `${base} ${k}`;
       L.themes.push(nt);
       nb.dsShow.theme = L.themes.length - 1;
       touched(); drawDesign();
@@ -846,6 +855,20 @@ function nbDesignView({$, nb, project, root}){
       if (o) o.textContent = `${t.name || "unnamed theme"} (${t.mode})${i === 0 ? ", the default" : ""}`;
     };
     band.querySelector('[data-dst="mode"]').onchange = e => { t.mode = e.target.value; touched(); drawDesign(); };
+    band.querySelectorAll("[data-dstchoice]").forEach(sel => sel.onchange = e => {
+      const k = sel.dataset.dstchoice, was = t[k];
+      t[k] = e.target.value;
+      // The rule a custom choice named goes with the choice.
+      if (t[k] !== "custom" && t.custom) delete t.custom[k];
+      touched();
+      if ((was === "custom") !== (t[k] === "custom") || i === 0) drawDesign();
+    });
+    band.querySelectorAll("[data-dstcustom]").forEach(sel => sel.onchange = e => {
+      t.custom = t.custom || {};
+      if (e.target.value) t.custom[sel.dataset.dstcustom] = e.target.value; else delete t.custom[sel.dataset.dstcustom];
+      touched();
+    });
+    band.querySelector('[data-dst="fonts"]').oninput = e => { t.fonts = e.target.value; touched(); };
     band.querySelector('[data-dst="from"]').onchange = e => {
       if (!e.target.value) return;
       const f = fromScheme(e.target.value, t.name);
