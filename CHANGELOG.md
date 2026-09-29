@@ -54,6 +54,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- A page on the Design view keeps its layout per frame: put on the phone frame and back on the desktop one, its blocks are where they were instead of squeezed into six columns, and Save keeps the other frame's layout with the page (B348)
 - The test harness sweeps what a run ended by its process group left behind, its copy of the tree, its state dir and its private tmux server, on the next start (B347)
 - devapp.mjs reads a one-shot's row as running whether or not the daemon's slow answer marked the list as last seen (B346)
 - bb design show and the briefing say whose docs/design-language.md is: the session's to write with bb design file and commit with the work; the notebook never writes it into the tree by itself (B344)

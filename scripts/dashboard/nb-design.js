@@ -455,6 +455,38 @@ function nbDesignView({$, nb, project, root}){
     }
   };
 
+  // A page remembers where its blocks sat on each frame it has been on
+  // (B348): to Phone and back to Desktop left them squeezed into the
+  // phone's six columns, because the clamp that fits them to the smaller
+  // frame was never undone. Leaving a frame keeps its layout; arriving on
+  // one that has a layout for these blocks takes it, and only a frame
+  // never visited is clamped into.
+  const geometry = b => ({x: b.x, y: b.y, w: b.w, h: b.h});
+  function toFrame(p, frame){
+    if (frame === p.frame) return;
+    p.layouts = p.layouts || {};
+    p.layouts[p.frame] = p.blocks.map(geometry);
+    p.frame = frame;
+    const g = presets().frames?.[frame] || {cols: 12, rows: 8};
+    const kept = p.layouts[frame];
+    if (Array.isArray(kept) && kept.length === p.blocks.length)
+      p.blocks.forEach((b, i) => Object.assign(b, kept[i]));
+    p.blocks.forEach(b => clampBlock(b, g, undefined));
+    delete p.layouts[frame];
+  }
+  // A block added or taken away is added to or taken from every layout the
+  // page keeps, so the layouts stay about the same blocks.
+  function layoutsAdd(p, b){
+    for (const [f, rows] of Object.entries(p.layouts || {})){
+      const nb_ = geometry(b);
+      clampBlock(nb_, presets().frames?.[f] || {cols: 12, rows: 8}, false);
+      rows.push(nb_);
+    }
+  }
+  function layoutsRemove(p, i){
+    for (const rows of Object.values(p.layouts || {})) rows.splice(i, 1);
+  }
+
   function wirePage(el, p){
     if (!el) return;
     const key = keyOf(p);
@@ -469,12 +501,11 @@ function nbDesignView({$, nb, project, root}){
     el.querySelector('[data-dsf="platform"]').onchange = e => {
       p.platform = e.target.value;
       const frames = platformOf(p)?.frames || [];
-      if (!frames.includes(p.frame)){ p.frame = frames[0] || p.frame; p.blocks.forEach(b => clampBlock(b, grid(), undefined)); }
+      if (!frames.includes(p.frame)) toFrame(p, frames[0] || p.frame);
       touched(); drawDesign();
     };
     el.querySelector('[data-dsf="frame"]').onchange = e => {
-      p.frame = e.target.value;
-      p.blocks.forEach(b => clampBlock(b, grid(), undefined));
+      toFrame(p, e.target.value);
       touched(); drawDesign();
     };
     el.querySelector("[data-dsblockadd]").onclick = () => {
@@ -487,6 +518,7 @@ function nbDesignView({$, nb, project, root}){
       if (last){ b.y = Math.min(last.y + last.h, g.rows - b.h); b.x = last.x; }
       clampBlock(b, g, false);
       p.blocks.push(b);
+      layoutsAdd(p, b);
       nb.dsSel[key] = p.blocks.length - 1;
       touched(); drawDesign();
       root.querySelector(`[data-dspage="${key}"] [data-dsb="label"]`)?.focus();
@@ -519,6 +551,7 @@ function nbDesignView({$, nb, project, root}){
     const key = keyOf(p);
     if (nb.dsSel[key] == null) return;
     p.blocks.splice(nb.dsSel[key], 1);
+    layoutsRemove(p, nb.dsSel[key]);
     delete nb.dsSel[key];
     touched(); drawDesign();
   }

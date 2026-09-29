@@ -552,8 +552,26 @@ def _clean_page(p, pid):
     return {"id": pid, "name": name,
             "platform": platform, "template": _choice(p.get("template"), TEMPLATE_KEYS, "template", "blank"),
             "frame": frame, "blocks": [_clean_block(b, frame) for b in blocks],
+            "layouts": _clean_layouts(p.get("layouts"), frame, len(blocks)),
             "notes": notes, "rules": _clean_rules(p.get("rules"), f"the page {name or pid}"),
             "at": int(time.time())}
+
+
+def _clean_layouts(raw, frame, n):
+    """Where the page's blocks sat on the other frames it has been on, so a
+    frame changed and changed back is where it was (B348): per frame, one
+    place per block, in the blocks' order. A layout about another number
+    of blocks, or for the frame the page is on, is not kept."""
+    out = {}
+    for f, rows in (raw.items() if isinstance(raw, dict) else []):
+        if f not in FRAMES or f == frame or not isinstance(rows, list) or len(rows) != n:
+            continue
+        try:
+            out[f] = [{k: v for k, v in _clean_block({**r, "kind": "content", "label": ""}, f).items()
+                       if k in ("x", "y", "w", "h")} for r in rows]
+        except (_Refused, TypeError):
+            continue
+    return out
 
 
 # ---- what the tab and bb read ---------------------------------------------------
@@ -870,6 +888,7 @@ def schema_text():
         f'    "frame": {" | ".join(FRAMES)},   one the platform allows: phone and landscape for a phone app',
         f'    "template": {" | ".join(TEMPLATE_KEYS)},',
         f'    "blocks": [ {{ "kind": one of {kinds}, "label": "one line, at most {NAME_MAX} characters", "x": 0, "y": 0, "w": 4, "h": 2 }} ],   at most {MAX_BLOCKS}, inside the frame',
+        f'    "layouts": {{ "phone": [ {{ "x": 0, "y": 0, "w": 6, "h": 2 }} ] }},   optional: where the blocks sat on another frame, one place per block in order',
         f'    "notes": "...",   at most {NOTES_MAX} characters',
         '    "rules": [RULE]',
         f'  }} ],   at most {MAX_PAGES} pages',

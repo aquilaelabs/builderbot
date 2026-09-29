@@ -135,6 +135,29 @@ ok(await page.$eval(`${NB} [data-sect="design:themes"] > summary .sst`, e => e.t
    && await page.$eval(`${NB} #dst-name-1`, e => e.value) === 'Paper' && await page.$eval(`${NB} #dst-mode-1`, e => e.value) === 'light'
    && await page.$eval(`${NB} #dsThemePick`, e => e.value === '1' && e.options.length === 2) && !(await page.$(`${NB} [data-dstheme="0"]`)),
    'Add theme adds one from a preset, named for it, light or dark as it is, the Themes section counts them and its pulldown shows the new one alone');
+// A frame changed and changed back is where it was (B348): to Phone the
+// blocks are clamped into six columns, and back on Desktop they sit where
+// they sat, not squeezed.
+{
+  const places = () => page.$$eval(`${NB} [data-dspage] .dsblock`, bs => bs.map(b => `${b.style.gridColumn} | ${b.style.gridRow}`).join('; '));
+  const desk = await places();
+  await page.selectOption(`${NB} [data-dspage] [data-dsf="frame"]`, 'phone');
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'phone', null, { timeout: 5000 });
+  const phone = await places();
+  await page.selectOption(`${NB} [data-dspage] [data-dsf="frame"]`, 'desktop');
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'desktop', null, { timeout: 5000 });
+  ok(phone !== desk && await places() === desk,
+     `a page put on the phone frame and back on the desktop one has its blocks where they were (${desk.split('; ')[4]})`);
+  await page.selectOption(`${NB} [data-dspage] [data-dsf="frame"]`, 'phone');
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'phone', null, { timeout: 5000 });
+  ok(await places() === phone, '...and the phone frame keeps its own layout for the next visit');
+  await page.selectOption(`${NB} [data-dspage] [data-dsf="frame"]`, 'desktop');
+  await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'desktop', null, { timeout: 5000 });
+  await saved();
+  const kept = (await api(`/api/design?project=${P}`)).pages[0];
+  ok(kept.frame === 'desktop' && kept.layouts?.phone?.length === kept.blocks.length && kept.layouts.phone.every(r => r.x + r.w <= 6),
+     `Save keeps the other frame's layout with the page, one place per block (${JSON.stringify(kept.layouts?.phone?.[4])})`);
+}
 await page.selectOption(`${NB} [data-dspage] [data-dsf="platform"]`, 'android');
 await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsboard')?.dataset.frame === 'phone', null, { timeout: 5000 });
 const frames = await page.$$eval(`${NB} [data-dspage] [data-dsf="frame"] option`, os => os.map(o => o.value));
