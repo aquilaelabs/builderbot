@@ -132,6 +132,14 @@ ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
   const pre1 = await api(`/api/preamble?project=${P}`);
   ok(/This project's notebook holds a design already:[^.]*type, corners, space not chosen yet/.test(pre1.text),
      '...and the briefing of a designed project names the choices still open');
+  // The briefing a session is started with is the verb's, run as a process
+  // of its own: it read no design store and said "empty" of every designed
+  // project, while the Briefing tab, asking the server, said otherwise (B355).
+  const told = execFileSync('bash', [`${REPO}/scripts/bb`, 'preamble'], { encoding: 'utf8',
+    env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws`, BB_PROJECT: P } });
+  ok(/This project's notebook holds a design already:/.test(told) && !/Design view is empty/.test(told),
+     'bb preamble, which is what a session is started with, says the same of a designed project');
   await page.selectOption(`${NB} #dsFont`, 'system');
   await page.selectOption(`${NB} #dsCorners`, 'soft');
   await page.selectOption(`${NB} #dsDensity`, 'comfortable');

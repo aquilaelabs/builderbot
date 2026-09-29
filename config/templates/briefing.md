@@ -155,8 +155,8 @@ that does not exist yet. A node can have root asks turned off, and the ask
 then says so. Every one of the project's dials (Claude may: add to the
 roadmap, file bugs, add rules, fill in build and test, add to the design,
 run its container, report BuilderBot bugs) reads the same way: auto lands
-it, ask holds it
-for the operator, deny refuses it and the refusal names the setting;
+it, ask holds it for the operator, deny refuses it and the refusal names
+the setting;
 `bb settings` shows each dial as it stands for this project. Never route
 around a refusal.
 
@@ -173,9 +173,11 @@ lists this account's own earlier conversations with Claude here, newest
 first, and `bb transcripts show ID` prints one whole, every command and its
 answer included: how to pick up what an earlier session of the same person
 did or was told.
+
 <!-- BUILDERBOT:DESIGN -->
-The record's verbs, as you
-meet things: `bb bug add "..." --sev medium --area "..." --repro "..."` for
+
+The record's verbs, as you meet things:
+`bb bug add "..." --sev medium --area "..." --repro "..."` for
 a bug, `bb roadmap add "..."` for work worth doing, `bb bug note B7 "..."`
 for what you learn about an open one, and `bb bug fix B7 "what fixed it"`
 or `bb roadmap step done R4 2` as you finish. A roadmap item the operator

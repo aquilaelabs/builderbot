@@ -13,7 +13,7 @@ import sys
 
 d, proj, op = sys.argv[1], sys.argv[2], sys.argv[3]
 sys.path.insert(0, d)
-import statefile, rules, roadmap, bugs, preamble, prefs
+import statefile, rules, roadmap, bugs, preamble, prefs, design
 state = os.environ.get("DASHBOARD_STATE", "/config")
 # Reading only: none of the callbacks a write would need are passed, and the
 # three stores take them as optional for exactly this case.
@@ -21,6 +21,11 @@ rules.configure(write_json=statefile.write_json, state=state)
 roadmap.configure(write_json=statefile.write_json, state=state)
 bugs.configure(write_json=statefile.write_json, state=state)
 prefs.configure(write_json=statefile.write_json, state=state)
+# The design too: the briefing says whether the notebook holds one, and
+# unconfigured the store read no file, so every session started on a
+# designed project was told its Design view was empty (B355).
+design.configure(workspace=os.environ.get("WORKSPACE", "/workspace"), state=state,
+                 write_json=statefile.write_json)
 preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, prefs_mod=prefs)
 # The account the session is for (bb-tty hands it over as BB_UID): its own
 # reply style on the project rides the block.

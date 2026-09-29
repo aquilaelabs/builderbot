@@ -440,8 +440,12 @@ def _clean_rule(r, i):
         raise _Refused(f"the rule {name} is at most {RULE_TEXT_MAX} characters")
     if not text:
         raise _Refused(f"the rule {name} says nothing")
-    return {"name": name, "text": text, "words": [w.lower() for w in _bits(r.get("words"))],
-            "paths": [p.replace("\\", "/").lstrip("/") for p in _bits(r.get("paths")) if ".." not in p.split("/")]}
+    # Each trigger once, in the order given: the briefing lists them, and a
+    # word typed twice read "color, color" there.
+    return {"name": name, "text": text,
+            "words": list(dict.fromkeys(w.lower() for w in _bits(r.get("words")))),
+            "paths": list(dict.fromkeys(p.replace("\\", "/").lstrip("/") for p in _bits(r.get("paths"))
+                                        if ".." not in p.split("/")))}
 
 
 def _clean_rules(raw, whose):
@@ -487,7 +491,11 @@ def scoped_rules(rec):
 
 def saved(project):
     """The project's record when somebody saved one (the briefing's line),
-    None when the design is still the default nobody touched."""
+    None when the design is still the default nobody touched. Asked of a
+    store nobody configured, it says so: the answer None there read as
+    "nothing designed", and a briefing said that of a designed project (B355)."""
+    if FILE is None:
+        raise RuntimeError("the design store is not configured")
     rec = _record(_load(), project)
     return rec if rec["at"] else None
 
