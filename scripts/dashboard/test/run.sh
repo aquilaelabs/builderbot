@@ -121,11 +121,32 @@ fi
 # read android/api-surface.json and app/build.gradle.kts, so android itself
 # comes along); dist/, for the same reason; and .git, because nothing here runs
 # git against this repository, only against the fixtures it makes.
+# What a run ended by its process group left behind (B347): its copy of
+# the tree, its state dir and its private tmux server. The cleanup below
+# runs on a normal exit only, so each is stamped with the pid that made it
+# and the next start removes the ones whose maker is gone. A kept fixture's
+# maker is alive, so a keep is never swept from under an attached run.
+sweep_leftovers() {
+    local d p
+    for d in "${TMPDIR:-/tmp}"/bb-suite.?????? "${TMPDIR:-/tmp}"/dashboard-test.??????; do
+        [ -d "$d" ] || continue
+        p="$(cat "$d/.bb-run-pid" 2>/dev/null || true)"
+        if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then
+            # ...and the tmux server that ran inside it, by its socket.
+            [ -d "$d/tmux" ] && for sock in "$d"/tmux/*; do
+                [ -S "$sock" ] && tmux -S "$sock" kill-server 2>/dev/null || true
+            done
+            rm -rf "$d"
+        fi
+    done
+}
+[ -n "${BB_TEST_WORKER:-}" ] || sweep_leftovers
 # BB_TEST_INPLACE=1 runs from the checkout for anyone debugging this.
 if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
    && [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ]; then
     _src="$(cd "$HERE/../../.." && pwd)"
     _dst="$(mktemp -d "${TMPDIR:-/tmp}/bb-suite.XXXXXX")"
+    echo $$ > "$_dst/.bb-run-pid"
     # tar exits 1 for a file that changed under it (a CHANGELOG.md write, a
     # session's edit) and the copy is still whole: that is not a failed copy.
     { tar -C "$_src" -cf - --warning=no-file-changed --exclude=./.git --exclude=./dist \
@@ -258,6 +279,7 @@ rm -f "$LOCK" 2>/dev/null || true
     || die "cannot take $LOCK: $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
 fi
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
+echo $$ > "$S/.bb-run-pid"
 if [ -n "${BB_COVERAGE:-}" ]; then
     # A worker counts into its parent's directory, which is where the one
     # merge at the end of the run reads; a directory per worker would be a

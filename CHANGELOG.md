@@ -54,6 +54,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 ### Fixed
 
+- The test harness sweeps what a run ended by its process group left behind, its copy of the tree, its state dir and its private tmux server, on the next start (B347)
 - devapp.mjs reads a one-shot's row as running whether or not the daemon's slow answer marked the list as last seen (B346)
 - bb design show and the briefing say whose docs/design-language.md is: the session's to write with bb design file and commit with the work; the notebook never writes it into the tree by itself (B344)
 - bb report says when the operator cleared a project's reports, how many and when, instead of 'no reports' after ones it was told were reported (B343)
