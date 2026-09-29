@@ -534,6 +534,44 @@ print(json.dumps({'moved': case('sha256:old', 'sha256:new'), 'same': case('sha25
          `a bundle that moved has its helper installed in the same hello, straight after it is taken (${r.moved.join(', ')})`);
       ok(!r.same.includes('helper'), `...and one that did not move installs nothing (${r.same.join(', ')})`);
     }
+    // The loop's hello takes its census beside the loop (B380): the
+    // census asks the slow questions right after a full-length work poll,
+    // and the loop stood still for it, so a node whose census took longer
+    // than fifty seconds read as not answering on every project row for
+    // one poll. Driven in process: a slow census, and the step that says
+    // hello only once it is there.
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json, time, threading
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+a = object.__new__(m.Agent)
+a.hello_at, a.census_thread, a.census_next = 1.0, None, None
+said = []
+a.hello = lambda taken=None: said.append(taken) or (200, {'taken': taken})
+def slow():
+    time.sleep(0.4)
+    return {'slow': True}
+a.census_take = slow
+first = a.hello_step()
+second, turns = None, 0
+while second is None and turns < 100:
+    time.sleep(0.05); turns += 1
+    second = a.hello_step()
+# ...and a hello asked for at once (the clock zeroed) is said now, with a
+# census of its own, and a census still on its way is let go.
+a.hello_at = 0
+a.census_thread = threading.Thread(target=lambda: time.sleep(0.2)); a.census_thread.start()
+a.census_next = {'stale': True}
+now = a.hello_step()
+print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'dropped': a.census_next is None and a.census_thread is None}))
+`], { encoding: 'utf8' }).trim();
+      const r = JSON.parse(said);
+      ok(r.first === null && r.second && r.second[1].taken && r.second[1].taken.slow && r.said.length === 2
+         && r.said[0] && r.said[0].slow && r.now && r.said[1] === null && r.dropped,
+         `the loop's hello waits for a census taken beside it and says hello with it, and a hello asked for at once takes its own census and lets a pending one go (${said})`);
+    }
     // B167: the distribution's own root ttyd is switched off by the agent on
     // a managed node, not only by a provisioner run that may never come
     // again; left alone when it is already off, and never on a guest.
