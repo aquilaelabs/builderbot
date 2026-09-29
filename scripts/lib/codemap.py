@@ -1364,7 +1364,7 @@ def changed_ranges(root, base, files):
     return out
 
 
-def affected(idx, cov, ranges):
+def affected(idx, cov, ranges, root=None):
     """{suite stem: set of reasons}, plus the account: for each changed file,
     the functions and the drawn things its changed lines fall in, the suites
     coverage or the map say reach them, and what fell back to the file."""
@@ -1381,18 +1381,59 @@ def affected(idx, cov, ranges):
             continue
         def inside(line, spans=spans):
             return any(a <= line <= b for a, b in spans)
-        fns = [d for d in entry["defs"] if not d["name"].startswith("(")
-               and any(a <= d.get("end", d["line"]) and d["line"] <= b for a, b in spans)]
-        # Nested functions sit inside their parent's span; the innermost that
-        # holds a changed line is the one that changed, but the parent's
-        # coverage still names the suites, so both count.
+        over = [d for d in entry["defs"] if not d["name"].startswith("(")
+                and any(a <= d.get("end", d["line"]) and d["line"] <= b for a, b in spans)]
+        # The innermost function a changed line falls in is the one that
+        # changed. One that merely encloses it is not: a view's factory
+        # holds every line of its file and is run by every suite that opens
+        # any notebook, which made one change to the Design view forty
+        # suites (29 Sep).
+        def encloses(d, e):
+            return d is not e and d["line"] <= e["line"] and e.get("end", e["line"]) <= d.get("end", d["line"]) \
+                and (d["line"], d.get("end", d["line"])) != (e["line"], e.get("end", e["line"]))
+        fns = [d for d in over if not any(encloses(d, e) for e in over)]
         found = set()
+        by_name = {}
+        for d in entry["defs"]:
+            by_name.setdefault(d["name"], []).append(d)
+
+        def through_callers(name, hops=3, seen=None, f=f, by_name=by_name, entry=entry):
+            """The suites that reached what calls `name` in this file, up to
+            three callers up: a function a covered run has not seen yet is
+            run by whoever runs its caller."""
+            seen = seen if seen is not None else set()
+            out = {}
+            if hops == 0 or name in seen:
+                return out
+            seen.add(name)
+            callers = {c["caller"].rsplit(".", 1)[-1] for c in idx["calls"]
+                       if c["name"] == name and c["file"] == f and c.get("caller")}
+            for cn in callers - {name}:
+                got = {}
+                for cd in by_name.get(cn, []):
+                    # never through the file-spanning factory: it is every suite's
+                    if cd.get("end", cd["line"]) - cd["line"] >= 0.5 * max(
+                            (x.get("end", x["line"]) for x in entry["defs"]), default=1):
+                        continue
+                    got.update(hit.get(fid(cd)) or {})
+                if not got:
+                    got = through_callers(cn, hops - 1, seen, f, by_name, entry)
+                for s_ in got:
+                    out[s_] = f"{cn}() calls {name}()"
+            return out
         for d in fns:
             by = hit.get(fid(d))
             if by:
                 for s_ in by:
                     suites.setdefault(s_, set()).add(f"{d['name']}()")
                 found.add(d["name"])
+                continue
+            via = through_callers(d["name"])
+            if via:
+                for s_, why in via.items():
+                    suites.setdefault(s_, set()).add(why)
+                found.add(d["name"])
+                notes.append(f"{f}:{d['line']} {d['name']}: new to the covered run, measured by its caller")
             else:
                 unknown.append(f"{f}:{d['line']} {d['name']}")
         drawn = {(d["what"], d["kind"]) for d in entry.get("draws", []) if inside(d["line"])}
@@ -1400,19 +1441,49 @@ def affected(idx, cov, ranges):
             if is_test(d["file"]) and (d["what"], d["kind"]) in drawn:
                 mark = {"class": ".", "id": "#"}.get(d["kind"], "")
                 suites.setdefault(Path(d["file"]).stem, set()).add(mark + d["what"])
-        # Lines in no function and drawing nothing a suite names (a CSS rule,
-        # a comment, top-level wiring): the file's own answer, as before.
+        # Lines in no function at all and drawing nothing a suite names
+        # (top-level wiring, a table of constants): the file's own answer.
+        # Not a blank line or a comment, which change nothing that runs,
+        # and not a rule of the stylesheet, which is the design check's.
+        try:
+            text = (Path(root) / f).read_text(errors="replace").split("\n") if root else []
+        except OSError:
+            text = []
+        style = (0, -1)
+        if text and entry.get("lang") == "html":
+            a_ = next((i + 1 for i, ln in enumerate(text) if "<style" in ln), 0)
+            b_ = next((i + 1 for i, ln in enumerate(text) if "</style>" in ln), -1)
+            style = (a_, b_)
+
+        def says_nothing(ln, text=text):
+            t = text[ln - 1].strip() if 0 < ln <= len(text) else "x"
+            return not t or t.startswith(("#", "//", "/*", "*", "*/", "<!--"))
         loose = [ln for a, b in spans for ln in range(a, min(b, a + 400) + 1)
-                 if not any(d["line"] <= ln <= d.get("end", d["line"]) for d in fns)
-                 and not any(dd["line"] == ln for dd in entry.get("draws", []))]
+                 if not any(d["line"] <= ln <= d.get("end", d["line"]) for d in entry["defs"]
+                            if not d["name"].startswith("("))
+                 and not any(dd["line"] == ln for dd in entry.get("draws", []))
+                 and not says_nothing(ln)]
+        css = [ln for ln in loose if style[0] <= ln <= style[1]]
+        if css:
+            suites.setdefault("uniform", set()).add("the stylesheet")
+            loose = [ln for ln in loose if ln not in set(css)]
         fell = bool(unknown and any(u.startswith(f + ":") for u in unknown)) or bool(loose)
         if fell:
             if f == "scripts/dashboard/server.py" and any(u.startswith(f + ":") for u in unknown):
                 every = True
                 notes.append(f"{f}: a changed function no covered run has seen, so every suite")
                 continue
-            _, byfile = suites_for(idx, [f])
-            names = {Path(t).stem for t in byfile if not Path(t).name.startswith("lab-")}
+            # The file's own suites: the ones a covered run saw reach a
+            # function of this file that is the file's own work, which a
+            # function spanning most of the file (a factory) is not. Only a
+            # file no covered run has seen at all asks the map by name.
+            last = max((d.get("end", d["line"]) for d in entry["defs"]), default=1)
+            own = [d for d in entry["defs"] if not d["name"].startswith("(")
+                   and d.get("end", d["line"]) - d["line"] < 0.5 * last]
+            names = {s_ for d in own for s_ in (hit.get(fid(d)) or {})}
+            if not names:
+                _, byfile = suites_for(idx, [f])
+                names = {Path(t).stem for t in byfile if not Path(t).name.startswith("lab-")}
             for s_ in names:
                 suites.setdefault(s_, set()).add(f"{Path(f).name} (file)")
             why = "lines outside any function" if loose and not any(u.startswith(f + ":") for u in unknown) else "a function no covered run has seen"
@@ -1422,7 +1493,7 @@ def affected(idx, cov, ranges):
 
 def q_affected(idx, cov, root, base, files, names_only=False, ranges=None):
     ranges = ranges if ranges is not None else changed_ranges(root, base, files)
-    suites, notes, unknown, every = affected(idx, cov, ranges)
+    suites, notes, unknown, every = affected(idx, cov, ranges, root)
     if names_only:
         return ["ALL"] if every else sorted(suites)
     at = time.strftime("%d %b %H:%M", time.localtime(cov.get("at", 0))) if cov else "none"
