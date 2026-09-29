@@ -62,6 +62,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import dev.builderbot.app.ui.ApprovalsScreen
 import dev.builderbot.app.ui.HomeScreen
+import dev.builderbot.app.ui.JobsScreen
+import dev.builderbot.app.ui.WhatsNewScreen
 import dev.builderbot.app.ui.LoginScreen
 import dev.builderbot.app.ui.MoreScreen
 import dev.builderbot.app.ui.NodesScreen
@@ -88,9 +90,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// The dashboard's own scheme (ui/Parts.kt holds the tokens), so the app
-// reads as the same thing: a filled accent surface is the deep green with
-// ink on it, the surface is the panel colour, the edge is the line token,
+// The dashboard's own schemes (ui/Theme.kt holds them and the tokens; the
+// one in front is chosen under More), so the app reads as the same thing: a filled accent surface is the deep green with
+// ink on it, the surface is the panel color, the edge is the line token,
 // and the corners are the site's two radii. The site is dark by design and
 // so is this; a light system setting still gets a readable page rather than
 // a second design.
@@ -118,7 +120,7 @@ data class Tab(val route: String, val label: String, val icon: ImageVector)
 @Composable
 fun BuilderBotApp(openOn: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val store = remember { Store(context) }
+    val store = remember { Store(context).also { dev.builderbot.app.ui.Schemes.pick(it.scheme) } }
     var signedIn by remember { mutableStateOf(store.signedIn) }
     // Nobody is an administrator until the dashboard says so, and the
     // answer survives a rotation (B275): a user saw the Nodes tab until
@@ -154,6 +156,9 @@ fun BuilderBotApp(openOn: String) {
             Tab("nodes", "Nodes", Icons.Filled.Build),
             Tab("more", "More", Icons.Filled.Menu),
         ).filter { it.route != "nodes" || isAdmin }
+        // A note about one project opens on that project, over Home, so
+        // Back goes to the list.
+        LaunchedEffect(openOn) { if (openOn.startsWith("project/")) nav.navigate(openOn) { launchSingleTop = true } }
         val entry by nav.currentBackStackEntryAsState()
         val here = entry?.destination?.route ?: "home"
         Scaffold(containerColor = Bg, bottomBar = {
@@ -186,6 +191,8 @@ fun BuilderBotApp(openOn: String) {
                 composable("users") { UsersScreen(store) }
                 composable("tools") { ToolsScreen(store, isAdmin) }
                 composable("profile") { ProfileScreen(store) }
+                composable("jobs") { JobsScreen(store) }
+                composable("whatsnew") { WhatsNewScreen(store) }
             }
         }
     }

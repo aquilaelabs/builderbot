@@ -1,7 +1,8 @@
 // The watch: what the dashboard's bell shows, as notifications. The app
 // asks /api/status and /api/phone and posts what is new: a session asking
 // for the phone or for root, with Approve and Deny on the notification
-// itself; a notebook holding a session's changes; a node whose agent is
+// itself; a notebook holding a session's changes; a session of the
+// account's own finishing its turn; a node whose agent is
 // behind or out of window, or whose Claude Code is behind. No push service:
 // the dashboard is on somebody's own network, reached directly or over a
 // tailnet, and asking it from here is what needs nobody's account and no
@@ -32,6 +33,7 @@ import org.json.JSONObject
 object Watch {
     const val ID_PENDING = 2
     const val ID_ATTENTION = 3
+    const val ID_TURN_BASE = 5000
     const val ID_ASK_BASE = 1000
     // In the background, no oftener than this: an inexact alarm is batched
     // by the system anyway, and a phone in a pocket is not a dashboard tab.
@@ -72,6 +74,34 @@ object Watch {
                 .build())
             store.lastPending = pendKey
         }
+        // A turn finished: a session of the account's own that was working
+        // and has now been seen waiting on two looks running. Two, because
+        // the dashboard reads a session as waiting while it runs a command
+        // (B353), and one look would announce every build as the end of
+        // the turn; a session already waiting when the watch first looks
+        // is not news.
+        val prefix = st.str("tmux_prefix")
+        val own = st.arr("projects").mapNotNull { p ->
+            val want = prefix + ("claude-" + p.str("name")).replace(Regex("[.:]"), "_")
+            st.arr("sessions").firstOrNull { it.str("name") == want }?.let { p.str("name") to it.obj("claude") }
+        }
+        val working = own.filter { it.second.str("state") == "working" }.map { it.first }.toSet()
+        val settling = mutableSetOf<String>()
+        for ((project, claude) in own) {
+            val note = ID_TURN_BASE + (project.hashCode() and 0xfff)
+            if (project in working) { nm.cancel(note); continue }
+            if (project in store.lastWorking) { settling.add(project); continue }
+            if (project !in store.settling || !store.turns) continue
+            nm.notify(note, NotificationCompat.Builder(context, App.CH_NOTE)
+                .setSmallIcon(R.drawable.ic_stat_bb)
+                .setContentTitle("Claude is waiting on you in $project")
+                .setContentText(claude.str("task").ifBlank { "it finished what it was on" })
+                .setContentIntent(openApp(context, "project/$project"))
+                .setAutoCancel(true)
+                .build())
+        }
+        store.lastWorking = working
+        store.settling = settling
         // Nodes that need attention: an agent behind or out of window, or
         // Claude Code behind what is out.
         val att = st.arr("attention")

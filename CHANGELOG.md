@@ -14,14 +14,16 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Set up GPU display on a node's row (Health): the NVIDIA driver and a headless X server on the card, as bb-sandbox gpu and a unit of the machine's own; after the one reboot it asks for, an emulator there renders on the card and bb emu gpu says so, and a session sees the display (6afdb2e)
 - A Claude session can send its project to Docker the way the Artifacts tab's Send to Docker manager does: bb devapp new [NAME] [--branch REF] makes a container from the project's compose file, builds and starts it, and waits for the result, under the project's Claude may: Run its container setting (f02a9a8)
 - bb capture: shot, one picture at rest (shots a quarter second apart until a second of them match), and reel, the frames that changed on one sheet with a JSON of when; each from a page, the running emulator or an X display. bb emu shot is bb capture shot --emu (60d809c, 0a56328)
-- The notebook has a Design view: a project's design language (colours as tokens, type, shape, space, motion, your rules) and pages laid out as labelled blocks on a phone or desktop frame, each named for what it is for and its platform; a prompt to copy, bb design and docs/design-language.md carry it, and nothing on the view reaches into a session (8d6375a)
+- The notebook has a Design view: a project's design language (colours as tokens, type, shape, space, motion, your rules) and pages laid out as labelled blocks on a phone or desktop frame; bb design and docs/design-language.md carry it, and nothing on the view reaches into a session (8d6375a)
 - A project's settings name other projects a session on it may read: their code read-only in its view on a node, their notebooks through bb from inside them, every write refused by name. That list, and the nodes a project also works on, are checkbox listboxes (206c6d6)
 - The Design view holds themes: each a name, dark or light, and its own colours, added and cut one by one with what each is for; a preset fills the ten, the app starts on the first, and a theme picker asked of a session takes them from here (2a6b656, 74e517a)
 - A session's save of a project's design goes through its own dial, Claude may: Add to the design, auto by default; a design's notes are named rules with triggers a session is handed one at a time, like house rules; and a session reaches the containers of the projects its own reads, for bb capture (d8338f5)
+- The companion app has a Claude view per project: whether your session is working or waiting on you, a box to say something to it, and your conversations to read or share; and it notifies when a session of yours finishes its turn (7194e97)
+- The companion app carries the Design, Docker and Tests views, fetch, pull and push, artifacts and captures that open on the phone (an APK goes to the installer), the project's colour, the jobs, What's new, and the dashboard's thirteen colour schemes (7194e97)
 
 ### Changed
 
-- bb tests preflight picks its suites by the covered run when there is one: the innermost function each changed line falls in and the suites that reached it (bb map affected), a new function measured by the suites that reached its caller, so a change to one handler in server.py is that handler's suites rather than all 49; a whole run now refreshes the covered run
+- bb tests preflight picks its suites by the covered run when there is one: the function each changed line falls in and the suites that reached it (bb map affected), so a change to one handler in server.py runs that handler's suites rather than all 49; a whole run refreshes the covered run
 - The Design view has no prompt box and no Copy: a session reads the design piece by piece with bb design show, and the view only records it
 - Every control on a row is one height, the finger's: a field, a pulldown, a one-line prose box and a button beside each other were four sizes; the design suite now fails a line of controls that differ
 - A project's design starts empty, no theme and no page; a session that builds such a project chooses the look and is told to put it into the design afterwards, and one that builds to a design is told to put back what the design left open, under the project's dial
@@ -89,6 +91,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A Claude session left idle on a node keeps its access to the notebook: the agent never refreshed an idle session's token, so after twelve hours without a call it had expired. Each node needs Update agent on its row (B335) (b5f3863)
 - The Artifacts tab's version row says where a bump will land when the checkout is not on the branch builds come from, in red when that branch is already merged, and says when the number there is unpushed or differs from main's; bb version says the same (B338) (4d0bcd5)
 - bb says what renews a session's token and what reopening its tab does when one has run out, once; bb tests preflight keeps its whole output in the run log, so bb tests log prints the last preflight when that was the last run (B337, B328) (750f78d)
+- The companion app's text buttons are drawn in the scheme's accent; in the deep accent a filled surface wears they were too dark to read on the page (7194e97)
+- The companion app's Git view names the branch and the changed files; it read 'on no branch' with nothing changed for every project (7194e97)
+- bb changelog add, edit and rm work beside an entry already longer than the limit, and a refusal for length says which entry it means (7194e97)
 
 ### Security
 

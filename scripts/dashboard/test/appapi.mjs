@@ -56,13 +56,16 @@ for (const e of surface.endpoints) {
     rmSync(`${DIR}/ws/alpha/dist/surface-probe.bin`, { force: true });
     continue;
   }
+  // One the contract names and another suite asks: it takes an id only a
+  // fixture of that suite's has, and the entry says which suite that is.
+  if (e.needs) continue;
   const path = e.path.replace('project=&', 'project=alpha&').replace(/project=$/, 'project=alpha');
   const r = await get(path);
   if (r.status !== 200) { missing.push(`${e.path}: HTTP ${r.status} ${r.body?.error || ''}`); continue; }
   for (const f of e.fields || []) if (!(f in r.body)) missing.push(`${e.path}: no "${f}" in the answer`);
   // The rows' fields, on the first row where there is one.
   for (const [key, want] of Object.entries(e)) {
-    if (['method', 'path', 'fields', 'actions', 'binary'].includes(key)) continue;
+    if (['method', 'path', 'fields', 'actions', 'binary', 'needs'].includes(key)) continue;
     const rows = r.body[key];
     if (!Array.isArray(rows) || !rows.length) continue;
     for (const f of want) if (!(f in rows[0])) missing.push(`${e.path}: rows of "${key}" carry no "${f}"`);

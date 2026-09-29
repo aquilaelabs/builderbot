@@ -22,7 +22,7 @@ class App : Application() {
             description = "A session asking for your phone, or for a root command on a node" })
         nm.createNotificationChannel(NotificationChannel(CH_NOTE, "Attention",
             NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Changes waiting for approval, and nodes that need an update" })
+            description = "Changes waiting for approval, a session finishing its turn, and nodes that need an update" })
         Watch.startIfWanted(this)
     }
 

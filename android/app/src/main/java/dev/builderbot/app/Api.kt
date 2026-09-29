@@ -131,6 +131,35 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun prefs(project: String, patch: Map<String, Any>) =
         post("/api/prefs", JSONObject(patch).put("project", project))
 
+    // ---- what the dashboard grew in September, as the app reads it ---------
+    // The notebook's Design view: the themes, the rules and the pages.
+    suspend fun design(project: String) = get("/api/design?project=${enc(project)}")
+    // The account's own conversations with Claude on a project, and one of
+    // them as the text the Profile tab downloads, stamped in this device's
+    // zone. The text is a download like the APK: megabytes, into a file.
+    suspend fun transcripts(project: String) = get("/api/transcripts?project=${enc(project)}")
+    fun transcriptPath(project: String, id: String) =
+        "/api/transcript?project=${enc(project)}&id=${enc(id)}&tz=${enc(java.util.TimeZone.getDefault().id)}"
+    // The version, and where a bump would land.
+    suspend fun version(project: String) = get("/api/version?project=${enc(project)}")
+    // BuilderBot's own changelog, as the welcome panel shows it.
+    suspend fun welcome() = get("/api/welcome")
+    // A project's containers, on its own node, and the three verbs a person
+    // presses on one: they run as jobs, and the row says what became of them.
+    suspend fun docker(project: String) = get("/api/docker?project=${enc(project)}")
+    suspend fun devapp(project: String, instance: String, action: String) =
+        post("/api/devapp", json("project" to project, "instance" to instance, "action" to action))
+    suspend fun tests(project: String) = get("/api/tests?project=${enc(project)}")
+    suspend fun jobs() = get("/api/v1/jobs")
+    // A message into the account's own Claude session: the one thing a
+    // phone cannot do without a terminal, and the server narrows it to the
+    // caller's own conversation, control characters stripped.
+    suspend fun say(session: String, node: String, text: String) =
+        post("/api/say", json("session" to session, "node" to node, "text" to text))
+    // The Git view's network verbs: fetch, pull (fast-forward only), push.
+    suspend fun gitAct(project: String, action: String) =
+        post("/api/git", json("project" to project, "action" to action))
+
     /** An artifact's BYTES, into a file. The only call here that is not JSON:
      *  the newer APK is an artifact like any other, and installing it from the
      *  phone is the difference between an app that can update itself and one

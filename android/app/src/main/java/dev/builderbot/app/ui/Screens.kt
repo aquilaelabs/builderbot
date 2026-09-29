@@ -5,6 +5,9 @@
 package dev.builderbot.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
@@ -27,17 +30,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -180,6 +182,19 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
     val (st, reload) = load("status") { api.status() }
     val s = st.value
     if (s != null){ onAdmin(s.obj("can").optBoolean("admin", false)); onWaiting(s.int("phone_asks")) }
+    var find by rememberSaveable { mutableStateOf("") }
+    // The account's own Claude sessions, by project: the name the server
+    // gives one is the prefix, then claude- and the project as tmux spells it.
+    val prefix = s?.str("tmux_prefix") ?: ""
+    val sessions = s?.arr("sessions")?.associateBy { it.str("name") } ?: emptyMap()
+    fun sessionOf(project: String) = sessions[prefix + ("claude-$project").replace(Regex("[.:]"), "_")]
+    // The projects the account keeps on its sidebar, as the sidebar has
+    // them; All shows the rest, and a search looks through every one.
+    val every = s?.arr("projects") ?: emptyList()
+    val kept = every.filter { it.bool("pinned", true) }
+    var all by rememberSaveable { mutableStateOf(false) }
+    val shown = if (find.isNotBlank()) every.filter { it.str("name").contains(find.trim(), ignoreCase = true) }
+                else if (all || kept.isEmpty()) every else kept
     Pull(st.value == null && st.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -201,22 +216,54 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
             val att = s.arr("attention")
             if (asks > 0 || att.isNotEmpty()) item {
                 // The bell's row: amber for a question, red for stopped work,
-                // as a bar down the side rather than coloured words.
+                // as a bar down the side rather than colored words.
                 Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = if (att.any { it.bool("window") }) Bad else Warn) {
                     if (asks > 0) Text("$asks question${if (asks == 1) "" else "s"} waiting for your answer; see Approvals", color = Ink)
                     for (a in att) Text(Watch.attentionLine(a), color = if (a.bool("window")) Bad else Warn)
                 }
             }
-            item { SectionHead("Projects") }
-            items(s.arr("projects")) { p ->
-                // A project's row: a panel wearing the project's colour down
+            // What the doctor found, where it found something: an
+            // administrator's, and quiet while every check passes.
+            // The two levels the Doctor card counts as problems; a check
+            // that was skipped is not one.
+            val ill = s.obj("doctor").arr("checks").filter { it.str("level") == "FAIL" || it.str("level") == "warn" }
+            if (ill.isNotEmpty() && s.obj("can").optBoolean("admin", false)) item {
+                Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp),
+                      bar = if (ill.any { it.str("level") == "FAIL" }) Bad else Warn) {
+                    Text("The doctor", color = Ink, fontWeight = FontWeight.SemiBold)
+                    for (c in ill) {
+                        Text(c.str("text"), color = if (c.str("level") == "FAIL") Bad else Warn)
+                        if (c.str("detail").isNotBlank()) Dim(c.str("detail"))
+                    }
+                }
+            }
+            item {
+                SectionHead("Projects")
+                // A box to find one in, once the list is longer than a screen.
+                if (every.size > 6) OutlinedTextField(find, { find = it }, label = { Text("Find a project") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth().padding(16.dp, 0.dp, 16.dp, 6.dp))
+                if (every.isEmpty()) Column(Modifier.padding(horizontal = 16.dp)) {
+                    Dim("no project yet: New project on the dashboard makes one") }
+                else if (shown.isEmpty()) Column(Modifier.padding(horizontal = 16.dp)) {
+                    Dim("no project's name has \u201c${find.trim()}\u201d in it") }
+            }
+            items(shown, key = { it.str("name") }) { p ->
+                // A project's row: a panel wearing the project's color down
                 // its side, the way its notebook tab does, its state as pills.
                 Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp).clickable { openProject(p.str("name")) },
                       bar = projectTone(p.obj("prefs").str("color"))) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(p.str("name"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                              color = Ink, modifier = Modifier.weight(1f))
-                        if (p.str("session_at").isNotBlank()) Pill("Claude", Ok)
+                        // What the account's own session is doing, which is
+                        // the question a phone is picked up to ask: working,
+                        // or waiting on the person. Somebody else's session
+                        // is a plain Claude.
+                        val own = sessionOf(p.str("name"))
+                        if (own != null) {
+                            val working = own.obj("claude").str("state") == "working"
+                            Pill(if (working) "working" else "waiting on you", if (working) Warn else Ok)
+                        } else if (p.str("session_at").isNotBlank()) Pill("Claude", Ok)
                         if (p.bool("locked")){ Spacer(Modifier.width(6.dp)); Pill("locked", Warn) }
                     }
                     val bits = mutableListOf<String>()
@@ -226,8 +273,23 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
                     if (p.int("pending") > 0) bits += "${p.int("pending")} waiting for approval"
                     Spacer(Modifier.height(2.dp))
                     Dim(bits.joinToString(" · ").ifBlank { "nothing waiting" })
+                    val task = sessionOf(p.str("name"))?.obj("claude")?.str("task") ?: ""
+                    if (task.isNotBlank()) Text(task, color = Dim, style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    // What is wrong with the project, where something is:
+                    // the lines its row carries on the sidebar.
+                    for (i in p.arr("issues").take(3))
+                        Text(i.str("text"), color = if (i.str("level") == "error") Bad else Warn,
+                             style = MaterialTheme.typography.bodySmall)
                 }
             }
+            if (find.isBlank() && kept.isNotEmpty() && kept.size < every.size) item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                    TextButton(onClick = { all = !all }) {
+                        Text(if (all) "Only the ones on my sidebar" else "All ${every.size} projects") }
+                }
+            }
+            item { Spacer(Modifier.height(12.dp)) }
         }
     }
     }
@@ -588,7 +650,10 @@ fun ProfileScreen(store: Store) {
     var cur by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
     var said by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    val logs = pf.value?.arr("logs") ?: emptyList()
+    LazyColumn(Modifier.fillMaxSize()) {
+    item {
+    Column(Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Profile", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         if (pf.error != null) Problem(pf.error)
         if (pf.value != null) {
@@ -621,6 +686,16 @@ fun ProfileScreen(store: Store) {
             if (said.isNotBlank()) Text(said, color = Accent, modifier = Modifier.padding(top = 8.dp))
         }
     }
+    }
+    // The account's conversations with Claude, on every project it has
+    // them, newest first: the Profile tab's list, with the two things a
+    // phone does with one.
+    if (pf.value != null) item {
+        SectionHead("Conversations")
+        if (logs.isEmpty()) Column(Modifier.padding(horizontal = 16.dp)) { Dim("none yet: a Claude session of yours writes one as it goes") }
+    }
+    items(logs) { r -> LogRow(api, r, showProject = true) }
+    }
 }
 
 // ---- more: the watch, about, and whether this app is behind -----------------------
@@ -631,8 +706,9 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
     val context = androidx.compose.ui.platform.LocalContext.current
     val (meta, _) = load("meta") { api.meta() }
     var watch by remember { mutableStateOf(store.watch) }
+    var turns by remember { mutableStateOf(store.turns) }
     var poll by remember { mutableStateOf(store.pollSeconds.toString()) }
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Mark(26.dp)
             Spacer(Modifier.width(10.dp))
@@ -660,11 +736,12 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
             }
         }
         // The other pages, as rows in one panel: a list of places to go,
-        // in the site's row shape, rather than three coloured words.
+        // in the site's row shape, rather than three colored words.
         // Tools is not gated on isAdmin: the listing is what a build can
         // use, which is everybody's question, and the server refuses the
         // two buttons.
-        val pages = listOf("Profile" to "profile", "Tools" to "tools") + (if (isAdmin) listOf("Users" to "users") else emptyList())
+        val pages = listOf("Profile" to "profile", "Tools" to "tools", "Jobs" to "jobs") +
+            (if (isAdmin) listOf("Users" to "users") else emptyList()) + listOf("What's new" to "whatsnew")
         Panel(Modifier.fillMaxWidth()) {
             pages.forEachIndexed { i, (label, route) ->
                 if (i > 0) Hairline()
@@ -682,9 +759,38 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
             Switch(checked = watch, onCheckedChange = { watch = it; store.watch = it
                 if (it) Watch.startIfWanted(context) else Watch.stop(context) })
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Tell me when Claude finishes")
+                Dim("a note when a session of yours goes from working to waiting on you")
+            }
+            Switch(checked = turns, enabled = watch, onCheckedChange = { turns = it; store.turns = it })
+        }
         OutlinedTextField(poll, { poll = it; it.toIntOrNull()?.let { n -> store.pollSeconds = n } },
             label = { Text("Poll every (seconds, 10 to 300)") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+        // The look: the dashboard's own schemes, by their names. Kept on
+        // this device, as the dashboard keeps its own per browser.
+        SectionHead("Colors", inset = false)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (sc in Schemes.all) {
+                val on = Schemes.current.name == sc.name
+                Column(Modifier
+                    .background(sc.panel, RoundedCornerShape(8.dp))
+                    .border(if (on) 2.dp else 1.dp, if (on) sc.accent else sc.line, RoundedCornerShape(8.dp))
+                    .clickable { Schemes.pick(sc.name); store.scheme = sc.name }
+                    .padding(10.dp, 8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        for (c in listOf(sc.accent, sc.warn, sc.bad, sc.note))
+                            androidx.compose.foundation.layout.Box(
+                                Modifier.size(10.dp).background(c, RoundedCornerShape(99.dp)))
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(sc.name, color = sc.ink, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
         SectionHead("About", inset = false)
         Text("app ${BuildConfig.VERSION_NAME} api ${BuildConfig.TARGET_API}" +
             (if (m != null) "\ndashboard ${m.str("version").ifBlank { "unstamped" }} api ${m.int("api")}" else ""),
@@ -703,7 +809,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
 // rule and not this screen's opinion.
 //
 // Android system images are deliberately not here. They are a picker over an
-// API-level catalog with flavours and ABIs, and choosing one on a phone is
+// API-level catalog with flavors and ABIs, and choosing one on a phone is
 // worse than choosing it on the tab that has room for it.
 
 @Composable
@@ -828,6 +934,93 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             Hairline()
         }
         item { if (!isAdmin) Dim("Installing and removing is an administrator's: these are gigabytes on somebody else's disk.") }
+    }
+    }
+}
+
+// ---- what's new: BuilderBot's own changelog -----------------------------------
+// What the dashboard's welcome panel shows after an update, to read on the
+// way to the desk: each release with what it added, changed and fixed.
+
+@Composable
+fun WhatsNewScreen(store: Store) {
+    val api = store.api() ?: return
+    val (wl, reload) = load("welcome") { api.welcome() }
+    val sections = wl.value?.arr("sections") ?: emptyList()
+    Pull(wl.value == null && wl.error == null, reload) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Text("What's new", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink,
+                 modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 0.dp))
+            if (wl.error != null) Problem(wl.error)
+            if (wl.value == null && wl.error == null) Loading()
+            if (wl.value != null && sections.isEmpty()) Column(Modifier.padding(16.dp)) { Dim("the dashboard has no changelog to show") }
+        }
+        for (sec in sections.take(6)) {
+            item { SectionHead(sec.str("title")) }
+            items(sec.arr("entries")) { e ->
+                Row(Modifier.fillMaxWidth().padding(16.dp, 6.dp), verticalAlignment = Alignment.Top) {
+                    if (e.str("cat").isNotBlank()) {
+                        Pill(e.str("cat"), when (e.str("cat")) { "Added" -> Ok; "Fixed" -> Note; "Removed", "Security" -> Bad
+                                                                 "Changed", "Deprecated" -> Warn; else -> Dim },
+                             Modifier.padding(top = 3.dp).width(74.dp))
+                        Spacer(Modifier.width(10.dp))
+                    }
+                    Text(e.str("text"), color = Ink, style = MaterialTheme.typography.bodyMedium,
+                         modifier = Modifier.weight(1f))
+                }
+                Hairline()
+            }
+        }
+    }
+    }
+}
+
+// ---- jobs: what the nodes were asked to do --------------------------------------
+// The Jobs tab's list: a build, a test run, a rebuild, a command, each with
+// the node it ran on and what became of it. The account's own projects',
+// or every one for an administrator, which is the server's rule.
+
+@Composable
+fun JobsScreen(store: Store) {
+    val api = store.api() ?: return
+    val (jb, reload) = load("jobs") { api.jobs() }
+    val (nd, _) = load("jobs-nodes") { runCatching { api.nodes() }.getOrNull() }
+    val names = nd.value?.arr("nodes")?.associate { it.str("id") to it.str("name") } ?: emptyMap()
+    val rows = jb.value?.arr("jobs") ?: emptyList()
+    val clock = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+    Pull(jb.value == null && jb.error == null, reload) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Jobs", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                     color = Ink, modifier = Modifier.weight(1f))
+                TextButton(onClick = reload) { Text("Refresh") }
+            }
+            if (jb.error != null) Problem(jb.error)
+            if (jb.value == null && jb.error == null) Loading()
+            if (jb.value != null && rows.isEmpty()) Column(Modifier.padding(horizontal = 16.dp)) { Dim("no job on record") }
+        }
+        items(rows.take(60)) { j ->
+            val state = j.str("state")
+            val tone = when (state) { "succeeded" -> Ok; "failed", "lost" -> Bad; "running", "queued", "assigned" -> Warn; else -> Dim }
+            Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(listOf(j.str("type"), j.str("project")).filter { it.isNotBlank() }.joinToString(" · "),
+                         color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Pill(state.ifBlank { "unknown" }, tone)
+                }
+                val took = j.optLong("ended") - j.optLong("started")
+                Dim(listOf(names[j.str("node")] ?: j.str("node"),
+                           if (j.optLong("queued") > 0) clock.format(java.util.Date(j.optLong("queued") * 1000)) else "",
+                           if (j.optLong("ended") > 0 && took >= 0) "${took}s" else "",
+                           if (j.has("exit_code") && !j.isNull("exit_code") && j.int("exit_code") != 0) "exit ${j.int("exit_code")}" else "")
+                        .filter { it.isNotBlank() }.joinToString(" · "))
+                if (j.str("step").isNotBlank()) Dim(j.str("step"))
+                if (j.str("error").isNotBlank()) Text(j.str("error"), color = Bad, style = MaterialTheme.typography.bodySmall)
+            }
+            Hairline()
+        }
     }
     }
 }

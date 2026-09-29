@@ -3367,11 +3367,34 @@ first enrollment is the proof.
 
 `android/` is an Android app that does most of what the dashboard does,
 minus the terminals: the projects and their notebooks (roadmap, bugs,
-briefing, artifacts, the repository's state), the approvals, the nodes, the
-accounts and your profile, in the shape an Android app takes, screens and
-a bottom bar, not the tabs a browser page needs. Sign in with the
-dashboard's address and your account; the credential is kept in the
-device's encrypted preferences.
+briefing, design, artifacts, containers, tests, the repository's state),
+the approvals, the nodes, the jobs, the accounts and your profile, in the
+shape an Android app takes, screens and a bottom bar, not the tabs a
+browser page needs. Sign in with the dashboard's address and your account;
+the credential is kept in the device's encrypted preferences.
+
+**Claude, from the phone.** A project opens on its Claude view. Where a
+session of your own is open on it, the view says whether it is working or
+waiting on you and carries a box to say something to it, which goes into
+that session's input and nowhere else (`/api/say`). Under it are your
+conversations on the project: **Read the end** shows what was said last,
+and **Share** hands the whole text to another app. Starting a session
+stays the dashboard's, since that opens a terminal. The projects list says
+the same per project, so the question a phone is picked up to ask, *is it
+done?*, is answered before anything is opened.
+
+**What else a project's views do.** Design is read here: the pages as
+their boards, the themes with their colours, and the rules under what they
+hold for. Docker lists the project's containers with Start, Stop and
+Rebuild, each asked twice and run as a job on its node. Artifacts names
+the version and opens a file of `dist/` with whatever the phone has for
+its kind, which for an APK is the installer. Git fetches, pulls
+(fast-forward only) and pushes under the project's push rights. Settings
+sets the model, the effort and the project's colour, staged until Save.
+The controller's own settings are not in the app.
+
+**Its look.** The app wears the dashboard's schemes, by the same names and
+hexes, chosen under More and kept on the device.
 
 **Notifications.** The app asks the dashboard what the bell would show and
 posts it: on the interval you set while the app is open, and about once a
@@ -3379,8 +3402,10 @@ minute in the background through an inexact alarm, so nothing stays in the
 shade between questions and the icon carries no dot of its own. A session
 asking for your phone or for root on a node arrives as a notification with
 **Approve** and **Deny** on it, answered without opening the app; changes a
-session has waiting, and a node whose agent is behind or out of window or
-whose Claude Code is behind, arrive as notes that open the right screen. A
+session has waiting, a session of your own going from working to waiting
+on you (a switch under More turns that one off), and a node whose agent is
+behind or out of window or whose Claude Code is behind, arrive as notes
+that open the right screen. A
 phone left alone can hold the alarm back for some minutes, which is why the
 dashboard's bell carries the same questions. There is no push service: the phone reaches
 your BuilderBot directly, on your network or over your tailnet, so nothing

@@ -1,8 +1,9 @@
 // One project: the notebook's views the app can act on (the roadmap, the
-// bugs, the briefing's rules and memories, the artifacts, and the
-// repository's state) as sections down one screen with the actions a person
-// takes from a phone: add an item, file a bug, close one, hand a step or a
-// report to the session that is running, read what is waiting.
+// bugs, the briefing's rules and memories, the design, the artifacts, the
+// containers, the tests and the repository's state) as views on one strip,
+// with the actions a person takes from a phone: add an item, file a bug,
+// close one, hand a step or a report to the session that is running, say
+// something to it, start or rebuild a container, fetch and push.
 //
 // Sending is the one that changes what a phone is FOR. The rest is reading
 // and filing, which can wait for a desk; a step handed over is work starting
@@ -27,7 +28,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -37,12 +40,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,7 +61,7 @@ import dev.builderbot.app.str
 import dev.builderbot.app.strs
 import kotlinx.coroutines.launch
 
-private val VIEWS = listOf("Roadmap", "Bugs", "Briefing", "Artifacts", "Git", "Settings")
+private val VIEWS = listOf("Claude", "Roadmap", "Bugs", "Briefing", "Design", "Artifacts", "Docker", "Tests", "Git", "Settings")
 
 // What the settings view offers, in the dashboard's own order and words. The
 // lists are the server's (prefs.MODELS, prefs.EFFORTS, prefs.EDIT_MODES) and
@@ -71,15 +75,35 @@ private val EFFORTS = listOf("" to "leave as is", "low" to "low", "medium" to "m
 @Composable
 fun ProjectScreen(store: Store, name: String) {
     val api = store.api() ?: return
-    var view by remember { mutableStateOf("Roadmap") }
+    // The view in front survives a rotation, as the tab in front does.
+    var view by rememberSaveable(name) { mutableStateOf("Claude") }
+    // The status once, for what several views ask of it: the account's own
+    // session here (the name the server would give it, which is the one
+    // /api/say takes), and the project's row.
+    val (st, reloadStatus) = load("status-project-$name") { api.status() }
+    val row = st.value?.arr("projects")?.firstOrNull { it.str("name") == name }
+    val mine = (st.value?.str("tmux_prefix") ?: "") + ("claude-$name").replace(Regex("[.:]"), "_")
+    val session = st.value?.arr("sessions")?.firstOrNull { it.str("name") == mine }
+    // Asked again while the project is open, since what the session is
+    // doing is the thing on this screen that moves by itself.
+    LaunchedEffect(name) { while (true) { kotlinx.coroutines.delay(10_000); reloadStatus() } }
     Column(Modifier.fillMaxSize()) {
-        Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink,
-             modifier = Modifier.padding(16.dp, 12.dp, 16.dp, 6.dp))
+        Row(Modifier.padding(16.dp, 12.dp, 16.dp, 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            val tone = projectTone(row?.obj("prefs")?.str("color") ?: "")
+            if (tone != null) { Dot(tone); Spacer(Modifier.width(2.dp)) }
+            Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink,
+                 modifier = Modifier.weight(1f))
+            if (session != null) {
+                val working = session.obj("claude").str("state") == "working"
+                Pill(if (working) "working" else "waiting on you", if (working) Warn else Ok)
+            }
+        }
         // The view strip, the site's: one line of small tabs, the one in
         // front on the deep accent with ink, the rest on the panel with a
         // hairline. Scrolls sideways rather than wrapping: six words do not
         // fit a phone, and a chip that wraps letter by letter takes the whole
-        // strip's height with it.
+        // strip's height with it. Ten now, in the notebook's own order with
+        // Claude in front, since that is the one a phone is opened for.
         Row(Modifier.padding(horizontal = 12.dp).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (v in VIEWS) {
@@ -92,11 +116,16 @@ fun ProjectScreen(store: Store, name: String) {
                         .padding(horizontal = 12.dp, vertical = 7.dp))
             }
         }
+        Spacer(Modifier.height(4.dp))
         when (view) {
+            "Claude" -> ClaudeView(api, name, session, reloadStatus)
             "Roadmap" -> Roadmap(api, name)
             "Bugs" -> Bugs(api, name)
             "Briefing" -> Briefing(api, name)
+            "Design" -> DesignView(api, name)
             "Artifacts" -> Artifacts(api, name)
+            "Docker" -> DockerView(api, name)
+            "Tests" -> TestsView(api, name)
             "Git" -> Git(api, name)
             "Settings" -> Settings(api, name)
         }
@@ -275,24 +304,64 @@ private fun Briefing(api: dev.builderbot.app.Api, project: String) {
 
 @Composable
 private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     val (ar, reload) = load("art-$project") { api.artifacts(project) }
+    val (ver, reloadVer) = load("ver-$project") { api.version(project) }
     val rows = ar.value?.arr("artifacts") ?: emptyList()
+    val shots = ar.value?.arr("captures") ?: emptyList()
     val b = ar.value?.obj("build")
-    Pull(ar.value == null && ar.error == null, reload) {
+    var said by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf("") }      // the path being fetched
+    // A row of dist/: its name, and Open, which fetches it and hands it to
+    // whatever the phone has for its kind. For an APK that is the
+    // installer, so what the project built is on the phone that asked.
+    @Composable
+    fun FileRow(name: String, path: String, about: String) {
+        Row(Modifier.fillMaxWidth().padding(16.dp, 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(name, color = Ink)
+                if (about.isNotBlank()) Dim(about)
+            }
+            TextButton(enabled = busy.isBlank(), onClick = {
+                busy = path
+                scope.launch { said = openArtifact(context, api, project, path); busy = "" }
+            }) { Text(if (busy == path) "Fetching" else if (name.endsWith(".apk")) "Install" else "Open") }
+        }
+        Hairline()
+    }
+    Pull(ar.value == null && ar.error == null, { reload(); reloadVer() }) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp, 8.dp)) {
                 if (ar.error != null) Problem(ar.error)
+                // The version the tree is at, and what has gone in since the
+                // last release: the Artifacts tab's first line.
+                ver.value?.let { v ->
+                    val at = v.obj("forms").str("semver")
+                    if (at.isNotBlank()) Text(at, color = Ink, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                              fontWeight = FontWeight.SemiBold)
+                    Dim(listOf(if (v.bool("released")) "released" + (if (v.str("tag").isNotBlank()) " as ${v.str("tag")}" else "") else "not released",
+                               if (v.bool("dirty")) "uncommitted changes in the tree" else "",
+                               if (v.int("unreleased") > 0) "${v.int("unreleased")} changelog line${if (v.int("unreleased") == 1) "" else "s"} waiting for a release" else "",
+                               "version policy: " + v.str("policy").ifBlank { "locked" })
+                            .filter { it.isNotBlank() }.joinToString(" · "))
+                    if (v.str("warn").isNotBlank()) Text(v.str("warn"), color = Warn, style = MaterialTheme.typography.bodySmall)
+                }
                 if (b != null) Dim(if (b.str("node").isNotBlank()) "builds on ${b.str("name")}" else "no node: nothing compiles for this project")
+                if (said.isNotBlank()) Text(said, color = Bad)
                 if (ar.value != null && rows.isEmpty()) Dim("nothing in dist/ yet")
             }
         }
         items(rows) { a ->
-            Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
-                Text(a.str("name").ifBlank { a.str("path") })
-                Dim(listOf(a.str("path"), if (a.int("size") > 0) "${a.int("size") / 1024} KB" else "").filter { it.isNotBlank() }.joinToString(" · "))
-            }
-            Hairline()
+            FileRow(a.str("name").ifBlank { a.str("path") }, a.str("path"),
+                    listOf(a.str("path"), if (a.int("size") > 0) "${a.int("size") / 1024} KB" else "").filter { it.isNotBlank() }.joinToString(" · "))
+        }
+        if (shots.isNotEmpty()) item { SectionHead("Captures") }
+        items(shots) { c ->
+            FileRow(c.str("name"), c.str("path"),
+                    listOf(c.str("kind"), if (c.int("frames") > 0) "${c.int("frames")} frames" else "",
+                           if (c.str("by").isNotBlank()) "by ${c.str("by")}" else "").filter { it.isNotBlank() }.joinToString(" · "))
         }
     }
     }
@@ -313,7 +382,8 @@ private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
 // Chips rather than dropdowns: every one of these lists is short, a chip row
 // shows the current value without a tap, and it is the idiom already on this
 // screen. The node, the build and test commands and the notebook gates stay
-// the browser's. They are not decisions anybody makes from a phone.
+// the browser's. They are not decisions anybody makes from a phone. The
+// color is: it is how a project is found on this screen's own list.
 @Composable
 private fun Settings(api: dev.builderbot.app.Api, project: String) {
     val scope = rememberCoroutineScope()
@@ -323,35 +393,57 @@ private fun Settings(api: dev.builderbot.app.Api, project: String) {
     val live = me?.str("session_at")?.isNotBlank() == true
     var model by remember(prefs) { mutableStateOf(prefs?.str("model") ?: "") }
     var effort by remember(prefs) { mutableStateOf(prefs?.str("effort") ?: "") }
+    var tone by remember(prefs) { mutableStateOf(prefs?.str("color") ?: "") }
     var restart by remember(prefs) { mutableStateOf(true) }
     var said by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
-    val changed = prefs != null && (model != prefs.str("model") || effort != prefs.str("effort"))
-    Column(Modifier.fillMaxSize().padding(16.dp, 8.dp)) {
+    // What a session reads when it starts, which is what ending one is for.
+    val runs = prefs != null && (model != prefs.str("model") || effort != prefs.str("effort"))
+    val changed = runs || (prefs != null && tone != prefs.str("color"))
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp, 8.dp)) {
         if (st.error != null) Problem(st.error)
         if (st.value == null && st.error == null) Loading()
         if (prefs == null && st.value != null) Dim("this project has no settings here")
         if (prefs != null) {
+            // The project's color: the bar its row wears here and its tab
+            // wears on the dashboard. Staged like the rest, until Save.
+            Text("Color", fontWeight = FontWeight.SemiBold)
+            Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                for (t in listOf("") + TONE_NAMES) {
+                    val c = projectTone(t)
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.size(30.dp)
+                            .background(c ?: Sunk, RoundedCornerShape(6.dp))
+                            .border(2.dp, if (tone == t) Ink else Line, RoundedCornerShape(6.dp))
+                            .clickable { tone = t },
+                        contentAlignment = Alignment.Center) {
+                        if (c == null) Text("\u2013", color = Dim)
+                    }
+                }
+            }
+            Dim(if (tone.isBlank()) "none" else tone)
+            Spacer(Modifier.height(8.dp))
             Text("Model", fontWeight = FontWeight.SemiBold)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for ((v, l) in MODELS)
                     FilterChip(selected = model == v, onClick = { model = v }, label = { Text(l) })
             }
             Spacer(Modifier.height(8.dp))
             Text("Effort", fontWeight = FontWeight.SemiBold)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for ((v, l) in EFFORTS)
                     FilterChip(selected = effort == v, onClick = { effort = v }, label = { Text(l) })
             }
             Spacer(Modifier.height(8.dp))
-            if (live) {
+            if (live && runs) {
                 FilterChip(selected = restart, onClick = { restart = !restart },
                            label = { Text("end the session now") })
                 Dim(if (restart)
                         "press Claude to start it again, resuming the conversation; anything it is in the middle of is lost"
                     else "saved for the next session; the one running keeps what it started with")
-            } else {
-                Dim("no session is open, so this takes effect when one starts")
+            } else if (!live) {
+                Dim("no session is open, so the model and the effort take effect when one starts")
             }
             Row {
                 Spacer(Modifier.weight(1f))
@@ -361,13 +453,14 @@ private fun Settings(api: dev.builderbot.app.Api, project: String) {
                         said = try {
                             // The request key is still `restart`: an APK older than
                             // the image sends it, and the server has to keep taking it.
-                            // What came back changed name with the behaviour.
+                            // What came back changed name with the behavior.
+                            val ending = live && runs && restart
                             val r = api.prefs(project, mapOf(
-                                "model" to model, "effort" to effort,
-                                "restart" to (live && restart)))
+                                "model" to model, "effort" to effort, "color" to tone,
+                                "restart" to ending))
                             val why = r.str("error")
                             if (why.isNotBlank()) why
-                            else if (!live || !restart) "saved"
+                            else if (!ending) "saved"
                             else if (r.bool("ended")) "saved, and the session ended: press Claude to start it again"
                             else ("saved, but the session was not ended: " +
                                   r.str("why").ifBlank { "it is still on what it started with" })
@@ -375,32 +468,67 @@ private fun Settings(api: dev.builderbot.app.Api, project: String) {
                         saving = false
                         reload()
                     }
-                }) { Text(if (live && restart) "Save and end it" else "Save") }
+                }) { Text(if (live && runs && restart) "Save and end it" else "Save") }
             }
             if (said.isNotBlank()) Text(said, color = Note)
         }
     }
 }
 
+// The repository as it stands, and the three verbs that talk to its host.
+// Each is the dashboard's own (fetch, a pull that only fast-forwards, a
+// push under the project's push rights) and answers in a sentence; the
+// rest of the Git view (branches, commits, a diff) wants the room a
+// browser has.
 @Composable
 private fun Git(api: dev.builderbot.app.Api, project: String) {
+    val scope = rememberCoroutineScope()
     val (g, reload) = load("git-$project") { api.git(project) }
     // The answer carries the branch and the files at its top level. This
     // read a `status` object first, through a helper that never answers
     // null, so every project read "on no branch" with nothing changed.
     val s = g.value
-    Column(Modifier.fillMaxSize().padding(16.dp, 8.dp)) {
-        if (g.error != null) Problem(g.error)
-        if (s != null) {
-            Text("on ${s.str("branch").ifBlank { "no branch" }}", fontWeight = FontWeight.SemiBold)
-            val ahead = s.int("ahead"); val behind = s.int("behind")
-            Dim(listOf(if (s.str("upstream").isNotBlank()) "tracking ${s.str("upstream")}" else "no upstream",
-                       if (ahead > 0) "$ahead ahead" else "", if (behind > 0) "$behind behind" else "").filter { it.isNotBlank() }.joinToString(" · "))
-            val files = s.arr("files")
-            Spacer(Modifier.height(8.dp))
-            if (files.isEmpty()) Dim("nothing changed and not committed") else Text("${files.size} changed", color = Warn)
-            for (f in files.take(40)) Mono("${f.str("state").ifBlank { f.str("x") }} ${f.str("path")}")
-            TextButton(onClick = reload) { Text("Refresh") }
+    var said by remember { mutableStateOf("") }
+    var bad by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf("") }
+    fun press(action: String) {
+        busy = action
+        scope.launch {
+            try {
+                val r = api.gitAct(project, action)
+                bad = r.str("error").isNotBlank()
+                said = r.str("error").ifBlank { r.str("out").trim().lines().lastOrNull { it.isNotBlank() } ?: "$action: done" }
+            } catch (e: Exception) { bad = true; said = e.message ?: "it did not go" }
+            busy = ""
+            reload()
         }
+    }
+    Pull(g.value == null && g.error == null, reload) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Column(Modifier.padding(16.dp, 8.dp)) {
+                if (g.error != null) Problem(g.error)
+                if (s != null && s.str("error").isNotBlank()) Dim(s.str("error"))
+                if (s != null && s.str("error").isBlank()) {
+                    Text("on ${s.str("branch").ifBlank { "no branch" }}", fontWeight = FontWeight.SemiBold, color = Ink)
+                    val ahead = s.int("ahead"); val behind = s.int("behind")
+                    Dim(listOf(if (s.str("upstream").isNotBlank()) "tracking ${s.str("upstream")}" else "no upstream",
+                               if (ahead > 0) "$ahead ahead" else "", if (behind > 0) "$behind behind" else "").filter { it.isNotBlank() }.joinToString(" · "))
+                    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for ((action, label) in listOf("fetch" to "Fetch", "pull" to "Pull", "push" to "Push"))
+                            OutlinedButton(enabled = busy.isBlank(), onClick = { press(action) }) {
+                                Text(if (busy == action) "$label\u2026" else label) }
+                    }
+                    if (said.isNotBlank()) Text(said, color = if (bad) Bad else Note, modifier = Modifier.padding(top = 4.dp))
+                    Spacer(Modifier.height(8.dp))
+                    val n = s.arr("files").size
+                    if (n == 0) Dim("nothing changed and not committed") else Text("$n changed", color = Warn)
+                }
+            }
+        }
+        items(s?.arr("files")?.take(80) ?: emptyList()) { f ->
+            Column(Modifier.padding(horizontal = 16.dp)) { Mono("${f.str("state").ifBlank { f.str("x") }} ${f.str("path")}") }
+        }
+    }
     }
 }
