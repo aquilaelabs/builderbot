@@ -166,7 +166,8 @@ def _clean_text(t):
         raise _Refused("an empty changelog entry says nothing to anybody")
     if len(t) > MAX_TEXT:
         raise _Refused(f"keep an entry under {MAX_TEXT} characters: it is one "
-                       "line of a list a person reads, not the whole story")
+                       "line of a list a person reads, not the whole story "
+                       f"(this one is {len(t)}, and begins: {t[:40]})")
     return t
 
 
@@ -249,6 +250,11 @@ def put(d, gs):
     An empty group is dropped rather than written as a heading with nothing
     under it, since a category with no entries is a category somebody emptied.
     """
+    # The limit is on what is being written, not on what is already there:
+    # an entry the file holds word for word is kept as it is. Held to the
+    # limit too, one long entry refused every add, edit and rm after it,
+    # with a sentence that blamed the new line (B352).
+    have = {" ".join(e["text"].split()) for g in groups(d) for e in g["entries"]}
     try:
         rows = []
         for g in (gs or []):
@@ -257,7 +263,8 @@ def put(d, gs):
             for e in ((g or {}).get("entries") or []):
                 shas = [str(x) for x in (e or {}).get("shas") or []
                         if re.fullmatch(r"[0-9a-f]{7,40}", str(x))]
-                ents.append((_clean_text((e or {}).get("text")), shas))
+                text = " ".join(str((e or {}).get("text") or "").split())
+                ents.append((text if text in have else _clean_text(text), shas))
             if ents:
                 rows.append((name, ents))
     except _Refused as e:

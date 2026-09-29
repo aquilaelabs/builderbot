@@ -620,6 +620,22 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
      'the numbered list names each category, an uncategorised line above them all, and counts straight through');
   cl('rm', numOf('LOOSE'));
 
+  // The limit is on what is being written, not on what the file holds
+  // (B352): a line longer than it, there by hand, refused every add after
+  // it in words that blamed the new line, and the verbs could not shorten
+  // it either, since each of them writes the whole section.
+  const long = 'LONGLINE ' + 'a line that ran on '.repeat(20);
+  writeFileSync(`${M}/CHANGELOG.md`, file().replace('### Added\n\n', `### Added\n\n- ${long.trim()}\n`));
+  ok(cl('add', 'SHORT beside a long one', '--cat', 'Fixed').code === 0 && /SHORT beside a long one/.test(file())
+     && file().includes(long.trim()),
+     'an entry is filed beside one already over the limit, which stays as it was');
+  const over = cl('add', 'TOOLONG ' + 'and on '.repeat(60), '--cat', 'Fixed');
+  ok(over.code !== 0 && /this one is \d+, and begins: TOOLONG/.test(over.out) && !/TOOLONG/.test(file()),
+     '...a new one over it is refused, and the refusal says which entry and how long');
+  ok(cl('edit', numOf('LONGLINE'), 'LONGLINE cut to size').code === 0 && !file().includes(long.trim()),
+     '...and the long one is shortened through the verb');
+  cl('rm', numOf('LONGLINE')); cl('rm', numOf('SHORT beside'));
+
   ok(cl('edit', numOf('CATME a fix'), 'CATME a fix, moved', '--cat', 'Added').code === 0,
      'an entry moves between categories with --cat');
   ok(/### Added\n\n- CATME an addition[^\n]*\n- CATME a fix, moved/.test(file()),
