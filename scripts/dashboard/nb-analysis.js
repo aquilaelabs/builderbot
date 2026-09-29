@@ -143,7 +143,12 @@ function nbAnalysisView({$, nb, project}){
            + `items and no open bugs, so a session here starts on CLAUDE.md alone.`
            + `</div></div>`;
     } else {
-      status = preSize(d.bytes); cls = d.capped ? "warn" : "";
+      // A part that has started saying less is seen here before a session
+      // meets it: its size against its share, and what it left out.
+      const short = (d.parts || []).filter(x => x.left);
+      status = preSize(d.bytes) + (short.length ? `, ${short.map(x => x.name).join(" and ")} over ${
+        short.length === 1 ? "its share" : "their shares"}` : "");
+      cls = short.length ? "warn" : "";
       // Read-only, and a textarea rather than a <pre> because the thing
       // somebody wants to do with this is select all of it and take it
       // somewhere. uniform.mjs exempts a read-only textarea from the control
@@ -153,9 +158,12 @@ function nbAnalysisView({$, nb, project}){
         + `the project's CLAUDE.md.</div>
         <textarea id="preText" readonly rows="16" spellcheck="false"
           aria-label="what a session started here is sent">${esc(d.text)}</textarea>
-        <div class="sub dim">${
-          (d.parts || []).map(x => `${esc(x.name)} ${preSize(x.bytes)}`).join(" · ")
-        }${d.capped ? ` · cut at ${preSize(d.max)}, the rest is not sent` : ""}</div>
+        <div class="sub dim" id="preParts">${
+          (d.parts || []).map(x => `${esc(x.name)} ${preSize(x.bytes)}${
+            x.share ? ` of ${preSize(x.share)}` : ""}`).join(" · ")
+        }</div>${short.map(x => `<div class="sub warn">The ${esc(x.name)} part is over its share, so a `
+          + `session's prompt leaves out ${esc(x.left)}. Nothing is lost: the notebook keeps all of it, `
+          + `and a session reads the rest when it needs it.</div>`).join("")}
       </div>`;
     }
     return docSection("briefing", "preamble", "What a session is sent",

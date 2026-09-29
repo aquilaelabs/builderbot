@@ -50,6 +50,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Text fields and pickers are a size smaller, one step below the text beside them; typed fields on an iPhone stay 16px so Safari does not zoom (5730757)
 - American spelling throughout: what the dashboard and the app put on screen, the docs and the design language say color, gray, center and labeled, and the design's two rules about color are named color and project-color (478ab50)
 - A design starts with nothing chosen: type, corners, space and motion read 'not chosen' until somebody picks them, so a session is not held to a default (quiet motion's reduced-motion clause was reported as a broken promise); the briefing names the choices still open (469899d)
+- A project's notebook can keep growing: the roadmap takes two hundred open items with the parked ones not counted (it refused a 31st), and what a session is sent keeps to a share per part, saying less per row before it leaves a row out and never losing its end (3b428a9)
+- The roadmap a session is sent counts the steps that are done and prints the ones still open (3b428a9)
 
 ### Removed
 

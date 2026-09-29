@@ -940,14 +940,26 @@ for (const [what, body] of [
 }
 page.errors = [];
 
-// The ceiling exists because this is read at the start of every conversation.
+// What is kept and what a session is sent are two things (the operator, 29
+// Sep): the list kept 30 with the parked ones counted, to keep the prompt
+// short, and a project with 17 open and 13 parked could not record a 31st.
+// The prompt keeps to a share now (preamble.mjs), and the list's own limit
+// is on the open ones.
 const many = read();
 many.projects.gamma = Array.from({ length: 30 }, (_, i) =>
+  ({ id: i + 1, text: `item ${i + 1}`, done: false, added: 1, by: 'you' }))
+  .concat(Array.from({ length: 40 }, (_, i) =>
+    ({ id: 500 + i, text: `parked ${i + 1}`, done: false, added: 1, by: 'you', shelved: 1790000000 })));
+writeFileSync(FILE, JSON.stringify(many));
+const more = await post({ action: 'add', project: 'gamma', text: 'a thirty-first, beside forty parked' });
+ok(more.status === 200 && !more.body.error,
+   'a list of thirty open and forty parked takes another: the parked are not counted and thirty is not the limit');
+many.projects.gamma = Array.from({ length: 200 }, (_, i) =>
   ({ id: i + 1, text: `item ${i + 1}`, done: false, added: 1, by: 'you' }));
 writeFileSync(FILE, JSON.stringify(many));
 const over = await post({ action: 'add', project: 'gamma', text: 'one too many' });
-ok(over.status === 400 && /limit/.test(over.body.error),
-   'a list long enough to stop being readable refuses to grow');
+ok(over.status === 400 && /200 open items is the limit: finish, park or drop some first/.test(over.body.error),
+   `...and two hundred open is where it says what to do instead (${over.body.error})`);
 page.errors = [];
 
 // ---- building a plan in the panel --------------------------------------
@@ -1561,8 +1573,8 @@ ok(drawn.find(d => d.step === '0').can && !drawn.find(d => d.step === '2').can
    '...the frontier is still step 1, and step 3 waits on it, not on the done one');
 ok(drawn.find(d => d.step === '1').can && /finished this/.test(drawn.find(d => d.step === '1').why),
    '...and the done step stays sendable, worded as the override it would be');
-ok(/2\. fit the widget  \(done\)/.test(bbRoadmapEarly('--prompt')),
-   'the session prompt says (done) on it, not "already sent"');
+ok(/1 of \d+ steps done; still open:/.test(bbRoadmapEarly('--prompt')) && !/2\. fit the widget/.test(bbRoadmapEarly('--prompt')),
+   'the session prompt counts it as done and no longer prints it, sent or not');
 ok(/done-step.*step 2 of R\d+  fit the widget/.test(bbRoadmapEarly('history', '-n', '3'))
    && /why: told in chat/.test(bbRoadmapEarly('history', '-n', '3')),
    '...and the log records who finished what, with the note');

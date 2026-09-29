@@ -2399,19 +2399,33 @@ is read on Thursday without anybody remembering to mention it. Items a session
 added are marked, so you can see what it put there. It is given as context
 rather than instructions: a session works an item when you ask, or when it is
 plainly part of what you asked, and adds one when it notices something out of
-scope for what it is on. The block travels to the session in a file rather than
-on tmux's command line, which takes at most 16KB and answers a longer one with
-`command too long` and nothing else: a full notebook made every Claude session
-on that project unstartable, and the pane filled with that line as the terminal
-reconnected into it. Past 100KB the block is cut at an item boundary and says
-so, in the prompt and in the pane: one argument cannot exceed the kernel's
-131072 bytes, and a list that big has outgrown being read at the start of every
-conversation anyway.
+scope for what it is on. A step that is done is counted and not printed: the
+plan's past is a `bb roadmap show` away. The block travels to the session in a
+file rather than on tmux's command line, which takes at most 16KB and answers a
+longer one with `command too long` and nothing else.
+
+**What is kept and what a session is sent are two things.** A project only
+grows, and every conversation pays for the block. So the notebook keeps what
+there is (two hundred open roadmap items, the parked ones not counted; two
+hundred open bugs; forty standing rules and two hundred named ones), and the
+block is an index into it. Each part that grows has a share of a session's
+prompt: 16 KB for the rules, 16 KB for the roadmap, 8 KB for the bugs. A part
+over its share says less per row before it leaves a row out. The roadmap gives
+its items with their open steps, then their titles with the steps as a count,
+then the titles cut short with the parked ones as a count, then as many as fit
+in your own order with the rest as a count. The tracker gives every title,
+then the titles cut short, then as many as fit, the worst first, with the rest
+counted by severity. The rules keep every standing rule whole, since that is
+what a session is held to, and give the named ones without what calls for
+each. What a part left out is said in the part, where the session reading it
+sees it, with the verb that prints all of it; and every part is always there,
+whatever the others hold.
 
 **And you can read the whole of it.** The Briefing tab's last fold, *What a
 session is sent*, holds the exact string a session started here is handed: the
 house rules, then the open roadmap, then the open bugs, with its size on the
-heading and each part's size under it. It is the same string, not a rendering
+heading and each part's size under it against its share, so a part that has
+started saying less is seen there before a session meets it. It is the same string, not a rendering
 of the same idea: the tab and `bb-tty` both ask `bb preamble` for it, so the
 fold cannot quietly stop describing what sessions get. Shut by default, since
 it is a thing to check rather than to read every time.

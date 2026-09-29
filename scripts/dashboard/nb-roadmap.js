@@ -350,8 +350,7 @@ function nbRoadmapView({$, nb}){
     $("roadmapLog").classList.toggle("on", nb.roadmapLogOn);
     drawSendBox(live);
     // Groups, not steps: a plan cut in half by a page boundary is a plan
-    // nobody can read. The roadmap caps at 30 open items anyway, so this only
-    // ever bites a list that has grown its steps.
+    // nobody can read.
     paginate($("roadmapList"), ":scope > .grp", {noun: "items"});
   }
 

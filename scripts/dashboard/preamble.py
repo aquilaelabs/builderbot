@@ -40,10 +40,14 @@ rules_mod = roadmap_mod = bugs_mod = None
 # (the server and bb) already run with it set and neither has to be taught.
 WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
 
-MAX = 200000
-
-CUT = ("[the rest of this list did not fit in the prompt; `bb roadmap`"
-       " and `bb bug` show all of it]")
+# What each part that grows with a project may take of a session's prompt,
+# in bytes (share.py): the block is an index into the notebook, and a part
+# over its share says less per row before it leaves a row out. The
+# briefing itself is the template's size and the project's own for nothing.
+# Sixteen kilobytes is about four thousand tokens; on this project, the
+# day these were set, the rules were 9.7 KB and the roadmap 17.2, of which
+# 4.8 were steps already done.
+SHARES = {"rules": 16 * 1024, "roadmap": 16 * 1024, "bugs": 8 * 1024}
 
 
 live_fn = None
@@ -295,7 +299,8 @@ def _has(tree, pattern):
 
 
 def parts(project, reply="", asks=""):
-    """The pieces, in the order a session reads them.
+    """The pieces, in the order a session reads them, each as (name, text,
+    what it left out to keep to its share).
 
     The briefing first, because it is what the rest is said in terms of; then
     how the operator wants this worked on; then what there is to work on.
@@ -305,53 +310,46 @@ def parts(project, reply="", asks=""):
     gap where the tracker would have been.
     """
     out = []
-    for name, fn in (("briefing", lambda: briefing(project)),
+    for name, fn in (("briefing", lambda: (briefing(project), "")),
                      # What is running, as a fact rather than a guess (R75
                      # step 5): a session argued from a build it assumed once.
-                     ("live", lambda: live_fn() if live_fn else ""),
-                     ("replies", lambda: person_part(reply, asks)),
-                     ("rules", lambda: rules_mod.block(project)),
-                     ("roadmap", lambda: roadmap_mod.prompt(project)),
-                     ("bugs", lambda: bugs_mod.prompt(project))):
+                     ("live", lambda: (live_fn() if live_fn else "", "")),
+                     ("replies", lambda: (person_part(reply, asks), "")),
+                     ("rules", lambda: rules_mod.fitted(project, SHARES["rules"])),
+                     ("roadmap", lambda: roadmap_mod.fitted(project, SHARES["roadmap"])),
+                     ("bugs", lambda: bugs_mod.fitted(project, SHARES["bugs"]))):
         try:
-            text = (fn() or "").strip("\n")
+            text, left = fn()
+            text = (text or "").strip("\n")
         except Exception as e:                              # noqa: BLE001
             # One store failing is a smaller thing than no session: bb-tty
             # swallowed each of these separately for exactly this reason.
             # Broad because each store is its own module; the log names it.
-            text = ""
+            text, left = "", ""
             print(f"dashboard: preamble: {name} for {project} left out: {type(e).__name__}: {e}",
                   file=sys.stderr, flush=True)
         if text:
-            out.append((name, text))
+            out.append((name, text, left))
     return out
 
 
 def block(project, reply="", asks=""):
-    """The whole thing, uncapped."""
-    return "\n\n".join(t for _, t in parts(project, reply, asks))
-
-
-def fit(text):
-    """(what a session gets, whether it was cut, how big it was).
-
-    The cut lands on a line boundary rather than mid-line, and never inside a
-    UTF-8 character; `head -c` was happy to do both.
-    """
-    raw = text.encode("utf-8")
-    if len(raw) <= MAX:
-        return text, False, len(raw)
-    cut = raw[:MAX].decode("utf-8", "ignore")
-    cut = cut[:cut.rfind("\n") + 1] if "\n" in cut else cut
-    return cut + CUT, True, len(raw)
+    """The whole thing, as a session is sent it."""
+    return "\n\n".join(t for _, t, _ in parts(project, reply, asks))
 
 
 def payload(project, reply="", asks=""):
     """What the Briefing tab draws, and what `bb preamble --json` prints.
     `reply` and `asks` are the asker's own settings on the project (prefs
-    USER_CHOICES): how Claude writes to them and how often it asks them."""
+    USER_CHOICES): how Claude writes to them and how often it asks them.
+    Each part carries its size, its share where it has one, and what it
+    left out to keep to it; `notes` says the last in a sentence each, for
+    whoever opens the terminal."""
     ps = parts(project, reply, asks)
-    whole = "\n\n".join(t for _, t in ps)
-    text, capped, size = fit(whole)
-    return {"text": text, "bytes": size, "max": MAX, "capped": capped,
-            "parts": [{"name": n, "bytes": len(t.encode("utf-8"))} for n, t in ps]}
+    text = "\n\n".join(t for _, t, _ in ps)
+    return {"text": text, "bytes": len(text.encode("utf-8")),
+            "parts": [{"name": n, "bytes": len(t.encode("utf-8")),
+                       **({"share": SHARES[n]} if n in SHARES else {}),
+                       **({"left": left} if left else {})} for n, t, left in ps],
+            "notes": [f"the {n} part is over its share of a session's prompt and leaves out {left}"
+                      for n, _, left in ps if left]}

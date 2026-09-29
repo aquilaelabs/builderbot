@@ -416,6 +416,38 @@ print(users.mint_session('alpha'))`], { encoding: 'utf8' }).trim();
   ok(!forced.conflict && read().some(r => r.name === 'from-tab-two') && !read().some(r => r.name === 'from-tab-one'),
      '...and Use mine writes it, which is then a decision somebody made rather than an accident');
   await call('/api/rules', { project: 'alpha', action: 'save', rules: first.rules || [], force: true });
+  // What a project keeps and what a session reads whole are counted
+  // apart (the operator, 29 Sep): a standing rule is read into every
+  // session, a named one costs its name. Forty was the limit on both.
+  const named = Array.from({ length: 60 }, (_, i) => ({ name: `named-${i}`, text: `a named rule, number ${i}`, words: [`word${i}`] }));
+  const many = await call('/api/rules', { project: 'alpha', action: 'save', rules: named, force: true });
+  ok(!many.error && (many.rules || []).length === 60, 'sixty named rules are kept: a named rule is not counted against the forty');
+  const block = await call('/api/preamble?project=alpha');
+  const part = (block.parts || []).find(x => x.name === 'rules') || {};
+  ok(part.bytes <= part.share && !part.left && /named-59: word59/.test(block.text),
+     `...and what a session is sent names each with what calls for it, inside its share (${part.bytes} of ${part.share})`);
+  const standing = Array.from({ length: 41 }, (_, i) => ({ name: `standing-${i}`, text: `a standing rule, number ${i}` }));
+  // From here rather than the page, so the refusal is not a console error.
+  const over = await (await fetch(URL.replace(/\/$/, '') + '/api/rules', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
+    body: JSON.stringify({ project: 'alpha', action: 'save', rules: standing, force: true }) })).json();
+  ok(/40 standing rules is the limit: each is read whole into every session/.test(over.error || '')
+     && /Give one a file or a word that calls for it/.test(over.error || ''),
+     `...and a forty-first standing rule is refused, saying what to do instead (${(over.error || '').slice(0, 60)})`);
+  // Two hundred named rules with long triggers: over the share with what
+  // calls for each, so the names alone, and the checks still said.
+  const long = Array.from({ length: 200 }, (_, i) => ({ name: `long-${i}`, text: `rule ${i}`,
+    paths: ['scripts/dashboard/some/long/path/*.js', 'docs/another/long/path.md'], words: ['alpha', 'beta', 'gamma', 'delta'],
+    ...(i === 3 ? { check: 'true' } : {}) }));
+  const kept = await call('/api/rules', { project: 'alpha', action: 'save', rules: long, force: true });
+  const short = await call('/api/preamble?project=alpha');
+  const sp = (short.parts || []).find(x => x.name === 'rules') || {};
+  ok(!kept.error && sp.left === 'what calls for each named rule' && sp.bytes <= sp.share
+     && /long-199/.test(short.text) && !/long-199: /.test(short.text)
+     && /Checked before handing back, each with `bb rules check NAME`: long-3\./.test(short.text)
+     && /`bb rules` lists them with it/.test(short.text),
+     `a list of named rules over its share gives their names without what calls for each, and still says which are checked (${sp.bytes} of ${sp.share})`);
+  await call('/api/rules', { project: 'alpha', action: 'save', rules: first.rules || [], force: true });
 }
 
 // A project's rules beside the global ones. Flat by construction: both lists

@@ -37,13 +37,7 @@ else:
     # No trailing newline added: this is handed to `claude` as one argument,
     # and the caller tests it with [ -z ].
     sys.stdout.write(p["text"])
-    # Said on stderr so it cannot join the block itself. The launcher shows
-    # this to whoever opened the terminal; a list nobody can afford is a
-    # thing to hear about once rather than to discover as a session that has
-    # not read half of it.
-    if p["capped"]:
-        print(f"WARNING: this project's rules, roadmap and bugs are "
-              f"{p['bytes']} bytes and only the first {p['max']} are in a "
-              f"session's prompt.", file=sys.stderr)
-        print("Trim the list with `bb roadmap`, or the rest of it is invisible "
-              "to every session started here.", file=sys.stderr)
+    # Said on stderr so it cannot join the block itself: what a part left
+    # out to keep to its share, which the block says to the session too.
+    for note in p["notes"]:
+        print(note, file=sys.stderr)
