@@ -497,31 +497,6 @@ tag in `index.html`. `bb map sections FILE` reads a file by its
 headers, with each section's outside callers, what runs at load and what
 the suite covers.
 
-### document-tabs
-
-Applies to: scripts/dashboard/tab-*.js; tab, document, docsurface, bar
-
-Reading surfaces, not terminals. A new kind does not write its own chrome: it
-calls `docSurface(i, kind)`, which builds the standard skeleton (a
-`.doctab.<kind>tab` box capped at `var(--doc-w)`: a filter/actions bar slot,
-the band list, a quiet `.fnote` footer) and returns the slots to fill. States
-are `.loading` / `.empty` / `.hint.bad` inside the list.
-
-**The bar is a band, not a row of controls.** What the tab is about goes at
-its left (a node picker, the filters, a one-line count) and the action on
-it at the right, where a row's buttons and a section's status already sit, so
-every tab's Refresh is in one place and lines up with the column of actions
-under it. The band spans the tab; the controls in it are capped one by one
-like any other. A tab that builds its own chrome instead misses all of this:
-the Toolchains tab kept its picker in a band of its own and its Refresh landed
-somewhere no other tab's does.
-
-A new tab lands as: its own classic script file beside `index.html`, an entry
-in `TABKINDS` there and `TAB_KINDS` in `server.py`, its top-level names in
-`test/surface.mjs`, a driver in `test/uniform.mjs`, and a content test beside
-its siblings. Renderers run inside `renderGuarded`, so a throwing renderer is
-an error band in its own tab, never a dead dashboard.
-
 ### sections-and-action-bars
 
 Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; section, fold, action, bar, actbar, hidden
@@ -547,24 +522,6 @@ row. The destructive verb wears `.danger` and comes last, so nothing safe
 sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
 text are exempt.
-
-### dialogs
-
-Applies to: scripts/dashboard/index.html, scripts/dashboard/page-*.js; dialog, modal, popup, pop-up, foot
-
-A dialog is `.modal > .box` (`.wide` for a list or an editor), titled by its
-`h3`. Every line of its body is a `.field` band, which is where the inset
-lives: a hint, a control, a list, never text at box level, which draws flush
-against the edge. A group of fields inside it is headed by a `label`, the dim
-small heading every dialog uses, never an `h4`; a dialog that is prose to
-read rather than fields to fill (About) says so with `.box.prose` and may use
-headings. The buttons are the `.foot`: a
-`.state` first when there is one, then `.sp`, then the verbs, the primary
-first and anything destructive last. A switch is a checkbox inside its label,
-beside the thing it names, the way the Settings tab draws them
-(`.logdays.setrow` holding a `label.ndcap`). What has nothing to act on is
-hidden rather than disabled: a dialog with an empty list says so in one
-sentence and offers Close.
 
 ### rows-you-open
 
@@ -615,84 +572,6 @@ The state is per list and per notebook. A notebook is a clone of one
 template, so its ids belong to every open notebook at once; a key that
 forgets which notebook it is in is one bucket shared by all of them, which
 is how a page came to turn itself back.
-
-### the-notebook
-
-Applies to: scripts/dashboard/nb-*.js; notebook, view, head, row, strip
-
-Every view opens with the same head row: its one-line summary on the left
-and its controls, History where it has one, on the right. That row is the
-first band of the view and sits at one height on all nine views.
-
-The view strip is one row on a desktop. On a phone it wraps into rows of
-equal-width tabs rather than scrolling sideways: nine labels do not fit
-393px, and a strip that hides its last two behind an edge is a strip whose
-last two views nobody opens. Every tab stays visible at every width. The
-view a notebook is on comes back with a reload, the way the tab strip and
-the active pane do; closing the notebook's tab forgets it.
-
-Adding goes at the top. The control that adds to a view is the first band
-under its head row, above the list, one shape on every view (`.addbar`, a
-button named for what it adds, `data-add`), and the form it opens unrolls
-in that band's place. Never at the foot: a phone should not scroll past the
-list to add to it.
-
-Save and Revert at the notebook's foot show only on the views that stage
-something behind them (Roadmap, Briefing, Design, the version on
-Artifacts). A view that writes through or only reads (Bugs, Tests,
-Analysis, Git) has no foot.
-
-The Design view is three folds under its head row and add bar: Pages,
-Design language and Themes, in that order, so the boards are the first
-thing seen. The pages and the themes show one at a time, chosen on a
-pulldown at the fold's top, and what is added is what is shown: every page
-and every theme at once was the whole view scrolled past (the operator, 28
-Sep). The one shown is fields like any tab's, never a box of its own. Rules
-live inside the entry they hold for and nowhere else (the operator, 29
-Sep): a Rules section inside the Design language fold for the whole
-design, one inside each theme above its colours, one inside each page
-under its board, each following the pulldown; a rules fold below
-everything read as the rules. Every rules list here is the Briefing's
-(nb-rules.js): Add a rule first, a folded row a rule with its name and when
-it reaches a session, Edit turning the row into its form. A new project's design is empty, no theme and no
-page: the session that builds it chooses the look and puts it here after. The view is passive: nothing on it reaches
-into a session; the prompt under the language and under each page is text
-to copy, and a session reads the design by itself through its rules and
-`bb design show`. A theme and a page each carry rules of their own under
-them, one shown at a time like the language's, for what holds for that
-theme or that page alone; a session meets one as HOLDER/RULE.
-
-**The Design view's board is the one surface here whose colours are data.**
-A page's blocks are painted in the project's own language (`nb-design.js`,
-`blockStyle`), inline from the saved hex, because the board is a picture of
-that project and not chrome of this page; everything around the board (the
-frame's edge, the selection outline, the sizing corner) is the page's
-tokens, and the corner shows on the selected block only, since a tap
-selects a block before anything drags it. Its controls are the framework's:
-choices in labelled selects on a `.dsrow` that lines up at the bottom, the
-row's prose field growing only to the width the other tabs give a field so
-what follows it stays beside it, colours as a chip beside a seven-character
-field, prose in a proseline, and the prompt in a read-only textarea, which
-is a page of text and not a control.
-
-### both-sizes
-
-Applies to: scripts/dashboard/index.html; phone, mobile, touch, tap, width, responsive, fold, cover
-
-The phone and the desktop are both first-class. A surface is not done until
-it has been looked at at both widths: sections open on a desktop and shut on
-a phone, no control spans the screen at either, and a typed field is 16px
-on iOS alone, so Safari does not zoom.
-
-A finger is not a pointer. On a coarse pointer (`@media(pointer:coarse)`)
-every button in a dialog and in the notebook is `--tap` high, and the small
-controls a thumb meets (a tab's close and minimize, the new-tab button, the
-colour swatches) are at least 30px; a desktop keeps its tighter strip. A bar
-of buttons that spans a phone shares its width (`flex: 1 1 0; min-width: 0`)
-rather than each taking its text's, so the last one is never cut off: at
-344px, a folding phone's cover screen, four did not fit. "Both widths" means
-a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
-840, still the phone layout) and a desktop.
 
 ### motion
 
@@ -844,6 +723,35 @@ Layout of the dashboard on a desktop frame (12 columns by 8 rows), from the App 
   Footer (a footer with the quiet links): the bottom bar: Commands, Sessions, Chat, on the right, columns 4 to 12 of 12, row 8 of 8
 Notes:
   A document tab is a reading surface built by docSurface: a bar band, the band list, a quiet footer. Everything that appears or changes state moves, and nothing fades its own ground.
+This page's own rules:
+  the-dashboard/document-tabs: scripts/dashboard/tab-*.js; tab, document, docsurface, bar (`bb design show the-dashboard/document-tabs` reads it)
+
+#### Rules of the dashboard's own
+
+##### the-dashboard/document-tabs
+
+Applies to: scripts/dashboard/tab-*.js; tab, document, docsurface, bar
+
+Reading surfaces, not terminals. A new kind does not write its own chrome: it
+calls `docSurface(i, kind)`, which builds the standard skeleton (a
+`.doctab.<kind>tab` box capped at `var(--doc-w)`: a filter/actions bar slot,
+the band list, a quiet `.fnote` footer) and returns the slots to fill. States
+are `.loading` / `.empty` / `.hint.bad` inside the list.
+
+**The bar is a band, not a row of controls.** What the tab is about goes at
+its left (a node picker, the filters, a one-line count) and the action on
+it at the right, where a row's buttons and a section's status already sit, so
+every tab's Refresh is in one place and lines up with the column of actions
+under it. The band spans the tab; the controls in it are capped one by one
+like any other. A tab that builds its own chrome instead misses all of this:
+the Toolchains tab kept its picker in a band of its own and its Refresh landed
+somewhere no other tab's does.
+
+A new tab lands as: its own classic script file beside `index.html`, an entry
+in `TABKINDS` there and `TAB_KINDS` in `server.py`, its top-level names in
+`test/surface.mjs`, a driver in `test/uniform.mjs`, and a content test beside
+its siblings. Renderers run inside `renderGuarded`, so a throwing renderer is
+an error band in its own tab, never a dead dashboard.
 
 ### a notebook (Web app)
 
@@ -854,6 +762,67 @@ Layout of a notebook on a desktop frame (12 columns by 8 rows), from the Blank t
   Footer (a footer with the quiet links): Save and Revert, only on the views that stage something, across the bottom, row 8 of 8
 Notes:
   One notebook per project, a clone of one template. Every view opens with the same head row at one height. A row with detail behind it is a fold that opens to be read, never as a form.
+This page's own rules:
+  a-notebook/views: scripts/dashboard/nb-*.js; notebook, view, head, row, strip (`bb design show a-notebook/views` reads it)
+
+#### Rules of a notebook's own
+
+##### a-notebook/views
+
+Applies to: scripts/dashboard/nb-*.js; notebook, view, head, row, strip
+
+Every view opens with the same head row: its one-line summary on the left
+and its controls, History where it has one, on the right. That row is the
+first band of the view and sits at one height on all nine views.
+
+The view strip is one row on a desktop. On a phone it wraps into rows of
+equal-width tabs rather than scrolling sideways: nine labels do not fit
+393px, and a strip that hides its last two behind an edge is a strip whose
+last two views nobody opens. Every tab stays visible at every width. The
+view a notebook is on comes back with a reload, the way the tab strip and
+the active pane do; closing the notebook's tab forgets it.
+
+Adding goes at the top. The control that adds to a view is the first band
+under its head row, above the list, one shape on every view (`.addbar`, a
+button named for what it adds, `data-add`), and the form it opens unrolls
+in that band's place. Never at the foot: a phone should not scroll past the
+list to add to it.
+
+Save and Revert at the notebook's foot show only on the views that stage
+something behind them (Roadmap, Briefing, Design, the version on
+Artifacts). A view that writes through or only reads (Bugs, Tests,
+Analysis, Git) has no foot.
+
+The Design view is three folds under its head row and add bar: Pages,
+Design language and Themes, in that order, so the boards are the first
+thing seen. The pages and the themes show one at a time, chosen on a
+pulldown at the fold's top, and what is added is what is shown: every page
+and every theme at once was the whole view scrolled past (the operator, 28
+Sep). The one shown is fields like any tab's, never a box of its own. Rules
+live inside the entry they hold for and nowhere else (the operator, 29
+Sep): a Rules section inside the Design language fold for the whole
+design, one inside each theme above its colours, one inside each page
+under its board, each following the pulldown; a rules fold below
+everything read as the rules. Every rules list here is the Briefing's
+(nb-rules.js): Add a rule first, a folded row a rule with its name and when
+it reaches a session, Edit turning the row into its form. A new project's design is empty, no theme and no
+page: the session that builds it chooses the look and puts it here after. The view is passive: nothing on it reaches
+into a session and nothing on it is a prompt; a session reads the design
+piece by piece, through its rules and `bb design show`, never as one dump. A theme and a page each carry rules of their own under
+them, one shown at a time like the language's, for what holds for that
+theme or that page alone; a session meets one as HOLDER/RULE.
+
+**The Design view's board is the one surface here whose colours are data.**
+A page's blocks are painted in the project's own language (`nb-design.js`,
+`blockStyle`), inline from the saved hex, because the board is a picture of
+that project and not chrome of this page; everything around the board (the
+frame's edge, the selection outline, the sizing corner) is the page's
+tokens, and the corner shows on the selected block only, since a tap
+selects a block before anything drags it. Its controls are the framework's:
+choices in labelled selects on a `.dsrow` that lines up at the bottom, the
+row's prose field growing only to the width the other tabs give a field so
+what follows it stays beside it, colours as a chip beside a seven-character
+field, prose in a proseline.
 
 ### the dashboard on a phone (Web app)
 
@@ -865,6 +834,29 @@ Layout of the dashboard on a phone on a phone frame (6 columns by 12 rows), from
   Footer (a footer with the quiet links): Keys, Commands, Sessions, Chat, sharing the width, across the bottom, row 12 of 12
 Notes:
   Sections open on a desktop and shut on a phone. The notebook's strip wraps into rows of equal tabs. A bar of buttons shares the width so the last is never cut off, down to a 344px fold cover.
+This page's own rules:
+  the-dashboard-on-a-phone/both-sizes: scripts/dashboard/index.html; phone, mobile, touch, tap, width, responsive, fold, cover (`bb design show the-dashboard-on-a-phone/both-sizes` reads it)
+
+#### Rules of the dashboard on a phone's own
+
+##### the-dashboard-on-a-phone/both-sizes
+
+Applies to: scripts/dashboard/index.html; phone, mobile, touch, tap, width, responsive, fold, cover
+
+The phone and the desktop are both first-class. A surface is not done until
+it has been looked at at both widths: sections open on a desktop and shut on
+a phone, no control spans the screen at either, and a typed field is 16px
+on iOS alone, so Safari does not zoom.
+
+A finger is not a pointer. On a coarse pointer (`@media(pointer:coarse)`)
+every button in a dialog and in the notebook is `--tap` high, and the small
+controls a thumb meets (a tab's close and minimize, the new-tab button, the
+colour swatches) are at least 30px; a desktop keeps its tighter strip. A bar
+of buttons that spans a phone shares its width (`flex: 1 1 0; min-width: 0`)
+rather than each taking its text's, so the last one is never cut off: at
+344px, a folding phone's cover screen, four did not fit. "Both widths" means
+a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
+840, still the phone layout) and a desktop.
 
 ### a dialog (Web app)
 
@@ -873,3 +865,25 @@ Layout of a dialog on a desktop frame (12 columns by 8 rows), from the Blank tem
   Overlay (a dialog, sheet, drawer, popover or toast over the page): a modal: its h3, every line a field band, groups headed by a label, the foot with the state, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   Two gaps down a dialog and no others: the field gap between the things in a band, the label gap between a label and its control. It scrolls in one place; a text box and a listbox are the only things that scroll inside it.
+This page's own rules:
+  a-dialog/layout: scripts/dashboard/index.html, scripts/dashboard/page-*.js; dialog, modal, popup, pop-up, foot (`bb design show a-dialog/layout` reads it)
+
+#### Rules of a dialog's own
+
+##### a-dialog/layout
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/page-*.js; dialog, modal, popup, pop-up, foot
+
+A dialog is `.modal > .box` (`.wide` for a list or an editor), titled by its
+`h3`. Every line of its body is a `.field` band, which is where the inset
+lives: a hint, a control, a list, never text at box level, which draws flush
+against the edge. A group of fields inside it is headed by a `label`, the dim
+small heading every dialog uses, never an `h4`; a dialog that is prose to
+read rather than fields to fill (About) says so with `.box.prose` and may use
+headings. The buttons are the `.foot`: a
+`.state` first when there is one, then `.sp`, then the verbs, the primary
+first and anything destructive last. A switch is a checkbox inside its label,
+beside the thing it names, the way the Settings tab draws them
+(`.logdays.setrow` holding a `label.ndcap`). What has nothing to act on is
+hidden rather than disabled: a dialog with an empty list says so in one
+sentence and offers Close.
