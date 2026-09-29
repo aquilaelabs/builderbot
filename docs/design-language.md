@@ -134,6 +134,30 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9ad07a` | an informational mark, the low level |
 
+#### Rules of Nostromo's own
+
+##### nostromo/textures
+
+Applies to: scripts/dashboard/static/nostromo, scripts/dashboard/index.html; texture, hull, svg, decal
+
+This scheme alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
+served by the page's allow-list): hull plating behind the page, ribbing in
+the left gutter and a glyph strip in the header. Each bakes its own opacity, none sits under text above a third, and
+none moves the layout: a texture lives in space the page already leaves
+empty. The same suite measures the contrast with them in place.
+
+##### nostromo/fold
+
+Applies to: scripts/dashboard/page-motion.js, scripts/dashboard/index.html; fold, fade, card
+
+This scheme asks for the fade fold with `--fold: fade` on the card: its smoked glass sliding into the title bar read as a bug, so the body fades where it stands, then the gap closes, and the cards below still ride the height.
+
+##### nostromo/corners
+
+Applies to: scripts/dashboard/index.html; corner, radius, square
+
+This scheme squares all three corner tokens; the pills and the dots stay round, as everywhere.
+
 ### Plum (dark)
 
 | token | value | for |
@@ -239,11 +263,7 @@ exactly this reason: the accents range from `#2fb8c6` to `#ffb000`, and
 forty percent of black is not enough darkening under the bright ones. Five
 schemes had text on that fill under AA before the cap, nostromo worst at
 3.56:1. `test/uniform.mjs` measures the rendered pixels on every scheme.
-Nostromo alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
-served by the page's allow-list): hull plating behind the page, ribbing in
-the left gutter and a glyph strip in the header. Each bakes its own opacity, none sits under text above a third, and
-none moves the layout: a texture lives in space the page already leaves
-empty. The same suite measures the contrast with them in place.
+A scheme that carries drawn textures says so in its own rules (Nostromo does).
 
 Watch the class the words wear. A tab's name is a `.lbl`, which is also the
 field-label helper, so it arrived wearing the quiet colour meant for "Your
@@ -674,9 +694,7 @@ by one observer, so no close site has to remember), and a row folding its
 controls out on a phone slides over the height that takes. A change that
 snaps is a change the eye has to find. Every one of them is off under
 `prefers-reduced-motion`. A scheme may ask for a different fold with
-`--fold: fade` on the card (nostromo does: its smoked glass sliding into
-the title bar read as a bug): the body fades where it
-stands, then the gap closes, and the cards below still ride the height.
+`--fold: fade` on the card; a scheme that does says why in its own rules (Nostromo does).
 
 **What fades is what is drawn, never the ground under it.** A document's
 ground (the page colour, the panel colour, nostromo's glass and scanlines)
