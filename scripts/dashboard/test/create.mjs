@@ -60,11 +60,11 @@ ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
 // The four gates are on the dialog (R78): what a session may enter into
 // the notebook, auto on every open, so it is a choice made rather than a
 // default found later in the settings dialog.
-ok(await page.$$eval('#pGateField select', s => s.length === 5 && s.every(x => x.options.length === 3)
+ok(await page.$$eval('#pGateField select', s => s.length === 6 && s.some(x => x.id === 'pGateDesign') && s.every(x => x.options.length === 3)
                                               && s.filter(x => x.id !== 'pGateDocker').every(x => x.value === 'auto')
                                               && s.find(x => x.id === 'pGateDocker')?.value === 'deny')
    && await page.$eval('#pGateField', el => !el.hidden),
-   'the five Claude gates are offered on a new local repo: the notebook four at auto, Run its container at deny');
+   'the six Claude gates are offered on a new local repo: the notebook five at auto, the design among them, Run its container at deny');
 const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    '...with the cursor in none of its fields');

@@ -1957,7 +1957,7 @@ def create_from_dialog(req, *, env, account, may_node):
         r = set_prefs(name, node=nid)
         if r.get("error"):
             body["note"] = f"{body.get('note') or 'ready'}; node not set: {r['error']}"
-    # ...and the four gates (roadmap #27), when the dialog offered them:
+    # ...and the gates (roadmap #27), the design's among them, when the dialog offered them:
     # the same write the settings dialog makes, so what a session may
     # enter into the notebook is decided where the project is made.
     gate = req.get("gate")

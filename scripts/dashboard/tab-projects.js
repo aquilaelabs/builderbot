@@ -368,7 +368,8 @@ let pFetch = null;                       // this open's /api/pubkeys, parsed
 // The four gates on the dialog (roadmap #27), the same table the settings
 // dialog draws from, and auto on every open: what a session may enter is
 // asked once here so it is a choice made rather than a default found later.
-const P_GATE_IDS = {roadmap: "pGateRoadmap", bugs: "pGateBugs", rules: "pGateRules", settings: "pGateSettings"};
+const P_GATE_IDS = {roadmap: "pGateRoadmap", bugs: "pGateBugs", rules: "pGateRules", settings: "pGateSettings",
+                    design: "pGateDesign"};
 const pGateNow = () => Object.fromEntries(
   Object.entries(P_GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
 function pFillGates(){
