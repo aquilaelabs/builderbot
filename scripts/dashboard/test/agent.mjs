@@ -557,7 +557,7 @@ print(json.dumps(open(seen).read().splitlines() if os.path.exists(seen) else [])
     }
     // The session's view (R35): the helper travels in the bundle, and what
     // the agent writes for it is one rule for one command, the layout, and a
-    // respawn that runs again only a launcher it recognises.
+    // respawn that runs again only a launcher it recognizes.
     {
       const bin = '/opt/fake/bb-session';
       const out = JSON.parse(execFileSync('python3', ['-c', `
@@ -2181,7 +2181,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
        'the Tools tab reads that node\'s own toolchain store');
     ok(view && view.items.find(i => i.name === 'zig')?.installed === true
        && view.items.find(i => i.name === 'android:ndk')?.installed === true,
-       'a toolchain present in the store reads as installed, whatever the census summarises');
+       'a toolchain present in the store reads as installed, whatever the census summarizes');
     ok(view && view.items.find(i => i.name === 'swift')?.installed === false
        && view.items.every(i => i.unknown === false),
        '...and one that is not there reads as absent, not as unknown');
@@ -3202,7 +3202,7 @@ nd_text = open(nd_file).read()
 a.hello = lambda: (503, {})
 j2 = J(); r2 = a._apply_network(j2, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})
 nd_after = open(nd_file).read()
-# ifupdown: networkd out of the way, an interfaces file with a neighbour to keep
+# ifupdown: networkd out of the way, an interfaces file with a neighbor to keep
 m.NETWORKCTL_BIN = '/nonexistent/networkctl'
 orig = 'auto lo\\niface lo inet loopback\\n\\nauto eth0\\niface eth0 inet dhcp\\n\\nauto eth1\\niface eth1 inet static\\n    address 192.168.9.9/24\\n'
 open(ifs, 'w').write(orig)
@@ -3232,7 +3232,7 @@ print(json.dumps({'fam': fam, 'nd_backend': nd_backend, 'r1': r1, 'nd_text': nd_
      && /iface eth0 inet static\n    address 10\.2\.2\.5\/24\n    gateway 10\.2\.2\.1\n    dns-nameservers 10\.2\.2\.1\n/.test(R.if_text)
      && /auto lo\niface lo inet loopback/.test(R.if_text) && /iface eth1 inet static\n    address 192\.168\.9\.9\/24/.test(R.if_text)
      && !/iface eth0 inet dhcp/.test(R.if_text) && /ifdown eth0\nifup eth0/.test(R.calls),
-     `with ifupdown the interface's own stanza is replaced and the neighbours kept (${R.if_backend}, ${R.r3[0]})`);
+     `with ifupdown the interface's own stanza is replaced and the neighbors kept (${R.if_backend}, ${R.r3[0]})`);
   ok(R.r4[0] === 'failed' && R.if_after === R.if_text,
      '...and its revert is the whole file as it was before the change');
 }

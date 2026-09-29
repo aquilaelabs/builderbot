@@ -73,7 +73,7 @@ function nbAnalysisView({$, nb, project}){
     })().finally(() => { codeInFlight = null; });
     return codeInFlight;
   }
-  // GitHub's colours for the languages people recognise; a hue from the
+  // GitHub's colors for the languages people recognize; a hue from the
   // name for the rest, so two rare ones do not come out the same.
   const LANG_COLOR = {Python: "#3572A5", JavaScript: "#f1e05a", TypeScript: "#3178c6", HTML: "#e34c26",
     CSS: "#663399", Shell: "#89e051", Kotlin: "#A97BFF", Java: "#b07219", Dart: "#00B4AB", Swift: "#F05138",

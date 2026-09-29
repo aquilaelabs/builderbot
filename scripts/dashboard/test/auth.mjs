@@ -94,7 +94,7 @@ const plain = (await bigGet('/', AUTHH)).body.length;
 // number is loose enough to mean only "something enormous got embedded".
 //
 // It tripped anyway, exactly as predicted: 150000 was reached with fifteen
-// bytes to spare, so the twelve colour schemes were the feature that met it.
+// bytes to spare, so the twelve color schemes were the feature that met it.
 // Raised to a number the ratio would fail long before, which is the check
 // that actually means something.
 // 250000 was reached the ordinary way in the end (no blob, just a year of
@@ -1124,7 +1124,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   await page.click('.profiletab h4');
   ok(!(await page.$('.profiletab .help.on')), '...and a tap elsewhere closes it');
   // ...and on a phone the box stays on the screen: it is placed in viewport
-  // coordinates and pushed inside the edge, not centred on an icon at it.
+  // coordinates and pushed inside the edge, not centered on an icon at it.
   await page.setViewportSize({ width: 393, height: 851 });
   await page.evaluate(() => setView('terminal'));     // a phone shows one column at a time
   await page.waitForSelector('.profiletab .help', { state: 'visible', timeout: 10000 });

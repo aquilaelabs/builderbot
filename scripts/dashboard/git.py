@@ -682,7 +682,7 @@ def branch_owner(repo, branch, trees=None, main=None, names=None):
     works there; claude/<name> for an account that exists is that account's,
     so a branch outlives its worktree as its author's. main is everybody's.
     The names were read off the branch alone once, so the owner's session's
-    claude/<topic> branches were labelled as sessions of accounts called
+    claude/<topic> branches were labeled as sessions of accounts called
     <topic>.
     """
     main = _main_branch(repo) if main is None else main

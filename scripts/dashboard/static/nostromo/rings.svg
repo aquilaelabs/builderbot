@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="128" viewBox="0 0 80 128">
   <!-- Binding rings down the sidebar, one every 128px, going behind the
-       cards: centred 18px inside the cards' left edge, so most of a
+       cards: centered 18px inside the cards' left edge, so most of a
        ring shows dimly through the smoked glass, the gaps between cards show
        it plain, and its left side runs off into the gutter. A port rather
        than a plain ring: an outer ring with an accent arc, a dial of ticks,
-       a dashed inner ring with four bolts, and a reticle at the centre. Dim
+       a dashed inner ring with four bolts, and a reticle at the center. Dim
        on purpose: a fixture of the hull, never a thing to read. -->
   <g fill="none" stroke="#ffb000">
     <g opacity="0.22" stroke-width="1">

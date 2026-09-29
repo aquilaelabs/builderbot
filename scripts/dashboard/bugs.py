@@ -726,7 +726,7 @@ def remove(project, bug_id, why="", by="you"):
 def prompt(project):
     """The block bb-tty appends for a session, after the roadmap's.
 
-    The open bugs by number, severity and title (enough to recognise one when
+    The open bugs by number, severity and title (enough to recognize one when
     the work touches it), with the fields left on disk behind `bb bug show`,
     because ten full repro scripts in every prompt is the price of nothing.
     """

@@ -143,7 +143,7 @@ const REACHED = ['refresh', 'openTab', 'hideTab', 'tabOf', 'sessionOf',
 // equivalents. They are top-level `let`, and `new Function` below cannot see
 // the global LEXICAL environment, so asking about one here answers
 // "unreachable" for a name that is reachable from every line of the file.
-// What guards those is behavioural: the panel's Save writes a rule and a
+// What guards those is behavioral: the panel's Save writes a rule and a
 // version bump, and rules.mjs and version.mjs press it.
 // By bare name, not through window: half of these are `const` arrows, which
 // are in the global lexical scope and never become window properties. The

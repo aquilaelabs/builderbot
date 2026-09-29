@@ -239,13 +239,13 @@ ok(shut[0] === '5' && shut.includes('4'),
    + 'closed after a critical is above it');
 ok(order.indexOf('5') > order.indexOf('2'),
    '...and every closed one is still below every open one, whatever its severity');
-// The pills carry the same three colours the bell uses for the same three
+// The pills carry the same three colors the bell uses for the same three
 // meanings, so a severity and a notification are not two things to learn.
 const pill = sev => page.$eval(`#bugList .bug .sev.${sev}`,
                                e => getComputedStyle(e).color);
 ok(await pill('low') !== await pill('medium')
    && await pill('medium') !== await pill('high'),
-   'low, medium and high are three different colours rather than three words');
+   'low, medium and high are three different colors rather than three words');
 // Put the fixture back to three: the tests below count rows.
 bbBug('rm', '4', 'a fixture for the sort above');
 bbBug('rm', '5', 'a fixture for the sort above');

@@ -154,7 +154,7 @@ fi
 # Kotlin compile daemon all wrote under the base home, which the view makes
 # read-only: an Android build in a session died on Gradle's wrapper lock
 # (B182). Each is pointed at the account's own home by the variable it
-# honours: GRADLE_USER_HOME for Gradle's caches and wrapper, ANDROID_USER_HOME
+# honors: GRADLE_USER_HOME for Gradle's caches and wrapper, ANDROID_USER_HOME
 # for the debug keystore and the SDK tools' settings, and XDG_DATA_HOME,
 # which is where the Kotlin daemon keeps its run files on Linux. Per account,
 # as the crate cache is: the operator's call for B157.

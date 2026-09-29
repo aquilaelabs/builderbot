@@ -636,7 +636,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${ROW} .ndconf`, e => /now 10\.0\.0\.40\/24 on ens3 via 10\.0\.0\.1/.test(e.textContent)),
      'it reports the address the node is on');
   // The census's numbers as meters rather than as a sentence: one per store,
-  // labelled, with the free space on the right.
+  // labeled, with the free space on the right.
   const meters = await page.$$eval(`${ROW} .ndmeter`, ms => ms.map(m => ({
     label: m.querySelector('.lbl').textContent,
     val: m.querySelector('.val').textContent,
@@ -1160,7 +1160,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     // Two architectures on one store is the design now, not a clash: each
     // machine installs under its own <os>-<arch> scope (roadmap R19), so
     // the x86_64 node's install is queued while the arm64 node shares the
-    // share. Cancelled at once, so the one-at-a-time rule below starts clean.
+    // share. Canceled at once, so the one-at-a-time rule below starts clean.
     const clash = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
     ok(clash.job && !clash.error,
        `a store shared across architectures takes the install: each machine has its own scope in it (${
@@ -1534,7 +1534,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   const uj = upd.job ? await napi(`/api/v1/jobs?id=${upd.job}`) : null;
   ok(upd.ok && uj && uj.type === 'self-update' && uj.spec.digest === shipped.digest && uj.node === minted.id,
      `Update agent queues a self-update naming the shipped digest (${upd.job || upd.error})`);
-  // ...and it stays greyed while that job is queued, through the repaint
+  // ...and it stays grayed while that job is queued, through the repaint
   // that replaces the button. pressing() only covers the round trip; the
   // render is what has to know, and node_list only tracked system jobs, so
   // Update agent came back live the instant it answered.
@@ -1547,7 +1547,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     document.querySelector(sel + ' [data-nd="update-agent"]')?.textContent || ''),
     ROW, { timeout: 10000 });
   ok(await page.$eval(`${ROW} [data-nd="update-agent"]`, b => b.disabled),
-     '...and stays greyed while the update is queued, not only for the round trip');
+     '...and stays grayed while the update is queued, not only for the round trip');
   if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
   // ---- an agent from ANOTHER window stops work, and says which projects ----
   // Inside a window being behind is routine; across one nothing sent is

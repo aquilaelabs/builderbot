@@ -1,4 +1,4 @@
-// The gear menu: what is this BROWSER's (the colour scheme, the sidebar
+// The gear menu: what is this BROWSER's (the color scheme, the sidebar
 // layout) and the container's log settings, which is a setting read far
 // less often than anything the sidebar is for. Everything the controller
 // owns lives on the Settings tab instead (docs/nodes.md, section 13).
@@ -28,7 +28,7 @@ const THEME_IDS = new Set(THEMES.map(t => t[0]));
 // The account record is what a browser that has never seen this account reads
 // instead of starting on the default: the scheme follows the person rather
 // than the machine. But only then: a value already in localStorage WINS,
-// because which colours are comfortable is partly about the room you are
+// because which colors are comfortable is partly about the room you are
 // sitting in, and a phone in the dark that picked Nocturne must not have it
 // undone by the desktop at noon. adoptTheme is the whole of that rule.
 let themingTimer = null;
@@ -38,14 +38,14 @@ function applyTheme(id){
   // Default carries no attribute at all, so its palette is the :root one and
   // there is nothing to strip if every scheme is ever removed.
   const root = document.documentElement;
-  // Crossfade, by giving the page a colour transition for as long as the swap
+  // Crossfade, by giving the page a color transition for as long as the swap
   // takes and no longer. A standing transition on every element would be the
   // easy version and the wrong one: it would also slow every hover, every row
   // turning green and every state light on the page, all to make one rare
   // action look nicer. So it is switched on for the swap and off again.
   //
   // The custom properties themselves do not animate, since a var flips at once,
-  // but the computed background, text and border colours that read them do,
+  // but the computed background, text and border colors that read them do,
   // which is the whole picture except the terminal, whose iframe is another
   // document with its own styling and cannot be reached from here.
   if (!noMotion() && root.dataset.theme !== (use === "default" ? undefined : use)){
@@ -64,7 +64,7 @@ function applyTheme(id){
   // not a replacement for it. What it buys is a browser that has never seen
   // this account: it adopts the scheme after first paint instead of never.
   // Fire and forget: a failed save is a scheme that did not follow you, not
-  // something to interrupt the person picking colours about.
+  // something to interrupt the person picking colors about.
   fetch("/api/users", { method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "prefs", prefs: { theme: use } }) })
@@ -74,7 +74,7 @@ function applyTheme(id){
 
 // The account's scheme, taken up only by a browser that has none of its own.
 // Runs on every poll and does nothing on almost all of them; the guard is the
-// stored value, not a flag, so a second tab that picked a scheme is honoured
+// stored value, not a flag, so a second tab that picked a scheme is honored
 // here too rather than being fought over.
 let themeSaved = null;
 
@@ -88,7 +88,7 @@ function adoptTheme(t){
 }
 
 // Only the marks, never a rebuild. Replacing the grid's innerHTML from inside
-// a swatch's own click handler detaches the node the click is still travelling
+// a swatch's own click handler detaches the node the click is still traveling
 // through, and the document listener that closes the menu on an outside click
 // then sees a target #uiMenu no longer contains, and shuts it. Picking a scheme
 // closed the menu, which is exactly wrong for a control somebody tries twice.
@@ -111,7 +111,7 @@ function drawUiMenu(){
   const cur = currentTheme();
   el.innerHTML = `<h4>Layout</h4>
     <button type="button" id="uiReset">Reset the sidebar cards</button>
-    <h4>Colour scheme</h4>
+    <h4>Color scheme</h4>
     <div class="swgrid">${THEMES.map(([id, label]) => `
       <button type="button" class="sw${id === cur ? " on" : ""}" data-theme="${id}"
         role="menuitemradio" aria-checked="${id === cur}"

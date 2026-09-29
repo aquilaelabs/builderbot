@@ -1,14 +1,14 @@
 // The cover that hides the white flash when a terminal pane appears.
 //
 // The flash is the frame's document existing with no background of its own
-// (ttyd colours `.xterm-viewport` and nothing above it), which a browser paints
+// (ttyd colors `.xterm-viewport` and nothing above it), which a browser paints
 // as a white canvas, over whatever the iframe element underneath is set to.
 // Firefox on Android does it unconditionally.
 //
 // The cover used to come off on a fixed 350ms timer, a guess with a wide
 // margin around it. It now closes the gap instead: the frame is same-origin
 // (it is proxied through this server), so its <html> is given the pane's own
-// colour and the cover comes off on the next frame. The clock is only for a
+// color and the cover comes off on the next frame. The clock is only for a
 // frame that cannot be reached at all.
 //
 // Driven against synthetic frames rather than a real terminal: the harness
@@ -57,7 +57,7 @@ const took = Date.now() - t0;
 ok(await page.$eval('#veiltest iframe',
      f => getComputedStyle(f.contentDocument.documentElement).backgroundColor
           === 'rgb(43, 43, 43)'),
-   'unveil gives it the pane colour, so there is no white left to paint');
+   'unveil gives it the pane color, so there is no white left to paint');
 ok(took < 120, `...and the cover comes off at once (${took}ms, not the old 350ms floor)`);
 await page.waitForFunction(() => !document.querySelector('#veiltest .veil'), { timeout: 3000 });
 ok(await veilState() === 'removed', '...then takes itself out of the pane');

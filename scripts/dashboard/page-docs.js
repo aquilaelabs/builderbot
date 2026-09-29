@@ -147,7 +147,7 @@ function wireSections(root){
   });
 }
 // A button that is doing something says so until the repaint replaces it:
-// greyed, and wearing the verb with an animated ellipsis. Pair with
+// grayed, and wearing the verb with an animated ellipsis. Pair with
 // pressing(): that disables for the round trip, this says what for.
 function busy(btn, word){
   if (!btn) return;

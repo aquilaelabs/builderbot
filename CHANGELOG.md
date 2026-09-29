@@ -14,12 +14,12 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Set up GPU display on a node's row (Health): the NVIDIA driver and a headless X server on the card, as bb-sandbox gpu and a unit of the machine's own; after the one reboot it asks for, an emulator there renders on the card and bb emu gpu says so, and a session sees the display (6afdb2e)
 - A Claude session can send its project to Docker the way the Artifacts tab's Send to Docker manager does: bb devapp new [NAME] [--branch REF] makes a container from the project's compose file, builds and starts it, and waits for the result, under the project's Claude may: Run its container setting (f02a9a8)
 - bb capture: shot, one picture at rest (shots a quarter second apart until a second of them match), and reel, the frames that changed on one sheet with a JSON of when; each from a page, the running emulator or an X display. bb emu shot is bb capture shot --emu (60d809c, 0a56328)
-- The notebook has a Design view: a project's design language (colours as tokens, type, shape, space, motion, your rules) and pages laid out as labelled blocks on a phone or desktop frame; bb design and docs/design-language.md carry it, and nothing on the view reaches into a session (8d6375a)
+- The notebook has a Design view: a project's design language (colors as tokens, type, shape, space, motion, your rules) and pages laid out as labeled blocks on a phone or desktop frame; bb design and docs/design-language.md carry it, and nothing on the view reaches into a session (8d6375a)
 - A project's settings name other projects a session on it may read: their code read-only in its view on a node, their notebooks through bb from inside them, every write refused by name. That list, and the nodes a project also works on, are checkbox listboxes (206c6d6)
-- The Design view holds themes: each a name, dark or light, and its own colours, added and cut one by one with what each is for; a preset fills the ten, the app starts on the first, and a theme picker asked of a session takes them from here (2a6b656, 74e517a)
+- The Design view holds themes: each a name, dark or light, and its own colors, added and cut one by one with what each is for; a preset fills the ten, the app starts on the first, and a theme picker asked of a session takes them from here (2a6b656, 74e517a)
 - A session's save of a project's design goes through its own dial, Claude may: Add to the design, auto by default; a design's notes are named rules with triggers a session is handed one at a time, like house rules; and a session reaches the containers of the projects its own reads, for bb capture (d8338f5)
 - The companion app has a Claude view per project: whether your session is working or waiting on you, a box to say something to it, and your conversations to read or share; and it notifies when a session of yours finishes its turn (7194e97)
-- The companion app carries the Design, Docker and Tests views, fetch, pull and push, artifacts and captures that open on the phone (an APK goes to the installer), the project's colour, the jobs, What's new, and the dashboard's thirteen colour schemes (7194e97)
+- The companion app carries the Design, Docker and Tests views, fetch, pull and push, artifacts and captures that open on the phone (an APK goes to the installer), the project's color, the jobs, What's new, and the dashboard's thirteen color schemes (7194e97)
 
 ### Changed
 
@@ -27,7 +27,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Design view has no prompt box and no Copy: a session reads the design piece by piece with bb design show, and the view only records it
 - Every control on a row is one height, the finger's: a field, a pulldown, a one-line prose box and a button beside each other were four sizes; the design suite now fails a line of controls that differ
 - A project's design starts empty, no theme and no page; a session that builds such a project chooses the look and is told to put it into the design afterwards, and one that builds to a design is told to put back what the design left open, under the project's dial
-- Every rules list on the Design view reads as the Briefing's: a folded row a rule, Add a rule first, Edit turning a row into its form; rules live inside the entry they hold for, the language's in its fold, a theme's above its colours, a page's under its board, following the pulldown
+- Every rules list on the Design view reads as the Briefing's: a folded row a rule, Add a rule first, Edit turning a row into its form; rules live inside the entry they hold for, the language's in its fold, a theme's above its colors, a page's under its board, following the pulldown
 - The Design view is four folds, Pages first, and a fold that holds a list shows one of it at a time on a pulldown; the theme, rule and page shown are plain fields rather than a box, the sizing corner shows on the selected block only, and nothing on the view reaches into a session
 - The Profile's conversation logs are the Artifacts tab's rows: a hairline between each, the download at the right
 - The Doctor stops warning the operator that other accounts have no commit identity: an account without one is told on its own Claude buttons and Profile, and the Doctor's line is a green count
@@ -48,6 +48,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - New project's brief is no longer written into CLAUDE.md: the first Claude press opens it in a dialog to change, with the model and effort, Build it starts that session on it, and it then leaves the project for the notebook's Briefing view (18634bc)
 - Starting a project from an archive no longer offers a brief: the archive is where it starts (18634bc)
 - Text fields and pickers are a size smaller, one step below the text beside them; typed fields on an iPhone stay 16px so Safari does not zoom (5730757)
+- American spelling throughout: what the dashboard and the app put on screen, the docs and the design language say color, gray, center and labeled, and the design's two rules about color are named color and project-color (478ab50)
 
 ### Removed
 
@@ -62,23 +63,23 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb design show and the briefing say whose docs/design-language.md is: the session's to write with bb design file and commit with the work; the notebook never writes it into the tree by itself (B344)
 - bb report says when the operator cleared a project's reports, how many and when, instead of 'no reports' after ones it was told were reported (B343)
 - A notebook's pane bar has the same ground as every other tab's bar and only the project's stripe: the tint turned it black beside a Docker tab's
-- bb design save reports every problem with a record at once, refuses a rule given as a bare string instead of dropping it, takes a colour with alpha (#rrggbbaa), and bb design save -h and bb design schema print the record's shape with every limit (B342)
+- bb design save reports every problem with a record at once, refuses a rule given as a bare string instead of dropping it, takes a color with alpha (#rrggbbaa), and bb design save -h and bb design schema print the record's shape with every limit (B342)
 - A session's bb devapp log, start, stop and restart find the project's container on any of its nodes, not only the primary, so the project's own dev instance on its second node is its own again (B268) (21462b7)
 - bb emu create on a node makes the AVD directory before asking avdmanager, and fixes the image path where avdmanager put the AVD rather than where it was told to; without that the first emulator on a node died with Broken AVD system path (2fd40db)
 - A session's next prompt names the memories only when somebody else edited them through the notebook; its own memory files, written with its own tools, are not news to it (B269) (1753a83)
 - CHOWN_HOME, the switch for the home volume's chown at startup, is in compose, .env.example and the Unraid template as well as the README, so the settings check covers it (b65bb5e)
 - The image builds on a push that changes nodes/, CHANGELOG.md or VERSION, which the Dockerfile copies in and the build stamps from; those shipped nothing until the weekly rebuild (f9ca487)
-- Cancelling a queued job that a node claims in the same instant now flags it rather than calling it canceled while it runs; an enrolment token burns in one step so a retry cannot enrol twice; a job result's retry runs the hooks once; users.json is private from the instant it is written (f9ca487)
+- Canceling a queued job that a node claims in the same instant now flags it rather than calling it canceled while it runs; an enrolment token burns in one step so a retry cannot enrol twice; a job result's retry runs the hooks once; users.json is private from the instant it is written (f9ca487)
 - A controller restart longer than the grace window no longer fails every running job on every node as node lost: a node's last word is measured from the controller's own start (35b6970)
 - The terse briefing keeps or, rather than, by, be, then and so, the words that turn a sentence, leaves quoted labels whole and never drops a bracket; a code span wrapped over a line is read as one (35b6970)
-- Four tokens the stylesheet used were never defined, so a held change's text and the About page lost their font and colour; the bell's root tag reads bg on bad as the other tags do; a branch row's five controls wrap on a phone; a shelved item is dim rather than faded (35b6970)
+- Four tokens the stylesheet used were never defined, so a held change's text and the About page lost their font and color; the bell's root tag reads bg on bad as the other tags do; a branch row's five controls wrap on a phone; a shelved item is dim rather than faded (35b6970)
 - A job's real end reaches its row after this side called the node lost: the late result is taken and says so, and the module that queued a job lost at hello or by silence still runs its hook, so a Docker row no longer says building for a build the agent never reported (B285, B287) (df92882)
 - The agent says each running job was stopped when it is stopped, its deadlines and hello timer ride the monotonic clock, and a job's unsent output is capped with a line saying how much was dropped (B286, B287) (df92882)
 - The container's supervisor starts the dashboard again when it dies, at most five times an hour, and the hook it runs starts only what is not already listening (B282) (df92882)
 - The recursive chown of the home volume, the log directory and the Playwright store runs only when their top is not the account's yet, and the store is no longer made world-writable (B283) (df92882)
 - A changelog entry cites the commit that carries it: the bump resolves each entry against the file's own history; and unroll keeps every category (B284, B277) (df92882)
 - A release's MSI and quad forms keep the ordinal, so a release no longer ranks below the dev build before it (B276) (df92882)
-- A snapshot carries the symlinks that stay inside the tree, and a normalised mode (B281) (df92882)
+- A snapshot carries the symlinks that stay inside the tree, and a normalized mode (B281) (df92882)
 - bb tests preflight says when the map placed a changed script in no suite and does not call that clean (B280); the code map reads function name braces, one-line functions and a hash inside an expansion (B279), and a property assigned an arrow is not named unused (B271) (df92882)
 - android:platform-tools and android:emulator claim x86_64 Linux only, which is what Google ships (B278) (df92882)
 - bb emu create 37 installs android-37.0: a level given as a whole number is looked up against Google's index, which names some levels with a point (b26cae6)
@@ -98,7 +99,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 ### Security
 
 - Root on a node installs bb-sandbox and the session helper only from its own copy of a bundle, checked against the controller's digest, never from the toolchain store a job can write; a job, and so a session through bb run, could plant root code there before (48be4fa)
-- A job is cancelled only by an account whose project it is, or an administrator; any signed-in principal could cancel any job before (48be4fa)
+- A job is canceled only by an account whose project it is, or an administrator; any signed-in principal could cancel any job before (48be4fa)
 - bb passes the person's credential to its python verbs in the environment, where it was on the command line and readable by every account on the node through ps (48be4fa)
 - The controller's Claude sign-in and its code are an account's own or an administrator's: a session's token is refused, and another account's code is not typed into a flow that is not theirs (48be4fa)
 - The container's shielded secrets (ANTHROPIC_API_KEY, NPM_TOKEN, UV_PUBLISH_TOKEN, NODE_TOKEN) are scrubbed from the environment before the dashboard and its terminals start; they were stashed for the root helper and then inherited by every builder process anyway (f9ca487)
@@ -123,7 +124,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's Rules list the global rules too, read-only, and a rule that shares a trigger with a global one says so; a session is told the project's rule wins where the two disagree. (ba22503)
 - Two toolchains a session can draw with: graphics (ImageMagick, resvg, oxipng, pngquant, cwebp) behind bb tool graphics, and diagrams (PlantUML, Mermaid) behind bb tool diagrams, both writing into dist/; bb tool graphics favicon makes a favicon set from one mark (81dd077)
 - A toolchain row that lacks system packages carries Install them now, which puts them on that node without reinstalling the toolchain; a row whose needed toolchain is missing on the node says which and offers that row's install. (205863a)
-- A toolchain's row says which tool installing it adds (bb tool graphics, bb tool diagrams), one name per recipe, and the suite holds the catalogue to the script so no two recipes can claim one (076a324)
+- A toolchain's row says which tool installing it adds (bb tool graphics, bb tool diagrams), one name per recipe, and the suite holds the catalog to the script so no two recipes can claim one (076a324)
 - bb map: a code map over the tree a session asks instead of grepping: find, who-calls, calls, defs, draws and suites, built from the files themselves with nothing installed and rebuilt when a source is newer (3c0fa26)
 - bb tests probe FILE runs a scratch Playwright script against the dashboard fixture like a suite, and bb tests keep holds the fixture up so a suite or a probe attaches to it and the world a suite left is there to look at (739eebb)
 - bb tests preflight: the files a branch changed, the suites the code map says reach them (a python change through the server's route table), and the lint, voice and design checks, run before a push; --dry prints the plan (77da0b7)
@@ -178,10 +179,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Docker tab groups its rows by where each came from: built from a project's compose file, written here, or already on the machine. The difference decides what you can do to one, and the tab never said so. (9e345c8)
 - Where a project's tests run is set in its own settings dialog now, beside its node and test command, instead of on the Docker tab. The container's row says what it is set to and links there. (d794402)
 - A container's row folds its detail away on a phone: the name, what it is doing and its buttons stay, and the ports, services and settings are one press away. (d9e8198)
-- Nostromo has square corners: a project's colour bar on its tab ends in a hard edge, the title wears the stencil face and the tab in front glows. On every scheme, a notebook tab that is not in front now carries a hint of its project's colour. (f17026a)
+- Nostromo has square corners: a project's color bar on its tab ends in a hard edge, the title wears the stencil face and the tab in front glows. On every scheme, a notebook tab that is not in front now carries a hint of its project's color. (f17026a)
 - The companion app knows all four things a session can ask for (the phone, root, a rebuild, a container), shows a container's compose file in the approval, pulls down to refresh on every list, and stops its watch with a notice when the sign-in no longer works. (8eacfed)
 - A session can fill in a project's build, test and outputs fields with bb settings set, under a fourth gate in the project's settings (auto, ask, deny). bb test no longer guesses a test command from the tree: with nothing set it refuses and names the verb. (03988bb)
-- The companion app wears the dashboard's look: its colours, corners and robot mark, project rows as panels in the project's colour, numbers as tags and states as pills, a view strip that scrolls, and a count on Approvals. A project with no branch no longer reads null. (dce0dc2)
+- The companion app wears the dashboard's look: its colors, corners and robot mark, project rows as panels in the project's color, numbers as tags and states as pills, a view strip that scrolls, and a count on Approvals. A project with no branch no longer reads null. (dce0dc2)
 - The Docker and Artifacts rows no longer carry a tail of a job's output, and the Docker tab no longer redraws for every line of one: a job's phase and how it ended stay on the row, and the Tests view's Open the run's output sends bb tests log -f into the project's shell. (40341e5)
 - Offer dev features lives in the Settings tab's Debugging dialog now (Debug mode on, then Debug settings), where the refusals that name it point. (929095b)
 - What a toolchain adds to a session lives under bb tool NAME (bb tool graphics, bb tool diagrams), so two toolchains may both have a render and none can shadow a verb of bb's own; bb img, bb favicon and bb diagram are gone (8670fff)
@@ -208,7 +209,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Docker tab groups its rows by the project each container belongs to, in alphabetical order, with the ones that belong to no project last (5a89323)
 - A session told its container's env is missing is told how to set it, and that the env is kept by BuilderBot rather than as a .env file in the project (5a89323)
 - Nostromo: the rings hold still behind the cards as they scroll, the cards are a little more see-through, and the tab side wears the same glass, its tab strip, pane bars and documents alike; a terminal keeps its solid ground (be4f2ba)
-- The Docker tab's project headings stand out: each is a band tinted and barred in the project's own colour, or the scheme's accent for one with none, with room above each group (20b0e23)
+- The Docker tab's project headings stand out: each is a band tinted and barred in the project's own color, or the scheme's accent for one with none, with room above each group (20b0e23)
 - bb bug add on another project does not file a bug that names BuilderBot or a bb command: it says to use bb report, and --here files it anyway when it is the project's own (d46dfc9)
 - bb container new (bb container ask, as was) is under the project's Run its container setting: refused at deny, asked at ask, and at auto the project's own container on its own node is made and built at once; one for another project or another node is still asked (45c8a2f)
 - The dashboard's hints, tooltips, confirmations and empty states say what happens when you act, in one line: mechanics, history and internal names are gone from the screen (e50d054)
@@ -329,7 +330,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 - The Briefing tab now shows the exact text every session on a project is handed, with its size, so you can read what your sessions start with instead of taking it on trust (e259525)
 - Changelog on the Artifacts tab is now an editor: group the unreleased lines into categories, reorder them, reword, merge, split or drop them. A release's dated section is left as the record it is (e37b5e0)
-- A shell script in dist/ is listed as a script rather than an unlabelled file, whether it is named .sh or carries only a shebang, and can be read from the tab without downloading it (4acc3f8)
+- A shell script in dist/ is listed as a script rather than an unlabeled file, whether it is named .sh or carries only a shebang, and can be read from the tab without downloading it (4acc3f8)
 - A node's sessions can be granted another machine's logs (the agent's journal, the runner's, the terminal server's) from Debug settings on its row, once debug mode is on in Controller settings. Its own logs are a grant of their own (549885d)
 - bb tests run now ends by naming what went wrong (the failed assertions per file, and for a file that crashed the line it died on) and bb tests last reads that verdict off the previous run without running anything (815d40e)
 - bb test and bb tests run take the files to run, so a change can be checked against the two suites it touched instead of the whole thing, still timed and recorded (7b34c58)
@@ -349,7 +350,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - House rules can apply to every project: set them once under Global rules in Controller settings and every project's sessions are handed them, marked global, with nothing copied into a project. A session may suggest one but only you can add it (0b980c1)
 - The companion app has a Tools screen: what each node's toolchain store holds, with Install and Remove on a toolchain, so a missing one can be fixed from a phone (87ad70b)
 - The app's Users screen edits accounts instead of only listing them: a row opens to its role, its projects and a new password, and accounts can be added and removed (87ad70b)
-- A project can be given a colour in its settings dialog, worn by its row, its notebook tab, its Claude session tab and the pane strip above either (47c9aa3, fd7e12f)
+- A project can be given a color in its settings dialog, worn by its row, its notebook tab, its Claude session tab and the pane strip above either (47c9aa3, fd7e12f)
 - The Toolchains tab says when a node lacks the system libraries a toolchain on the shared store needs, and one press installs them there without reinstalling the toolchain; the node's row says the same (bf01db5)
 - A node can be renamed from its row on the Nodes tab; a runner already installed keeps the label it registered with until it is reinstalled (33d8a72)
 - bb lint and CI now lint the python with ruff, the way the shell scripts have always had shellcheck (35794ea)
@@ -368,12 +369,12 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 
 - The Jobs tab shows a page at a time like every other long list, instead of every job ever run (c4352fc)
 - A version bump moves everything the version is stamped in, in one commit or not at all, and taking the bump back returns all of it (c4352fc, 9fa9428)
-- Dropdown menus now open in the dashboard's own colours on a phone, instead of the system dialog Android drew over the page (d0b85fd)
+- Dropdown menus now open in the dashboard's own colors on a phone, instead of the system dialog Android drew over the page (d0b85fd)
 - Changes made in another window, or by a session, show up on the tab you are looking at within a second or two instead of up to fifteen: the roadmap, memories, rules, the approval queue, the test registry and controller settings (fd9fe96)
 - Sessions are briefed by the controller instead of from a file pushed into every project: nothing is written into your repository, there is no block to keep up to date, and CLAUDE.md is the project's own notes. Any block already rendered beside them is removed on the next start (016a5d3, 9127ee5)
 - The About popup's changelog shows what is unreleased and the current minor version's releases, grouped by the categories they were filed under, and says how many earlier releases are in the full file (7fb7d0d, e9595bf)
 - The README's pictures are current again, and its file layout lists every module the dashboard actually has rather than a third of them (c80b77a)
-- Lists of choices read alphabetically: the colour schemes, the git hosts and the hypervisors were each in the order somebody wrote them in (676cb78)
+- Lists of choices read alphabetically: the color schemes, the git hosts and the hypervisors were each in the order somebody wrote them in (676cb78)
 - The Tools tab offers what the node it is showing can actually install, with the rest behind a fold that says what each one needs, instead of a row per recipe that can never be pressed (676cb78)
 - Signing out of Claude signs out every node holding that login, and one that is offline signs itself out when it reconnects. One Anthropic account per BuilderBot account: a second signed in on a node is refused rather than propagated (815d40e)
 - Each node signs in to Claude for itself and keeps its own login: nothing copies an OAuth grant between machines now, which is what made a login expire at random. Signing out reaches every node, and one that is offline signs itself out when it reconnects (32c2998)
@@ -416,7 +417,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The terminal now says when a project had not been trusted yet and which session to restart, instead of leaving it silently asking permission for every command (594f766)
 - Release now refuses to tag a commit the project's main branch has already moved past, instead of quietly marking a version nothing was ever built from (dc1323e)
 - A Claude session on a node stops getting signed out at random: the account's login is now kept in step with the controller while the session runs, rather than only when you open its terminal tab (b036b91)
-- The active tab is readable on every colour scheme: its name and buttons were being drawn in a quiet grey on a bright fill, worst on Nostromo (1ebc1e6)
+- The active tab is readable on every color scheme: its name and buttons were being drawn in a quiet gray on a bright fill, worst on Nostromo (1ebc1e6)
 - Running a project's tests from a session on a node works again, instead of reporting that part of the image is missing (09496ee)
 - Editing a changelog entry, a roadmap item, a bug's title or any other sentence on a phone now shows the whole line in a box that grows to fit it, instead of thirty characters of it in a one-line field (e9595bf)
 - bb shot signs in to the dashboard rather than only sending a header, so a screenshot of a page with a terminal in it shows the terminal instead of a reconnect prompt (0662979)
@@ -429,7 +430,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The doctor card stops claiming a Claude login on the controller, which has none, and says instead whether any node can run a session (8b60d92)
 - The dev-instance row says why docker did not answer instead of showing the ssh command it ran, and names the machine it asked (1414389)
 - Update agent on a node now says that it ends every session there, and how many are open, before it does it (1414389)
-- A node the controller has never reached over ssh no longer greys out every Docker control: its host key is met on first use, and a key that changed is reported rather than silently accepted (567985c)
+- A node the controller has never reached over ssh no longer grays out every Docker control: its host key is met on first use, and a key that changed is reported rather than silently accepted (567985c)
 - A project's Docker controls follow its own node: one node being unreachable no longer ghosts the buttons, or hides what is running, for a project on a node that is answering (d877327, d264132)
 - Updating a node's agent no longer ends the Claude sessions running on it: the conversations stay, and the terminal reconnects (7c47c16)
 - Android tooling on a node is found again: a link left over from the old store layout meant sdkmanager was installed but unreachable, so system images and platform packages could not be installed there (121caac)
@@ -445,7 +446,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A browser picks up a new BuilderBot image without being forced to: the dashboard's own page is served so it revalidates, instead of a phone holding yesterday's page against today's server (c5202e1)
 - Rebuild on the Docker tab is always pressable: it used to go to sleep whenever the build already matched the code, so pinning a container to a branch and pressing Apply left nothing to press (48a76d8)
 - Reading a node's runner log now works on a node where the runner is a service: it reads that service's journal instead of a file only a node without systemd ever writes (a868e5a)
-- An option bb logs does not recognise is refused by name, instead of being dropped and quietly giving you the agent's log as though the stream had been honoured (a868e5a)
+- An option bb logs does not recognize is refused by name, instead of being dropped and quietly giving you the agent's log as though the stream had been honored (a868e5a)
 - A node no longer claims a toolchain that is installed but cannot start: a build needing it is refused up front instead of failing on the machine, and the node's log names the binary, how it died and everything it printed (8dceb05, 3b77fa9)
 - Installing .NET on a node now brings the ICU runtime with it, instead of landing an SDK that cannot start on a machine that does not already have it (2520794)
 - A failed dev-instance build says what actually went wrong on its row, instead of showing the words above the error and none of it (38e5db3)

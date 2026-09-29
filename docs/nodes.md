@@ -679,7 +679,7 @@ the Tools card is ghosted until some node has the tools and the emulator.
 
   *Where it landed (2 Sep):* enforced. Reading is automatic and always was:
   a node's `toolchains` are a live probe of its toolchain store at every
-  census, so a node whose neighbour installed something on the shared export
+  census, so a node whose neighbor installed something on the shared export
   reports it at its next `hello` (ten minutes, or at once after any job that
   ends in one). Writing is what needed the rule: `toolchains.store_sharers`
   identifies the nodes that share a store, by the census's mount SOURCE
@@ -775,7 +775,7 @@ MagicDNS name, and which https ports forward where, read from `tailscale
 serve status` so a funnel set by hand reports the same, which is what
 makes the row's `https://<name>/` say *ready* rather than *asked for*. One
 funnel per node on 443; switching the route back to lan turns it off. The
-picker greys funnel on a node without tailscale and names `public` as
+picker grays funnel on a node without tailscale and names `public` as
 unbuilt rather than hiding it; the Artifacts row's Open uses the route's
 URL when it is ready. No deployment record of its own: an instance up on a
 node with a route IS the deployment, and the compose job is its long-lived
@@ -1057,7 +1057,7 @@ split capabilities use:
   node is configured to be.
 - The agent then **reports applied config** in its census, and the row shows
   desired vs. actual: a mount that failed shows the mount error verbatim on
-  the row, not a greyed nothing.
+  the row, not a grayed nothing.
 
 **A store's path and the mount it sits on must agree, and both ends enforce
 it.** The failure it exists to stop is silent in the worst way: a share that
@@ -1075,7 +1075,7 @@ The two are kept in step structurally rather than by matching rules:
 **`bb-sandbox` reads the store paths out of the agent's own `node.json`**
 instead of keeping a list of its own, so a store repointed from the Nodes
 tab is visible at the console on the next command with nothing to
-synchronise. `test/agent.mjs` runs the real `bb-sandbox`: pulled out of the
+synchronize. `test/agent.mjs` runs the real `bb-sandbox`: pulled out of the
 provisioner the way `bb lint` pulls it out for shellcheck, against the
 agent's `mount_covering` on the same cases, including the string-prefix
 traps (`/mnt/tan` is not a parent of `/mnt/tank/cache`), so drift between
@@ -1264,7 +1264,7 @@ scopes is two settings wearing one name, and should be split before it ships.
   switching nodes shows each one's last-known list instantly. An offline
   node's view is the ghosted rows and "state unknown" language already built;
   that work was this design's down payment.
-- Gating goes per-node: controls grey with *this node's* reason, not a global
+- Gating goes per-node: controls gray with *this node's* reason, not a global
   one. Refresh retries the selected node only.
 - **New container** and **Send to Docker manager** gain a node select,
   defaulting to the project's configured node, else the only node, else ask.

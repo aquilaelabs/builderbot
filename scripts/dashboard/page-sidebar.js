@@ -161,7 +161,7 @@ function projectRow(p, live, cls, inTab){
           : ""}${notMine(p)
           // The same shape as the padlock and for the same reason: a fact
           // about the row, said where the name is, rather than something to
-          // work out from which controls are grey. A different word, because
+          // work out from which controls are gray. A different word, because
           // it is a different thing: the padlock is the operator keeping a
           // project to themselves, this is a project you have not taken on.
           ? ` <span class="lockmark" aria-label="read-only" data-tip="${esc(NOT_MINE_WHY)}">${LOCK}</span>`

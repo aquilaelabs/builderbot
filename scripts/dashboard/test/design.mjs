@@ -1,5 +1,5 @@
 // The notebook's Design view (design.py, nb-design.js): a project's design
-// language and its pages, laid out as labelled blocks on a frame and named
+// language and its pages, laid out as labeled blocks on a frame and named
 // for what they are for. Staged behind the notebook's Save; the prompts and
 // docs/design-language.md are the server's words, which is what bb design
 // prints. The view is passive: nothing on it reaches into a session.
@@ -107,16 +107,16 @@ ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
    && /docs\/design-language\.md is yours to write and commit with the work, from what is saved here: `bb design file > docs\/design-language\.md`; the notebook never writes it into the tree by itself/.test(promptText)
    && /Platform: a responsive web app/.test(promptText)
    && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 9 of 12, rows 4 to 8 of 8/.test(promptText)
-   && /Colours: none chosen yet\. Choose them as tokens/.test(promptText) && /Type: system-ui, the platform's own sans-serif/.test(promptText),
-   `bb design show PAGE names the page, its platform, each block with what it is for and where, whose the file is, and the language, colours still to choose (${promptText.split('\n')[3]})`);
+   && /Colors: none chosen yet\. Choose them as tokens/.test(promptText) && /Type: system-ui, the platform's own sans-serif/.test(promptText),
+   `bb design show PAGE names the page, its platform, each block with what it is for and where, whose the file is, and the language, colors still to choose (${promptText.split('\n')[3]})`);
 
-// ---- the language: themes, each a named set of colours ------------------------------
-// A theme is a name, dark or light, and colours that are added, changed
+// ---- the language: themes, each a named set of colors ------------------------------
+// A theme is a name, dark or light, and colors that are added, changed
 // and taken away one by one; a preset fills one with the ten roles.
-// No theme yet: the board paints in the page's own colours until one is added.
+// No theme yet: the board paints in the page's own colors until one is added.
 ok(await page.$eval(`${NB} [data-sect="design:themes"] > summary .sst`, e => e.textContent) === '0 themes'
    && /No theme yet/.test(await page.$eval(`${NB} [data-sect="design:themes"] .hint`, e => e.textContent)),
-   'the Themes fold starts empty, saying a session may choose the colours');
+   'the Themes fold starts empty, saying a session may choose the colors');
 await page.selectOption(`${NB} #dsThemeFrom`, 'default');
 await page.click(`${NB} #dsThemeAdd`);
 await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dst="from"]`, { timeout: 5000 });
@@ -124,7 +124,7 @@ await page.selectOption(`${NB} [data-dstheme="0"] [data-dst="from"]`, 'moss');
 await page.waitForFunction(() => document.querySelector('.nb #dst-0-hex-5')?.value === '#63c98a', null, { timeout: 5000 });
 ok(await page.$eval(`${NB} [data-dspage] .dsboard`, e => e.style.backgroundColor.replace(/\s/g, '')) === 'rgb(22,31,27)'
    && await page.$eval(`${NB} [data-dstheme="0"] [data-dst="from"]`, e => e.value) === '',
-   'filling a theme from a preset sets its ten colours and repaints the boards in it, and the picker goes back to keeping them');
+   'filling a theme from a preset sets its ten colors and repaints the boards in it, and the picker goes back to keeping them');
 await page.fill(`${NB} #dst-0-hex-5`, '#ff8800');
 await page.waitForFunction(() => document.querySelector('.nb [data-dspage] .dsblock[data-i="0"]')?.style.backgroundColor === 'rgb(29, 41, 32)', null, { timeout: 5000 }).catch(() => {});
 await page.fill(`${NB} #dst-0-name-0`, 'page');
@@ -167,7 +167,7 @@ await saved();
 const again = await api(`/api/design?project=${P}`);
 ok(again.language.themes.length === 2 && again.language.themes[0].colors.find(c => c.name === 'accent')?.hex === '#ff8800'
    && again.language.themes[0].colors[0].name === 'page' && again.language.themes[1].mode === 'light' && again.pages[0].frame === 'phone',
-   'the language and the page save together: the changed hex, the renamed colour and the second theme');
+   'the language and the page save together: the changed hex, the renamed color and the second theme');
 
 // ---- nothing takes effect until Save -------------------------------------------------
 // Every control here stages (the operator, 29 Sep, and the design language's
@@ -202,7 +202,7 @@ const badR = await fetch(URL.replace(/\/$/, '') + '/api/design', { method: 'POST
   headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
   body: JSON.stringify({ project: P, action: 'save', language: { ...again.language, themes: [{ name: 'A', colors: [{ name: 'bg', hex: 'blue' }] }] }, pages: [] }) });
 const bad = { status: badR.status, ...(await badR.json()) };
-ok(bad.status === 400 && /a colour is #rrggbb/.test(bad.error), `a colour that is not a hex is refused by name (${bad.error})`);
+ok(bad.status === 400 && /a color is #rrggbb/.test(bad.error), `a color that is not a hex is refused by name (${bad.error})`);
 
 // ---- the file, and bb design -----------------------------------------------------------
 await page.click(`${NB} #dsWrite`);
@@ -228,9 +228,9 @@ let err = '';
 try { bb('show', 'nowhere'); } catch (e) { err = String(e.stderr); }
 ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that is not there is refused by name (${err.trim()})`);
 
-// ---- beyond the ten: a colour of the design's own, the families, an overlay, a sideways frame
+// ---- beyond the ten: a color of the design's own, the families, an overlay, a sideways frame
 // What ten real projects needed that the first vocabulary had no slot for
-// (the survey of 28 Sep): a success colour, a second surface or a chart
+// (the survey of 28 Sep): a success color, a second surface or a chart
 // ramp by name, the exact font stacks, a dialog over the page, a phone
 // held sideways.
 {
@@ -258,7 +258,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   const text = bb('show', '1');
   ok(grown.language.themes[0].colors.length === 11 && grown.language.themes[0].colors[10].hex === '#f0efec' && grown.language.fonts.startsWith('Inter')
      && grown.pages[0].frame === 'landscape' && grown.pages[0].blocks.some(b => b.kind === 'overlay' && b.label === 'the card picker'),
-     'a colour of the design\'s own, the families, a sideways frame and an overlay block all save');
+     'a color of the design\'s own, the families, a sideways frame and an overlay block all save');
   ok(/Themes, each a set of the same tokens/.test(text) && /The app starts on Default; a theme picker, where the app has one, offers them by name/.test(text)
      && /  Default \(dark, the default\):\n    page #/.test(text) && /    surface 2 #f0efec: a second surface tier/.test(text)
      && /  Paper \(light\):/.test(text) && /set as Inter for text, JetBrains Mono for code/.test(text) && /good #/.test(text)
@@ -266,7 +266,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
      'and the prompt says each of them, the themes by name with the default first, and no word on where a picker goes');
   const file = bb('file');
   ok(/### Default \(dark, the default\)/.test(file) && /### Paper \(light\)/.test(file) && /\| `--surface-2` \| `#f0efec` \| a second surface tier \|/.test(file),
-     '...as does the file, a table per theme, the colour as a token of its own');
+     '...as does the file, a table per theme, the color as a token of its own');
   await page.click(`${NB} [data-dstheme="0"] [data-dstcrm="10"]`);
   await page.waitForFunction(() => !document.querySelector('.nb [data-dstheme="0"] [data-dstc="10"]'), null, { timeout: 5000 });
   await page.selectOption(`${NB} #dsThemePick`, '1');
@@ -281,7 +281,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   await saved();
   const back = (await api(`/api/design?project=${P}`)).language;
   ok(back.themes.length === 1 && back.themes[0].name === 'Paper' && back.themes[0].colors.length === 10,
-     'Remove takes a colour out, Make default moves a theme first, and Remove theme takes the other away');
+     'Remove takes a color out, Make default moves a theme first, and Remove theme takes the other away');
   ok(await page.$eval(`${NB} [data-dstheme="0"] [data-dstrm]`, b => !b.disabled), '...and the last theme can go too: no theme is a state a design may be in');
 }
 
@@ -374,7 +374,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
     headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: P, action: 'save', language: { ...(await api(`/api/design?project=${P}`)).language, rules: [{ name: 'empty' }] }, pages: [] }) });
   ok(bad.status === 400 && /the rule empty says nothing/.test((await bad.json()).error || ''), 'a rule with no text is refused by name');
-  // B342: a bare string is refused rather than dropped, a colour may carry
+  // B342: a bare string is refused rather than dropped, a color may carry
   // its alpha, every problem is reported at once, and the schema is printed.
   const cur = (await api(`/api/design?project=${P}`)).language;
   const multi = await fetch(URL.replace(/\/$/, '') + '/api/design', { method: 'POST',
@@ -385,15 +385,15 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   const mj = await multi.json();
   ok(multi.status === 400 && Array.isArray(mj.problems) && mj.problems.length >= 4
      && mj.problems.some(x => /a rule of the language is an object with a name and a text, not 'a bare string'/.test(x))
-     && mj.problems.some(x => /a colour is #rrggbb or #rrggbbaa, not 'blue'/.test(x))
+     && mj.problems.some(x => /a color is #rrggbb or #rrggbbaa, not 'blue'/.test(x))
      && mj.problems.some(x => /what the language governs is at most 120 characters/.test(x))
      && mj.problems.some(x => /^page 1: a block's label is at most 120 characters/.test(x))
      && !mj.problems.some(x => /1e232be0/.test(x)),
      `a save is refused with every problem at once, a bare-string rule and a hex with alpha among what it says and does not (${mj.problems?.length}: ${(mj.problems || []).join(' | ').slice(0, 160)})`);
   const alpha = await api('/api/design', { project: P, action: 'save', language: { ...cur,
       themes: [{ ...cur.themes[0], colors: [...cur.themes[0].colors, { name: 'glass', hex: '#1e232be0', means: 'a pane' }] }, ...cur.themes.slice(1)] }, pages: (await api(`/api/design?project=${P}`)).pages });
-  ok(alpha.status === 200 && alpha.language.themes[0].colors.some(c => c.hex === '#1e232be0'), 'a colour with alpha saves as written');
-  ok(/^The record bb design save takes/.test(bb('schema')) && /at most 16 themes, 40 colours each/.test(bb('schema')) && /RULE is \{ "name"/.test(bb('schema')),
+  ok(alpha.status === 200 && alpha.language.themes[0].colors.some(c => c.hex === '#1e232be0'), 'a color with alpha saves as written');
+  ok(/^The record bb design save takes/.test(bb('schema')) && /at most 16 themes, 40 colors each/.test(bb('schema')) && /RULE is \{ "name"/.test(bb('schema')),
      'bb design schema prints the shape with its limits');
   const help = execFileSync('bash', [`${REPO}/scripts/bb`, 'design', 'save', '-h'], { encoding: 'utf8',
     env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token, BB_PROJECT: P, XDG_CACHE_HOME: `${DIR}/cache-design` } });
@@ -409,8 +409,8 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   ok(await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .t`, e => e.textContent) === "Rules"
      && await page.$eval(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] > summary .sst`, e => e.textContent) === 'none'
      && /What holds for Night alone/.test(await page.$eval(`${NB} [data-sect="design:rules:t0"] .hint`, e => e.textContent))
-     && await page.$eval(`${NB} [data-dstheme="0"]`, e => e.querySelector('[data-sect="design:rules:t0"]').compareDocumentPosition(e.querySelector('.dscolours')) & Node.DOCUMENT_POSITION_FOLLOWING),
-     "the theme shown carries a Rules section inside it, above its colours, counting none");
+     && await page.$eval(`${NB} [data-dstheme="0"]`, e => e.querySelector('[data-sect="design:rules:t0"]').compareDocumentPosition(e.querySelector('.dscolors')) & Node.DOCUMENT_POSITION_FOLLOWING),
+     "the theme shown carries a Rules section inside it, above its colors, counting none");
   if (!(await page.$eval(`${NB} [data-sect="design:rules:t0"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:rules:t0"]`);
   await page.click(`${NB} [data-dstheme="0"] [data-sect="design:rules:t0"] [data-dsruleadd]`);
   await page.waitForSelector(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"].editing .rlName`, { timeout: 5000 });
@@ -443,7 +443,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
      `bb design show THEME/RULE prints the theme's rule (${bb('show', 'night/hull').split('\n')[0]})`);
   const themeOut = bb('show', 'Night');
   ok(/^Night \(dark\), one theme of 2:\n  bg #/.test(themeOut) && /night\/hull \(applies to: texture, hull\)\nNight alone carries/.test(themeOut),
-     'bb design show THEME prints the theme: its colours and its own rules');
+     'bb design show THEME prints the theme: its colors and its own rules');
   const pre2 = await api(`/api/preamble?project=${P}`);
   ok(/  night\/hull: texture, hull \(the design's: bb design show reads it/.test(pre2.text)
      && /This project's notebook holds a design already: 2 themes \(Night, Day\); 1 page: the home dashboard; 3 design rules and 2 of a theme's or a page's own\./.test(pre2.text)

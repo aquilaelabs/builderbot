@@ -21,7 +21,7 @@
   // saved it over the real one. Found by the suite, kept as a warning.
   const preStatus = fetch("/api/status");
 
-  // The colour scheme, before anything is painted. It has to be here rather
+  // The color scheme, before anything is painted. It has to be here rather
   // than with the rest of the theme code 150KB below: by the time that parses
   // the page has already been drawn once, and a scheme applied then is a flash
   // of the default followed by a jump. Written straight onto <html> because
@@ -52,8 +52,8 @@
   /* Derived, not chosen. Buttons and the active/primary family were hardcoded
      hex: #232b34 eleven times, #1f6f36 and #2ea043 across every tab, pane and
      primary, which meant a scheme could repaint the page and leave every
-     control the colour it always was. They are mixed from the scheme's own
-     panel and accent instead, so eleven recolours cost nothing to maintain.
+     control the color it always was. They are mixed from the scheme's own
+     panel and accent instead, so eleven recolors cost nothing to maintain.
      Each is declared twice on purpose: the flat value first for a browser with
      no color-mix, the mix second where there is one. */
   --btn:#232b34;        --btn:color-mix(in srgb, var(--panel), #ffffff 5%);
@@ -71,15 +71,15 @@
   /* The sunk surface: a field, a memory row, a send box; anything that reads
      as set INTO the panel rather than sitting on it. Hardcoded as #161b22 in
      eight places, which is why every text field, the memory folds and the
-     pane's own title bar stayed the default scheme's blue-grey while the rest
-     of the page changed colour. Twelve percent of black against the panel is
+     pane's own title bar stayed the default scheme's blue-gray while the rest
+     of the page changed color. Twelve percent of black against the panel is
      what that hex was, to the byte. */
   --sunk:#161b22;       --sunk:color-mix(in srgb, var(--panel), #000000 12%);
   /* The flyout: what the terminal's bottom bar opens (Keys, Commands,
-     Sessions, Chat). It was --panel, the colour of the bar under it, the
+     Sessions, Chat). It was --panel, the color of the bar under it, the
      cards beside it and the tab strip above, so on a phone, where it sits in
      the flow between the terminal and the bar, nothing said where it ended
-     (19 Sep). Tinted a tenth towards the scheme's accent, the colour of the
+     (19 Sep). Tinted a tenth towards the scheme's accent, the color of the
      button that opened it: measured across the twelve schemes, --dim on it
      stays at 5.0:1 or better and --ink at 9.6. */
   --flyout:#243633;     --flyout:color-mix(in srgb, var(--panel), var(--accent) 10%);
@@ -168,17 +168,17 @@
                         calc(min(l, 0.48)) c h);
   }
 }
-/* ---- colour schemes ----------------------------------------------------
+/* ---- color schemes ----------------------------------------------------
    Twelve, all dark: this page is looked at in a dim room beside a terminal,
-   and a light one would be a different design rather than a recolour of this
+   and a light one would be a different design rather than a recolor of this
    one. A scheme is nine custom properties and nothing else: every rule in
-   the sheet already draws from them, which is what makes a recolour cheap and
+   the sheet already draws from them, which is what makes a recolor cheap and
    a new one three lines.
 
    Each palette is written once and claimed by two selectors: the page under
    that theme, and that theme's own swatch in the menu. So a swatch is not a
    picture of the scheme, it IS the scheme, rendered small; there is no second
-   copy of the colours to drift. Default's live on :root beside the tokens no
+   copy of the colors to drift. Default's live on :root beside the tokens no
    scheme touches (the fonts, the tap target, the badge family), because those
    are the same in every scheme and a scheme that had to restate them would
    invite them apart. */
@@ -221,7 +221,7 @@ html[data-theme="ash"],.sw[data-theme="ash"]{
   --dim:#a1a59f; --accent:#a3b18a; --warn:#cfa94a; --bad:#e26d60; --note:#82a7b8}
 
 /* ---- Nostromo -----------------------------------------------------------
-   The one scheme that is more than a recolour. Amber phosphor on a green-black
+   The one scheme that is more than a recolor. Amber phosphor on a green-black
    hull, after the ship's own screens. The flare is gradients; the hull's
    plating, the binding rings down the gutter and the
    glyph strip in the header are three hand-written SVG files under
@@ -239,8 +239,8 @@ html[data-theme="ash"],.sw[data-theme="ash"]{
 /* Hazard striping, at the one place a ship would actually put a decal: the
    bottom edge of the header, where the chrome ends and the work begins. */
 /* The border stays. Dropping it for the decal changed the header's height by
-   a pixel, so choosing a scheme nudged the whole page, and a colour scheme
-   that moves the layout is a colour scheme you can feel. The stripe is drawn
+   a pixel, so choosing a scheme nudged the whole page, and a color scheme
+   that moves the layout is a color scheme you can feel. The stripe is drawn
    over the border instead. */
 /* Its own element rather than a background on the header: an inset box-shadow
    paints ABOVE the background image, so the first version drew the stripe and
@@ -267,7 +267,7 @@ html[data-theme="nostromo"] .card h2{
    three tenths, and the tab side wears the same (below) so the two halves
    of the page read as one material (the operator, 24 Sep). One value, so
    the halves cannot drift apart. The buttons stay opaque, which they are
-   by construction (--btn is a mix of the panel colour with white, never
+   by construction (--btn is a mix of the panel color with white, never
    with transparent).
    The frame is an inset shadow with the border made transparent, and the
    header wears the same frame as an outline drawn in the same place and
@@ -334,7 +334,7 @@ html[data-theme="nostromo"] body::before{
    where they are. The rings hold still while the cards scroll over them
    (the operator, 24 Sep): the column is its own scroller, and a background
    that is not attached to its content stays where the column is. Each ring
-   is large and centred inside the cards' left edge: most of it shows dimly
+   is large and centered inside the cards' left edge: most of it shows dimly
    through the smoked glass, a gap between two cards shows it plain, and
    its left side runs off into the gutter. */
 html[data-theme="nostromo"] .col.side{
@@ -358,7 +358,7 @@ html[data-theme="nostromo"] .card.fading{
    (the operator, 28 Sep): the hull, the rings and the glyphs stay. */
 @media(min-width:901px){
   /* The ship's glyphs across the header's empty middle. The two flat bands
-     of panel colour keep them out from under the title on the left and the
+     of panel color keep them out from under the title on the left and the
      controls on the right, so nothing is ever read through them. */
   html[data-theme="nostromo"] header{
     background-image:linear-gradient(90deg, var(--panel) 0 300px,
@@ -373,10 +373,10 @@ html[data-theme="nostromo"] button:not(.link){
   box-shadow:inset 0 1px 0 0 rgba(255,176,0,.12)}
 
 /* Square, not rounded: the three corner tokens are 0 in this scheme's block,
-   which is what makes a tab's coloured bar end in a hard edge instead of
+   which is what makes a tab's colored bar end in a hard edge instead of
    bending round a radius. The rest of the ship's look on top of that:
    the title in the stencil face the card headers already wear, and the tab
-   in front glowing the way phosphor does, a soft bloom of its own colour
+   in front glowing the way phosphor does, a soft bloom of its own color
    rather than a fill. Under 0.35 alpha and one element: the restraint rule
    at the top of this block still holds. */
 html[data-theme="nostromo"] header h1{
@@ -392,15 +392,15 @@ body{margin:0;background:var(--bg);color:var(--ink);display:flex;
   font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   padding:env(safe-area-inset-top) env(safe-area-inset-right)
           env(safe-area-inset-bottom) env(safe-area-inset-left)}
-/* The selection, in the scheme's own colours. It was the one colour on the
+/* The selection, in the scheme's own colors. It was the one color on the
    page the schemes could not reach: left unstyled, Chrome draws it in the
    DEVICE's accent, so on an Android with an amber Material You palette a
-   selection is bright yellow: a colour that exists nowhere in any of the
+   selection is bright yellow: a color that exists nowhere in any of the
    twelve schemes. It matters beyond taste: a highlight left behind in a
    stale tile while a phone scrolls (bug #57) is then a bright yellow block
    nobody can place, where in the scheme's own accent it reads as what it
-   is. Both halves declared, because a background with no colour beside it
-   inherits the text colour it happens to land on. */
+   is. Both halves declared, because a background with no color beside it
+   inherits the text color it happens to land on. */
 ::selection{background:var(--accent-deep);color:var(--ink)}
 
 header{display:flex;align-items:center;gap:10px;padding:8px 12px;
@@ -436,9 +436,9 @@ header h1{font-size:15px;margin:0;font-weight:600}
 #uptime{flex:0 0 auto}
 @media(max-width:360px){ #uptime{display:none} }
 /* The theme crossfade, in force only while one is happening; see applyTheme.
-   Colour properties only: opacity is left alone so a tooltip or a fold mid-
+   Color properties only: opacity is left alone so a tooltip or a fold mid-
    flight is not dragged into it, and `*` is affordable because it lasts 320ms
-   rather than being the page's standing behaviour. */
+   rather than being the page's standing behavior. */
 html.theming,html.theming *,html.theming *::before,html.theming *::after{
   transition:background-color .3s ease,color .3s ease,border-color .3s ease,
     outline-color .3s ease,fill .3s ease,stroke .3s ease,
@@ -449,7 +449,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    to. One of the two, never both: showing both stacked them and doubled the
    button's height. The narrow half used to be the word "About", the only text
    label in a header of icons, which made the button twice the width of its
-   neighbours. It is a circled ? now, drawn as line art at 15px like the gear
+   neighbors. It is a circled ? now, drawn as line art at 15px like the gear
    and the door beside it: an earlier attempt used the ? GLYPH, and that is
    what looked wrong: a typeface character among stroked paths. */
 #bAbout .alab{display:none}
@@ -464,14 +464,14 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    with boxes around them. Still a real button: a bell only a mouse can
    reach is decoration.
 
-   The dot says which kind of attention, in the same three colours the rest of
+   The dot says which kind of attention, in the same three colors the rest of
    the page uses for the same three meanings: blue for something worth
    knowing, amber for a warning, red for a failure. It shows the WORST of what
    is unread, not the newest: a red that a later "saved" downgraded to blue
    is a failure you will never look at.
 
    A request waiting on an answer outranks all three and does not merely
-   colour the dot: the bell itself goes amber and breathes, because "look when
+   color the dot: the bell itself goes amber and breathes, because "look when
    you like" and "a session is blocked until you answer" are not the same
    message and should not look alike. It stops when the request is answered or
    times out, both of which empty the list on their own. */
@@ -486,7 +486,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 #bBell .dot.warn{background:var(--warn)}
 #bBell .dot.bad{background:var(--bad)}
 #bBell .dot.ask{background:var(--warn)}
-/* Someone is blocked on an answer. Colour alone is not enough for a state
+/* Someone is blocked on an answer. Color alone is not enough for a state
    that wants acting on rather than reading, so the bell moves, and stops
    moving for anyone who asked the platform for less of that.
 
@@ -537,7 +537,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* Only what is its own. Ground, edge, radius, the mono face and the 16px that
    stops iOS zooming into it all come from the field skin further down, which
    this menu was simply not in the list for, so the box wore the browser's
-   default: a 2px grey edge, square corners and Arial, beside a page of 6px
+   default: a 2px gray edge, square corners and Arial, beside a page of 6px
    sunk monospace fields. */
 /* Scoped to the menu so it outranks the skin's `width:100%`, which is right
    for a field that owns its row and wrong for one sitting between a label and
@@ -575,7 +575,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .help{position:relative}
 .help.on{color:var(--ink);border-color:var(--ink)}
 /* Placed in viewport coordinates by the click handler (--tipx/--tipy), and
-   fixed rather than absolute: centred on an icon at a phone's left edge, or
+   fixed rather than absolute: centered on an icon at a phone's left edge, or
    inside a dialog's scrolling box, the box was cut off: measured on a
    393px screen with the project dialog open. */
 .help.on::after{
@@ -768,7 +768,7 @@ body.dragging .side .card h2{cursor:grabbing}
 .row .sub.warn{color:var(--warn)}
 /* Locked is a decision, not a fault: stated plainly rather than alarming.
    Nothing about the row is dimmed for it: a locked project is one the operator
-   is actively running, and greying it out would say the opposite. */
+   is actively running, and graying it out would say the opposite. */
 .row .sub.locked{color:var(--dim);font-style:italic}
 /* The padlock beside the name. Sized to the text it follows rather than to the
    icon buttons, because it is a word in the name's sentence, not a control. */
@@ -831,7 +831,7 @@ button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
 /* ...except the sidebar's row icons, which dim instead.
    BOTH transform and filter make an element the containing block for its own
    absolutely positioned ::after, and in the sidebar a tooltip is measured
-   against the ROW: 340px of column cannot hold a 280px box centred on its
+   against the ROW: 340px of column cannot hold a 280px box centered on its
    rightmost button. Pressed, the tip re-measured itself against a 32px button:
    twelve pixels wide, one character per line, running down the whole card.
    Hiding it on :active was not enough, and the way it failed said why: the
@@ -887,7 +887,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
    rather than a break. The UA already lays the button out, label at the start
    and arrow at the end, so nothing below says so a second time.
 
-   One behaviour does change: a base select is as wide as the option CHOSEN
+   One behavior does change: a base select is as wide as the option CHOSEN
    rather than as wide as the longest one, so an auto-width picker shifts a
    little when the pick is longer. Every full-width select is unaffected. */
 @supports (appearance: base-select){
@@ -1080,10 +1080,10 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   overflow:auto;   /* a soft keyboard can leave less height than the box */
   /* The DYNAMIC viewport, not the large one. A fixed overlay is laid out
      against the large viewport on a phone, so while the browser's toolbar
-     slides in and out the box is centred in a taller box than the one being
+     slides in and out the box is centered in a taller box than the one being
      looked at, and it bobs: a few pixels, every frame, for as long as the
      toolbar is moving. The header does not move with it, because the header
-     is anchored to the top and only a centred thing feels a height change. */
+     is anchored to the top and only a centered thing feels a height change. */
   height:100dvh;
   /* ...and when the box is taller than the viewport, THIS is the scroller.
      Without this, reaching its end hands the scroll on to the page behind,
@@ -1195,7 +1195,7 @@ textarea,select{
 .doctab input:where(:not([type="checkbox"],[type="radio"])),.doctab select,
 .nb input:where(:not([type="checkbox"],[type="radio"])),.nb select{min-height:var(--ctl)}
 .modal button,.nb button,.doctab button,.uimenu button,.doc .row button{min-height:var(--ctl)}
-/* Not the colour swatches: a circle, sized by its own rule. */
+/* Not the color swatches: a circle, sized by its own rule. */
 .modal .pcpick button,.pcpick button{min-height:0}
 /* The sidebar's own selects: the Claude card's pickers. A phone gives them
    the finger height and nothing else: a select does not zoom iOS, so it keeps
@@ -1275,13 +1275,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    also was, the dim icon that drops a row from a list. */
 .danger{color:var(--bad);border-color:var(--red2-edge)}
 /* Revert is amber rather than red. It throws away what has not been saved
-   yet: a decision you might want back, and the colour this page already uses
+   yet: a decision you might want back, and the color this page already uses
    for "wants a decision from you". Red is kept for the controls that destroy
    something already on disk, which is the other two on this panel. */
 .nb .caution{color:var(--warn);border-color:var(--gold-edge)}
 /* Two-way choice as two buttons, not radios: one tap on a phone, and the
    green .on state is the same vocabulary as everything else on the page. */
-/* Underlined and in the warm colour, the way the CLAUDE.md fix link on a
+/* Underlined and in the warm color, the way the CLAUDE.md fix link on a
    project row is: both are a line of text you can press, and reading as one
    is what tells you that. Dim and undecorated it read as a caption. */
 .modal .link{background:none;border:0;color:var(--warn);padding:2px 0;
@@ -1321,7 +1321,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
     white-space:normal;overflow-wrap:anywhere;
     box-shadow:0 6px 18px rgba(0,0,0,.5);
     /* display:none, not merely hidden. A hidden tip is still LAID OUT, and a
-       280px box centred on an icon near the right edge of a 340px sidebar
+       280px box centered on an icon near the right edge of a 340px sidebar
        sticks out past it, which made the sidebar scroll sideways by 26px
        with nothing visibly in the way. It got worse the day a tooltip got a
        longer sentence, which is how it was noticed at all: the overflow is
@@ -1339,7 +1339,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
      by whatever is above the card. */
   .acts [data-tip]::after{bottom:auto;top:calc(100% + 6px)}
   /* In the sidebar the tip is measured against the ROW rather than the thing
-     it is on. 340px of column cannot hold a 280px box centred on its
+     it is on. 340px of column cannot hold a 280px box centered on its
      rightmost icon, so one hovered there hung past the edge and the sidebar
      grew a horizontal scrollbar for as long as the pointer sat still.
      Anchored to the row it is always inside, always fully readable, and
@@ -1351,7 +1351,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
      EVERY tip in the row, not only the icons'. A project row's issue line is
      a LINK, and a link that wraps is an inline box whose two line boxes are
      what `left:50%` gets measured against, so the tip on "CLAUDE.md
-     environment block is out of date: update" was centred on something that
+     environment block is out of date: update" was centered on something that
      is not where the words are, and slid off the left of the card with its
      first few characters cut off. Anchored and clamped like the rest, it is
      one box the width of the row.
@@ -1384,10 +1384,10 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
      is why opacity was the answer there and is the problem here.)
 
      So while the tip is up, the fade stops being opacity and becomes the
-     colours opacity was compositing to. It still looks dead; that is the
+     colors opacity was compositing to. It still looks dead; that is the
      point of the values, and a ghosted button brightening under the pointer
      would read as one you could press, and it is no longer a layer of its
-     own. Specificity is deliberate: it has to beat button.eye's own colour
+     own. Specificity is deliberate: it has to beat button.eye's own color
      and the notebook arrows' heavier fades, which are what wear it. */
   button:disabled[data-tip]:hover{opacity:1;
     color:color-mix(in srgb, var(--dim), var(--panel) 45%);
@@ -1523,7 +1523,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
   .clog .clsha{max-width:8em;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap}
 }
-/* A project's colour: eight fixed tones, picked to read on every one of the
+/* A project's color: eight fixed tones, picked to read on every one of the
    dark schemes above, worn as a bar down the left of the notebook tab and
    the project row and as a tint on the tab while it is the one in front.
    Set on the element as --pc from PROJECT_COLORS. */
@@ -1555,7 +1555,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .tab.pc{border-left:3px solid var(--pc);
   /* A hint of it while the tab rests too: with only the bar, a notebook
      that was not in front read as a plain tab wearing a stripe, and the
-     colour it was given was gone until it was clicked on. Ten percent:
+     color it was given was gone until it was clicked on. Ten percent:
      enough to say whose, under --ink at 9:1 or better on every scheme. */
   background:color-mix(in srgb, var(--pc) 10%, var(--btn))}
 .tab.pc.on{background:color-mix(in srgb, var(--pc) 28%, var(--panel));
@@ -1568,7 +1568,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    29 Sep). The stripe still says whose it is in a split. */
 .pane .bar.pc{box-shadow:inset 3px 0 var(--pc)}
 /* The containers under a dev instance's row: one line each, the running
-   ones in the ok colour, the rest dim. */
+   ones in the ok color, the rest dim. */
 .dmsvcs{line-height:1.5}
 .dmsvc.ok{color:var(--accent)}
 /* The project's node beside its name: a sibling of .name, so the name
@@ -1619,7 +1619,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .verln .vermark{flex:1 1 0;min-width:0}
 .verwhy{color:var(--dim);font:var(--f-note);margin:7px 0 0;max-width:70ch}
 .verbtns{gap:6px;margin-top:8px}
-/* Claude access: a labelled control on its own line rather than a stray
+/* Claude access: a labeled control on its own line rather than a stray
    caption with a naked select under it. The label sits in the same 118px
    column the value lines use, so the select starts where every value on the
    block starts and the eye keeps one edge to run down. */
@@ -1671,7 +1671,7 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .gcommitbar,.gbranchbar{padding:0 0 8px}
 .gcommitbar input,.gbranchbar input{flex:1 1 auto;min-width:0}
 .gitnet{border-bottom:1px solid var(--line)}
-/* A diff: one fold per file, the lines coloured, and it scrolls inside its
+/* A diff: one fold per file, the lines colored, and it scrolls inside its
    own box on a phone rather than the pane. */
 .dfile{border-top:1px solid var(--line);margin-top:6px}
 .dfile>summary{cursor:pointer;list-style:none;padding:6px 0;font:var(--f-ui);color:var(--dim)}
@@ -1801,7 +1801,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .hist .act.new{color:var(--green2);border-color:var(--green2-edge)}
 .hist .what{flex:1;min-width:0;overflow-wrap:anywhere}
 /* Set off from the words rather than trailing them: without the gap the name
-   reads as the last word of the line it is labelling. */
+   reads as the last word of the line it is labeling. */
 .hist .who{color:var(--purple);margin-left:6px}
 .hist .who.you{color:var(--dim)}
 .hist .was{color:var(--dim);text-decoration:line-through}
@@ -1914,9 +1914,9 @@ pre.diff .d-ctx{color:var(--dim)}
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
 /* ---- the Design view (nb-design.js) --------------------------------------
-   A language's choices in labelled controls, its colours as chips beside
+   A language's choices in labeled controls, its colors as chips beside
    their hex, and a page's layout as blocks on a frame the finger moves
-   them around. The board's colours are the design's own, painted inline
+   them around. The board's colors are the design's own, painted inline
    from the language, which is the one place a hex is data and not chrome. */
 .dsrow{display:flex;flex-wrap:wrap;gap:var(--field-gap);align-items:flex-end}
 .dsctl{display:flex;flex-direction:column;gap:var(--label-gap);flex:0 1 auto;min-width:0}
@@ -1936,9 +1936,9 @@ pre.diff .d-ctx{color:var(--dim)}
    tab's, not a box of their own (the operator, 28 Sep). */
 .dstheme,.dsrule{display:flex;flex-direction:column;gap:var(--field-gap)}
 .dsrule .dsctl input{width:12em}
-.dscolours{display:flex;flex-direction:column;gap:var(--field-gap)}
-.dscolours .dsctl input{width:9em}
-.dscolours .dsctl .dsc input{width:7.5em}
+.dscolors{display:flex;flex-direction:column;gap:var(--field-gap)}
+.dscolors .dsctl input{width:9em}
+.dscolors .dsctl .dsc input{width:7.5em}
 .dsblock{position:relative;display:flex;flex-direction:column;gap:2px;padding:5px 7px;min-width:0;min-height:0;
   border:1px solid;border-radius:var(--r-control);overflow:hidden;cursor:grab;
   transition:outline-color .15s ease}
@@ -2148,7 +2148,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .bug .btitle{flex:1;min-width:0;font:var(--f-row);
   overflow-wrap:anywhere}
 .bug .btitle.done{color:var(--dim);text-decoration:line-through}
-/* The same three colours the bell's dot uses for the same three meanings:
+/* The same three colors the bell's dot uses for the same three meanings:
    red is a failure, amber is a warning, blue is worth knowing, so a severity
    here and a notification there do not have to be learned separately.
    `critical` is the only filled one: it has to outrank a red pill, and there
@@ -2239,9 +2239,9 @@ pre.diff .d-ctx{color:var(--dim)}
 /* A project's heading over its containers, as a band that reads as the
    start of that project at a glance (the operator, 24 Sep: the label was
    hard to find): tinted and barred down its left in the project's own
-   colour, or the scheme's accent for one with none, the name heavier than
+   color, or the scheme's accent for one with none, the name heavier than
    the rows under it, and room above each group but the first. No project
-   is the same shape in the line colour, since it is nobody's. */
+   is the same shape in the line color, since it is nobody's. */
 .dmtab .dmgroup{--gc:var(--accent);color:var(--dim);font:var(--f-ui);
   display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;
   background:color-mix(in srgb, var(--gc) 16%, transparent);
@@ -2334,7 +2334,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .tstname{flex:1 1 12em;min-width:0;font:var(--f-ui);color:var(--ink);
   white-space:pre-wrap;overflow-wrap:anywhere}
 /* A flagged row is marked on its edge rather than tinted: the list is read
-   for its numbers, and colouring whole rows would make the ones that matter
+   for its numbers, and coloring whole rows would make the ones that matter
    harder to scan rather than easier. */
 .tst.flagged{border-left:2px solid var(--warn)}
 .tst>.body{padding:0 var(--row-x) var(--row-y)}
@@ -2389,7 +2389,7 @@ button.eye i{font:600 10px/1 system-ui,sans-serif;font-style:normal;margin-left:
 button.eye.none{opacity:.45}
 /* A locked padlock is gold rather than dim: it is a state somebody chose and
    is still in, not a control waiting to be pressed. Deliberately not --accent,
-   which is the colour of the buttons that act, and not --warn, because nothing
+   which is the color of the buttons that act, and not --warn, because nothing
    is wrong: the operator meant this. */
 button.eye.on{color:var(--gold)}
 button.eye.on:hover{color:var(--gold)}
@@ -2493,7 +2493,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .nodestab .ndrow{padding-top:10px;padding-bottom:10px}
 .nodestab .ndconfbody{gap:10px}
 /* Resource meters. A number in a sentence cannot be glanced at; a bar can,
-   and pressure picks the colour so a filling disk is what the eye finds. */
+   and pressure picks the color so a filling disk is what the eye finds. */
 .ndmeters{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
   gap:6px 18px;margin:8px 0}
 /* Every track in a stack the same width: the value column is a fixed
@@ -2554,7 +2554,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    A long surface is SECTIONS: one <details class="sect"> per concern:
    docSection() builds it, whose summary is a band (the same inset as every
    other band, so the alignment rule holds) carrying the title and, on the
-   right, a one-line status in the shared status colours. The body is the
+   right, a one-line status in the shared status colors. The body is the
    section's controls, stacked. A section remembers whether it was open, per
    browser; by default every section is open on a desktop and none on a
    phone, where the point is that you see the headings and pick one rather
@@ -2570,7 +2570,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    status-inline pattern, where a status sentence and four buttons fought
    for one line and the sentence won by pushing the buttons off the edge.
 
-   A BUSY button says so: busy(btn, word) greys it and puts the word and an
+   A BUSY button says so: busy(btn, word) grays it and puts the word and an
    animated ellipsis in it until the repaint that follows the round trip
    replaces the element with its real state, so a press cannot be repeated
    and is never a mystery. unbusy(btn, word) is for the presses that have no
@@ -2583,7 +2583,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    - A section's status is a word or a number: "live", "3 problems", the
      version: never a sentence. It is what a SHUT section still answers.
    - `.danger` is the verb that cannot be undone, and it is one class with
-     one colour on every surface. It used to be scoped to the modals and the
+     one color on every surface. It used to be scoped to the modals and the
      notebook, so Remove was red in one place and ordinary ink in another.
    - Nothing safe comes after it. Not "the last button is destructive":
      a bar may end with two of them, but nothing you would press by habit
@@ -2656,8 +2656,8 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
-   bare controls (a select, a button, a remove) and centring the line
-   floats the bare one between its neighbour's label and its field: the
+   bare controls (a select, a button, a remove) and centering the line
+   floats the bare one between its neighbor's label and its field: the
    Nodes tab's mount rows sat at three different heights, Connect sat
    above the address beside it, and the filter bars were two pixels out
    because a select is not quite a field's height. The bottom edge is the
@@ -2669,7 +2669,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   .ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line: the Phone tab's Connect and
-   Pair sit beside one. A row of prose keeps its centred cluster.
+   Pair sit beside one. A row of prose keeps its centered cluster.
 
    NOT on a stacked row. `.stack2` turns a row into a COLUMN, where
    align-items is the horizontal axis, so this pushed every one of its
@@ -2757,8 +2757,8 @@ button[aria-busy="true"]{opacity:.75}
    build it), and a phone was stacking them with the row's own line spacing
    between, so they looked like unrelated strays. */
 /* Their controls line up at the bottom, as every row of controls does: a
-   select stands taller than its Apply here, and centring them left the two
-   bottoms four pixels apart. The label stays centred on the select. */
+   select stands taller than its Apply here, and centering them left the two
+   bottoms four pixels apart. The label stays centered on the select. */
 .dmgrant,.dmref,.dmowner{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;
   margin:2px 0}
 .dmref + .dmgrant{margin-top:0}
@@ -2916,7 +2916,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   word-break:break-word;max-height:300px;overflow:auto;color:color-mix(in srgb, var(--ink) 80%, var(--dim))}
 .empty{color:var(--dim);padding:9px 11px;font-style:italic}
 /* ...and a placeholder that has become a failure notice: the poll's words
-   for a card that could not draw, in the warning colour and no longer
+   for a card that could not draw, in the warning color and no longer
    pulsing, because nothing is coming. */
 .empty.warn,.loading.warn{color:var(--warn);animation:none}
 /* Loading and empty are not the same thing and had been wearing the same
@@ -2987,7 +2987,7 @@ body.dragging .tab .lbl{cursor:grabbing}
    
    The label was the worse half and the reason is a class collision: a tab's
    name is a `.lbl`, which is ALSO the field-label helper (see `.lbl` in the
-   base sheet), so the tab wore the quiet colour meant for "Your email" above
+   base sheet), so the tab wore the quiet color meant for "Your email" above
    a text box. On nostromo that measured 2.51:1 against the fill. The icons
    are --dim by their own rule and measured 2.5 to 3.1, under the floor for
    a control, let alone for text.
@@ -3016,7 +3016,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   /* A tab cut off by the edge fades out instead of being sliced. Masked rather
      than an overlay gradient: the strip scrolls under its own paging arrows,
      which have their own background, so a gradient painted on top would have
-     to match a colour that changes with the scheme: the mask fades whatever
+     to match a color that changes with the scheme: the mask fades whatever
      is actually there.
      One side at a time, driven by updateArrows: hard against an end, that edge
      is showing a whole tab, and fading a complete tab is worse than the seam.
@@ -3082,7 +3082,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 }
 .pane{position:relative;background:#000;min-height:0;display:flex;flex-direction:column}
 /* ...and it is the page's own ground until it holds something. A terminal
-   paints its own black and a document tab its own panel colour; before the
+   paints its own black and a document tab its own panel color; before the
    first snapshot there is neither, and a black rectangle the size of the
    pane is not a neutral thing to look at while waiting. The class comes off
    on the first draw that had state to draw. */
@@ -3096,13 +3096,13 @@ body.booting .pane>.loading{margin:auto}
   font:11px/1.6 var(--mono);color:var(--dim);flex:0 0 auto}
 .pane .bar .x{margin-left:auto;cursor:pointer;padding:2px 7px;border-radius:var(--r-small)}
 .pane .bar button{min-height:22px;padding:2px 8px;font-size:11px}
-/* The terminal's own background colour, on the frame itself.
+/* The terminal's own background color, on the frame itself.
    A terminal's document is transparent until xterm paints into it, so what
    fills the frame until then is the browser's default canvas, and this page
    declares a dark color-scheme, which (in Chromium) makes that canvas white
    rather than dark. The result was a quarter-second of white in the middle of
    a dark page every time a tmux tab was opened, worst on a phone where the
-   frame takes longest to arrive. Giving the element the colour the terminal
+   frame takes longest to arrive. Giving the element the color the terminal
    settles on means there is no transition to see at all: measured, it holds
    #2b2b2b from the first frame to the last.
    Not color-scheme:dark on the frame; that is what turns the canvas white,
@@ -3127,8 +3127,8 @@ body.booting .pane>.loading{margin:auto}
 /* A document has a reading width. Left to fill an ultrawide pane, every row
    here becomes a name at one end of two thousand pixels and the control that
    acts on it at the other (the bin, the Revert, the version pill) with the
-   eye travelling the whole way between them. Capped and left-aligned rather
-   than centred: the pane's own bar is at this edge, and the content should
+   eye traveling the whole way between them. Capped and left-aligned rather
+   than centered: the pane's own bar is at this edge, and the content should
    start where the label naming it does. */
 .pane .doc > *{max-width:var(--doc-w)}
 /* Every child of the stack occupies the whole of it, and one is visible. See
@@ -3156,7 +3156,7 @@ body.booting .pane>.loading{margin:auto}
    "somebody else's" without competing with the ones that are theirs. They
    sort above it too. */
 .chatrow.notmine{opacity:.55;font-style:italic}
-/* Something unread, on a channel that is yours. Colour and weight, because
+/* Something unread, on a channel that is yours. Color and weight, because
    the point is to be found without reading the list, and never on a channel
    that is not yours, which would be a page always asking for attention. */
 .chatrow.unread .grow{color:var(--accent);font-weight:600}
@@ -3299,7 +3299,7 @@ body.booting .pane>.loading{margin:auto}
 </head>
 <body data-view="dash" class="booting">
 <div id="toast" role="status" aria-live="polite"></div>
-<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
+<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="mTitle">
   <div class="box">
     <h3 id="mTitle">New custom command</h3>
     <div class="field">
@@ -3591,7 +3591,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
     <div class="nbview" data-view="design" hidden>
       <!-- What the project looks like (design.py, nb-design.js): one design
-           language, and pages laid out as labelled blocks, each named for
+           language, and pages laid out as labeled blocks, each named for
            what it is for and the platform it is built for. Staged behind
            the notebook's Save like the roadmap; the prompts and the file
            are generated on the server, so the tab, bb design and
@@ -3657,7 +3657,7 @@ body.booting .pane>.loading{margin:auto}
          code that owns it. One per notebook is also simply right, two of them
          in a split being two different projects. -->
     <div class="modal nbsheet" hidden role="dialog" aria-modal="true"
-         aria-labelledby="sheetTitle">
+         aria-labeledby="sheetTitle">
       <div class="box sheet">
         <h3 id="sheetTitle"></h3>
         <div class="sheetslot" id="sheetSlot"></div>
@@ -3681,7 +3681,7 @@ body.booting .pane>.loading{margin:auto}
      to be a modal, which on a desktop meant reading a list, a plan, a log and
      a memory editor through a 760px slot. -->
 <div id="devEnvModal" class="modal" hidden role="dialog" aria-modal="true"
-     aria-labelledby="devEnvTitle">
+     aria-labeledby="devEnvTitle">
   <div class="box wide">
     <h3 id="devEnvTitle">Dev instance env</h3>
     <div class="field">
@@ -3696,7 +3696,7 @@ body.booting .pane>.loading{margin:auto}
   </div>
 </div>
 <div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true"
-     aria-labelledby="aboutTitle">
+     aria-labeledby="aboutTitle">
   <div class="box wide prose">
     <h3 id="aboutTitle">About</h3>
     <div class="field about">
@@ -3732,7 +3732,7 @@ body.booting .pane>.loading{margin:auto}
      repository that already has a token: offering to set one on a local repo
      would be offering a credential to something with nothing to authenticate
      against. -->
-<div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rnTitle">
+<div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="rnTitle">
   <div class="box">
     <h3 id="rnTitle">Project settings</h3>
     <div class="field" id="rnNameField">
@@ -3741,11 +3741,11 @@ body.booting .pane>.loading{margin:auto}
       <div class="hint" id="rnHint"></div>
       <div class="hint" id="rnPreview" hidden></div>
     </div>
-    <!-- A colour for the project: its notebook tab and its row wear it, so
+    <!-- A color for the project: its notebook tab and its row wear it, so
          several open notebooks tell apart without reading each label. -->
     <div class="field" id="rnColorField">
-      <label id="rnColorLabel">Colour<span class="help" data-tip="worn by this project's notebook tab and its row; none is the default" tabindex="0">?</span></label>
-      <div class="pcpick" id="rnColor" role="radiogroup" aria-labelledby="rnColorLabel"></div>
+      <label id="rnColorLabel">Color<span class="help" data-tip="worn by this project's notebook tab and its row; none is the default" tabindex="0">?</span></label>
+      <div class="pcpick" id="rnColor" role="radiogroup" aria-labeledby="rnColorLabel"></div>
     </div>
     <!-- What this project pushes with. Reached by the chain on its row, which
          is where the remote lives for a project that has one and for a
@@ -3772,7 +3772,7 @@ body.booting .pane>.loading{margin:auto}
          migration. -->
     <div class="field" id="rnAuthField" hidden>
       <label id="rnAuthLabel">Authentication</label>
-      <div class="pseg" role="group" aria-labelledby="rnAuthLabel">
+      <div class="pseg" role="group" aria-labeledby="rnAuthLabel">
         <button id="rnAuthNone" type="button">Disabled</button>
         <button id="rnAuthKey" type="button">Deploy key</button>
         <button id="rnAuthToken" type="button">Access token</button>
@@ -3789,7 +3789,7 @@ body.booting .pane>.loading{margin:auto}
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
       <label id="rnNodesLabel" hidden>Also works on</label>
-      <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
+      <div class="lbox" id="rnNodesMore" role="group" aria-labeledby="rnNodesLabel" hidden></div>
       <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them.</div>
     </div>
     <!-- The projects a session here may read (prefs.reads): their trees
@@ -3798,7 +3798,7 @@ body.booting .pane>.loading{margin:auto}
          name, never a session's. -->
     <div class="field" id="rnReadsField" hidden>
       <label id="rnReadsLabel">Reads<span class="help" data-tip="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
-      <div class="lbox" id="rnReads" role="group" aria-labelledby="rnReadsLabel"></div>
+      <div class="lbox" id="rnReads" role="group" aria-labeledby="rnReadsLabel"></div>
       <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
     </div>
     <div class="field" id="rnBuildField">
@@ -3837,7 +3837,7 @@ body.booting .pane>.loading{margin:auto}
          what a change asked for does while a test run is going. -->
     <div class="field" id="rnGateField">
       <label id="rnGateLabel">Claude settings</label>
-      <div class="prefrow" role="group" aria-labelledby="rnGateLabel">
+      <div class="prefrow" role="group" aria-labeledby="rnGateLabel">
         <label class="pick wide">During a test run, a change asked for <select id="rnTestChange"
           aria-label="what a change asked for during a test run does">
           <option value="wait">waits: the ask in hand is finished and tested first</option>
@@ -3850,7 +3850,7 @@ body.booting .pane>.loading{margin:auto}
         </select></label>
       </div>
       <label id="rnGateMayLabel" class="sub dim">Claude may</label>
-      <div class="prefrow" role="group" aria-labelledby="rnGateMayLabel">
+      <div class="prefrow" role="group" aria-labeledby="rnGateMayLabel">
         <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="rnGateBugs"
@@ -3883,7 +3883,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="rnMineField">
       <label id="rnMineLabel">Yours on this project<span class="help" data-tip="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
       <div class="hint">Yours alone; everything above is the project's.</div>
-      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
+      <div class="prefrow" role="group" aria-labeledby="rnMineLabel">
         <label class="pick">Model <select id="rnModel"
           aria-label="model your sessions here start on"></select></label>
         <label class="pick">Effort <select id="rnEffort"
@@ -3902,7 +3902,7 @@ body.booting .pane>.loading{margin:auto}
         </select></label>
       </div>
       <div class="hint" id="rnPrefHint"></div>
-      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
+      <div class="prefrow" role="group" aria-labeledby="rnMineLabel">
         <label class="pick">Commit name <input id="rnGitName" type="text"
           autocomplete="off" spellcheck="false" maxlength="120"
           aria-label="name your commits here carry"></label>
@@ -3946,7 +3946,7 @@ body.booting .pane>.loading{margin:auto}
      compose file and an environment, and that is what this asks for. Labels
      are not a fourth box: in compose they live in the YAML, and a separate
      field for them would be inventing a concept the format does not have. -->
-<div id="cmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cTitle">
+<div id="cmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="cTitle">
   <div class="box wide">
     <h3 id="cTitle">New container</h3>
     <div class="field">
@@ -3969,7 +3969,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
     <div class="field">
       <label id="cSegLabel">Definition</label>
-      <div class="pseg" role="group" aria-labelledby="cSegLabel">
+      <div class="pseg" role="group" aria-labeledby="cSegLabel">
         <button id="cTabForm" class="on" type="button">From an image</button>
         <button id="cTabYml" type="button">Compose</button>
         <button id="cTabEnv" type="button">Environment</button>
@@ -4018,7 +4018,7 @@ body.booting .pane>.loading{margin:auto}
   </div>
 </div>
 
-<div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dnTitle">
+<div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="dnTitle">
   <div class="box wide">
     <h3 id="dnTitle">Send to Docker manager</h3>
     <div class="field">
@@ -4069,7 +4069,7 @@ body.booting .pane>.loading{margin:auto}
      project: every held change with a checkbox, a master checkbox, and the
      two verbs at the foot. Approve replays the ticked ones in the order they
      were made; Deny drops them and whatever rode behind them. -->
-<div id="pendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pendTitle">
+<div id="pendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="pendTitle">
   <div class="box wide">
     <h3 id="pendTitle">Waiting for your approval</h3>
     <!-- Each line in a .field, which is where the band inset lives. At box
@@ -4089,7 +4089,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
   </div>
 </div>
-<div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="tTitle">
+<div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="tTitle">
   <div class="box">
     <h3 id="tTitle">Deleted projects</h3>
     <!-- In a .field like every other line in every other modal here: that is
@@ -4111,7 +4111,7 @@ body.booting .pane>.loading{margin:auto}
      then the commands that came back. The token is the answer to the form
      and is shown once, so it belongs where the question was asked rather
      than appended to the page behind it. -->
-<div id="ndmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="ndTitle">
+<div id="ndmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="ndTitle">
   <div class="box wide">
     <h3 id="ndTitle">Enroll a node</h3>
     <div id="ndBody"></div>
@@ -4125,19 +4125,19 @@ body.booting .pane>.loading{margin:auto}
 <!-- One container's log, read on demand: the thing a person opens a docker
      list to do (R68 step 2). A dialog because it is a detour you read and
      dismiss, and because a tail belongs nowhere near a row that repaints. -->
-<div id="dlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlTitle">
+<div id="dlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="dlTitle">
   <div class="box wide">
     <h3 id="dlTitle">Log</h3>
     <div id="dlBody"></div>
   </div>
 </div>
-<div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setdbgTitle">
+<div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="setdbgTitle">
   <div class="box">
     <h3 id="setdbgTitle">Debug settings</h3>
     <div id="setdbgBody"></div>
   </div>
 </div>
-<div id="grmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="grTitle">
+<div id="grmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="grTitle">
   <div class="box wide">
     <h3 id="grTitle">Global rules</h3>
     <div id="grBody"></div>
@@ -4146,7 +4146,7 @@ body.booting .pane>.loading{margin:auto}
 <!-- A new project's first Claude session: its brief, editable, and the
      model and effort that session starts on, since nothing has started yet.
      Its declarations are page-claude.js. -->
-<div id="briefModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="briefTitle">
+<div id="briefModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="briefTitle">
   <div class="box">
     <h3 id="briefTitle">First session</h3>
     <div class="field">
@@ -4156,7 +4156,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
     <div class="field">
       <label id="briefMineLabel">Yours on this project</label>
-      <div class="prefrow" role="group" aria-labelledby="briefMineLabel">
+      <div class="prefrow" role="group" aria-labeledby="briefMineLabel">
         <label class="pick">Model <select id="briefModel"
           aria-label="model your sessions here start on"></select></label>
         <label class="pick">Effort <select id="briefEffort"
@@ -4171,12 +4171,12 @@ body.booting .pane>.loading{margin:auto}
     </div>
   </div>
 </div>
-<div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
+<div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
     <div class="field" id="pSrcField">
       <label id="pSrcLabel">Source</label>
-      <div class="pseg" role="group" aria-labelledby="pSrcLabel">
+      <div class="pseg" role="group" aria-labeledby="pSrcLabel">
         <button id="pLocal" class="on" type="button">New local repo</button>
         <button id="pClone" type="button">Clone a repository</button>
       </div>
@@ -4217,7 +4217,7 @@ body.booting .pane>.loading{margin:auto}
          the settings dialog changes it afterwards. -->
     <div class="field" id="pGateField" hidden>
       <label id="pGateLabel">Claude may</label>
-      <div class="prefrow" role="group" aria-labelledby="pGateLabel">
+      <div class="prefrow" role="group" aria-labeledby="pGateLabel">
         <label class="pick">Add to roadmap <select id="pGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="pGateBugs"
@@ -4297,7 +4297,7 @@ body.booting .pane>.loading{margin:auto}
          settings dialog switches between. -->
     <div class="field" id="pLinkAuthField" hidden>
       <label id="pLinkAuthLabel">Authentication</label>
-      <div class="pseg" role="group" aria-labelledby="pLinkAuthLabel">
+      <div class="pseg" role="group" aria-labeledby="pLinkAuthLabel">
         <button id="pLinkKey" type="button" class="on">Deploy key</button>
         <button id="pLinkToken" type="button">Access token</button>
       </div>
@@ -4389,7 +4389,7 @@ body.booting .pane>.loading{margin:auto}
   <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-haspopup="menu" aria-expanded="false"
           aria-label="settings"
-          title="settings: the colour scheme, the cards, and the logs">
+          title="settings: the color scheme, the cards, and the logs">
     <!-- The same gear a project row's settings button uses (GEAR, below). The
          first attempt drew a circle with eight spokes around it, which is a
          sun, not a gear, and a header that already carries one icon language
@@ -4400,7 +4400,7 @@ body.booting .pane>.loading{margin:auto}
     </svg>
   </button>
   <!-- Under the gear rather than behind it: resetting the cards was the only
-       thing here, and a colour scheme is the other thing somebody opens the
+       thing here, and a color scheme is the other thing somebody opens the
        chrome to change. Built from a table so a new scheme is one entry. -->
   <div id="uiMenu" class="uimenu" hidden role="menu" aria-label="appearance"></div>
   <!-- Sign out clears the session cookie via /logout. A browser signed in
@@ -4498,8 +4498,8 @@ body.booting .pane>.loading{margin:auto}
          breakpoint. Linux and git/GitHub flank the bb one: their contents
          come from the server's tables (LINUX_MACROS / GIT_MACROS /
          GH_MACROS), and the git half ghosts against the directory the active
-         shell is in, not a repo greys the lot, a repo without a GitHub
-         remote greys just the gh part. -->
+         shell is in, not a repo grays the lot, a repo without a GitHub
+         remote grays just the gh part. -->
     <div class="mpanel" id="macpanel">
       <div class="lab">linux</div>
       <div class="macros" id="linux"><div class="loading">loading…</div></div>
@@ -4649,8 +4649,8 @@ addEventListener("click", e => {
   e.preventDefault();
   h.classList.toggle("on");
   if (!h.classList.contains("on")) return;
-  // Where the box goes: above the icon, centred on it, and pushed inside
-  // the screen when centring would cut it off. Measured after it is drawn,
+  // Where the box goes: above the icon, centered on it, and pushed inside
+  // the screen when centering would cut it off. Measured after it is drawn,
   // because its width depends on its words.
   const place = () => {
     const r = h.getBoundingClientRect();
@@ -4761,7 +4761,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pageshow", e => { if (e.persisted) reattachTerminals(); });
 window.addEventListener("focus", nudgeTerminals);
 
-// ---- a project's settings: model, effort, colour and the dials ----------
+// ---- a project's settings: model, effort, color and the dials ----------
 // Its declarations are page-projsettings.js; nothing of it runs at load.
 
 // ---- the build this container runs --------------------------------------
@@ -4879,7 +4879,7 @@ $("bOut").onclick = () => { location.href = "/logout"; };
 // ---- the appearance menu ------------------------------------------------
 // Twelve schemes, and the one control that was already here. A table, not a
 // dozen branches: the label is the only thing JS knows about a scheme: the
-// colours live entirely in the stylesheet, keyed by the same id, which is what
+// colors live entirely in the stylesheet, keyed by the same id, which is what
 // keeps a swatch and the page it previews from ever disagreeing.
 // Alphabetical, with Default first because it is the one that is not a
 // choice among the others; it is what you get having made none.

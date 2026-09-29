@@ -155,7 +155,7 @@ ok(/add, do not change/.test(await page.$eval('#rulesBox .rulerow[data-i="1"] .r
    '...and Cancel puts them away, reading what was there before Edit');
 ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
    '...with nothing left staged, so the Save goes quiet again');
-// A row Add made has nothing to go back to: cancelling it is removing it.
+// A row Add made has nothing to go back to: canceling it is removing it.
 await page.click('#rlAdd');
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 3, null, { timeout: 10000 });
 // Pressed in the page: the row is a details that is still sliding open,
@@ -165,7 +165,7 @@ await page.$eval('#rulesBox .rulerow[data-i="2"] .rlCancel', b => b.click());
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
                                  && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
 ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
-   'cancelling a row that Add made takes the row away and stages nothing');
+   'canceling a row that Add made takes the row away and stages nothing');
 
 // ---- what a session is handed ----------------------------------------------
 // Exactly what bb-tty puts in front of one: `bb rules --prompt`.

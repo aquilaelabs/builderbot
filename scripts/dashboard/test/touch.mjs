@@ -87,7 +87,7 @@ ok(await page.evaluate(() => document.body.dataset.view) === 'dash',
 // The tab strip's paging arrows do not ghost at the end they cannot go past.
 // Two half-there arrows on a strip too short to page read as broken rather than
 // as a limit. They stay `disabled` (pressing one still does nothing and a
-// screen reader is still told), so this asserts the LOOK and the behaviour
+// screen reader is still told), so this asserts the LOOK and the behavior
 // separately, which is exactly the pair a previous attempt got wrong: it
 // dropped an `opacity:.35` from the .tscroll rule and handed them straight back
 // to `button:disabled{opacity:.5}`, leaving them just as faded.

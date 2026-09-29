@@ -6,7 +6,7 @@
 // findings by rule, the roadmap by the order the work has to happen in), so
 // a page is named by the rows on it and never by a number. What is tested
 // here is that the helper is wired to every list, that a short list is left
-// whole, and that turning a page never drops rows or their behaviour.
+// whole, and that turning a page never drops rows or their behavior.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, readdirSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 

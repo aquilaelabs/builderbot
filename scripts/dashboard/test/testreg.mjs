@@ -198,9 +198,9 @@ ok(/gone\s+slow\.mjs#\d+\s+a token with a space/.test(bb('drift')),
 }
 
 // Bug B121: THREE assertions inserted above a run of such names, with two
-// neighbours of similar wording among them. Pairing by likeness within two
+// neighbors of similar wording among them. Pairing by likeness within two
 // ordinals could not reach a test moved by three, and gave the description
-// to the neighbour whose words were closest instead.
+// to the neighbor whose words were closest instead.
 {
   const was = [['b121.mjs', 'the picker opens', 0.2],
                ['b121.mjs', 'docker work is stamped with the node id (n_5659a7c)', 0.3],
@@ -227,7 +227,7 @@ ok(/gone\s+slow\.mjs#\d+\s+a token with a space/.test(bb('drift')),
   ok(rows['b121.mjs#5']?.protects === 'the node id is the one on the record'
      && rows['b121.mjs#6']?.protects === 'hyperv, not vmware'
      && !rows['b121.mjs#7']?.protects,
-     '...and each description followed its own test three ordinals down, not the neighbour with the closest words');
+     '...and each description followed its own test three ordinals down, not the neighbor with the closest words');
 }
 
 // Ingesting one file's log must not report every other file as deleted.

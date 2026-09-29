@@ -91,7 +91,7 @@ const tmuxName = s => s.replace(/[.:]/g, "_");
 // because tmux rewrites `.` and `:` and leaves this alone.
 const myTmux = s => (state?.tmux_prefix || "") + s;
 // The account holding this project's Claude session, when it is not us. The
-// button greys and wears their name; the refusal itself is at the /term proxy,
+// button grays and wears their name; the refusal itself is at the /term proxy,
 // because a rule only the page honors is a suggestion (roadmap #26).
 // A project this account can see and has not taken on (roadmap #27). An
 // administrator is shown every project: hiding one from somebody who

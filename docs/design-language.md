@@ -4,9 +4,9 @@ What this project looks like, in one place. Written by BuilderBot's Design view 
 
 It governs the dashboard (scripts/dashboard: index.html and the scripts beside it), which the companion app mirrors.
 
-## Colour
+## Color
 
-Colour comes only from these tokens, named once in the stylesheet. The app starts on Default; a theme picker, where the app has one, offers the themes by name, and every theme names the same tokens:
+Color comes only from these tokens, named once in the stylesheet. The app starts on Default; a theme picker, where the app has one, offers the themes by name, and every theme names the same tokens:
 
 ### Default (dark, the default)
 
@@ -17,7 +17,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e6edf3` | the text, and text on a filled accent |
 | `--dim` | `#9fa9b4` | secondary text and field labels |
 | `--line` | `#4d5c6f` | hairlines and borders, 1px |
-| `--accent` | `#3fb950` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#3fb950` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d29922` | a warning, and the amber marks |
 | `--bad` | `#f8524a` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#58a6ff` | an informational mark, the low level |
@@ -31,7 +31,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#dcecee` | the text, and text on a filled accent |
 | `--dim` | `#93a9ac` | secondary text and field labels |
 | `--line` | `#3e5e66` | hairlines and borders, 1px |
-| `--accent` | `#2fb8c6` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#2fb8c6` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d7ab4c` | a warning, and the amber marks |
 | `--bad` | `#ef6a63` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#6fb3e0` | an informational mark, the low level |
@@ -45,7 +45,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e2e4e0` | the text, and text on a filled accent |
 | `--dim` | `#a1a59f` | secondary text and field labels |
 | `--line` | `#555955` | hairlines and borders, 1px |
-| `--accent` | `#a3b18a` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#a3b18a` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#cfa94a` | a warning, and the amber marks |
 | `--bad` | `#e26d60` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#82a7b8` | an informational mark, the low level |
@@ -59,7 +59,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e8e8ea` | the text, and text on a filled accent |
 | `--dim` | `#9d9da4` | secondary text and field labels |
 | `--line` | `#53535b` | hairlines and borders, 1px |
-| `--accent` | `#e64e53` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#e64e53` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ff6b6b` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7aa2f7` | an informational mark, the low level |
@@ -73,7 +73,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#f0e4d8` | the text, and text on a filled accent |
 | `--dim` | `#af9f90` | secondary text and field labels |
 | `--line` | `#67533e` | hairlines and borders, 1px |
-| `--accent` | `#f0873f` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#f0873f` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e8bb50` | a warning, and the amber marks |
 | `--bad` | `#ef5f52` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#8fb4d9` | an informational mark, the low level |
@@ -87,7 +87,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e3edf5` | the text, and text on a filled accent |
 | `--dim` | `#9aa8ae` | secondary text and field labels |
 | `--line` | `#465b6c` | hairlines and borders, 1px |
-| `--accent` | `#58c7e8` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#58c7e8` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d3ab52` | a warning, and the amber marks |
 | `--bad` | `#ee6a68` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7cc0ff` | an informational mark, the low level |
@@ -101,7 +101,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#dfe9df` | the text, and text on a filled accent |
 | `--dim` | `#9daba0` | secondary text and field labels |
 | `--line` | `#48604f` | hairlines and borders, 1px |
-| `--accent` | `#63c98a` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#63c98a` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d6ad4e` | a warning, and the amber marks |
 | `--bad` | `#e8695f` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#74b3d8` | an informational mark, the low level |
@@ -115,7 +115,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e4e2f5` | the text, and text on a filled accent |
 | `--dim` | `#a2a0c1` | secondary text and field labels |
 | `--line` | `#53537b` | hairlines and borders, 1px |
-| `--accent` | `#9d7cff` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#9d7cff` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e0b24d` | a warning, and the amber marks |
 | `--bad` | `#f2637b` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7cb0ff` | an informational mark, the low level |
@@ -129,7 +129,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#d7e3c8` | the text, and text on a filled accent |
 | `--dim` | `#95a488` | secondary text and field labels |
 | `--line` | `#405b37` | hairlines and borders, 1px |
-| `--accent` | `#ffb000` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#ffb000` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#ffd166` | a warning, and the amber marks |
 | `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9ad07a` | an informational mark, the low level |
@@ -144,7 +144,7 @@ This scheme alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
 served by the page's allow-list): hull plating behind the page, ribbing in
 the left gutter and a glyph strip in the header. Each bakes its own opacity, none sits under text above a third, and
 none moves the layout: a texture lives in space the page already leaves
-empty. The same suite measures the contrast with them in place. Its panels, the bar of a pane and the ground under a document are `--glass`: the panel colour at 70% over the hull, so the plating shows through.
+empty. The same suite measures the contrast with them in place. Its panels, the bar of a pane and the ground under a document are `--glass`: the panel color at 70% over the hull, so the plating shows through.
 
 ##### nostromo/fold
 
@@ -167,7 +167,7 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--ink` | `#eddff2` | the text, and text on a filled accent |
 | `--dim` | `#ae9cb7` | secondary text and field labels |
 | `--line` | `#654d73` | hairlines and borders, 1px |
-| `--accent` | `#c874d8` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#c874d8` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#dfae52` | a warning, and the amber marks |
 | `--bad` | `#ee6183` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#83aee8` | an informational mark, the low level |
@@ -181,7 +181,7 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--ink` | `#ecdedb` | the text, and text on a filled accent |
 | `--dim` | `#ae9d99` | secondary text and field labels |
 | `--line` | `#6a4e4a` | hairlines and borders, 1px |
-| `--accent` | `#cf6a4c` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#cf6a4c` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#e8544a` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7fa8c9` | an informational mark, the low level |
@@ -195,7 +195,7 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--ink` | `#ece0cb` | the text, and text on a filled accent |
 | `--dim` | `#b0a28c` | secondary text and field labels |
 | `--line` | `#63563e` | hairlines and borders, 1px |
-| `--accent` | `#d3a94f` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#d3a94f` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e3c069` | a warning, and the amber marks |
 | `--bad` | `#e0705f` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9db98c` | an informational mark, the low level |
@@ -209,12 +209,12 @@ This scheme squares all three corner tokens; the pills and the dots stay round, 
 | `--ink` | `#dfe5ec` | the text, and text on a filled accent |
 | `--dim` | `#9fa6ae` | secondary text and field labels |
 | `--line` | `#4f5a68` | hairlines and borders, 1px |
-| `--accent` | `#6ea8fe` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#6ea8fe` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ef6f6c` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7fb8ff` | an informational mark, the low level |
 
-A filled accent surface carries the text colour on it, at AA contrast.
+A filled accent surface carries the text color on it, at AA contrast.
 
 ## Type
 
@@ -243,11 +243,11 @@ any surface, and extend the group selectors named here rather than restyling
 locally. `test/uniform.mjs` measures most of what follows on every tab and
 fails by name; the house rule `design` points here and runs it.
 
-### colour
+### color
 
-Applies to: scripts/dashboard/index.html, scripts/dashboard/static; colour, color, scheme, theme, palette, hex, contrast
+Applies to: scripts/dashboard/index.html, scripts/dashboard/static; color, color, scheme, theme, palette, hex, contrast
 
-Colour comes only from the tokens in `:root`: surfaces `--bg` / `--panel` /
+Color comes only from the tokens in `:root`: surfaces `--bg` / `--panel` /
 `--sunk` / `--flyout` (page, raised box, set-into-the-panel, and what the
 terminal's bottom bar opens: tinted towards the accent, with an accent edge
 and a shadow, so it never reads as part of the bar or the page), edge `--line`, text `--ink`
@@ -266,7 +266,7 @@ schemes had text on that fill under AA before the cap, nostromo worst at
 A scheme that carries drawn textures says so in its own rules (Nostromo does).
 
 Watch the class the words wear. A tab's name is a `.lbl`, which is also the
-field-label helper, so it arrived wearing the quiet colour meant for "Your
+field-label helper, so it arrived wearing the quiet color meant for "Your
 email" above a text box, on an accent fill, at 2.51:1.
 
 The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mid`: the accent darkened by 14%, between the accent and `--accent-deep`.
@@ -281,7 +281,7 @@ modals), `--r-control` (6px) for controls (buttons, fields, tabs), `--r-small`
 does. 99px for pills and 50% for dots are not corners and stay round
 everywhere. Hairlines are `1px solid var(--line)`.
 
-A colour is a token too, including the ones that look like a one-off: a
+A color is a token too, including the ones that look like a one-off: a
 danger edge is `--red2-edge`, a warn edge `--gold-edge`, text on a filled
 accent is `--bg`, and a hover shade is `color-mix()` of the scheme's own.
 A hex outside the scheme blocks is the default scheme leaking into the
@@ -294,7 +294,7 @@ Applies to: scripts/dashboard/index.html; font, mono, typography, text, size
 `--mono` for data: names, paths, versions, anything a terminal could print.
 Three secondary voices: `--f-note` (a quiet explainer, in `var(--dim)`),
 `--f-ui` (secondary UI), `--f-tag` (pills and badges). Severity and level
-colours agree everywhere: error and high are red, warning and medium yellow,
+colors agree everywhere: error and high are red, warning and medium yellow,
 note and low blue.
 
 What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
@@ -355,14 +355,14 @@ the row up to the cap, and only a number field is a few characters wide.
 `--tap`).** A field, a pulldown, a one-line prose box and a button beside
 each other were 35, 35, 38 and 30px (the operator, 29 Sep): now every
 input, select, proseline and button in a document, a notebook or a dialog
-takes `min-height: var(--ctl)`, the colour swatches alone keeping their
+takes `min-height: var(--ctl)`, the color swatches alone keeping their
 circle, and `test/uniform.mjs` fails a line of controls that are not one
 height. The sidebar's cards and the header keep their own smaller buttons,
 which sit beside no field.
 
 **Controls on a row line up at their bottom edge.** A row mixes fields that
 carry a label above them with bare controls (a select, a button, a remove)
-and a centred line floats the bare one between its neighbour's label and its
+and a centered line floats the bare one between its neighbor's label and its
 field. The bottom is the line the eye reads, whatever is stacked above it and
 whatever each control's own height is, so a row of controls sets
 `align-items: flex-end` and a row whose text column holds a field does the
@@ -409,7 +409,7 @@ node", not "Enroll node…": whether a dialog follows is not the reader's
 problem, and the dots are not a word.
 
 **A list of choices is in ALPHABETICAL order unless something says
-otherwise, and what says otherwise says why in place.** The colour schemes,
+otherwise, and what says otherwise says why in place.** The color schemes,
 the git hosts, the hypervisors and the toolchain catalog were each in the order
 somebody happened to write them in; this box's own hypervisor first, then
 whatever was added next, which is an order only that person can predict, and
@@ -473,7 +473,7 @@ control that cannot be reconsidered, and the same section's Save then means
 two different things. So every group of settings, on the Settings, Users,
 Nodes and Artifacts tabs and in the project dialogs: has one Save or Apply
 at its foot, and reads its fields when that is pressed. The one exception
-is the colour scheme in the gear: a theme is looked at, not decided, and a
+is the color scheme in the gear: a theme is looked at, not decided, and a
 swatch that needed a second press to be seen would be answering a question
 nobody asked. Buttons that *do* something (install, build, connect, end)
 are actions, not settings, and act on the press.
@@ -540,7 +540,7 @@ shape too.
 A row opens to be read, never as a form. Edit on its action bar swaps the
 fields in; Cancel (`.stop`) puts them away and drops what was typed, and
 Save puts them away having written it. A row Add made has nothing to go
-back to, so cancelling it removes it.
+back to, so canceling it removes it.
 
 A list of things to download or open is the Artifacts tab's rows
 (`.artrow`) wherever it appears: the name in bold with its facts in the
@@ -586,7 +586,7 @@ menu arrives (`menuIn`), a document brought to the front fades in over its
 own ground (`docIn`, contentIn's frames under a name of its own, so a
 document that already wears contentIn from its first paint still fades when
 it comes forward), a section or card folds over its height
-(`slideBody`, the section tween), a button or tab eases its colour, a
+(`slideBody`, the section tween), a button or tab eases its color, a
 tooltip fades, a toast
 slides, a modal leaves the way it arrived (caught off the `hidden` attribute
 by one observer, so no close site has to remember), and a row folding its
@@ -596,7 +596,7 @@ snaps is a change the eye has to find. Every one of them is off under
 `--fold: fade` on the card; a scheme that does says why in its own rules (Nostromo does).
 
 **What fades is what is drawn, never the ground under it.** A document's
-ground (the page colour, the panel colour, nostromo's glass and scanlines)
+ground (the page color, the panel color, nostromo's glass and scanlines)
 is painted by the pane's stack while that document is the one on show, and
 the document box itself paints none, so the fade on it carries only its
 content. When the box painted its own ground, the ground faded in with the
@@ -716,17 +716,17 @@ box, and nothing scrolls the page or the pane sideways on a phone.
 
 Applies to: scripts/dashboard/index.html, scripts/dashboard/nb-*.js; badge, pill, tag, severity, sev
 
-A tag that says who or what (a memory's type, a bug's severity and state, who wrote a history line) wears one of five badge colours, the same on every scheme, named once on `:root`, each with an edge for the pill's border: `--purple` `#b79ae0` (edge `--purple-edge` `#38294a`) for who did it, a reference and a state that does not apply; `--green2` `#7fc08a` (`--green2-edge` `#1f3f28`) for what is new, a project's own and fixed; `--blue2` `#77b7e8` (`--blue2-edge` `#1e3a4a`) for the user's, low and open; `--gold` `#d8b25c` (`--gold-edge` `#4a3c1e`) for a note, feedback, medium and a toggle that is on; `--red2` `#e0796f` (`--red2-edge` `#94423d`) for what is gone and high. Never a hex at the site: the day one shade drifts is the day two tags of one family stop looking like it. The pill's text is `--f-tag`.
+A tag that says who or what (a memory's type, a bug's severity and state, who wrote a history line) wears one of five badge colors, the same on every scheme, named once on `:root`, each with an edge for the pill's border: `--purple` `#b79ae0` (edge `--purple-edge` `#38294a`) for who did it, a reference and a state that does not apply; `--green2` `#7fc08a` (`--green2-edge` `#1f3f28`) for what is new, a project's own and fixed; `--blue2` `#77b7e8` (`--blue2-edge` `#1e3a4a`) for the user's, low and open; `--gold` `#d8b25c` (`--gold-edge` `#4a3c1e`) for a note, feedback, medium and a toggle that is on; `--red2` `#e0796f` (`--red2-edge` `#94423d`) for what is gone and high. Never a hex at the site: the day one shade drifts is the day two tags of one family stop looking like it. The pill's text is `--f-tag`.
 
-### project-colour
+### project-color
 
-Applies to: scripts/dashboard/index.html, scripts/dashboard/page-panes.js, scripts/dashboard/page-projsettings.js, scripts/dashboard/tab-docker.js; project colour, stripe, swatch, tone
+Applies to: scripts/dashboard/index.html, scripts/dashboard/page-panes.js, scripts/dashboard/page-projsettings.js, scripts/dashboard/tab-docker.js; project color, stripe, swatch, tone
 
-A project may carry a colour, one of the nine swatches in its settings, and the page says whose a thing is with it in four places and no others: its tab in the strip (a 3px stripe on the left, a tint of 10% at rest and 28% when it is the one in front), its row in the sidebar (the stripe and a 6% tint, on the card), the bar of the pane showing it (the stripe only), and the heading of its group in the Docker manager (a 4px stripe and a 16% tint, as `--gc`, the line colour for containers that belong to no project). The bar keeps the ground every bar has: a tint there sat over the pane's black and made a notebook's bar the one bar that looked like no other (the operator, 29 Sep). The colour arrives as `--pc` on the element; the swatches are circles of their own size, never the control height.
+A project may carry a color, one of the nine swatches in its settings, and the page says whose a thing is with it in four places and no others: its tab in the strip (a 3px stripe on the left, a tint of 10% at rest and 28% when it is the one in front), its row in the sidebar (the stripe and a 6% tint, on the card), the bar of the pane showing it (the stripe only), and the heading of its group in the Docker manager (a 4px stripe and a 16% tint, as `--gc`, the line color for containers that belong to no project). The bar keeps the ground every bar has: a tint there sat over the pane's black and made a notebook's bar the one bar that looked like no other (the operator, 29 Sep). The color arrives as `--pc` on the element; the swatches are circles of their own size, never the control height.
 
 ## Pages
 
-Each page is a layout of labelled blocks on a frame, named for what it is for, on the platform it is built for.
+Each page is a layout of labeled blocks on a frame, named for what it is for, on the platform it is built for.
 
 ### the dashboard (Web app)
 
@@ -817,7 +817,7 @@ and every theme at once was the whole view scrolled past (the operator, 28
 Sep). The one shown is fields like any tab's, never a box of its own. Rules
 live inside the entry they hold for and nowhere else (the operator, 29
 Sep): a Rules section inside the Design language fold for the whole
-design, one inside each theme above its colours, one inside each page
+design, one inside each theme above its colors, one inside each page
 under its board, each following the pulldown; a rules fold below
 everything read as the rules. Every rules list here is the Briefing's
 (nb-rules.js): Add a rule first, a folded row a rule with its name and when
@@ -828,16 +828,16 @@ piece by piece, through its rules and `bb design show`, never as one dump. A the
 them, one shown at a time like the language's, for what holds for that
 theme or that page alone; a session meets one as HOLDER/RULE.
 
-**The Design view's board is the one surface here whose colours are data.**
+**The Design view's board is the one surface here whose colors are data.**
 A page's blocks are painted in the project's own language (`nb-design.js`,
 `blockStyle`), inline from the saved hex, because the board is a picture of
 that project and not chrome of this page; everything around the board (the
 frame's edge, the selection outline, the sizing corner) is the page's
 tokens, and the corner shows on the selected block only, since a tap
 selects a block before anything drags it. Its controls are the framework's:
-choices in labelled selects on a `.dsrow` that lines up at the bottom, the
+choices in labeled selects on a `.dsrow` that lines up at the bottom, the
 row's prose field growing only to the width the other tabs give a field so
-what follows it stays beside it, colours as a chip beside a seven-character
+what follows it stays beside it, colors as a chip beside a seven-character
 field, prose in a proseline.
 
 ### the dashboard on a phone (Web app)
@@ -867,7 +867,7 @@ on iOS alone, so Safari does not zoom.
 A finger is not a pointer. On a coarse pointer (`@media(pointer:coarse)`)
 every button in a dialog and in the notebook is `--tap` high, and the small
 controls a thumb meets (a tab's close and minimize, the new-tab button, the
-colour swatches) are at least 30px; a desktop keeps its tighter strip. A bar
+color swatches) are at least 30px; a desktop keeps its tighter strip. A bar
 of buttons that spans a phone shares its width (`flex: 1 1 0; min-width: 0`)
 rather than each taking its text's, so the last one is never cut off: at
 344px, a folding phone's cover screen, four did not fit. "Both widths" means

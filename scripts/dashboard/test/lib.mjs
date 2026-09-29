@@ -376,7 +376,7 @@ export const freePoll = page => page.evaluate(() => {
 
 export async function openFold(page, sel){
   // Resolved to a handle first, and the wait done through that rather than
-  // through the selector: these are often Playwright's own selector flavour
+  // through the selector: these are often Playwright's own selector flavor
   // (`:has(.mname:text-is("tabs"))`), which page.$ understands and the page's
   // own querySelector does not.
   //

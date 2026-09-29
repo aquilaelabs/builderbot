@@ -452,7 +452,7 @@ case "$_ids" in
         if [ -z "${ID:-}" ]; then
             FAMILY_WHY="/etc/os-release is missing or names no ID, so there is nothing to tell what this is."
         else
-            FAMILY_WHY="${PRETTY_NAME:-$ID} is not a family this knows (ID=${ID} ID_LIKE=${ID_LIKE:-none}). It handles the Debian, RHEL, Arch and SUSE families, and Alpine, Void and Gentoo; a derivative of one of those is recognised by its ID_LIKE. A new family is a case in this script's 'the machine's own tools' block."
+            FAMILY_WHY="${PRETTY_NAME:-$ID} is not a family this knows (ID=${ID} ID_LIKE=${ID_LIKE:-none}). It handles the Debian, RHEL, Arch and SUSE families, and Alpine, Void and Gentoo; a derivative of one of those is recognized by its ID_LIKE. A new family is a case in this script's 'the machine's own tools' block."
         fi ;;
 esac
 INIT=""

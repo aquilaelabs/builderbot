@@ -1,5 +1,5 @@
 // A project's settings dialog: its name, its nodes, the model and effort
-// every session starts on, its colour, the dials of what Claude may do
+// every session starts on, its color, the dials of what Claude may do
 // there, the git credential, and the submit that applies each change in
 // turn. Unlinking and deleting a project start here too.
 //
@@ -10,7 +10,7 @@
 
 "use strict";
 
-// ---- a project's settings: model, effort, colour and the dials ----------
+// ---- a project's settings: model, effort, color and the dials ----------
 
 // The Claude card: the standing model/effort every send applies. Options are
 // the same tables the send box used to carry; "Claude's default" is the empty
@@ -64,14 +64,14 @@ function rnLoadModelNow(name){
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
                  node: "", nodes: "", reads: "", build: "", test: "", outputs: "",
                  capture_days: "7", gate: "", color: ""};
-// The colours a project can be, by the names prefs.py stores (COLORS there)
+// The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
 const PROJECT_COLORS = [["", ""], ["red", "#e5534b"], ["orange", "#e8883a"],
                         ["yellow", "#d4b33a"], ["green", "#57ab5a"], ["teal", "#39b5b0"],
                         ["blue", "#539bf5"], ["violet", "#a371f7"], ["pink", "#e0669e"]];
 const colorTone = name => (PROJECT_COLORS.find(([n]) => n === name) || [])[1] || "";
-// The class and variable an element wears for a project's colour, or
+// The class and variable an element wears for a project's color, or
 // nothing for a project with none.
 const colorAttrs = name => {
   const tone = colorTone(name);
@@ -79,7 +79,7 @@ const colorAttrs = name => {
 };
 const projectColor = name =>
   (state?.projects || []).find(x => x.name === name)?.prefs?.color || "";
-// The project a tab is about, for its colour: a notebook's, or the project
+// The project a tab is about, for its color: a notebook's, or the project
 // whose Claude session a terminal tab holds. A plain shell has none.
 const tabProject = t => t.kind === "notebook" ? t.arg
   : t.kind === "term" && String(t.arg).startsWith("claude:") ? t.arg.slice(7).split(":")[0] : "";
@@ -607,7 +607,7 @@ async function rnSubmit(){
       // Said out loud when it did not happen, and which of the two reasons it
       // is: a session quietly left on the old model is exactly the confusion
       // this whole thing exists to remove, and a session deliberately left
-      // running is not a fault to colour red.
+      // running is not a fault to color red.
       if (running && launchChanged && !j.ended)
         notify(restartNow
                  ? `${name}: saved, but the session was not ended: `

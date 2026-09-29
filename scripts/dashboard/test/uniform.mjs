@@ -247,7 +247,7 @@ for (const kind of kinds){
 // that must be the SAME on every tab, which is why they are here and not in
 // each kind's own suite. A rule that is genuinely one tab's belongs there.
 //
-// Measured, never taken on faith: the colours and the layout are computed, so
+// Measured, never taken on faith: the colors and the layout are computed, so
 // a tab that restyles .actbar or .danger locally fails even though its markup
 // says the right words.
 //
@@ -404,9 +404,9 @@ for (const kind of kinds){
 
 // ---- controls in a row line up ---------------------------------------------
 // A row of controls sits on one line, and every control box on that line ends
-// at the same height. What breaks it is a row that centres its items while
+// at the same height. What breaks it is a row that centers its items while
 // some of them carry a label above (the design language, Controls): the
-// unlabelled select then floats between its neighbour's label and its field,
+// unlabeled select then floats between its neighbor's label and its field,
 // which is what the Nodes tab's mount rows did.
 //
 // Measured on the boxes, not on the wrappers: controls are grouped into lines
@@ -462,7 +462,7 @@ async function lineup(){
 // A select is ONE line high, at any width.
 //
 // The page draws its own <select> pickers (appearance:base-select in the
-// stylesheet, so the list takes the scheme's colours instead of Android's).
+// stylesheet, so the list takes the scheme's colors instead of Android's).
 // The one thing a base select does worse than a native one is a label that
 // does not fit: a native select truncates it, a base one WRAPS, and a picker
 // two lines tall drags its whole row out of shape. It cost the Phone tab's
@@ -529,8 +529,8 @@ for (const kind of kinds){
     off.length ? ': ' + off.join('; ') : ''}`);
 }
 
-// ---- colours and corners are tokens -------------------------------------------
-// docs/design-language.md, Shape and Colour: a hex outside the scheme blocks
+// ---- colors and corners are tokens -------------------------------------------
+// docs/design-language.md, Shape and Color: a hex outside the scheme blocks
 // is the default scheme leaking into the other eleven (a danger edge typed
 // six times, text on a filled accent in the default's --bg), and a radius
 // typed as a number is one a scheme cannot square. Read off the stylesheet.
@@ -545,13 +545,13 @@ for (const kind of kinds){
   lines.forEach((l, i) => {
     if (i <= schemes) return;                      // the tokens and the schemes define hex
     const t = l.replace(/\/\*.*?\*\//g, '');
-    // Black and white inside a color-mix() are not colours of a scheme, and
-    // #2b2b2b is the terminal's own ground (see .pane iframe), never a page colour.
+    // Black and white inside a color-mix() are not colors of a scheme, and
+    // #2b2b2b is the terminal's own ground (see .pane iframe), never a page color.
     const hex = t.replace(/#000000|#ffffff|#2b2b2b/g, '');
     if (/#[0-9a-fA-F]{6}\b/.test(hex)) off.push(`${i + 1}: ${t.trim().slice(0, 60)}`);
     if (/border-radius:(8|6|4|10)px/.test(t)) off.push(`${i + 1}: ${t.trim().slice(0, 60)}`);
   });
-  ok(off.length === 0, `no hex colour and no numbered corner outside the scheme blocks (${off.length ? off.slice(0, 4).join('; ') : 'none'})`);
+  ok(off.length === 0, `no hex color and no numbered corner outside the scheme blocks (${off.length ? off.slice(0, 4).join('; ') : 'none'})`);
 }
 
 // ---- a fold stays the way it was left ---------------------------------------
@@ -586,7 +586,7 @@ for (const kind of kinds){
 // docs/design-language.md, Settings: nothing on a tab takes effect until Save
 // or Apply is pressed, because a select that writes on the change is a control
 // that cannot be reconsidered, and the same section's Save then means two
-// different things. The one exception is the colour scheme in the gear, which
+// different things. The one exception is the color scheme in the gear, which
 // is not on a document tab and is not measured here.
 //
 // Read off the HANDLERS, which is the only place the answer lives: a control
@@ -740,7 +740,7 @@ for (const kind of kinds){
 ok(seenSects.size <= 1,
    `a section heading wears one skin everywhere (${JSON.stringify([...seenSects])})`);
 ok(seenReds.size <= 1,
-   `a verb that cannot be undone is the same colour everywhere (${JSON.stringify([...seenReds])})`);
+   `a verb that cannot be undone is the same color everywhere (${JSON.stringify([...seenReds])})`);
 
 // The fence inside the one page: a renderer that throws must break its own
 // tab and nothing else: before renderGuarded, one bug in one kind's render
@@ -817,10 +817,10 @@ for (const kind of kinds){
 // text on the fill came out under AA, nostromo worst at 3.56:1, which is the
 // one somebody noticed. The active tab is measured because it had BOTH
 // failures: the fill was too light, and its name is a `.lbl`, the same class
-// as the quiet field-label helper, so it wore that colour on top.
+// as the quiet field-label helper, so it wore that color on top.
 //
 // Read off the rendered pixels through a canvas rather than computed from the
-// tokens: --accent-deep is a relative colour now, and the point is what the
+// tokens: --accent-deep is a relative color now, and the point is what the
 // engine actually paints.
 {
   const SCHEMES = ['default', 'nostromo', 'slate', 'carbon', 'nocturne', 'moss',
@@ -867,7 +867,7 @@ for (const kind of kinds){
 // the first frame itself: whatever the switch starts is held at its start,
 // the pane is photographed and its pixels read through a canvas, and that
 // frame has to be the ground the settled tab stands on (its commonest
-// colour) with no black in it. Every kind in one scheme, the notebook in
+// color) with no black in it. Every kind in one scheme, the notebook in
 // every scheme, the schemes read off the page's own list.
 {
   const frame = async () => {
@@ -1072,7 +1072,7 @@ for (const kind of kinds){
   };
   ok(lists.themes.length > 3 && lists.themes[0] === 'Default'
      && sorted(lists.themes, { head: 1 }),
-     `the colour schemes are alphabetical after Default (${lists.themes.join(', ')})`);
+     `the color schemes are alphabetical after Default (${lists.themes.join(', ')})`);
   ok(sorted(lists.tools) && sorted(lists.admin),
      `the Tools and Administration cards are alphabetical (${lists.tools.join(', ')})`);
   if (lists.forges.length)
@@ -1227,7 +1227,7 @@ for (const kind of kinds){
     // Attached, not visible: the count is about requests, and a tab that
     // opens behind a switch on a narrow page has still asked for its data.
     // The driver's own way in first; a tab whose button is ghosted right now
-    // (Analysis with nothing to analyse) is opened the way a restored layout
+    // (Analysis with nothing to analyze) is opened the way a restored layout
     // opens it, since the count is about the open path and not the button.
     let came = true;
     try {

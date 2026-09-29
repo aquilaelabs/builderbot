@@ -412,7 +412,7 @@ ok(!r.rebuild && /the code has moved since/.test(r.text) === false,
   const opts = await page.$$eval(`${DM} [data-route="mode"] option`, os => os.map(o => [o.value, o.disabled]));
   ok(opts.some(([v, d]) => v === 'lan' && !d) && opts.some(([v, d]) => v === 'funnel' && d)
      && opts.some(([v, d]) => v === 'public' && d),
-     'the route picker offers lan, greys funnel without tailscale, and names public as unbuilt');
+     'the route picker offers lan, grays funnel without tailscale, and names public as unbuilt');
   const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
   const rapi = async body => (await fetch(URL.replace(/\/$/, '') + '/api/devapp', { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
   const pub = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'public' });
@@ -655,7 +655,7 @@ ok((await row()).down, '...and goes dead after it: there is nothing left to remo
 
 // A container that EXITED still exists: it holds its name and the project's
 // network, and `down` is the only thing that clears it. Asking compose only
-// about RUNNING containers left a crashed instance with a greyed-out Down and
+// about RUNNING containers left a crashed instance with a grayed-out Down and
 // no way out except a shell, which is the one thing these buttons are for.
 writeFileSync(`${DIR}/dockerstate/ep-silon.exited`, '1');
 await page.evaluate(() => refresh());
@@ -702,7 +702,7 @@ ok(await page.evaluate(() => [
      jobWhy('build failed; the tail of its output is below'),
      jobWhy(''),
    ].join(' | ')) === 'creating network: pool overlaps | build failed; the tail of its output is below | ',
-   'a failed job is summarised by its reason, not by the label above it');
+   'a failed job is summarized by its reason, not by the label above it');
 // Rebuild has to wake for the retry. A build records itself before the up
 // that follows it, so a failed up left the row insisting the build was
 // current: true, and not what somebody looking at a red row wants offered.
@@ -1297,7 +1297,7 @@ ok(/appdata store/.test(DDD.slash) && /appdata store/.test(DDD.nested)
 // instance is refused while the first is queued or running, where before
 // `up` never set the flag, so a thirty-minute implicit build inside it was
 // invisible to the guard. A different instance queues behind it rather than
-// being refused: the one-at-a-time is per instance, the queue serialises the
+// being refused: the one-at-a-time is per instance, the queue serializes the
 // node. Driven at the module with a stub queue, because the race is between
 // two requests and a browser cannot hold one open on purpose.
 const slot = execFileSync('python3', ['-c', `
@@ -1760,7 +1760,7 @@ await openManager();
 ok(await page.$eval(`${DM} .sect .wire`, e => /reading/.test(e.textContent)),
    'the wiring fold says nothing until it is opened');
 await page.click(`${DM} .sect > summary`);
-// 20s like its neighbours, not 15. The fold fetches, and this is the one
+// 20s like its neighbors, not 15. The fold fetches, and this is the one
 // assertion in this file that has timed out in a full run while passing 3/3
 // alone, three times now, always with a CI job or another suite sharing the
 // box. See bug #13: the code is not what is slow.
@@ -2054,7 +2054,7 @@ ok(dead.removes.length > 0 && dead.removes.every(x => !x),
 ok(dead.off.length > 0,
    'the rows are still listed with no daemon: the tab shows what is on record');
 ok(dead.off.every(Boolean),
-   '...greyed, every one of them, so an inert row looks inert before you press');
+   '...grayed, every one of them, so an inert row looks inert before you press');
 ok(dead.pills.length > 0 && dead.pills.every(t => /state unknown/.test(t)),
    '...saying the state is unknown rather than reporting one nobody asked for');
 ok(await page.$$eval('.dmtab .row[data-inst] .dmpill,.dmtab .row[data-inst] .actbar .state',
@@ -2080,8 +2080,8 @@ ok(!/state unknown/.test(await page.$eval('.dmtab', e => e.textContent)),
    '...and they still say what is running, rather than state unknown');
 // ...and a verdict that names no node gates nothing. This is the shape that
 // actually shipped: the field was absent, so `node || dockerNode` matched
-// itself and one node's silence greyed them all. Failing open here is safe:
-// a row whose own daemon is down is greyed by the tab's own overview.
+// itself and one node's silence grayed them all. Failing open here is safe:
+// a row whose own daemon is down is grayed by the tab's own overview.
 await page.evaluate(() => {
   state.docker = { on: false, why: 'docker does not answer: no route to host' };
   dockerRev++; drawPanes();
@@ -2112,7 +2112,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
 // an agent node is whether its agent is dialing in and what it says it
 // carries, and whether the controller can SEE what is running, which is still
 // a `docker ps` from here. The first switches the buttons off; the second
-// only greys what the rows would claim.
+// only grays what the rows would claim.
 //
 // This block drives the FIRST: the node's own census stops reporting a
 // daemon, which is a docker that died on a machine still talking to us. The
@@ -2256,7 +2256,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
                              null, { timeout: 20000 });
   // Asked again until it holds rather than sampled once: the status poll can
   // have caught the daemon down inside the window above, and its verdict
-  // greys every row until the next poll; the tab repaints only when its own
+  // grays every row until the next poll; the tab repaints only when its own
   // revision moves, so refresh() and a fresh ask go together (B69).
   {
     const until = Date.now() + patience(20000);
@@ -2275,7 +2275,7 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
 // manager does beyond compose runs a container as root over there, and the
 // whole reason that is acceptable is that the far side is a box built to be
 // wrecked, so the daemon has to carry the label nodes/provision-linux.sh puts on the
-// one it made, and an unlabelled machine is refused rather than driven.
+// one it made, and an unlabeled machine is refused rather than driven.
 {
   // Through the CENSUS, because that is where the stamp is read from on an
   // agent node now: the provisioner writes it on the machine and the agent
@@ -3563,7 +3563,7 @@ print(json.dumps(out))
      `the manager groups rows by project, alphabetically, with no project last (${heads.join(' | ')})`);
   // Each heading is a band that stands out from the rows under it (the
   // operator, 24 Sep): tinted and barred down its left, in the project's
-  // own colour when it has one, and plain for No project.
+  // own color when it has one, and plain for No project.
   const bands = () => page.$$eval('.dmtab .dmgroup', hs => hs.map(h => ({
     head: h.querySelector('b')?.textContent, none: h.classList.contains('none'),
     bg: getComputedStyle(h).backgroundColor, bar: getComputedStyle(h).boxShadow })));
@@ -3580,7 +3580,7 @@ print(json.dumps(out))
     null, { timeout: 10000 }).catch(() => {});
   b = await bands();
   ok(/57, 181, 176/.test(b.find(x => x.head === 'ep.silon')?.bar || ''),
-     `...in the project's own colour once it has one (${b.find(x => x.head === 'ep.silon')?.bar})`);
+     `...in the project's own color once it has one (${b.find(x => x.head === 'ep.silon')?.bar})`);
   await api('/api/prefs', { project: 'ep.silon', color: '' });
   const under = h => (g.find(x => x.head === h) || { rows: [] }).rows;
   ok(under('ep.silon').includes('ep.silon|main') && under('ep.silon').includes('helper-for-eps|main')

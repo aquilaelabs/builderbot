@@ -13,7 +13,7 @@ the slash-command route could not manage:
 
   - `/model` now raises a confirmation, and there is no IPC into a session
     (only tmux send-keys), so the dashboard was typing the next line into a
-    dialog. notify.py predicted exactly this: it refuses to recognise dialogs,
+    dialog. notify.py predicted exactly this: it refuses to recognize dialogs,
     because that means pattern-matching a TUI that changes every release.
   - a slash-command switch is saved as claude's default for NEW sessions too,
     so a per-send switch quietly changed global state. A launch flag is the
@@ -66,11 +66,11 @@ BRIEF = ("full", "terse")
 # project IS BuilderBot, whose sessions file those in its own tracker (the
 # operator, 24 Sep). Two of the gates' words, since there is nothing to ask.
 REPORT_MODES = ("auto", "deny")
-# A colour for the project, worn by its notebook tab and its row so that
+# A color for the project, worn by its notebook tab and its row so that
 # eight open notebooks can be told apart at a glance. Names, not hex: the
 # page maps each to a tone that sits on its palette, and a name survives a
 # theme change where a hex value picked against one background does not.
-# "" is no colour, which is the default and leaves nothing on the file.
+# "" is no color, which is the default and leaves nothing on the file.
 COLORS = ("red", "orange", "yellow", "green", "teal", "blue", "violet", "pink")
 
 _lock = threading.Lock()
@@ -220,7 +220,7 @@ def _load():
 
 
 def _clean(rec):
-    """One project's pair, with anything unrecognised read as "leave as is".
+    """One project's pair, with anything unrecognized read as "leave as is".
 
     Unset and invalid deliberately land in the same place: an entry
     hand-edited into nonsense should mean claude's own default, not an error
@@ -254,7 +254,7 @@ def _clean(rec):
             "test": str(rec.get("test") or "")[:500],
             "outputs": [str(g)[:200] for g in (rec.get("outputs") or [])
                         if str(g)][:16] if isinstance(rec.get("outputs"), list) else [],
-            # Anything unrecognised reads as auto, for the same reason an
+            # Anything unrecognized reads as auto, for the same reason an
             # unknown model reads as "leave as is": a hand-edited file must
             # not lock a session out of the notebook by typo.
             # What a session may do with git's network half (roadmap R36):
@@ -333,7 +333,7 @@ def get(project):
 # and the settings field shows it as the placeholder it would use.
 #
 # Tests only. "Run the tests" has one conventional answer per ecosystem;
-# "build" does not (which target, which flavour, which of an Android
+# "build" does not (which target, which flavor, which of an Android
 # project's four), so `bb build` still refuses and says so rather than
 # guessing at somebody's release variant.
 def all_projects(workspace=None):

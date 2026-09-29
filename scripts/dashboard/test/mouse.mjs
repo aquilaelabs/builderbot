@@ -36,7 +36,7 @@ ok(await page.evaluate(() => panes[0]) === ids0[1], 'a plain click still switche
 await page.click(`.tab[data-id="${ids0[1]}"] [data-min]`);
 ok(await page.$$eval('.tab:not([data-id])', gs => gs.length === 1), 'a minimized tab leaves a fading ghost');
 await page.waitForFunction(() => document.querySelectorAll('.tab:not([data-id])').length === 0);
-// The frame carries the terminal's own colour, because its document is
+// The frame carries the terminal's own color, because its document is
 // transparent until xterm paints and this page's dark color-scheme makes the
 // browser fill that gap with white. Without this the tab switch flashed.
 ok(await page.$eval('.slot.on iframe', el => {

@@ -81,7 +81,7 @@ def node_list(all=False):
     busy, inflight = {}, {}
     # Every job that has not finished, not only the system ones. A button
     # whose job type was not tracked here came back live on the repaint that
-    # followed the press: pressing() greys it for the round trip, and then
+    # followed the press: pressing() grays it for the round trip, and then
     # the render put a fresh, enabled one in its place. Update agent did
     # exactly that, which is what the operator kept seeing.
     for j in _rows("SELECT id, node, type, spec FROM jobs WHERE "
@@ -94,7 +94,7 @@ def node_list(all=False):
             sp = json.loads(j["spec"])
             # The apply's name beside the type: a system job is one type
             # for six things, and the Uninstall button was reading "is an
-            # uninstall in flight" off the type alone and never greying.
+            # uninstall in flight" off the type alone and never graying.
             entry["apply"] = sp.get("apply", "")
             busy[j["node"]] = {"id": j["id"], "what": sp.get("apply", ""),
                                "slot": str((sp.get("config") or {}).get("slot") or "")}
@@ -486,7 +486,7 @@ def rev():
     it so open views refetch instead of the list riding the status poll
     (docs/nodes.md §13). Liveness is derived, not written, so a node going
     QUIET writes nothing; the count of live nodes is folded in so that its
-    row goes grey without anyone touching the store."""
+    row goes gray without anyone touching the store."""
     return f"{_rev[0]}.{sum(1 for n in node_list() if n.get('live'))}"
 
 
@@ -2233,7 +2233,7 @@ def _jbump():
 
 
 # The jobs rev without the log chunks: a job queued, taken, finished,
-# cancelled, or a new step word, and nothing for a line of output. What a
+# canceled, or a new step word, and nothing for a line of output. What a
 # ROW watches. The Docker manager followed the jobs rev and refetched its
 # whole listing several times a second through every build, for a tail it
 # has since stopped drawing; the Jobs tab, which does draw the log, keeps
@@ -2246,7 +2246,7 @@ def jobs_state_rev():
 
 
 def _jstate_bump():
-    """A job was queued, taken, finished or cancelled: the jobs rev, and the
+    """A job was queued, taken, finished or canceled: the jobs rev, and the
     nodes rev with it, because a node's row carries what is applying on it,
     its last apply and its last runner failure, all read off the jobs. An
     open Nodes tab refetches on the nodes rev, so this is what lets it say
@@ -2441,7 +2441,7 @@ def _no_answer(job_id, node_id, timeout):
     name = n.get("name") or node_id
     if j.get("state") == "running":
         return (f"{name} started the job ({job_id}) and it did not finish within {timeout}s; "
-                "it has been cancelled")
+                "it has been canceled")
     busy = [x for x in jobs_for(node_id=node_id, active=True, n=5)
             if x.get("id") != job_id and x.get("state") == "running"]
     if busy:
@@ -3034,7 +3034,7 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
 def job_release(job_id, spec):
     """A queued job that was holding for its plan (spec["hold"], which
     job_next skips) gets the plan and joins the queue. False when the job
-    is no longer queued: cancelled meanwhile, and the plan is dropped."""
+    is no longer queued: canceled meanwhile, and the plan is dropped."""
     if not _rows("SELECT 1 FROM jobs WHERE id = ? AND state = 'queued'", (job_id,)):
         return False
     _exec("UPDATE jobs SET spec = ? WHERE id = ?",

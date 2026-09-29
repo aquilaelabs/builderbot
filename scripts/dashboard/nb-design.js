@@ -1,6 +1,6 @@
 // The notebook's Design view: what the project looks like, kept. One design
-// language (colours as tokens, type, shape, space, motion and the operator's
-// own rules) and pages laid out as labelled blocks on a phone or desktop
+// language (colors as tokens, type, shape, space, motion and the operator's
+// own rules) and pages laid out as labeled blocks on a phone or desktop
 // frame, each named for what it is for and the platform it is built for.
 // Three folds: the pages, the language and the themes; the pages and the
 // themes show one at a time, chosen on a pulldown, and each entry, the
@@ -42,7 +42,7 @@ function nbDesignView({$, nb, project, root}){
   const platformOf = p => byKey(presets().platforms, p.platform) || (presets().platforms || [])[0];
   const clone = o => JSON.parse(JSON.stringify(o));
   // The slug a holder's rule is named under, as design.py's _slug makes it.
-  const holderSlug = name => (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "colour";
+  const holderSlug = name => (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "color";
 
   async function loadDesign(){
     try{
@@ -188,18 +188,18 @@ function nbDesignView({$, nb, project, root}){
   }
 
   // The themes: a pulldown of them, the add bar, and the chosen one's
-  // colours. The first theme is the one the app starts on.
+  // colors. The first theme is the one the app starts on.
   function themesSection(t){
     const L = nb.dsLang, P = presets();
     const themes = L.themes || [];
     const rows = themes.map((x, i) => ({key: String(i), label: `${x.name || "unnamed theme"} (${x.mode})${i === 0 ? ", the default" : ""}`}));
     const body = `
       <div class="field"><div class="dsrow">
-        ${pick("dsThemePick", "Theme", rows, String(nb.dsShow.theme), "each a named set of colours, dark or light; the first is the one the app starts on, and a theme picker, where the app has one, offers them by name")}
+        ${pick("dsThemePick", "Theme", rows, String(nb.dsShow.theme), "each a named set of colors, dark or light; the first is the one the app starts on, and a theme picker, where the app has one, offers them by name")}
         ${ctl("dsThemeFrom", "Add one from", "", `<select id="dsThemeFrom">${opt(P.schemes, "default")}</select>`)}
         <button type="button" id="dsThemeAdd" ${themes.length >= (P.themes_max || 8) ? "disabled" : ""}>Add theme</button>
       </div></div>
-      ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet. Add one from a preset, or leave it: a session that builds the project chooses the colours and puts them here.</div></div>`}`;
+      ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet. Add one from a preset, or leave it: a session that builds the project chooses the colors and puts them here.</div></div>`}`;
     return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}`, body);
   }
 
@@ -317,7 +317,7 @@ function nbDesignView({$, nb, project, root}){
     });
   }
 
-  // One theme: its name and mode, its colours as rows (a name, a hex and
+  // One theme: its name and mode, its colors as rows (a name, a hex and
   // what it is for), and what can be done to it. Make default moves
   // another theme up to first.
   function themeBand(t, i, n){
@@ -327,21 +327,21 @@ function nbDesignView({$, nb, project, root}){
       <div class="field"><div class="dsrow">
         ${ctl(`dst-name-${i}`, "Name", "", `<textarea id="dst-name-${i}" class="proseline" rows="1" maxlength="40" data-dst="name">${esc(t.name)}</textarea>`, true)}
         ${ctl(`dst-mode-${i}`, "Mode", "", `<select id="dst-mode-${i}" data-dst="mode">${opt(modes, t.mode)}</select>`)}
-        ${ctl(`dst-from-${i}`, "Fill from", "replace this theme's colours with a preset's ten",
+        ${ctl(`dst-from-${i}`, "Fill from", "replace this theme's colors with a preset's ten",
               `<select id="dst-from-${i}" data-dst="from"><option value="">keep as they are</option>${opt(P.schemes, "")}</select>`)}
       </div></div>
       ${docSection("design", `rules:t${i}`, "Rules", (t.rules || []).length ? `${t.rules.length}` : "none",
         `<div class="hint">What holds for ${esc(t.name.trim() || "this theme")} alone. A session meets one as ${esc(holderSlug(t.name))}/NAME.</div>` + rulesList(`t${i}`, t.rules || (t.rules = [])), {open: true})}
-      <div class="field">${lbl("", "Colours", "each a name, a hex and what it is for; a session names them the same in the code")}
-      <div class="dscolours">${(t.colors || []).map((c, j) => `
+      <div class="field">${lbl("", "Colors", "each a name, a hex and what it is for; a session names them the same in the code")}
+      <div class="dscolors">${(t.colors || []).map((c, j) => `
         <div class="dsrow" data-dstc="${j}">
           ${ctl(`dst-${i}-name-${j}`, "Name", "", `<input id="dst-${i}-name-${j}" data-dsm="name" maxlength="40" autocomplete="off" value="${esc(c.name)}">`)}
           ${ctl(`dst-${i}-hex-${j}`, "Hex", "", `<div class="dsc"><span class="dschip" style="background:${esc(c.hex)}"></span><input id="dst-${i}-hex-${j}" data-dsm="hex" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c.hex)}"></div>`)}
           ${ctl(`dst-${i}-for-${j}`, "For", "", `<textarea id="dst-${i}-for-${j}" class="proseline" rows="1" maxlength="120" data-dsm="means">${esc(c.means)}</textarea>`, true)}
-          <button type="button" class="danger" data-dstcrm="${j}" title="take this colour out">Remove</button>
+          <button type="button" class="danger" data-dstcrm="${j}" title="take this color out">Remove</button>
         </div>`).join("")}</div></div>
       <div class="field"><div class="actbar"><span class="state">${i === 0 ? "the default: the app starts on it" : ""}</span>
-        <button type="button" data-dstcadd ${(t.colors || []).length >= (P.colors_max || 40) ? "disabled" : ""}>Add colour</button>
+        <button type="button" data-dstcadd ${(t.colors || []).length >= (P.colors_max || 40) ? "disabled" : ""}>Add color</button>
         ${i === 0 ? "" : `<button type="button" data-dstdefault title="the app starts on this theme">Make default</button>`}
         <button type="button" class="danger" data-dstrm title="take this theme out">Remove theme</button></div></div>
     </div>`;
@@ -402,7 +402,7 @@ function nbDesignView({$, nb, project, root}){
   // is the accent, the reading area is the page itself.
   const WEAR = {header: "panel", nav: "panel", tabs: "panel", sidebar: "panel", footer: "panel",
                 button: "accent", hero: "accent"};
-  // The default theme's colours by role, whatever the design calls them
+  // The default theme's colors by role, whatever the design calls them
   // (presets.roles), falling back to the dashboard's own scheme: the board
   // is painted in the language, and a theme with a "page" and a "surface"
   // is still a page and a surface.
@@ -630,8 +630,8 @@ function nbDesignView({$, nb, project, root}){
     if (pp) pp.onchange = e => { nb.dsShow.page = e.target.value; drawDesign(); };
   }
 
-  // The themes: the chosen one's colours typed in place; a theme from a
-  // preset is the ten colours in its hexes, named for it.
+  // The themes: the chosen one's colors typed in place; a theme from a
+  // preset is the ten colors in its hexes, named for it.
   function wireThemes(body, t){
     const L = nb.dsLang, P = presets();
     const fromScheme = (key, name) => {

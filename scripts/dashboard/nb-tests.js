@@ -277,7 +277,7 @@ function nbTestsView({$, nb, project}){
       body.innerHTML = `${sub}
         <label>What it protects</label>
         <textarea class="tstP" spellcheck="false"
-          placeholder="the behaviour that breaks if this goes red">${
+          placeholder="the behavior that breaks if this goes red">${
             esc(draft ? draft.protects : t.protects)}</textarea>
         <label>What it exercises<span class="help" data-tip="fixtures, stubs, what is real and what is faked" tabindex="0">?</span></label>
         <textarea class="tstN" spellcheck="false"

@@ -59,7 +59,7 @@ jobs:
     #
     # On THIS job, not the workflow. It used to be on the workflow, and then
     # the `record` job below (a bookkeeping step that waits for the node's
-    # runner) kept a cancelled run alive in the group, and the next build
+    # runner) kept a canceled run alive in the group, and the next build
     # (a manual dispatch included) sat in "waiting for build image #N" for as
     # long as that runner was busy or away. A recorder must not be able to
     # hold up the build it records.
@@ -259,7 +259,7 @@ jobs:
   # self-hosted runner, and the alternative is a PAT.
   record:
     needs: build
-    # Failed, cancelled and skipped are exactly the outcomes worth recording.
+    # Failed, canceled and skipped are exactly the outcomes worth recording.
     if: always()
     # The image is pushed by the time this runs, so nothing waits on it: with
     # the box down the job simply queues until the box is back, and records a

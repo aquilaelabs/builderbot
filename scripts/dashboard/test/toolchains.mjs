@@ -501,7 +501,7 @@ ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
 // The tab is laid out like the notebook and the other document tabs. It was
 // the odd one out: an inset on the darker ground rather than filling its pane,
 // a 12px gutter applied to a wrapper instead of 14px on the rows, and a hover
-// highlight no other list here has, in a hardcoded colour no scheme reached.
+// highlight no other list here has, in a hardcoded color no scheme reached.
 ok(await page.$eval('.doc:has(.tc)', e => e.classList.contains('flush')),
    'the Toolchains tab fills its pane, like every other document tab');
 ok(await page.$eval('.tc', e => getComputedStyle(e).padding) === '11px 14px',
@@ -618,7 +618,7 @@ await page.click('#bToolchains');
 await page.waitForFunction(() => document.querySelectorAll('.doc .tc').length > 0);
 ok(true, 'and reopens from the card');
 // The strip lives on the server and is handed to every browser, so a tab kind
-// the store does not recognise is dropped on every read, which is why this
+// the store does not recognize is dropped on every read, which is why this
 // one came back from a reload, or a container restart, missing.
 await page.reload();
 await ready(page);

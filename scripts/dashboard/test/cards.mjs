@@ -243,7 +243,7 @@ await page.waitForFunction(() => document.getElementById('docDot').className.inc
 ok(await page.$eval('.card[data-card="doctor"]', el => el.classList.contains('closed')), 'a FAIL leaves a collapsed doctor card collapsed');
 ok(await page.$eval('#doctor', el => !el.hidden), '...but opens the detail behind it');
 ok(await page.$eval('#docBar', el => getComputedStyle(el).display === 'none'), 'collapsed card hides the status row too');
-// A problem reads as one: its line takes the level's colour, and what the
+// A problem reads as one: its line takes the level's color, and what the
 // check said after its first line is on the card, not only in a title a phone
 // never shows. They rendered as plain body text once, under a red dot.
 const probLines = await page.$$eval('#doctor .probs .sub', els => els.map(el => {
@@ -257,7 +257,7 @@ const probLines = await page.$$eval('#doctor .probs .sub', els => els.map(el => 
   return { text: el.textContent, same, why: el.querySelector('.why')?.textContent || '' };
 }));
 ok(probLines.length === 2 && probLines.every(l => l.same),
-   `each problem line is drawn in its level's colour (${JSON.stringify(probLines.map(l => l.same))})`);
+   `each problem line is drawn in its level's color (${JSON.stringify(probLines.map(l => l.same))})`);
 ok(probLines.some(l => /runner offline/.test(l.text) && /bb logs --runner/.test(l.why)),
    '...and carries the rest of what the check said under it');
 doctorFixture('ok');
@@ -445,7 +445,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
        (loud.split('\n').find(l => l.startsWith('# ')) || '').slice(0, 50)})`);
 }
 // Nothing readable in /reports and the way in goes quiet: three ways to have
-// nothing (no mount, nothing in it, nothing that parses) and one greyed button
+// nothing (no mount, nothing in it, nothing that parses) and one grayed button
 // carrying the reason. A tab already open on it is closed once, when the page
 // first learns: a layout restored from last session can carry an Analysis tab
 // for a scanner that has since been unmounted, and one that stays only to say
@@ -749,7 +749,7 @@ const top = await (await page.$('.side .card[data-card]')).boundingBox();
 // Recorded, not sampled. The FLIP tween is 140ms, and asking for it in a
 // round trip AFTER the drag only works if that round trip happens to land
 // inside those 140ms: true on an idle box, false on a loaded one, which is
-// the test timing the browser rather than the behaviour. Wrapping
+// the test timing the browser rather than the behavior. Wrapping
 // Element.animate says whether the displaced card WAS animated, whenever
 // that was. Undone straight after, so nothing later in this file is
 // measuring through a patched prototype.
@@ -775,7 +775,7 @@ await page.reload(); await ready(page);
 ok((await order())[0] === 'runner', 'order survives a reload');
 
 // ▤ reset, now an item in the menu the gear opens rather than theom's
-// own action. The menu is the other half: twelve colour schemes, each swatch
+// own action. The menu is the other half: twelve color schemes, each swatch
 // rendered in the scheme it selects.
 await page.click('#bCards');
 await page.waitForSelector('#uiMenu:not([hidden])');
@@ -785,7 +785,7 @@ ok(await page.$eval('#uiMenu .sw[data-theme="default"]', b => b.classList.contai
    '...with the one in use marked, which is Default until something says otherwise');
 // A swatch is the palette itself at 1cm (the stylesheet defines each scheme
 // for .sw[data-theme] as well as for the page), so this reads the computed
-// colour rather than trusting that two lists match.
+// color rather than trusting that two lists match.
 const swAccent = t => page.$eval(`#uiMenu .sw[data-theme="${t}"] .swa`,
                                  e => getComputedStyle(e).backgroundColor);
 ok(await swAccent('default') !== await swAccent('nostromo'),
@@ -820,7 +820,7 @@ ok(scan.box && !scan.content,
    `...and the notebook's scanlines are on the pane's box, not across the scroll height (${JSON.stringify(scan)})`);
 // A surface that stops following the scheme does it silently: the text
 // fields, the memory folds and the pane's title bar all sat in the default
-// scheme's blue-grey through the first twelve because their colour was typed
+// scheme's blue-gray through the first twelve because their color was typed
 // in rather than named. A field is the cheapest one to keep honest.
 // The notebook's add field, open just above: the sidebar has no text field now that the phone is a tab.
 const fieldBg = () => page.$eval('.pane .nb #roadmapText', e => getComputedStyle(e).backgroundColor);
@@ -1241,14 +1241,14 @@ await page.evaluate(async () => {
     const after = got;
     signinPick = ['first-node', 'second-node']; drawAuth();
     document.getElementById('bSignInNo').click();
-    const cancelled = signinPick === null && !document.getElementById('signinNode');
+    const canceled = signinPick === null && !document.getElementById('signinNode');
     window.signIn = real;
-    return { opts, rows, after, cancelled };
+    return { opts, rows, after, canceled };
   });
   ok(picked.opts.join(',') === 'first-node,second-node' && picked.rows === 0,
      `with several nodes the card offers a select of them, not a button each (${picked.opts.join(', ')})`);
   ok(picked.after === 'second-node', '...and Sign in runs the flow on the one chosen');
-  ok(picked.cancelled, '...and Cancel puts the row back');
+  ok(picked.canceled, '...and Cancel puts the row back');
 }
 
 
@@ -1436,7 +1436,7 @@ ok(true, 'pinning it puts it back on the sidebar');
 // ---- a row's tooltips -----------------------------------------------------
 // Two failures that were the same failure, and both were reported as "the
 // tooltip gets buried". A tip in a sidebar row is measured against the ROW,
-// because 340px of column cannot hold a 280px box centred on anything in it.
+// because 340px of column cannot hold a 280px box centered on anything in it.
 //
 // Measured on delta, which the fixture locks: a locked project's Claude button
 // is dead and carries the sentence saying why, which is what both halves of
@@ -1480,7 +1480,7 @@ ok(true, 'pinning it puts it back on the sidebar');
   // under the next row, that row's text straight through it.
   //
   // Waited for rather than read at once: the swap from the opacity fade to
-  // the colour one rides the same 150ms transition every other button state
+  // the color one rides the same 150ms transition every other button state
   // does, and reading it on the first frame reads the fade it is leaving.
   await page.waitForFunction(sel => getComputedStyle(
     document.querySelector(sel)).opacity === '1', btn, { timeout: 5000 });
@@ -1737,19 +1737,19 @@ await page.selectOption('#rnModel', 'sonnet');
 ok(!await page.$eval('#rnModel', e => e.disabled)
    && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    'with no session running it simply applies at the next start');
-// A colour for the project: nine swatches, none by default, and the one
+// A color for the project: nine swatches, none by default, and the one
 // picked is worn by the row and by the notebook tab once saved.
 await page.selectOption('#rnModel', '');
 ok(await page.$$eval('#rnColor [data-color]', bs =>
      bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
-   'the dialog offers a colour, with none picked for a project nobody coloured');
+   'the dialog offers a color, with none picked for a project nobody colored');
 await page.click('#rnColor [data-color="teal"]');
 await page.click('#rnGo');
 await refreshUntil(page, () => (state?.projects || [])
   .find(p => p.name === 'alpha')?.prefs?.color === 'teal', { timeout: 20000 });
 ok(await page.$eval('.doc .projtab [data-row="alpha"]', r =>
      r.classList.contains('pc') && /--pc:/.test(r.getAttribute('style') || '')),
-   'saving a colour puts it on the project\'s row');
+   'saving a color puts it on the project\'s row');
 await page.evaluate(() => openNotebook('alpha'));
 await nbShown(page);
 ok(await page.evaluate(() => {
@@ -1922,7 +1922,7 @@ ok(refused.status === 409 && /locked/.test(refused.error),
    '...and the server refuses a write into its notebook, not just the button');
 
 // The sidebar fits its column. It stopped doing so because a tooltip is laid
-// out even while hidden: a 280px box centred on an icon near the right edge of
+// out even while hidden: a 280px box centered on an icon near the right edge of
 // 340px hangs past it, and the column grew a horizontal scrollbar with nothing
 // visibly in the way. Invisible until it is enough to move something, which is
 // why it went unnoticed until a tooltip got a longer sentence.
@@ -2003,18 +2003,18 @@ execFileSync('mv', [`${DIR}/ws/.trash/beta-2`, `${DIR}/ws/beta`]);
 execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 
 // ---- the theme crossfades ----------------------------------------------
-// A colour transition that exists only while a swap is happening. A standing
+// A color transition that exists only while a swap is happening. A standing
 // one on every element would be the easy version and the wrong one: it would
 // slow every hover and every state light on the page to make one rare action
 // look nicer.
 {
   // What "crossfades" means, asserted without racing the 320ms window: the
-  // swap turns a colour transition ON for its duration. Sampling the colour
+  // swap turns a color transition ON for its duration. Sampling the color
   // partway through needed the evaluate to land inside that window, which a
   // loaded box does not promise; it read as a cut on the node running the
   // suite, and reading it synchronously instead caught the value before the
   // transition had started. So: the class and the transition it brings are
-  // the claim, and the colour is checked once the swap has finished.
+  // the claim, and the color is checked once the swap has finished.
   const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   const was = await bg();
   const swap = await page.evaluate(() => {
@@ -2044,7 +2044,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 // rule, and a site declares only what is its own: font aside, that is the
 // whole contract. A field in a context the rule does not list silently wears
 // the BROWSER's default instead, which is how the log-retention box ended up
-// a 2px grey square in Arial beside a page of sunk monospace fields.
+// a 2px gray square in Arial beside a page of sunk monospace fields.
 {
   await page.click('#bCards');
   await page.waitForTimeout(400);

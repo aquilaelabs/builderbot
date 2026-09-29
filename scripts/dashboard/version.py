@@ -62,7 +62,7 @@ answers for itself.
 Only the target splits. The sha is the repo's either way, and the ordinal
 becomes the count of commits that touched THAT directory: still strictly
 increasing, so versionCode and AMO stay satisfied, but an untouched product's
-version stops moving every time its neighbour is edited. That churn is the
+version stops moving every time its neighbor is edited. That churn is the
 whole reason to split them: a shipped extension should not appear to change
 because somebody edited the app.
 

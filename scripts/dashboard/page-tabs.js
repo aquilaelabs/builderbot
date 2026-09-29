@@ -200,7 +200,7 @@ function viewAfterRestart(){
 //   reload  give its pane bar a reload button.
 // The Tools card's icons, one per tab kind a button there opens: drawn in
 // the same 16px stroke voice as the row icons further down. Declared ahead
-// of TABKINDS, which reads them at its own initialisation, rather than
+// of TABKINDS, which reads them at its own initialization, rather than
 // beside the row icons, which come ten thousand lines later (bug #27).
 const TOOL_ICONS = {
   // A book, open at the spine: the row's notebook button and the notebook

@@ -62,7 +62,7 @@ function drawChat(){
     const projs = ps.map(p => {
       // Unread is only ever marked on a channel that is YOURS. An admin is
       // shown every project's channel and most are somebody else's business:
-      // colouring those would be a page permanently asking to be read.
+      // coloring those would be a page permanently asking to be read.
       const n = notMine(p) ? 0 : unread["p:" + p.name] || 0;
       return `<button class="row chatrow${notMine(p) ? " notmine" : ""}${
         n ? " unread" : ""}" data-proj="${esc(p.name)}"

@@ -267,7 +267,7 @@ bb brief           the brief this project was started from: waiting for its firs
 bb design          what this project looks like, from the notebook's Design view:
                    its design language in a line, and its pages
 bb design show [ID|NAME]   the prompt for one page, or for the language alone:
-                   the colours as tokens, the type, the shape, the layout
+                   the colors as tokens, the type, the shape, the layout
 bb design file     docs/design-language.md as the notebook writes it
 bb design json     the record: the language, the pages, and the presets by key
 bb design schema   the record's shape with every limit, for a save that lands first time
@@ -512,7 +512,7 @@ cmd_projects() {
     local d found=0
     for d in "$WORKSPACE"/*/; do
         [ -d "$d" ] || continue
-        # Not a project, by the same mark the dashboard's list honours: the
+        # Not a project, by the same mark the dashboard's list honors: the
         # toolchain store, a dev instance's build tree, anything the operator
         # chose to hide.
         [ -f "$d/.bbignore" ] && continue
@@ -884,7 +884,7 @@ cmd_emu() {
             # assumed: where an X server for the card is up and EGL answers on
             # it with a vendor driver, the emulator can use the GPU. Nothing
             # starts that X server on a node yet (R20), so today this falls
-            # back to software, which is the behaviour this box has always had.
+            # back to software, which is the behavior this box has always had.
             local gpu vendor
             if [ -n "${ANDROID_EMULATOR_GPU:-}" ]; then
                 gpu="$ANDROID_EMULATOR_GPU"
@@ -896,7 +896,7 @@ cmd_emu() {
                 gpu=swiftshader_indirect
             fi
             # Under a software GPU the guest has no DRM render node, so HWUI's
-            # default Vulkan backend cannot initialise: the app draws, the view
+            # default Vulkan backend cannot initialize: the app draws, the view
             # hierarchy is complete, and every frame comes out blank. The guest
             # says so once in logcat ("E/MESA: Failed to open rendernode") and
             # is otherwise silent about it, which is why this cost somebody a
@@ -1517,7 +1517,7 @@ cmd_logs() {
             *[0-9]*) lines="$1" ;;
             # A flag this does not know used to fall straight through, so
             # `bb logs --node X --nope` quietly read the AGENT's journal and
-            # looked like the stream had been honoured. A wrong answer that
+            # looked like the stream had been honored. A wrong answer that
             # looks like an answer is the worst of the three outcomes.
             *) die "bb logs: no such option \`$1'. Streams are --agent," \
                    "--runner and --terminal; see \`bb logs --list'" ;;
@@ -3978,9 +3978,9 @@ EOF
 # ---- bb tool: what a toolchain adds to a session, under its own name -----------
 # `bb tool TOOL COMMAND...`: a toolchain's commands live under the toolchain's
 # name, so two toolchains may both have a `render` or a `shot` and none can
-# shadow one of bb's own verbs. The catalogue names each recipe's tool
+# shadow one of bb's own verbs. The catalog names each recipe's tool
 # (`tool` in config/toolchains.json), the Toolchains tab says so on the row,
-# and the suite holds the catalogue to the case below.
+# and the suite holds the catalog to the case below.
 cmd_tool() {
     local tool="${1:-}"; [ $# -gt 0 ] && shift
     case "$tool" in
@@ -4103,7 +4103,7 @@ tool_graphics() {
             # after of a screen, checked by a number rather than by eye.
             local a="${1:-}" b="${2:-}" n; img_file "$a"; img_file "$b"
             out="$(img_out "$a" diff "${3:-}" png)"; magick="$(gfx_tool graphics magick)"
-            # The count, then the same normalised in brackets: "1335.63 (0.0005)".
+            # The count, then the same normalized in brackets: "1335.63 (0.0005)".
             # The first word is the answer; compare exits non-zero whenever
             # the images differ, which is not a failure here.
             n="$("$magick" compare -metric AE "$a" "$b" "$out" 2>&1 >/dev/null || true)"; n="${n%% *}"

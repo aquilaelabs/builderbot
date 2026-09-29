@@ -20,7 +20,7 @@
   years), so the only line that changes per distribution is the installer
   ISO below, and provision-linux.sh sorts out the rest inside the guest (the
   Debian, RHEL, Arch and SUSE families, Alpine, Void and Gentoo; a
-  derivative is recognised by its ID_LIKE). The <vmtemplate> line is
+  derivative is recognized by its ID_LIKE). The <vmtemplate> line is
   Unraid's icon and nothing more; change os= and icon= to taste.
 -->
 <domain xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0" type="kvm">

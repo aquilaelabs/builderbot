@@ -33,10 +33,10 @@ const dockerWhy = () =>
 // them. The first cut of this read `state.docker.node || dockerNode`, which
 // reads as caution and is the opposite: with the field absent, which it was,
 // because nothing set it: the comparison became "this node equals itself"
-// and every node's rows were greyed by the default node's silence again, with
+// and every node's rows were grayed by the default node's silence again, with
 // the guard sitting right there looking like it worked. Failing open costs
 // nothing: the tab's own overview reports its node's daemon, and that is what
-// greys a row whose daemon is genuinely down.
+// grays a row whose daemon is genuinely down.
 const dmPollSays = () => {
   const about = state?.docker?.node;
   if (dockerNode && about !== dockerNode) return "";
@@ -73,7 +73,7 @@ function gateDocker(root, why){
     b.disabled = true;
     // As `title`, and left for the surface to do what it does with one: the
     // manager tab runs tipify() after this and turns it into a data-tip, the
-    // dev row does not and keeps the native tooltip its neighbours use. Which
+    // dev row does not and keeps the native tooltip its neighbors use. Which
     // means the reason is worn the same way as every other explanation on
     // whichever surface it lands, rather than in a third style of its own.
     b.title = why;
@@ -1239,7 +1239,7 @@ function dmWireRows(el, list = dockerList){
 // (built from a project, written here, or started by somebody else) is said
 // on the row itself, since that is what decides what can be done to it.
 function dmGroupsHtml(ins, cs, job, blind){
-  // A project's heading wears its own colour when it has one; `null` is
+  // A project's heading wears its own color when it has one; `null` is
   // the No project heading, which wears none.
   const head = (t, sub, tone) => `<div class="field dmgroup${tone === null ? " none" : ""}"${
     tone ? ` style="--gc:${tone}"` : ""}><b>${esc(t)}</b>${
@@ -1298,7 +1298,7 @@ function renderDockerInto(i){
   // page threw away everything it could still honestly say, which is most of
   // it. What an instance IS lives on this side (its name, its project, what it
   // was built from, what its env still wants); only whether it is RUNNING is
-  // the daemon's to know. So the rows are drawn from the store, greyed, and
+  // the daemon's to know. So the rows are drawn from the store, grayed, and
   // say nothing about their state: an unreachable daemon is not evidence that
   // anything stopped.
   // Three ways to be blind, and the poll's is the one that outlives a fetch:
@@ -1317,9 +1317,9 @@ function renderDockerInto(i){
   // Its own class rather than the projects tab's: the two look alike and a
   // selector that matched both would be a test passing on the wrong tab.
   // Said in words at the top, not only in the tooltips below: a tooltip is
-  // not reachable on a phone, and "why is everything greyed out" should be
+  // not reachable on a phone, and "why is everything grayed out" should be
   // answered by looking rather than by hovering.
-  // Why everything is greyed, in words at the top. The poll's sentence when it
+  // Why everything is grayed, in words at the top. The poll's sentence when it
   // has one; otherwise the daemon's own words from the call this page just
   // made, which is the case the poll cannot see: a VM that went away inside
   // the availability memo.
@@ -1332,7 +1332,7 @@ function renderDockerInto(i){
   // socket, so a controller that cannot ssh in changes nothing about whether
   // Up works, and gating on the listing ghosted Up, Down, Rebuild and Send
   // on a node where all four would have worked (B111). A listing that failed
-  // still greys the ROWS, because what they would claim about running and
+  // still grays the ROWS, because what they would claim about running and
   // stopped is exactly what nobody asked.
   const off = pollSays
     || (dockerList.on === false ? (dockerList.why || "the daemon did not answer") : "");

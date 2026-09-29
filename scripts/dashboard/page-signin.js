@@ -114,7 +114,7 @@ const windowMove = (part, cost) =>
   (part === "minor" || part === "major") && (cost?.projects || []).length > 0;
 
 // Which node a sign-in was asked about, when there was more than one to
-// choose from. Drawn by drawAuth, cleared by choosing or cancelling.
+// choose from. Drawn by drawAuth, cleared by choosing or canceling.
 let signinPick = null;
 
 // Sign in, however many times it takes. No terminal: the flow runs under a

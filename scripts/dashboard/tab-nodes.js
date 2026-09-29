@@ -60,7 +60,7 @@ async function loadNodes(){
 // the runner's census, a queued job) and replaces this element entirely, so
 // the restore below fires only when nothing repainted: an error, or an
 // action that changes no state. Put the confirm() BEFORE the call, so
-// cancelling leaves the button alive.
+// canceling leaves the button alive.
 async function pressing(btn, fn){
   if (!btn || btn.disabled) return undefined;
   btn.disabled = true;
@@ -181,7 +181,7 @@ function nodeDraft(n){
 }
 
 // What the row says beside a desired mount, from the agent's census: the
-// reported half of desired-vs-reported, in words rather than a grey nothing.
+// reported half of desired-vs-reported, in words rather than a gray nothing.
 function mountState(m, reported){
   const r = (reported || []).find(x => x.path === m.path);
   if (!r) return ["not applied yet", "warn"];
@@ -937,8 +937,8 @@ function renderNodesInto(i){
     // Said on the row before anybody presses anything: a five-version-old
     // agent otherwise looks exactly like a current one.
     const stale = nodeStale(n);
-    // A job of this type queued or running on this node. pressing() greys a
-    // button for the round trip; this is what keeps it grey afterwards,
+    // A job of this type queued or running on this node. pressing() grays a
+    // button for the round trip; this is what keeps it gray afterwards,
     // through the repaint that replaces the element.
     const inflight = t => (n.jobs || []).some(j => j.type === t || j.apply === t);
     // What a session is waiting on, as root, on THIS machine (roadmap R38):

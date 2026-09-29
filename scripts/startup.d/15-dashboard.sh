@@ -30,7 +30,7 @@
 # the variable it read: with DASHBOARD_AUTH gone from the template, its
 # unguarded expansion below killed this hook under set -u, and an updated
 # container came up with no dashboard at all (bug #55). The variable is read
-# by nothing here any more; bb still honours one passed for a single command.
+# by nothing here any more; bb still honors one passed for a single command.
 #
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
@@ -108,7 +108,7 @@ unbind -n MouseDown3Pane
 unbind -n MouseDown3Status
 unbind -n MouseDown3StatusLeft
 unbind -n MouseDown3StatusRight
-set -g status-style bg=colour236,fg=colour252
+set -g status-style bg=color236,fg=color252
 set -g status-left '#[bold] #S '
 set -g status-right ' builderbot '
 setw -g aggressive-resize on

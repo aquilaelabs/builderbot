@@ -249,7 +249,7 @@ fi
 # In a directory of its own, NOT a file straight under /tmp. /tmp is sticky,
 # and with fs.protected_regular (on by default since Ubuntu 20.04) a file
 # there that another account owns cannot be opened for writing whatever its
-# mode, so a lock a cancelled CI job left as `bb` could never be taken over
+# mode, so a lock a canceled CI job left as `bb` could never be taken over
 # by a session, or the reverse, and every run died on "cannot take" until
 # somebody with that account removed it (measured on bb-sandbox, 9 Sep). A
 # world-writable directory that is not sticky has no such rule: anyone can
@@ -951,13 +951,13 @@ case "$1" in
     echo "99.stub"; exit 0 ;;
   # What the daemon says it is. The provisioner's label lives here, and this is
   # how BuilderBot tells the sandbox from any other machine that answers
-  # Docker, so the suite can take the stamp away (unlabelled.fail) and can
+  # Docker, so the suite can take the stamp away (unlabeled.fail) and can
   # make it a DIFFERENT sandbox (uid file), which is the other question:
   # whether records from the last one are cleared when a new one is plugged in.
   info)
     [ -f "$ST/info.fail" ] && { echo "cannot connect to the daemon"; exit 1; }
     lbl='["builderbot.sandbox=1"]'
-    [ -f "$ST/unlabelled" ] && lbl='["com.example.other=1"]'
+    [ -f "$ST/unlabeled" ] && lbl='["com.example.other=1"]'
     uid="STUBDAEMON1"
     [ -f "$ST/uid" ] && uid="$(cat "$ST/uid")"
     printf '{"ID":"%s","Labels":%s,"ServerVersion":"99.stub"}\n' "$uid" "$lbl"
@@ -1241,7 +1241,7 @@ fresh
 #
 # DOCKER_HOST names an ssh:// address because that shape is now the feature's
 # switch: a sandbox VM is the only daemon the manager drives, so anything else
-# greys every control out and the suite would be testing a dead tab. The stub
+# grays every control out and the suite would be testing a dead tab. The stub
 # docker on PATH answers whatever it is pointed at, so no VM is involved.
 #
 # DOCKER_HOST_PATHS is cleared for the same reason and was found the same way.

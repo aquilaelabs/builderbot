@@ -2111,7 +2111,7 @@ pending.configure(write_json=write_json, state=STATE)
 # identity lands.
 settings.configure(write_json=write_json, state=STATE)
 settings.forget_runners = lambda: runners.reset()
-# What may be offered: the catalogues gate their unvetted entries on this
+# What may be offered: the catalogs gate their unvetted entries on this
 # one switch (roadmap R54, step 6), read live so a save takes at once.
 forges.unvetted_ok = lambda: bool(settings.get("offer_unvetted"))
 
@@ -2264,8 +2264,8 @@ import brief                                                     # noqa: E402
 brief.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
 
 # ---- a project's design language and its pages ------------------------------
-# What the project looks like, kept: colours as tokens, type, shape, space and
-# the operator's rules, and pages laid out as labelled blocks; a prompt a
+# What the project looks like, kept: colors as tokens, type, shape, space and
+# the operator's rules, and pages laid out as labeled blocks; a prompt a
 # session is pointed at and docs/design-language.md written from it: design.py.
 import design                                                    # noqa: E402
 
@@ -3037,7 +3037,7 @@ def snapshot(who):
         # everybody including the asker. More than one may (roadmap #24), each
         # in a worktree of their own, so this is a list and it is information
         # rather than a refusal: the row says who is here and nothing is
-        # greyed for it. The page decides how to word "you and alice".
+        # grayed for it. The page decides how to word "you and alice".
         "claude_with": projsessions.with_(sessions),
         # ...and which of them are working on a prompt right now, for the
         # dot beside each name (the operator, 24 Sep).
@@ -3057,7 +3057,7 @@ def snapshot(who):
         # the panel is open. This rides the poll because it is small and it
         # is what decides whether the button wears a dot.
         "chat": _chat_summary(who, ps),
-        # This account's colour scheme, for a browser that has none stored.
+        # This account's color scheme, for a browser that has none stored.
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),
         # Whether this account has read the getting-started guide, and
@@ -3990,7 +3990,7 @@ class Handler(BaseHTTPRequestHandler):
     def _get_trace(self):
         """GET /api/trace?since=T: what this server was asked since T,
         grouped by endpoint (R75 step 4). For an admin or a session: the
-        page's own behaviour is what it describes, and a session diagnosing
+        page's own behavior is what it describes, and a session diagnosing
         a tab that asks too much is the reader it exists for. Paths and
         query KEYS only, never values: a project's name in a query is the
         one thing here that is somebody's."""
@@ -4894,7 +4894,7 @@ class Handler(BaseHTTPRequestHandler):
                           users.get(users.owner_name() or ""))) == me)
         if busy:
             # Said as projects, not tmux names: "u_3deb3420~claude-hello"
-            # named nothing a person recognises, and every one listed is
+            # named nothing a person recognizes, and every one listed is
             # the asker's own.
             projs = sorted({tmux_base(n)[len("claude-"):] for n in busy})
             return self._json({"error": "end your Claude session"

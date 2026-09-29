@@ -252,7 +252,7 @@ await page.evaluate(() => refresh());
 await page.waitForFunction(() => document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
 ok((await page.$eval('#sessions [data-go="claude-ep_silon"]', el => el.textContent.trim())) === 'Claude: ep.silon', 'dotted project: session labeled by its project name');
 // `on`, not `primary`: the row's controls are icons now, and a live one is
-// lit by colour rather than by being a filled button.
+// lit by color rather than by being a filled button.
 ok(await page.$eval('#projects [data-c="ep.silon"]', b => b.classList.contains('on')), 'dotted project: Claude button knows the session is running');
 await page.click('#sessions [data-go="claude-ep_silon"]');
 await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));

@@ -76,7 +76,7 @@ by hand cost four commands and still could not see the failed builds.
   `tests` carries the discipline: one run at a time, no edits under the
   dashboard during one, kill by pid. Why each clause is there: three suites
   side by side is bug 13's reproducer, which is what the lock is for; a
-  lock a cancelled CI job left is taken over on the next run, since the
+  lock a canceled CI job left is taken over on the next run, since the
   directory is world-writable and not sticky; `pkill -f` and `pgrep -f`
   match your own prompt's command line, so a run is ended by the pid in
   its lock; a loop over a log that a dead command was supposed to write

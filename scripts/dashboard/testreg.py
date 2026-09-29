@@ -177,7 +177,7 @@ def _align(old, new):
     # run minted, so the same test never spells its name the same way twice,
     # and it would otherwise be unpaired on every ingest. With the tail gone
     # it matches exactly here, wherever an insertion above it moved it to,
-    # and never falls through to the likeness pass where a neighbour of
+    # and never falls through to the likeness pass where a neighbor of
     # similar wording could claim it (bug B121).
     a, b = [_stem(x["name"]) for x in old], [_stem(x["name"]) for x in new]
     # Standard LCS table. These are per-file rosters (a couple of hundred at
@@ -526,7 +526,7 @@ def revisions():
     shape bugs.revisions() has. What moves it is a run, and a bulk fill from
     `bb tests describe --from FILE`: both change rows an open tab has no other
     way to notice. Describing ONE deliberately does not: the panel draws its
-    own save, and a redraw it did not need would take a neighbouring row's
+    own save, and a redraw it did not need would take a neighboring row's
     unsaved typing with it.
 
     Counted rather than derived from the run history, which is capped: after

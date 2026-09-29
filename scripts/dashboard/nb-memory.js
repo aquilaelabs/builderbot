@@ -51,7 +51,7 @@ function nbMemoryView({$, nb}){
     // desktop, where there is room and this is a warning about what Claude
     // reads; shut on a phone, where the warnings were what you scrolled past
     // to reach a memory. The count is on the heading either way, in the warn
-    // colour, so a shut one still says something is wrong.
+    // color, so a shut one still says something is wrong.
     $("memDrift").innerHTML = j.issues.length
       ? docSection("memory", "drift", "Index",
                    `${j.issues.length} problem${j.issues.length === 1 ? "" : "s"}`,

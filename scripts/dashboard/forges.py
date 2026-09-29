@@ -17,7 +17,7 @@ and git does not care whose server answers.
 **A forge is derived, never stored.** The host in a project's origin URL says
 which of these it is, so there is no second record to drift out of step with
 the remote, and rewriting the remote by hand from a shell moves the answer
-with it. `forge_of()` is that lookup; an address on a host nobody recognises
+with it. `forge_of()` is that lookup; an address on a host nobody recognizes
 is the `git` entry, which promises nothing beyond git itself.
 
 The API dialects are three, not seven. Gitea's HTTP API is deliberately
@@ -98,12 +98,12 @@ FORGES = (
      "user": "oauth2",
      "kind": "gitea", "nested": False,
      "token": None, "hint": "a Gitea access token",
-     # Measured on Gitea 1.24: creating under an organisation needs
+     # Measured on Gitea 1.24: creating under an organization needs
      # write:organization, and under the account itself write:user, which
      # is not implied by the repository scope.
      "about": "Your own server. Give it the address you reach Gitea on, and "
               "a token with the repository scope, plus organization to create "
-              "a repository under an organisation and user to create one under "
+              "a repository under an organization and user to create one under "
               "your own account."},
     {"id": "forgejo", "name": "Forgejo", "host": "", "fixed": False,
      "vetted": "",
@@ -453,7 +453,7 @@ def create_repo(entry, host, token, path, scheme="https", user=""):
     Reached only when the host has already answered "not found" for it, which
     is the one answer that proves there is nothing there to harm. `user` is
     the account the token belongs to, when the host said: a repository can
-    be made under an organisation or under that account, and nowhere else.
+    be made under an organization or under that account, and nowhere else.
     """
     base = api_base(entry, host, scheme)
     if not base:
@@ -464,7 +464,7 @@ def create_repo(entry, host, token, path, scheme="https", user=""):
     if entry["kind"] == "gitlab":
         return _create_gitlab(base, entry["kind"], token, owner, repo, entry)
     # GitHub and Gitea both take {name, private} and both keep an
-    # organisation's repositories on a path of their own, with the account's
+    # organization's repositories on a path of their own, with the account's
     # as the fallback when the owner turns out to be a person.
     body = json.dumps({"name": repo, "private": True,
                        "auto_init": False}).encode()
@@ -479,7 +479,7 @@ def create_repo(entry, host, token, path, scheme="https", user=""):
     # a repository that was never there.
     if user and owner.lower() != user.lower():
         return (f"{entry['name']} would not create {path}: {owner} is not an "
-                f"organisation this token can create in ({first}), and the "
+                f"organization this token can create in ({first}), and the "
                 f"token is {user}'s, so it cannot make one under {owner}")
     j, why = _ask(f"{base}/user/repos", entry["kind"], token, body)
     if j is not None:

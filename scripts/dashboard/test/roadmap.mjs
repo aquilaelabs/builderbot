@@ -49,7 +49,7 @@ const open = () => page.$$eval('#roadmapList .roadmap', ts => ts.map(t => ({
 // ---- adding ------------------------------------------------------------
 // An icon now, and no count: the number was the panel's business, and the
 // row's job is to say the notebook exists and whether it is open. Lit is a
-// colour class rather than a filled button, so that is what is asserted.
+// color class rather than a filled button, so that is what is asserted.
 ok(await page.$eval(`${row('alpha')} [data-m]`,
      b => !!b.querySelector('svg') && !b.classList.contains('on')),
    'the row offers a notebook icon, unlit while no tab is open');
@@ -1391,7 +1391,7 @@ ok(!/notes about how you work/.test(told.slice(beforeQuiet)),
 // Whether a step can be sent is a fact about the session running beside it,
 // and it used to arrive only with the list, fetched when the notebook opened
 // and then never again. So starting Claude while looking at the Roadmap left
-// every arrow grey until the tab was closed and reopened.
+// every arrow gray until the tab was closed and reopened.
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadmap').length > 0);
 ok((await open()).some(i => i.can), 'with the session up, something can be sent');

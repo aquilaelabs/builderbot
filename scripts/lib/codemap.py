@@ -1290,7 +1290,7 @@ def coverage_ingest(root, idx, files, strip=""):
             # to the map's definition of that name nearest that line
             file, _, rest = key.partition(":")
             # Paths as the process saw them: a doubled slash from a harness
-            # that joins with one, a symlink the tree sits behind. Normalised
+            # that joins with one, a symlink the tree sits behind. Normalized
             # before the prefix comes off, and the prefix the same way.
             file = os.path.normpath(file)
             pre = os.path.normpath(strip) + "/" if strip else ""

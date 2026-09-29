@@ -226,7 +226,7 @@ checked before it is trusted.
 **No size is written down anywhere.** A size typed into a file is wrong the
 next time upstream ships. A row shows the footprint once the toolchain is
 installed (measured, and remembered after it is removed) and before that
-what an install would *download*, which is a different number and is labelled
+what an install would *download*, which is a different number and is labeled
 as one: Swift arrives as a gigabyte and unpacks to three.
 
 Upstream is asked for that download figure rather than guessed at, three ways,
@@ -603,17 +603,17 @@ arrangement and it survives restarts and image updates. The **▤** button in
 the top bar opens the appearance menu, whose first item puts it all back:
 default order (Doctor on top) with every card expanded.
 
-**Under it, twelve colour schemes**, all dark, because this page is read in a
+**Under it, twelve color schemes**, all dark, because this page is read in a
 dim room beside a terminal and a light one would be a different design rather
-than a recolour of this one. A scheme is nine custom properties: every rule in
+than a recolor of this one. A scheme is nine custom properties: every rule in
 the stylesheet draws from them, and the button and accent families are mixed
 from the scheme's own panel and accent (`color-mix`, with flat fallbacks), so
-a recolour reaches the tabs, the primaries and the active states rather than
+a recolor reaches the tabs, the primaries and the active states rather than
 stopping at the background. Each swatch is defined for `.sw[data-theme=…]` as
 well as for the page, which means the preview *is* the palette rather than a
 second copy of it that can drift.
 
-**Nostromo** is the one that is more than a recolour: amber phosphor on a
+**Nostromo** is the one that is more than a recolor: amber phosphor on a
 green-black hull, with a hazard decal along the header's bottom edge, a stencil
 tick on each card title, faint scanlines on the panels and a vignette on the
 page. All of it drawn: gradients and one pseudo-element, no image files. That
@@ -623,7 +623,7 @@ Nothing in it moves the layout, so switching schemes never nudges the page.
 
 The choice is kept in the browser (`localStorage`, `bb.theme`) rather than on
 the server beside the card order; that describes the work and should follow
-you between machines; which colours are comfortable is about the room you are
+you between machines; which colors are comfortable is about the room you are
 sitting in, and a phone in the dark may reasonably differ from a desktop at
 noon. It is also applied from a block in `<head>`, before the first paint,
 which a value fetched from the server could not be without a flash. The sidebar is what the *box* is doing; the command lists and
@@ -804,7 +804,7 @@ lives in its body. The cards:
   which name: they live under `bb tool NAME` (`bb tool graphics`, `bb tool
   diagrams`), one name per recipe, so the row says what installing it adds,
   two toolchains may both have a `render`, and none can shadow a verb of
-  bb's own; the suite holds the catalogue to the script. Each row also names the system packages its tool puts
+  bb's own; the suite holds the catalog to the script. Each row also names the system packages its tool puts
   on the picked machine, in that machine's package manager's names, and for
   one already installed which of them are missing there. They install with
   the tool and only then; uninstalling a tool leaves them, since another may
@@ -946,7 +946,7 @@ instances stay, since their compose file and env are this side's.
 **With no daemon reachable, the controls that would drive one are disabled**,
 each carrying the reason as its tooltip, and the manager tab says the same
 thing in words at the top: a tooltip is not reachable on a phone, and *"why is
-everything greyed out"* should be answered by looking. That is the node
+everything grayed out"* should be answered by looking. That is the node
 unset, or a sandbox VM this container
 cannot reach; `available()` in `devapp.py` already distinguishes them, and the
 answer rides the status poll memoised, because asking it properly is a
@@ -962,7 +962,7 @@ can run it. And the manager tab still opens, because disabling the way to
 instance *is*: its name, its project, what it was last built from, what its
 env still wants: lives on this side of the wire and needs no daemon; only
 whether it is *running* is the daemon's to know. So a manager opened against a
-VM that is off lists everything on record, greyed, each row saying **state
+VM that is off lists everything on record, grayed, each row saying **state
 unknown** rather than reporting one nobody asked for: an unreachable daemon is
 not evidence that anything stopped. It is also fast, because a daemon known to
 be off is asked nothing: `docker ps` over ssh to a machine that is not there
@@ -972,7 +972,7 @@ sits until its timeout, and that used to be the whole cost of finding out.
 with the `docker-host` capability are listed online or not; picking one
 switches the whole view to that node's daemon: one tab, re-rendered, never a
 tab per node. Each node's last-known container list is kept, so switching to
-an offline node paints instantly in the greyed state above rather than
+an offline node paints instantly in the grayed state above rather than
 spinning at a machine that will not answer, and the reason is that node's
 own. **New container** and **Send to Docker manager** gain the same select,
 defaulting to the project's own node from its settings dialog (a per-project
@@ -1152,11 +1152,11 @@ first use and refuses a different one after.
 
 Two nodes may point `toolchains` at the same NFS export deliberately, and then
 they are one store, and what is installed on either is installed for both: a
-node's toolchains are read from the store at every census, so its neighbour's
+node's toolchains are read from the store at every census, so its neighbor's
 install shows up within the census interval. What that arrangement needs is a
 lock, and it has one: an install is refused while a toolchain job is running on
 any node sharing that store, naming which, and the Toolchains tab says the store
-is shared before you press. Sharing is recognised by the mount's source, not
+is shared before you press. Sharing is recognized by the mount's source, not
 by the path, since every node's default path is the same string.
 
 **Four stores per node**, each a directory of its own: `data` (job
@@ -1265,7 +1265,7 @@ it is not needed to *be* a node (the agent is Python, and the provisioner
 installs that), but a project built with npm needs it, and so does anything
 driving a browser through Playwright, which declares it.
 
-**Two machines may share one toolchain store, and BuilderBot recognises the
+**Two machines may share one toolchain store, and BuilderBot recognizes the
 pair.** An NFS export mounted by the controller and by a node is one
 directory, and installing into it from both at once is version skew nobody
 can debug, so a toolchain job waits for any other on a machine that shares
@@ -1428,7 +1428,7 @@ methods, Debian's and RHEL's families for the provisioner), dev is the rest,
 written to each product's documented shape and never run. Off, only alpha
 is in the pickers and a dev entry asked for by name is refused with the
 sentence that names the switch; on, dev appears tagged *(dev)* and the
-header says *dev*, so the two dashboards are never confused. Each catalogue
+header says *dev*, so the two dashboards are never confused. Each catalog
 entry carries the evidence that vetted it (`forges.py`, `vmtemplate.py`,
 the provisioner's family list), and an entry crosses over when a lab suite
 or a real run proves it. At its foot, **Reset BuilderBot** starts the
@@ -1609,18 +1609,18 @@ each is its own instance, so what is half-typed in one survives working in
 another, and the button lights green while that project's is open. Its tab
 strip: **Briefing** (the rules, and what Claude remembers here), **Design**
 (what the project looks like, in four folds: the pages, laid out as
-labelled blocks on a phone or desktop frame, each named for what it is for
+labeled blocks on a phone or desktop frame, each named for what it is for
 and the platform it is built for, a web app or an Android, iOS, Linux,
 macOS or Windows app, since one project can be several; the design
 language, type and the exact families, shape, space, motion and what it
-governs; the themes, each a named set of colours, dark or light, that a
+governs; the themes, each a named set of colors, dark or light, that a
 preset fills and you add to or cut, the app starting on the first; and
 your own design rules; a theme and a page each carry rules of their own
 as well, for what holds for that theme or that page alone (the Nostromo
 scheme's textures, say), which reach a session named under their holder,
 `nostromo/hull`, and every rules list reads as the Briefing's does, a
 folded row a rule, inside the entry it holds for: the language's in its
-fold, a theme's above its colours, a page's under its board; the pages and
+fold, a theme's above its colors, a page's under its board; the pages and
 the themes show one at a time, chosen on a pulldown at the top; a new project's
 design is empty, no theme and no page, and a project built that way is
 built as a session sees fit, the session then putting the look it arrived
@@ -1813,7 +1813,7 @@ only if it can see that it arrived. There is no IPC into a session; the only
 door is its terminal, and a session "waiting for input" is either at its prompt
 or holding a permission dialog, which the title cannot tell apart. Answering a
 permission dialog on your behalf, blind, is the worst thing anything here could
-do, so instead of trying to recognise a dialog, it uses the one property every
+do, so instead of trying to recognize a dialog, it uses the one property every
 text box has and no dialog does: **it echoes what you type**. Type the line,
 look at the pane, and press Enter only if there is now one more of it on screen
 than there was. If it did not appear, the line is left in the input box unsent
@@ -1916,7 +1916,7 @@ gets sent twice.
 
 **Model and effort** are not questions in that box and are not applied by it.
 They are the project's own setting, at the bottom of its **settings dialog**
-(the gear on its row, which also gives the project a **colour**: a bar down
+(the gear on its row, which also gives the project a **color**: a bar down
 the left of its row and its notebook tab, so several open notebooks tell
 apart without reading each label), and `bb-tty` passes them as `--model` and `--effort`
 when it starts a session there, so a session that is up is already on them
@@ -1924,7 +1924,7 @@ and a send is only ever the send.
 
 **How much of what a session adds lands on its own** is the last row of the
 same dialog: *Claude may* add to the roadmap, file bugs, add rules and fill
-in build and test, each **auto**, **ask** or **deny**. Auto is today's behaviour: an item, report or
+in build and test, each **auto**, **ask** or **deny**. Auto is today's behavior: an item, report or
 rule a session adds lands at once, marked as its own. Ask holds it instead: the
 session is told "held for approval as R12", the notebook shows a band above
 its tabs with how many changes are waiting (and a count on each tab), the bell
@@ -2036,7 +2036,7 @@ rest of this is careful about.
 **Artifacts** is the fifth view: what the project has built, listed from its
 `dist/` directory, and the convention is the feature. Build systems scatter
 their outputs (gradle five directories deep, cargo into `target/`), and a tab
-that went looking for all of those would be a catalogue of build systems that
+that went looking for all of those would be a catalog of build systems that
 is wrong the week a new one arrives. So the deal is one word long: **what
 ships goes in `dist/`**, a session that builds something copies it there, and
 the tab lists `dist/` and nothing else. An empty tab on a project that builds
@@ -2256,7 +2256,7 @@ free of error-level issues; a locked one still counts: are set aside rather
 than shown as "unattributed". The label is reserved for paths that genuinely
 place nowhere, which is the case worth a look.
 
-That rule is a subtraction, and deliberately so: rather than recognising each
+That rule is a subtraction, and deliberately so: rather than recognizing each
 kind of thing that is not a project, findings attribute only to the projects
 worth reading them for, and everything else in the share falls out together.
 It matters because of how the toolchain store is mapped here, beside the projects
@@ -2665,7 +2665,7 @@ anyway. The node scans for it, on its own network.
 
 **A connection has one owner.** The account that connects a phone is the
 only one that can disconnect it; everybody else sees the connection with
-its controls greyed and the owner named. Every command a session asks for
+its controls grayed and the owner named. Every command a session asks for
 goes to that account (on their Phone tab and their bell, nobody else's),
 because the phone is on their desk and they are the one who said yes to it.
 
@@ -2800,7 +2800,7 @@ settings file that denies its file tools; `Read`, `Edit`, `Write` and
 `NotebookEdit`, since a deny rule names one tool and Read does not imply the
 rest: access to every *other* project under `/workspace`. Siblings are
 enumerated by name rather than matched by
-pattern, so a project called `app[1]` cannot quietly take its neighbours out of
+pattern, so a project called `app[1]` cannot quietly take its neighbors out of
 the list. That file is passed with
 `--settings`, which ranks as a command-line argument: above the project's own
 `.claude/settings.json` and `.claude/settings.local.json`, so a session cannot
@@ -3132,7 +3132,7 @@ Each account works as itself:
   you to delete. The login itself stays in the home, per machine
 - **its own terminals.** A shell session is named for the account, so two
   people opening a terminal on one project do not land in the same one
-- **its own tab strip and colour scheme**, which follow the account to any
+- **its own tab strip and color scheme**, which follow the account to any
   browser it signs in on rather than living in one browser
 - **the owner keeps this container's original home and session names**, so an
   install with one operator is unchanged by any of it
@@ -3172,7 +3172,7 @@ uncommitted at once. Two answers, and the cheap one is the truthful one: **git**
 is exact: a file changed in two trees at once is a collision whatever anybody
 intended, and it needs nothing recorded, while a **PreToolUse hook** adds the
 finer grain, naming the definition an edit lands in, which is a guess and is
-labelled as one. The hook also tells the second session, before its edit, that
+labeled as one. The hook also tells the second session, before its edit, that
 somebody else has that file open. It does not refuse it: each session is in its
 own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
@@ -3304,7 +3304,7 @@ All of them persist across updates, are secret-redacted, and move together to
 the `/logs` mount if you map one.
 
 **Kept for a number of days, not a number of boots.** Thirty by default, set
-in the dashboard's settings menu: the gear, beside the colour schemes. A
+in the dashboard's settings menu: the gear, beside the color schemes. A
 count was the wrong unit for the question anybody has (*was that this week?*)
 and a container in a crash loop can burn five generations in a minute;
 a ceiling of sixty generations survives for exactly that case.
@@ -3384,13 +3384,13 @@ the same per project, so the question a phone is picked up to ask, *is it
 done?*, is answered before anything is opened.
 
 **What else a project's views do.** Design is read here: the pages as
-their boards, the themes with their colours, and the rules under what they
+their boards, the themes with their colors, and the rules under what they
 hold for. Docker lists the project's containers with Start, Stop and
 Rebuild, each asked twice and run as a job on its node. Artifacts names
 the version and opens a file of `dist/` with whatever the phone has for
 its kind, which for an APK is the installer. Git fetches, pulls
 (fast-forward only) and pushes under the project's push rights. Settings
-sets the model, the effort and the project's colour, staged until Save.
+sets the model, the effort and the project's color, staged until Save.
 The controller's own settings are not in the app.
 
 **Its look.** The app wears the dashboard's schemes, by the same names and

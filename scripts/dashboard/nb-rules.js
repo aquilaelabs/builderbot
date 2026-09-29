@@ -206,7 +206,7 @@ function nbRulesView({$, nb, project}){
       put("paths", ".rlPaths"); put("words", ".rlWords");
       put("doc", ".rlDoc"); put("check", ".rlCheck");
       // Removing a row shifts every index above it; the set is rebuilt from
-      // the rows that stay so an open editor does not jump to its neighbour.
+      // the rows that stay so an open editor does not jump to its neighbor.
       row.querySelector(".rlRm").onclick = () => {
         const shift = s => new Set([...s].filter(j => j !== i).map(j => (j > i ? j - 1 : j)));
         nb.ruleEditing = shift(nb.ruleEditing); nb.ruleOpen = shift(nb.ruleOpen);

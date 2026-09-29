@@ -169,7 +169,7 @@ ok(acts.every(a => a.dl), '...and everything can be downloaded');
     (await (await fetch('/api/artifacts?project=alpha')).json()).artifacts);
   const kind = n => arts.find(a => a.name === n)?.kind;
   ok(kind('setup-1.2.sh') === 'script',
-     `a .sh in dist/ is a script, not an unlabelled file (${kind('setup-1.2.sh')})`);
+     `a .sh in dist/ is a script, not an unlabeled file (${kind('setup-1.2.sh')})`);
   ok(kind('install') === 'script',
      `...and so is a shipped installer with no extension, by its shebang (${kind('install')})`);
   ok(kind('firmware.bin') === 'file',

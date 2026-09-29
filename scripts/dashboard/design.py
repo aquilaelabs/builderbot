@@ -1,10 +1,10 @@
 """The notebook's Design view: a project's design language and its pages.
 
 The one thing the dashboard had no say in was what a project looks like:
-every colour, font and layout was a sentence typed into a session and
+every color, font and layout was a sentence typed into a session and
 gone with the conversation. This keeps them. A project has ONE design
-language (colours as tokens, type, shape, space, and the design notes the
-operator adds in their own words, for everything the settings cannot say) and any number of PAGES, each a layout of labelled
+language (colors as tokens, type, shape, space, and the design notes the
+operator adds in their own words, for everything the settings cannot say) and any number of PAGES, each a layout of labeled
 blocks arranged on a phone or desktop frame and named for what it is for
 ("the settings page"). The name is the target: applying a page's design
 means applying it there.
@@ -127,7 +127,7 @@ TEMPLATES = [
 ]
 TEMPLATE_KEYS = [t["key"] for t in TEMPLATES]
 
-# The colour tokens a language names, in the order a reader meets them:
+# The color tokens a language names, in the order a reader meets them:
 # what the page is painted on, what sits on it, the text, the edges, then
 # the four states. The names are the dashboard's own, so a session that
 # knows one knows the other.
@@ -137,15 +137,15 @@ TOKENS = [
     ("ink", "Text", "the text"),
     ("dim", "Muted", "secondary text and labels"),
     ("line", "Edge", "hairlines and borders"),
-    ("accent", "Accent", "the one colour that means \"this is the one\": the active tab, the primary button, a link"),
+    ("accent", "Accent", "the one color that means \"this is the one\": the active tab, the primary button, a link"),
     ("warn", "Warning", "a warning"),
     ("bad", "Danger", "an error, a destructive verb"),
     ("note", "Note", "an informational mark"),
     ("good", "Good", "success: a passing check, a legal move, a safe state"),
 ]
-# A theme is a named list of colours, each a name, a hex and what it is
+# A theme is a named list of colors, each a name, a hex and what it is
 # for: the ten above are what a preset fills it with, and the operator adds
-# a second surface, a chart ramp, a game's card colours, or takes one away.
+# a second surface, a chart ramp, a game's card colors, or takes one away.
 # A language has one theme or several (light and dark, a few presets), the
 # first being the one the app starts on. Where a theme picker sits is the
 # app's business: a session asked to make one takes the themes from here.
@@ -249,7 +249,7 @@ MOTION = [
 CHOICES = {"font": FONTS, "corners": CORNERS, "density": DENSITY, "motion": MOTION}
 
 def theme_from(scheme_key, name=""):
-    """A theme filled from a preset scheme: the ten colours, named and
+    """A theme filled from a preset scheme: the ten colors, named and
     explained, in the scheme's hexes, dark or light by its background."""
     key, label, colors = next((row for row in SCHEMES if row[0] == scheme_key), SCHEMES[0])
     # The preset's label says "(light)" to tell the pickers apart; a theme
@@ -266,7 +266,7 @@ def _luma(hexcol):
 LANGUAGE_DEFAULT = {"themes": [], "font": "system", "corners": "soft", "density": "comfortable",
                     "motion": "quiet", "scope": "", "rules": [], "fonts": ""}
 
-# Six hex digits, or eight when a colour carries its alpha: a glass theme's
+# Six hex digits, or eight when a color carries its alpha: a glass theme's
 # tokens do (B342), and a stylesheet reads #rrggbbaa as it reads #rrggbb.
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?$")
 
@@ -328,18 +328,18 @@ def _line(value, cap, what):
     return v
 
 
-def _clean_colour(m, what):
+def _clean_color(m, what):
     if not isinstance(m, dict):
-        raise _Refused(f"a colour in {what} is an object: name, hex, means")
-    name = _line(m.get("name"), 40, "a colour's name")
+        raise _Refused(f"a color in {what} is an object: name, hex, means")
+    name = _line(m.get("name"), 40, "a color's name")
     hexv = str(m.get("hex") or "").strip().lower()
     if not _HEX.match(hexv):
-        raise _Refused(f"{name or 'a colour'} in {what}: a colour is #rrggbb or #rrggbbaa, not {hexv!r}")
-    return {"name": name, "hex": hexv, "means": _line(m.get("means"), NAME_MAX, "what a colour is for")}
+        raise _Refused(f"{name or 'a color'} in {what}: a color is #rrggbb or #rrggbbaa, not {hexv!r}")
+    return {"name": name, "hex": hexv, "means": _line(m.get("means"), NAME_MAX, "what a color is for")}
 
 
 def _clean_theme(t, n):
-    """A theme as stored: a name, dark or light, and its colours, each
+    """A theme as stored: a name, dark or light, and its colors, each
     named once."""
     if not isinstance(t, dict):
         raise _Refused("a theme is an object: name, mode, colors")
@@ -348,10 +348,10 @@ def _clean_theme(t, n):
     raw = [c for c in (t.get("colors") if isinstance(t.get("colors"), list) else []) if isinstance(c, dict)
            and str(c.get("name") or "").strip()]
     if len(raw) > COLORS_MAX:
-        raise _Refused(f"{name} holds at most {COLORS_MAX} colours")
+        raise _Refused(f"{name} holds at most {COLORS_MAX} colors")
     colors, seen = [], set()
     for c in raw:
-        c = _clean_colour(c, name)
+        c = _clean_color(c, name)
         if c["name"].lower() in seen:
             raise _Refused(f"{name} names {c['name']} twice")
         seen.add(c["name"].lower())
@@ -365,8 +365,8 @@ def _clean_theme(t, n):
 
 def _clean_language(lang):
     """A language as stored, from whatever arrived: every choice one of the
-    vocabulary's, every colour a hex, the notes capped. A record from before
-    themes (one scheme and its ten colours) is read as one theme."""
+    vocabulary's, every color a hex, the notes capped. A record from before
+    themes (one scheme and its ten colors) is read as one theme."""
     if not isinstance(lang, dict):
         lang = {}
     out = dict(LANGUAGE_DEFAULT)
@@ -489,7 +489,7 @@ def rules_for(project, state=None):
             for name, r, holder in scoped_rules(full)]
 
 
-# What a colour is for, by the names a design gives it: the board and the
+# What a color is for, by the names a design gives it: the board and the
 # prompt read a theme's background, surface, text, edge and accent by role
 # whatever they are called.
 ROLES = {"bg": ("bg", "background", "page", "page-bg", "cream", "felt"),
@@ -666,11 +666,11 @@ def language_text(lang, platform=""):
     themes = lang["themes"]
     lines = []
     if not themes:
-        lines.append("Colours: none chosen yet. Choose them as tokens a stylesheet names once and every "
+        lines.append("Colors: none chosen yet. Choose them as tokens a stylesheet names once and every "
                      "surface reads, and put them into the design (bb design save) as a theme, named, dark or light.")
     elif len(themes) == 1:
         t = themes[0]
-        lines.append(f"Colours ({t['name']}, {t['mode']}), as tokens a stylesheet names once and every "
+        lines.append(f"Colors ({t['name']}, {t['mode']}), as tokens a stylesheet names once and every "
                      "surface reads, never a hex in a component:")
         lines.extend(f"  {c['name']} {c['hex']}" + (f": {c['means']}" if c["means"] else "") for c in t["colors"])
     else:
@@ -683,11 +683,11 @@ def language_text(lang, platform=""):
             lines.extend(_rule_lines(t.get("rules") or [], f"{t['name']}'s own rules", _slug(t["name"]), "    "))
     if len(themes) == 1:
         lines.extend(_rule_lines(themes[0].get("rules") or [], f"{themes[0]['name']}'s own rules", _slug(themes[0]["name"]), "  "))
-    lines.append("A filled accent surface carries the text colour on it, at AA contrast.")
+    lines.append("A filled accent surface carries the text color on it, at AA contrast.")
     lines.append(f"Type: {_font_means(lang, platform)}"
                  + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
                  + "; monospace for data (names, paths, numbers).")
-    lines.append(f"Shape: {_means(CORNERS, lang['corners'])}; hairlines 1px in the edge colour.")
+    lines.append(f"Shape: {_means(CORNERS, lang['corners'])}; hairlines 1px in the edge color.")
     lines.append(f"Space: {_means(DENSITY, lang['density'])}.")
     lines.append(f"Motion: {_means(MOTION, lang['motion'])}.")
     standing = [r for r in lang["rules"] if not (r["words"] or r["paths"])]
@@ -715,8 +715,8 @@ def _rule_lines(rules, head, scope, indent):
 
 
 def _slug(name):
-    """A colour's name as a CSS token: letters, digits and dashes."""
-    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "colour"
+    """A color's name as a CSS token: letters, digits and dashes."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "color"
 
 
 def _cap(text):
@@ -775,10 +775,10 @@ def file_text(rec):
     if lang.get("scope"):
         out += [f"It governs {lang['scope']}.", ""]
     themes = lang["themes"]
-    out += ["## Colour", "",
-            ("No theme chosen yet: the colours are tokens named once in the stylesheet, and the first "
+    out += ["## Color", "",
+            ("No theme chosen yet: the colors are tokens named once in the stylesheet, and the first "
              "session to choose them puts them here." if not themes else
-             "Colour comes only from these tokens, named once in the stylesheet"
+             "Color comes only from these tokens, named once in the stylesheet"
              + (f". The app starts on {themes[0]['name']}; a theme picker, where the app has one, "
                 "offers the themes by name, and every theme names the same tokens:" if len(themes) > 1 else ":"))]
     for i, t in enumerate(themes):
@@ -787,7 +787,7 @@ def file_text(rec):
         out += ["", "| token | value | for |", "|---|---|---|"]
         out += [f"| `--{_slug(c['name'])}` | `{c['hex']}` | {c['means']} |" for c in t["colors"]]
         out += _file_rules(t.get("rules") or [], _slug(t["name"]), f"Rules of {t['name']}'s own", "####")
-    out += ["", "A filled accent surface carries the text colour on it, at AA contrast.", "",
+    out += ["", "A filled accent surface carries the text color on it, at AA contrast.", "",
             "## Type", "", _cap(_font_means(lang)) + (f", set as {lang['fonts']}" if lang.get("fonts") else "")
             + ". Monospace for data: names, paths, numbers.", "",
             "## Shape", "", _cap(_means(CORNERS, lang["corners"])) + ". Hairlines are 1px in `--line`.", "",
@@ -802,7 +802,7 @@ def file_text(rec):
             out += ["", f"### {r['name']}", ""] + ([f"Applies to: {on}", ""] if on else []) + [r["text"]]
     if pages:
         out += ["", "## Pages", "",
-                "Each page is a layout of labelled blocks on a frame, named for what it is for, "
+                "Each page is a layout of labeled blocks on a frame, named for what it is for, "
                 "on the platform it is built for."]
         for p in pages:
             out += ["", f"### {p['name'] or 'unnamed page'} ({_platform(p['platform'])[1]})", "", page_text(p)]
@@ -872,7 +872,7 @@ def schema_text():
         "",
         "{",
         '  "language": {',
-        f'    "themes": [ {{ "name": "Night", "mode": "dark" | "light", "colors": [ {{ "name": "bg", "hex": "#1a1f26" or "#1a1f26cc", "means": "the page" }} ], "rules": [RULE] }} ],   at most {THEMES_MAX} themes, {COLORS_MAX} colours each, a colour name once per theme',
+        f'    "themes": [ {{ "name": "Night", "mode": "dark" | "light", "colors": [ {{ "name": "bg", "hex": "#1a1f26" or "#1a1f26cc", "means": "the page" }} ], "rules": [RULE] }} ],   at most {THEMES_MAX} themes, {COLORS_MAX} colors each, a color name once per theme',
         f'    "font": {" | ".join(k for k, _, _ in FONTS)},',
         f'    "corners": {" | ".join(k for k, _, _ in CORNERS)},',
         f'    "density": {" | ".join(k for k, _, _ in DENSITY)},',

@@ -173,7 +173,7 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   ok(r.status === 403, `a session cannot set its own node's limit (${r.status})`);
   r = await call('/api/v1/nodes', { action: 'reboot', id: minted.id }, bearer(toks[1]));
   ok(r.status === 403, `...nor reboot or shut down the machine it runs on (${r.status})`);
-  // A job is cancelled by somebody whose project it is (the review of 26
+  // A job is canceled by somebody whose project it is (the review of 26
   // Sep): a session's token for alpha cannot end beta's job, an
   // administrator can, and the code for the controller's own Claude sign-in
   // is not a session's to type.

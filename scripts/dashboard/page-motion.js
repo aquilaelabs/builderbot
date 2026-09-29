@@ -47,7 +47,7 @@ function armModal(el){
         {duration: 150, easing: "ease"});
       this.animate([{opacity: 1}, {opacity: 0}], {duration: 150, easing: "ease"}).finished.then(
         () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); } },
-        () => {});                        // cancelled: it was shown again, and stays
+        () => {});                        // canceled: it was shown again, and stays
     }});
 }
 
@@ -128,7 +128,7 @@ function slideCard(el, closing){
 // leaves the card where it is until it is gone.
 // The cards below still ride on the height tween, the same as the plain fold.
 // A second click mid-way cancels whatever phase is running, in the subtree
-// too. A cancelled fold's clean-up runs a microtask AFTER the newer fold has
+// too. A canceled fold's clean-up runs a microtask AFTER the newer fold has
 // set its own state, so it clears only while it still owns the card (the
 // token), or a re-open would run its gap phase with the body showing.
 // `fading` on the card is for the stylesheet: it clears the card's own fill

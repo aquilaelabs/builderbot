@@ -569,7 +569,7 @@ def _learn_host_key(addr):
     `docker -H ssh://…` shells out to ssh, and ssh run non-interactively
     REFUSES an unknown host rather than asking, so a node the controller has
     never ssh'd to fails with "Host key verification failed" and every Docker
-    control on the tab greys out. The documented cure was a person running
+    control on the tab grays out. The documented cure was a person running
     ssh-keyscan on the controller, which R47 took away with sessions: there
     is no session here to run it in any more.
 
@@ -853,7 +853,7 @@ def available():
     is a container run as root on the far side, which is only safe on a
     machine whose job is being wrecked and reset. So an address of any other
     kind is refused here, in one place, rather than half-working down the
-    line: the controls grey out wearing this sentence.
+    line: the controls gray out wearing this sentence.
     """
     n = _agent_here()
     if n:
@@ -1065,7 +1065,7 @@ def _guard(argv):
         return ""
     if not verb:
         return "a bare `docker` with no subcommand"
-    # The runs that tend the dev-data directory, recognised by SHAPE and never
+    # The runs that tend the dev-data directory, recognized by SHAPE and never
     # by verb. `docker run` with a bind is root on the daemon, so allowing the
     # verb would give away everything the namespace rule above protects;
     # allowing these gives away a mkdir, a mv and a test on one directory.
@@ -1317,7 +1317,7 @@ def containers():
         # From the TAIL, through the same reader availability uses. Cut from
         # the front, as this was, docker's connect error reads "command [ssh
         # -l bb -o Connect…" and stops, which is the half the operator knew
-        # (B106). It mattered less when a failed listing only greyed rows
+        # (B106). It mattered less when a failed listing only grayed rows
         # nobody could act on; now that the controls stay live and this line
         # is the whole account of what is not known, it is the message.
         return {"error": _why_not(r["out"]), "containers": []}
@@ -1744,7 +1744,7 @@ def to_host(path, mapping=None):
 # So the daemon makes it, in a container of its own. That is a `docker run`,
 # which is root-equivalent on whichever machine answers, and acceptable only
 # because that machine is the sandbox. Hence the gate below, and hence _guard
-# recognising these commands by rebuilding them rather than by allowing the
+# recognizing these commands by rebuilding them rather than by allowing the
 # verb: neither is load-bearing today, and both are what keeps this from
 # becoming load-bearing by accident.
 
