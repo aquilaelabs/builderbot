@@ -94,8 +94,9 @@ const bugsNow = () => (JSON.parse(readFileSync(`${DIR}/state/bugs.json`, 'utf8')
 const had = bugsNow();
 const own = bb(['bug', 'add', 'bb devapp status says the env is the operator\'s'],
                { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
-ok(own.status !== 0 && /not filed: this names BuilderBot.*bb report.*add --here/.test(own.stderr) && bugsNow() === had,
-   `a bug that names BuilderBot, filed in another project, is not filed there but sent to bb report (${own.stderr.trim().slice(0, 110)})`);
+ok(own.status !== 0 && /^\[builderbot\] not filed yet\. Send it with bb report .*or add --here/.test(own.stderr)
+   && own.stderr.indexOf('bb report') < 60 && own.stderr.indexOf('--here') < 200 && bugsNow() === had,
+   `a bug that names BuilderBot, filed in another project, is not filed there, and both ways on are in the first of what it says (${own.stderr.trim().slice(0, 110)})`);
 const colon = bb(['bug', 'add', 'bb: tests preflight runs every suite', '--sev', 'high'],
                  { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(colon.status !== 0 && bugsNow() === had,
@@ -118,7 +119,7 @@ ok(/setting Report BuilderBot bugs is deny/.test(quiet) && /`bb bug add --here` 
    '...and its sessions are told what deny means: the verb refuses, and --here files it in this tracker');
 const noNudge = bb(['bug', 'add', 'bb devapp status is wrong about the env'],
                    { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
-ok(noNudge.status === 0 && !/this names BuilderBot/.test(noNudge.stderr),
+ok(noNudge.status === 0 && !/not filed yet/.test(noNudge.stderr),
    '...and a bug naming BuilderBot filed there is not pointed at it');
 ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.report === 'deny',
    '...stored on the project as the one word that differs from the default');
