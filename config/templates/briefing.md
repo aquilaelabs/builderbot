@@ -19,7 +19,11 @@ Three things here are not this machine's and survive it being rebuilt: this
 project, on the projects share at /workspace; the toolchains, on the
 toolchain store; and the notebook, the controller's. Everything else,
 including /tmp and your home, is this machine's own disk and nobody's
-backup. Uncommitted work is on the share, so a restart cannot eat it.
+backup. Uncommitted work is on the share, so a restart cannot eat it. /tmp
+is made new each time the session is started, which an update of the
+controller does between two prompts; what Claude Code keeps there for the
+conversation (its scratchpad, its background commands' output) is kept
+across that, and anything else you put in /tmp is not.
 
 This briefing is the whole of what BuilderBot tells you, assembled fresh
 for each session. A block between BUILDERBOT:ENV:BEGIN and END in the

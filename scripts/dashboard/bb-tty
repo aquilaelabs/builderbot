@@ -291,6 +291,17 @@ in_view() {
     envf="$(cache_project_dir "$proj")/session.env"
     ( umask 077; env -0 > "$envf.new" && mv -f "$envf.new" "$envf" ) \
         || bad "Could not write this session's environment to $envf, so its view cannot start."
+    # Where what Claude Code keeps in /tmp between the turns of a
+    # conversation lives, so a session started again on the same
+    # conversation finds it (B376): the view binds this over
+    # /tmp/claude-<uid>. Made here, as the session account. A conversation's
+    # folder nothing has written to in two weeks goes, so it does not grow
+    # for good; one still in use is written to on every turn.
+    local scratch
+    scratch="$(cache_project_dir "$proj")/scratch"
+    if ( umask 077; mkdir -p "$scratch" ) 2>/dev/null; then
+        find "$scratch" -mindepth 2 -maxdepth 2 -type d -mtime +14 -exec rm -rf {} + 2>/dev/null || true
+    fi
     # The projects this one reads, one --reads each: the helper binds their
     # trees read-only, and repeated words keep the launcher line respawnable.
     local reads=() r

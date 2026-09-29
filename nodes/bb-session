@@ -12,7 +12,10 @@ mount, PID and IPC namespace in which:
     share, and in that share the other projects' transcripts are empty;
   * the account's home is the only home, and its BuilderBot cache holds only
     this project's folder and the account's own;
-  * /tmp, /var/tmp and /dev/shm are the session's own;
+  * /tmp, /var/tmp and /dev/shm are the session's own, made new with every
+    start, but for what Claude Code keeps there between the turns of one
+    conversation (/tmp/claude-<uid>), which is kept in the project's cache
+    folder and outlives a restart of the session;
   * the agent's stores show only what a session reads: its own CI logs and
     artifacts, and the emulator's logs; jobs, compose files, the runner's
     checkouts and the terminal log are gone;
@@ -389,6 +392,29 @@ def plan(c, a, uid):
             steps.append(("tmpfs", t, "mode=1777"))
     if x11:
         steps.append(("bind", f"{STAGE}/x11", "/tmp/.X11-unix"))
+    # What Claude Code keeps between the turns of one conversation (the
+    # files it was told to put in its scratchpad, what its background
+    # commands printed) is under /tmp/claude-<uid>, by the conversation's
+    # own id. A session is started again on the same conversation whenever
+    # the controller is updated, and each start made /tmp new: a session
+    # lost its scripts and measurements twice in a day, between two
+    # prompts of one conversation (B376). The launcher makes the folder in
+    # the project's cache as the session account; only one that is a
+    # directory of that account's own is bound, and one that is not leaves
+    # /tmp as it was.
+    try:
+        whose = uid if uid is not None else pwd.getpwnam(c["SESSION_USER"]).pw_uid
+    except KeyError:
+        whose = None
+    for i, (cache, _keep) in enumerate(caches if whose is not None else []):
+        kept = f"u/{account}/project/{project}/scratch"
+        try:
+            st = os.lstat(f"{cache}/{kept}")
+        except OSError:
+            continue
+        if stat.S_ISDIR(st.st_mode) and st.st_uid == whose:
+            steps.append(("bind", f"{STAGE}/cache{i}/{kept}", f"/tmp/claude-{whose}"))
+            break
     # A network of its own (R79): the agent's resolver file over the node's,
     # which names a resolver on the node's loopback that the session's own
     # namespace cannot reach; then the agent's folder out of sight, since it

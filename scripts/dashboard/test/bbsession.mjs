@@ -203,6 +203,27 @@ ok(has('bindro', versions, versions),
 ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0] === 'proc'
    && steps[steps.length - 1][0] === 'detach',
    'the view starts private with its own /proc, gets its own /tmp, and lets the staging copy of the machine go last');
+// What Claude Code keeps in /tmp for a conversation outlives a restart of
+// the session (B376): /tmp is made new with every start, and a session
+// started again on the same conversation after a controller update found
+// its scratchpad empty, twice in a day. The launcher makes a folder for it
+// in the project's cache, and the view binds that over /tmp/claude-<uid>.
+{
+  const uid = userInfo().uid;
+  const scratch = join(myCache, 'u', me, 'project', 'alpha', 'scratch');
+  ok(!steps.some(x => x[2] === `/tmp/claude-${uid}`), 'with no folder made for it, /tmp is the session\'s own and nothing more');
+  mkdirSync(scratch, { recursive: true });
+  const kept = JSON.parse(plan().out);
+  const at = kept.findIndex(x => x[0] === 'bind' && x[2] === `/tmp/claude-${uid}`);
+  ok(at > kept.findIndex(x => x[0] === 'tmpfs' && x[1] === '/tmp') && at < kept.length - 1
+     && kept[at][1].startsWith(`${STAGE}/cache`) && kept[at][1].endsWith(`/u/${me}/project/alpha/scratch`),
+     `the conversation's folder in the project's cache is bound over /tmp/claude-${uid}, after /tmp is made (${JSON.stringify(kept[at] || null)})`);
+  rmSync(scratch, { recursive: true, force: true });
+  symlinkSync(join(ws, 'beta'), scratch);
+  ok(!JSON.parse(plan().out).some(x => x[2] === `/tmp/claude-${uid}`),
+     '...and a link in its place is not followed: nothing is bound, and /tmp stays as it was');
+  rmSync(scratch, { force: true });
+}
 {
   const firstCover = steps.findIndex(x => x[0] === 'tmpfs' && x[1] === ws);
   const lastStage = Math.max(...steps.map((x, i) => (x[0] === 'bind' && x[2].startsWith(STAGE + '/')) ? i : -1));
