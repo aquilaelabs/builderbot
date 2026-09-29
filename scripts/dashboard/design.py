@@ -388,7 +388,9 @@ def _clean_language(lang):
             raise _Refused(f"two themes are called {t['name']}")
         names.add(t["name"].lower())
         themes.append(t)
-    out["themes"] = themes or [theme_from("default")]
+    # None is a language too (the operator, 29 Sep): a project designed by
+    # its first session starts empty, and the session fills it in.
+    out["themes"] = themes
     for key, rows in CHOICES.items():
         out[key] = _choice(lang.get(key), [k for k, _, _ in rows], key, LANGUAGE_DEFAULT[key])
     out["scope"] = _line(lang.get("scope"), NAME_MAX, "what the language governs")
@@ -638,7 +640,10 @@ def language_text(lang, platform=""):
     """The language as prose a session applies: every choice and its meaning."""
     themes = lang["themes"]
     lines = []
-    if len(themes) == 1:
+    if not themes:
+        lines.append("Colours: none chosen yet. Choose them as tokens a stylesheet names once and every "
+                     "surface reads, and put them into the design (bb design save) as a theme, named, dark or light.")
+    elif len(themes) == 1:
         t = themes[0]
         lines.append(f"Colours ({t['name']}, {t['mode']}), as tokens a stylesheet names once and every "
                      "surface reads, never a hex in a component:")
@@ -742,9 +747,11 @@ def file_text(rec):
         out += [f"It governs {lang['scope']}.", ""]
     themes = lang["themes"]
     out += ["## Colour", "",
-            "Colour comes only from these tokens, named once in the stylesheet"
-            + (f". The app starts on {themes[0]['name']}; a theme picker, where the app has one, "
-               "offers the themes by name, and every theme names the same tokens:" if len(themes) > 1 else ":")]
+            ("No theme chosen yet: the colours are tokens named once in the stylesheet, and the first "
+             "session to choose them puts them here." if not themes else
+             "Colour comes only from these tokens, named once in the stylesheet"
+             + (f". The app starts on {themes[0]['name']}; a theme picker, where the app has one, "
+                "offers the themes by name, and every theme names the same tokens:" if len(themes) > 1 else ":"))]
     for i, t in enumerate(themes):
         if len(themes) > 1:
             out += ["", f"### {t['name']} ({t['mode']}{', the default' if i == 0 else ''})"]
@@ -938,7 +945,7 @@ def listing(project):
     """bb design with no words: the language in one line and the pages."""
     rec = _record(_load(), project)
     lang = rec["language"]
-    themes = ", ".join(f"{t['name']} ({t['mode']})" for t in lang["themes"])
+    themes = ", ".join(f"{t['name']} ({t['mode']})" for t in lang["themes"]) or "no theme yet"
     lines = [f"{project}'s design language: {themes}; {_label(FONTS, lang['font']).lower()}, "
              f"{lang['corners']} corners, {lang['density']}, {lang['motion']} motion"
              + (f"; it governs {lang['scope']}" if lang.get("scope") else "")]

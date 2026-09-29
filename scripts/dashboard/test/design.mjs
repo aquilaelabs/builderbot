@@ -3,7 +3,7 @@
 // for what they are for. Staged behind the notebook's Save; the prompts and
 // docs/design-language.md are the server's words, which is what bb design
 // prints. The view is passive: nothing on it reaches into a session.
-import { launch, newPage, ok, done, ready, patience, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, patience, openFold, URL, DIR } from './lib.mjs';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -31,12 +31,17 @@ const api = (path, body) => page.evaluate(async ([p, b]) => {
 // ---- the record, empty --------------------------------------------------------------
 {
   const d = await api(`/api/design?project=${P}`);
-  ok(d.status === 200 && d.pages.length === 0 && d.language.themes.length === 1 && d.language.themes[0].name === 'Default' && d.language.themes[0].colors.length === 10
+  ok(d.status === 200 && d.pages.length === 0 && d.language.themes.length === 0 && d.language.rules.length === 0 && d.language.font === 'system'
      && d.presets.schemes.length >= 12 && d.presets.templates.some(t => t.key === 'dashboard')
      && d.presets.platforms.map(p => p.key).join(',') === 'web,android,ios,linux,macos,windows'
      && d.file.exists === false,
-     `a project starts with the default language, no pages and no file, and the vocabulary comes with it (${
+     `a project starts with an empty design: no theme, no page, no rule, no file, and the vocabulary comes with it (${
         d.presets.schemes.length} schemes, ${d.presets.templates.length} templates)`);
+  // Nothing designed beforehand: the briefing says so, and what to do after.
+  const pre0 = await api(`/api/preamble?project=${P}`);
+  ok(/The notebook's Design view is empty: no theme, no page, no design rule\. Build as you would and choose the look yourself; then put what you arrived at into the design with `bb design save`/.test(pre0.text)
+     && /Under the project's dial Claude may: Add to the design, a save of yours lands\./.test(pre0.text),
+     'the briefing of an undesigned project says to build as usual and put the look into the design afterwards, and what the dial does with that');
   ok(d.presets.schemes[0].key === 'default' && d.presets.schemes.slice(1).map(s => s.key).join()
        === d.presets.schemes.slice(1).map(s => s.key).sort().join(),
      'the schemes lead with Default and are alphabetical after it');
@@ -100,12 +105,19 @@ const promptText = await page.$eval(`${NB} [data-dspage] [data-dsprompt]`, e => 
 ok(/^Build or restyle the home dashboard to this layout/.test(promptText)
    && /Platform: a responsive web app/.test(promptText)
    && /Chart \(a chart or a meter\): orders per day, in the middle, columns 2 to 9 of 12, rows 4 to 8 of 8/.test(promptText)
-   && /accent #3fb950/.test(promptText) && /Type: system-ui, the platform's own sans-serif/.test(promptText),
-   `the page's prompt names the page, its platform, each block with what it is for and where, and the language (${promptText.split('\n')[3]})`);
+   && /Colours: none chosen yet\. Choose them as tokens/.test(promptText) && /Type: system-ui, the platform's own sans-serif/.test(promptText),
+   `the page's prompt names the page, its platform, each block with what it is for and where, and the language, colours still to choose (${promptText.split('\n')[3]})`);
 
 // ---- the language: themes, each a named set of colours ------------------------------
 // A theme is a name, dark or light, and colours that are added, changed
 // and taken away one by one; a preset fills one with the ten roles.
+// No theme yet: the board paints in the page's own colours until one is added.
+ok(await page.$eval(`${NB} [data-sect="design:themes"] > summary .sst`, e => e.textContent) === '0 themes'
+   && /No theme yet/.test(await page.$eval(`${NB} [data-sect="design:themes"] .hint`, e => e.textContent)),
+   'the Themes fold starts empty, saying a session may choose the colours');
+await page.selectOption(`${NB} #dsThemeFrom`, 'default');
+await page.click(`${NB} #dsThemeAdd`);
+await page.waitForSelector(`${NB} [data-dstheme="0"] [data-dst="from"]`, { timeout: 5000 });
 await page.selectOption(`${NB} [data-dstheme="0"] [data-dst="from"]`, 'moss');
 await page.waitForFunction(() => document.querySelector('.nb #dst-0-hex-5')?.value === '#63c98a', null, { timeout: 5000 });
 ok(await page.$eval(`${NB} [data-dspage] .dsboard`, e => e.style.backgroundColor.replace(/\s/g, '')) === 'rgb(22,31,27)'
@@ -216,7 +228,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   const back = (await api(`/api/design?project=${P}`)).language;
   ok(back.themes.length === 1 && back.themes[0].name === 'Paper' && back.themes[0].colors.length === 10,
      'Remove takes a colour out, Make default moves a theme first, and Remove theme takes the other away');
-  ok(await page.$eval(`${NB} [data-dstheme="0"] [data-dstrm]`, b => b.disabled), '...and the last theme cannot be removed');
+  ok(await page.$eval(`${NB} [data-dstheme="0"] [data-dstrm]`, b => !b.disabled), '...and the last theme can go too: no theme is a state a design may be in');
 }
 
 // ---- a session writes one: bb design json, edited, and bb design save --------------------
@@ -274,24 +286,35 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
      'the briefing names the triggered rule and how to read it, carries the standing one whole, and never the triggered one\'s text');
   ok(/^lists \(applies to: list, paging\)\n\nEvery list pages at fifty\./.test(bb('show', 'lists')),
      `bb design show NAME prints one rule with what fires it (${bb('show', 'lists').split('\n')[0]})`);
-  // In the view: the Rules section, one shown at a time, added and removed.
+  // In the view: the Rules fold is the Briefing's list, a row a rule, folded,
+  // Add a rule first, and a new row is its form until it has words.
   await page.evaluate(n => getNotebook(n).view('design'), P);
-  await page.waitForFunction(() => document.querySelector('.nb #dsRulePick')?.options.length === 2, null, { timeout: 15000 });
-  await page.selectOption(`${NB} #dsRulePick`, '1');
-  await page.waitForSelector(`${NB} [data-dsrule="1"]`, { timeout: 5000 });
-  ok(await page.$eval(`${NB} #dsr-name-1`, e => e.value) === 'voice' && !(await page.$(`${NB} [data-dsrule="0"]`)),
-     'the Rules pulldown shows the rule chosen and no other');
-  await page.click(`${NB} #dsRuleAdd`);
-  await page.waitForSelector(`${NB} [data-dsrule="2"]`, { timeout: 5000 });
+  await page.waitForFunction(() => document.querySelectorAll('.nb [data-dsrules="lang"] .rulerow').length === 2, null, { timeout: 15000 });
+  if (!(await page.$eval(`${NB} [data-sect="design:rules"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:rules"]`);
+  ok(await page.$eval(`${NB} [data-dsrules="lang"] .rulerow[data-i="1"] .btitle`, e => e.textContent) === 'voice'
+     && await page.$eval(`${NB} [data-dsrules="lang"] .rulerow[data-i="0"] .rlkind`, e => e.textContent) === 'on its triggers'
+     && await page.$eval(`${NB} [data-dsrules="lang"] .rulerow[data-i="1"] .rlkind`, e => e.textContent) === 'every session'
+     && !(await page.$eval(`${NB} [data-dsrules="lang"] .rulerow[data-i="1"]`, e => e.open)),
+     "the Rules fold lists them as the Briefing does: a folded row each, its name and when it reaches a session");
+  await page.click(`${NB} [data-dsrules="lang"] .rulerow[data-i="1"] summary`);
+  await page.waitForFunction(() => { const d = document.querySelector('.nb [data-dsrules="lang"] .rulerow[data-i="1"]'); return d?.open && !d.getAnimations({subtree: true}).length; }, null, { timeout: 10000 });
+  ok(/One sentence that tells the person what to do/.test(await page.$eval(`${NB} [data-dsrules="lang"] .rulerow[data-i="1"] .rlBody`, e => e.textContent))
+     && await page.$(`${NB} [data-dsrules="lang"] .rulerow[data-i="1"] .rlEdit`),
+     'a row opens to be read, with Edit and Remove under it');
+  await page.click(`${NB} [data-sect="design:rules"] [data-dsruleadd]`);
+  await page.waitForSelector(`${NB} [data-dsrules="lang"] .rulerow[data-i="2"].editing .rlName`, { timeout: 5000 });
   // The preview asked for while the new rule has no text yet leaves it out
   // rather than refusing (B341): the prompt box never says it could not.
   await page.waitForTimeout(patience(600));
   ok(!/could not build the prompt/.test(await page.$eval(`${NB} #dsPromptL`, e => e.value)),
      'the prompt preview skips a rule still being typed rather than refusing it');
-  await page.fill(`${NB} #dsr-name-2`, 'Tap targets');
-  await page.fill(`${NB} #dsr-words-2`, 'tap, phone');
-  await page.fill(`${NB} #dsr-files-2`, 'scripts/dashboard');
-  await page.fill(`${NB} #dsr-text-2`, 'Every button on a touch screen is a thumb high.');
+  const newRow = `${NB} [data-dsrules="lang"] .rulerow[data-i="2"]`;
+  await page.fill(`${newRow} .rlName`, 'Tap targets');
+  await page.fill(`${newRow} .rlWords`, 'tap, phone');
+  await page.fill(`${newRow} .rlPaths`, 'scripts/dashboard');
+  await page.fill(`${newRow} .rlText`, 'Every button on a touch screen is a thumb high.');
+  ok(await page.$eval(`${newRow} .btitle`, e => e.textContent) === 'Tap targets' && await page.$eval(`${newRow} .rlkind`, e => e.textContent) === 'on its triggers',
+     "typing into the form names the row and says it arrives on its triggers, without a redraw");
   await saved();
   const now = (await api(`/api/design?project=${P}`)).language.rules;
   ok(now.length === 3 && now[2].name === 'tap-targets' && now[2].words.join() === 'tap,phone' && now[2].paths.join() === 'scripts/dashboard',
@@ -344,11 +367,14 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   ok(/This page's own rules:\n  the-home-dashboard\/first-read: The chart is read before/.test(pagePrompt) && /    Night's own rules:\n      night\/hull: texture, hull \(`bb design show night\/hull` reads it\)/.test(pagePrompt),
      "the page's prompt carries its own rules whole and names the theme's under the theme");
   await page.selectOption(`${NB} #dsThemePick`, '0');
-  await page.waitForSelector(`${NB} [data-dsownrule="0"]`, { timeout: 5000 });
-  await page.click(`${NB} [data-dsown="t0"] + [data-dsownrule] [data-dsrrm]`);
-  await page.waitForFunction(() => !document.querySelector('.nb #t0-r-name-0'), null, { timeout: 5000 });
-  await page.click(`${NB} [data-dsown="p1"] + [data-dsownrule] [data-dsrrm]`);
-  await page.waitForFunction(() => !document.querySelector('.nb #p1-r-name-0'), null, { timeout: 5000 });
+  await page.waitForSelector(`${NB} [data-dsrules="t0"] .rulerow[data-i="0"]`, { timeout: 5000 });
+  for (const key of ['t0', 'p1']){
+    if (!(await page.$eval(`${NB} [data-sect="design:rules:${key}"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:rules:${key}"]`);
+    if (!(await page.$eval(`${NB} [data-dsrules="${key}"] .rulerow[data-i="0"]`, d => d.open))) await page.click(`${NB} [data-dsrules="${key}"] .rulerow[data-i="0"] summary`);
+    await page.waitForFunction(k => { const d = document.querySelector(`.nb [data-dsrules="${k}"] .rulerow[data-i="0"]`); return d?.open && !d.getAnimations({subtree: true}).length; }, key, { timeout: 10000 });
+    await page.click(`${NB} [data-dsrules="${key}"] .rulerow[data-i="0"] .rlRm`);
+    await page.waitForFunction(k => !document.querySelector(`.nb [data-dsrules="${k}"] .rulerow`), key, { timeout: 5000 });
+  }
   await saved();
   const gone2 = await api(`/api/design?project=${P}`);
   ok(gone2.language.themes[0].rules.length === 0 && gone2.pages[0].rules.length === 0, 'Remove rule under a theme or a page takes it out');

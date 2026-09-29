@@ -635,11 +635,15 @@ Analysis, Git) has no foot.
 
 The Design view is four folds under its head row and add bar: Pages, Design
 language, Themes and Rules, in that order, so the boards are the first
-thing seen. A fold that holds a list (the pages, the themes, the rules)
-shows one of it at a time, chosen on a pulldown at its top, and what is
-added is what is shown: every page and every theme at once was the whole
-view scrolled past (the operator, 28 Sep). The one shown is fields like any
-tab's, never a box of its own. The view is passive: nothing on it reaches
+thing seen. The pages and the themes show one at a time, chosen on a
+pulldown at the fold's top, and what is added is what is shown: every page
+and every theme at once was the whole view scrolled past (the operator, 28
+Sep). The one shown is fields like any tab's, never a box of its own, and
+carries a rules section of its own inside it, which follows the pulldown.
+Every rules list here is the Briefing's (nb-rules.js): Add a rule first, a
+folded row a rule with its name and when it reaches a session, Edit turning
+the row into its form. A new project's design is empty, no theme and no
+page: the session that builds it chooses the look and puts it here after. The view is passive: nothing on it reaches
 into a session; the prompt under the language and under each page is text
 to copy, and a session reads the design by itself through its rules and
 `bb design show`. A theme and a page each carry rules of their own under

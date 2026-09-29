@@ -236,8 +236,19 @@ def design_line(project):
         rec = design.saved(project)
     except Exception:                                    # noqa: BLE001
         return ""
+    dial = _design_dial(project)
+    fill = {"auto": "a save of yours lands",
+            "ask": "a save of yours waits for the operator's approval on the notebook",
+            "deny": "the project refuses a session's save, so say in your reply what you would put there"}[dial]
     if not rec:
-        return ""
+        # Nothing designed beforehand (the operator, 29 Sep): build as you
+        # would, then put what you arrived at into the notebook so the next
+        # session finds it there.
+        return ("The notebook's Design view is empty: no theme, no page, no design rule. Build as you "
+                "would and choose the look yourself; then put what you arrived at into the design with "
+                "`bb design save` (the themes with their colours as tokens, the pages you built, the rules "
+                "you followed; `bb design schema` prints the shape) so the next session finds it there. "
+                f"Under the project's dial Claude may: Add to the design, {fill}.")
     lang, pages = rec["language"], rec["pages"]
     themes = ", ".join(t["name"] for t in lang["themes"])
     own = sum(len(t.get("rules") or []) for t in lang["themes"]) + sum(len(p.get("rules") or []) for p in pages)
@@ -253,7 +264,18 @@ def design_line(project):
             + ("The tree has no code yet, so the design, the rules and the roadmap are the "
                "specification: build to them from the first file. " if empty else "")
             + "Read `bb design show` before laying out or styling anything, `bb design show NAME` for "
-              "one page or one theme, and keep docs/design-language.md in step (`bb design file`).")
+              "one page or one theme, and keep docs/design-language.md in step (`bb design file`). What the "
+              "design leaves open and you had to decide (a colour it does not name, a page it does not have) "
+              f"goes back into it with `bb design save` so it is complete; under the project's dial, {fill}.")
+
+
+def _design_dial(project):
+    """The project's dial Claude may: Add to the design, as pending reads it."""
+    try:
+        import pending                                   # beside this module
+        return pending.mode(project, "design") or "auto"
+    except Exception:                                    # noqa: BLE001
+        return "auto"
 
 
 def _no_code_yet(project):

@@ -2,8 +2,9 @@
 // language (colours as tokens, type, shape, space, motion and the operator's
 // own rules) and pages laid out as labelled blocks on a phone or desktop
 // frame, each named for what it is for and the platform it is built for.
-// Four folds: the pages, the language, the themes and the rules, and the
-// three that hold a list show one of it at a time, chosen on a pulldown.
+// Four folds: the pages, the language, the themes and the rules; the pages
+// and the themes show one at a time, chosen on a pulldown, each with a rules
+// section of its own inside it, and every rules list is the Briefing's.
 // Every edit is staged and the notebook's Save writes the whole record at
 // once, the way the roadmap saves; the prompt under each page and the
 // language is the server's (design.py), so the tab, `bb design show` and
@@ -27,13 +28,20 @@ function nbDesignView({$, nb, project, root}){
   // on the section's pulldown (the operator, 28 Sep: listing every page
   // and every theme at once was the whole view scrolled past). A theme and
   // a rule by index, a page by its key; what is added is shown.
-  nb.dsShow = {theme: 0, rule: 0, page: null, own: {}};
+  nb.dsShow = {theme: 0, page: null};
+  // The rules lists' reading state, per list (the language's, a theme's,
+  // a page's): which rows are open, which are being edited, and what an
+  // edited row said before Edit, for Cancel. The Briefing's shape.
+  nb.dsRuleUI = {};
+  const ruleUI = key => nb.dsRuleUI[key] || (nb.dsRuleUI[key] = {editing: new Set(), open: new Set(), was: new Map()});
   let tmpN = 0;
   const keyOf = p => p.id > 0 ? `p${p.id}` : `t${p.tmp}`;
   const presets = () => nb.dsData?.presets || {};
   const byKey = (rows, k) => (rows || []).find(r => r.key === k);
   const platformOf = p => byKey(presets().platforms, p.platform) || (presets().platforms || [])[0];
   const clone = o => JSON.parse(JSON.stringify(o));
+  // The slug a holder's rule is named under, as design.py's _slug makes it.
+  const holderSlug = name => (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "colour";
 
   async function loadDesign(){
     try{
@@ -132,22 +140,21 @@ function nbDesignView({$, nb, project, root}){
   function shown(){
     const L = nb.dsLang, S = nb.dsShow;
     S.theme = Math.min(Math.max(0, S.theme), Math.max(0, (L.themes || []).length - 1));
-    S.rule = Math.min(Math.max(0, S.rule), Math.max(0, (L.rules || []).length - 1));
     if (!nb.dsPages.some(p => keyOf(p) === S.page)) S.page = nb.dsPages.length ? keyOf(nb.dsPages[0]) : null;
-    return {theme: (L.themes || [])[S.theme], rule: (L.rules || [])[S.rule],
-            page: nb.dsPages.find(p => keyOf(p) === S.page)};
+    return {theme: (L.themes || [])[S.theme], page: nb.dsPages.find(p => keyOf(p) === S.page)};
   }
 
   function drawDesign(){
     const body = $("dsBody");
     if (!nb.dsData){ body.innerHTML = `<div class="loading">loading…</div>`; return; }
     const sh = shown();
-    body.innerHTML = pagesSection(sh.page) + languageSection() + themesSection(sh.theme) + rulesSection(sh.rule);
+    nb.dsRuleLists = {};
+    body.innerHTML = pagesSection(sh.page) + languageSection() + themesSection(sh.theme) + rulesFold();
     wireSections(body);
     wireLanguage(body);
     wireThemes(body, sh.theme);
-    wireRules(body, sh.rule);
     if (sh.page) wirePage(body.querySelector(`[data-dspage="${keyOf(sh.page)}"]`), sh.page);
+    body.querySelectorAll("[data-dsrules]").forEach(wireRulesList);
     // A locked project reads its notebook: every control here is dead but
     // Copy, which takes nothing anywhere, and the pulldowns, which show.
     if (root.classList.contains("ro"))
@@ -196,82 +203,119 @@ function nbDesignView({$, nb, project, root}){
         ${ctl("dsThemeFrom", "Add one from", "", `<select id="dsThemeFrom">${opt(P.schemes, "default")}</select>`)}
         <button type="button" id="dsThemeAdd" ${themes.length >= (P.themes_max || 8) ? "disabled" : ""}>Add theme</button>
       </div></div>
-      ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet: add one from a preset.</div></div>`}`;
+      ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet. Add one from a preset, or leave it: a session that builds the project chooses the colours and puts them here.</div></div>`}`;
     return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}`, body);
   }
 
-  // The rules: a pulldown of them, Add rule, and the chosen one in full.
-  function rulesSection(r){
-    const L = nb.dsLang, P = presets();
-    const rules = L.rules || [];
-    const rows = rules.map((x, i) => ({key: String(i), label: x.name || "unnamed rule"}));
-    const body = `
-      <div class="field"><div class="dsrow">
-        ${pick("dsRulePick", "Rule", rows, String(nb.dsShow.rule), "everything the settings cannot say, cut into named rules: a session gets one on the turn it edits a file or is asked about a word the rule names; one with no trigger stands in every briefing")}
-        <button type="button" id="dsRuleAdd" ${rules.length >= (P.rules_max || 60) ? "disabled" : ""}>Add rule</button>
-      </div></div>
-      ${r ? ruleBand(r, nb.dsShow.rule) : `<div class="field"><div class="hint">No rules yet: Add rule names the first.</div></div>`}`;
-    return docSection("design", "rules", "Rules", `${rules.length} rule${rules.length === 1 ? "" : "s"}`, body);
+  // The design's rules, the Briefing's shape (nb-rules.js, drawRules): Add a
+  // rule first, then a row a rule, folded, its name and whether it stands
+  // in every briefing or arrives on its triggers, opening to be read, and
+  // Edit turning the row into its form. The same list serves the language's
+  // rules, a theme's own and a page's own (the operator, 29 Sep): a rules
+  // section inside the page and the theme, following the pulldown.
+  function rulesFold(){
+    const L = nb.dsLang, rules = L.rules || (L.rules = []);
+    return docSection("design", "rules", "Rules", rules.length ? `${rules.length}` : "none",
+      `<div class="hint">Everything the settings cannot say, as named rules: a session gets one on the turn it edits a file or is asked about a word the rule names; one with no trigger stands in every briefing whole.</div>`
+      + rulesList("lang", rules), {open: false});
   }
-
-  // One rule's fields. `id` is the prefix its inputs are named by: the
-  // language's are dsr-NAME-i, a theme's or a page's own carry that
-  // holder's key too, so two rules shown at once never share an id.
-  function ruleBand(r, i, id = "dsr", attr = "data-dsrule"){
-    return `<div class="dsrule" ${attr}="${i}">
-      <div class="field"><div class="dsrow">
-        ${ctl(`${id}-name-${i}`, "Rule", "a short name: dialogs, tap-targets", `<input id="${id}-name-${i}" data-dsr="name" maxlength="40" autocomplete="off" value="${esc(r.name)}">`)}
-        ${ctl(`${id}-words-${i}`, "Words", "words in a prompt that bring it up, comma-separated", `<textarea id="${id}-words-${i}" class="proseline" rows="1" maxlength="300" data-dsr="words">${esc((r.words || []).join(", "))}</textarea>`, true)}
-        ${ctl(`${id}-files-${i}`, "Files", "files or directories whose edit brings it up: src/ui, *.css", `<textarea id="${id}-files-${i}" class="proseline" rows="1" maxlength="300" data-dsr="paths">${esc((r.paths || []).join(", "))}</textarea>`, true)}
-      </div></div>
-      <div class="field">${ctl(`${id}-text-${i}`, "Text", "", `<textarea id="${id}-text-${i}" rows="${(r.text || "").length > 600 ? 12 : 4}" maxlength="20000" data-dsr="text">${esc(r.text)}</textarea>`, true)}
-        <div class="actbar"><span class="state">${(r.words || []).length || (r.paths || []).length ? "named in the briefing; its text arrives when it applies" : "standing: in every briefing whole"}</span>
-          <button type="button" class="danger" data-dsrrm title="take this rule out">Remove rule</button></div></div>
-    </div>`;
+  const cond = r => (r.paths || []).length || (r.words || []).length;
+  const ruleWhen = r => cond(r) ? "named in the briefing; its text arrives when it applies" : "standing: in every briefing whole";
+  function rulesList(key, rules){
+    nb.dsRuleLists[key] = rules;
+    const ui = ruleUI(key);
+    return `<div class="addbar" data-add="rule"><button type="button" data-dsruleadd ${rules.length >= (presets().rules_max || 60) ? "disabled" : ""}>Add a rule</button></div>
+      <div class="field" data-dsrules="${key}">${rules.map((r, i) => `
+        <details class="bug rulerow${ui.editing.has(i) ? " editing" : ""}" data-i="${i}"${ui.editing.has(i) || ui.open.has(i) ? " open" : ""}>
+          <summary>
+            <span class="btitle rlNameRO">${esc(r.name || "(unnamed)")}</span>
+            <span class="rlkind ${cond(r) ? "cond" : ""}">${cond(r) ? "on its triggers" : "every session"}</span>
+          </summary>
+          <div class="body">${ui.editing.has(i) ? `
+            ${lbl("", "Name", "a short name the rule is known by: dialogs, tap-targets")}
+            <input class="rlName" maxlength="40" autocomplete="off" spellcheck="false" placeholder="dialogs" value="${esc(r.name || "")}" aria-label="rule name">
+            ${lbl("", "The rule")}
+            <textarea class="rlText" spellcheck="false" maxlength="20000">${esc(r.text || "")}</textarea>
+            <div class="two">
+              <div>${lbl("", "Files it covers", "paths or globs, comma-separated; the rule arrives when a session edits one")}
+              <input class="rlPaths" autocomplete="off" spellcheck="false" placeholder="src/ui, *.css" value="${esc((r.paths || []).join(", "))}" aria-label="paths"></div>
+              <div>${lbl("", "Words that raise it", "comma-separated; the rule arrives when a session is asked about one")}
+              <input class="rlWords" autocomplete="off" spellcheck="false" placeholder="dialog, modal" value="${esc((r.words || []).join(", "))}" aria-label="words"></div>
+            </div>
+            <div class="actbar macts">
+              <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
+              <button type="button" class="stop rlCancel" title="discard what was typed">Cancel</button>
+              <button type="button" class="danger rlRm">Remove</button>
+            </div>` : `
+            <div class="bfield"><label>rule</label><div class="bval rlBody">${esc(r.text || "")}</div></div>
+            ${(r.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc((r.paths || []).join(", "))}</div></div>` : ""}
+            ${(r.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc((r.words || []).join(", "))}</div></div>` : ""}
+            <div class="actbar macts">
+              <span class="state">${ruleWhen(r)}</span>
+              <button type="button" class="rlEdit">Edit</button>
+              <button type="button" class="danger rlRm">Remove</button>
+            </div>`}
+          </div>
+        </details>`).join("")}${rules.length ? "" : `<div class="fnote">No rules here yet.</div>`}</div>`;
   }
-
-  // A theme's or a page's own rules (the operator, 28 Sep: the Nostromo
-  // scheme has needs no other theme shares): the same shape as the
-  // language's, under the holder, one shown at a time on its pulldown.
-  // A session meets one as HOLDER/RULE, and bb design show reads it so.
-  function ownRules(holder, key, what){
-    const rules = holder.rules || (holder.rules = []);
-    const i = Math.min(Math.max(0, nb.dsShow.own[key] || 0), Math.max(0, rules.length - 1));
-    nb.dsShow.own[key] = i;
-    const rows = rules.map((x, j) => ({key: String(j), label: x.name || "unnamed rule"}));
-    return `<div class="field" data-dsown="${key}"><div class="dsrow">
-        ${rules.length ? pick(`${key}-rulepick`, `${what}'s own rules`, rows, String(i),
-          `rules that hold for ${what} alone, delivered to a session like the design's, named under it`) : lbl("", `${what}'s own rules`, `rules that hold for ${what} alone, delivered to a session like the design's, named under it`)}
-        <button type="button" data-dsownadd ${rules.length >= (presets().rules_max || 60) ? "disabled" : ""}>Add rule</button>
-      </div></div>
-      ${rules.length ? ruleBand(rules[i], i, `${key}-r`, "data-dsownrule") : ""}`;
-  }
-  // The typing and the pulldown of one holder's own rules.
-  function wireOwnRules(el, holder, key){
-    const host = el.querySelector(`[data-dsown="${key}"]`);
-    if (!host) return;
-    const rules = holder.rules;
+  // Typed into rather than redrawn, as the Briefing's are: the model changes
+  // under the caret and only the row's word follows; Add, Edit, Cancel and
+  // Remove redraw.
+  function wireRulesList(host){
+    const key = host.dataset.dsrules, rules = nb.dsRuleLists[key], ui = ruleUI(key);
+    if (!rules) return;
     const split = v => v.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
-    const pk = host.querySelector("[data-dspick]");
-    if (pk) pk.onchange = e => { nb.dsShow.own[key] = +e.target.value; drawDesign(); };
-    host.querySelector("[data-dsownadd]").onclick = () => {
+    const add = host.previousElementSibling?.querySelector("[data-dsruleadd]");
+    if (add) add.onclick = () => {
+      ui.editing.add(rules.length);
       rules.push({name: "", text: "", words: [], paths: []});
-      nb.dsShow.own[key] = rules.length - 1;
       touched(); drawDesign();
-      root.querySelector(`#${key}-r-name-${rules.length - 1}`)?.focus();
+      root.querySelector(`[data-dsrules="${key}"] .rulerow[data-i="${rules.length - 1}"] .rlName`)?.focus();
     };
-    const band = host.nextElementSibling?.matches("[data-dsownrule]") ? host.nextElementSibling : null;
-    if (!band) return;
-    const r = rules[+band.dataset.dsownrule]; if (!r) return;
-    band.querySelector('[data-dsr="name"]').oninput = e => {
-      r.name = e.target.value; touched(); refreshAllPrompts();
-      const o = host.querySelector(`[data-dspick] option[value="${band.dataset.dsownrule}"]`);
-      if (o) o.textContent = r.name.trim() || "unnamed rule";
-    };
-    band.querySelector('[data-dsr="text"]').oninput = e => { r.text = e.target.value; touched(); refreshAllPrompts(); };
-    band.querySelector('[data-dsr="words"]').oninput = e => { r.words = split(e.target.value); touched(); refreshAllPrompts(); };
-    band.querySelector('[data-dsr="paths"]').oninput = e => { r.paths = split(e.target.value); touched(); refreshAllPrompts(); };
-    band.querySelector("[data-dsrrm]").onclick = () => { rules.splice(+band.dataset.dsownrule, 1); nb.dsShow.own[key] = 0; touched(); drawDesign(); };
+    host.querySelectorAll(".rulerow").forEach(row => {
+      const i = +row.dataset.i, r = rules[i];
+      if (!r) return;
+      const typed = () => {
+        const kind = row.querySelector(".rlkind");
+        kind.textContent = cond(r) ? "on its triggers" : "every session";
+        kind.classList.toggle("cond", !!cond(r));
+        row.querySelector(".actbar .state").textContent = `${ruleWhen(r)} · Save at the foot writes it`;
+        touched(); refreshAllPrompts();
+      };
+      const put = (sel, fn) => { const el = row.querySelector(sel); if (el) el.oninput = () => { fn(el.value); typed(); }; };
+      put(".rlName", v => { r.name = v; row.querySelector(".rlNameRO").textContent = v.trim() || "(unnamed)"; });
+      put(".rlText", v => { r.text = v; });
+      put(".rlPaths", v => { r.paths = split(v); });
+      put(".rlWords", v => { r.words = split(v); });
+      const shift = set => new Set([...set].filter(j => j !== i).map(j => (j > i ? j - 1 : j)));
+      row.querySelector(".rlRm").onclick = () => {
+        rules.splice(i, 1);
+        ui.editing = shift(ui.editing); ui.open = shift(ui.open);
+        ui.was = new Map([...ui.was].filter(([j]) => j !== i).map(([j, v]) => [j > i ? j - 1 : j, v]));
+        touched(); drawDesign();
+      };
+      const ed = row.querySelector(".rlEdit");
+      if (ed) ed.onclick = () => {
+        ui.was.set(i, {...r, paths: [...(r.paths || [])], words: [...(r.words || [])]});
+        ui.editing.add(i); ui.open.add(i); drawDesign();
+      };
+      // Back to reading it as it read before Edit; a row that never had
+      // words leaves.
+      const cn = row.querySelector(".rlCancel");
+      if (cn) cn.onclick = () => {
+        const was = ui.was.get(i); ui.was.delete(i);
+        if (was) Object.assign(r, was);
+        else { rules.splice(i, 1); ui.editing = shift(ui.editing); ui.open = shift(ui.open); }
+        ui.editing.delete(i);
+        touched(); drawDesign();
+      };
+      const sum = row.querySelector("summary");
+      if (sum) sum.onclick = e => {
+        e.preventDefault();
+        if (row.open) ui.open.delete(i); else ui.open.add(i);
+        slideDetails(row, !row.open);
+      };
+    });
   }
 
   // One theme: its name and mode, its colours as rows (a name, a hex and
@@ -295,11 +339,13 @@ function nbDesignView({$, nb, project, root}){
           ${ctl(`dst-${i}-for-${j}`, "For", "", `<textarea id="dst-${i}-for-${j}" class="proseline" rows="1" maxlength="120" data-dsm="means">${esc(c.means)}</textarea>`, true)}
           <button type="button" class="danger" data-dstcrm="${j}" title="take this colour out">Remove</button>
         </div>`).join("")}</div></div>
-      ${ownRules(t, `t${i}`, t.name.trim() || "this theme")}
+      ${docSection("design", `rules:t${i}`, `Rules of ${t.name.trim() || "this theme"}'s own`,
+        (t.rules || []).length ? `${t.rules.length}` : "none",
+        `<div class="hint">What holds for this theme alone. A session meets one as ${esc(holderSlug(t.name))}/NAME.</div>` + rulesList(`t${i}`, t.rules || (t.rules = [])))}
       <div class="field"><div class="actbar"><span class="state">${i === 0 ? "the default: the app starts on it" : ""}</span>
         <button type="button" data-dstcadd ${(t.colors || []).length >= (P.colors_max || 40) ? "disabled" : ""}>Add colour</button>
         ${i === 0 ? "" : `<button type="button" data-dstdefault title="the app starts on this theme">Make default</button>`}
-        <button type="button" class="danger" data-dstrm ${n === 1 ? "disabled" : ""} title="${n === 1 ? "a language keeps at least one theme" : "take this theme out"}">Remove theme</button></div></div>
+        <button type="button" class="danger" data-dstrm title="take this theme out">Remove theme</button></div></div>
     </div>`;
   }
 
@@ -346,7 +392,9 @@ function nbDesignView({$, nb, project, root}){
       : `<div class="field"><div class="hint">${n ? "Tap a block to name what it is for." : "Add a block, or start again from a template with Add page."}</div></div>`}
       <div class="field">${ctl(`${key}-notes`, "Notes", "what the blocks cannot say: what a tap does, where the data comes from",
             `<textarea id="${key}-notes" rows="3" maxlength="65536" data-dsf="notes">${esc(p.notes)}</textarea>`, true)}</div>
-      ${ownRules(p, key, p.name.trim() || "this page")}
+      ${docSection("design", `rules:${key}`, `Rules of ${p.name.trim() || "this page"}'s own`,
+        (p.rules || []).length ? `${p.rules.length}` : "none",
+        `<div class="hint">What holds for this page alone. A session meets one as ${esc(holderSlug(p.name || `page-${p.id}`))}/NAME.</div>` + rulesList(key, p.rules || (p.rules = [])))}
       <div class="field">${lbl(`${key}-prompt`, "Prompt", "what this page asks of a session, to copy into one when you want it built; a session also reads it by itself, with bb design show")}
         <textarea id="${key}-prompt" class="dsprompt" readonly rows="10" spellcheck="false" data-dsprompt></textarea>
         <div class="actbar"><span class="state"></span>
@@ -471,7 +519,6 @@ function nbDesignView({$, nb, project, root}){
       touched(); drawDesign();
     };
     el.querySelector("[data-dscopy]").onclick = e => copyPrompt(el.querySelector("[data-dsprompt]").value, e.target);
-    wireOwnRules(el, p, key);
     wireBoard(el.querySelector(".dsboard"), p);
   }
 
@@ -558,32 +605,6 @@ function nbDesignView({$, nb, project, root}){
     if (pp) pp.onchange = e => { nb.dsShow.page = e.target.value; drawDesign(); };
   }
 
-  // The design's rules: the chosen one typed in place, added and removed
-  // with a redraw that shows the one added or the first.
-  function wireRules(body, r){
-    const L = nb.dsLang;
-    const split = v => v.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
-    body.querySelector("#dsRulePick").onchange = e => { nb.dsShow.rule = +e.target.value; drawDesign(); };
-    body.querySelector("#dsRuleAdd").onclick = () => {
-      L.rules = L.rules || [];
-      L.rules.push({name: "", text: "", words: [], paths: []});
-      nb.dsShow.rule = L.rules.length - 1;
-      touched(); drawDesign();
-      root.querySelector(`#dsr-name-${L.rules.length - 1}`)?.focus();
-    };
-    const band = body.querySelector("[data-dsrule]");
-    if (!band || !r) return;
-    band.querySelector('[data-dsr="name"]').oninput = e => {
-      r.name = e.target.value; touched(); refreshAllPrompts();
-      const o = body.querySelector(`#dsRulePick option[value="${band.dataset.dsrule}"]`);
-      if (o) o.textContent = r.name.trim() || "unnamed rule";
-    };
-    band.querySelector('[data-dsr="text"]').oninput = e => { r.text = e.target.value; touched(); refreshAllPrompts(); };
-    band.querySelector('[data-dsr="words"]').oninput = e => { r.words = split(e.target.value); touched(); refreshAllPrompts(); };
-    band.querySelector('[data-dsr="paths"]').oninput = e => { r.paths = split(e.target.value); touched(); refreshAllPrompts(); };
-    band.querySelector("[data-dsrrm]").onclick = () => { L.rules.splice(+band.dataset.dsrule, 1); nb.dsShow.rule = 0; touched(); drawDesign(); };
-  }
-
   // The themes: the chosen one's colours typed in place; a theme from a
   // preset is the ten colours in its hexes, named for it.
   function wireThemes(body, t){
@@ -641,10 +662,8 @@ function nbDesignView({$, nb, project, root}){
       L.themes.splice(i, 1); L.themes.unshift(t); nb.dsShow.theme = 0; touched(); drawDesign();
     });
     band.querySelector("[data-dstrm]").onclick = () => {
-      if (L.themes.length === 1) return;
       L.themes.splice(i, 1); nb.dsShow.theme = 0; touched(); drawDesign();
     };
-    wireOwnRules(band, t, `t${i}`);
   }
 
   // ---- the prompts, from the server ---------------------------------------------------

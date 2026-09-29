@@ -1612,11 +1612,16 @@ preset fills and you add to or cut, the app starting on the first; and
 your own design rules; a theme and a page each carry rules of their own
 as well, for what holds for that theme or that page alone (the Nostromo
 scheme's textures, say), which reach a session named under their holder,
-`nostromo/hull`; the folds that hold a list show one of it at a
-time, chosen on a pulldown at the top; a project designed before it is
-built is built to the design: its briefing says the notebook holds one,
-what is in it, and that on a tree with no code yet the design, the rules
-and the roadmap are the specification; every edit is
+`nostromo/hull`, and every rules list reads as the Briefing's does, a
+folded row a rule; the pages and the themes show one at a time, chosen on
+a pulldown at the top, each with its rules section inside; a new project's
+design is empty, no theme and no page, and a project built that way is
+built as a session sees fit, the session then putting the look it arrived
+at into the design so the next one finds it; a project designed before it
+is built is built to the design: its briefing says the notebook holds one,
+what is in it, that on a tree with no code yet the design, the rules
+and the roadmap are the specification, and that what the design leaves
+open goes back into it, under the project's dial; every edit is
 staged behind Save, the prompt under each is the server's words to copy
 into a session when you want it applied, and nothing on the view reaches
 into one: a session meets the design by itself, through the rules its
