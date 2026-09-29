@@ -104,12 +104,18 @@ def show():
     print(f"    During a test run, a change asked for   {rec.get('test_change') or 'wait'}")
     print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
     print(f"    Captures kept (days; 0 keeps them)      {rec.get('capture_days', 7)}")
+    # Every dial, each as it stands. The five the notebook gates are kept
+    # together under `gate`, and read from the record's top they were never
+    # found: the list showed two dials of seven, and a session told that
+    # its save goes through Add to the design could not see that dial (two
+    # reports from other projects, 29 Sep).
+    gate = rec.get("gate") if isinstance(rec.get("gate"), dict) else {}
     for label, key in (("Add to roadmap", "roadmap"), ("File bugs", "bugs"), ("Add rules", "rules"),
-                       ("Fill in build and test", "settings"), ("Add to the design", "design"),
-                       ("Run its container", "devbuild"),
-                       ("Report BuilderBot bugs", "report")):
-        if rec.get(key) not in (None, ""):
-            print(f"    Claude may: {label:<28} {rec.get(key)}")
+                       ("Fill in build and test", "settings"), ("Add to the design", "design")):
+        print(f"    Claude may: {label:<28} {gate.get(key) or 'auto'}")
+    for label, key, dflt in (("Run its container", "devbuild", "deny"),
+                             ("Report BuilderBot bugs", "report", "auto")):
+        print(f"    Claude may: {label:<28} {rec.get(key) or dflt}")
 
 
 {"set": set_field, "show": show}[verb]()
