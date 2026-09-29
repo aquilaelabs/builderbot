@@ -3487,3 +3487,8 @@ touches `android/`, names it by `bb version --file`, drops it into
 BuilderBot's `dist/` where the runner's machine mounts the projects share,
 and uploads it as a workflow artifact. Locally, `cd android && ./gradlew
 assembleDebug` with `JAVA_HOME` and `ANDROID_HOME` pointed at a node's store.
+On a node the build writes under the node's own disk rather than the
+projects share (a job's cache folder, or the account's `~/.cache/builderbot/gradle`),
+because a directory emptied and removed in one build on NFS can fail to go
+(B351); `./gradlew bbApk -PbbOut=NAME.apk` puts the debug APK into `dist/`
+from wherever it was built, and that is what `bb build` runs.

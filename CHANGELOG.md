@@ -118,6 +118,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session is not told that somebody else changed the bugs, the rules or the settings when the change was its own, made with bb bug add, bb rules add or bb settings set (6bb5358)
 - What Claude Code keeps in /tmp for a conversation (its scratchpad, its background commands' output) outlives a restart of the session; a controller update emptied it between two prompts (6bb5358)
 - A node installs the session helper a new bundle carries as it takes the bundle, not at its next hello ten minutes later (e522637)
+- The Claude button on a project's row is dead from the moment Update Claude Code is pressed on its node, not only once the update job is queued (d6b513f)
+- The companion app builds under the node's own disk rather than the projects share, so bb build no longer fails on a directory NFS could not delete (d6b513f)
 
 ### Security
 
@@ -135,6 +137,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The companion app reads a node's projects and defaults nobody to administrator until the dashboard says so (B275); its CI signs a release when the keystore secrets are set and pins its actions and gradle by checksum (B274) (df92882)
 - A session's bb report says a report was filed without naming the bug in BuilderBot's tracker, and bb jobs lists a session's own project's jobs only: both showed another project's notebook from a session on the controller's machine (a843036)
 - A session on a node sees its own project, its home and the toolchains: other projects' container data and build caches, shares mounted on the node and the session account's keys are out of its view. A share a project works with is named in its settings (Also sees) (d134a6d)
+- The container daemon's socket is not in a session's view on a node (d6b513f)
 
 ## 0.7.0: 2026-09-25
 

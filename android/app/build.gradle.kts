@@ -43,6 +43,18 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// The debug APK into dist/, under the name it is asked for (-PbbOut), from
+// wherever this build wrote it: the build directory is off the share on a
+// node (the root build file, B351), so a command copying from
+// app/build/outputs would find nothing there.
+tasks.register<Copy>("bbApk") {
+    dependsOn("assembleDebug")
+    from(layout.buildDirectory.dir("outputs/apk/debug"))
+    include("app-debug.apk")
+    into(rootDir.parentFile.resolve("dist"))
+    rename { (findProperty("bbOut") as String?)?.takeIf { it.isNotBlank() } ?: it }
+}
+
 android {
     namespace = "dev.builderbot.app"
     compileSdk = 36
