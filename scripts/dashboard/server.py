@@ -1861,18 +1861,25 @@ def _mem_edited(project):
         print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
 
 
-def session_mark_own(project, uid, who):
+def session_mark_own(project, uid, who, since=None):
     """A session's own write to the notebook or the settings is seen by it
-    as it lands, so its next prompt does not read it back as news."""
+    as it lands, so its next prompt does not read it back as news. With
+    `since`, the tokens as they stood before the write, only the halves
+    that moved across it are marked: a bb verb relayed from a node may be
+    a read, and a read must not mark what somebody else changed as seen."""
     if not project or not uid:
         return
     try:
         now = _seen_now(project, who)
+        if since is not None:
+            now = {k: v for k, v in now.items() if since.get(k) != v}
+            if not now:
+                return
         with _seen_lock:
             d = _seen_load()
             for key, rec in d.items():
                 if key.startswith(f"{project}|{uid}|") and isinstance(rec, dict):
-                    rec["revs"] = now
+                    rec["revs"] = {**(rec.get("revs") or {}), **now}
             write_json(STATE / SESSION_SEEN, d)
     except Exception as e:                                                # noqa: BLE001
         print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
@@ -4785,7 +4792,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*no)
         if self._refused("bb", project):
             return None
-        return self._json(*bbrelay.run(me, req, project))
+        # A session's bb bug add, bb rules add or bb settings set is its own
+        # write like one through the notebook's routes, and was told to it
+        # on its next prompt as somebody else's (B375): what moved across
+        # the verb is marked seen for the session that ran it.
+        before = _seen_now(project, me) if me.get("session") else None
+        out = bbrelay.run(me, req, project)
+        if before is not None:
+            session_mark_own(project, me.get("uid") or "", me, since=before)
+        return self._json(*out)
 
     def _agent(self):
         """The node agent's door (docs/nodes.md §4): channel.py says what each
