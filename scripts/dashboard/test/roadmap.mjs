@@ -1402,6 +1402,12 @@ ok(await ultra.evaluate(() => {
      return p && p.getBoundingClientRect().width <= 1100; }),
    '...and so does the Toolchains tab, where the bin was furthest from its row');
 await closePage(ultra);
+// The two pages are one account, and an account's tabs are one layout: the
+// Toolchains tab the wide page opened could become the active tab here too,
+// and under a whole run's load that landed before the Save below was
+// pressed, with the notebook's footer behind it (B396). The notebook first.
+await page.evaluate(() => openNotebook('alpha', 'roadmap'));
+await nbShown(page);
 
 // ---- one Save, and what it does NOT do ----------------------------------
 // There were two, and the second typed the change into a running session's
