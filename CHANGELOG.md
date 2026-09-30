@@ -142,6 +142,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A design saved under the build before reads again: a stored record is read the forgiving way a save is checked, and its custom map goes with the language's rules to the first theme (every bb design verb refused over one) (1b63482)
 - bb capture shot --emu PKG and bb capture reel --emu PKG launch the package only when it is not already on the screen, so a keyboard, a dialog or a deep screen a session drove up stays in the picture (0f97ecc)
 - Send to Claude no longer presses Enter on a line the input box never took: the line on screen is counted once the pane has stopped drawing, so a previous send's output that repeats the line is not read as this one's echo (47cceca)
+- A node whose NVIDIA driver is installed but not yet loaded no longer shows nvidia-smi's failure sentence as its GPU's name on its row (8b5b172)
 
 ### Security
 

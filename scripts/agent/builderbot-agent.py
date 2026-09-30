@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.116"
+AGENT_VERSION = "0.7.117"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1757,6 +1757,22 @@ def _gpu_card():
     return ""
 
 
+def _gpu_name():
+    """The card's name as its driver gives it, or "". Only an answer that
+    exited 0 is a name: nvidia-smi says why it failed on stdout, and with
+    the driver installed but not yet loaded (nouveau holding the card until
+    a reboot) that sentence was reported as the GPU and drawn on the node's
+    row as its name (B391)."""
+    if not shutil.which("nvidia-smi"):
+        return ""
+    try:
+        p = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                           capture_output=True, text=True, timeout=5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return p.stdout.strip() if p.returncode == 0 else ""
+
+
 def _gpu_display():
     try:
         with open(GPU_DISPLAY_STATE, encoding="utf-8", errors="replace") as f:
@@ -1770,8 +1786,7 @@ def census(state):
     slow questions (docker, java) are allowed here and not in the sample."""
     tot, _ = _mem()
     tc = _toolchains(state)
-    gpu = _run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"]) \
-        if shutil.which("nvidia-smi") else ""
+    gpu = _gpu_name()
     return {
         "cpu": os.cpu_count() or 0, "mem_mb": tot,
         "os": f"{platform.system().lower()} {platform.machine()} "
