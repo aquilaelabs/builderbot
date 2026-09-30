@@ -128,6 +128,26 @@ def busy(sessions):
     return out
 
 
+def where(sessions):
+    """{project: [{who, node, working}, ...]}: every Claude session running,
+    one row per account per node, so a project row can say which machine
+    each is on and whether it is working there (the operator, 30 Sep). An
+    account with a session on two nodes is two rows."""
+    by_uid = ACCOUNTS()
+    owner = OWNER_NAME()
+    out = {}
+    for s in sessions:
+        base = BASE(s["name"])
+        if not base.startswith("claude-"):
+            continue
+        who = by_uid.get(OWNER(s["name"]), owner)
+        if who:
+            out.setdefault(base[len("claude-"):], []).append({
+                "who": who, "node": str(s.get("node") or ""),
+                "working": (s.get("claude") or {}).get("state") == "working"})
+    return out
+
+
 def live_token():
     """One short token for who has a Claude session where and whether it
     is working, so /api/revs can say "changed" and the page fetch /api/live

@@ -50,7 +50,8 @@ const ago = s => {
 // about. None where there is nowhere, and session_why says so.
 function claudeNodes(p){
   if ((p?.session_nodes || []).length > 1) return p.session_nodes;
-  if (p?.session_node) return [{id: p.session_node, name: p.session_at, where: "node", why: ""}];
+  if (p?.session_node) return [(p.session_nodes || []).find(n => n.id === p.session_node)
+    || {id: p.session_node, name: p.session_at, where: "node", why: ""}];
   return p && !p.session_why ? [{id: "", name: "", where: "node", why: ""}] : [];
 }
 // Whether this account can start one there without signing in first.
@@ -259,8 +260,11 @@ function placeResumeMenu(){
         claudeNodeFacts(n) ? ` <span class="dim">${esc(claudeNodeFacts(n))}</span>` : ""}${
         claudeLiveOn(p.name, n) ? ` · your session is running here`
         : n.where === "node" && !claudeSigned(n) ? ` · you are not signed in there` : ""}</div>${offer(n)}`).join("")
-    : (claudeLiveOn(p.name, ns[0]) ? `<div class="sub">Your session is running${ns[0].name ? ` on ${esc(ns[0].name)}` : ""}.</div>`
-       : claudeSigned(ns[0]) ? "" : `<div class="sub">You are not signed in to Claude on ${esc(ns[0].name)}.</div>`) + offer(ns[0]);
+    // One node: its name and what it has, as each of several gets.
+    : (ns[0].name ? `<div class="sub">${esc(ns[0].name)}${
+        claudeNodeFacts(ns[0]) ? ` <span class="dim">${esc(claudeNodeFacts(ns[0]))}</span>` : ""}</div>` : "")
+      + (claudeLiveOn(p.name, ns[0]) ? `<div class="sub">Your session is running here.</div>`
+       : claudeSigned(ns[0]) ? "" : `<div class="sub">You are not signed in to Claude here.</div>`) + offer(ns[0]);
   card.appendChild(m);
   m.querySelectorAll("[data-signin-node]").forEach(b => b.onclick = () => {
     resumeFor = null;

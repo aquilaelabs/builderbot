@@ -2105,7 +2105,19 @@ ok(page.errors.length === 0,
     const line = await page.$eval(`.ndrow[data-node="${shed.id}"] .ndgpu`, e => e.textContent.replace(/\s+/g, ' ').trim());
     ok(/RTX 3070 Ti/.test(line) && /renders in software/.test(line),
        `the row's Health names the card and says the emulator is on software (${line.slice(0, 90)})`);
+    // A change being applied on the machine holds Reboot and Shut down, on
+    // the row and, as before, on the server (the operator, 30 Sep).
+    const held = await page.$eval(`.ndrow[data-node="${shed.id}"]`, r => ({
+      dead: ['reboot', 'poweroff'].map(w => r.querySelector(`[data-nd="${w}"]`)?.disabled),
+      why: [...r.querySelectorAll('.state')].map(e => e.textContent).find(t => /Reboot and Shut down wait/.test(t)) || '' }));
+    ok(held.dead.every(Boolean) && /a change to this node \(gpu\)/.test(held.why),
+       `while a change is applying on the node, Reboot and Shut down are ghosted and say why (${held.why})`);
     await napi('/api/v1/jobs', { action: 'cancel', id: g.job });
+    // ...and the tab read again, so the canceled set-up is not what the
+    // section below is drawn from.
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(id => !(nodesList || []).find(n => n.id === id)?.jobs?.some(j => j.apply === 'gpu'), shed.id, { timeout: 15000 });
+    await page.evaluate(id => { const c = nodesConf[id]; if (c?.draft){ c.draft.gpuEmu = undefined; } nodesRev++; drawPanes(); }, shed.id);
     // What the card is for (R102): a GPU section with two switches and one
     // Apply. Neither writes on the click; Apply sends each only where its
     // tick differs from what the node has.
@@ -2132,6 +2144,12 @@ ok(page.errors.length === 0,
     const ej = await (async () => { for (let i = 0; i < 60; i++){ const n = (await napi('/api/v1/nodes')).nodes.find(x => x.id === shed.id);
       const j = (n.jobs || []).find(x => x.apply === 'gpu'); if (j && !(n.config || {}).no_gpu_compute) return j; await new Promise(r => setTimeout(r, 250)); } return null; })();
     ok(ej !== null, 'ticking both and Apply turns compute back on and queues the emulator set-up as a job on the node');
+    // ...and while that job runs the box stays ticked, ghosted, rather than
+    // going back to the machine's old state under "Applying".
+    await page.evaluate(() => loadNodes());
+    await page.waitForFunction(s => document.querySelector(s)?.querySelector('[data-nd="gpu-apply"]')?.disabled, sect, { timeout: 15000 });
+    const mid = await sw();
+    ok(mid.emu && mid.emuDead, `while the emulator's job runs its box stays ticked and ghosted (${JSON.stringify(mid)})`);
     if (ej?.id) await napi('/api/v1/jobs', { action: 'cancel', id: ej.id });
     // The emulator off the card: its own system job, where the display is up.
     await fetch(base + '/api/v1/agent/hello', { method: 'POST',
@@ -2197,6 +2215,11 @@ ok(page.errors.length === 0,
     const mj = mixed.job ? await napi(`/api/v1/jobs?id=${mixed.job}`) : {};
     ok(mixed.ok && mj.type === 'toolchain' && (mj.spec?.names || []).at(-1) === 'nvidia-driver' && mj.spec.names.includes('zig'),
        `the driver is ticked into the same job as the store's toolchains, after them (${mixed.error || (mj.spec?.names || []).join(', ')})`);
+    // ...and an install running holds Reboot and Shut down on the server,
+    // as the row does.
+    const rbw = await napi('/api/v1/nodes', { action: 'reboot', id: shed.id });
+    ok(/a toolchain install or removal is running on shed2/.test(rbw.error || ''),
+       `a reboot waits for a toolchain install on the node (${rbw.error})`);
     await cancel(mixed);
     const bogus = await napi('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-999', node: shed.id });
     ok(/not a driver apt offers/.test(bogus.error || ''), `a branch apt does not offer there is refused (${bogus.error})`);

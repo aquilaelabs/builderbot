@@ -1916,6 +1916,11 @@ def node_gpu_compute(principal, node_id, on):
     return {"ok": True, "on": bool(on)}
 
 
+# The jobs a Reboot or a Shut down waits for, and how the refusal names each.
+POWER_WAITS = {"toolchain": "a toolchain install or removal", "image": "a system image install",
+               "claude-update": "a Claude Code update"}
+
+
 def node_power(principal, node_id, what):
     """Reboot or shut a node down from its row: a system job the agent
     answers by scheduling the machine's own reboot or power-off a few
@@ -1940,6 +1945,14 @@ def node_power(principal, node_id, what):
                          f"machine: {verb} it from its console or its hypervisor"}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node; one at a time"}
+    # ...nor under an install: a restart in the middle of apt, or of a
+    # toolchain being unpacked, leaves it half on the machine (the operator,
+    # 30 Sep). The Toolchains tab's Abort stops one first.
+    busy = [j["type"] for j in jobs_for(node_id=node_id, active=True, n=20)
+            if j.get("type") in POWER_WAITS]
+    if busy:
+        return {"error": f"{POWER_WAITS[busy[0]]} is running on {n['name']}: {verb} it when that has "
+                         "finished, or stop it first"}
     r = job_add(principal, {"node": node_id}, "system",
                 {"apply": what, "config": {}, "timeout": 60})
     if r.get("ok"):

@@ -611,10 +611,12 @@ def _session_nodes(name):
     """One row per node the project works on, for the chooser a Claude press
     opens when there is more than one (R82): where a session there would
     stand (node or refused, with the why), the node's boot for the tab, and
-    what the machine has and how busy it is, so the pick is a read. [] for
-    a project on one node or none: the poll stays light for the common case."""
-    set_ = (prefs.get(name) or {}).get("nodes") or []
-    if len(set_) < 2:
+    what the machine has and how busy it is, so the pick is a read. A
+    project on one node gets its one row too, so its chooser says what that
+    machine has as well (the operator, 30 Sep); [] for a project on none."""
+    p = prefs.get(name) or {}
+    set_ = p.get("nodes") or ([p["node"]] if p.get("node") else [])
+    if not set_:
         return []
     out = []
     for nid in set_:
@@ -3061,6 +3063,9 @@ def snapshot(who):
         # ...and which of them are working on a prompt right now, for the
         # dot beside each name (the operator, 24 Sep).
         "claude_busy": projsessions.busy(sessions),
+        # ...and the same, one row per account per node, for the project
+        # row's list: which machine each session is on.
+        "claude_where": projsessions.where(sessions),
         # This account's own name, so the row can say "you and alice" rather
         # than reading your own name back at you.
         "me": (who or {}).get("name", ""),
@@ -4015,7 +4020,8 @@ class Handler(BaseHTTPRequestHandler):
         alone and cheap. Fetched when the revs token `live` moves."""
         sessions = tmux_sessions() + node_tmux_sessions()
         return self._json({"claude_with": projsessions.with_(sessions),
-                           "claude_busy": projsessions.busy(sessions)})
+                           "claude_busy": projsessions.busy(sessions),
+                           "claude_where": projsessions.where(sessions)})
 
     def _get_findings(self):
         """GET /api/findings: findings.view, scoped to the projects this

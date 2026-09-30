@@ -117,6 +117,14 @@ for a in "$@"; do case "$a" in "nvidia-driver*")
   exit 0 ;; esac; done
 ${real('dpkg-query')}
 `, { mode: 0o755 });
+  // ...and the toolkit's own tool, which a node with the real one (bb-sandbox
+  // since 30 Sep) would otherwise answer for: installed once the stand-in
+  // bb-sandbox has "installed" the toolkit, and not there before.
+  writeFileSync(`${DIR}/bin/nvidia-ctk`, `#!/bin/sh
+f="\${BB_CTK_STATE:-/nonexistent}"
+[ -s "$f" ] || exit 127
+echo "NVIDIA Container Toolkit CLI version $(cat "$f")"
+`, { mode: 0o755 });
   writeFileSync(`${DIR}/bin/ubuntu-drivers`, `#!/bin/sh
 printf 'vendor   : NVIDIA Corporation\\ndriver   : nvidia-driver-595 - distro non-free recommended\\ndriver   : nvidia-driver-610 - distro non-free\\n'
 `, { mode: 0o755 });

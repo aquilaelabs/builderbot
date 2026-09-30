@@ -2178,7 +2178,31 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   ok(/End your Claude session on alpha on ubu\?/.test(page.dialogs.at(-1) || '') && ended.asked?.node === 'n_ubu'
      && ended.asked?.name === await page.evaluate(() => myClaude('alpha')) && ended.dropped === 1 && !ended.tab && !ended.open,
      `End session asks first, ends that node's session and drops its tab (${JSON.stringify(ended)})`);
+  // A project on one node: its chooser names that node with what it has,
+  // as each of several gets.
+  const one = await page.evaluate(() => {
+    const p = state.projects.find(x => x.name === 'alpha');
+    Object.assign(p, { session_nodes: [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu',
+      sample: { cpu_pct: 7, mem_mb: 8192, mem_used_mb: 2048 }, gpu: 'NVIDIA RTX A2000', tools: [] }] });
+    resumeFor = 'alpha'; drawProjects(state.projects);
+    return [...(document.getElementById('resumemenu')?.querySelectorAll('.sub') || [])].map(e => e.textContent.trim());
+  });
+  ok(/^ubu cpu 7%/.test(one[0] || '') && /RTX A2000/.test(one[0] || ''),
+     `a project on one node gets that node's name and what it has in its chooser too (${one.join(' | ')})`);
+  // Who is in a session on a project: one line per account per node, the
+  // node in brackets, each with its own working or waiting dot.
+  const who = await page.evaluate(() => {
+    resumeFor = null;
+    state.claude_with = { alpha: ['test', 'w.peer'] };
+    state.claude_where = { alpha: [{ who: 'test', node: 'ubu', working: true }, { who: 'test', node: 'fresh', working: false },
+                                   { who: 'w.peer', node: 'ubu', working: false }] };
+    return [...new DOMParser().parseFromString(`<div>${sessionRows('alpha')}</div>`, 'text/html').querySelectorAll('.sessone')]
+      .map(e => `${e.querySelector('.st').classList.contains('working') ? '*' : '-'}${e.textContent.trim()}`);
+  });
+  ok(who.join(' | ') === '-w.peer (ubu) | -test (you) (fresh) | *test (you) (ubu)',
+     `a person with a session on two nodes is two lines, each naming its node and whether it is working there (${who.join(' | ')})`);
   await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:')));
+    state.claude_where = {};
     state.sessions = (state.sessions || []).filter(s => s.name !== myClaude('alpha')); drawPanes(); });
   await freePoll(page);
   page.errors = [];

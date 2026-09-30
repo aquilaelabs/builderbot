@@ -30,8 +30,15 @@ class GpuDriver(unittest.TestCase):
             text = f.read()
         m = re.search(r"^cat > \"\$BBSANDBOX_TMP\" <<'BBSANDBOX'\n(.*?)^BBSANDBOX$", text, re.S | re.M)
         self.helper = os.path.join(self.dir, "bb-sandbox")
+        # The display's files under the scratch directory, not the machine's:
+        # a node running these tests with a card and the display up has the
+        # real ones, root's, and a removal here met them (30 Sep).
+        body = m.group(1)
+        for var, name in (("GPU_STATE", "gpu-state"), ("GPU_CONF", "gpu.conf"), ("GPU_LOG", "xorg.log")):
+            body, k = re.subn(rf"^{var}=.*$", f"{var}={os.path.join(self.dir, name)}", body, flags=re.M)
+            self.assertEqual(k, 1, var)
         with open(self.helper, "w", encoding="utf-8") as f:
-            f.write(m.group(1))
+            f.write(body)
         for t in REAL:
             real = shutil.which(t)
             if real:

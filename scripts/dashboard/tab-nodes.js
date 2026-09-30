@@ -142,7 +142,12 @@ function nodeGpuSection(n){
   if (c.draft.gpuEmu === undefined || c.draft.gpuEmuFrom !== emuOn){ c.draft.gpuEmu = emuOn; c.draft.gpuEmuFrom = emuOn; }
   if (c.draft.gpuComp === undefined || c.draft.gpuCompFrom !== compOn){ c.draft.gpuComp = compOn; c.draft.gpuCompFrom = compOn; }
   const nodriver = !!gd && !gd.installed;
-  const busy = (n.jobs || []).some(j => j.apply === "gpu" || j.apply === "gpu-off");
+  const pending = (n.jobs || []).find(j => j.apply === "gpu" || j.apply === "gpu-off");
+  const busy = !!pending;
+  // While the emulator's job runs the box shows where it is going, not
+  // where the machine still is: it read as unticked under "Applying" until
+  // the node's next report (the operator, 30 Sep).
+  if (pending){ c.draft.gpuEmu = pending.apply === "gpu"; }
   const managed = !!n.reported?.sandbox;
   const name = n.reported?.gpu || (String(card).match(/\[([^\]]*(?:GeForce|RTX|Quadro|Tesla|TITAN)[^\]]*)\]/)?.[1]) || card;
   const [status, cls] = nodriver ? ["no driver", "warn"]
@@ -156,7 +161,7 @@ function nodeGpuSection(n){
     ${nodriver ? `<div class="sub warn">No NVIDIA driver on this machine yet, so nothing can use the card.
         <button type="button" class="link" data-ndtc="${esc(n.id)}">Install the driver</button></div>` : ""}
     <label class="ndcap"><input type="checkbox" data-k="gpuemu" ${c.draft.gpuEmu ? "checked" : ""}${
-      nodriver || !managed ? " disabled" : ""}>
+      nodriver || !managed || busy ? " disabled" : ""}>
       render the Android emulator on the card</label>
     ${nodriver ? "" : emuLine}
     <label class="ndcap"><input type="checkbox" data-k="gpucomp" ${c.draft.gpuComp ? "checked" : ""}>
@@ -538,6 +543,14 @@ function nodeTurnsRow(n){
 // pressed, and says why it is there. Still read by devapp.host_map for
 // every node addressed, so it is not gone.
 function nodeAdvancedSection(n, stale, inflight){
+  // An install or a change being applied on the machine holds Reboot and
+  // Shut down: a restart in the middle of apt, or of a storage or network
+  // apply, leaves it half done (the operator, 30 Sep). A reboot or shut
+  // down of its own is the one system job that does not.
+  const applying = (n.jobs || []).find(j => j.type === "system" && !["reboot", "poweroff"].includes(j.apply));
+  const installing = inflight("toolchain") ? "a toolchain install or removal"
+    : inflight("image") ? "a system image install" : inflight("claude-update") ? "a Claude Code update"
+    : applying ? `a change to this node (${applying.apply || "a system job"})` : "";
   const paths = n.config?.paths || {};
   const text = Object.entries(paths).map(([k, v]) => `${k}:${v}`).join(", ");
   const c = nodeDraft(n);
@@ -600,11 +613,12 @@ function nodeAdvancedSection(n, stale, inflight){
         inflight("uninstall") ? "Uninstalling…" : "Uninstall"}</button>` : ""}
     </div>
     ${n.kind === "agent" ? `<div class="actbar">
-      <span class="state${n.live ? "" : " bad"}">${n.live
-        ? "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on."
-        : "Reboot and Shut down need the agent dialing in, and it is away: power the machine from its console or its hypervisor."}</span>
+      <span class="state${n.live && !installing ? "" : " bad"}">${!n.live
+        ? "Reboot and Shut down need the agent dialing in, and it is away: power the machine from its console or its hypervisor."
+        : installing ? `Reboot and Shut down wait: ${installing} is running here. Stop it first, or wait for it to finish.`
+        : "Reboot ends every session there and the machine comes back on its own; Shut down does not come back until somebody switches it on."}</span>
       ${["reboot", "poweroff"].map(w =>
-        `<button type="button" class="danger" data-nd="${w}" ${!n.live || inflight(w) ? "disabled" : ""}>${
+        `<button type="button" class="danger" data-nd="${w}" ${!n.live || inflight(w) || installing ? "disabled" : ""}>${
           inflight(w) ? (w === "reboot" ? "Rebooting…" : "Shutting down…")
                       : (w === "reboot" ? "Reboot" : "Shut down")}</button>`).join("")}
     </div>` : ""}`;
@@ -1534,9 +1548,12 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                                : "sessions started here from now on find no card to compute on");
         }
         if (ge && !ge.disabled && ge.checked !== emuWas){
-          const k = await nodeAct({action: "gpu-display", id, on: ge.checked});
+          const want = ge.checked;
+          const k = await nodeAct({action: "gpu-display", id, on: want});
           if (k.error) return;
-          if (c && c.draft) c.draft.gpuEmu = undefined;
+          // Kept as asked until the node reports the new state, which moves
+          // gpuEmuFrom and puts the box on the machine's word again.
+          if (c && c.draft){ c.draft.gpuEmu = want; c.draft.gpuEmuFrom = emuWas; }
           said.push(ge.checked ? "setting the emulator up on the card" : "taking the emulator off the card");
         }
         notify(said.length ? said.join("; ") : "nothing changed");

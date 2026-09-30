@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.123"
+AGENT_VERSION = "0.7.124"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -5732,19 +5732,58 @@ class Agent:
         everything relative to where it is invoked and refuses with "Must run
         from runner root or install is corrupt" anywhere else, which is
         exactly what a registered-but-serviceless runner came from.
+
+        Streamed, the way Job.exec and _apply_root are: its output pumped
+        as it comes and the log posted on a clock. It used to run the command
+        to the end and post nothing meanwhile, so the NVIDIA rows on the
+        Toolchains tab never said installing (the step rides a log post) and
+        the job sat at assigned for as long as apt took (30 Sep).
         """
+        # A job that cannot post or be canceled (a check's own stand-in, a
+        # test's) still runs the command and hears its output.
+        flush = getattr(job, "flush", None) or (lambda: True)
+        stopped = lambda: bool(getattr(job, "canceled", False))  # noqa: E731
         job.say("$ " + " ".join(argv) + "\n")
+        flush()                          # the step and the command, now
         try:
-            p = subprocess.run(argv, cwd=cwd, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,
-                               timeout=timeout, check=False)
-        except (OSError, subprocess.SubprocessError) as e:
+            p = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, start_new_session=True)
+        except OSError as e:
             job.say(f"{argv[0]}: {e}\n")
             return 1
-        for line in p.stdout.decode("utf-8", "replace").splitlines():
-            if line.strip():
-                job.say(line + "\n")
-        return p.returncode
+        with contextlib.suppress(AttributeError):
+            job.proc = p
+        if stopped():
+            Job._kill(p)
+
+        def pump():
+            try:
+                for line in p.stdout:
+                    text = line.decode("utf-8", "replace")
+                    if text.strip():
+                        job.say(text if text.endswith("\n") else text + "\n")
+            except (OSError, ValueError):
+                pass
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
+        deadline, killed = time.monotonic() + timeout, False
+        while reader.is_alive():
+            reader.join(0.5)
+            if getattr(job, "pending", None):
+                flush()
+            if time.monotonic() > deadline and not killed:
+                job.say(f"timed out after {int(timeout)}s, killing it\n")
+                Job._kill(p)
+                killed = True
+        p.wait()
+        with contextlib.suppress(OSError):
+            p.stdout.close()
+        with contextlib.suppress(AttributeError):
+            job.proc = None
+        if stopped():
+            job.say("stopped\n")
+            return 130
+        return 124 if killed else p.returncode
 
     def _apply_root(self, job, cfg):
         """One command as root, that a person allowed (roadmap R38). The
