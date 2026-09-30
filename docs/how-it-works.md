@@ -154,6 +154,20 @@ renders exactly what a tab will show) and ImageMagick packs the `.ico`.
 The dashboard's own tab icon is this command's output, from
 `scripts/dashboard/static/favicon.svg`.
 
+**Documents a session can read.** `bb tool docs read FILE...` prints a PDF,
+a Word document, a slide deck or a spreadsheet as Markdown, through
+markitdown; `bb tool docs pages FILE [--pages N-M] [--dpi N]` draws its pages
+as PNGs in `dist/docs/NAME/` through PyMuPDF, the first twenty when no range
+is given, for the layout, a chart or a scan that text alone loses. A file
+that is not a PDF is made one first by LibreOffice, headless, which is also
+`bb tool office convert FILE... --to pdf|docx|xlsx|pptx|odt` on its own.
+Two toolchains carry them: **documents** (markitdown and PyMuPDF in a Python
+of uv's own inside the toolchain's directory, so nothing depends on the
+node's Python, and pandoc; about 650 MB) and **office** (LibreOffice's
+AppImage unpacked; about 750 MB). The Python environment holds absolute
+paths, so a store mounted at another path on another node needs the
+toolchain installed from that node.
+
 `bb` re-execs as `builder` automatically: `docker exec` lands as root, which
 would break file ownership. A bare `docker exec -it BuilderBot bash` is still
 root; use `bb shell` for the normal user.

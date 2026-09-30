@@ -471,6 +471,13 @@ bb tool graphics CMD  pictures a session can make and then read back, with the
                    favicon SVG [DIR], a favicon set (ico + touch icon) from one mark
 bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) rendered to
                    PNG and SVG in dist/diagrams/, with the diagrams toolchain
+bb tool docs read FILE...  a PDF, Word document, slide deck or spreadsheet as
+                   Markdown on stdout, with the documents toolchain
+bb tool docs pages FILE [--pages N-M] [--dpi N]  its pages as pictures in
+                   dist/docs/NAME/, for layout, charts and scans; a file that
+                   is not a PDF is made one by the office toolchain first
+bb tool office convert FILE... [--to FORMAT]  LibreOffice with no window: a
+                   document into pdf (the default), docx, xlsx, pptx or odt
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 

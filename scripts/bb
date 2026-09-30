@@ -409,6 +409,13 @@ bb tool graphics CMD  pictures a session can make and then read back, with the
                    favicon SVG [DIR], a favicon set (ico + touch icon) from one mark
 bb tool diagrams render FILE...  PlantUML (.puml) and Mermaid (.mmd) rendered to
                    PNG and SVG in dist/diagrams/, with the diagrams toolchain
+bb tool docs read FILE...  a PDF, Word document, slide deck or spreadsheet as
+                   Markdown on stdout, with the documents toolchain
+bb tool docs pages FILE [--pages N-M] [--dpi N]  its pages as pictures in
+                   dist/docs/NAME/, for layout, charts and scans; a file that
+                   is not a PDF is made one by the office toolchain first
+bb tool office convert FILE... [--to FORMAT]  LibreOffice with no window: a
+                   document into pdf (the default), docx, xlsx, pptx or odt
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 EOF
 }
@@ -4070,9 +4077,11 @@ cmd_tool() {
     case "$tool" in
         graphics)  tool_graphics "$@" ;;
         diagrams)  tool_diagrams "$@" ;;
+        docs)      tool_docs "$@" ;;
+        office)    tool_office "$@" ;;
         "")
             local t d
-            for t in graphics diagrams; do
+            for t in graphics diagrams documents office; do
                 if d="$(sdk_find "$t" 2>/dev/null)" && [ -n "$d" ]; then
                     printf '  %-10s installed here\n' "$t"
                 else
@@ -4080,7 +4089,9 @@ cmd_tool() {
                 fi
             done
             printf '\n  bb tool graphics info|resize|crop|compose|annotate|diff|svg2png|optimize|favicon ...\n'
-            printf '  bb tool diagrams render FILE... [--out DIR]\n' ;;
+            printf '  bb tool diagrams render FILE... [--out DIR]\n'
+            printf '  bb tool docs read FILE... | pages FILE [--pages N-M] [--dpi N] [--out DIR]\n'
+            printf '  bb tool office convert FILE... [--to pdf|docx|xlsx|pptx|odt|txt] [--out DIR]\n' ;;
         *) die "no tool called ${tool}: bb tool lists them" ;;
     esac
 }
@@ -4288,6 +4299,61 @@ tool_diagrams_render() {
         esac
         log "wrote ${out}/${name}.png and ${out}/${name}.svg"
     done
+}
+
+# ---- documents ---------------------------------------------------------------
+# A document a session can read: its text as Markdown (markitdown, from the
+# documents toolchain's own Python), or its pages as pictures (PyMuPDF, with
+# LibreOffice from the office toolchain making a PDF of anything else first).
+# docs.py in this library does both; this finds the toolchains' copies.
+tool_docs() {
+    local cmd="${1:-}" d py so
+    [ $# -gt 0 ] && shift
+    case "$cmd" in
+        read|pages) ;;
+        *) die "bb tool docs read FILE... | pages FILE [--pages N-M] [--dpi N] [--out DIR]" ;;
+    esac
+    d="$(sdk_find documents 2>/dev/null)" || d=""
+    py="${d:+$d/venv/bin/python}"
+    [ -n "$py" ] && [ -x "$py" ] \
+        || die "the documents toolchain is not on this node: install it on the Toolchains tab with this node picked"
+    so="$(sdk_find office 2>/dev/null)/bin/soffice" || so=""
+    [ -x "$so" ] || so=""
+    BB_DOCS_SOFFICE="$so" "$py" "$BB_LIB/docs.py" "$cmd" "$@"
+}
+
+# LibreOffice with no window: a document into another format, into dist/docs/
+# by default. A profile of its own per run, since two runs sharing one wait
+# on each other's lock and the second converts nothing without a word.
+tool_office() {
+    local cmd="${1:-}"; [ $# -gt 0 ] && shift
+    case "$cmd" in
+        convert) ;;
+        *) die "bb tool office convert FILE... [--to pdf|docx|xlsx|pptx|odt|txt] [--out DIR]" ;;
+    esac
+    local to=pdf out="dist/docs" files=() f so work
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --to) to="${2:-}"; shift 2 ;;
+            --out) out="${2:-}"; shift 2 ;;
+            -*) die "unknown option: $1" ;;
+            *) img_file "$1"; files+=("$1"); shift ;;
+        esac
+    done
+    [ "${#files[@]}" -gt 0 ] || die "bb tool office convert FILE... [--to pdf|docx|xlsx|pptx|odt|txt] [--out DIR]"
+    case "$to" in pdf|docx|xlsx|pptx|odt|ods|odp|txt|html|csv) ;; *) die "--to takes pdf, docx, xlsx, pptx, odt, ods, odp, txt, html or csv" ;; esac
+    so="$(gfx_tool office soffice)"
+    mkdir -p "$out"; out="$(cd "$out" && pwd)"
+    work="$(mktemp -d "${TMPDIR:-/tmp}/bb-office.XXXXXX")"
+    for f in "${files[@]}"; do
+        HOME="$work" "$so" "-env:UserInstallation=file://$work/profile" --headless --norestore \
+            --convert-to "$to" --outdir "$out" "$f" >/dev/null 2>"$work/err" \
+            || { cat "$work/err" >&2; rm -rf "$work"; die "LibreOffice could not convert ${f}"; }
+        [ -f "$out/$(basename "${f%.*}").$to" ] \
+            || { cat "$work/err" >&2; rm -rf "$work"; die "LibreOffice wrote nothing for ${f}: it may not read that format"; }
+        log "wrote ${out}/$(basename "${f%.*}").${to}"
+    done
+    rm -rf "$work"
 }
 
 tool_graphics_favicon() {

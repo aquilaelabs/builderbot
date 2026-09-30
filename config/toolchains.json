@@ -967,6 +967,86 @@
       "tool": "diagrams"
     },
     {
+      "name": "documents",
+      "label": "Document readers (markitdown, PyMuPDF, pandoc)",
+      "probe": "documents",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/markitdown",
+        "reports": "markitdown"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "What bb tool docs runs: markitdown turns a PDF, a Word document, a slide deck or a spreadsheet into Markdown a session can read, PyMuPDF draws a PDF's pages as pictures for layouts, charts and scans, and pandoc converts between document formats. Their Python is uv's own, kept in this directory, so nothing depends on the machine's. About 650 MB: pandoc is a quarter of it, and markitdown's file-type detector and spreadsheet reader most of the rest.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 230000000
+        },
+        "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst/bin\" \"$dst/libexec\"; get() { curl -fsSL --retry 3 -o \"$2\" \"$1\"; }; tag() { curl -fsSIL -o /dev/null -w '%{url_effective}' \"https://github.com/$1/releases/latest\" | sed 's#.*/tag/##'; }; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\" \"$dst/venv\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1; \"$dst/libexec/uv\" venv -q --python 3.12 \"$dst/venv\"; \"$dst/libexec/uv\" pip install -q --python \"$dst/venv/bin/python\" 'markitdown[pdf,docx,pptx,xlsx,xls]' pymupdf; ln -sf ../venv/bin/markitdown \"$dst/bin/markitdown\"; v=\"$(tag jgm/pandoc)\"; get \"https://github.com/jgm/pandoc/releases/download/$v/pandoc-$v-linux-amd64.tar.gz\" \"$t/pandoc.tgz\"; tar -xzf \"$t/pandoc.tgz\" -C \"$t\"; cp \"$(find \"$t\" -path '*/bin/pandoc' -type f | head -1)\" \"$dst/bin/pandoc\"; chmod +x \"$dst/bin/pandoc\"; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/markitdown",
+          "--version"
+        ]
+      },
+      "tool": "docs"
+    },
+    {
+      "name": "office",
+      "label": "LibreOffice, headless",
+      "probe": "office",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/soffice",
+        "reports": "soffice"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "What bb tool office runs: LibreOffice with no window, to turn a Word document, a slide deck or a spreadsheet into a PDF, and so into pictures of its pages with the documents toolchain, when what it looks like matters and not only what it says. Its AppImage unpacked at install, so nothing here needs FUSE. About 750 MB unpacked.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 300000000
+        },
+        "url": "https://appimages.libreitalia.org/LibreOffice-fresh.basic-x86_64.AppImage",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst/bin\"; cp \"$1\" \"$t/lo.AppImage\"; chmod +x \"$t/lo.AppImage\"; (cd \"$t\" && ./lo.AppImage --appimage-extract >/dev/null); rm -rf \"$dst/lo\"; mv \"$t/squashfs-root\" \"$dst/lo\"; so=\"$(find \"$dst/lo/opt\" -maxdepth 3 -path '*/program/soffice' | head -1)\"; test -x \"$so\"; ln -sf \"../${so#\"$dst\"/}\" \"$dst/bin/soffice\"; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/soffice",
+          "--version"
+        ]
+      },
+      "tool": "office"
+    },
+    {
       "name": "language-servers",
       "label": "Language servers (Python, TypeScript)",
       "probe": "language-servers",

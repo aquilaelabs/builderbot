@@ -90,6 +90,14 @@ needs, say so; installing is the operator's, from the Tools tab.
 this node carries git, tmux, jq, python3 and curl by itself, and nothing
 else is a given.
 
+A document someone hands you is read with `bb tool docs read FILE` (a
+PDF, a Word document, a slide deck or a spreadsheet, as Markdown), and
+looked at with `bb tool docs pages FILE [--pages N-M]`, which draws its
+pages as pictures for your image reader when layout, charts or a scan
+matter. `bb tool office convert FILE --to pdf|docx|xlsx|pptx` changes its
+format. They need the documents and office toolchains on this node; where
+one is missing the verb says so, and installing it is the operator's.
+
 A test run finds `BB_TEST_WORKERS` in its environment, on the node and
 inside a dev instance alike: how many workers this node lets a run use, set
 on its row. When you write tests or set the test command, have the runner
