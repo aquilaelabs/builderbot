@@ -1792,6 +1792,10 @@ cmd_rules() {
     # The house rules: the operator's on the Briefing tab, a session's own
     # through add/edit/rm here. Each carries who wrote it, and a session may
     # change only its own; see rules.py for the ownership and the log.
+    # Its help, as every verb's -h is (B411): the lines bb help carries for it.
+    case "${1:-}" in
+        -h|--help) usage | sed -n '/^bb rules /,/^bb [^r]/p' | sed '$d'; return 0 ;;
+    esac
     local proj="${BB_PROJECT:-}"
     if [ -z "$proj" ]; then
         proj="$(project_here)" \
@@ -1804,7 +1808,12 @@ cmd_rules() {
     if [ "${1:-}" = check ]; then
         shift
         local rules_json
-        rules_json="$(BB_PROJECT="$proj" bash "$0" rules --json)" || die "could not read the rules"
+        # Exit 75 (EX_TEMPFAIL) when the rules could not be read, which on a
+        # node is the controller not answering: a check that could not run,
+        # and the hand-back hook lets that pass rather than calling it a
+        # failed check (B412).
+        rules_json="$(BB_PROJECT="$proj" bash "$0" rules --json)" \
+            || { warn "could not read the rules, so no check ran: the controller may be restarting"; return 75; }
         RULES_JSON="$rules_json" python3 "$BB_LIB/rules-check.py" "$WORKSPACE/$proj" "$@"
         return $?
     fi
@@ -4758,7 +4767,8 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # to the real controller it would be a session planting findings in
         # somebody else's report directory.
         # `probe` and `keep` drive the dashboard fixture, which runs here.
-        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests unit"|"tests coverage"|"rules check"|"findings sample") : ;;
+        # `rules -h` is help, the bb beside it answers (B411).
+        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests unit"|"tests coverage"|"rules check"|"rules -h"|"rules --help"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and

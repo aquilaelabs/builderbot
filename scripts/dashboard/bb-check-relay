@@ -105,6 +105,11 @@ def main():
     # refusal. Nothing is stamped, so the next hand-back runs it for real.
     if r.returncode != 0 and "another dashboard test run is going" in out:
         return
+    # ...nor are rules that could not be read, which is the controller
+    # restarting: bb rules check says so with 75, and the session was told
+    # to fix a check that never ran (B412).
+    if r.returncode == 75:
+        return
     if r.returncode == 0:
         try:
             os.makedirs(os.path.dirname(sf), exist_ok=True)

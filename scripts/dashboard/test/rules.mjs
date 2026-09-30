@@ -241,6 +241,15 @@ ok(/nothing changed here that a rule/.test(bb('check')),
      'the Stop hook refuses the stop with the failing check named');
   ok(stop({ stop_hook_active: true }) === '',
      '...but lets a stop through that a hook already refused once, so it never loops');
+  // Rules that cannot be read (the controller restarting, from a node) are a
+  // check that did not run, not one that failed: the stop goes, and nothing
+  // is stamped, so the next hand-back checks for real (B412).
+  const away = execFileSync('python3', [join(HERE, '..', 'bb-check-relay'), 'alpha', 'u_test'],
+    { env: { ...ENV, BB_TREE: `${DIR}/ws/alpha`, XDG_CACHE_HOME: `${DIR}/cache-away`, BUILDERBOT_ROLE: 'node',
+             BB_CONTROLLER: 'http://127.0.0.1:9', BB_TOKEN: 'bbs_nothing' },
+      input: JSON.stringify({ stop_hook_active: false }) }).toString();
+  ok(away === '' && !existsSync(`${DIR}/cache-away/builderbot/u/_none/project/alpha/checked`),
+     `with the controller not answering, the Stop hook lets the stop go and stamps nothing (${away.slice(0, 80)})`);
   bb('edit', 'design', '--check', 'test -d .git');
   ok(stop({ stop_hook_active: false }) === '' && existsSync(`${cache}/builderbot/u/_none/project/alpha/checked`),
      'a passing check lets the stop go and stamps the tree');
@@ -250,6 +259,8 @@ ok(/nothing changed here that a rule/.test(bb('check')),
 }
 
 // ---- reading them from a session -------------------------------------------
+ok(/^bb rules show NAME/m.test(execFileSync(BB, ['rules', '-h'], { env: ENV }).toString()),
+   'bb rules -h is its help, as every verb\'s is (B411)');
 ok(/No em dashes/.test(bb('list')) && /agent-compat/.test(bb('list')),
    'bb rules lists what is in effect');
 ok(/add, do not change/.test(bb('show', 'agent-compat')),
