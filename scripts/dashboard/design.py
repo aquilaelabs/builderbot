@@ -1068,7 +1068,7 @@ def page_text(page):
             par = blocks[b["in"] - 1] if b.get("in") else None
             # The parent by its number and the first clause of its label:
             # six children of one parent said its whole label six times (B384).
-            first = re.split(r"[:;,.] ", par["label"], 1)[0][:40] if par and par["label"] else ""
+            first = re.split(r"[:;,.] ", par["label"], maxsplit=1)[0][:40] if par and par["label"] else ""
             inside = (f", inside block {b['in']} ({_label(KINDS, par['kind'])}"
                       f"{': ' + first if first else ''})") if par else ""
             out.append(f"  {i + 1}. {_label(KINDS, b['kind'])} ({_means(KINDS, b['kind'])}){what}, "
