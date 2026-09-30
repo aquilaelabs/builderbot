@@ -729,12 +729,15 @@ await page.waitForFunction(() => document.querySelectorAll('#roadmapHist .hist')
                            { timeout: 10000 });
 const capped = await page.$$eval('#roadmapHist .hist', hs => hs.length);
 ok(capped <= 25, `the window caps what comes back (${capped} of them)`);
+// A wait on the answer, not a half-second sleep: under a loaded whole run
+// the list was read mid-redraw with fewer lines than it ends with (B413).
+const answered = page.waitForResponse(r => /"action":"history"/.test(r.request().postData() || ''),
+                                      { timeout: 15000 });
 await page.selectOption('#histWhen', '0');
-// A wait, not a half-second sleep: under a loaded whole run the list was
-// read mid-redraw with fewer lines than it ends with (B413).
-const wide = await page.waitForFunction(n => document.querySelectorAll('#roadmapHist .hist').length >= n,
-                                        capped, { timeout: 10000 }).then(() => true, () => false);
-ok(wide, '...and widening it to all time brings back at least as much');
+await answered;
+const widened = await page.waitForFunction(n => document.querySelectorAll('#roadmapHist .hist').length >= n,
+                                           capped, { timeout: 10000 }).then(() => true, () => false);
+ok(widened, '...and widening it to all time brings back at least as much');
 
 // It opens OVER the list rather than in place of it: the line you wanted to
 // read the log against is still there behind, and the send box is put away
@@ -1408,6 +1411,12 @@ await closePage(ultra);
 // Toolchains tab the wide page opened could become the active tab here too,
 // and under a whole run's load that landed before the Save below was
 // pressed, with the notebook's footer behind it (B396). The notebook first.
+// Opening it straight away was not enough (B414): this page adopts the
+// wide page's layout on its next status poll, which could come after the
+// notebook was shown, even in the suite run alone. So first this page holds
+// the layout revision the server has, and only then is the notebook shown.
+const serverRev = await page.evaluate(async () => (await (await fetch('/api/status')).json()).layout?.rev ?? -1);
+await page.waitForFunction(r => myRev >= r, serverRev, { timeout: 20000 });
 await page.evaluate(() => openNotebook('alpha', 'roadmap'));
 await nbShown(page);
 
@@ -1418,7 +1427,8 @@ await nbShown(page);
 // so the panel writes and says nothing, and this asserts the silence.
 await post({ action: 'add', project: 'alpha', text: 'something to settle' });
 await page.evaluate(() => notebooks.get('alpha').reload());
-await page.waitForFunction(() => !document.getElementById('roadmapSaveQuiet').disabled);
+await page.waitForFunction(() => { const b = document.getElementById('roadmapSaveQuiet');
+  return !b.disabled && b.offsetParent; });
 ok(await page.$('#roadmapSave') === null,
    'there is one Save in the footer, not two');
 const beforeQuiet = tmuxCapture('claude-alpha').length;
