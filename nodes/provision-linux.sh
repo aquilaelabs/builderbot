@@ -2325,7 +2325,12 @@ cmd_gpu_container() {
             rm -f "$NVCT_LIST" "$NVCT_KEY"
             docker_forget_nvidia || warn "could not take the nvidia runtime out of $NVCT_DOCKER: it names a runtime that is no longer installed"
             if have systemctl && have docker; then
-                systemctl reload docker 2>/dev/null || warn "Docker did not reload its configuration: the nvidia runtime stays listed until Docker next starts"
+                systemctl reload docker 2>/dev/null || warn "Docker did not reload its configuration"
+                # A reload takes a runtime on and does not take one off (the
+                # dev node, 30 Sep): said, since docker info goes on naming it.
+                if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
+                    say "Docker goes on listing the nvidia runtime until it next restarts; nothing is behind it, and its configuration no longer names it"
+                fi
             fi
             say "removed, with NVIDIA's package source" ;;
         *) die "usage: bb-sandbox gpu-container install|remove" ;;

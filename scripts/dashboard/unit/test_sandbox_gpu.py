@@ -213,6 +213,16 @@ echo "docker-ce ii "; exit 0''')
         got, _ = self.removed({"default-runtime": "nvidia", "runtimes": {"nvidia": nv, "kata": {"path": "kata"}}})
         self.assertEqual(json.loads(got), {"runtimes": {"kata": {"path": "kata"}}})
 
+    def test_a_docker_that_goes_on_listing_the_runtime_is_said(self):
+        self.toolkit()
+        for f in (self.ctk, self.listed):
+            with open(f, "w") as h:
+                h.write("x\n")
+        self.tool("systemctl", f'echo "systemctl $*" >> "{self.log}"')      # a reload that drops nothing
+        rc, said, _ = self.run_helper("gpu-container", "remove")
+        self.assertEqual(rc, 0, said)
+        self.assertIn("goes on listing the nvidia runtime until it next restarts", said)
+
     def test_a_configuration_without_the_runtime_is_left_as_it_is(self):
         text = '{"labels":   ["builderbot.sandbox=1"]}\n'
         self.assertEqual(self.removed(text)[0], text)
