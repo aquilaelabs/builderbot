@@ -2,7 +2,7 @@
 // The convention IS the feature: the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
 import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil } from './lib.mjs';
-import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync, existsSync, utimesSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 // alpha ships an APK and an XPI; the XPI is a real zip with a manifest, since
@@ -60,6 +60,18 @@ writeFileSync(`${DIR}/ws/alpha/dist/emu/loose.png`, Buffer.from([0x89, 0x50, 0x4
 writeFileSync(`${DIR}/ws/alpha/secret.txt`, 'not yours');
 symlinkSync(`${DIR}/ws/alpha/secret.txt`, `${DIR}/ws/alpha/dist/leak.txt`);
 
+// Five dev builds of one APK and its release (R105): the tab keeps the
+// newest three dev builds and never the release's place.
+{
+  const t0 = Math.floor(Date.now() / 1000) - 5000;
+  for (let n = 1; n <= 5; n++){
+    const f = `${DIR}/ws/alpha/dist/alpha-1.2.0-dev.${n}-abcdef${n}-debug.apk`;
+    writeFileSync(f, 'dev build');
+    utimesSync(f, t0 + n * 100, t0 + n * 100);
+  }
+  writeFileSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-debug.apk`, 'release');
+  utimesSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-debug.apk`, t0, t0);
+}
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
 await page.goto(URL);
@@ -72,6 +84,15 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
 
 // ---- the listing -----------------------------------------------------------
 const names = await page.$$eval('.artrow b', bs => bs.map(b => b.textContent));
+{
+  const dev = names.filter(n => /^alpha-1\.2\.0-dev\./.test(n)).sort();
+  const note = await page.$eval('#artList', e => [...e.querySelectorAll('.hint')].map(h => h.textContent).join(' '));
+  ok(dev.join() === ['alpha-1.2.0-dev.3-abcdef3-debug.apk', 'alpha-1.2.0-dev.4-abcdef4-debug.apk', 'alpha-1.2.0-dev.5-abcdef5-debug.apk'].join()
+     && names.includes('alpha-1.2.0-debug.apk') && !existsSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-dev.1-abcdef1-debug.apk`),
+     `of five dev builds of one APK the newest three are kept and the release beside them stays (${dev.join(', ')})`);
+  ok(/newest 3 of each/.test(note) && /A release is kept/.test(note),
+     `...and the tab says so (${note.replace(/\s+/g, ' ').slice(0, 120)})`);
+}
 ok(names.includes('streamlift-1.2.apk') && names.includes('companion-0.2.0.xpi'),
    `dist/ is listed, subdirectories included (${names.join(', ')})`);
 ok(await page.$eval('#artBuild', e => !e.hidden && /No node/.test(e.textContent)
@@ -282,9 +303,10 @@ await page.click('.nbtabs [data-v="artifacts"]:visible');
 // Scoped to the pane: alpha's notebook is parked but its own artifacts view
 // is still the active one inside that instance, so an unscoped selector finds
 // the wrong project's rows.
-await page.waitForFunction(() => /dist\//.test(
-  document.querySelector('.pane .nb [data-view="artifacts"] #artList .hint')?.textContent || ''),
-  null, { timeout: 15000 });
+// ...and by its words, since a list can carry another line (R105's note on
+// dev builds) before them.
+await page.waitForFunction(() => [...document.querySelectorAll('.pane .nb [data-view="artifacts"] #artList .hint')]
+  .some(h => /Nothing in dist\//.test(h.textContent)), null, { timeout: 15000 });
 ok(true, 'a project with no dist/ is told the convention, not shown a blank');
 
 // ---- a build on a branch, in an account's own worktree (B237) -------------

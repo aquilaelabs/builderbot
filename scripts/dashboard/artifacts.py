@@ -325,12 +325,60 @@ def forget_capture(project, name):
 
 # ---- the tab's read and its downloads, one call each from the dashboard --------
 
+# ---- dev builds: the newest few of each (R105) ---------------------------------
+# A dev build carries its version in its name the way bb version --file
+# spells it (0.1.0-dev.17-9e09ad3, -dirty when the tree was), and a session
+# building all day leaves one file per build: seven debug APKs, 133 MB, in
+# one day on Shebang-DevBoard (30 Sep). Files that are one build of the same
+# thing differ only in that version, so the name with it taken out is the
+# kind; of each kind the newest DEV_KEEP stay and the rest go when the tab
+# draws, like captures. A release (no -dev.N) is never swept, nor a file
+# whose name carries no version: nothing here can tell those are superseded.
+DEV_KEEP = 3
+DEV_VERSION = re.compile(r"(?<![0-9A-Za-z])\d+\.\d+\.\d+-dev\.\d+-[0-9a-f]{7,40}(?:-dirty)?(?![0-9A-Za-z])")
+
+
+def dev_kind(name):
+    """The name with its dev version taken out, or None for a file that is
+    not a dev build."""
+    m = DEV_VERSION.search(name)
+    return None if m is None else name[:m.start()] + "*" + name[m.end():]
+
+
+def sweep_dev_builds(project, keep=DEV_KEEP):
+    """The dev builds of each kind past the newest `keep`, removed from the
+    project's dist/ (its top level only, where a build lands). Returns the
+    names removed."""
+    root = dist_dir(WORKSPACE / project) if WORKSPACE else None
+    if root is None or not root.is_dir():
+        return []
+    kinds = {}
+    for p in root.iterdir():
+        k = dev_kind(p.name) if p.is_file() and not p.name.startswith(".") else None
+        if k is None:
+            continue
+        try:
+            kinds.setdefault(k, []).append((p.stat().st_mtime, p))
+        except OSError:
+            continue
+    gone = []
+    for rows in kinds.values():
+        for _, p in sorted(rows, key=lambda r: -r[0])[keep:]:
+            try:
+                p.unlink()
+                gone.append(p.name)
+            except OSError:
+                pass
+    return sorted(gone)
+
+
 def tab_view(name, uid):
     """The Artifacts tab's whole read for one project, as account `uid`
     sees it: what it built, each account's own builds from its worktree
     (B237) apart from dist/, which is what ships, what the project can and
     cannot do off this box, its dev instances, and the phone."""
-    return ({"artifacts": listing_of(name),
+    sweep_dev_builds(name)
+    return ({"artifacts": listing_of(name), "dev_keep": DEV_KEEP,
              "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
                           for g in branches(name)],
              "build": build_state(name)}

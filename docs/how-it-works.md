@@ -154,6 +154,14 @@ renders exactly what a tab will show) and ImageMagick packs the `.ico`.
 The dashboard's own tab icon is this command's output, from
 `scripts/dashboard/static/favicon.svg`.
 
+**Dev builds do not pile up.** A build named with `bb version --file` carries
+its dev version (`0.1.0-dev.17-9e09ad3`), so builds of the same thing differ
+only there; of each such kind the Artifacts tab keeps the newest three in
+`dist/` and removes the older when it draws, as it does captures past their
+days. A release (no `-dev.N`) and a file whose name carries no version are
+never removed. One day of a session building a keyboard left seven debug
+APKs, 133 MB, before this.
+
 **Documents a session can read.** `bb tool docs read FILE...` prints a PDF,
 a Word document, a slide deck or a spreadsheet as Markdown, through
 markitdown; `bb tool docs pages FILE [--pages N-M] [--dpi N]` draws its pages

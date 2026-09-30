@@ -88,6 +88,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Claude on a project whose session is running opens its chooser with Open tab and End session, instead of jumping to the tab, so the project's other nodes can be started from there too. (25bee51)
 - The darkened edge that says a box scrolls is on the lists and logs that scroll too: a project's Reads and nodes in its settings, the notebook's lists, a job's log, the chat. (c4685ca)
 - bb build on a node names what it puts in dist/ with the project and its version, as shipped output should be, and the briefing says what bb build and bb test give a session over running the command by hand. (ed92efa)
+- The Artifacts tab keeps the newest three dev builds of each kind in dist/ and removes older ones as new ones arrive; a release, or a file with no version in its name, is never removed. (98162c3)
 
 ### Removed
 

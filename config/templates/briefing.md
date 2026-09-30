@@ -237,9 +237,10 @@ may move, which is usually nothing. `bb changelog add "..." --cat NAME`
 records what a change means for the person using the product, under Added,
 Changed, Deprecated, Removed, Fixed or Security; run it with no category
 and it says when each applies. Shippable build output goes in this
-project's dist/, named with `bb version --file` and gitignored, and the
-Artifacts tab lists it; nothing else goes there, and scratch goes anywhere
-else.
+project's dist/, named with `bb version --file` and gitignored (`bb
+build` names it so), and the Artifacts tab lists it; nothing else goes
+there, and scratch goes anywhere else. Of each kind of dev build the tab
+keeps the newest three and lets the older go; a release is kept.
 
 ## Git
 

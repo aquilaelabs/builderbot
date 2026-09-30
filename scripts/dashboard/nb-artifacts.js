@@ -210,9 +210,13 @@ function nbArtifactsView({$, nb, project, root, sheet}){
         <span class="grow">${esc(inst.what)}${
           inst.error ? `: ${esc(inst.error)}` : ""}</span>
       </div>` : "";
+    // Dev builds go on their own past the newest few of each (R105): said
+    // once, over the list, where there are any.
+    const devNote = rows.some(a => /\d+\.\d+\.\d+-dev\.\d+-[0-9a-f]{7}/.test(a.name))
+      ? `<div class="hint dim">Dev builds keep the newest ${art.dev_keep ?? 3} of each; older ones are removed as new ones arrive. A release is kept.</div>` : "";
     list.innerHTML = devHtml + (!rows.length
       ? `<div class="hint">Nothing in <b>dist/</b> yet: a build copies what it keeps there.</div>`
-      : jobHtml + instHtml + rows.map((a, i) => `
+      : devNote + jobHtml + instHtml + rows.map((a, i) => `
         <div class="artrow">
           <span class="grow">
             <span class="top"><span class="pill">${esc(a.kind)}</span>
