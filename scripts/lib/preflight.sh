@@ -78,9 +78,22 @@ cmd_tests_preflight() {
         fi
     fi
     # The checks the house rules ask for before handing back.
+    # design is uniform.mjs whole, about four minutes. It runs when a file
+    # that carries style changed (the stylesheet lives in index.html, the
+    # textures in static/, the language in docs/design-language.md, the
+    # measures in uniform.mjs), since no function map sees a CSS rule. For
+    # script and python, the covered run already says whether uniform reaches
+    # the changed functions and puts it in the suites when it does: 16 of 20
+    # commits paid the whole of uniform on top of one suite, 9 of them with
+    # no style changed (30 Sep). Without a covered run, as before.
     checks=(lint voice)
+    local cov_ok=""; [ -f "${BB_REPO:-$PWD}/.bb-map/coverage.json" ] && cov_ok=1
     for f in "${files[@]}"; do
-        case "$f" in scripts/dashboard/*) checks+=(design); break ;; esac
+        case "$f" in
+            scripts/dashboard/index.html|scripts/dashboard/static/*|docs/design-language.md|scripts/dashboard/test/uniform.mjs)
+                checks+=(design); break ;;
+            scripts/dashboard/*) [ -n "$cov_ok" ] || { checks+=(design); break; } ;;
+        esac
     done
     printf '  files:   %s\n' "${files[*]}"
     printf '  suites:  %s\n' "${suites[*]:-none}"
@@ -104,6 +117,18 @@ cmd_tests_preflight() {
     # Not cmd_dashboard test, which execs the harness and would end this
     # verb before its checks: the harness is run as a child here.
     local rc=0 here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh"
+    # The unit tier first: seconds, and a failure there is a failure of the
+    # rule itself, so it is said before any browser suite starts. A red unit
+    # still lets the suites run, so one gate says everything that is wrong.
+    local unit="${BB_REPO:-$PWD}/scripts/dashboard/unit"
+    if [ -d "$unit" ]; then
+        printf '== unit: python3 -m unittest (scripts/dashboard/unit)\n'
+        if python3 -m unittest discover -s "$unit" -t "$unit" -q 2>&1; then
+            printf '  PASS  unit (exit 0)\n'
+        else
+            printf '  FAIL  unit\n'; rc=1
+        fi
+    fi
     [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
     # Kept whole in the same log bb tests run writes, so bb tests log prints
     # this run when it was the last: a flake named only in the terminal's

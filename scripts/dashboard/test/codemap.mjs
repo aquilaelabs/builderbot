@@ -97,8 +97,14 @@ ok(names.includes('toolchains') && !names.some(n => n.startsWith('lab-')),
 const pre = (...files) => execFileSync('bash', [`${REPO}/scripts/bb`, 'tests', 'preflight', '--dry', '--files', ...files],
                                        { encoding: 'utf8', env: { ...process.env, BB_TREE: REPO } });
 const plan = pre('scripts/dashboard/tab-docker.js');
-ok(/suites:.*\bdevapp\b/.test(plan) && /checks:\s+lint voice design/.test(plan),
-   `a dashboard change plans its suites and the design check (${plan.match(/suites:.*/)?.[0].slice(0, 60)})`);
+ok(/suites:.*\bdevapp\b/.test(plan),
+   `a dashboard script change plans the suites that reach it (${plan.match(/suites:.*/)?.[0].slice(0, 60)})`);
+// The design check is uniform.mjs whole: planned for a file that carries
+// style, which no function map sees, and left to the map for a script when
+// a covered run is on record (30 Sep).
+ok(/checks:\s+lint voice design/.test(pre('scripts/dashboard/index.html'))
+   && /checks:\s+lint voice design/.test(pre('docs/design-language.md')),
+   'a change to the stylesheet or the design language plans the design check');
 ok(/suites:\s+ALL/.test(pre('scripts/dashboard/server.py')), 'a change to server.py is the whole suite, said as such');
 ok(/suites:\s+none/.test(pre('README.md')) && /checks:\s+lint voice$/m.test(pre('README.md')),
    'a change with no suite still gets the lint and voice checks');

@@ -306,6 +306,8 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    image that carries its tests: one built to ship has none, and a run inside it finds
                    nothing and passes. Claude may: Run its container is not asked: a test runs in a
                    container that is already up
+bb tests unit      the python unit tier (scripts/dashboard/unit): the modules' rules without a server
+                   or a browser, in under a second; preflight runs it before any suite
 bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
                    Each names what it needs and skips in one line without it, so a missing service
                    is never a failure, and nothing records them: a lab run is a proof, not a timing.

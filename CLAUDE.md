@@ -139,8 +139,14 @@ by hand cost four commands and still could not see the failed builds.
   name anywhere. R76.
 - **Before a push:** `bb tests preflight` lists the files the branch
   changed (against `origin/main`, plus the working tree), asks the map
-  which suites reach them, and runs those with the lint, voice and design
-  checks the house rules name; `--dry` prints the plan, `--files F...`
+  which suites reach them, and runs the python unit tier (`bb tests unit`,
+  under a second) first, then those suites with the lint and voice checks,
+  and the design check when a file carrying style changed (index.html,
+  static/, the design language, uniform.mjs); for script and python the map
+  already puts uniform in the suites when it reaches the change. The worker
+  plan balances suites by the seconds each took on this node
+  (`.bb-map/suite-times.tsv`), and `BB_TEST_PHASES=1` times a suite's set-up.
+  `--dry` prints the plan, `--files F...`
   names the files instead, and `--base HEAD` measures the working tree
   alone when the branch is long and the default would be everything.
   With a covered run on record (`.bb-map/coverage.json`) the suites are

@@ -99,8 +99,11 @@ map unused` what nothing calls or passes by name. R76: a refactor knows
 its regression net before it starts.
 
 `bb tests preflight` is what a session runs before a push: the files the
-branch changed, the suites that reach them, and the lint, voice and design
-checks, run together; `--dry` prints the plan. With a covered run on
+branch changed, the python unit tier first (under a second), the suites
+that reach them, and the lint and voice checks, run together, with the
+design check when a file carrying style changed; `--dry` prints the plan.
+The suites are shared across the node's workers by the seconds each took
+there last, longest first. With a covered run on
 record the suites are the ones that reached the functions the changed
 lines fall in, and the ones naming an id or class those lines draw
 (`bb map affected`), which is why a change to one handler is a

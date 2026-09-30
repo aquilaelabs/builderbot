@@ -158,6 +158,7 @@ scripts/
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite: `bb dashboard test`, isolated
+    unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
   agent/ruff.toml                the linter's settings for it, pinned to the python a Rocky node carries
 android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin

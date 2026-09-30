@@ -244,6 +244,8 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    image that carries its tests: one built to ship has none, and a run inside it finds
                    nothing and passes. Claude may: Run its container is not asked: a test runs in a
                    container that is already up
+bb tests unit      the python unit tier (scripts/dashboard/unit): the modules' rules without a server
+                   or a browser, in under a second; preflight runs it before any suite
 bb tests lab       the lab suites (test/lab-*.mjs) against real services rather than stand-ins.
                    Each names what it needs and skips in one line without it, so a missing service
                    is never a failure, and nothing records them: a lab run is a proof, not a timing.
@@ -1881,6 +1883,16 @@ cmd_tests() {
         return
     fi
     if [ "${1:-}" = preflight ]; then shift; cmd_tests_preflight "$@"; return; fi
+    # The unit tier: the pure python modules' rules as plain unittest, no
+    # server and no browser, in well under a second. Preflight runs it first
+    # so a broken rule fails before twenty minutes of browser suites do.
+    if [ "${1:-}" = unit ]; then
+        shift
+        local u="${BB_REPO:-$PWD}/scripts/dashboard/unit"
+        [ -d "$u" ] || die "no unit tests at $u: run this from the BuilderBot checkout"
+        python3 -m unittest discover -s "$u" -t "$u" "${@:--q}"
+        return
+    fi
     # A covered run (roadmap R76): the suite, or the named suites, with the
     # counters in, and the map's account of what they reached after.
     if [ "${1:-}" = coverage ]; then
@@ -4646,7 +4658,7 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
         # to the real controller it would be a session planting findings in
         # somebody else's report directory.
         # `probe` and `keep` drive the dashboard fixture, which runs here.
-        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests coverage"|"rules check"|"findings sample") : ;;
+        "tests run"|"tests last"|"tests log"|"tests lab"|"tests probe"|"tests keep"|"tests preflight"|"tests unit"|"tests coverage"|"rules check"|"findings sample") : ;;
         *)  # ...and that is the whole run: without the exit the dispatch
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and
