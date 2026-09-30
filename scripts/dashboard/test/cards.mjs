@@ -2222,6 +2222,15 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   const a = await cls();
   ok(a.room > 50 && a.down && !a.up && a.top === 0 && /inset/.test(a.shadow),
      `a dialog taller than the screen opens at its top with a shadow on the edge that has more (${JSON.stringify({ ...a, shadow: a.shadow.slice(0, 40) })})`);
+  // ...and a list inside it that scrolls, the project's Reads, says so the
+  // same way, on its own edges.
+  await page.waitForFunction(() => document.getElementById('rnReads')?.classList.contains('scrolldown'), null, { timeout: 10000 });
+  const reads = await page.$eval('#rnReads', l => ({ down: l.classList.contains('scrolldown'), up: l.classList.contains('scrollup'),
+    room: l.scrollHeight - l.clientHeight, shadow: getComputedStyle(l).boxShadow }));
+  await page.$eval('#rnReads', l => { l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll')); });
+  const readsEnd = await page.$eval('#rnReads', l => [l.classList.contains('scrollup'), l.classList.contains('scrolldown')]);
+  ok(reads.room > 0 && reads.down && !reads.up && /inset/.test(reads.shadow) && readsEnd[0] && !readsEnd[1],
+     `a list that scrolls, the project's Reads, darkens the edge with more past it, and the other at its end (${JSON.stringify({ ...reads, shadow: reads.shadow.slice(0, 30), end: readsEnd })})`);
   await page.$eval(box, b => { b.scrollTop = b.scrollHeight; b.dispatchEvent(new Event('scroll')); });
   const b = await cls();
   ok(b.up && !b.down, `...scrolled to its end, the shadow moves to the top edge and leaves the bottom (${JSON.stringify({ up: b.up, down: b.down })})`);

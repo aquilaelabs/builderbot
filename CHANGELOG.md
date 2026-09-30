@@ -84,6 +84,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Claude sign-in is on each node's row now (Nodes tab, Claude Code), not the Doctor card: you sign in and out per node, and nothing carries a login between nodes. A project's Claude button offers its node's sign-in when you have none there. (c8bb395)
 - An account that does not administer can open the Nodes tab for the nodes its projects are on: every setting is ghosted for it, and its own Claude sign-in is live. (c8bb395)
 - Claude on a project whose session is running opens its chooser with Open tab and End session, instead of jumping to the tab, so the project's other nodes can be started from there too. (25bee51)
+- The darkened edge that says a box scrolls is on the lists and logs that scroll too: a project's Reads and nodes in its settings, the notebook's lists, a job's log, the chat. (c4685ca)
 
 ### Removed
 

@@ -71,7 +71,11 @@ function modalTop(el){
 // themes put their own texture on these grounds; the classes are set here,
 // from the box's own numbers, on scroll and on a slow clock for content that
 // grows while nobody scrolls.
-const SCROLL_HINTED = ".modal:not([hidden]) > .box, .modal:not([hidden]) .sheetslot, .pane .doc.on";
+// ...and the lists and logs that scroll inside a surface: a project's Reads
+// and nodes in its settings, the notebook's lists, a job's log, the chat
+// (the operator, 30 Sep).
+const SCROLL_HINTED = ".modal:not([hidden]) > .box, .modal:not([hidden]) .sheetslot, .pane .doc.on, "
+  + ".lbox, #roadmapList, #memList, #pendList, .dllog, .dmlog, .chatlog, .mpanel.show, .abpage, .dsboardwrap";
 function scrollHint(el){
   const more = el.scrollHeight - el.clientHeight > 2;
   el.classList.toggle("scrollup", more && el.scrollTop > 2);
