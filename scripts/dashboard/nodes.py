@@ -2159,6 +2159,12 @@ def heartbeat(nid, sample, addr, running=0):
     for k in ("cpu_pct", "load1", "mem_used_mb", "mem_mb"):
         with contextlib.suppress(TypeError, ValueError):
             clean[k] = round(float(s.get(k) or 0), 1)
+    # The card's gauges only when the node has one answering: absent is
+    # "no GPU", which a zero would not say (0.7.125 on).
+    for k in ("gpu_pct", "gpu_mem_used_mb", "gpu_mem_mb"):
+        if k in s:
+            with contextlib.suppress(TypeError, ValueError):
+                clean[k] = round(float(s.get(k) or 0), 1)
     clean["running"] = int(running or 0)
     stores = s.get("stores") if isinstance(s.get("stores"), dict) else {}
     clean["stores"] = {str(r)[:20]: _mb((v or {}).get("free_mb"))

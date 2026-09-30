@@ -1071,8 +1071,9 @@ rule on the node rewritten if the controller's own address is what moved,
 and its agent (with
 **Update agent** when this container ships a newer one, busy until the node
 comes back on it), then **sections**, each a fold with its status on the
-heading so a phone reads the headings and opens one: Health (the meters,
-the toolchains its census found, which is what a project bound to it can
+heading so a phone reads the headings and opens one: Health (the meters:
+cpu, memory, the card's load and its own memory where an NVIDIA driver
+answers, and each store's room; the toolchains its census found, which is what a project bound to it can
 build), Sessions (whether it runs them, and which are open), CI runner,
 Storage (mounts and stores), Network, and Advanced, which holds the node's
 **name** (Rename changes what it is called everywhere here: the pickers,

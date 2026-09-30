@@ -611,6 +611,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await fetch(base + '/api/v1/agent/work', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ sample: { cpu_pct: 3.5, mem_mb: 8192, mem_used_mb: 2048,
+      gpu_pct: 42, gpu_mem_used_mb: 3072, gpu_mem_mb: 8192,
       stores: { data: { free_mb: 5000, total_mb: 9000 },
                 toolchains: { free_mb: 40000, total_mb: 90000 },
                 artifacts: { free_mb: 30000, total_mb: 90000 } } }, running: 0, wait: 0 }) });
@@ -647,6 +648,9 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
      && meters.some(m => m.label === 'cpu') && meters.some(m => m.label === 'memory')
      && meters.every(m => /^\d+%$/.test(m.width)),
      `each store is a meter with its headroom (${meters.map(m => m.label + ' ' + m.val).join(', ')})`);
+  ok(meters.some(m => m.label === 'gpu' && m.val === '42%' && m.width === '42%')
+     && meters.some(m => m.label === 'vram' && m.val === '3072MB / 8192MB' && m.width === '38%'),
+     'a node whose card answers shows how busy it is and how much of its memory is taken, as two more meters');
   ok(await page.$eval(`${ROW} .ndtools`, e => /flutter/.test(e.textContent) && /node/.test(e.textContent)),
      'the row shows what is installed on the node, which is what a project bound to it can build');
   const GH = 'github.com-example-org', RUN = `${ROW} .ndrun[data-slot="${GH}"]`;

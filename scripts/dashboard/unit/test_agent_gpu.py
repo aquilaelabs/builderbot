@@ -14,7 +14,9 @@ agent = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(agent)
 
 
-class GpuName(unittest.TestCase):
+class StandIn(unittest.TestCase):
+    """An nvidia-smi of the test's own, first on PATH."""
+
     def setUp(self):
         self.bin = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.bin, True)
@@ -30,6 +32,8 @@ class GpuName(unittest.TestCase):
             h.write("#!/bin/sh\n" + body + "\n")
         os.chmod(f, os.stat(f).st_mode | stat.S_IEXEC)
 
+
+class GpuName(StandIn):
     def test_a_driver_that_answers_names_the_card(self):
         self.stand_in('echo "NVIDIA GeForce RTX 3070 Ti"')
         self.assertEqual(agent._gpu_name(), "NVIDIA GeForce RTX 3070 Ti")
@@ -41,6 +45,29 @@ class GpuName(unittest.TestCase):
     def test_no_nvidia_smi_is_no_name(self):
         os.environ["PATH"] = self.bin
         self.assertEqual(agent._gpu_name(), "")
+
+
+class GpuSample(StandIn):
+    """The card's gauges on every heartbeat: load and memory, two cards as
+    one, nothing at all when no driver answers."""
+
+    def test_one_card(self):
+        self.stand_in('echo "37, 2048, 8192"')
+        self.assertEqual(agent._gpu_sample(), {"gpu_pct": 37.0, "gpu_mem_used_mb": 2048, "gpu_mem_mb": 8192})
+
+    def test_two_cards_are_one_gauge(self):
+        self.stand_in('printf "10, 1000, 8000\\n30, 3000, 8000\\n"')
+        self.assertEqual(agent._gpu_sample(), {"gpu_pct": 20.0, "gpu_mem_used_mb": 4000, "gpu_mem_mb": 16000})
+
+    def test_no_driver_is_nothing(self):
+        self.stand_in('echo "NVIDIA-SMI has failed"; exit 9')
+        self.assertEqual(agent._gpu_sample(), {})
+        os.environ["PATH"] = self.bin + "/none"
+        self.assertEqual(agent._gpu_sample(), {})
+
+    def test_a_card_without_a_reading_is_skipped(self):
+        self.stand_in('echo "[N/A], [N/A], [N/A]"')
+        self.assertEqual(agent._gpu_sample(), {})
 
 
 class GpuDriver(unittest.TestCase):

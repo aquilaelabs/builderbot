@@ -933,6 +933,14 @@ function nodeMeters(n){
   if (n.live && mem && s.mem_used_mb)
     out.push(meter("memory", s.mem_used_mb / mem * 100,
                    `${gb(s.mem_used_mb)} / ${gb(mem)}`));
+  // The card, where the node has one whose driver answers: how busy it is
+  // and how much of its own memory is taken, the two things a model or an
+  // encode is waiting on.
+  if (n.live && typeof s.gpu_pct === "number")
+    out.push(meter("gpu", s.gpu_pct, s.gpu_pct + "%", rep.gpu || "the node's card"));
+  if (n.live && s.gpu_mem_mb)
+    out.push(meter("vram", (s.gpu_mem_used_mb || 0) / s.gpu_mem_mb * 100,
+                   `${gb(s.gpu_mem_used_mb || 0)} / ${gb(s.gpu_mem_mb)}`, "the card's own memory"));
   // Two shapes for the same fact, and mixing them said "missing" about
   // four healthy stores. The CENSUS carries the whole story per store
   // ({path, free_mb, total_mb}) and moves every ten minutes; the heartbeat

@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.124"
+AGENT_VERSION = "0.7.125"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1782,6 +1782,36 @@ def _gpu_name():
     return p.stdout.strip() if p.returncode == 0 else ""
 
 
+def _gpu_sample():
+    """What the card is doing now, for the node's meters: {gpu_pct,
+    gpu_mem_used_mb, gpu_mem_mb}, or {} when there is no driver answering.
+    Two cards are one gauge: their memory added and their load averaged.
+    Read on every heartbeat, so it gives up after a few seconds rather than
+    hold the poll on a driver that has stopped answering."""
+    if not shutil.which("nvidia-smi"):
+        return {}
+    try:
+        p = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total",
+                            "--format=csv,noheader,nounits"],
+                           capture_output=True, text=True, timeout=3, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if p.returncode != 0:
+        return {}
+    rows = []
+    for line in p.stdout.splitlines():
+        try:
+            rows.append([float(c) for c in line.split(",")])
+        except ValueError:
+            continue
+    rows = [r for r in rows if len(r) == 3]
+    if not rows:
+        return {}
+    return {"gpu_pct": round(sum(r[0] for r in rows) / len(rows), 1),
+            "gpu_mem_used_mb": round(sum(r[1] for r in rows)),
+            "gpu_mem_mb": round(sum(r[2] for r in rows))}
+
+
 def _gpu_driver(sys_root=None, modinfo=None):
     """Where the NVIDIA driver stands on this machine, for the Toolchains
     tab's driver row (R102): the version installed for this kernel (the
@@ -2826,7 +2856,8 @@ class Sampler:
             load1 = 0.0
         return {"cpu_pct": round(100.0 * (dt - di) / dt, 1) if dt > 0 else 0.0,
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
-                "stores": _stores(state.get("stores")), "running": running}
+                "stores": _stores(state.get("stores")), "running": running,
+                **_gpu_sample()}
 
 
 # ---------------------------------------------------------------------------

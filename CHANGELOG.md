@@ -36,6 +36,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Claude Code's own PDF reader works on a node with the documents toolchain: it installs a pdftoppm and a pdfinfo drawn with PyMuPDF, which is what the reader asks for. (d6c29bd)
 - An artifact can be pinned on the Artifacts tab: a pinned build is kept whatever builds come after it, and the row says who pinned it. (37366e3)
 - How many dev builds of each kind the Artifacts tab keeps is a project setting, Dev builds kept in the project's settings: 3 unless changed, and 0 keeps them all (d2405b8)
+- A node with an NVIDIA card shows two more meters under Health on the Nodes tab: gpu, how busy the card is, and vram, how much of its own memory is taken, read from the driver on every heartbeat (6179f03)
 
 ### Changed
 
