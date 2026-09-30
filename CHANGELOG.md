@@ -72,6 +72,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Projects card's rows carry the pin, so a project is unpinned from the sidebar, and their more button slides the row open as the Projects tab's does (1b63482)
 - The setting During a test run, a change asked for: restart now means any run is cut for the new ask, not the final gate alone (1b63482)
 - The briefing's Android section says to start the emulator with bb emu start rather than the binary, and why (the GPU picked, the boot waited out, the log kept), and names a cold boot's System UI not responding dialog as the emulator's (e75a82b)
+- The test gate is shorter: a python unit tier (bb tests unit, under a second) runs first, the workers share suites by the seconds each took rather than by file length, and the design check's whole uniform run happens when a style file changed rather than on every dashboard change (47cceca)
 
 ### Removed
 
@@ -140,6 +141,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb design show names a block's parent by the first clause of its label, a block placed left of or above the frame is refused saying so, and the schema says what a block's 'in' is for: any block that is part of another, drawn over it (43710dd)
 - A design saved under the build before reads again: a stored record is read the forgiving way a save is checked, and its custom map goes with the language's rules to the first theme (every bb design verb refused over one) (1b63482)
 - bb capture shot --emu PKG and bb capture reel --emu PKG launch the package only when it is not already on the screen, so a keyboard, a dialog or a deep screen a session drove up stays in the picture (0f97ecc)
+- Send to Claude no longer presses Enter on a line the input box never took: the line on screen is counted once the pane has stopped drawing, so a previous send's output that repeats the line is not read as this one's echo (47cceca)
 
 ### Security
 

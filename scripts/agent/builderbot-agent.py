@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.115"
+AGENT_VERSION = "0.7.116"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -4500,10 +4500,25 @@ class Agent:
         # placeholder counts as the echo; whitespace is collapsed because
         # the box wraps a long line at word boundaries with an indent.
         mark = " ".join(text[:40].split())
-        def seen():
-            flat = " ".join((self._tmux(["capture-pane", "-p", "-J", "-t", sess]) or "").split())
+        def screen():
+            return " ".join((self._tmux(["capture-pane", "-p", "-J", "-t", sess]) or "").split())
+
+        def seen(flat=None):
+            flat = screen() if flat is None else flat
             return flat.count(mark) + flat.count("[Pasted text")
-        was = seen()
+        # Counted once the pane is still, as notify.tell does: a pane still
+        # drawing the last send's output (a shell's "command not found"
+        # repeats the line) put a copy on screen after the count, which read
+        # as this line's echo, and Enter went to a box that never took it
+        # (B389). At most a second.
+        flat = screen()
+        for _ in range(4):
+            time.sleep(0.25)
+            again = screen()
+            if again == flat:
+                break
+            flat = again
+        was = seen(flat)
         if self._tmux(["send-keys", "-t", sess, "-l", "--", text]) is None:
             job.say("tmux would not take the line\n")
             return "failed", 1

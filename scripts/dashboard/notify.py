@@ -121,7 +121,18 @@ def tell(session, text, sessions=()):
     # says yes to that. What means the input box took it is that there is now
     # one *more* of it than there was.
     mark = text[:FINGERPRINT]
-    was = _arrived(_capture(session), mark)
+    # Counted once the screen is still: a pane still drawing the last
+    # send's output (a shell's "command not found" repeats the line) put a
+    # copy on screen after the count, which read as this line's echo, and
+    # Enter went to a box that never took it (B389). At most a second.
+    screen = _capture(session)
+    for _ in range(4):
+        time.sleep(SETTLE)
+        again = _capture(session)
+        if again == screen:
+            break
+        screen = again
+    was = _arrived(screen, mark)
     r = run(["tmux", "send-keys", "-t", session, "-l", "--", text], timeout=10)
     if r["code"] != 0:
         return r

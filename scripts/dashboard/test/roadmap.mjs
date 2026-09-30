@@ -121,12 +121,17 @@ ok(await page.$$eval('#roadmapList .roadmap[data-step="-1"] .n',
   const out = execFileSync('python3', ['-c', `
 import sys; sys.path.insert(0, ${JSON.stringify(join(dirname(fileURLToPath(import.meta.url)), '..'))})
 import notify
-frames = ['> ', '> [Pasted text #1]', '> [Pasted text #1]']
+# The box shows the placeholder once the line is typed, and not before: a
+# stand-in that moved on with every look read as a pane still drawing,
+# which tell now waits out before it counts (B389).
+typed = []
 calls = []
 def run(argv, timeout=10):
     calls.append(argv)
     if argv[1] == 'capture-pane':
-        return {"code": 0, "out": frames.pop(0) if len(frames) > 1 else frames[0]}
+        return {"code": 0, "out": '> [Pasted text #1]' if typed else '> '}
+    if argv[1] == 'send-keys' and '-l' in argv:
+        typed.append(1)
     return {"code": 0, "out": ""}
 notify.configure(run=run)
 notify.SETTLE = 0
@@ -1158,16 +1163,17 @@ await page.waitForFunction(id => !!document.querySelector(
 ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dinfo`,
      el => el.hidden),
    'the panel shows a details fold, closed: the words are the decision, this is the workings');
-await page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dtog`);
+// Watched across the click rather than read after it: under a whole run's
+// load the 180 ms tween could finish before a read after the click, and the
+// check failed in a four-worker run and passed alone (B390).
+const slid = await animatedDuring(page, () =>
+  page.click(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dtog`));
 ok(await page.$eval(`#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dinfo`,
      el => !el.hidden && /GUI half: stepRow/.test(el.textContent)),
    '...and one tap opens it, breaks and all');
 // It slides rather than appearing: the same height tween the sidebar cards
 // fold with, so the rows below ride down instead of jumping.
-const fold = await page.$eval(
-  `#roadmapList .roadmap[data-id="${plainId}"][data-step="-1"] .dinfo`,
-  el => ({ anim: el.getAnimations().length > 0, h: el.offsetHeight }));
-ok(fold.anim, '...as a slide, not a snap');
+ok(slid.length > 0, `...as a slide, not a snap (${slid.join(' ') || 'nothing animated'})`);
 await page.waitForFunction(id => !document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="-1"] .dinfo`).getAnimations().length,
   plainId, { timeout: 5000 });
