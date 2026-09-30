@@ -713,6 +713,13 @@ def _node_errors(job_id, failed, verb):
             parts[cur].append(line)
     out = {}
     for name in failed:
+        if name == DRIVER:
+            # bb-sandbox says why on a line of its own ("!! ..."), and the
+            # agent's refusal begins "refused:"; its sections are not bb's.
+            log = [x.strip() for x in (nodes.job_tail(job_id, 20000) or "").splitlines()]
+            why = next((x.lstrip("! ") for x in reversed(log) if x.startswith(("!!", "refused:"))), "")
+            out[name] = " · ".join([w for w in (why,) if w] + [f"{verb} failed on the node"])[-400:]
+            continue
         lines = []
         for ln in parts.get(name) or []:
             # The run's own footer, not this toolchain's; and curl's meter
@@ -861,7 +868,9 @@ def payload_for_node(nid):
     if nodes:
         for j in nodes.jobs_for(node_id=nid, type="toolchain", active=True, n=1):
             job = {"running": True, "action": (j.get("spec") or {}).get("action", ""),
-                   "queue": (j.get("spec") or {}).get("names", []), "current": j.get("step", ""),
+                   "queue": [DRIVER if str(x).startswith(DRIVER) else x
+                             for x in (j.get("spec") or {}).get("names", [])],
+                   "current": j.get("step", ""),
                    "log": nodes.job_tail(j["id"], 1200).splitlines()[-16:], "done": [],
                    "failed": [], "aborting": bool(j.get("cancel")), "node": nid, "id": j["id"]}
             break
@@ -880,9 +889,11 @@ def payload_for_node(nid):
                 if j.get("state") not in ("succeeded", "failed", "canceled"):
                     break
                 sp = j.get("spec") or {}
-                names = [str(x) for x in (sp.get("names") or [])]
+                names = [DRIVER if str(x).startswith(DRIVER) else str(x) for x in (sp.get("names") or [])]
                 act = sp.get("action") or "install"
                 here = {i["name"] for i in items if i["installed"]}
+                if (driver_row(n) or {}).get("here"):
+                    here.add(DRIVER)
                 done = [x for x in names if (x in here) == (act == "install")]
                 failed = [x for x in names if x not in done]
                 job = {"running": False, "action": act, "queue": [], "current": "",
@@ -917,6 +928,19 @@ def payload_for_node(nid):
         checked = int(j.get("ended") or 0)
         break
     machine = [r for r in (driver_row(n),) if r]
+    for m in machine:
+        # The census after a job that touched the driver is what says where
+        # it stands now; until it has arrived the tab keeps asking, two
+        # minutes at most for an agent gone quiet.
+        ended = 0
+        for j in nodes.jobs_for(node_id=nid, type="toolchain", n=1) if nodes else []:
+            sp = j.get("spec") or {}
+            # ...and after a check, which reads apt's lists again on the node.
+            if j.get("state") in ("succeeded", "failed", "canceled") and (
+                    sp.get("action") == "check"
+                    or any(str(x).startswith(DRIVER) for x in sp.get("names") or [])):
+                ended = int(j.get("ended") or 0)
+        m["settling"] = bool(ended) and int(rep.get("at") or 0) <= ended and time.time() - ended < 120
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # What is this machine's rather than the store's: the NVIDIA
             # driver, where the node has the card (R102).
@@ -937,13 +961,17 @@ def payload_for_node(nid):
             "items": items, "job": job or {"running": False}}
 
 
+DRIVER = "nvidia-driver"
+
+
 def driver_row(n):
     """The NVIDIA driver as a row of the node's Toolchains tab (R102), or
-    None where the node reports no NVIDIA card. Its state is read from the
-    census the agent sends (installed for this kernel, loaded now, which
-    driver has the card), and its job is the latest system job that
-    installed or removed it. The machine's and not the store's: built for
-    its kernel, installed as root, taking the card at the next boot."""
+    None where the node reports no NVIDIA card. A row like the store's, with
+    a tick box, in the same batch and the same check, but the machine's own:
+    built for its kernel, installed as root, taking the card at the next
+    boot. Its state is read from the census the agent sends: installed for
+    this kernel, loaded now, which driver has the card, the package apt
+    holds and what apt would move it to, and the branches on offer."""
     rep = n.get("reported") or {}
     card = rep.get("gpu_card")
     if not card:
@@ -959,33 +987,19 @@ def driver_row(n):
              else "leaving" if has
              else "waiting" if inst
              else "absent")
-    job, ended = {"running": False}, 0
-    if nodes:
-        for j in nodes.jobs_for(node_id=n["id"], type="system", n=8):
-            sp = j.get("spec") or {}
-            if sp.get("apply") != "gpu-driver":
-                continue
-            act = (sp.get("config") or {}).get("action") or ""
-            st = j.get("state")
-            if st in ("queued", "assigned", "running"):
-                job = {"running": True, "action": act, "id": j["id"]}
-            elif st == "failed":
-                tail = [x.strip() for x in nodes.job_tail(j["id"], 1600).splitlines() if x.strip()]
-                said = next((x for x in reversed(tail) if x.startswith(("!!", "refused", "E:"))), tail[-1] if tail else "")
-                job = {"running": False, "action": act, "failed": said.lstrip("!= ")[:300], "id": j["id"]}
-            if st in ("succeeded", "failed", "canceled"):
-                ended = int(j.get("ended") or 0)
-            break
-    return {"name": "nvidia-driver", "label": "NVIDIA driver", "card": str(card),
+    pv, cand = gd.get("pkg_version") or "", gd.get("candidate") or ""
+    return {"name": DRIVER, "label": "NVIDIA driver", "card": str(card),
             "gpu": str(rep.get("gpu") or ""), "installed": inst, "loaded": loaded,
             "bound": bound, "state": state, "managed": bool(rep.get("sandbox")),
-            "job": job,
-            # A job that has ended is followed by the agent's hello, whose
-            # census says where the driver stands now. Until that census has
-            # arrived (its `at` is after the job's end), the row is still the
-            # job's to follow; two minutes at most, for an agent gone quiet.
-            "settling": bool(ended) and int(rep.get("at") or 0) <= ended
-                        and time.time() - ended < 120}
+            # On the machine, whether or not it has the card yet: what a
+            # tick means and what Remove is offered on.
+            "here": state in ("waiting", "loaded", "update"),
+            "package": gd.get("package") or "",
+            # What apt would move the installed package to, when that is not
+            # what is installed: the row's "update available".
+            "newer": cand.split("-", 1)[0] if pv and cand and cand != pv else "",
+            "recommended": gd.get("recommended") or "",
+            "options": [o for o in (gd.get("options") or []) if isinstance(o, dict)][:16]}
 
 
 def _store_share(n):
@@ -1220,7 +1234,33 @@ def store_busy(nid):
     return ""
 
 
-def node_job(principal, nid, action, names):
+def _driver_name(n, action, pkg):
+    """(the name the job carries for the driver, error): nvidia-driver, or
+    nvidia-driver:PACKAGE for a branch picked on the row. The machine's own
+    rules, said before anything is queued: a guest machine's driver is its
+    owner's, an agent that does not report the driver cannot be asked, a
+    branch is one apt offers there, and one branch at a time."""
+    row = driver_row(n)
+    if not row:
+        return "", f"{n['name']} reports no NVIDIA card"
+    if not row["managed"]:
+        return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: its driver is "
+                    "installed or removed there, the way its distribution does it")
+    if row["state"] == "unknown":
+        return "", f"{n['name']}'s agent does not report the driver yet: update it on the Nodes tab first"
+    if (n.get("config") or {}).get("lock"):
+        return "", f"{n['name']} is locked to its console: nothing on it is installed from here"
+    if action != "install" or not pkg:
+        return DRIVER, ""
+    if pkg not in {o.get("pkg") for o in row["options"]}:
+        return "", f"{pkg} is not a driver apt offers on {n['name']}"
+    if row["here"] and row["package"] and pkg != row["package"]:
+        return "", (f"{row['package']} is installed on {n['name']}: remove it first, then install "
+                    f"{pkg}. One branch at a time")
+    return f"{DRIVER}:{pkg}", ""
+
+
+def node_job(principal, nid, action, names, driver=""):
     """Queue the toolchain job. Refused, with numbers, when the store cannot
     hold what is asked, measured here the last time it was installed, so a
     toolchain this controller never had is not gated, and the log says so."""
@@ -1238,7 +1278,15 @@ def node_job(principal, nid, action, names):
     if action == "sysdeps" and not (n.get("reported") or {}).get("sandbox"):
         return {"error": f"{n['name']} was not provisioned as a BuilderBot sandbox, so its "
                          "system packages are its owner's to install; the row names them"}
-    if action == "install":
+    # The driver leaves the list for the store's checks and joins it again
+    # at the end, since it is the machine's and ends at a restart.
+    drv = ""
+    if DRIVER in names:
+        drv, why = _driver_name(n, action, driver)
+        if why:
+            return {"error": why}
+        names = [x for x in names if x != DRIVER]
+    if action == "install" and names:
         # What these need, ahead of them. android-tools without a jdk fails
         # inside sdkmanager with a message that names neither.
         have = node_has(n)
@@ -1271,7 +1319,7 @@ def node_job(principal, nid, action, names):
     # installs under <store>/<os>-<arch> (roadmap R19), so a Mac and a Linux
     # box sharing a share is the design, not a mistake.
     r = nodes.job_add(principal, {"node": nid}, "toolchain",
-                      {"action": action, "names": names, "timeout": 3600})
+                      {"action": action, "names": names + ([drv] if drv else []), "timeout": 3600})
     if r.get("ok") and added:
         r["added"] = added
     return r
@@ -1403,18 +1451,6 @@ def verb(action, req, principal):
     string this server chose, which is the rule every other executing
     endpoint here follows. (payload, status)."""
     nid = field(req, "node")
-    # The NVIDIA driver is the machine's, not the store's (R102): installed
-    # or removed on its own as a system job, never in a batch of toolchains,
-    # since it takes a reboot to take the card.
-    if nid and nid != "local" and "nvidia-driver" in (req.get("names") or []):
-        if nodes is None:
-            return {"error": "the node store did not open"}, 500
-        if action not in ("install", "remove"):
-            return {"error": "the driver is installed or removed"}, 400
-        if [x for x in req.get("names") or [] if x != "nvidia-driver"]:
-            return {"error": "the driver is installed on its own: it takes the card at the next restart"}, 400
-        r = nodes.node_gpu_driver(principal, nid, action)
-        return r, (400 if r.get("error") else 200)
     if nid and nid != "local":
         # On another node the install is a job against that node's
         # toolchain store (docs/nodes.md §6): same catalog, same names,
@@ -1428,6 +1464,10 @@ def verb(action, req, principal):
         if not node:
             return {"error": "no such node"}, 400
         known = {p["name"] for p in TOOLCHAINS}
+        # The NVIDIA driver is a name like the others on a node that has
+        # the card (R102); node_job decides whether it may be touched.
+        if (node.get("reported") or {}).get("gpu_card"):
+            known = known | {DRIVER}
         if action == "check":
             # Every row, or the ones named: the question a check answers
             # is "is any of this out of date", and an uninstalled row's
@@ -1443,7 +1483,7 @@ def verb(action, req, principal):
             names = [n for n in (req.get("names") or []) if n in known][:8]
             if not names:
                 return {"error": "nothing selected"}, 400
-        r = node_job(principal, nid, action, names)
+        r = node_job(principal, nid, action, names, driver=field(req, "driver"))
         return r, (400 if r.get("error") else 200)
     if action == "abort":
         return {"ok": abort_job()}, 200

@@ -75,6 +75,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The setting During a test run, a change asked for: restart now means any run is cut for the new ask, not the final gate alone (1b63482)
 - The briefing's Android section says to start the emulator with bb emu start rather than the binary, and why (the GPU picked, the boot waited out, the log kept), and names a cold boot's System UI not responding dialog as the emulator's (e75a82b)
 - The test gate is shorter: a python unit tier (bb tests unit, under a second) runs first, the workers share suites by the seconds each took rather than by file length, and the design check's whole uniform run happens when a style file changed rather than on every dashboard change (47cceca)
+- The NVIDIA driver's row on the Toolchains tab is ticked like any other: it goes into Install selected, Check for updates says when apt has a newer version of the installed branch, and a pulldown picks another branch apt offers, ghosted while one is installed (4040bbe)
+- Set up GPU display no longer installs the NVIDIA driver: the Toolchains tab's driver row is the one place it is installed, and the Nodes tab's GPU line opens that tab until the driver is there (4040bbe)
 
 ### Removed
 

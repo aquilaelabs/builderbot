@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.118"
+AGENT_VERSION = "0.7.119"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -285,6 +285,9 @@ GPU_DISPLAY_STATE = os.environ.get("BUILDERBOT_GPU_DISPLAY_STATE", "/run/builder
 # suite's is a tree of its own with a card in it, so what it checks does
 # not depend on the box it runs on; lspci is not asked then.
 SYS_ROOT = os.environ.get("BUILDERBOT_SYS_ROOT", "/sys")
+# The NVIDIA driver's name in a toolchain job: alone, or with the package
+# apt is to install after a colon (nvidia-driver:nvidia-driver-610-open).
+DRIVER = "nvidia-driver"
 # The session's view (R35): the root helper that builds it, the file that
 # tells it this machine's layout, and the sudo rule that is the session
 # account's only way to it. Installed and kept by this agent from the bundle,
@@ -1824,7 +1827,66 @@ def _gpu_driver(sys_root=None, modinfo=None):
                 installed = (p.stdout.strip().splitlines() or [""])[0][:40]
         except (OSError, subprocess.SubprocessError):
             pass
-    return {"installed": installed, "loaded": loaded, "bound": bound[:20]}
+    return {"installed": installed, "loaded": loaded, "bound": bound[:20], **_gpu_driver_apt()}
+
+
+# A driver package apt may be asked for: the distribution's metapackage, by
+# branch, with its open-kernel variant. Nothing else reaches a command line.
+DRIVER_PKG = re.compile(r"nvidia-driver(-\d{3})?(-open)?")
+
+
+def _gpu_driver_apt():
+    """What apt says about the driver, for the row's pulldown and its
+    update line: the metapackage installed and its version, the version apt
+    would move it to, the branches on offer (newest first, transitional
+    packages and the server branches left out), and the one the
+    distribution recommends for this card. {} where apt is not the
+    machine's package manager. Asked of apt's own lists, so as current as
+    the last apt-get update, which Check for updates runs."""
+    if not shutil.which("apt-cache") or not shutil.which("dpkg-query"):
+        return {}
+
+    def out(argv, timeout=20):
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+            return p.stdout if p.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    names = []
+    for line in out(["apt-cache", "search", "--names-only", "^nvidia-driver(-[0-9]+)?(-open)?$"]).splitlines():
+        name, _, about = line.partition(" - ")
+        name = name.strip()
+        if DRIVER_PKG.fullmatch(name) and "transitional" not in about.lower():
+            names.append(name)
+    cand, cur = {}, ""
+    if names:
+        for line in out(["apt-cache", "policy", *names[:40]]).splitlines():
+            if line and not line.startswith(" "):
+                cur = line.rstrip(":").strip()
+            elif "Candidate:" in line and cur:
+                v = line.split("Candidate:", 1)[1].strip()
+                if v and v != "(none)":
+                    cand[cur] = v
+    package = pkg_version = ""
+    for line in out(["dpkg-query", "-W", "-f", "${Package} ${Version} ${db:Status-Abbrev}\n", "nvidia-driver*"]).splitlines():
+        f = line.split()
+        if len(f) >= 3 and f[2].startswith("ii") and f[0] in cand and f[0] > package:
+            package, pkg_version = f[0], f[1]
+    rec = ""
+    if shutil.which("ubuntu-drivers"):
+        for line in out(["ubuntu-drivers", "devices"], timeout=30).splitlines():
+            m = re.search(r"driver\s*:\s*(nvidia-driver\S*)\s.*recommended", line)
+            if m and DRIVER_PKG.fullmatch(m.group(1)):
+                rec = m.group(1)
+
+    def key(n):
+        m = re.search(r"-(\d{3})", n)
+        return (-int(m.group(1)) if m else 0, n.endswith("-open"))
+    options = [{"pkg": n, "version": cand[n].split("-", 1)[0][:30], "open": n.endswith("-open")}
+               for n in sorted(cand, key=key)][:16]
+    return {"package": package, "pkg_version": pkg_version[:60],
+            "candidate": cand.get(package, "")[:60] if package else "",
+            "recommended": rec, "options": options}
 
 
 def _gpu_display():
@@ -5110,7 +5172,18 @@ class Agent:
             return "failed", 69
         if action == "sysdeps":
             return self.sysdeps(job, names, into)
+        # The NVIDIA driver (R102), a member of the batch like any row, but
+        # the machine's and not the store's: installed or removed as root by
+        # bb-sandbox, after the store's names, since it ends at a restart.
+        drv = [n for n in names if n == DRIVER or n.startswith(DRIVER + ":")]
+        names = [n for n in names if n not in drv]
         if action == "check":
+            # apt's lists brought current first, as root, so the census after
+            # the check says what the driver would update to.
+            if _gpu_card() and os.access(SANDBOX_BIN, os.X_OK):
+                self.refresh_sandbox_tool(job)
+                self._sh(job, [SANDBOX_BIN, "gpu-driver", "refresh"], timeout=300)
+                self.hello_at = 0
             # What is newer upstream, asked from HERE rather than from the
             # controller, because the answer is about this store: the version
             # a recipe would fetch is the same everywhere, but what is
@@ -5142,9 +5215,26 @@ class Agent:
                 bad += 1
                 if st_ == "canceled":
                     return st_, code
+        for name in drv[:1]:
+            job.step(DRIVER)
+            pkg = name.partition(":")[2]
+            if pkg and not DRIVER_PKG.fullmatch(pkg):
+                job.say(f"refused: {pkg} is not a driver package apt offers by that name\n")
+                bad += 1
+            elif not os.access(SANDBOX_BIN, os.X_OK):
+                # The stamp, as every job that changes the machine itself
+                # asks; bb-sandbox refuses by itself where it is not root.
+                job.say("refused: the NVIDIA driver is this machine's own, and this node was not "
+                        f"provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
+                bad += 1
+            else:
+                self.refresh_sandbox_tool(job)
+                job.say(f"== bb-sandbox gpu-driver {action} {pkg}\n")
+                if self._sh(job, [SANDBOX_BIN, "gpu-driver", action, *([pkg] if pkg else [])], timeout=2400):
+                    bad += 1
         self.hello()
         if bad:
-            job.say(f"{bad} of {len(names)} did not {action}\n")
+            job.say(f"{bad} of {len(names) + len(drv[:1])} did not {action}\n")
             return "failed", 1
         return "succeeded", 0
 
@@ -5293,7 +5383,7 @@ class Agent:
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
-        if what in ("storage", "network", "root", "gpu", "gpu-driver") and not os.access(SANDBOX_BIN, os.X_OK):
+        if what in ("storage", "network", "root", "gpu") and not os.access(SANDBOX_BIN, os.X_OK):
             job.say(f"refused: {what} edits this machine's own configuration, and this node "
                     f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
             return "failed", 77
@@ -5314,8 +5404,6 @@ class Agent:
             return self._apply_power(job, what)
         if what == "gpu":
             return self._apply_gpu(job)
-        if what == "gpu-driver":
-            return self._apply_gpu_driver(job, cfg)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
 
@@ -5325,19 +5413,6 @@ class Agent:
         a reboot has to follow; then a hello, so the row reads the display's
         state now rather than at the next census."""
         rc = self._sh(job, [SANDBOX_BIN, "gpu"], timeout=1800)
-        self.hello_at = 0
-        return ("succeeded", 0) if rc == 0 else ("failed", rc)
-
-    def _apply_gpu_driver(self, job, cfg):
-        """The NVIDIA driver installed or removed on its own, from the
-        Toolchains tab's driver row (R102): bb-sandbox gpu-driver does it
-        and says whether a reboot has to follow; then a hello, so the row
-        reads where the driver stands now rather than at the next census."""
-        act = str((cfg or {}).get("action") or "")
-        if act not in ("install", "remove"):
-            job.say(f"refused: the driver is installed or removed, not {act!r}\n")
-            return "failed", 64
-        rc = self._sh(job, [SANDBOX_BIN, "gpu-driver", act], timeout=2400)
         self.hello_at = 0
         return ("succeeded", 0) if rc == 0 else ("failed", rc)
 

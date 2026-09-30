@@ -193,19 +193,30 @@ bb toolchains env                 # the PATH lines; new shells get them automati
 ```
 
 **The NVIDIA driver is the machine's, not the store's.** On a node whose
-census names an NVIDIA card, the Toolchains tab shows a row of its own
-above the store's, with Install and Remove and no tick box. It is not a
-recipe: the kernel module is built for that machine's kernel and the
-libraries must match it exactly, so it is installed as root on that node
-alone, through `bb-sandbox gpu-driver`, and it takes the card only when the
-machine restarts, since nouveau holds it until then. The row reads where the
-driver stands from the census (not installed, installed and waiting for a
-restart, running the card, removed but still loaded) and follows the job
-while it runs. A guest machine's driver is its owner's, so there the row
-says so and offers nothing. The install also writes a boot unit that makes
-the card's device nodes, `/dev/nvidia-uvm` among them, as root: a session
-runs with no-new-privileges, so CUDA's setuid helper cannot make them on a
-program's first use. `bb toolchains` names where the driver stands too.
+census names an NVIDIA card, the Toolchains tab shows the driver as a row of
+its own above the store's. It behaves as the other rows do: a tick box, so
+it goes into Install selected with whatever else is ticked (last, since it
+ends at a restart), a bin to remove it, and **Check for updates** reads
+apt's lists again on the node, so the row says when a newer version of the
+installed branch is there to tick. It is not a recipe, though: the kernel
+module is built for that machine's kernel and the libraries must match it,
+so it is installed as root on that node alone, through `bb-sandbox
+gpu-driver`, and it takes the card only when the machine restarts, since
+nouveau holds it until then. The row's pulldown lists the branches apt
+offers there, the one recommended for the card first, then newer ones and
+the open-kernel variants; a beta appears in it when the distribution or a
+source the machine has publishes one, since apt has no separate label for
+it. The pulldown is live only while no driver is installed: one branch at a
+time, so another version means removing this one first. The row reads where
+the driver stands from the census (not installed, installed and waiting for
+a restart, running the card, removed but still loaded). A guest machine's
+driver is its owner's, so there the row says so and offers nothing. Nothing
+else installs the driver: not enrolling a node, and not the emulator's GPU
+display, which needs the driver and says so until it is there. The install
+also writes a boot unit that makes the card's device nodes,
+`/dev/nvidia-uvm` among them, as root: a session runs with
+no-new-privileges, so CUDA's setuid helper cannot make them on a program's
+first use. `bb toolchains` names where the driver stands too.
 
 The Android system images live on the same store without being toolchains
 (one exists at every API level at once), so they have verbs of their own:
@@ -493,8 +504,10 @@ SwiftShader.
 So the card needs a real `Xorg` on the NVIDIA driver, started by the
 machine, because a session runs unprivileged with no capabilities and cannot
 become DRM master. **Set up GPU display** on the node's row (Nodes tab,
-Health) is that: `bb-sandbox gpu` installs the distribution's NVIDIA driver
-and a headless Xorg on the card as a unit of the machine's own, which writes
+Health) is that: `bb-sandbox gpu` starts a headless Xorg on the card as a
+unit of the machine's own, on the driver the Toolchains tab's row installed
+(it installs none itself, and the row's line opens that tab until the driver
+is there), which writes
 what it found to `/run/builderbot-gpu-display` and restarts a dead server
 three times before saying so. The driver takes the card only after a reboot,
 which the row says and Reboot under Advanced does; bb-session binds the

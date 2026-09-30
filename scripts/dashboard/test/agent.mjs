@@ -90,9 +90,32 @@ const SANDBOX_STATE = `${DIR}/sandbox-mounts.json`;
   mkdirSync(`${DIR}/sys/bus/pci/drivers/nouveau`, { recursive: true });
   writeFileSync(`${dev}/vendor`, '0x10de\n'); writeFileSync(`${dev}/class`, '0x030000\n'); writeFileSync(`${dev}/device`, '0x2482\n');
   try { symlinkSync(`${DIR}/sys/bus/pci/drivers/nouveau`, `${dev}/driver`); } catch {}
+  // What apt says about the driver, the same on any box the suite runs on:
+  // two branches on offer, 595 recommended, and installed once the stand-in
+  // bb-sandbox has "installed" one. Anything else goes to the real tool.
+  const real = t => `for d in /usr/bin /bin /usr/sbin /sbin; do [ -x "$d/${t}" ] && exec "$d/${t}" "$@"; done; exit 1`;
+  writeFileSync(`${DIR}/bin/apt-cache`, `#!/bin/sh
+case "$1 $3" in
+  "search ^nvidia-driver"*) printf 'nvidia-driver-590 - NVIDIA driver metapackage (transitional package)\\nnvidia-driver-595 - NVIDIA driver metapackage\\nnvidia-driver-610 - NVIDIA driver metapackage\\n'; exit 0 ;;
+esac
+case "$1 $2" in
+  "policy nvidia-driver"*) printf 'nvidia-driver-595:\\n  Installed: (none)\\n  Candidate: 595.91.07-0ubuntu1\\nnvidia-driver-610:\\n  Installed: (none)\\n  Candidate: 610.57.04-0ubuntu1\\n'; exit 0 ;;
+esac
+${real('apt-cache')}
+`, { mode: 0o755 });
+  writeFileSync(`${DIR}/bin/dpkg-query`, `#!/bin/sh
+for a in "$@"; do case "$a" in "nvidia-driver*")
+  f="\${BB_NV_STATE:-/nonexistent}"
+  [ -s "$f" ] && printf '%s %s-0ubuntu1 ii \\n' "$(sed -n 2p "$f")" "$(sed -n 1p "$f")"
+  exit 0 ;; esac; done
+${real('dpkg-query')}
+`, { mode: 0o755 });
+  writeFileSync(`${DIR}/bin/ubuntu-drivers`, `#!/bin/sh
+printf 'vendor   : NVIDIA Corporation\\ndriver   : nvidia-driver-595 - distro non-free recommended\\ndriver   : nvidia-driver-610 - distro non-free\\n'
+`, { mode: 0o755 });
   writeFileSync(`${DIR}/bin/modinfo`, `#!/bin/sh
 f="\${BB_NV_STATE:-/nonexistent}"
-if [ -s "$f" ]; then cat "$f"; exit 0; fi
+if [ -s "$f" ]; then sed -n 1p "$f"; exit 0; fi
 echo "modinfo: ERROR: Module nvidia not found." >&2; exit 1
 `, { mode: 0o755 });
 }
@@ -107,9 +130,12 @@ if a[:2] == ["list", "--json"]: print(json.dumps(ms)); sys.exit(0)
 if a[0] == "gpu-driver":
     # The driver row's verb (R102): "installed" is the version the stand-in
     # modinfo answers with, as a real install puts a module there.
-    if a[1] == "install": open(os.environ["BB_NV_STATE"], "w").write("580.95.05\\n")
+    if a[1] == "refresh": print("reading the package lists again"); sys.exit(0)
+    if a[1] == "install":
+        pkg = a[2] if len(a) > 2 else "nvidia-driver-595"
+        open(os.environ["BB_NV_STATE"], "w").write({"nvidia-driver-610": "610.57.04"}.get(pkg, "595.91.07") + "\\n" + pkg + "\\n")
     elif os.path.exists(os.environ["BB_NV_STATE"]): os.remove(os.environ["BB_NV_STATE"])
-    print(f"gpu-driver {a[1]}: done; it takes effect at the next boot"); sys.exit(0)
+    print(f"gpu-driver {' '.join(a[1:])}: done; it takes effect at the next boot"); sys.exit(0)
 if a[0] == "gpu":
     open(os.environ["BB_GPU_STATE"], "w").write("reboot: the NVIDIA driver is installed and takes the card at the next boot\\n")
     print("card: NVIDIA Test Card [10de:0000]"); print("the driver is installed and takes the card at the next boot: Reboot on this node's row"); sys.exit(0)
@@ -1583,45 +1609,66 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(fin?.state === 'failed' && /refused: a reboot is root's/.test(fin.log || '') && /sudo reboot/.test(fin.log || ''),
          `...which an agent that is not root refuses, naming the command (${fin?.state}: ${(fin?.log || '').trim().slice(0, 80)})`);
     }
-    // The GPU display (R20): a system job the agent answers with bb-sandbox
-    // gpu, whose words are the job's, and whose state line the next hello
-    // carries into the census, so the row says what the machine found.
-    {
-      const g = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
-      ok(g.ok && /^j_/.test(g.job), `Set up GPU display queues a system job on a sandbox node (${g.job || g.error})`);
-      const fin = await until(async () => {
-        const r = await api(`/api/v1/jobs?id=${g.job}`);
-        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-      }, 30000);
-      ok(fin?.state === 'succeeded' && /takes the card at the next boot/.test(fin.log || ''),
-         `...bb-sandbox gpu runs and its words are the job's (${fin?.state}: ${(fin?.log || '').trim().slice(-70)})`);
-      const told = await until(async () => {
-        const n = await nodeById(minted.id);
-        return /^reboot/.test(n.reported?.gpu_display || '') ? n : null;
-      }, 30000);
-      ok(told !== null, `...and the display's state line reaches the row with the hello that follows (${told?.reported?.gpu_display})`);
-    }
     // The NVIDIA driver row (R102), end to end with the real agent: the
-    // census reads the card and where its driver stands from sysfs and
-    // modinfo, Install on the Toolchains tab's row is a system job that runs
-    // bb-sandbox gpu-driver install, and the hello after it says the driver
-    // is installed and waiting for the machine to restart.
+    // census reads the card, where its driver stands and what apt offers;
+    // a branch picked on the row is a name of the toolchain job, which the
+    // agent runs as bb-sandbox gpu-driver install PACKAGE; the hello after
+    // it says the driver is installed and waiting for a restart; another
+    // branch is then refused until this one is removed; and a check reads
+    // apt's lists again on the node.
     {
       const drv = async () => ((await api(`/api/toolchains?node=${minted.id}`)).machine || [])[0];
-      const first = await until(async () => { const x = await drv(); return x?.state && x.state !== 'unknown' ? x : null; }, 30000);
-      ok(first?.state === 'absent' && first.managed && /10de:2482/.test(first.card) && first.bound === 'nouveau',
-         `the agent reports the card and no driver on it, nouveau holding it (${first?.state}, ${first?.bound})`);
-      const q = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], node: minted.id });
-      ok(q.ok && /^j_/.test(q.job || ''), `Install on the driver row queues a system job (${q.job || q.error})`);
-      const fin = await until(async () => {
-        const r = await api(`/api/v1/jobs?id=${q.job}`);
+      const job = async id => until(async () => {
+        const r = await api(`/api/v1/jobs?id=${id}`);
         return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-      }, 30000);
-      ok(fin?.state === 'succeeded' && /gpu-driver install: done/.test(fin.log || ''),
-         `...which the agent runs as bb-sandbox gpu-driver install (${fin?.state}: ${(fin?.log || '').trim().slice(-60)})`);
-      const after = await until(async () => { const x = await drv(); return x?.state === 'waiting' ? x : null; }, 30000);
-      ok(after?.installed === '580.95.05' && after.settling === false,
-         `...and the hello after it says installed, waiting for a restart (${after?.state} ${after?.installed})`);
+      }, 40000);
+      const first = await until(async () => { const x = await drv(); return x?.state && x.state !== 'unknown' && x.options?.length ? x : null; }, 40000);
+      ok(first?.state === 'absent' && first.managed && /10de:2482/.test(first.card) && first.bound === 'nouveau' && !first.here,
+         `the agent reports the card and no driver on it, nouveau holding it (${first?.state}, ${first?.bound})`);
+      ok(first?.options.map(o => o.pkg).join(',') === 'nvidia-driver-610,nvidia-driver-595' && first.recommended === 'nvidia-driver-595',
+         `...with the branches apt offers, newest first, the transitional one left out, and the recommended one (${first?.options.map(o => o.pkg + ' ' + o.version).join(', ')}; ${first?.recommended})`);
+      const nodisp = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
+      ok(/install it on that node's Toolchains tab first/.test(nodisp.error || ''),
+         `the display is not set up on a machine with no driver: it installs none itself (${nodisp.error})`);
+      const q = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-610', node: minted.id });
+      ok(q.ok && /^j_/.test(q.job || ''), `a branch picked on the row queues a toolchain job (${q.job || q.error})`);
+      const fin = await job(q.job);
+      ok(fin?.type === 'toolchain' && fin.state === 'succeeded' && /gpu-driver install nvidia-driver-610: done/.test(fin.log || ''),
+         `...which the agent runs as bb-sandbox gpu-driver install nvidia-driver-610 (${fin?.state}: ${(fin?.log || '').trim().slice(-70)})`);
+      const after = await until(async () => { const x = await drv(); return x?.state === 'waiting' ? x : null; }, 40000);
+      ok(after?.installed === '610.57.04' && after.package === 'nvidia-driver-610' && after.here && !after.newer,
+         `...and the hello after it says installed, waiting for a restart (${after?.state} ${after?.installed} ${after?.package})`);
+      const other = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-595', node: minted.id });
+      ok(/nvidia-driver-610 is installed.*remove it first/.test(other.error || ''), `another branch waits for this one to be removed (${other.error})`);
+      // The display, now that the driver is on the machine (it was refused
+      // before, above): set up below as its own system job.
+      // The GPU display (R20): a system job the agent answers with bb-sandbox
+      // gpu, whose words are the job's, and whose state line the next hello
+      // carries into the census, so the row says what the machine found.
+      {
+        const g = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
+        ok(g.ok && /^j_/.test(g.job), `Set up GPU display queues a system job on a sandbox node (${g.job || g.error})`);
+        const fin = await until(async () => {
+          const r = await api(`/api/v1/jobs?id=${g.job}`);
+          return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+        }, 30000);
+        ok(fin?.state === 'succeeded' && /takes the card at the next boot/.test(fin.log || ''),
+           `...bb-sandbox gpu runs and its words are the job's (${fin?.state}: ${(fin?.log || '').trim().slice(-70)})`);
+        const told = await until(async () => {
+          const n = await nodeById(minted.id);
+          return /^reboot/.test(n.reported?.gpu_display || '') ? n : null;
+        }, 30000);
+        ok(told !== null, `...and the display's state line reaches the row with the hello that follows (${told?.reported?.gpu_display})`);
+      }
+      const ck = await api('/api/toolchains', { action: 'check', names: ['zig'], node: minted.id });
+      const ckf = ck.ok ? await job(ck.job) : null;
+      ok(/bb-sandbox gpu-driver refresh/.test(ckf?.log || '') && /reading the package lists again/.test(ckf?.log || ''),
+         `Check for updates reads apt's lists again on the node (${ck.error || ckf?.state})`);
+      const rm = await api('/api/toolchains', { action: 'remove', names: ['nvidia-driver'], node: minted.id });
+      const rmf = rm.ok ? await job(rm.job) : null;
+      const gone = await until(async () => { const x = await drv(); return x?.state === 'absent' ? x : null; }, 40000);
+      ok(rmf?.state === 'succeeded' && /gpu-driver remove: done/.test(rmf.log || '') && gone !== null,
+         `Remove takes it off again, and the row reads not installed (${rm.error || rmf?.state}, ${gone?.state})`);
       rmSync(`${DIR}/nv-installed`, { force: true });
     }
 

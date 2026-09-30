@@ -108,15 +108,24 @@ function nodeGpu(n){
   const st = n.reported?.gpu_display || "";
   const up = /^up/.test(st), reboot = /^reboot/.test(st);
   const busy = (n.jobs || []).some(j => j.apply === "gpu");
+  // The display runs on NVIDIA's driver and does not install it (R102): the
+  // driver is a row on this node's Toolchains tab, and until it is on the
+  // machine this line says so and opens that tab instead of offering the
+  // set-up. An agent too old to report the driver keeps the old offer.
+  const gd = n.reported?.gpu_driver;
+  const nodriver = !!gd && !gd.installed;
   const word = up ? "display up: an emulator here renders on the card"
+    : nodriver ? "no NVIDIA driver on it yet: an emulator here renders in software"
     : reboot ? "driver installed; Reboot under Advanced lets it take the card"
     : /^down/.test(st) ? st
     : "no display for it yet: an emulator here renders in software";
-  const cls = up ? "ok" : reboot ? "note" : "warn";
+  const cls = up ? "ok" : reboot && !nodriver ? "note" : "warn";
   return `<div class="actbar ndgpu">
     <span class="state ${cls}">gpu: ${esc(card)} · ${esc(word)}</span>
-    ${!up && n.reported?.sandbox ? `<button type="button" data-nd="gpu-display" ${busy ? "disabled" : ""}
-      title="install the NVIDIA driver and a headless X server on the card; a reboot follows">${
+    ${nodriver ? `<button type="button" data-ndtc="${esc(n.id)}"
+      title="the driver is installed from this node's Toolchains tab">Install the driver</button>`
+    : !up && n.reported?.sandbox ? `<button type="button" data-nd="gpu-display" ${busy ? "disabled" : ""}
+      title="start a headless X server on the card, for the emulator; a reboot may follow">${
       busy ? "Setting up…" : "Set up GPU display"}</button>` : ""}
   </div>`;
 }
@@ -1298,6 +1307,8 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
   wireSections(root);
   root.querySelectorAll(".ndrow").forEach(box => {
     const id = box.dataset.node;
+    // The driver is the Toolchains tab's row (R102): this opens it on the node.
+    box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
       if (act === "debug"){

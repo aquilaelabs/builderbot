@@ -28,6 +28,14 @@ const tcTicked = new Set();     // survives a redraw; a poll must not untick
 function openToolchains(){
   openTab({kind:"toolchains", arg:"__toolchains", label:"Toolchains"});
 }
+// ...on a node somebody named: the Nodes tab's GPU line sends its reader to
+// the driver's row here.
+function openToolchainsOn(id){
+  tcNode = id; toolchains = null; tcTicked.clear(); tcDriverPick = "";
+  try{ localStorage.setItem("bb.tcnode", id); }catch(e){ /* private */ }
+  openToolchains();
+  loadToolchains();
+}
 
 // The sizes are measured by a worker on the server, so the first draw after
 // an install (or after a restart) carries the catalog's estimates and the
@@ -240,12 +248,17 @@ function tcRow(p, busy, job, managed){
   </label>`;
 }
 
-// The NVIDIA driver (R102): a row of this machine's, not of the store's.
-// Its kernel module is built for this machine's kernel and its libraries
-// must match that module exactly, so it is installed here as root, one per
-// machine, and it takes the card only when the machine restarts, since
-// nouveau holds it until then. No tick box: it never goes in a batch with
-// the store's toolchains, because it ends in a reboot.
+// The NVIDIA driver (R102): a row like the store's, ticked into the same
+// Install selected and asked by the same Check for updates, but this
+// machine's own: its kernel module is built for this machine's kernel and
+// its libraries must match that module, so it is installed here as root and
+// takes the card only when the machine restarts, since nouveau holds it
+// until then. Its pulldown is the branches apt offers there, live only
+// while no driver is installed: one branch at a time, so another version
+// means removing this one first (the operator, 30 Sep), the rule a recipe
+// that cannot update in place already keeps.
+const TC_DRIVER = "nvidia-driver";
+let tcDriverPick = "";       // the package picked on the row; "" is the recommended one
 function tcDriverLine(m){
   const nodesBtn = ` <button type="button" class="link" data-tcnodes>Open the Nodes tab</button>`;
   switch (m.state){
@@ -257,44 +270,55 @@ function tcDriverLine(m){
     default: return `<span class="sub warn">this node's agent does not report the driver yet: update it on the Nodes tab.${nodesBtn}</span>`;
   }
 }
-function tcDriverRow(m, blocked){
+// One option's words: the version first, since that is what is being
+// chosen, then what kind of branch it is.
+function tcDriverOption(o, m){
+  const branch = (o.pkg.match(/-(\d{3})/) || [])[1] || "";
+  const rec = (m.recommended.match(/-(\d{3})/) || [])[1] || "";
+  const tags = [o.open ? "open kernel modules" : "",
+    o.pkg === m.recommended ? "recommended for this card" : "",
+    rec && branch && +branch > +rec ? "newer than recommended" : ""].filter(Boolean);
+  return `${o.version}${tags.length ? " · " + tags.join(", ") : ""}`;
+}
+function tcDriverRow(m, busy, job){
   const card = m.gpu || (String(m.card).match(/\[([^\]]*(?:GeForce|RTX|Quadro|Tesla|TITAN)[^\]]*)\]/)?.[1]) || m.card;
   const ver = m.installed || m.loaded;
-  const running = !!m.job?.running;
-  const doing = m.job?.action === "remove" ? "removing" : "installing";
-  const can = m.managed && mayToolchains() && !running && !blocked && m.state !== "unknown";
-  const act = !can ? ""
-    : m.state === "absent"
-      ? `<button type="button" data-tcdrv="install" title="install NVIDIA's driver on this machine">Install</button>`
-    : m.state === "leaving" ? ""
-      : `<button class="eye rm" data-tcdrv="remove" aria-label="remove the NVIDIA driver" title="remove NVIDIA's driver from this machine">${BIN}</button>`;
-  return `<div class="tc tcdrv">
-    <span class="tcgap" aria-hidden="true"></span>
+  const mine = !!(job && job.running && job.action !== "check" && job.current === TC_DRIVER);
+  const doing = job && job.action === "remove" ? "removing" : "installing";
+  const may = m.managed && mayToolchains() && m.state !== "unknown";
+  // A tick means "do something to this": install it where there is none,
+  // update it where apt has a newer one. Installed and current, its box is
+  // dead and ticked, as a toolchain's is.
+  const upToDate = !mine && m.here && !m.newer;
+  const opts = m.options || [];
+  const picked = m.here ? m.package : (opts.some(o => o.pkg === tcDriverPick) ? tcDriverPick : "");
+  const sel = opts.length ? `<label class="pick tcdrvpick">Version <select id="tcDrvSel" aria-label="driver version"${
+      m.here || busy || !may ? " disabled" : ""}${
+      m.here ? ` title="installed: remove it first to install another version"` : ""}>
+      ${m.here ? "" : `<option value=""${picked ? "" : " selected"}>${esc(m.recommended
+          ? tcDriverOption(opts.find(o => o.pkg === m.recommended) || {pkg: m.recommended, version: "recommended"}, m)
+          : "the one recommended for this card")}</option>`}
+      ${opts.filter(o => m.here || o.pkg !== m.recommended).map(o => `<option value="${esc(o.pkg)}"${
+          o.pkg === picked ? " selected" : ""}>${esc(tcDriverOption(o, m))}</option>`).join("")}
+    </select></label>` : "";
+  return `<div class="tc tcdrv${upToDate ? " done" : ""}">
+    <input type="checkbox" id="tcDrvTick" value="${TC_DRIVER}" aria-label="NVIDIA driver"${
+      busy || !may ? " disabled" : ""}${
+      upToDate ? ` checked disabled title="installed and up to date"`
+               : tcTicked.has(TC_DRIVER) ? " checked" : ""}>
     <span class="grow">
-      <span class="nm">${esc(m.label)}${ver ? ` <span class="pill" title="${m.installed ? "installed" : "loaded"}">${esc(ver)}</span>` : ""}</span>
+      <label class="nm" for="tcDrvTick">${esc(m.label)}${ver ? ` <span class="pill" title="${m.installed ? "installed" : "loaded"}">${esc(ver)}</span>` : ""}</label>
       <span class="sub">For this machine's ${esc(card)}: CUDA, the hardware video encoder and the emulator's GPU rendering need it. It is this machine's own, not a copy on the store.</span>
-      ${running ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcDriverLine(m)}
-      ${m.job?.failed && !running ? `<span class="sub bad">${esc(m.job.failed)}</span>` : ""}
+      ${sel}
+      ${mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcDriverLine(m)}
+      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer)}. Tick it and press Install selected</span>` : ""}
+      ${job?.errors?.[TC_DRIVER] && !mine ? `<span class="sub bad">${esc(job.errors[TC_DRIVER])}</span>` : ""}
       ${!m.managed ? `<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: its driver is installed there by hand.</span>` : ""}
     </span>
-    ${act}
+    ${m.here && !mine && may ? `<button class="eye rm" data-tcdrvrm aria-label="uninstall the NVIDIA driver"${
+      busy ? ` disabled title="another toolchain operation is running"`
+           : ` title="remove NVIDIA's driver from this machine"`}>${BIN}</button>` : ""}
   </div>`;
-}
-
-async function tcDriver(action){
-  const d = toolchains || {};
-  const where = d.name || "this node";
-  if (!confirm(action === "install"
-      ? `Install NVIDIA's driver on ${where}? It comes from the distribution's packages and takes the card only when the machine restarts, which ends every session on it.`
-      : `Remove NVIDIA's driver from ${where}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))
-    return;
-  try{
-    const r = await postJSON("/api/toolchains", {action, names: ["nvidia-driver"], node: tcNode});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
-    notify(`${action === "install" ? "installing" : "removing"} NVIDIA's driver on ${where}; this takes minutes`);
-    loadToolchains();
-  }catch(e){ notify("could not start: " + e, true); }
 }
 
 function renderToolchainsInto(i){
@@ -402,7 +426,7 @@ function renderToolchainsInto(i){
             : `This node's owner installs them: the agent does not administer the machine.`}</div>`;
     })()}
     ${onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
-      d.machine.map(m => tcDriverRow(m, busy || pstale || d.live === false)).join("")}</div>` : ""}
+      d.machine.map(m => tcDriverRow(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
     <div class="tcs">${(d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join("")}</div>
     ${(() => {
@@ -440,7 +464,7 @@ function renderToolchainsInto(i){
   });
   el.querySelectorAll("[data-tc]").forEach(b => b.onclick = () => tcAct(b.dataset.tc));
   const psel = el.querySelector("#tcNodeSel");
-  if (psel) psel.onchange = () => { tcNode = psel.value; toolchains = null; tcTicked.clear();
+  if (psel) psel.onchange = () => { tcNode = psel.value; toolchains = null; tcTicked.clear(); tcDriverPick = "";
                                     try{ localStorage.setItem("bb.tcnode", tcNode); }catch(e){ /* private */ }
                                     tcRev++; drawPanes(); loadToolchains(); };
   const pre = el.querySelector("#tcRefresh");
@@ -449,8 +473,17 @@ function renderToolchainsInto(i){
   if (sd) sd.onclick = () => tcAct("sysdeps");
   el.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = () => tcAct("sysdeps", [b.dataset.tcsys]));
   el.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = () => tcAct("install", [b.dataset.tcneed]));
-  el.querySelectorAll("[data-tcdrv]").forEach(b => b.onclick = () => tcDriver(b.dataset.tcdrv));
   el.querySelectorAll("[data-tcnodes]").forEach(b => b.onclick = () => openNodesTab());
+  const dsel = el.querySelector("#tcDrvSel");
+  if (dsel) dsel.onchange = () => {
+    // Picking a version is choosing to install it: the tick follows.
+    tcDriverPick = dsel.value; tcTicked.add(TC_DRIVER);
+    const t = el.querySelector("#tcDrvTick"); if (t && !t.disabled) t.checked = true;
+  };
+  el.querySelectorAll("[data-tcdrvrm]").forEach(b => b.onclick = () => {
+    if (confirm(`Remove NVIDIA's driver from ${toolchains?.name || "this node"}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))
+      tcAct("remove", [TC_DRIVER]);
+  });
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.
@@ -474,17 +507,16 @@ function renderToolchainsInto(i){
   // revision poll: the tab would go from idle to done having never said
   // "installing". Half a second is how often that is worth looking at, and it
   // stops the moment the job does.
-  // The driver's job is a system job, minutes long, and a reboot away from
-  // done: sampled while it runs, and until the census after it has landed
-  // (settling), since that census is what says where the driver stands.
-  const drvRunning = (d.machine || []).some(m => m.job?.running);
+  // After a job that touched the driver, or a check, the census that
+  // follows is what says where the driver stands: asked again until it has
+  // landed (settling).
   const drvSettling = (d.machine || []).some(m => m.settling);
   clearTimeout(tcPoll);
   if (busy)
     tcPoll = setTimeout(loadToolchains, 500);
-  else if (drvRunning || drvSettling)
+  else if (drvSettling)
     tcPoll = setTimeout(loadToolchains, 2000);
-  const ticking = busy || drvRunning;
+  const ticking = busy;
   if (ticking && !tcDotsTimer) tcDotsTimer = setInterval(tcTickDots, 400);
   if (!ticking && tcDotsTimer){ clearInterval(tcDotsTimer); tcDotsTimer = null; }
   else if (!busy && (job.done || []).length) refresh();
@@ -517,11 +549,17 @@ async function tcAct(action, only){
   const names = only || (action === "check" || action === "sysdeps" ? [] : [...tcTicked]);
   if (!names.length && action !== "check" && action !== "sysdeps")
     return notify("tick something first", true);
+  // The driver is the one row whose install ends at a restart: said once,
+  // before anything is queued.
+  const drv = names.includes(TC_DRIVER) && action === "install";
+  if (drv && !confirm(`Install NVIDIA's driver on ${toolchains?.name || "this node"}? It takes the card only when the machine restarts, which ends every session on it.`))
+    return;
   // The ticks stay: a toolchain being installed reads as chosen, and the boxes
   // are ghosted anyway. What happens to them afterwards is decided by how it
   // went: installed rows carry their own tick, failed ones let go of it.
   try{
-    const r = await postJSON("/api/toolchains", {action, names, node: tcNode});
+    const r = await postJSON("/api/toolchains", {action, names, node: tcNode,
+                                                 ...(drv && tcDriverPick ? {driver: tcDriverPick} : {})});
     const j = await r.json().catch(() => ({}));
     // A toolchain that needs another used to be installed without it and fail
     // inside it: android-tools with no jdk, from sdkmanager, naming

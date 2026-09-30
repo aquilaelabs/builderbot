@@ -53,6 +53,11 @@ class GpuDriver(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, True)
         self.bin = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.bin, True)
+        # No apt on PATH: what apt says is GpuDriverApt's, and the real
+        # ubuntu-drivers takes seconds.
+        self.path = os.environ.get("PATH", "")
+        os.environ["PATH"] = self.bin
+        self.addCleanup(os.environ.__setitem__, "PATH", self.path)
 
     def card(self, bound="nouveau", vendor="0x10de", cls="0x030000"):
         d = os.path.join(self.root, "bus", "pci", "devices", "0000:04:00.0")
@@ -80,7 +85,8 @@ class GpuDriver(unittest.TestCase):
         return f
 
     def read(self, mod=""):
-        return agent._gpu_driver(sys_root=self.root, modinfo=self.modinfo(mod))
+        got = agent._gpu_driver(sys_root=self.root, modinfo=self.modinfo(mod))
+        return {k: got[k] for k in ("installed", "loaded", "bound")} if got else got
 
     def test_no_nvidia_card_is_nothing(self):
         self.card(vendor="0x1234")
@@ -107,6 +113,72 @@ class GpuDriver(unittest.TestCase):
     def test_a_card_with_no_driver_bound(self):
         self.card(bound="")
         self.assertEqual(self.read()["bound"], "")
+
+
+class GpuDriverApt(unittest.TestCase):
+    """What apt says about the driver (R102): the branches on offer for the
+    row's pulldown, the package installed, what it would update to, and the
+    one recommended for the card. Stand-ins for apt-cache, dpkg-query and
+    ubuntu-drivers on PATH."""
+
+    SEARCH = ("nvidia-driver-590 - NVIDIA driver metapackage (transitional package)\n"
+              "nvidia-driver-595 - NVIDIA driver metapackage\n"
+              "nvidia-driver-595-open - NVIDIA driver (open kernel) metapackage\n"
+              "nvidia-driver-610 - NVIDIA driver metapackage\n"
+              "nvidia-driver-580-server - NVIDIA Server Driver metapackage\n")
+    POLICY = ("nvidia-driver-595:\n  Installed: 595.91.07-0ubuntu1\n  Candidate: 595.95.01-0ubuntu1\n"
+              "nvidia-driver-595-open:\n  Installed: (none)\n  Candidate: 595.95.01-0ubuntu1\n"
+              "nvidia-driver-610:\n  Installed: (none)\n  Candidate: 610.57.04-0ubuntu0.26.04.3\n")
+
+    def setUp(self):
+        self.bin = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.bin, True)
+        self.path = os.environ.get("PATH", "")
+        os.environ["PATH"] = self.bin
+        self.addCleanup(os.environ.__setitem__, "PATH", self.path)
+
+    def tool(self, name, body):
+        f = os.path.join(self.bin, name)
+        with open(f, "w") as h:
+            h.write("#!/bin/sh\n" + body + "\n")
+        os.chmod(f, os.stat(f).st_mode | stat.S_IEXEC)
+
+    def tools(self, installed=True, recommends=True):
+        self.tool("apt-cache", f'case "$1" in search) printf \'{self.SEARCH}\' ;; policy) printf \'{self.POLICY}\' ;; esac')
+        self.tool("dpkg-query", "printf 'nvidia-driver-595 595.91.07-0ubuntu1 ii \\n'" if installed else "exit 1")
+        if recommends:
+            self.tool("ubuntu-drivers", "printf 'vendor   : NVIDIA Corporation\\ndriver   : nvidia-driver-595 - distro non-free recommended\\n"
+                                        "driver   : nvidia-driver-610 - distro non-free\\n'")
+
+    def test_no_apt_is_nothing(self):
+        self.assertEqual(agent._gpu_driver_apt(), {})
+
+    def test_the_branches_on_offer_newest_first_without_transitional_or_server_ones(self):
+        self.tools()
+        got = agent._gpu_driver_apt()
+        self.assertEqual([o["pkg"] for o in got["options"]],
+                         ["nvidia-driver-610", "nvidia-driver-595", "nvidia-driver-595-open"])
+        self.assertEqual(got["options"][0]["version"], "610.57.04")
+        self.assertEqual([o["open"] for o in got["options"]], [False, False, True])
+
+    def test_the_installed_package_and_what_it_would_update_to(self):
+        self.tools()
+        got = agent._gpu_driver_apt()
+        self.assertEqual((got["package"], got["pkg_version"], got["candidate"]),
+                         ("nvidia-driver-595", "595.91.07-0ubuntu1", "595.95.01-0ubuntu1"))
+        self.assertEqual(got["recommended"], "nvidia-driver-595")
+
+    def test_nothing_installed_and_no_recommendation(self):
+        self.tools(installed=False, recommends=False)
+        got = agent._gpu_driver_apt()
+        self.assertEqual((got["package"], got["candidate"], got["recommended"]), ("", "", ""))
+        self.assertEqual(len(got["options"]), 3)
+
+    def test_a_package_name_apt_may_be_asked_for(self):
+        for ok in ("nvidia-driver", "nvidia-driver-610", "nvidia-driver-595-open"):
+            self.assertTrue(agent.DRIVER_PKG.fullmatch(ok), ok)
+        for bad in ("nvidia-driver-610; rm -rf /", "nvidia-driver-61", "firefox", "nvidia-driver-610-server", ""):
+            self.assertFalse(agent.DRIVER_PKG.fullmatch(bad), bad)
 
 
 if __name__ == "__main__":

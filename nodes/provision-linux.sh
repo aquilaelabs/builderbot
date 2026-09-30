@@ -1861,24 +1861,36 @@ gpu_card() {
     done
     return 0
 }
-# The distribution's NVIDIA driver, with whatever else the caller names
-# (the display half wants an X server), from apt. Shared by the display's
-# set-up and the Toolchains tab's driver row (R102).
+# The distribution's NVIDIA driver, from apt: the Toolchains tab's driver
+# row (R102), and nothing else installs it.
 gpu_install_driver() {
+    # GPU_DRIVER_PKG, where the caller set one, is the metapackage of the
+    # branch to install (nvidia-driver-610-open) rather than the one the
+    # distribution recommends: ubuntu-drivers takes it as nvidia:610-open,
+    # which brings the kernel's prebuilt modules with it.
+    local want="${GPU_DRIVER_PKG:-}"
     # shellcheck source=/dev/null
     [ -r /etc/os-release ] && . /etc/os-release
     case " ${ID:-} ${ID_LIKE:-} " in
         *" ubuntu "*)
-            say "installing the NVIDIA driver${*:+ and $*} with apt; this takes minutes"
+            say "installing the NVIDIA driver${want:+ ($want)} with apt; this takes minutes"
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
-            apt-get install -y -qq ubuntu-drivers-common pciutils "$@"
-            ubuntu-drivers install ;;
+            apt-get install -y -qq ubuntu-drivers-common pciutils
+            if [ -n "$want" ]; then
+                # By branch through ubuntu-drivers, which brings this kernel's
+                # prebuilt modules; by package name where it will not take
+                # the branch, which builds them with dkms.
+                ubuntu-drivers install "nvidia:${want#nvidia-driver-}" \
+                    || apt-get install -y -qq "$want"
+            else
+                ubuntu-drivers install
+            fi ;;
         *" debian "*)
-            say "installing the NVIDIA driver${*:+ and $*} with apt (non-free); this takes minutes"
+            say "installing the NVIDIA driver with apt (non-free); this takes minutes"
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
-            apt-get install -y -qq nvidia-driver firmware-misc-nonfree pciutils "$@" \
+            apt-get install -y -qq nvidia-driver firmware-misc-nonfree pciutils \
                 || die "apt could not install nvidia-driver: Debian keeps it in non-free, so add 'contrib non-free non-free-firmware' to the sources on this machine first, then try again" ;;
         *)
             die "the NVIDIA driver is not installed from here on ${ID:-this family} yet: install it from NVIDIA's repository for it, then try again" ;;
@@ -1893,8 +1905,19 @@ cmd_gpu() {
         return 0
     fi
     say "card: $card"
-    if ! command -v nvidia-smi >/dev/null 2>&1 || ! command -v Xorg >/dev/null 2>&1; then
-        gpu_install_driver xserver-xorg-core
+    # The display runs on NVIDIA's driver and does not install it (the
+    # operator, 30 Sep): the driver is the Toolchains tab's row, the one
+    # place it is installed, so a machine has it because somebody chose to.
+    if [ -z "$(gpu_driver_version)" ]; then
+        gpu_state "needs the driver: install the NVIDIA driver on this node's Toolchains tab first"
+        die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains tab, then set the display up"
+    fi
+    if ! command -v Xorg >/dev/null 2>&1; then
+        have apt-get || die "no Xorg on this machine, and it is not installed from here on this family: install an X server, then set the display up again"
+        say "installing a headless X server with apt"
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq
+        apt-get install -y -qq xserver-xorg-core pciutils
     fi
     gpu_nodes_unit
     command -v Xorg >/dev/null 2>&1 || die "no Xorg on this machine after the install; the display half needs one"
@@ -2070,20 +2093,47 @@ cmd_gpu_nodes() {
     say "device nodes: $(printf '%s ' /dev/nvidia*)"
 }
 cmd_gpu_driver() {
-    local card ver pkgs u
+    local card ver pkgs u want="${2-}" held
     card="$(gpu_card)"
     case "${1-}" in
+        refresh)
+            # apt's lists brought current, so the row's pulldown and its
+            # update line say what is on offer now: Check for updates.
+            have apt-get || return 0
+            say "reading the package lists again"
+            apt-get update -qq || warn "apt-get update did not finish; the lists are as they were" ;;
         install)
             if [ -z "$card" ]; then
                 say "no NVIDIA card on this machine (lspci); nothing to install"
                 return 0
             fi
             say "card: $card"
+            if [ -n "$want" ] && ! printf '%s' "$want" | grep -qE '^nvidia-driver(-[0-9]{3})?(-open)?$'; then
+                die "$want is not a driver package: nvidia-driver-NNN or nvidia-driver-NNN-open"
+            fi
             ver="$(gpu_driver_version)"
+            # The metapackage on the machine now, if any: the highest branch
+            # dpkg holds installed.
+            held=""
+            if command -v dpkg-query >/dev/null 2>&1; then
+                # shellcheck disable=SC2016
+                held="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 'nvidia-driver*' 2>/dev/null | awk '$2 ~ /^ii/ {print $1}' | sort -V | tail -1)"
+            fi
+            if [ -n "$ver" ] && [ -n "$want" ] && [ -n "$held" ] && [ "$want" != "$held" ]; then
+                die "$held is installed: remove it first, then install $want. One branch at a time, since their libraries do not mix"
+            fi
             if [ -n "$ver" ] && command -v nvidia-smi >/dev/null 2>&1; then
-                say "the NVIDIA driver $ver is already installed"
+                # Installed already: brought up to what apt has for its branch.
+                say "the NVIDIA driver $ver is installed; bringing it up to date"
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -qq
+                # shellcheck disable=SC2016,SC2046
+                apt-get install -y -qq --only-upgrade $(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
+                    | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-|libnvidia-|linux-(modules|objects|signatures)-nvidia-|xserver-xorg-video-nvidia)/ {print $1}') \
+                    || die "apt could not update it; its output above says why"
+                say "the NVIDIA driver is $(gpu_driver_version) now"
             else
-                gpu_install_driver
+                GPU_DRIVER_PKG="$want" gpu_install_driver
                 ver="$(gpu_driver_version)"
                 [ -n "$ver" ] || die "the install ran, but no nvidia kernel module is there for this kernel ($(uname -r)); the apt output above says why"
                 say "installed the NVIDIA driver $ver"
@@ -2133,7 +2183,7 @@ cmd_gpu_driver() {
             else
                 say "removed; nouveau has the card"
             fi ;;
-        *) die "usage: bb-sandbox gpu-driver install|remove" ;;
+        *) die "usage: bb-sandbox gpu-driver install [PACKAGE]|remove|refresh" ;;
     esac
 }
 
@@ -2142,7 +2192,7 @@ case "${1-}" in
     uninstall)   shift; cmd_uninstall "${1-}" ;;
     gpu)         cmd_gpu ;;
     gpu-display) cmd_gpu_display ;;
-    gpu-driver)  shift; cmd_gpu_driver "${1-}" ;;
+    gpu-driver)  shift; cmd_gpu_driver "${1-}" "${2-}" ;;
     gpu-nodes)   cmd_gpu_nodes ;;
     list)        shift; if [ "${1-}" = "--json" ]; then cmd_list_json; else cmd_list; fi ;;
     add-nfs)     shift; cmd_add_nfs "${1-}" ;;

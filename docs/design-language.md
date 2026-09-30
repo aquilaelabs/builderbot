@@ -952,13 +952,13 @@ Platform: a responsive web app: the layout holds at phone and desktop widths, an
 Layout of the Toolchains tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
   1. Header (the band at the top): the bar: which node's store this is, and Refresh, across the top, row 1 of 8
   2. Text (a block of prose): the store's path on that node, across the middle, row 2 of 8
-  3. Card (a box holding one thing): this machine's own: the NVIDIA driver where there is a card, no tick box, Install or Remove as root, a restart away, across the middle, row 3 of 8
+  3. Card (a box holding one thing): this machine's own: the NVIDIA driver where there is a card, a row to tick like the rest, with a version pulldown, across the middle, row 3 of 8
   4. List (rows of like things): the toolchains by group, across the middle, rows 4 to 6 of 8
   5. Card (a box holding one thing): a row to tick: what it is, its size, what it needs, its version; installed as a pill, across the middle, row 5 of 8, inside block 4 (List: the toolchains by group)
   6. List (rows of like things): Not for this node: a fold of the ones its platform cannot run, with why, across the middle, row 7 of 8
   7. Button (an action to press): Install selected and Check for updates; what the one job is doing is said beside them, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Toolchains are installed on nodes and never on the controller, so the picker lists agent nodes only. An install is a job on the node: the rows are read again as it runs, and the line beside the buttons says what it is doing rather than the button changing its words. The NVIDIA driver is the machine's and not the store's (R102): its row sits above the store's list, never in a batch with them, says where the driver stands in one line (not installed, waiting for a restart, running the card, removed but still loaded), and on a guest machine says whose it is instead of offering a press.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Toolchains are installed on nodes and never on the controller, so the picker lists agent nodes only. An install is a job on the node: the rows are read again as it runs, and the line beside the buttons says what it is doing rather than the button changing its words. The NVIDIA driver is the machine's and not the store's (R102): its row sits above the store's list and behaves as they do, a tick into the same Install selected (last, since it ends at a restart), a bin, and the same Check for updates. Its pulldown lists the branches apt offers there, the recommended one first, and is ghosted while a driver is installed: another version means removing this one first. One line says where the driver stands (not installed, waiting for a restart, running the card, removed but still loaded), and on a guest machine the row says whose it is instead of offering a press.
 
 ### the Emulator tab (Web app)
 
@@ -995,7 +995,7 @@ Layout of the Nodes tab on a desktop frame (12 columns by 8 rows), from the Blan
   4. Card (a box holding one thing): a section: a fold with its own Apply: Health, Storage, Network, Runner and the rest; one the node cannot offer says why, across the middle, rows 5 to 6 of 8, inside block 3 (List: its sections)
   5. Footer (the band at the foot): what a node is for, in a sentence, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Health draws meters: a track with a fill, the number beside it. A section the node cannot offer says why in its place rather than being missing.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Health draws meters: a track with a fill, the number beside it. A section the node cannot offer says why in its place rather than being missing. The GPU line under Health names the card; with no NVIDIA driver on the machine it offers Install the driver, which opens that node's Toolchains tab, and only with the driver there does it offer Set up GPU display.
 
 ### the Jobs tab (Web app)
 
