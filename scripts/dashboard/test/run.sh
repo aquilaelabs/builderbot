@@ -1297,7 +1297,7 @@ PIDF="$(mktemp "${TMPDIR:-/tmp}/dashboard-test-pid.XXXXXX")"
 start_server() {
 ( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
-    TC_AUTOCHECK=0 BB_AUTH_TTL=1 BB_NODE_POLL=3 \
+    TC_AUTOCHECK=0 BB_NODE_POLL=3 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \
@@ -1352,18 +1352,6 @@ d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
 u._save(d)
 PY
 
-# ...and its Claude identity. The controller holds no credential now (R47),
-# and each machine signs in for itself, so "signed in" here is a RECORD: which
-# Anthropic account this BuilderBot account is bound to, and which nodes
-# report being signed in as it. Without one every suite reads the box as
-# signed out, which ghosts every Claude button and reddens every project row.
-mkdir -p "$S/home/.claude"
-cat > "$S/home/.claude/.bb-grant.json" <<'GRANT'
-{"gen": 1, "email": "tester@example.com", "plan": "max",
- "nodes": {"n_fixture": {"email": "tester@example.com", "at": 1}}}
-GRANT
-chmod 600 "$S/home/.claude/.bb-grant.json"
-
 # ---- the docker-host node --------------------------------------------------
 # The suite needs one node whose daemon the controller can address, and it
 # used to get one from DOCKER_HOST: the server mirrored the variable into an
@@ -1403,6 +1391,15 @@ stub_token="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; print(j
 # again by fresh() before every file, which wipes the settings first.
 sandbox_id="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("node_id") or d.get("id") or "")')"
 bind_fixture_node
+# ...and the tester's Claude sign-in on that node. The controller holds no
+# credential (R47): a login is one account's on one node, and what is kept
+# here is the RECORD of what each node reported. Without one the fixture
+# node reads as not signed in, and every Claude press in the suite would go
+# to its sign-in instead of to a session.
+mkdir -p "$S/home/.claude"
+printf '{"nodes": {"%s": {"email": "tester@example.com", "plan": "max", "at": 1}}}\n' "$sandbox_id" \
+    > "$S/home/.claude/.bb-grant.json"
+chmod 600 "$S/home/.claude/.bb-grant.json"
 start_stub() {
     ( STUB_AGENT_URL="http://127.0.0.1:$PORT" \
     STUB_AGENT_DIR="$S/sandboxdata" \

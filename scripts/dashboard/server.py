@@ -638,10 +638,13 @@ def _session_at(name):
         # connection, a loop nobody could end from the Sessions card,
         # because the session never started.
         return {"session_at": t["name"], "session_why": "",
+                # ...and its id, which is what the page asks its own Claude
+                # sign-ins about: a login is one account's on one node.
+                "session_node": t["id"],
                 "session_boot": t.get("boot") or ""}
     if t["where"] == "refused":
-        return {"session_at": t["name"], "session_why": t["why"], "session_boot": ""}
-    return {"session_at": "", "session_why": "", "session_boot": ""}
+        return {"session_at": t["name"], "session_why": t["why"], "session_node": "", "session_boot": ""}
+    return {"session_at": "", "session_why": "", "session_node": "", "session_boot": ""}
 
 
 def _row_git_ready(base, over):
@@ -1978,73 +1981,19 @@ def image_stamp():
             "version": os.environ.get("BB_VERSION", "").strip()[:64]}
 
 
-# Who this container is signed in as, for the Doctor card. `claude auth
-# status --json` answers it locally and instantly, with no network, so this is a
-# short cache against a poll every fifteen seconds rather than a real one.
-# Per HOME, because accounts have a home each and a Claude login lives in one
-# (roadmap #26). One global answer meant a new account was shown the owner's
-# sign-in state: the Claude button offered itself, and bb-tty, which reads
-# the RIGHT home, then refused with "not signed in", which is a dead end on
-# the one path a new person has to walk. Keyed by the home rather than the
-# account so the owner and an unauthenticated context share one entry, which
-# is what they are.
-_auth = {}
-_AUTH_EMPTY = {"at": 0.0, "state": {}}
-_auth_lock = threading.Lock()
-# Settable only so the suite can stop paying it: the fixture is rewritten
-# behind this cache's back, so a test that changes who is signed in waits the
-# full TTL for the page to agree. Nothing else sets it.
-AUTH_TTL = int(os.environ.get("BB_AUTH_TTL") or 20)
-# While a sign-in is open and this box is still signed out, the answer is about
-# to change and is worth re-reading sooner. Not *every* poll, though: one check
-# is a full node runtime (measured at 357MB and 0.68s), so bypassing the cache
-# meant every status request spawning its own, several at once across a phone,
-# a desktop and a preload. The dashboard stopped updating and the container ran
-# out of memory, which is what "it freezes until I reload the page" was.
-AUTH_TTL_FAST = 5
+def claude_auth(home=""):
+    """{"nodes": {node id: {email, plan}}}: which nodes report this account
+    signed in to Claude, and as whom.
 
-
-def claude_auth(fresh=False, home=""):
-    """{signed_in, email}, or {"unknown": True} on a claude too old to ask.
-
-    The one piece of container health that has an action attached, which is
-    why it is a field of its own rather than a line in the doctor verdict: a
-    verdict is read, and this is pressed.
-
-    `home` is the asking account's, because the answer is theirs: the
-    credential lives in $HOME/.claude and every account has a home.
+    `home` is the asking account's, because the answer is theirs: a login is
+    one account's on one node, and the record of what each node reported is
+    kept in that account's home (claudegrant.py). The record, and only the
+    record: there is no `claude` here to ask, and asking one would answer
+    about this container rather than about the machines the account's
+    sessions actually run on. One small file, read when asked.
     """
-    got = _auth.get(home) or _AUTH_EMPTY
-    # Signed in already: nothing a running sign-in does changes that answer,
-    # so it keeps the long cache however busy the flow looks.
-    ttl = AUTH_TTL_FAST if fresh and not got["state"].get("signed_in") else AUTH_TTL
-    if time.monotonic() - got["at"] < ttl and got["state"]:
-        return got["state"]
-    # One at a time, and checked again on the way in: without this every
-    # request that arrives during the 0.68s answer starts its own copy, which
-    # is the difference between one node process and a handful.
-    with _auth_lock:
-        got = _auth.get(home) or _AUTH_EMPTY
-        if time.monotonic() - got["at"] < ttl and got["state"]:
-            return got["state"]
-        return _read_auth(home)
-
-
-def _read_auth(home=""):
-    # The GRANT is the answer, not `claude auth status`. Signing out deletes
-    # the credential and moves the generation; asking the binary would still
-    # say signed in, because the binary reads a file that is no longer there
-    # only once it is next run, and on a controller that carries no Claude
-    # there is no binary to ask at all. What the account is signed in AS is
-    # what the node that signed in reported, stored beside the grant.
-    # The record, and only the record. There is no `claude` here to ask, and
-    # asking one would answer about this container rather than about the
-    # machines the account's sessions actually run on.
-    st = claudegrant.state(home)
-    state = {"signed_in": st["signed_in"], "email": st["email"],
-             "plan": st["plan"], "nodes": len(st["nodes"])}
-    _auth[home] = {"at": time.monotonic(), "state": state}
-    return state
+    return {"nodes": {nid: {"email": v["email"], "plan": v["plan"]}
+                      for nid, v in claudegrant.nodes_of(home).items()}}
 
 
 # ---- toolchains ------------------------------------------------------------
@@ -2502,7 +2451,8 @@ transcripts.configure(workspace=WORKSPACE,
                       root_for=lambda uid: (Path(home_for(uid)) / ".claude" / "projects")
                       if home_for(uid) else CLAUDE_PROJECTS)
 profiletab.configure(users=users,
-                     claude_email=lambda uid: claude_auth(home=home_for(uid)).get("email") or "",
+                     claude_email=lambda uid: ", ".join(sorted(
+                         {v["email"] for v in claudegrant.nodes_of(home_for(uid)).values()}, key=str.lower)),
                      plugins_of=plugins.of,
                      node_names=lambda: {n["id"]: n["name"]
                                          for n in ([] if NODES_OK else nodes.node_list())},
@@ -2539,24 +2489,17 @@ containers.net_nudge = net_nudge
 # only the roadmap's and the tracker's dated logs know that.
 import changelog                                                 # noqa: E402
 import claudegrant                                              # noqa: E402
-# The Claude sign-in's verbs (signin.py) and the account's identity
-# (claudegrant.py) clear the cached answer to who each home is signed in as
-# whenever they change it.
+# The Claude sign-in's verbs are signin.py's; the record of what each node
+# reported is claudegrant.py's.
 signin.nodes = None if NODES_OK else nodes
 signin.mint = users.mint_session
-signin.forget_auth = _auth.clear
-claudegrant.forget_auth = _auth.clear
-claudegrant.node_names = lambda ids: ([] if NODES_OK
-                                      else [(nodes.node(i) or {}).get("name") or i for i in ids])
-claudegrant.claude_auth = claude_auth
 claudegrant.home_for = home_for
 
 # ---- the node agent's channel -----------------------------------------------------
-# The verbs behind /api/v1/agent/: channel.py. What a node reports about each
-# account's Claude login clears the cached answer the way a sign-in does.
+# The verbs behind /api/v1/agent/: channel.py.
 import channel                                                   # noqa: E402
 
-channel.configure(home_for=home_for, forget_auth=_auth.clear)
+channel.configure(home_for=home_for)
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
 vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
@@ -2971,7 +2914,7 @@ def snapshot(who):
     mine, seen = users.uid_of(who), {p["name"] for p in ps}
     sessions = [s for s in tmux_sessions() + node_tmux_sessions()
                 if _session_visible(s["name"], mine, seen, users.sees_all(who))]
-    login = signin.state()
+    login = signin.state(mine)
     # Each shell's git context, resolved here where WORKSPACE is known: the
     # git/GitHub command cards ghost against the directory the active shell
     # is actually in, and matching a cwd to a project is this server's
@@ -3039,11 +2982,9 @@ def snapshot(who):
         # scanner is visible rather than silently counted as current.
         "reports_ages": findings.reports_ages(),
         "doctor": doctor.payload(),
-        # Asked in this order: whether a sign-in is running decides whether
-        # the answer to "signed in?" is worth re-reading rather than serving
-        # from the cache.
-        "claude_auth": claude_auth(fresh=login["running"],
-                                   home=home_for(users.uid_of(who))),
+        # Which nodes report this account signed in to Claude, and the
+        # sign-in of theirs that is running, if one is.
+        "claude_auth": claude_auth(home_for(users.uid_of(who))),
         "signin": login,
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
@@ -3161,7 +3102,6 @@ GET_ROUTES = (
     ("prefix", "/api/toolchains", "_get_toolchains"),
     ("prefix", "/api/emulator", "_get_emulator"),
     ("prefix", "/api/users", "_get_users"),
-    ("exact", "/api/v1/claude-login", "_claude_login"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
     ("prefix", "/api/docker", "_get_docker"),
@@ -3515,7 +3455,10 @@ class Handler(BaseHTTPRequestHandler):
         me = self._who()
         if not users.may(me, "node"):
             return None
-        want = {prefs.get(p["name"])["node"] for p in project_list(me)}
+        want = set()
+        for p in project_list(me):
+            pr = prefs.get(p["name"])
+            want.update([pr["node"], *(pr.get("nodes") or [])])
         want.discard("")
         return want
 
@@ -3628,51 +3571,13 @@ class Handler(BaseHTTPRequestHandler):
             return mapping.held(project)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
-        # Every Claude session is on a node now (R47), so this container has
-        # no tmux socket to ask. What it has is the census: the node reports
-        # its session names on every heartbeat, and a name says whose it is.
-        # The rule is made from the last thing the node said, a few seconds
-        # stale, which two people starting in the same instant could slip
-        # through, and the alternative is not making it at all.
         t = session_target(project, claude=True, node=_arg_node(arg))
         if t["where"] != "node":
             return ""
         # Claude Code on that node first (claudecode.py): an update running
         # there holds the start, and with Keep Claude Code current on, a
         # node behind is updated now and this start waits for it.
-        held = claudecode.start_hold(project, t["id"])
-        if held:
-            return held
-        mine = claude_auth(home=home_for(uid)).get("email") or ""
-        if not mine:
-            return ""                     # not signed in: bb-tty says so, better
-        if settings.get("claude_shared_login"):
-            return ""                     # the Settings tab stood the refusal down
-        store = users.load()["users"]
-        by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
-        owner = users.owner_name()
-        want = claude_session(project)
-        here = [s for s in node_tmux_sessions()
-                if s.get("node_id") == t["id"] and tmux_base(s["name"]) == want]
-        whose = {s["name"]: tmux_owner(s["name"]) or users.uid_of(users.get(owner or ""))
-                 for s in here}
-        # Our own session, already running: this is a reattach, and a rule
-        # about starting a SECOND session has nothing to say about it. Asked
-        # first, because the loop below used to meet another account's
-        # session before reaching ours and refuse us our own tab (B141).
-        if uid in whose.values():
-            return ""
-        for sess in here:
-            other = whose[sess["name"]]
-            if not other:
-                continue
-            if (claude_auth(home=home_for(other)).get("email") or "") == mine:  # noqa: E501
-                return (f"{by_uid.get(other, 'another account')} already has a "
-                        f"Claude session on {project} signed in to {mine}. Two "
-                        "sessions on one Anthropic account share its limits, "
-                        "and nothing afterwards can say which of them did "
-                        "what, so this one waits for that to end.")
-        return ""
+        return claudecode.start_hold(project, t["id"]) or ""
 
     def _term_notice(self, sentence, code):
         """A refused terminal, in the shape the asker can read. The tab is
@@ -4720,53 +4625,43 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "no such job of yours"}, 403)
         return self._result(jobs.cancel(self._principal(), field(req, "id")))
 
-    def _claude_login(self, req=None):
-        """This account's Claude identity, both directions (R47), and no
-        credential in either.
-
-        GET is a node asking who this BuilderBot account is bound to and
-        what the generation is; POST is a node saying what it signed in as.
-        The grant itself never moves: each machine signs in for itself and
-        refreshes the one it holds, because a refresh ROTATES the refresh
-        token and two copies of one grant sign each other out (bug #64,
-        B100). claudegrant.py's header is the long version.
+    def _claude_login(self, req):
+        """A node saying what this account is signed in to Claude AS there
+        (R47), or that it is not: never the login itself, which stays on the
+        machine that made it (claudegrant.py says why).
 
         Only a session token minted FOR an account speaks here (the one the
-        terminal proxy stamps into a node-bound terminal's URL), and only for
-        that account: the account is in the token, signed, not in a
-        parameter.
+        terminal proxy stamps into a node-bound terminal's URL, or the one a
+        sign-in job carries), and only for that account: the account is in
+        the token, signed, not in a parameter. Which node is reporting is
+        not taken from the request either: a sign-in job's token names the
+        node it was queued on, and a session's names a project, whose node
+        it is on. A machine that could name itself could report for another.
         """
         me = self._who()
         if not me:
             return self._json({"error": "not signed in"}, 401)
         uid = me.get("uid") if me.get("session") else ""
         if not uid:
-            return self._json({"error": "a Claude login is fetched with a session token "
+            return self._json({"error": "a Claude sign-in is reported with a session token "
                                         "minted for an account, the one a node-bound "
                                         "terminal carries"}, 403)
-        home = home_for(uid)
-        if req is not None:
-            return self._claude_login_put(req, home)
-        return self._json(*claudegrant.identity(home))
-
-    def _claude_login_put(self, req, home):
-        """A node reporting what it is signed in AS, never the grant itself.
-
-        Which node is reporting is not taken from the request: it is the node
-        of the session's own project, which the token proves. A machine that
-        could name itself could bind the account to whatever it liked.
-        """
-        proj = (self._who() or {}).get("session") or ""
-        # A sign-in job's own token names the node it was queued on rather
-        # than a project: the controller minted it, signed, for that job.
+        proj = me.get("session") or ""
         if proj.startswith("node:"):
             nid = proj[5:] if nodes.node(proj[5:]) else ""
         else:
-            nid = (prefs.get(proj) or {}).get("node") or "" if proj else ""
+            # The node this session was started on, which the project's
+            # other nodes make a question (R82): named by the session, and
+            # believed only when it is one of the project's own.
+            p = prefs.get(proj) or {} if proj else {}
+            asked = field(req, "node")
+            nid = asked if asked and asked in [p.get("node"), *(p.get("nodes") or [])] else p.get("node") or ""
         if not nid:
             return self._json({"error": "a sign-in is reported by a session on the "
                                         "node it happened on"}, 400)
-        return self._json(*claudegrant.report_from(home, nid, req))
+        r = claudegrant.report(home_for(uid), nid, req.get("email") or "", req.get("plan") or "",
+                               signed_in=bool(req.get("signed_in", True)))
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _tty_grant(self, req):
         """Whose terminal a node's bb-tty is about to start, answered here
@@ -4824,7 +4719,11 @@ class Handler(BaseHTTPRequestHandler):
                            # Whether it may compute on its node's NVIDIA card
                            # (R102): "on", or who said no, the node or the
                            # project, which bb gpu then says to the session.
-                           "gpu": gpu_for(project, _arg_node(arg))})
+                           "gpu": gpu_for(project, _arg_node(arg)),
+                           # Which node this terminal is on, by id: what a
+                           # session there names when it reports its Claude
+                           # sign-in, since a project may work on several.
+                           "node": _arg_node(arg) or (prefs.get(project) or {}).get("node") or ""})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24):
@@ -4931,50 +4830,67 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(got["body"])
         return None
 
-    def _signin(self, req):
-        """Start a sign-in, or stop the one that is running: signin.verb. A
-        person's, on the controller: a session on a node has no business
-        here, and another account's flow is not this one's to stop (the
-        review of 26 Sep)."""
+    def _signin_node(self, req):
+        """(node id, refusal) for a sign-in or a sign-out: a person's, never
+        a session's, on a node this account may look at, which for an
+        account that does not administer is one its own projects work on."""
         me = self._who() or {}
         if me.get("session"):
-            return self._json({"error": "a session does not sign the controller in"}, 403)
-        if users.may(me, "admin") != "" and signin.owner() not in ("", users.uid_of(me)):
-            return self._json({"error": "that sign-in is another account's"}, 403)
-        return self._json(*signin.verb(field(req, "action"), field(req, "node"), users.uid_of(me)))
+            return "", ({"error": "a session does not sign an account in or out"}, 403)
+        nid = field(req, "node")
+        if not nid:
+            return "", ({"error": "which node? A Claude sign-in is made on one node, "
+                                  "from its row on the Nodes tab"}, 400)
+        nid, why = self._node_asked(nid)
+        if why:
+            return "", ({"error": why}, 403)
+        return nid, None
+
+    def _signin(self, req):
+        """Start a sign-in on one node, or stop the one that is running:
+        signin.verb. Another account's flow is not this one's to replace or
+        stop (the review of 26 Sep)."""
+        me = self._who() or {}
+        uid = users.uid_of(me)
+        if signin.owner() not in ("", uid) and signin.state()["running"]:
+            return self._json({"error": "another account is signing in right now: "
+                                        "one sign-in at a time, so try again in a minute"}, 409)
+        if field(req, "action") == "cancel":
+            if me.get("session"):
+                return self._json({"error": "a session does not sign an account in or out"}, 403)
+            return self._json(*signin.verb("cancel", "", uid))
+        nid, no = self._signin_node(req)
+        if no:
+            return self._json(*no)
+        return self._json(*signin.verb("", nid, uid))
 
     def _login_code(self, req):
         """Hand the code from the browser to the sign-in flow: signin.take_code,
         for the person whose flow it is."""
         me = self._who() or {}
         if me.get("session"):
-            return self._json({"error": "a session does not sign the controller in"}, 403)
-        if users.may(me, "admin") != "" and signin.owner() not in ("", users.uid_of(me)):
-            return self._json({"error": "that sign-in is another account's"}, 403)
+            return self._json({"error": "a session does not sign an account in or out"}, 403)
+        if signin.owner() != users.uid_of(me):
+            return self._json({"error": "no sign-in of yours is running"}, 403)
         return self._json(*signin.take_code(field(req, "code")))
 
     def _signout(self, req):
-        """Sign this account out of Claude, on every machine it is on
-        (claudegrant.sign_out_verb): being signed out has no date, and a
-        counter does."""
-        # Not while a conversation of THIS account's is running. Signing out
-        # pulls the ground from under the sessions it started, and a page that
-        # has not polled for fifteen seconds can offer a button the answer has
-        # moved past, so the refusal is here as well as on the button.
-        #
-        # Theirs, not everyone's: logins are per account now (roadmap #26), so
-        # one person signing out does nothing to somebody else's conversation
-        # and refusing on it would be a rule with no reason behind it. An
-        # account that sees everything still only owns what it opened.
+        """Sign this account out of Claude on one node (signin.sign_out):
+        the login is that machine's, so that machine lets go of it."""
+        nid, no = self._signin_node(req)
+        if no:
+            return self._json(*no)
+        # Not while a conversation of THIS account's is running there.
+        # Signing out pulls the ground from under the sessions it started,
+        # and a page that has not polled for fifteen seconds can offer a
+        # button the answer has moved past, so the refusal is here as well
+        # as on the button. Theirs, and on this node: one person signing out
+        # does nothing to somebody else's conversation, or to their own on
+        # another machine.
         me = users.uid_of(self._who())
-        # The name says whose (roadmap #24): a prefix is that account's, and
-        # the bare one is the owner's. Every node's sessions as well as this
-        # container's: a conversation runs on a node now, and it is exactly
-        # the one the sign-out would pull the credential out from under.
-        busy = sorted(n for n in (x["name"] for x in
-                                  tmux_sessions() + node_tmux_sessions())
-                      if tmux_base(n).startswith("claude-")
-                      and (tmux_owner(n) or users.uid_of(
+        busy = sorted(x["name"] for x in node_tmux_sessions()
+                      if x.get("node_id") == nid and tmux_base(x["name"]).startswith("claude-")
+                      and (tmux_owner(x["name"]) or users.uid_of(
                           users.get(users.owner_name() or ""))) == me)
         if busy:
             # Said as projects, not tmux names: "u_3deb3420~claude-hello"
@@ -4984,9 +4900,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "end your Claude session"
                                + ("s" if len(projs) > 1 else "") + " on "
                                + ", ".join(projs) + " first (Sessions, or the tab's Close)"}, 409)
-        # In the asking account's home, like the sign-in: signing out is
-        # signing THIS account out, and the credential is in their ~/.claude.
-        return self._json(*claudegrant.sign_out_verb(home_for(me)))
+        payload, status = signin.sign_out(nid, me)
+        if status == 200:
+            # The row says so at once; the node's own report, which the job
+            # prompts, is what keeps it true.
+            claudegrant.report(home_for(me), nid, "", signed_in=False)
+        return self._json(payload, status)
 
     def _roadmap(self, req):
         """Add, send, edit or drop one item on a project's list: roadmap.verb

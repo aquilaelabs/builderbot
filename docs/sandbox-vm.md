@@ -173,16 +173,14 @@ by hand the same path: `sudo -iu builder`, then
 at `/workspace` for any of it to have a tree to work in: one more row in
 the node's mounts on the Nodes tab.
 
-**The Claude login follows the account.** A node-bound terminal's token is
-minted for the account as well as the project, and the first session there
-runs `bb login`, which fetches that account's credentials file from its
-home on the controller into its home on the node: 0600, that account's
-only, and only when the node's copy is not signed in already. So signing in
-once on the Doctor card signs every node in, per person: two accounts on
-one node are two homes and two logins. The one thing to know: the file is
-an OAuth grant with a refresh token, and whether Claude Code rotates it on
-use is not documented; if a node and the controller ever sign each other
-out on refresh, `bb login` from a shell on the node is the fallback.
+**A Claude login is one account's, on one node.** Each person signs in on
+each node they work on, from that node's row on the Nodes tab (Claude Code,
+Sign in), and the login stays in that account's home on that machine: two
+accounts on one node are two homes and two logins, and a login on one node
+does nothing for another. Nothing is copied between machines and the
+controller holds no credential: a refresh rotates the refresh token, so two
+machines holding one grant sign each other out. `bb login` from a shell on
+the node is the same flow typed by hand.
 
 Be clear about what this does *not* do: `bb` is in the `docker` group, and that
 group is root on this machine to anyone who wants it. One

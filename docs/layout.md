@@ -45,7 +45,7 @@ scripts/
   lib/report.py                  `bb report`, and file/close from BuilderBot's side
   lib/diag.py                    `bb diag`
   lib/node-log.py                `bb logs --node`
-  lib/login-check.py             whether this machine is signed in to Claude, for `bb claude` and the doctor
+  lib/login-check.py             `bb login --check`: who this account is signed in to Claude as on this machine, told to the controller
   lib/emu-job.py                 `bb emu` as a job on the project's node
   lib/run-job.py                 `bb run`: the snapshot, the job, the log back
   lib/build-or-test.py           the command, place and outputs `bb build` and `bb test` read from the settings
@@ -91,9 +91,9 @@ scripts/
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
     bb-check-relay               the relay's own check, run by bb tests preflight
     bb-gate                      the hook every tool call asks before it runs, on a node
-    bb-keep-login                keeps a node session's Claude login in step, once per prompt
     bb-prompt-relay              a node session's prompts and answers, back to the controller
     bb-work-note                 what a session is changing, for the overlap warning
+    bb-keep-login                a hook that does nothing, for sessions an earlier build of this window started with it
     users.py                     who may sign in, and what they are allowed to see (docs/users.md)
     prefs.py                     which model and effort a project's Claude session runs on
     settings.py                  controller settings, the things that used to be environment variables
@@ -130,7 +130,7 @@ scripts/
     nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md); the Nodes tab's verbs; a build job from the controller
     channel.py                   the node agent's verbs behind /api/v1/agent/: enroll, hello, work, a job's files, log and result
     claudecode.py                Claude Code on each node: which version, checking for and installing an update
-    claudegrant.py               a session's Claude login handed to the node it runs on, and taken back
+    claudegrant.py               which nodes each account is signed in to Claude on, as each node reported it
     mapping.py                   a new project's code map built in the background as it is created
     plugins.py                   the Claude Code plugins a project carries, listed and installed
     turns.py                     how many prompts a node lets run at once, and the queue when more ask
@@ -157,7 +157,7 @@ scripts/
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing
     notify.py                    getting a line into a running Claude session, and knowing it landed
-    signin.py                    the Claude sign-in, under a pty rather than in a terminal
+    signin.py                    the Claude sign-in and sign-out on one node, as jobs there
     test/                        its Playwright suite: `bb dashboard test`, isolated
     unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight
   agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard

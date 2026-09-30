@@ -18,8 +18,8 @@ const GUIDE_USER = `
   <ul>
     <li><b>Your profile</b> (the gear): your name, and the git name and email
       your commits carry. No session starts until they are set.</li>
-    <li><b>Sign in to Claude</b> (the card under Doctor): your own Anthropic
-      account, once. Sessions do not start without it.</li>
+    <li><b>Sign in to Claude</b> on each node you work on: a project's
+      <b>Claude</b> button takes you to its node's sign-in the first time.</li>
     <li><b>A project</b>: its name opens the notebook, <b>Claude</b> starts a
       session, the terminal button opens a shell.</li>
     <li><b>The notebook</b>: Briefing, Roadmap (sent to Claude a step at a

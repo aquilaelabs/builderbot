@@ -1044,44 +1044,49 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     const nobody = await relay({ argv: ['roadmap'] }, 'Bearer bbs_nonsense');
     ok(nobody.status === 401, 'a token that does not verify gets nothing');
 
-    // ---- the login belongs to the MACHINE, and the identity to the account --
-  // The grant never travels now (R47). Every failure this had came from one
+    // ---- a Claude login belongs to one account on one MACHINE ---------------
+  // The grant never travels (R47). Every failure this had came from one
   // OAuth pair living on several machines: a refresh rotates the refresh
   // token, so two copies sign each other out (bug #64), and a machine that
-  // was away holds one the server has retired (B100). Each machine signs in
-  // for itself and keeps the grant it alone refreshes.
+  // was away holds one the server has retired (B100). Each machine is signed
+  // in for itself, from its own row, and keeps the grant it alone refreshes.
   //
-  // So what crosses the wire is two sentences and no secret: "I am signed in
-  // as X" going up, and a generation coming back.
+  // So what crosses the wire is one sentence and no secret: "this account is
+  // signed in here as X", or that it is not.
   {
+    const seed = readFileSync(`${DIR}/home/.claude/.bb-grant.json`, 'utf8');
     const forMe = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
       { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
     const api = async (body) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
-      { method: body ? 'POST' : 'GET',
+      { method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + forMe },
-        ...(body ? { body: JSON.stringify(body) } : {}) });
+        body: JSON.stringify(body) });
       return { status: r.status, ...(await r.json()) }; };
+    // Where this account is signed in, as the page is told it.
+    const where = async () => ((await (await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: auth })).json()).claude_auth || {}).nodes || {};
 
-    // Which node is REPORTING is not taken from the request: it is the node
-    // of the session's own project, which the token proves. A machine that
-    // could name itself could bind the account to whatever it liked.
+    // Which node is REPORTING is the node of the session's own project,
+    // which the token proves. A session names the node it is on, since a
+    // project may work on several, and is believed only when that node is
+    // one of the project's: a machine that could name any node could report
+    // for another.
     await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
       headers: { 'Content-Type': 'application/json',
                  Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
       body: JSON.stringify({ project: 'alpha', node: minted.id }) });
-    ok(!('credentials' in (await api())),
-       'the controller hands out no credential at all: there is none here to hand');
-    // The harness seeds this account as signed in to tester@example.com, the
-    // way a first sign-in would have bound it, so reporting that is a node
-    // agreeing, and reporting anything else is the rule biting.
     let w = await api({ email: 'tester@example.com', plan: 'max', signed_in: true });
-    ok(w.ok && w.gen >= 0, 'a node reports which Anthropic account it signed in as');
-    ok((await api()).email === 'tester@example.com',
-       '...and that is what the account is bound to, for the card to name');
+    ok(w.ok && w.plan === 'max' && Object.keys(w).every(k => ['status', 'ok', 'plan'].includes(k)),
+       `a node reports which Anthropic account it signed this one in as, and the answer carries no credential (${Object.keys(w).join()})`);
+    ok((await where())[minted.id]?.email === 'tester@example.com',
+       '...which is what that node\'s row names, for that account');
+    await api({ email: 'tester@example.com', plan: 'max', signed_in: true, node: 'n_somebody_elses' });
+    ok(!('n_somebody_elses' in await where()), 'a session cannot report for a node that is not one of its project\'s');
+    // Another Anthropic account on this node is another sign-in there, not
+    // a refusal: the login is the machine's, and the row says which.
     const two = await api({ email: 'two@example.invalid', signed_in: true });
-    ok(two.status === 400 && /One Anthropic account per BuilderBot account/.test(two.error || ''),
-       `...so a second Anthropic account is refused rather than recorded (${
-         (two.error || '').slice(0, 56)})`);
+    ok(two.ok && two.plan === '' && (await where())[minted.id]?.email === 'two@example.invalid',
+       `a node signed in to a different Anthropic account is recorded as that, without the last one's plan (${two.error || two.plan})`);
+    await api({ email: 'tester@example.com', plan: 'max', signed_in: true });
 
     // The flow itself finds Claude Code where a SESSION finds it: the session
     // account's own ~/.local/bin (the provisioner's install) and the pinned
@@ -1106,6 +1111,25 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
            second.out.trim().split('\n').pop().slice(0, 70)})`);
       ok(existsSync(`${base}/users/u_0badf00d/.claude`),
          "...with the credential's home the second account's own");
+      // ...and the sign-out the node's row asks for is the same shape the
+      // other way: `claude auth logout` in that account's home here, and in
+      // nobody else's. Run here with a home and a Claude Code of its own: a
+      // job on this suite's agent would find the machine's real ones.
+      const out = (uid) => { try {
+        return { code: 0, out: execFileSync('bash', [`${REPO}/scripts/bb`, 'login', '--out'],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, BUILDERBOT_ROLE: 'node', BUILDER_HOME: base, HOME: base,
+                   BB_ACCOUNT_UID: uid, BB_TOKEN: '', PATH: '/usr/bin:/bin',
+                   BB_CLAUDE_PINNED: `${base}/no-pin` } }) };
+      } catch (e) { return { code: e.status, out: String(e.stdout) + String(e.stderr) }; } };
+      writeFileSync(`${base}/.local/bin/claude`, '#!/bin/sh\necho "fake claude $* in $HOME"\n');
+      chmodSync(`${base}/.local/bin/claude`, 0o755);
+      const gone = out('u_0badf00d');
+      ok(gone.code === 0 && new RegExp(`fake claude auth logout in ${base}/users/u_0badf00d`).test(gone.out),
+         `the sign-out runs claude auth logout in that account's home on this machine (${gone.out.trim().split('\n')[0].slice(-60)})`);
+      const whose = out('');
+      ok(whose.code !== 0 && /names the account/.test(whose.out) && !/fake claude/.test(whose.out),
+         '...and with no account named it signs nobody out');
       rmSync(`${base}/.local/bin/claude`);
       const none = run('u_0badf00d');
       ok(none.code !== 0 && /Update in the Nodes tab/.test(none.out),
@@ -1113,34 +1137,28 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     }
 
     // A token for the project alone (a relayed verb's) is nobody's account,
-    // and cannot bind one.
+    // and cannot report for one.
     const anon = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
-      { headers: { Authorization: 'Bearer ' + tok } });
+      { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'x@example.invalid', signed_in: true }) });
     ok(anon.status === 403, 'a token for the project alone cannot speak for an account');
 
     // ...and the AGENT can say it too, on its heartbeat, without a session
-    // having to run (B104). Before this the controller learned of a login
-    // from a session's hook and nothing else, so a node signed in with
-    // nothing running stayed "not signed in" on the card, and after a
-    // sign-out the way back needed the session the sign-out had stopped.
+    // having to run (B104): a node signed in with nothing running reads as
+    // signed in on its row, and a sign-out made there shows without one.
     const owner = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
     const nodeTok = JSON.parse(readFileSync(NODE_JSON, 'utf8')).token;
     const beat = (logins) => fetch(URL.replace(/\/$/, '') + '/api/v1/agent/work',
       { method: 'POST', headers: { Authorization: 'Bearer ' + nodeTok,
                                    'Content-Type': 'application/json' },
         body: JSON.stringify({ sample: { cpu_pct: 1, logins }, running: [], wait: 0 }) });
-    // Counted per node rather than as "signed in or not", because the
-    // harness seeds one node on this account already: what is under test is
-    // whether THIS node's heartbeat puts it on the record and takes it off.
-    const onNodes = async () => (await api()).nodes;
-    await api({ email: 'tester@example.com', plan: 'max', signed_in: false });
-    const before = await onNodes();
+    await api({ signed_in: false });
+    ok(!(minted.id in await where()), 'a node saying this account is not signed in there takes it off the record');
     await beat([{ uid: owner, email: 'tester@example.com' }]);
-    ok(await onNodes() === before + 1 && (await api()).email === 'tester@example.com',
-       `the node's own heartbeat puts its login on the record, with no session in it (${
-          before} -> ${await onNodes()})`);
+    ok((await where())[minted.id]?.email === 'tester@example.com',
+       'the node\'s own heartbeat puts its login on the record, with no session in it');
     await beat([{ uid: owner, email: '' }]);
-    ok(await onNodes() === before,
+    ok(!(minted.id in await where()),
        '...and a heartbeat saying that home holds no credential takes it off again');
     // The node's sessions, sent the moment one changes rather than on the
     // heartbeat's turn (the operator, 25 Sep): who has a session where and
@@ -1167,29 +1185,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         { method: 'POST', headers: { Authorization: 'Bearer ' + nodeTok, 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessions: [] }) });
     }
-    await beat([{ uid: owner, email: 'tester@example.com' }]);
-    ok((await api()).email === 'tester@example.com', '...both ways, as the machine changes');
-
-    // The sign-out: the generation moves, and a machine compares its own
-    // against it. That is the only thing that can carry "you were signed out"
-    // to a node that was not listening: being signed out has no date.
-    tmuxKill('claude-alpha');
-    const so = await page.evaluate(async () => {
-      const r = await fetch('/api/signout', { method: 'POST',
-        headers: { 'Content-Type': 'application/json' }, body: '{}' });
-      return { status: r.status, ...(await r.json()) };
-    });
-    ok(so.ok && so.gen > (w.gen || 0),
-       `signing out moves the generation, which is what reaches a node (${so.gen})`);
-    ok((await api()).email === '',
-       '...and releases the binding, so the next sign-in may be a different account');
-    tmuxNew('claude-alpha', `${DIR}/ws/alpha`);
-    // The seed goes back. A signed-out record left behind makes every suite
-    // after this one read the box as signed out, which is what it now MEANS,
-    // and that is the cascade that reddened four files twice.
-    writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, JSON.stringify({
-      gen: 9, email: 'tester@example.com', plan: 'max',
-      nodes: { n_fixture: { email: 'tester@example.com', at: 1 } } }));
+    // The seed goes back, and alpha to having no node.
+    writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, seed);
     await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
       headers: { 'Content-Type': 'application/json',
                  Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },

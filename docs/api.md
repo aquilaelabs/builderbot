@@ -32,7 +32,6 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/toolchains` | prefix | `_get_toolchains` | GET /api/toolchains. |  |
 | GET | `/api/emulator` | prefix | `_get_emulator` | GET /api/emulator?node=ID: that node's system images, what could be added, and the image job there. |  |
 | GET | `/api/users` | prefix | `_get_users` | GET /api/users. | refused: admin |
-| GET | `/api/v1/claude-login` | exact | `_claude_login` | This account's Claude identity, both directions (R47), and no credential in either. |  |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
 | GET | `/api/docker` | prefix | `_get_docker` | GET /api/docker: the manager's whole page, containers.manager_view, for the node this account may read. |  |
@@ -55,7 +54,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/v1/nodes` | prefix | `_nodes` | The Nodes tab's verbs. | refused: admin |
 | POST | `/api/v1/jobs` | prefix | `_jobs` | The Jobs tab's one verb, and where `bb run`, `bb build`, `bb test` and `bb emu` land from the controller (nodes.run_job). |  |
 | POST | `/api/v1/bb` | exact | `_bb_relay` | A bb verb from a session on a NODE, run here (roadmap #24). | refused: bb |
-| POST | `/api/v1/claude-login` | exact | `_claude_login` | This account's Claude identity, both directions (R47), and no credential in either. |  |
+| POST | `/api/v1/claude-login` | exact | `_claude_login` | A node saying what this account is signed in to Claude AS there (R47), or that it is not: never the login itself, which stays on the machine that made it (claudegrant.py says why). |  |
 | POST | `/api/v1/hook` | exact | `_hook` | What a session's hooks have to say, from a NODE (roadmap #24): hooks.py says what each kind means. |  |
 | POST | `/api/v1/tty-grant` | exact | `_tty_grant` | Whose terminal a node's bb-tty is about to start, answered here (B166). |  |
 | POST | `/api/lock` | prefix | `_lock` | Lock or unlock a project: keep it, stop Claude running in it (projects.lock_verb). | refused: lock |
@@ -111,6 +110,6 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/bugs` | prefix | `_bugs` | Report, edit, or close one bug: bugs.verb, behind the gates here. |  |
 | POST | `/api/custom` | prefix | `_custom` | Save or delete one of the operator's own command lists: macros.custom_edit. | refused: terminal |
 | POST | `/api/doctor` | prefix | `_doctor` | Re-run bb doctor now and answer with the fresh verdict. | refused: admin |
-| POST | `/api/signout` | prefix | `_signout` | Sign this account out of Claude, on every machine it is on (claudegrant.sign_out_verb): being signed out has no date, and a counter does. |  |
+| POST | `/api/signout` | prefix | `_signout` | Sign this account out of Claude on one node (signin.sign_out): the login is that machine's, so that machine lets go of it. |  |
 | POST | `/api/login-code` | prefix | `_login_code` | Hand the code from the browser to the sign-in flow: signin.take_code, for the person whose flow it is. |  |
-| POST | `/api/signin` | prefix | `_signin` | Start a sign-in, or stop the one that is running: signin.verb. |  |
+| POST | `/api/signin` | prefix | `_signin` | Start a sign-in on one node, or stop the one that is running: signin.verb. |  |

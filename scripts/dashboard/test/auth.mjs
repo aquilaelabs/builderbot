@@ -5,7 +5,7 @@
 // pins the 502 path; the live relay is covered by using the dashboard.
 import { launch, newPage, ok, done, sleep, URL, DIR } from './lib.mjs';
 import http from 'node:http';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 // Plain fetches first: no credentials at all, straight from node.
@@ -323,17 +323,14 @@ ${code}`], { encoding: 'utf8' });
         body: JSON.stringify({ action: 'role', name: 'test', role: 'user' }) })).status === 403,
      '...and prefs being open to everyone did not open the rest of the tab');
 
-  // ---- one Claude session per ANTHROPIC account, and whose (roadmap #26) ---
-  // bb-tty has always named the session for the project, so there has only
-  // ever been one. What accounts made necessary is knowing WHOSE: without it
-  // a second person pressing Claude lands inside somebody else's conversation
-  // and types into it. Enforced at the /term proxy rather than only in the
-  // page, because the ttyd URL is reachable directly.
-  //
-  // The sessions are a NODE's now (R47) and this container has no tmux socket
-  // to ask, so what the rule is made from is the census: the node reports its
-  // session names on every heartbeat, and a name says whose it is. So this
-  // drives a node rather than tmux.
+  // ---- a Claude sign-in is one account's, on one node ----------------------
+  // A person signs in on each node they work on, and what the controller
+  // keeps is what each node reported for each account: no login travels and
+  // none is kept here. So two accounts are signed in on a node each for
+  // themselves, a sign-out is one account's on one node, and an account that
+  // does not administer signs in and out on the nodes its own projects work
+  // on and no others. Driven against a node rather than tmux: the sessions
+  // are a node's (R47), and its census is what says who has one open.
   {
     const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
     const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
@@ -341,6 +338,8 @@ ${code}`], { encoding: 'utf8' });
     const napi = async (path, body, hdrs) => (await bare(path, {
       method: body ? 'POST' : 'GET', headers: { ...H, ...(hdrs || {}) },
       ...(body ? { body: JSON.stringify(body) } : {}) })).json();
+    const as = async (h, path, body) => { const r = await bare(path, { method: body ? 'POST' : 'GET', headers: h,
+      ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: r.status, ...(await r.json().catch(() => ({}))) }; };
     const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
     const box = await napi('/api/v1/nodes', { action: 'enroll', name: 'talkbox' });
     const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb',
@@ -362,11 +361,12 @@ ${code}`], { encoding: 'utf8' });
         mem_used_mb: 512, sessions }, running: [], wait: 0 }) });
     await census([]);
     await napi('/api/prefs', { project: 'beta', node: box.id });
-    // Both accounts signed in to ONE Anthropic account, which is the state
-    // the rule is about. Reported the way a node reports it (with a session
-    // token minted for that account, on the node its project is bound to)
-    // rather than by writing the record, so what is under test is the path
-    // that makes one.
+    const mine = async h => ((await as(h, '/api/status')).claude_auth || {}).nodes || {};
+    ok(!(box.id in await mine(owner)) && !(box.id in await mine(other)),
+       'a node nobody has signed in on reads as signed out for each account');
+    // Reported the way a node reports it (with a session token minted for
+    // that account, on the node its project is on) rather than by writing
+    // the record, so what is under test is the path that makes one.
     // WORKSPACE too: the verb checks the project is one, off the filesystem.
     const token = who => execFileSync('bash',
       [`${REPO}/scripts/bb`, 'users', 'token', 'beta', who],
@@ -376,53 +376,60 @@ ${code}`], { encoding: 'utf8' });
       headers: { 'Content-Type': 'application/json',
                  Authorization: 'Bearer ' + token(who) },
       body: JSON.stringify({ email, plan: 'max', signed_in: true }) });
-    ok((await report('test', 'tester@example.com')).status === 200,
-       'a node reports the account it signed this one in as');
-    await report('sharer', 'tester@example.com');
-    // No session yet: nobody holds it, and asking is allowed.
-    ok((await term(other, 'claude:beta')).status !== 409,
-       'with no session running, the project is nobody\'s');
+    ok((await report('test', 'tester@example.com')).status === 200
+       && (await mine(owner))[box.id]?.email === 'tester@example.com' && !(box.id in await mine(other)),
+       'a node reports the account it signed one account in as, and that is that account\'s alone');
+    // Two BuilderBot accounts on one Anthropic login: each signed in for
+    // itself, neither refused a session. The Users tab says they share.
+    ok((await report('sharer', 'tester@example.com')).status === 200
+       && (await mine(other))[box.id]?.email === 'tester@example.com',
+       'a second account signs in on the same node for itself, to whichever Anthropic account it chose');
     // Named the way bb-tty would name it on the node: every account is
     // prefixed there. The name is the only record of whose it is.
     await census([{ name: `${uidOf('sharer')}~claude-beta`, attached: false,
                     cwd: '/workspace/beta', title: '' }]);
-    // The account whose session it is may come back to it...
-    ok((await term(other, 'claude:beta')).status !== 409,
-       'the account that opened it can reattach');
-    // ...and so may anybody else, since roadmap #24: they each work in a
-    // worktree of their own, so a second conversation cannot overwrite the
-    // first. What IS refused is a second session on one ANTHROPIC account:
-    // they would share its limits, and afterwards nothing could say which of
-    // them did what.
-    const row = await napi('/api/v1/nodes');
-    const seen = (row.nodes || []).find(n => n.id === box.id);
-    console.log('PROBE', JSON.stringify({ tok: !!agent.token,
-      sessions: (seen?.reported || {}).sessions }));
-    const refused = await term(owner, 'claude:beta');
-    const why = refused.status === 409 ? (await refused.json()).error : '';
-    ok(refused.status === 409 && /already has a Claude session on beta/.test(why),
-       `a second session on one Anthropic account is refused (${why.slice(0, 60)}…)`);
-    ok(/tester@example.com/.test(why) && /share its limits/.test(why),
-       '...naming the login and saying why, not just refusing');
-    // A shell on the same project is not affected: shells are per account.
-    ok((await term(owner, 'sh:1:beta')).status !== 409,
-       'a shell on that project is unaffected: shells were never shared');
-    // Ending it clears the way, with nothing to sweep: there is no record at
-    // all any more. A session's NAME says whose it is, so the node's own list
-    // is the only truth and it cannot go stale, be orphaned by a deleted
-    // account, or disagree.
+    ok((await term(other, 'claude:beta')).status !== 409 && (await term(owner, 'claude:beta')).status !== 409,
+       'each account has its own session on the project, in a checkout of its own');
+    // The list an account that does not administer is shown: the nodes its
+    // own projects work on, and its sign-in is refused anywhere else.
+    const shown = ((await as(other, '/api/v1/nodes')).nodes || []).map(n => n.name);
+    ok(shown.join() === 'talkbox', `an account that does not administer is shown the nodes its own projects are on, and no others (${shown.join()})`);
+    const elsewhere = ((await napi('/api/v1/nodes')).nodes || []).find(n => n.kind === 'agent' && n.id !== box.id);
+    const stray = await as(other, '/api/signin', { node: elsewhere.id });
+    ok(stray.status === 403 && /not a node one of your projects/.test(stray.error || ''),
+       `...so it cannot start a sign-in on a node that is not one of them (${stray.error})`);
+    const nonode = await as(other, '/api/signin', {});
+    ok(nonode.status === 400 && /which node/.test(nonode.error || ''), `a sign-in names its node (${nonode.error})`);
+    const theirs = await as(other, '/api/signin', { node: box.id });
+    const lj = theirs.job ? await napi(`/api/v1/jobs?id=${theirs.job}`) : {};
+    ok(theirs.status === 200 && lj.type === 'claude-login' && lj.node === box.id && lj.spec?.uid === uidOf('sharer')
+       && /^bbs_/.test(lj.spec?.token || ''),
+       `on its own project's node it starts one: a claude-login job there, for that account (${theirs.error || lj.type})`);
+    // The link a flow prints signs somebody in: it is shown to the person
+    // the flow was started for and to nobody else, and only they type into it.
+    ok((await as(other, '/api/status')).signin?.running === true && (await as(owner, '/api/status')).signin?.running === false,
+       'a running sign-in is shown to the account it was started for, and to nobody else');
+    const butt = await as(owner, '/api/signin', { node: box.id });
+    const code = await as(owner, '/api/login-code', { code: 'abc#def' });
+    ok(butt.status === 409 && /another account is signing in/.test(butt.error || '') && code.status === 403,
+       `...and another account neither replaces it nor types a code into it (${butt.error})`);
+    await as(other, '/api/signin', { action: 'cancel' });
+    // Signing out: that account's, on that node. Not while its own session
+    // is open there; then a job on the node, and nobody else's sign-in moves.
+    const busy = await as(other, '/api/signout', { node: box.id });
+    ok(busy.status === 409 && /end your Claude session on beta first/.test(busy.error || ''),
+       `signing out on a node waits for that account's own session there to end (${busy.error})`);
     await census([]);
-    ok((await term(owner, 'claude:beta')).status !== 409,
-       'ending the session clears the way, because the node\'s list is the only record');
-    // ...and beta goes back to having no node, and the second account to
-    // having no login at all, which is how the rest of this file and every
-    // file after it expects to find them. Signed out through the API rather
-    // than by deleting the record: it is cached for twenty seconds, and a
-    // file removed behind the server's back is a state nothing tells it
-    // about.
-    ok((await bare('/api/signout', { method: 'POST', headers: other,
-          body: JSON.stringify({}) })).status === 200,
-       'an account signs its own login out, which releases the binding');
+    const out = await as(other, '/api/signout', { node: box.id });
+    const oj = out.job ? await napi(`/api/v1/jobs?id=${out.job}`) : {};
+    ok(out.status === 200 && oj.type === 'claude-logout' && oj.node === box.id && oj.spec?.uid === uidOf('sharer'),
+       `...then it is a claude-logout job on that node, for that account (${out.error || oj.type})`);
+    ok(!(box.id in await mine(other)) && (await mine(owner))[box.id]?.email === 'tester@example.com',
+       '...and the other account\'s sign-in on the same node is untouched');
+    ok((await as(other, '/api/signout', {})).status === 400, 'a sign-out names its node too');
+    // ...and beta goes back to having no node, which is how the rest of
+    // this file expects to find it.
+    await napi('/api/v1/jobs', { action: 'cancel', id: out.job });
     await napi('/api/prefs', { project: 'beta', node: '' });
     await napi('/api/v1/nodes', { action: 'retire', id: box.id });
   }
@@ -864,8 +871,9 @@ ${code}`], { encoding: 'utf8' }).trim();
   const grant = (home, email) => {
     mkdirSync(`${home}/.claude`, { recursive: true });
     writeFileSync(`${home}/.claude/.bb-grant.json`, JSON.stringify({
-      gen: 1, email, plan: 'max', nodes: { n_fixture: { email, at: 1 } } }));
+      nodes: { n_fixture: { email, plan: 'max', at: 1 } } }));
   };
+  const seed = readFileSync(`${DIR}/home/.claude/.bb-grant.json`, 'utf8');
   grant(`${DIR}/home/users/${uidOf}`, 'one@example.invalid');
   grant(`${DIR}/home`, 'one@example.invalid');
   await page.evaluate(() => loadUsers());
@@ -876,9 +884,10 @@ ${code}`], { encoding: 'utf8' }).trim();
      && /same Claude account as test/.test(rs.find(r => r.name === 'tabmade').text),
      'two BuilderBot accounts on one Claude login are told so on both rows');
   rmSync(`${DIR}/home/users/${uidOf}/.claude/.bb-grant.json`, { force: true });
-  // The owner's seed goes back: every file after this one reads the box as
-  // signed in, and a blank record there ghosts every Claude button.
-  grant(`${DIR}/home`, 'tester@example.com');
+  // The owner's seed goes back: the rest of this file reads the fixture
+  // node as signed in, and a Claude press on a node that is not goes to its
+  // sign-in instead of to a session.
+  writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, seed);
 
   // ...and giving it a project, which is the whole point of the row.
   // Everything about an account is edited in one dialog and saved together:

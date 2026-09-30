@@ -43,13 +43,6 @@ FILE = None
 # key -> its default, its shape, and when a change takes: "now", applied by
 # set_many. Every key is a switch.
 KEYS = {
-    # Off, the server refuses a second Claude session on one project when
-    # another account's session there is signed in to the same Claude
-    # account. Two people on one login is what Anthropic's terms forbid.
-    # On, that refusal stands down: for one person testing two BuilderBot
-    # accounts with the one Claude login they have. The refusal is kept,
-    # not removed, because the setting is for that test and nothing else.
-    "claude_shared_login": {"default": False, "kind": "bool", "applied": "now"},
     # Off, the pickers offer only what has been proven: the git hosts, the
     # hypervisors and the provisioner's OS families that carry a vetting
     # note (the date and what proved them) in their catalog: the alpha

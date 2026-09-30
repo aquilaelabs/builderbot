@@ -5,6 +5,11 @@
 
 "use strict";
 
+// A staged bump that moves the compatibility window: minor and major do,
+// patch does not, and only where this project owns the window at all.
+const windowMove = (part, cost) =>
+  (part === "minor" || part === "major") && (cost?.projects || []).length > 0;
+
 function nbArtifactsView({$, nb, project, root, sheet}){
   // ---- artifacts -----------------------------------------------------------
   // What this project has built. Fetched on open like Analysis, and polled

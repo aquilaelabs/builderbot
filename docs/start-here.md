@@ -22,11 +22,13 @@ and a session keeps going.
 2. **Your profile** (the gear, top right): your name, your email and the git
    identity your commits will carry. No session starts until these are set,
    because a commit with no author is a mess somebody else has to clean up.
-3. **Sign in to Claude.** The card under Doctor says, in red, that you are not
-   signed in and that sessions will not start. Press Sign in: it runs on one
-   of the machines, you paste the code back, and the login stays on that
-   machine. It is yours. It is not shared with the other people here, and
-   nobody else's sessions use it.
+3. **Sign in to Claude**, on each machine your projects work on. Press a
+   project's **Claude** button: where you are not signed in on its node yet,
+   it offers **Sign in on** that node, which opens the node's page at its
+   Claude Code section. Press Sign in there, open the link, and paste the
+   code back. The login stays on that machine and is yours: it is not
+   shared with the other people here, nobody else's sessions use it, and
+   another node asks for its own the first time you work there.
 4. **Open a project**: press its name for the notebook, **Claude** for a
    session, the terminal button for a plain shell.
 5. **Say what you want done.** A session starts already knowing this project's
@@ -48,7 +50,7 @@ missing: you have not been given it.
 A refusal is meant to name the way out, so read it rather than pressing again.
 The four you are most likely to meet:
 
-- **not signed in to Claude**: step 3 above, once per person.
+- **not signed in to Claude**: step 3 above, once per person on each node.
 - **the node is away**: the machine a project builds on is not answering, so
   nothing runs there until it is back. It is not your doing.
 - **a tool is missing**: builds use what the machine has, and installing more

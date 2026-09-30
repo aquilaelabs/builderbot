@@ -390,6 +390,15 @@ await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
                workspace: true, writable: true, boot: '9.9', up_s: 5000 } } },
   { Authorization: 'Bearer ' + deskbox.token });
 await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
+// ...with the tester signed in to Claude there, as that node would have
+// reported it: a Claude press on a node with no sign-in offers the sign-in
+// instead of Resume and New conversation, which is signin.mjs's to show.
+{
+  const rec = `${DIR}/home/.claude/.bb-grant.json`;
+  const d = JSON.parse(readFileSync(rec, 'utf8'));
+  d.nodes[deskbox.id] = { email: 'tester@example.com', plan: 'max', at: 1 };
+  writeFileSync(rec, JSON.stringify(d));
+}
 // Under a full run this wait has crashed the file more than once (B124): a
 // node is live for LIVE_S after its hello, and a slow box can spend that
 // before the poll reads deskbox back. So the hello is repeated between
@@ -456,8 +465,10 @@ await phone.waitForSelector('.resumemenu', { timeout: 5000 }).catch(async () => 
   await pressAlpha();
   await phone.waitForSelector('.resumemenu', { timeout: 10000 });
 });
-ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
-   'phone: Claude on a project with history shows the Resume/New chooser');
+const chooser = await phone.$eval('.resumemenu', el => ({ shown: getComputedStyle(el).display !== 'none',
+  buttons: [...el.querySelectorAll('button')].map(b => b.textContent.trim()), text: el.textContent.trim().slice(0, 120) }));
+ok(chooser.shown && chooser.buttons.length === 2 && /^Resume/.test(chooser.buttons[0]) && chooser.buttons[1] === 'New conversation',
+   `phone: Claude on a project with history shows the Resume/New chooser (${chooser.buttons.join(' | ') || chooser.text})`);
 // ...where it can be seen. The sidebar scrolls, the chooser is placed inside
 // the card, and pressing Claude on a project whose session has ended opens
 // this and NOTHING ELSE, so one drawn below the fold is a press with no

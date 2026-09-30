@@ -95,7 +95,8 @@ for (const v of ODD){
   cases.push(['/api/memory', { project: 'alpha', action: 'delete', file: v }]);
   cases.push(['/api/login-code', { code: v }]);
   cases.push(['/api/project-job', { action: v }]);
-  cases.push(['/api/signout', { anything: v }]);
+  cases.push(['/api/signout', { node: v }]);
+  cases.push(['/api/signin', { node: v }]);
 }
 cases.push(['/api/roadmap', {}]);
 cases.push(['/api/memory', {}]);

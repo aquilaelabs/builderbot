@@ -399,11 +399,13 @@ function nodeSessionsSection(n){
   return docSection("nodes", "sessions", "Sessions", status, body, {cls});
 }
 
-// Claude Code on this node (claudecode.py): what the session account runs
-// against the latest the controller knows, a check on demand, and the one
-// way it is updated. The update ends every Claude session here first and
-// starts none again: the project rows do, when a person presses them.
-// A session cannot ask for this and cannot change the copy it runs.
+// Claude Code on this node: this account's sign-in here first (a login is
+// one account's on one node, page-signin.js), then the copy the session
+// account runs (claudecode.py) against the latest the controller knows, a
+// check on demand, and the one way it is updated. The update ends every
+// Claude session here first and starts none again: the project rows do,
+// when a person presses them. A session cannot ask for this and cannot
+// change the copy it runs.
 // What the last press here answered, when it was a refusal: on the row,
 // not only in a toast, or a press that was refused for the agent being
 // behind read as "it said updating and nothing happened" (23 Sep).
@@ -421,6 +423,9 @@ function nodeClaudeSection(n){
   else if (!inst) [status, cls] = ["not installed", "bad"];
   else if (me.behind) [status, cls] = [`${inst}, ${latest} is out`, "warn"];
   else [status, cls] = [latest ? `${inst}, up to date` : inst, "ok"];
+  // ...and whether the person looking is signed in here, which a folded
+  // section would otherwise keep to itself.
+  if (inst && se?.up && !me.updating && !claudeOn(n.id)) [status, cls] = [`${status}, not signed in`, "warn"];
   const checked = cc.checked ? `checked ${ago(cc.checked)}` : "not checked yet";
   const known = latest ? `latest ${latest}, ${checked}`
     : cc.error ? `could not check: ${cc.error}` : checked;
@@ -428,6 +433,7 @@ function nodeClaudeSection(n){
   const auto = !!state?.settings?.settings?.claude_autoupdate?.value;
   const dead = !se?.up || me.updating || (inst && !me.behind) || stale;
   const body = `
+    ${signinBlock(n)}
     <div class="sub">${!se?.up ? "No session account here, so nothing runs Claude Code."
       : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out.` : "."}`
       : "No Claude Code yet: Update installs it."} Checked every six hours.</div>
@@ -1056,6 +1062,7 @@ function renderNodesInto(i){
         <div class="name">${esc(n.name)} ${nodeStatePill(n)}
           <span class="dim">· ${esc(n.kind)}</span></div>
         <div class="sub">${[esc(where), census, esc(seen), agentLine].filter(Boolean).join(" · ")}</div>
+        ${state?.can?.admin === false ? `<div class="sub warn ndreadonly">An administrator changes a node's settings. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
         ${agentBar}
       </div>
       <div class="ndsections">
@@ -1071,8 +1078,9 @@ function renderNodesInto(i){
   // Nothing enrolled. Said where the rows would be, rather than an empty
   // picker over an empty page: the Enroll button above is the whole of what
   // there is to do here.
-  const none = live.length ? "" :
-    `<div class="empty ndnone">No node yet. Press <b>Enroll node</b> to get the command
+  const none = live.length ? "" : state?.can?.admin === false
+    ? `<div class="empty ndnone">None of your projects is on a node yet. An administrator sets a project's node.</div>`
+    : `<div class="empty ndnone">No node yet. Press <b>Enroll node</b> to get the command
       that adds a machine for builds, tests and sessions.</div>`;
   // Enrolling is a dialog now (#ndmodal), not two panels appended here; see
   // the markup's comment. Which means a poll landing while it is open cannot
@@ -1082,9 +1090,23 @@ function renderNodesInto(i){
   d.setFoot(`A node does the work of the projects bound to it: pick one in a project's
     settings. Jobs run as the enrolled account, never root.`);
   wireNodesTab(d.el);
+  nodesReadOnly(d.el);
+}
+
+// An account that does not administer sees a node's settings and changes
+// none of them: every control on the tab is dead for it but the picker and
+// its own Claude sign-in, and the row says why (the operator, 30 Sep). Once,
+// after the draw and its wiring, rather than in each section: a control a
+// later section adds is dead for that account without anybody remembering.
+function nodesReadOnly(root){
+  if (state?.can?.admin !== false) return;
+  root.querySelectorAll("button, input, select, textarea").forEach(c => {
+    if (c.id !== "ndPick" && !c.closest("[data-signin]")) c.disabled = true;
+  });
 }
 
 function wireNodesTab(root){
+  wireSignin(root);
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };

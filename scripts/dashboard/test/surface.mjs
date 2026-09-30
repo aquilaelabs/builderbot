@@ -45,7 +45,7 @@ const SURFACE = [
   'closeNewProject', 'createProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
   'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
-  'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'menuHolds', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawAuth', 'drawBell', 'drawBuild',
+  'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'menuHolds', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawBell', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
   'drawCard', 'drawPanes', 'drawProjects', 'drawRunner', 'drawSessions',
   'drawShellCard', 'drawTabs', 'drawTrash', 'drawUiMenu', 'dressFrame',
@@ -70,7 +70,10 @@ const SURFACE = [
   'pShowKey', 'pSlide', 'paginate', 'paint', 'paintBar', 'paneStack',
   'phFetch', 'pinTo', 'tcAct', 'tcPick',
   // The Emulator tab (tab-emulator.js).
-  'openEmulator', 'emuPick', 'loadEmulator', 'emuAdder', 'emuRow', 'renderEmulatorInto', 'emuAct', 'tcRow', 'tcSystemLine', 'tcNeedsLine', 'tcDriverRow', 'tcDriverLine', 'tcDriverOption', 'tcToolkitRow', 'tcToolkitLine', 'openToolchainsOn', 'nodeGpuSection', 'tcTickDots', 'placeCard',
+  'openEmulator', 'emuPick', 'loadEmulator', 'emuAdder', 'emuRow', 'renderEmulatorInto', 'emuAct', 'tcRow', 'tcSystemLine', 'tcNeedsLine', 'tcDriverRow', 'tcDriverLine', 'tcDriverOption', 'tcToolkitRow', 'tcToolkitLine', 'nodesReadOnly',
+  // The Claude sign-in on a node's row (page-signin.js), and the press that goes to it.
+  'signinRev', 'signinCannot', 'signinBusy', 'signinBlock', 'wireSignin', 'openNodeClaude', 'signinCancel', 'claudeSigninFirst', 'claudeNodes',
+  'openToolchainsOn', 'nodeGpuSection', 'tcTickDots', 'placeCard',
   'claudeNodeFacts', 'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',

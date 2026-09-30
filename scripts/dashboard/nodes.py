@@ -2260,6 +2260,9 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # prompt with no newline after it, and the grant has to land in
              # the home a session will read it from.
              "claude-login",
+             # ...and its other half: `claude auth logout` there, in one
+             # account's home, since the login is that machine's to let go.
+             "claude-logout",
              # Claude Code itself, for the session account: the installer run
              # there, then the binary pinned where the account cannot write it
              # (claudecode.py). Queued by an administrator's press and nothing

@@ -2899,26 +2899,7 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}
 /* Styled by class, not id: an id's display:flex would outrank the class-based
-   .card.closed rule that hides every body row when the card is folded. Which
-   is also why the auth line is a .docbar rather than something of its own,
-   one row shape for the card, so the verdict and the action it comes with line
-   up on both edges instead of each having its own idea of the margin. */
-/* The same secondary type as every other explanatory line on the page: `.sub`
-   is scoped to `.row`, and without this the one line in the card that is not
-   in a row came out in body text, a size larger than everything around it. */
-#docAuth .sub{color:var(--dim);font:12px/1.4 var(--mono);overflow-wrap:anywhere}
-#docAuth .sub.bad{color:var(--bad)}
-#docAuth .grow{flex:1;min-width:0}
-#docAuth a.grow{color:var(--accent);text-decoration:underline}
-/* The code field. A phone can paste into this, which is the whole reason it
-   is here rather than in the terminal, and it takes the row's full width,
-   because a hundred characters beside a button is four visible ones. */
-#docAuth{flex-wrap:wrap}
-.codebox{display:flex;gap:8px;flex:1 1 100%}
-.codebox input{flex:1;min-width:0;padding:7px 9px;
-  font:var(--f-field);min-height:var(--tap)}
-.codebox button{flex:0 0 auto;min-height:var(--tap)}
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .codebox input{font-size:16px} } }
+   .card.closed rule that hides every body row when the card is folded. */
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
 .doctor .docbar+.docbar{border-top:1px solid var(--line)}
 #docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
@@ -3096,6 +3077,9 @@ body.dragging .tab .lbl{cursor:grabbing}
    the card rather than hanging off its edge. */
 .resumemenu{max-width:calc(100% - 8px);flex-wrap:wrap}
 .resumemenu button{white-space:normal;text-align:left}
+/* A line in it (a node's name, a reason) has the row to itself, so what
+   follows it reads as that node's. */
+.resumemenu .sub{flex:1 1 100%}
 
 /* Panes -------------------------------------------------------------- */
 .panes{flex:1;min-height:0;display:grid;gap:6px;grid-template-columns:1fr;
@@ -4493,11 +4477,6 @@ body.booting .pane>.loading{margin:auto}
         <span id="docWhen"></span>
         <button id="bDoctor" title="run bb doctor now">↻</button>
       </div>
-      <!-- The one piece of container health with an action attached. Signing
-           in wants a browser and a code pasted back, so it opens a terminal;
-           signing out is one command with no conversation in it, so it is a
-           button. -->
-      <div class="docbar" id="docAuth" hidden></div>
       <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
     <!-- What this container can install. Its own card rather than a corner

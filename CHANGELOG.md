@@ -81,12 +81,15 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The test gate is shorter: a python unit tier (bb tests unit, under a second) runs first, the workers share suites by the seconds each took rather than by file length, and the design check's whole uniform run happens when a style file changed rather than on every dashboard change (47cceca)
 - The NVIDIA driver's row on the Toolchains tab is ticked like any other: it goes into Install selected, Check for updates says when apt has a newer version of the installed branch, and a pulldown picks another branch apt offers, ghosted while one is installed (4040bbe)
 - Set up GPU display no longer installs the NVIDIA driver: the Toolchains tab's driver row is the one place it is installed, and the Nodes tab's GPU line opens that tab until the driver is there (4040bbe)
+- The Claude sign-in is on each node's row now (Nodes tab, Claude Code), not the Doctor card: you sign in and out per node, and nothing carries a login between nodes. A project's Claude button offers its node's sign-in when you have none there. (c8bb395)
+- An account that does not administer can open the Nodes tab for the nodes its projects are on: every setting is ghosted for it, and its own Claude sign-in is live. (c8bb395)
 
 ### Removed
 
 - The paths kept for agents from the 0.5 window: the tell gate that refused an agent older than 0.5.57, and the single actions-runner key beside the runners list. Nothing changes on a node whose agent is current (a32a0a5)
 - Revoke is gone from a node's row: Remove already cuts the credential as it takes the row off the lists, and Uninstall takes BuilderBot off the machine; a leaked secret is re-enrolled either way (08ec700)
 - The terse briefing is gone: it saved an eighth of the block and lost meaning in places (which of two disagreeing texts is true, which of two rules wins), and no project used it (e245008)
+- The debug switch that let two accounts share one Claude login is gone, with the refusal it stood down: the Users tab still says when two accounts are on one login. (c8bb395)
 
 ### Fixed
 

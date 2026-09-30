@@ -136,6 +136,10 @@ GRANT
     BB_GPU="$(printf '%s' "$grant" | jq -r '.gpu // "on"')"
     export BB_GPU
     case "$BB_GPU" in on) ;; *) export CUDA_VISIBLE_DEVICES="" ;; esac
+    # Which node this is, by the controller's id for it: what bb login
+    # --check names when it says who is signed in to Claude here.
+    BB_NODE_ID="$(printf '%s' "$grant" | jq -r '.node // ""')"
+    export BB_NODE_ID
     if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
         export BB_TREE_OWNER=1
     else
@@ -414,10 +418,7 @@ claude_scope() {
     # editing one function are making two commits, not corrupting one tree.
     # bb-prompt-relay puts what was asked into the project's chat feed, so the
     # others sharing it know what is being worked on before they start the
-    # same thing. bb-keep-login keeps THIS node's copy of the account's Claude
-    # grant in step with the controller's while the session runs: a refresh
-    # rotates the token and retires every other copy, and until that hook the
-    # only thing that ever synced was this script, on a connection (B100). bb-check-relay runs, when the session is about to stop, the
+    # same thing. bb-check-relay runs, when the session is about to stop, the
     # checks of the house rules whose files it changed, and refuses the stop
     # while one fails (roadmap R31). bb-gate --turn holds a prompt until the
     # node's limit on sessions working at once has a turn free (turns.py),
@@ -451,7 +452,6 @@ claude_scope() {
                --arg note "$hooks/bb-work-note" \
                --arg relay "$hooks/bb-prompt-relay" \
                --arg check "$hooks/bb-check-relay" \
-               --arg keep "$hooks/bb-keep-login" \
                --arg proj "$proj" --arg who "${account:-owner}" '
            {permissions: {
               additionalDirectories: [],
@@ -474,9 +474,7 @@ claude_scope() {
                         command: "\($relay) \($proj) \($who)"},
                        {type: "command",
                         command: "\($gate) --turn \($proj) \($who) --wait 840",
-                        timeout: 900, statusMessage: "Waiting for a turn on this node"},
-                       {type: "command",
-                        command: "\($keep) \($proj) \($who)"}]}],
+                        timeout: 900, statusMessage: "Waiting for a turn on this node"}]}],
               Stop: [
               {hooks: [{type: "command",
                         command: "\($check) \($proj) \($who)", timeout: 3600},
@@ -956,41 +954,27 @@ case "$target" in
                  | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != false ]
         }
         # EACH MACHINE KEEPS ITS OWN LOGIN, and opening a tab is when this
-        # one says so (R47). `bb login --check` carries two sentences and no
-        # secret: which Anthropic account this machine is signed in as going
-        # up, and a generation coming back; behind means the account was
-        # signed out while this machine was not listening, and the answer is
-        # to log out here. Nothing is copied either way, because a refresh
-        # ROTATES the refresh token and two machines holding one grant sign
-        # each other out, which is what bug #64 and B100 were.
+        # one says so (R47). `bb login --check` carries one sentence and no
+        # secret: which Anthropic account this account is signed in as here.
+        # Nothing is copied from another machine, because a refresh ROTATES
+        # the refresh token and two machines holding one grant sign each
+        # other out, which is what bug #64 and B100 were.
         #
-        # So signing in on one node does NOT sign in another: the second one
-        # asks, here, the first time a session opens on it. Every connection
-        # rather than only when signed out, because the sign-out has to
-        # arrive somehow. Never fatal and silent when nothing moved: a
+        # So signing in on one node does NOT sign in another: each is signed
+        # in from its own row on the Nodes tab, and a tab opened here before
+        # that is told where. Never fatal and silent when nothing moved: a
         # controller that is down costs a session nothing.
         if on_node; then
             bb login --check >/dev/null 2>&1 || true
-            if ! logged_in; then
-                # The read-only twin cannot take a code: an account with no
-                # shell was shown claude's URL and its prompt in a console
-                # it cannot type into (B137). Say where the sign-in is.
-                if [ -n "${BB_TTY_RO:-}" ]; then
-                    bad "This account is not signed in to Claude on ${BB_NODE:-this node}, and this" \
-                        "console is read-only, so the sign-in cannot be typed here. Press Sign in" \
-                        "on the dashboard's Doctor card, which runs it on the node, and open this again."
-                fi
-                bb login || true
-            fi
         fi
         if ! logged_in; then
             if on_node; then
-                bad "This account is not signed in to Claude on ${BB_NODE:-this node}, and the" \
-                    "controller has no login of yours to hand over. Sign in on the dashboard's" \
-                    "Doctor card and open this again, or open a shell here and run: bb login"
+                bad "This account is not signed in to Claude on ${BB_NODE:-this node}." \
+                    "Open the Nodes tab, pick ${BB_NODE:-this node}, and press Sign in under" \
+                    "Claude Code; then open this again. A login on another node does not travel."
             fi
-            bad "This container is not signed in to Claude." \
-                "Sign in from the dashboard's Doctor card, or run: bb login"
+            bad "This container is not signed in to Claude, and carries no Claude Code:" \
+                "a session runs on a node, signed in from its row on the Nodes tab."
         fi
         if is_locked "$proj"; then
             bad "'${proj}' is locked: the operator runs this one, so no Claude" \

@@ -115,8 +115,7 @@ async function killSession(name, node = ""){
 }
 
 // End a session, no questions asked. killSession is this with the dialog in
-// front of it; Sign in is this without one, because the person just pressed a
-// button that says what it does.
+// front of it.
 async function endSession(name, node = ""){
   const r = await postJSON("/api/session", {action:"kill", session:name, node});
   return r.json();

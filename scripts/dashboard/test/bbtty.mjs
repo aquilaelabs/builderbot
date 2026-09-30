@@ -524,15 +524,6 @@ tmuxKill('claude-alpha');
        'the settings file wires the Stop hook that runs a rule\'s check before the session hands back (R31)');
     ok(JSON.stringify(scope.hooks || {}).includes('bb-work-note'),
        '...and the settings carry the hook that records what the session touches');
-    // ...and the one that keeps this node's copy of the account's Claude
-    // grant in step while the session runs. On UserPromptSubmit and nowhere
-    // else: a prompt is the moment a session is about to work, and it is the
-    // only thing on a node holding both a token minted for the account and
-    // that account's home (B100).
-    ok(JSON.stringify(scope.hooks?.UserPromptSubmit || {}).includes('bb-keep-login'),
-       '...and the hook that keeps the Claude login in step, on every prompt');
-    ok(!JSON.stringify(scope.hooks?.PreToolUse || {}).includes('bb-keep-login'),
-       '...and not on every tool call, which would be a process per call for a thing that moves hourly');
     // No permission mode of BuilderBot's: what a session may do without
     // asking is set in Claude Code itself (the operator's call, 15 Sep), and
     // the deny list is the wall, so a sibling project, VERSION and the rules
@@ -990,85 +981,7 @@ print(uid)`);
       writeFileSync(cjf, saved);
     }
 
-    // ---- keeping the Claude grant in step while a session runs (B100) --------
-// The grant is an OAuth pair and a refresh ROTATES the refresh token, so the
-// moment one machine refreshes the server retires every other copy. The sync
-// itself was always right; the only thing that ever RAN it was this script,
-// on a browser connection, so a session on another node sat holding a retired
-// grant for hours and said "Login expired" for no reason anybody could see.
-{
-  const hk = mkdtempSync(join(tmpdir(), 'keeplogin-'));
-  mkdirSync(join(hk, 'dashboard'));
-  mkdirSync(join(hk, 'bin'));
-  mkdirSync(join(hk, 'home', '.claude'), { recursive: true });
-  const HOOK = join(hk, 'dashboard', 'bb-keep-login');
-  writeFileSync(HOOK, readFileSync(
-    new globalThis.URL('../bb-keep-login', import.meta.url).pathname, 'utf8'));
-  chmodSync(HOOK, 0o755);
-  // No bb beside it, so it falls back to the one on PATH, which is this
-  // stub, recording rather than relaying.
-  const calls = join(hk, 'calls');
-  writeFileSync(join(hk, 'bin', 'bb'),
-    `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> ${calls}\n`);
-  chmodSync(join(hk, 'bin', 'bb'), 0o755);
-  const grant = ms => writeFileSync(join(hk, 'home', '.claude', '.credentials.json'),
-    JSON.stringify({ claudeAiOauth: { expiresAt: Date.now() + ms } }));
-  const ran = () => { try { return readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean); }
-                      catch { return []; } };
-  const fire = (role) => {
-    try {
-      execFileSync('python3', [HOOK, 'alpha', 'someone'], {
-        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, PATH: `${join(hk, 'bin')}:${process.env.PATH}`,
-               HOME: join(hk, 'home'), XDG_CACHE_HOME: join(hk, 'cache'),
-               BUILDERBOT_ROLE: role },
-      });
-      return 0;
-    } catch (e) { return e.status ?? 1; }
-  };
-
-  grant(8 * 3600 * 1000);
-  ok(fire('controller') === 0 && ran().length === 0,
-     'the login hook does nothing on the controller, which is where the grant already lives');
-  ok(fire('node') === 0 && ran().length === 1 && /login --check/.test(ran()[0]),
-     `...and on a node it runs the sync (${ran()[0] || 'nothing'})`);
-  ok(fire('node') === 0 && ran().length === 1,
-     '...once, not on every prompt: an access token lasts hours and this is not free');
-
-  // ...unless the grant is nearly out, which is when being one rotation
-  // behind is about to cost the session its next turn.
-  grant(10 * 60 * 1000);
-  ok(fire('node') === 0 && ran().length === 2,
-     '...and the throttle is off entirely inside the grant\'s last half hour');
-
-  // Nothing it can do is worth a turn. No credentials file to read, and a bb
-  // that fails the way it does when the controller is away: still silent,
-  // still exit 0, and the prompt goes through.
-  rmSync(join(hk, 'home', '.claude', '.credentials.json'), { force: true });
-  writeFileSync(join(hk, 'bin', 'bb'),
-    '#!/usr/bin/env bash\necho "could not reach the controller" >&2\nexit 1\n');
-  chmodSync(join(hk, 'bin', 'bb'), 0o755);
-  const out = (() => { try {
-      return execFileSync('python3', [HOOK, 'alpha', 'someone'], {
-        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, PATH: `${join(hk, 'bin')}:${process.env.PATH}`,
-               HOME: join(hk, 'home'), XDG_CACHE_HOME: join(hk, 'cache2'),
-               // The account the hook runs for: its login state is its own,
-               // not the base home's, because the cache folder is shared (B159).
-               BB_ACCOUNT_UID: ownerUid,
-               BUILDERBOT_ROLE: 'node' } }) || '';
-    } catch (e) { return `EXIT ${e.status}: ${e.stdout || ''}${e.stderr || ''}`; } })();
-  ok(out === '',
-     `a sync that could not run is silent and costs the turn nothing (${
-       JSON.stringify(out)})`);
-  // ...and it is stamped anyway, so a controller that is down does not turn
-  // every prompt into a thirty-second wait.
-  ok(existsSync(join(hk, 'cache2', 'builderbot', 'u', ownerUid, 'account', 'login-sync')),
-     '...and still stamped, so a controller that is away is asked once, not every turn');
-  rmSync(hk, { recursive: true, force: true });
-}
-
-// A token or a name in the wrong shape is dropped, not trusted, and on a
+    // A token or a name in the wrong shape is dropped, not trusted, and on a
     // node a dropped token is no token, so nothing opens.
     tmuxKill(`${ownerUid}~shell-wtproj-11`);
     try {

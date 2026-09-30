@@ -1,6 +1,7 @@
 // A Claude session, started: which of the project's nodes it runs on, what
-// each node has, and whether it resumes a conversation or starts a fresh
-// one, from the chooser the Claude button opens.
+// each node has, whether it resumes a conversation or starts a fresh one,
+// and the way to a node's sign-in where this account has none there, all
+// from the chooser the Claude button opens.
 //
 // One classic script beside index.html (docs/design-language.md, Files),
 // moved out of the page's own script with bb map sections in hand (R77):
@@ -11,11 +12,8 @@
 
 // ---- a Claude session: which node, and resume or fresh ------------------
 
-// Which project's resume chooser is open, if any.
+// Which project's chooser is open, if any.
 let resumeFor = null;
-// Which of a project's nodes a Claude press picked, per project, for the
-// moment between the node stage of the chooser and the resume stage (R82).
-let claudeNodePick = {};
 
 // `ps -o etime=` gives MM:SS under an hour, HH:MM:SS under a day, and
 // D-HH:MM:SS beyond one. Rendered raw in a header with four buttons beside it
@@ -46,29 +44,57 @@ const ago = s => {
        : `${Math.round(d/86400)} days ago`;
 };
 
+// The places a Claude session of this project could run, as the chooser
+// draws them: the project's several nodes (R82), its one, or this machine
+// where a session runs here (id ""), which has no sign-in of a node's to ask
+// about. None where there is nowhere, and session_why says so.
+function claudeNodes(p){
+  if ((p?.session_nodes || []).length > 1) return p.session_nodes;
+  if (p?.session_node) return [{id: p.session_node, name: p.session_at, where: "node", why: ""}];
+  return p && !p.session_why ? [{id: "", name: "", where: "node", why: ""}] : [];
+}
+// Whether this account can start one there without signing in first.
+const claudeSigned = n => !n.id || !!claudeOn(n.id);
+// Which node this account's running session on a project is on, "" for none.
+const claudeLiveNode = name => (state?.sessions || []).find(s => s.name === myClaude(name))?.node_id || "";
+
+// Something started a session on a node this account has not signed in on
+// (a step sent from the notebook, a brief): it goes to that node's sign-in
+// instead of to a session that would start and say so. True when it did.
+// The Claude button itself offers the sign-in in its chooser; this is the
+// same answer for every other way in. A session of theirs already running
+// is left alone, since the record is a report and the session is the fact.
+function claudeSigninFirst(name, nodeId){
+  if (!nodeId || claudeOn(nodeId) || liveSessions().has(myClaude(name))) return false;
+  resumeFor = null;
+  if (state) drawProjects(state.projects);
+  const at = (nodesList || []).find(n => n.id === nodeId)?.name
+    || claudeNodes((state?.projects || []).find(x => x.name === name)).find(n => n.id === nodeId)?.name || "its node";
+  notify(`sign in to Claude on ${at} first: a sign-in is each node's own`);
+  openNodeClaude(nodeId);
+  return true;
+}
+
 // A live session is simply resumed by attaching: its tab is the conversation.
-// The choice only arises when nothing is running but a transcript survives,
-// which is exactly what a container restart leaves behind.
+// A choice arises when nothing is running and there is something to choose:
+// a transcript to resume (which is what a restart leaves behind), several
+// nodes to run on, or a node this account has yet to sign in on, whose
+// sign-in the chooser offers in place of a session there.
 function openClaude(name, ev){
   ev?.stopPropagation();
   const p = (state?.projects || []).find(x => x.name === name);
-  // Several nodes to work on: which one comes first, then resume or new
-  // (R82). One node asks nothing, as before.
-  if ((p?.session_nodes || []).length > 1 && !claudeNodePick[name]){
-    resumeFor = resumeFor === name ? null : name;
-    drawProjects(state.projects);
-    return;
-  }
-  if (p?.session_why && !liveSessions().has(myClaude(name))){
-    // There is nowhere for it to run: the press opens the reason under the
-    // row rather than a tab, which is the whole of what it can do.
-    resumeFor = resumeFor === name ? null : name;
-    drawProjects(state.projects);
-    return;
-  }
-  if (liveSessions().has(myClaude(name)) || !p?.last_claude){
+  const ns = claudeNodes(p);
+  if (liveSessions().has(myClaude(name))){
     resumeFor = null;
-    return startClaude(name, null, claudeNodePick[name] || "");
+    return startClaude(name, null, ns.length > 1 ? claudeLiveNode(name) : "");
+  }
+  // Nowhere for it to run opens the reason under the row rather than a
+  // tab, which is the whole of what the press can do.
+  const asks = !!p?.session_why || ns.length > 1 || !!p?.last_claude
+    || ns.some(n => n.where === "node" && !claudeSigned(n));
+  if (!asks){
+    resumeFor = null;
+    return startClaude(name, null, "");
   }
   resumeFor = resumeFor === name ? null : name;
   drawProjects(state.projects);
@@ -79,6 +105,7 @@ function openClaude(name, ev){
 // waiting in the tree (brief.py). Everything else starts at once.
 function startClaude(name, sessionId, node){
   const p = (state?.projects || []).find(x => x.name === name);
+  if (claudeSigninFirst(name, node || p?.session_node || "")) return;
   if (!sessionId && p?.brief && !liveSessions().has(myClaude(name)))
     return openBrief(name, node || "");
   launchClaude(name, sessionId, node);
@@ -86,7 +113,6 @@ function startClaude(name, sessionId, node){
 
 function launchClaude(name, sessionId, node){
   resumeFor = null;
-  delete claudeNodePick[name];
   // Redraw the card, not just the tabs: the chooser is a child of it and would
   // otherwise sit there until the next poll, over a choice already made.
   if (state) drawProjects(state.projects);
@@ -108,7 +134,6 @@ let briefFor = null;
 
 async function openBrief(name, node){
   resumeFor = null;
-  delete claudeNodePick[name];
   if (state) drawProjects(state.projects);
   briefFor = {name, node};
   const p = (state?.projects || []).find(x => x.name === name);
@@ -183,40 +208,45 @@ function claudeNodeFacts(n){
 function placeResumeMenu(){
   const p = (state?.projects || []).find(x => x.name === resumeFor);
   const anchor = $("projects").querySelector(`[data-c="${CSS.escape(resumeFor)}"]`);
-  const nodeStage = (p?.session_nodes || []).length > 1 && !claudeNodePick[p.name];
-  if ((!p?.last_claude && !p?.session_why && !nodeStage) || !anchor){ resumeFor = null; return; }
+  const ns = claudeNodes(p), several = ns.length > 1;
+  if (!p || !anchor){ resumeFor = null; return; }
   const card = anchor.closest(".card");
   const m = document.createElement("div");
   m.className = "pinmenu resumemenu";
   m.id = "resumemenu";
-  // The node first, when there are several (R82): a button per node with
-  // what it has, dead with its reason where a session cannot start there.
-  m.innerHTML = nodeStage
-    ? `<div class="sub">Which node?</div>` + p.session_nodes.map(n =>
-        `<button data-node="${esc(n.id)}"${n.where === "node" ? "" : " disabled"} title="${
-          esc(n.where === "node" ? "" : n.why)}">${esc(n.name)}${
-          claudeNodeFacts(n) ? ` <span class="dim">${esc(claudeNodeFacts(n))}</span>` : ""}</button>${
-          n.where === "node" ? "" : `<div class="sub bad">${esc(shortWhy(n.why))}</div>`}`).join("")
-    : p.session_why
+  // What one node offers: its sign-in where this account has none there,
+  // else Resume and New conversation, or the one press when there is
+  // nothing to resume; and only its reason where a session cannot start.
+  const offer = n => {
+    if (n.where !== "node") return `<div class="sub bad">${esc(shortWhy(n.why))}</div>`;
+    if (!claudeSigned(n))
+      return `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Nodes tab, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`;
+    const node = several ? n.id : "";
+    return (p.last_claude ? `<button data-r="1" data-node="${esc(node)}">Resume: ${esc(ago(p.last_claude.when))}</button>` : "")
+      + `<button data-n="1" data-node="${esc(node)}">New conversation</button>`;
+  };
+  m.innerHTML = !ns.length
     // No node, or one that refused, and there is nowhere else: a session
     // runs on a node and this container carries no Claude Code. The reason,
     // and no choice under it: a menu with nothing in it would be a button
     // that lies.
     ? `<div class="sub">${esc(p.session_why)}</div>`
-    : `<button data-r="1">Resume: ${esc(ago(p.last_claude.when))}</button>` +
-      `<button data-n="1">New conversation</button>`;
+    // Several nodes (R82): each under its name and what it has.
+    : several ? ns.map(n => `<div class="sub">${esc(n.name)}${
+        claudeNodeFacts(n) ? ` <span class="dim">${esc(claudeNodeFacts(n))}</span>` : ""}${
+        n.where === "node" && !claudeSigned(n) ? ` · you are not signed in there` : ""}</div>${offer(n)}`).join("")
+    : (claudeSigned(ns[0]) ? "" : `<div class="sub">You are not signed in to Claude on ${esc(ns[0].name)}.</div>`) + offer(ns[0]);
   card.appendChild(m);
-  m.querySelectorAll("[data-node]").forEach(b => b.onclick = () => {
-    claudeNodePick[p.name] = b.dataset.node;
-    // Straight on when there is nothing to resume; else the second stage.
-    if (!p.last_claude || liveSessions().has(myClaude(p.name))) return startClaude(p.name, null, b.dataset.node);
+  m.querySelectorAll("[data-signin-node]").forEach(b => b.onclick = () => {
+    resumeFor = null;
     drawProjects(state.projects);
+    openNodeClaude(b.dataset.signinNode);
   });
+  m.querySelectorAll("[data-r]").forEach(b => b.onclick = () => startClaude(p.name, p.last_claude.id, b.dataset.node));
+  m.querySelectorAll("[data-n]").forEach(b => b.onclick = () => startClaude(p.name, null, b.dataset.node));
   const a = anchor.getBoundingClientRect(), c = card.getBoundingClientRect();
   m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
   m.style.top = (a.bottom - c.top + 4) + "px";
-  m.querySelector("[data-r]") && (m.querySelector("[data-r]").onclick = () => startClaude(p.name, p.last_claude.id, claudeNodePick[p.name] || ""));
-  m.querySelector("[data-n]") && (m.querySelector("[data-n]").onclick = () => startClaude(p.name, null, claudeNodePick[p.name] || ""));
   // ...and brought into the sidebar, which scrolls. Pressing Claude on a
   // project whose session has ENDED opens this chooser instead of a tab;
   // that is the design, and it is the only thing the press does, so a

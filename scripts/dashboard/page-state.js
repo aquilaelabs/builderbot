@@ -136,11 +136,9 @@ const projFor = n =>
 
 const isClaude = t => t.kind === "term" && tmuxBase(sessionOf(t.arg)).startsWith("claude-");
 const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
-// Signing out pulls the ground from under every conversation on the box, so
-// the button is dead while any of them is running. Named from the session
-// rather than the tab: a Claude session with no tab is still a conversation.
+// Named from the session rather than the tab: a Claude session with no tab
+// is still a conversation.
 const claudeSessions = () => [...liveSessions()].filter(n => n.startsWith("claude-"));
-const signedIn = () => state?.claude_auth?.signed_in !== false;
 
 // What a Claude session is doing ({state: "working"|"waiting", task}) read
 // from the pane title the server collected, or null for anything else. The

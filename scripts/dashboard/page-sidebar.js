@@ -190,13 +190,8 @@ function projectRow(p, live, cls, inTab){
           // Claude session runs on a node and this container carries no
           // Claude Code, so there is nothing for a press to do.
           || (!p.session_at && !!p.session_why && !live.has(myClaude(p.name)))
-          // Not signed in is a REPORT, not a fact: the credential is on the
-          // node, and the controller knows only what a session there last
-          // told it (claudegrant.py). So it ghosts nothing on a project that
-          // HAS a node: the session would start and say so itself.
-          // Ghosting on the report would be a deadlock: no button, so no
-          // session, so nothing ever reports.
-          || (!p.session_at && !signedIn() && !live.has(myClaude(p.name)))
+          // Not signed in on its node ghosts nothing: the press opens the
+          // chooser, which offers that node's sign-in, the way in.
           || heldWhy(p))
            ? " disabled" : ""}
          title="${notMine(p) ? NOT_MINE_WHY
@@ -210,10 +205,10 @@ function projectRow(p, live, cls, inTab){
                  : p.session_why ? p.session_why
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own: start yours`
-                 : !signedIn() && !live.has(myClaude(p.name))
-                   ? "not signed in to Claude on any node: sign in from the Doctor card"
+                 : p.session_node && !claudeOn(p.session_node) && !live.has(myClaude(p.name))
+                   ? `Claude: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
                  : p.session_at
-                   ? `Claude: a session on ${p.session_at}, this project's node; sign in there from a shell if it asks`
+                   ? `Claude: a session on ${p.session_at}, this project's node`
                  : live.has(myClaude(p.name)) ? "Claude: session running, go to its tab"
                  : p.last_claude ? "Claude: no session running; resume or start one"
                  : "Claude: start a session here"}">${SPARK}</button>`}

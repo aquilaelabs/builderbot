@@ -290,9 +290,8 @@ BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json", "nodes/pr
                 # controller is not answering, so a node's sessions stop for
                 # an update the same way the controller's do.
                 "scripts/dashboard/bb-gate",
-                # ...and the hook that keeps the account's Claude grant in
-                # step while a session runs, which only matters ON a node and
-                # so only ever runs from here (B100).
+                # A hook that does nothing, for the sessions an earlier
+                # build of this window started with it in their settings.
                 "scripts/dashboard/bb-keep-login")
 
 

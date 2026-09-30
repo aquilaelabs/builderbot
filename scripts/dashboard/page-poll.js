@@ -185,7 +185,6 @@ async function refresh(){
     drawCard("git", drawGit);
     drawCard("custom", drawCustom);
     drawCard("doctor", drawDoctor);
-    drawCard("docAuth", drawAuth);
     // The Administration card is an administrator's: to anybody else it is
     // not there, rather than there with dead buttons.
     drawCard(null, () => { const c = $("cardAdmin"); if (c) c.hidden = state?.can?.admin === false; });

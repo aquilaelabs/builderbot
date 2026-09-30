@@ -100,19 +100,10 @@ bb changelog rm N        drop one that stopped being true
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb login           Claude Code subscription auth flow, on the machine it is
-                   run on. Nothing is copied anywhere
-bb login --check   what THIS machine is signed in as, told to the controller,
-                   and a sign-out taken here. The grant never travels: every
-                   failure this had came from one OAuth pair living on several
-                   machines: a refresh rotates the refresh token, so two
-                   copies sign each other out, and a machine that was away
-                   holds one the server has retired. Each machine signs in for
-                   itself and keeps the grant it alone refreshes. What crosses
-                   the wire is "I am signed in as X" going up and a generation
-                   coming back; behind means the account was signed out while
-                   this machine was not listening, and the answer is
-                   `claude auth logout` here. Run on every connection and
-                   every prompt
+                   run on. Nothing is copied anywhere: each node is signed in
+                   for itself, from its row on the Nodes tab or with this
+bb login --check   what THIS machine is signed in as, told to the controller.
+                   The login itself never travels
 bb git push|fetch|pull|ls-remote [ARGS]
 bb git policy      what a session may push here (its own branches, main) from
                    the project's Git view; the controller enforces it on the
@@ -549,14 +540,12 @@ cmd_projects() {
 # the server has retired (B100). Each machine signs in for itself now and
 # keeps the grant it alone refreshes.
 #
-# So this is two sentences in opposite directions and no secret in either:
-# "I am signed in as X" going up, and a GENERATION coming back. Behind means
-# the account was signed out while this machine was not listening, and the
-# answer to that is `claude auth logout` here.
+# So this is one sentence going up and no secret in it: "this account is
+# signed in here as X", or that it is not, which is what the node's row and
+# the project rows read.
 #
-# Never fatal, and quiet unless something will not fix itself: this runs on
-# every connection and every prompt, where a controller that is restarting
-# must cost a session nothing.
+# Never fatal, and quiet: this runs on every connection, where a controller
+# that is restarting must cost a session nothing.
 claude_login_check() {
     on_node || return 0
     [ -n "${BB_TOKEN:-}" ] || return 0
@@ -565,9 +554,8 @@ claude_login_check() {
 
 cmd_login() {
     # `--check` is the quiet half on its own: bb-tty runs it on every
-    # connection and bb-keep-login on every prompt, where an interactive flow
-    # would be wrong and a message about nothing having changed would be
-    # noise. `--why` past it asks for the refusals worth repeating.
+    # connection, where an interactive flow would be wrong and a message
+    # about nothing having changed would be noise.
     if [ "${1:-}" = --check ]; then
         on_node || return 0
         claude_login_check "${2:-}"
@@ -585,6 +573,21 @@ cmd_login() {
         BB_USERS_DIR="$BUILDER_USERS" python3 "$BB_LIB/login-list.py"
         return 0
     fi
+    # `--out` is the sign-out run BY THE AGENT, in a claude-logout job, for
+    # the account the dashboard asked about: `claude auth logout` in that
+    # account's home on this machine, found the way --flow finds it.
+    if [ "${1:-}" = --out ]; then
+        local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}"
+        local pinned="${BB_CLAUDE_PINNED:-/usr/local/lib/builderbot/claude}"
+        [ -n "$uid" ] || die "a sign-out names the account it is for"
+        HOME="$(user_home "$uid")" && export HOME
+        PATH="$pinned:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
+        command -v claude >/dev/null 2>&1 \
+            || die "Claude Code is not installed on this machine, so there is no login here to sign out of"
+        claude auth logout || die "claude auth logout did not complete"
+        log "signed out of Claude on ${BB_NODE:-this machine}"
+        return 0
+    fi
     # `--flow` is the sign-in run BY THE AGENT, in a claude-login job, with
     # that job's pty as its terminal (roadmap R47). The account is the one the
     # dashboard asked for and the home is resolved here, by the same user_home
@@ -592,8 +595,7 @@ cmd_login() {
     # account live", rather than a second copy in the agent.
     #
     # The grant STAYS HERE. What goes up is which Anthropic account this
-    # machine is now signed in as, so the card can name it and a second
-    # account on another node is refused.
+    # machine is now signed in as, so its row can name it.
     if [ "${1:-}" = --flow ]; then
         local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}"
         # The pinned dir is the agent's CLAUDE_DIR; BB_CLAUDE_PINNED is for
@@ -616,28 +618,21 @@ cmd_login() {
         claude_login_check --loud || true
         return 0
     fi
-    # ON A NODE the check runs first, because it is what carries a SIGN-OUT
-    # here: signed out elsewhere while this machine was away means logging out
-    # locally, not signing in again. Anything else falls through to the flow
-    # below, which runs in this terminal: this machine signs itself in and
-    # keeps the grant it alone refreshes (R47).
+    # ON A NODE the flow below runs in this terminal: this machine signs
+    # itself in and keeps the grant it alone refreshes (R47).
     if on_node; then
-        # --why, not --loud: the quiet check still obeys a sign-out and still
-        # says a refusal worth repeating, but its "not signed in on this node;
-        # the Doctor card's sign-in runs the flow here" line is exactly the
-        # wrong advice to print one line before running that flow here.
-        # Somebody who typed this, or opened a session on a node that has no
-        # login, is already in the right place.
-        claude_login_check --why || true
+        # Signed in already: said to the controller, so this node's row
+        # reads it, and nothing else to do.
         [ "$(claude auth status --json 2>/dev/null \
-             | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ] || return 0
+             | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ] \
+            || { claude_login_check --loud || true; return 0; }
         log "sign in here: this machine keeps its own login, and no other machine's travels"
     fi
     # And on the controller there is nothing to run: Claude Code is installed
-    # where sessions are, which is a node (R47). The dashboard's Sign in
-    # starts the flow on one and takes the code back; this says the same.
+    # where sessions are, which is a node (R47). Sign in on a node's row
+    # starts the flow there and takes the code back; this says the same.
     command -v claude >/dev/null 2>&1 \
-        || die "this machine carries no Claude Code: a sign-in runs on a node, from the dashboard's Sign in button, or by running this on the node itself"
+        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in on its row on the Nodes tab (Claude Code), or by running this on the node itself"
     # `claude auth login` is the flow built for this and does not leave a
     # session behind afterwards. The older path (start a session and use its
     # slash command) is the fallback for an image whose claude predates the
@@ -648,8 +643,8 @@ cmd_login() {
         claude /login || claude
     fi
     # ...and tell the controller who this machine is now signed in as, which
-    # is what makes the card name it. Only --flow did this, so signing in
-    # from a terminal left the card stale until a hook or the agent's own
+    # is what makes its row name it. Only --flow did this, so signing in
+    # from a terminal left the row stale until a hook or the agent's own
     # clock caught up: minutes of a dashboard saying the opposite of the
     # machine. A no-op on a controller, where the check returns at once.
     claude_login_check --loud || true
@@ -4561,9 +4556,8 @@ cmd_doctor() {
     # container carrying no Claude Code at all reported "Claude Code
     # credentials present in /home/builder", which was three kinds of wrong.
     # The credential is one file, and it lives on a node.
-    # On the controller: not a line. The card above the pills already says
-    # which account this login is, from the node that reported it, and a
-    # pill saying "no login here" beside it read as a contradiction.
+    # On the controller: not a line. A login is a node's, and each node's
+    # row on the Nodes tab says who is signed in there.
     if ! on_node; then
         :
     elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
@@ -4572,8 +4566,8 @@ cmd_doctor() {
         printf '  [ok]   signed in to Claude on this machine%s\n' \
             "$(python3 "$BB_LIB/doctor-probes.py" login 2>/dev/null)"
     else
-        printf '  [warn] not signed in to Claude on this machine: the dashboard\n'
-        printf '         Sign in runs the flow here, or `bb login` in this shell\n'
+        printf '  [warn] not signed in to Claude on this machine: Sign in on its row on the\n'
+        printf '         Nodes tab (Claude Code) runs the flow here, or `bb login` in this shell\n'
     fi
     return $ok
 }

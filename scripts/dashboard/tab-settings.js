@@ -140,8 +140,6 @@ const SETTING_GROUPS = [
     // read as a feature of the product rather than of its testing.
     {key: "offer_unvetted", label: "Offer dev features", type: "bool",
      hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."},
-    {key: "claude_shared_login", label: "Let two accounts share one Claude login", type: "bool",
-     hint: "For one person testing two accounts. Anthropic's terms allow one person per Claude account."},
     {key: "claude_autoupdate", label: "Update Claude Code before a session starts", type: "bool",
      hint: "Before a session starts on a node that is behind, Claude Code is updated there first. "
          + "An open conversation is never ended for it."}]},

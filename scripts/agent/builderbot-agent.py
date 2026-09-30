@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.122"
+AGENT_VERSION = "0.7.123"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3050,6 +3050,12 @@ class Job(threading.Thread):
                 state, code = self.agent.cache_clear(self, spec)
             elif self.job.get("type") == "claude-login":
                 state, code = self.claude_login(spec)
+                # Said on the next heartbeat rather than in five minutes:
+                # the row that asked is waiting to read who signed in.
+                self.agent._logins_at = 0
+            elif self.job.get("type") == "claude-logout":
+                state, code = self.claude_logout(spec)
+                self.agent._logins_at = 0
             elif self.job.get("type") == "claude-update":
                 state, code = self.agent.claude_update(self, spec)
             elif self.job.get("type") == "tell":
@@ -3195,6 +3201,46 @@ class Job(threading.Thread):
                 os.close(master)
         code = self.proc.wait()
         return ("succeeded" if code == 0 else "failed"), code
+
+    def claude_logout(self, spec):
+        """`claude auth logout` on this machine for one BuilderBot account,
+        as the SESSION account and in that account's home here: the other
+        half of claude_login. The login is this machine's, so this machine
+        is the one that lets go of it; the heartbeat that follows says so."""
+        who_name = self.agent.session_account()
+        env = dict(sdk_env(self.agent.state))
+        try:
+            who = self.agent.as_user(env, who_name)
+        except RuntimeError as e:
+            self.say(f"refused: {e}\n")
+            return "failed", 78
+        if not who_name:
+            self.say("refused: this node reports no session account, so no Claude login lives here\n")
+            return "failed", 78
+        uid = str(spec.get("uid") or "")
+        if not re.fullmatch(r"u_[0-9a-f]{8}", uid):
+            self.say("refused: a sign-out names the account it is for\n")
+            return "failed", 64
+        into = self.agent.bundle(self, who)
+        if not into:
+            return "failed", 69
+        # The session account's home, which is this process's own where the
+        # agent is not root and as_user changed nothing.
+        env.setdefault("HOME", os.path.expanduser("~"))
+        env["BUILDER_HOME"] = env["HOME"]
+        env["BB_ACCOUNT_UID"] = uid
+        env.setdefault("BUILDERBOT_ROLE", "node")
+        env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))
+        self.say("signing out of Claude on this machine\n")
+        try:
+            p = subprocess.run(["bash", os.path.join(into, "scripts", "bb"), "login", "--out"],
+                               env=env, cwd="/tmp", capture_output=True, text=True,
+                               timeout=int(spec.get("timeout") or 120), check=False, **who)
+        except (OSError, subprocess.SubprocessError) as e:
+            self.say(f"the sign-out did not run: {e}\n")
+            return "failed", 70
+        self.say((p.stdout or "") + (p.stderr or ""))
+        return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
 
     def exec(self, spec):
         need = spec.get("requires") or []

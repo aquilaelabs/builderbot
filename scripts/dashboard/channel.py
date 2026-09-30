@@ -21,11 +21,8 @@ import toolchains
 import workspace
 from fields import field
 
-# The server's, set by configure(): an account's home (home_for), and the
-# cached answer to who each home is signed in as, cleared when a node
-# reports a change (the server's _auth.clear).
+# The server's, set by configure(): an account's home (home_for).
 home_for = None
-forget_auth = None
 
 # The last fault auto_sysdeps met on each node, by id: hello logs one when
 # it changes, not on every poll.
@@ -216,21 +213,19 @@ def _logins(nid, rows):
     """What a node's agent says each account on it is signed in to Claude
     as (B104). Absent from most heartbeats, and then nothing happens.
 
-    This is the ONLY report that does not come from a session's own token,
-    and it is worth being clear about what that means: a node could name
-    an account and an email that are not so. It could also read every
+    This is the report that does not come from a session's own token, and
+    it is worth being clear about what that means: a node could name an
+    account and an email that are not so. It could also read every
     session's token and run as those accounts, because it runs them, so
-    the weakening is small, and what it buys is a card that is true when
-    nothing is running, and a way back from a sign-out that does not need
-    the session the sign-out just stopped.
+    the weakening is small, and what it buys is a row that is true when
+    nothing is running: a sign-in or a sign-out made there shows without a
+    session having to open first.
 
     Written only when it says something new, because a heartbeat must not
-    cost a write per node per poll, and the cached answer is cleared only
-    then.
+    cost a write per node per poll.
     """
     if not isinstance(rows, list):
         return
-    moved = False
     for r in rows[:64]:
         if not isinstance(r, dict):
             continue
@@ -241,16 +236,10 @@ def _logins(nid, rows):
         if not home:
             continue
         email = " ".join(str(r.get("email") or "").split())[:120]
-        was = claudegrant.state(home)
-        on = (was["nodes"] or {}).get(nid) or {}
+        on = claudegrant.on(home, nid)
         if email:
             if on.get("email") == email:
                 continue                       # already what we have
             claudegrant.report(home, nid, email, str(r.get("plan") or ""))
-        else:
-            if not on:
-                continue                       # never was on this node
+        elif on:
             claudegrant.report(home, nid, "", signed_in=False)
-        moved = True
-    if moved:
-        forget_auth()

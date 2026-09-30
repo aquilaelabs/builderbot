@@ -1762,13 +1762,12 @@ above, in order:
    the proxy decides per project: bound to a node whose census reports the
    session half up, the session is relayed there; otherwise it is this
    container's, as it always was.
-3. **The login is per node**, in the session account's home, and it gets
-   there from the controller: a node-bound terminal's token is minted for
-   the account, `bb login` on the node fetches that account's credentials
-   file with it (`GET /api/v1/claude-login`), into that home, 0600, only
-   when the node's copy is not signed in. Not a share: one file, one
-   machine, one account. The interactive flow in the session's own terminal
-   is the fallback. **Transcripts and memories are one place**: every
+3. **The login is per node and per account**, in that account's home on the
+   node, and it is made there: Sign in on the node's row (Nodes tab, Claude
+   Code) runs `claude auth login` on that machine as a job, with the code
+   pasted back on the row, and Sign out there runs `claude auth logout` the
+   same way. Nothing fetches a login from anywhere: one machine, one
+   account, one login. **Transcripts and memories are one place**: every
    account's `~/.claude/projects`, on every machine, is a link to
    `/workspace/.claude/<uid>/projects` on the projects share
    (`claude_projects_link` in lib/common.sh, made when the home is), and
@@ -1889,14 +1888,13 @@ The account's CLAUDE LOGIN NEVER TRAVELS (R47). Each machine signs in for
 itself and keeps the grant it alone refreshes, because a refresh rotates the
 refresh token and two machines holding copies of one grant sign each other
 out, which is what a day of node sessions produced twice (bug #64, B100).
-What crosses the wire is two sentences and no secret: "I am signed in as X"
-going up, and a generation coming back, which is the only thing that can
-carry a sign-out to a machine that was not listening. `bb login --check`
-sends it on every connection and every prompt (`bb-keep-login`, a
-UserPromptSubmit hook, throttled to ten minutes), the agent sends the same
-answer for every account on the machine on its heartbeat so the record is
-true with no session running (B104), and the controller holds the identity
-and no credential at all.
+So a login is one account's on one node: signed in from that node's row,
+signed out there, and no business of any other node's. What crosses the
+wire is one sentence and no secret: "this account is signed in here as X",
+or that it is not. `bb login --check` sends it on every connection, the
+agent sends the same answer for every account on the machine on its
+heartbeat so the record is true with no session running (B104), and the
+controller holds what each node reported and no credential at all.
 A machine with no systemd runs its runner as run.sh in the foreground under
 the agent: supervised, taken down with it, reported by the same pgrep as a
 service, which is what makes §20's GUEST class implementable on something

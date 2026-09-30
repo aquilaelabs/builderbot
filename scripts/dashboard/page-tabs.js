@@ -277,7 +277,7 @@ const TABKINDS = {
                             if (nodesList === null) loadNodes(); } },
   nodes:    { multi: false, label: () => "Nodes",
               icon: TOOL_ICONS.nodes,
-              render: (i) => renderNodesInto(i), live: () => nodesRev,
+              render: (i) => renderNodesInto(i), live: () => `${nodesRev}/${signinRev()}`,
               open: () => loadNodes() },
   jobs:     { multi: false, label: () => "Jobs",
               icon: TOOL_ICONS.jobs,

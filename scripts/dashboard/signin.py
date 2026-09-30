@@ -21,7 +21,9 @@ at, and it is the same card whichever machine is answering.
 
 The grant the flow makes stays on that machine. Nothing is copied anywhere
 (claudegrant.py says why), and this container carries no Claude Code to run a
-flow of its own with.
+flow of its own with. So a sign-in is asked for on one node, from that
+node's row, and signing out is asked of the same node: `claude auth logout`
+there, as a job.
 """
 import re
 import sqlite3
@@ -47,12 +49,10 @@ _lock = threading.Lock()
 _flow = None
 
 # What verb() and take_code() need from the server, set by server.py: the
-# node registry a flow runs on, a session token minted for the account the
-# flow signs in, and the cached answer to who each home is signed in as,
-# cleared whenever a flow may have changed it.
+# node registry a flow runs on, and a session token minted for the account
+# the flow signs in.
 nodes = None
 mint = None
-forget_auth = None
 
 # What gets removed from a pasted code before it is handed to the flow:
 # whitespace of every kind (a wrapped copy brings line breaks, a phone
@@ -124,6 +124,8 @@ class NodeFlow:
                 "waiting": bool(PROMPT in out) and not self.sent and not done,
                 "sent": self.sent and not done,
                 "done": done, "ok": j.get("state") == "succeeded",
+                # Which node's row draws it: the flow is that machine's.
+                "node": self.node,
                 "on": self.node_name, "job": self.job, "error": why}
 
 
@@ -164,17 +166,26 @@ def submit(code):
 
 
 def cancel():
+    """Stop the running flow and forget it. Forgotten at once, not when the
+    node reports the job stopped: a node that has gone quiet never does, and
+    a flow nobody can finish must not hold the next sign-in back."""
+    global _flow
     with _lock:
-        f = _flow
+        f, _flow = _flow, None
     if f:
         f.cancel()
     return {"ok": True}
 
 
-def state():
+def state(uid=None):
+    """The running flow as its row draws it. With `uid`, only that account's
+    own: the link a flow prints signs somebody in, so it is shown to the
+    person it was started for and nobody else."""
     with _lock:
         f = _flow
-    return f.state() if f else {"running": False}
+    if not f or (uid is not None and getattr(f, "uid", "") != str(uid or "")):
+        return {"running": False}
+    return f.state()
 
 
 def owner():
@@ -184,45 +195,52 @@ def owner():
     return getattr(f, "uid", "") if f else ""
 
 
-# ---- the card's verbs, one call each from the dashboard ------------------------
+# ---- the row's verbs, one call each from the dashboard -------------------------
 
-def verb(action, want, uid):
-    """Start a sign-in for account `uid`, on the node named or the one node
-    there is, or stop the one that is running, once server.py has said this
-    person may. (payload, status)."""
-    forget_auth()               # every home: the flow may have changed any
+def cannot(n):
+    """Why a sign-in or a sign-out cannot run on this node now, or "". A
+    node that runs SESSIONS, which is the same test session_target makes:
+    Claude Code is installed for the session account and the login lands in
+    a home a session reads, and a node with no session half has neither."""
+    if not n or n.get("kind") != "agent":
+        return "which node? A Claude sign-in is made on one node, from its row on the Nodes tab"
+    if n.get("state") != "online":
+        return f"{n['name']} is {n.get('state') or 'not online'} and takes no new work: sign in or out there when it is back online"
+    if n.get("live") is False:
+        return f"{n['name']} is not answering: sign in or out there when it is back"
+    if not ((n.get("reported") or {}).get("session") or {}).get("up"):
+        return f"{n['name']} runs no sessions, so there is nowhere for a Claude login to live there"
+    return ""
+
+
+def verb(action, node_id, uid):
+    """Start a sign-in for account `uid` on the node named, or stop the one
+    that is running, once server.py has said this person may and that the
+    node is theirs to see. (payload, status)."""
     if action == "cancel":
-        return cancel() | {"signin": state()}, 200
-    # WHERE it runs. Claude Code is installed where sessions are, which
-    # is a node, so the flow goes there, on the node the operator picked
-    # or the one node there is. There is no other answer: this container
-    # carries no Claude Code, so with no node the refusal below is it.
-    # A node that runs SESSIONS, which is the same test session_target
-    # makes: Claude Code is installed for the session account, the
-    # credential lands in that account's home, and a node with no session
-    # half has neither. Not merely "online": a build node that runs no
-    # sessions has nowhere for a login to live.
-    live = [] if nodes is None else [
-        n for n in nodes.node_list()
-        if n["kind"] == "agent" and n["state"] == "online"
-        and n.get("live") is not False
-        and ((n.get("reported") or {}).get("session") or {}).get("up")]
-    pick = next((n for n in live if want in (n["id"], n["name"])), None) \
-        if want else (live[0] if len(live) == 1 else None)
-    if pick:
-        tok = mint(f"node:{pick['id']}", ttl=1800, uid=uid)
-        return start_on_node(nodes, pick["id"], uid, pick["name"], token=tok) | {"signin": state()}, 200
-    if live:
-        return {"error": "which node should the sign-in run on? "
-                         + ", ".join(n["name"] for n in live),
-                "nodes": [n["name"] for n in live]}, 400
-    # And nowhere else. Claude Code is installed for the account that runs
-    # sessions, which is a node's; this container carries none, so there
-    # is no flow here to fall back to and saying so is the whole answer.
-    return {"error": "no node is running sessions, and a Claude "
-                     "sign-in runs on the machine Claude is "
-                     "installed on. Enroll one on the Nodes tab, or "
-                     "wait for one to come back"}, 400
+        return cancel() | {"signin": state(uid)}, 200
+    n = nodes.node(node_id) if nodes is not None and node_id else None
+    why = cannot(n)
+    if why:
+        return {"error": why}, 400
+    tok = mint(f"node:{n['id']}", ttl=1800, uid=uid)
+    return start_on_node(nodes, n["id"], uid, n["name"], token=tok) | {"signin": state(uid)}, 200
+
+
+def sign_out(node_id, uid):
+    """Sign account `uid` out of Claude on one node: `claude auth logout`
+    there, in that account's home, as a job. The credential is that
+    machine's, so that machine is the one that lets go of it, and a node
+    that is not answering is asked when it is back. (payload, status)."""
+    n = nodes.node(node_id) if nodes is not None and node_id else None
+    why = cannot(n)
+    if why:
+        return {"error": why}, 400
+    r = nodes.job_add("user:signin", {"node": n["id"]}, "claude-logout",
+                      {"uid": str(uid), "timeout": 120})
+    if r.get("error"):
+        return r, 400
+    return {"ok": True, "job": r["job"], "on": n["name"]}, 200
 
 
 def take_code(code):
@@ -251,7 +269,5 @@ def take_code(code):
         return {"error": "that is far too long to be a code; "
                          "copy just the code"}, 400
     r = submit(code)
-    # Whatever the cache is holding is about to be wrong either way.
-    forget_auth()
-    r = r | {"signin": state()}
+    r = r | {"signin": state(owner())}
     return r, (400 if r.get("error") else 200)

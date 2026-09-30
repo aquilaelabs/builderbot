@@ -711,36 +711,6 @@ on a header is never a misfire. The
 headers hold nothing but the title and a chevron: every control a card has
 lives in its body. The cards:
 
-- **who this container is signed in to Claude as**, under the doctor verdict,
-  with the action attached: **Sign out** when it is signed in, **Sign in** when
-  it is not. **There is no terminal in it.** `claude auth login` is
-  interactive, printing a URL and waiting for the code the browser gives back,
-  which looked like a job for a terminal, and got one: a tmux session behind
-  ttyd behind a tab. Every part of that was somewhere for it to go wrong. ttyd
-  reconnects a dropped socket, so closing the flow started another; a phone
-  cannot select a wrapped URL out of a canvas, and a paste into one silently
-  does not arrive, so the code reaching the prompt empty read as a *rejected*
-  code; and the tab zooms and reflows under a thumb while you are working in
-  it. None of that was the sign-in. The sign-in is two lines of text going in
-  opposite directions, and a program that wants a terminal only wants a pty,
-  so the server holds one. What you see is a link and a text field, and what
-  the flow says when it refuses a code is said on the card, in its own words.
-  The field passes the code through rather than judging it: the authorize URL
-  the code page glues to it is cut off, whitespace and control junk are
-  stripped, and whatever remains goes to the flow: whose verdict is the only
-  one that counts. The only pastes refused outright are the two that cannot
-  be wrong to refuse: one with no code left in it (the link alone), and one
-  far too long to be a code.
-  Signing out is one command with no conversation in it, so it is a button,
-  and it asks first because every session here stops working. **It is dead
-  while any Claude session is running** and names the ones in the way; the
-  server refuses it too, since a page can be fifteen seconds behind the
-  answer. And with the container signed out, **every project's Claude button
-  goes dead with it**: as does the terminal URL behind them, which refuses
-  with the way in rather than letting a session start and die on Claude's own
-  error. On a claude too old to have `auth status` the row simply is not
-  there: not knowing is not the same as being signed out, and offering to sign
-  somebody out of nothing is worse than offering nothing
 - container uptime, **and which build of the image is serving it**: the short
   commit beside the uptime, with the whole one and the time it was built on
   hover. The two are different questions: an Unraid container keeps running
@@ -1525,8 +1495,9 @@ re-executes itself. Projects are trashed from the Projects tab, one at a
 time, the way they always were. Its **Debugging** group is
 one switch, *Debug mode*, and a *Debug settings* button beside it that is
 live only while the switch is saved on: behind the button are the settings
-a developer of BuilderBot reaches for and nobody else should meet (letting
-two accounts share one Claude login, for one person testing two accounts).
+a developer of BuilderBot reaches for and nobody else should meet (offering
+the untested git hosts, hypervisors and node systems; updating Claude Code
+before a session starts).
 
 Each row folds open to show what that container publishes and what it mounts,
 read only when you open it: parsing a compose file is the one thing the page
@@ -3208,8 +3179,50 @@ Afterwards, `bb users passwd <name>` changes a password and `bb users add`
 makes the others. `bb users token <project> [<account>]` mints the scoped
 session token a Claude session is given, for proving a node by hand, where
 `bb` reaches the controller with `BB_TOKEN` and nothing else; with an
-account named it is the token a node-bound terminal carries, which also
-fetches that account's Claude login onto the node.
+account named it is the token a node-bound terminal carries, which is also
+what reports that account's Claude sign-in on the node.
+
+**A Claude sign-in is one account's, on one node.** A person signs in on
+each node they work on, and the login stays in that account's home on that
+machine: nothing carries it to another node, and the controller holds no
+credential, only what each node reported. A refresh rotates the refresh
+token, so one login on two machines signs each of them out in turn; a login
+per machine is the shape Claude supports. The sign-in is at the top of the
+node's Claude Code section on the Nodes tab, for whoever is looking: *You
+are signed in here as* the Anthropic account that node reported, with **Sign
+out**, or *You are not signed in to Claude on* that node, with **Sign in**.
+**There is no terminal in it.** `claude auth login` is interactive, printing
+a URL and waiting for the code the browser gives back, and a terminal is the
+worst place for both on a phone: a wrapped URL cannot be selected out of a
+canvas and a paste into one silently does not arrive. The flow runs on the
+node under a pty, as a job; the row shows its link to tap and a field for
+the code, which goes down to the node on the job's own channel, and what the
+flow says when it refuses a code is said on the row in its own words. The
+field passes the code through rather than judging it: the authorize URL the
+code page glues to it is cut off, whitespace and control junk are stripped,
+and the only pastes refused outright are one with no code left in it and
+one far too long to be a code. A running flow, with its link, is shown to
+the account it was started for and to nobody else. Sign out asks first and
+runs `claude auth logout` on that node, in that account's home; it is dead
+while that account has a Claude session open there, which the row names,
+and a sign-in on any other node is untouched. A node that is not answering
+offers neither, with the reason on the row.
+
+**A project's Claude button knows which node it is about.** Where this
+account is signed in on the project's node, the press starts the session or
+opens the chooser with Resume and New conversation, as it always has. Where
+it is not, the chooser offers **Sign in on** that node in their place, which
+opens the Nodes tab on that node with its Claude Code section unfolded. A
+project on several nodes lists each under its name: Resume and New
+conversation for a node this account is signed in on, the sign-in for one it
+is not, and the reason alone for one where a session cannot start.
+
+**An account that does not administer sees the Nodes tab and changes
+nothing on it but its own sign-in.** Its picker lists the nodes its own
+projects work on and no others; every control on the node's page is
+ghosted for it, updating Claude Code and enrolling included, and a line on
+the row says so; the verbs behind those controls are an administrator's on
+the server as well.
 
 **Claude Code on a node is updated from the Nodes tab, and by nothing a
 session can do.** Each node's row has a Claude Code section: the version
@@ -3333,10 +3346,10 @@ somebody else has that file open. It does not refuse it: each session is in its
 own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
 
-What *is* refused is a second session on one **Anthropic account**; they would
-share its limits, and afterwards nothing could say which of them did what. Each
-account signs in to its own from the Doctor card. That refusal is where `/term`
-is proxied, not only in the page, because the ttyd URL is reachable directly.
+Each account signs in to Claude for itself, on each node it works on, from
+that node's row. Which Anthropic account that is is the person's own choice:
+the Users tab says when two BuilderBot accounts are on one, since Anthropic's
+terms allow one person per Claude account, and nothing is refused for it.
 
 The notebook (roadmap, bugs, analysis) stays shared, because it is about the
 project; memories do not, because they are about the person.

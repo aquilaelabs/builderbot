@@ -337,6 +337,17 @@ your array keeps the ownership `PUID`/`PGID` give it, which means an
 administrator can reach any account's files if they go looking. Give that role
 to people you would give the server to.
 
+**A Claude login is one account's, on one node (30 Sep 2026).** A person
+signs in on each node they work on, from that node's row, and signs out
+there. It was asked for as a simplification and it is one: there is no
+account-wide identity to keep, no rule that a second node must be the same
+Anthropic account as the first, no sign-out that has to reach machines that
+are not listening, and no switch for two BuilderBot accounts on one login,
+because nothing refuses that any more; the Users tab says it on both rows,
+since Anthropic's terms allow one person per Claude account. What is kept is
+what each node reported, per account. The cost is a sign-in per node, which
+a project's Claude button offers the first time it is needed.
+
 ## Telling a project's sessions about this environment
 
 This used to be a 53KB block rendered into every project's `CLAUDE.local.md`

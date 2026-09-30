@@ -162,19 +162,10 @@ bb changelog rm N        drop one that stopped being true
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb login           Claude Code subscription auth flow, on the machine it is
-                   run on. Nothing is copied anywhere
-bb login --check   what THIS machine is signed in as, told to the controller,
-                   and a sign-out taken here. The grant never travels: every
-                   failure this had came from one OAuth pair living on several
-                   machines: a refresh rotates the refresh token, so two
-                   copies sign each other out, and a machine that was away
-                   holds one the server has retired. Each machine signs in for
-                   itself and keeps the grant it alone refreshes. What crosses
-                   the wire is "I am signed in as X" going up and a generation
-                   coming back; behind means the account was signed out while
-                   this machine was not listening, and the answer is
-                   `claude auth logout` here. Run on every connection and
-                   every prompt
+                   run on. Nothing is copied anywhere: each node is signed in
+                   for itself, from its row on the Nodes tab or with this
+bb login --check   what THIS machine is signed in as, told to the controller.
+                   The login itself never travels
 bb git push|fetch|pull|ls-remote [ARGS]
 bb git policy      what a session may push here (its own branches, main) from
                    the project's Git view; the controller enforces it on the
