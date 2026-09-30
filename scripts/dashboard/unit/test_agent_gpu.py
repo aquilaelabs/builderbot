@@ -2,6 +2,7 @@
 answered is a name. Drives _gpu_name against a stand-in nvidia-smi on PATH."""
 import importlib.util
 import os
+import shutil
 import stat
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ spec.loader.exec_module(agent)
 class GpuName(unittest.TestCase):
     def setUp(self):
         self.bin = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.bin, True)
         self.path = os.environ.get("PATH", "")
         os.environ["PATH"] = self.bin + os.pathsep + self.path
 
