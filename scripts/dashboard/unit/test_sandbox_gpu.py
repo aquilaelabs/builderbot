@@ -5,6 +5,7 @@ install without a word on the dev node (30 Sep): the lookup of the installed
 branch asked dpkg for packages that were not there. This runs the helper
 extracted from the provisioner, with apt, dpkg, modinfo, ubuntu-drivers and
 id stood in for, and reads what it ran and what it said."""
+import json
 import os
 import re
 import shutil
@@ -76,7 +77,12 @@ case "$2" in nvidia:610) echo "610.57.04 nvidia-driver-610" > "{self.state}" ;; 
             text = f.read()
         text, n = re.subn(r"^NVCT_LIST=.*$", f"NVCT_LIST={self.list}", text, flags=re.M)
         text, k = re.subn(r"^NVCT_KEY=.*$", f"NVCT_KEY={self.key}", text, flags=re.M)
-        self.assertEqual((n, k), (1, 1))
+        self.daemon = os.path.join(self.dir, "daemon.json")
+        text, j = re.subn(r"^NVCT_DOCKER=.*$", f"NVCT_DOCKER={self.daemon}", text, flags=re.M)
+        self.assertEqual((n, k, j), (1, 1, 1))
+        real = shutil.which("python3")
+        if real and not os.path.exists(os.path.join(self.bin, "python3")):
+            os.symlink(real, os.path.join(self.bin, "python3"))
         with open(self.helper, "w", encoding="utf-8") as f:
             f.write(text)
         self.tool("curl", f'''echo "curl $*" >> "{self.log}"
@@ -179,11 +185,43 @@ echo "docker-ce ii "; exit 0''')
         self.assertIn("nvidia-container-toolkit", purge)
         self.assertIn("libnvidia-container1", purge)
         self.assertNotIn("docker-ce", purge)
-        self.assertIn("nvidia-ctk runtime configure --runtime=docker --unset", ran)
-        self.assertLess(ran.index("--unset"), ran.index(" purge "))
         self.assertIn("systemctl reload docker", ran)
         self.assertNotIn("systemctl restart docker", ran)
         self.assertFalse(os.path.exists(self.list) or os.path.exists(self.key))
+
+    def removed(self, config):
+        self.toolkit()
+        with open(self.ctk, "w") as h:
+            h.write("x\n")
+        if config is not None:
+            with open(self.daemon, "w") as h:
+                h.write(config if isinstance(config, str) else json.dumps(config))
+        rc, said, ran = self.run_helper("gpu-container", "remove")
+        self.assertEqual(rc, 0, said)
+        try:
+            with open(self.daemon) as h:
+                return h.read(), said
+        except OSError:
+            return None, said
+
+    def test_removal_takes_the_runtime_out_of_dockers_configuration_and_nothing_else(self):
+        nv = {"args": [], "path": "nvidia-container-runtime"}
+        got, _ = self.removed({"labels": ["builderbot.sandbox=1"], "runtimes": {"nvidia": nv}})
+        self.assertEqual(json.loads(got), {"labels": ["builderbot.sandbox=1"]})
+        got, _ = self.removed({"default-runtime": "nvidia", "runtimes": {"nvidia": nv, "kata": {"path": "kata"}}})
+        self.assertEqual(json.loads(got), {"runtimes": {"kata": {"path": "kata"}}})
+
+    def test_a_configuration_without_the_runtime_is_left_as_it_is(self):
+        text = '{"labels":   ["builderbot.sandbox=1"]}\n'
+        self.assertEqual(self.removed(text)[0], text)
+
+    def test_a_machine_with_no_docker_configuration_gets_none(self):
+        self.assertIsNone(self.removed(None)[0])
+
+    def test_a_configuration_that_does_not_parse_is_said_and_left(self):
+        got, said = self.removed("{not json")
+        self.assertEqual(got, "{not json")
+        self.assertIn("could not take the nvidia runtime out", said)
 
     def test_a_picked_branch_on_a_machine_with_no_driver(self):
         rc, said, ran = self.run_helper("gpu-driver", "install", "nvidia-driver-610")

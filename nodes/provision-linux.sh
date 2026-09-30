@@ -2236,6 +2236,41 @@ NVCT_LIST=/etc/apt/sources.list.d/nvidia-container-toolkit.list
 # does not carry (the dev node, 30 Sep).
 NVCT_KEY=/usr/share/keyrings/nvidia-container-toolkit-keyring.asc
 NVCT_URL=https://nvidia.github.io/libnvidia-container
+NVCT_DOCKER=/etc/docker/daemon.json
+# Docker's note of the nvidia runtime, taken out of its configuration here
+# rather than by the toolkit's own tool: `nvidia-ctk runtime configure
+# --unset` left the entry in place on the dev node (30 Sep), naming a
+# runtime whose binary the purge had just removed. Everything else in the
+# file is kept as it is.
+docker_forget_nvidia() {
+    [ -s "$NVCT_DOCKER" ] || return 0
+    python3 - "$NVCT_DOCKER" <<'NVCTPY'
+import json
+import os
+import sys
+
+f = sys.argv[1]
+try:
+    with open(f) as h:
+        d = json.load(h)
+except (OSError, ValueError):
+    sys.exit(1)
+rt = d.get("runtimes") if isinstance(d.get("runtimes"), dict) else {}
+if "nvidia" not in rt and d.get("default-runtime") != "nvidia":
+    sys.exit(0)
+rt.pop("nvidia", None)
+if rt:
+    d["runtimes"] = rt
+else:
+    d.pop("runtimes", None)
+if d.get("default-runtime") == "nvidia":
+    d.pop("default-runtime")
+with open(f + ".bb-new", "w") as h:
+    json.dump(d, h, indent=4)
+    h.write("\n")
+os.replace(f + ".bb-new", f)
+NVCTPY
+}
 cmd_gpu_container() {
     local pkgs
     case "${1-}" in
@@ -2275,9 +2310,6 @@ cmd_gpu_container() {
                 | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-container-toolkit|nvidia-container-toolkit-base|libnvidia-container1|libnvidia-container-tools)$/ {print $1}' \
                 | tr '\n' ' ' || true)"
             if [ -n "${pkgs// /}" ]; then
-                # Docker's own note of the runtime first, while the tool that
-                # wrote it is still here to take it out.
-                if have nvidia-ctk; then nvidia-ctk runtime configure --runtime=docker --unset >/dev/null 2>&1 || true; fi
                 say "removing: $pkgs"
                 export DEBIAN_FRONTEND=noninteractive
                 # shellcheck disable=SC2086
@@ -2287,6 +2319,7 @@ cmd_gpu_container() {
                 say "the NVIDIA container toolkit is not installed here"
             fi
             rm -f "$NVCT_LIST" "$NVCT_KEY"
+            docker_forget_nvidia || warn "could not take the nvidia runtime out of $NVCT_DOCKER: it names a runtime that is no longer installed"
             if have systemctl && have docker; then
                 systemctl reload docker 2>/dev/null || warn "Docker did not reload its configuration: the nvidia runtime stays listed until Docker next starts"
             fi

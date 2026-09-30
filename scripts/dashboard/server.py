@@ -1073,6 +1073,21 @@ def gpu_for(project, node_id=""):
     return "on"
 
 
+def _claude_code_for(who, ps):
+    """Claude Code per node against the latest known, for the Nodes tab's
+    section: the registry's for whoever may manage nodes, and for anybody
+    else the nodes their own projects are on, which are the ones that tab
+    shows them."""
+    cc = claudecode.payload()
+    if not users.may(who, "node"):
+        return cc
+    mine = set()
+    for p in ps:
+        pr = prefs.get(p["name"])
+        mine.update([pr["node"], *(pr.get("nodes") or [])])
+    return cc | {"nodes": {k: v for k, v in cc["nodes"].items() if k in mine}}
+
+
 def gpu_container_why(project, node_id):
     """Why a container of `project` on that node cannot be given its NVIDIA
     card, or "" (R102): the project's setting and the node's switch, which
@@ -2945,8 +2960,8 @@ def snapshot(who):
             + claudecode.attention(
             {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()})),
         # Claude Code per node against the latest known, for the Nodes
-        # tab's section: whoever may manage nodes reads it.
-        "claude_code": ({} if NODES_OK or users.may(who, "node") else claudecode.payload()),
+        # tab's section.
+        "claude_code": {} if NODES_OK else _claude_code_for(who, ps),
 
         # Whether there is a daemon behind any of the Docker controls, and if
         # not, the sentence saying why. Memoised in devapp, because answering

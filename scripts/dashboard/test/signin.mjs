@@ -193,6 +193,9 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
              why: root.querySelector('.ndreadonly')?.textContent || '',
              open: root.querySelector('[data-sect="nodes:claude"]')?.open };
   });
+  const cc = await up.evaluate(async () => (await (await fetch('/api/status')).json()).claude_code || {});
+  ok(Object.keys(cc.nodes || {}).join() === box.id && 'latest' in cc,
+     `the Claude Code versions it is sent are those nodes' too, so the section reads what an administrator's does (${Object.keys(cc.nodes || {}).length} node)`);
   ok(seen.picker.join() === 'signbox', `its node picker lists the nodes its own projects are on, and no others (${seen.picker.join()})`);
   ok(seen.open && seen.live.includes('in') && seen.live.includes('ndPick'),
      `its chooser's sign-in lands on the same section, where its own Sign in is live (${seen.live.join()})`);
