@@ -730,9 +730,11 @@ await page.waitForFunction(() => document.querySelectorAll('#roadmapHist .hist')
 const capped = await page.$$eval('#roadmapHist .hist', hs => hs.length);
 ok(capped <= 25, `the window caps what comes back (${capped} of them)`);
 await page.selectOption('#histWhen', '0');
-await page.waitForTimeout(500);
-ok(await page.$$eval('#roadmapHist .hist', hs => hs.length) >= capped,
-   '...and widening it to all time brings back at least as much');
+// A wait, not a half-second sleep: under a loaded whole run the list was
+// read mid-redraw with fewer lines than it ends with (B413).
+const wide = await page.waitForFunction(n => document.querySelectorAll('#roadmapHist .hist').length >= n,
+                                        capped, { timeout: 10000 }).then(() => true, () => false);
+ok(wide, '...and widening it to all time brings back at least as much');
 
 // It opens OVER the list rather than in place of it: the line you wanted to
 // read the log against is still there behind, and the send box is put away
