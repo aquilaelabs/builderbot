@@ -995,7 +995,11 @@ case "$1" in
     [ -f "$ST/unlabeled" ] && lbl='["com.example.other=1"]'
     uid="STUBDAEMON1"
     [ -f "$ST/uid" ] && uid="$(cat "$ST/uid")"
-    printf '{"ID":"%s","Labels":%s,"ServerVersion":"99.stub"}\n' "$uid" "$lbl"
+    # The runtimes the daemon lists: nvidia's once the container toolkit's
+    # stand-in has "configured" it (R102).
+    rt='{"runc":{}}'
+    [ -f "$ST/nvidia-runtime" ] && rt='{"nvidia":{"path":"nvidia-container-runtime"},"runc":{}}'
+    printf '{"ID":"%s","Labels":%s,"ServerVersion":"99.stub","Runtimes":%s}\n' "$uid" "$lbl" "$rt"
     exit 0 ;;
   ps)
     # The bare `docker ps` the Docker manager reads. Stateful, because the

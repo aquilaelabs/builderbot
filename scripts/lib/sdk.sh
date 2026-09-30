@@ -389,6 +389,25 @@ sdk_nvidia_line() {
     fi
 }
 
+# Whether a container on this machine can be given the card, for `bb
+# toolchains` beside the driver's line: the NVIDIA container toolkit by its
+# own tool, which is on the machine and not the store. Nothing with no
+# card. BB_SYS_ROOT is the tests'.
+sdk_nvidia_container_line() {
+    local sys="${BB_SYS_ROOT:-/sys}" dev card="" v
+    for dev in "$sys"/bus/pci/devices/*; do
+        [ "$(cat "$dev/vendor" 2>/dev/null)" = 0x10de ] || continue
+        case "$(cat "$dev/class" 2>/dev/null)" in 0x03*) card=1; break ;; esac
+    done
+    [ -n "$card" ] || return 0
+    if command -v nvidia-ctk >/dev/null 2>&1; then
+        v="$(nvidia-ctk --version 2>/dev/null | sed -n 's/.*version \([^ ]*\).*/\1/p' | head -1)"
+        echo "toolkit ${v:-installed}: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)"
+    else
+        echo "no container toolkit: a container here cannot reserve the card; the operator installs it on the Toolchains tab"
+    fi
+}
+
 # The names in a directory, one per line, or nothing: what the listings
 # below read, without ls's word-splitting.
 sdk_names_in() {
@@ -420,6 +439,8 @@ sdk_builds_with() {
     [ -n "$tools" ] && printf '  %-14s %s\n' build-tools "${tools% }"
     local nv; nv="$(sdk_nvidia_line)"
     [ -z "$nv" ] || printf '  %-14s %s\n' "nvidia driver" "$nv"
+    nv="$(sdk_nvidia_container_line)"
+    [ -z "$nv" ] || printf '  %-14s %s\n' "  containers" "$nv"
     local gh="${GRADLE_USER_HOME:-$HOME/.gradle}" m dists k v
     m="$gh/caches/modules-2/files-2.1"
     printf '  %-14s %s\n' "gradle cache" "$gh"

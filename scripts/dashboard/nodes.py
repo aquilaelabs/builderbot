@@ -950,6 +950,13 @@ def _census(c):
             {"pkg": clean(o.get("pkg")), "version": clean(o.get("version"), 30), "open": bool(o.get("open"))}
             for o in (gd.get("options") or [])[:16]
             if isinstance(o, dict) and DRIVER_PKG.fullmatch(str(o.get("pkg") or ""))]
+    # ...and the container toolkit (R102): the version installed, what apt
+    # would move it to, and whether Docker lists the nvidia runtime.
+    gc = c.get("gpu_container")
+    if c.get("gpu_card") and isinstance(gc, dict):
+        ver = lambda v: re.sub(r"[^A-Za-z0-9._~+:-]", "", str(v or ""))[:60]  # noqa: E731
+        out["gpu_container"] = {"installed": ver(gc.get("installed")), "candidate": ver(gc.get("candidate")),
+                                "runtime": bool(gc.get("runtime"))}
     # Whether the agent may install system packages there: the stamp and
     # root.
     out["administers"] = bool(c.get("administers"))

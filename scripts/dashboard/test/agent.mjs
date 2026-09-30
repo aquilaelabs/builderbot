@@ -99,6 +99,9 @@ case "$1 $3" in
   "search ^nvidia-driver"*) printf 'nvidia-driver-590 - NVIDIA driver metapackage (transitional package)\\nnvidia-driver-595 - NVIDIA driver metapackage\\nnvidia-driver-610 - NVIDIA driver metapackage\\n'; exit 0 ;;
 esac
 case "$1 $2" in
+  "policy nvidia-container-toolkit") f="\${BB_CTK_STATE:-/nonexistent}"
+    if [ -s "$f" ]; then printf 'nvidia-container-toolkit:\\n  Installed: %s\\n  Candidate: %s\\n' "$(cat "$f")" "$(cat "$f")"
+    else printf 'nvidia-container-toolkit:\\n  Installed: (none)\\n  Candidate: (none)\\n'; fi; exit 0 ;;
   "policy nvidia-driver"*) printf 'nvidia-driver-595:\\n  Installed: (none)\\n  Candidate: 595.91.07-0ubuntu1\\nnvidia-driver-610:\\n  Installed: (none)\\n  Candidate: 610.57.04-0ubuntu1\\n'; exit 0 ;;
 esac
 ${real('apt-cache')}
@@ -107,6 +110,10 @@ ${real('apt-cache')}
 for a in "$@"; do case "$a" in "nvidia-driver*")
   f="\${BB_NV_STATE:-/nonexistent}"
   [ -s "$f" ] && printf '%s %s-0ubuntu1 ii \\n' "$(sed -n 2p "$f")" "$(sed -n 1p "$f")"
+  exit 0 ;;
+  nvidia-container-toolkit)
+  f="\${BB_CTK_STATE:-/nonexistent}"
+  [ -s "$f" ] && printf '%s ii \\n' "$(cat "$f")"
   exit 0 ;; esac; done
 ${real('dpkg-query')}
 `, { mode: 0o755 });
@@ -136,6 +143,16 @@ if a[0] == "gpu-driver":
         open(os.environ["BB_NV_STATE"], "w").write({"nvidia-driver-610": "610.57.04"}.get(pkg, "595.91.07") + "\\n" + pkg + "\\n")
     elif os.path.exists(os.environ["BB_NV_STATE"]): os.remove(os.environ["BB_NV_STATE"])
     print(f"gpu-driver {' '.join(a[1:])}: done; it takes effect at the next boot"); sys.exit(0)
+if a[0] == "gpu-container":
+    # The container toolkit's verb (R102): "installed" is what the stand-in
+    # dpkg-query answers with, and the docker stub lists the runtime.
+    kit, rt = os.environ["BB_CTK_STATE"], os.path.join(os.environ["DOCKER_STUB_STATE"], "nvidia-runtime")
+    if a[1] == "install":
+        open(kit, "w").write("1.17.8-1"); open(rt, "w").write("1")
+    else:
+        for x in (kit, rt):
+            if os.path.exists(x): os.remove(x)
+    print(f"gpu-container {a[1]}: done; Docker restarted"); sys.exit(0)
 if a[0] == "gpu-off":
     open(os.environ["BB_GPU_STATE"], "w").write("off: switched off on the Nodes tab; an emulator here renders in software\\n")
     print("the GPU display is off"); sys.exit(0)
@@ -323,7 +340,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_ACT_RUNNER_BIN: `${DIR}/bin/act_runner`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
   BB_GPU_STATE: `${DIR}/gpu-state`, BUILDERBOT_GPU_DISPLAY_STATE: `${DIR}/gpu-state`,
-  BUILDERBOT_SYS_ROOT: `${DIR}/sys`, BB_NV_STATE: `${DIR}/nv-installed`,
+  BUILDERBOT_SYS_ROOT: `${DIR}/sys`, BB_NV_STATE: `${DIR}/nv-installed`, BB_CTK_STATE: `${DIR}/ctk-installed`,
   BUILDERBOT_NETPLAN_BIN: `${DIR}/bin/netplan`, BUILDERBOT_NETPLAN_DIR: `${DIR}/netplan` };
 {
   let out = '';
@@ -1673,16 +1690,38 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         ok(of?.state === 'succeeded' && /gpu-off/.test(of.log || '') && told !== null,
            `the emulator is taken off the card by bb-sandbox gpu-off, and the row reads it as switched off (${o.error || of?.state}; ${told?.reported?.gpu_display})`);
       }
+      // The container toolkit, the machine's second row, end to end: the
+      // census says it is not there and that the driver it needs is; its
+      // install is a name of the toolchain job, run as bb-sandbox
+      // gpu-container install; and the hello after it says installed, with
+      // Docker listing the runtime.
+      const KIT = 'nvidia-container-toolkit';
+      const kit = async () => ((await api(`/api/toolchains?node=${minted.id}`)).machine || []).find(m => m.name === KIT);
+      {
+        const k0 = await until(async () => { const x = await kit(); return x?.state === 'absent' && x.driver ? x : null; }, 120000);
+        ok(k0 !== null && k0.managed && !k0.here, `the agent reports no container toolkit beside the driver (${k0?.state})`);
+        const kq = await api('/api/toolchains', { action: 'install', names: [KIT], node: minted.id });
+        const kf = kq.ok ? await job(kq.job) : null;
+        ok(kf?.state === 'succeeded' && /== bb-sandbox gpu-container install/.test(kf.log || '') && /gpu-container install: done/.test(kf.log || ''),
+           `its install is a toolchain job the agent runs as bb-sandbox gpu-container install (${kq.error || kf?.state}: ${(kf?.log || '').trim().slice(-60)})`);
+        const k1 = await until(async () => { const x = await kit(); return x?.state === 'ready' ? x : null; }, 120000);
+        ok(k1?.installed === '1.17.8-1' && k1.here && !k1.newer,
+           `...and the hello after it says installed, with Docker listing the runtime (${k1?.state} ${k1?.installed})`);
+      }
       const ck = await api('/api/toolchains', { action: 'check', names: ['zig'], node: minted.id });
       const ckf = ck.ok ? await job(ck.job) : null;
       ok(/bb-sandbox gpu-driver refresh/.test(ckf?.log || '') && /reading the package lists again/.test(ckf?.log || ''),
          `Check for updates reads apt's lists again on the node (${ck.error || ckf?.state})`);
-      const rm = await api('/api/toolchains', { action: 'remove', names: ['nvidia-driver'], node: minted.id });
+      const rm = await api('/api/toolchains', { action: 'remove', names: ['nvidia-driver', KIT], node: minted.id });
       const rmf = rm.ok ? await job(rm.job) : null;
       const gone = await until(async () => { const x = await drv(); return x?.state === 'absent' ? x : null; }, 120000);
       ok(rmf?.state === 'succeeded' && /gpu-driver remove: done/.test(rmf.log || '') && gone !== null,
          `Remove takes it off again, and the row reads not installed (${rm.error || rmf?.state}, ${gone?.state})`);
+      const kgone = await until(async () => { const x = await kit(); return x?.state === 'absent' ? x : null; }, 120000);
+      ok(/gpu-container remove: done[\s\S]*gpu-driver remove: done/.test(rmf?.log || '') && kgone !== null,
+         `removed together, the toolkit comes off before the driver it needs (${kgone?.state})`);
       rmSync(`${DIR}/nv-installed`, { force: true });
+      rmSync(`${DIR}/ctk-installed`, { force: true });
     }
 
     // ---- a store under a share that is not mounted ------------------------

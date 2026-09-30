@@ -1070,6 +1070,21 @@ def gpu_for(project, node_id=""):
     return "on"
 
 
+def gpu_container_why(project, node_id):
+    """Why a container of `project` on that node cannot be given its NVIDIA
+    card, or "" (R102): the project's setting and the node's switch, which
+    speak for containers as they do for sessions, then what the node's
+    Toolchains tab holds (the driver running the card, the container
+    toolkit, Docker's runtime)."""
+    who = gpu_for(project, node_id)
+    if who == "project":
+        return "this project's settings say the node's GPU is not for it (The node's GPU)"
+    n = nodes.node(node_id) if node_id and not NODES_OK else None
+    if who == "node":
+        return f"{n['name'] if n else 'its node'}'s GPU is switched off for sessions and jobs (Nodes tab, GPU)"
+    return toolchains.container_why(n)
+
+
 def claude_state(title):
     """(state, task) for a Claude pane title: "working" or "waiting"."""
     working = title.startswith(SPINNER_GLYPHS)
@@ -2505,6 +2520,7 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 # The layer on top of it: the compose runner is its, so it is the one that
 # hands jobs.py the function.
 devactions.configure(runner=jobs if not NODES_OK else None)
+devapp.gpu_why = gpu_container_why
 # ...and what its request() needs about who is asking, and who hears.
 devactions.users = users
 devactions.ask_rebuild = phone.ask_rebuild

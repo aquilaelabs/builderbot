@@ -2220,6 +2220,70 @@ cmd_gpu_driver() {
     esac
 }
 
+# --- the NVIDIA container toolkit as a row of the Toolchains tab (R102) --------
+# What lets a container on this machine use the card: NVIDIA's runtime hook,
+# which hands the driver's libraries and the device nodes to a container
+# that asks for a GPU. Ubuntu and Debian do not carry it, so it comes from
+# NVIDIA's own package source, added here with its signing key and taken
+# away again on removal; Docker is told about the runtime and restarted,
+# which stops this machine's containers for a moment (those with a restart
+# policy come back). The machine's own, like the driver it needs.
+NVCT_LIST=/etc/apt/sources.list.d/nvidia-container-toolkit.list
+NVCT_KEY=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+NVCT_URL=https://nvidia.github.io/libnvidia-container
+cmd_gpu_container() {
+    local pkgs
+    case "${1-}" in
+        install)
+            have apt-get || die "the container toolkit is installed from here on Debian and Ubuntu only: on this family, from NVIDIA's repository for it"
+            have docker || die "no docker on this machine, so there is no container to hand the card to"
+            [ -n "$(gpu_driver_version)" ] || die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains tab first; the toolkit hands its libraries to a container"
+            have curl || die "curl is not on this machine, and the package source is fetched with it"
+            have gpg || die "gpg is not on this machine, and the package source's key is unpacked with it"
+            say "adding NVIDIA's package source for the container toolkit"
+            curl -fsSL "$NVCT_URL/gpgkey" | gpg --dearmor --yes -o "$NVCT_KEY" \
+                || { rm -f "$NVCT_KEY"; die "could not fetch the package source's signing key from $NVCT_URL"; }
+            chmod 0644 "$NVCT_KEY"
+            curl -fsSL "$NVCT_URL/stable/deb/nvidia-container-toolkit.list" \
+                | sed "s#deb https://#deb [signed-by=$NVCT_KEY] https://#g" > "$NVCT_LIST" \
+                || { rm -f "$NVCT_LIST" "$NVCT_KEY"; die "could not fetch the package source's list from $NVCT_URL"; }
+            grep -q '^deb ' "$NVCT_LIST" || { rm -f "$NVCT_LIST" "$NVCT_KEY"; die "the package source's list came back empty from $NVCT_URL"; }
+            export DEBIAN_FRONTEND=noninteractive
+            apt_get update -qq
+            say "installing the NVIDIA container toolkit with apt"
+            apt_get install -y -qq nvidia-container-toolkit || die "apt could not install it; its output above says why"
+            say "telling Docker about the runtime, and restarting it: this machine's containers stop for a moment"
+            nvidia-ctk runtime configure --runtime=docker >/dev/null || die "nvidia-ctk could not write Docker's configuration"
+            if have systemctl; then systemctl restart docker || die "Docker did not come back after the restart: journalctl -u docker says why"; fi
+            say "installed: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)" ;;
+        remove)
+            have dpkg-query || die "the toolkit was not installed from here on this family: remove it the way it was installed"
+            # shellcheck disable=SC2016
+            pkgs="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
+                | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-container-toolkit|nvidia-container-toolkit-base|libnvidia-container1|libnvidia-container-tools)$/ {print $1}' \
+                | tr '\n' ' ' || true)"
+            if [ -n "${pkgs// /}" ]; then
+                # Docker's own note of the runtime first, while the tool that
+                # wrote it is still here to take it out.
+                if have nvidia-ctk; then nvidia-ctk runtime configure --runtime=docker --unset >/dev/null 2>&1 || true; fi
+                say "removing: $pkgs"
+                export DEBIAN_FRONTEND=noninteractive
+                # shellcheck disable=SC2086
+                apt_get purge -y -qq $pkgs || die "apt could not remove them; its output above says why"
+                apt_get autoremove -y -qq >/dev/null 2>&1 || true
+            else
+                say "the NVIDIA container toolkit is not installed here"
+            fi
+            rm -f "$NVCT_LIST" "$NVCT_KEY"
+            if have systemctl && have docker; then
+                say "restarting Docker without the runtime: this machine's containers stop for a moment"
+                systemctl restart docker || warn "Docker did not come back after the restart: journalctl -u docker says why"
+            fi
+            say "removed, with NVIDIA's package source" ;;
+        *) die "usage: bb-sandbox gpu-container install|remove" ;;
+    esac
+}
+
 case "${1-}" in
     "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
     uninstall)   shift; cmd_uninstall "${1-}" ;;
@@ -2228,6 +2292,7 @@ case "${1-}" in
     gpu-off)     cmd_gpu_off ;;
     gpu-driver)  shift; cmd_gpu_driver "${1-}" "${2-}" ;;
     gpu-nodes)   cmd_gpu_nodes ;;
+    gpu-container) shift; cmd_gpu_container "${1-}" ;;
     list)        shift; if [ "${1-}" = "--json" ]; then cmd_list_json; else cmd_list; fi ;;
     add-nfs)     shift; cmd_add_nfs "${1-}" ;;
     add-share)   shift; cmd_add_share "${1-}" ;;

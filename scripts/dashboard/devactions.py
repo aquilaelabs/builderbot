@@ -607,6 +607,11 @@ def state(project, instance=devapp.MAIN):
         rs = devapp.risks(project, cfg)
         out["risks"] = rs
         out["problems"] = devapp.problems(project, cfg) + devapp.host_map()[1]
+        # A compose that reserves the GPU on a node that cannot hand it to a
+        # container is the same kind of thing: it cannot start as written.
+        nogpu = devapp.gpu_gate(project, instance, cfg)
+        if nogpu:
+            out["problems"].append(nogpu)
         out.update(devapp.wiring(cfg))
         # ...and the ports somebody else is already on. After wiring(), which
         # is what says which ports this instance wants. Its own field rather
@@ -677,7 +682,7 @@ def up(project, instance=devapp.MAIN, ack=""):
     if clash:
         return {"error": clash}
     return _submit(project, instance, "up",
-                   check=lambda: devapp._risk_gate(project, instance, ack))
+                   check=lambda: devapp.gpu_gate(project, instance) or devapp._risk_gate(project, instance, ack))
 
 
 def _job_up(project, instance, run):
@@ -835,8 +840,11 @@ def rebuild(project, instance=devapp.MAIN, ack="", gate=True):
     moved = sync_work_tree(project, instance)
     if moved:
         return {"error": moved}
+    # The GPU's gate is for a session's build too: it is about what the node
+    # can do, not about who confirmed what.
     return _submit(project, instance, "rebuild",
-                   check=lambda: devapp._risk_gate(project, instance, ack) if gate else "")
+                   check=lambda: devapp.gpu_gate(project, instance)
+                   or (devapp._risk_gate(project, instance, ack) if gate else ""))
 
 
 def run_compose_job(job, run):

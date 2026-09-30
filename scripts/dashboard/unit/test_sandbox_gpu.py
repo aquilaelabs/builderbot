@@ -1,4 +1,4 @@
-"""bb-sandbox's gpu-driver verbs, run as the bash they are against stand-in
+"""bb-sandbox's gpu-driver and gpu-container verbs, run as the bash they are against stand-in
 tools (R102). The agent and server suites stub bb-sandbox whole, so nothing
 ran this script's own lines, and its `set -euo pipefail` ended a real
 install without a word on the dev node (30 Sep): the lookup of the installed
@@ -64,6 +64,93 @@ case "$2" in nvidia:610) echo "610.57.04 nvidia-driver-610" > "{self.state}" ;; 
             with open(self.log) as f:
                 ran = f.read()
         return p.returncode, p.stdout + p.stderr, ran
+
+    def toolkit(self):
+        """Stand-ins for what the container toolkit's verbs touch: NVIDIA's
+        package source over curl, gpg, docker, nvidia-ctk and systemctl, and
+        the helper's two files moved under the scratch directory."""
+        self.list = os.path.join(self.dir, "nvidia-container-toolkit.list")
+        self.key = os.path.join(self.dir, "nvidia-container-toolkit-keyring.gpg")
+        self.ctk = os.path.join(self.dir, "toolkit")
+        with open(self.helper, encoding="utf-8") as f:
+            text = f.read()
+        text, n = re.subn(r"^NVCT_LIST=.*$", f"NVCT_LIST={self.list}", text, flags=re.M)
+        text, k = re.subn(r"^NVCT_KEY=.*$", f"NVCT_KEY={self.key}", text, flags=re.M)
+        self.assertEqual((n, k), (1, 1))
+        with open(self.helper, "w", encoding="utf-8") as f:
+            f.write(text)
+        self.tool("curl", f'''echo "curl $*" >> "{self.log}"
+case "$*" in
+  *gpgkey*) echo "-----BEGIN PGP PUBLIC KEY BLOCK-----" ;;
+  *.list*) echo "deb https://nvidia.github.io/libnvidia-container/stable/deb/\\$(ARCH) /" ;;
+  *) exit 22 ;;
+esac''')
+        self.tool("gpg", 'while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done; cat > "$out"')
+        self.tool("docker", "exit 0")
+        self.tool("nvidia-ctk", f'echo "nvidia-ctk $*" >> "{self.log}"')
+        self.tool("systemctl", f'echo "systemctl $*" >> "{self.log}"')
+        self.tool("apt-get", f'''echo "apt-get $*" >> "{self.log}"
+case "$*" in
+  *install*nvidia-container-toolkit*) echo on > "{self.ctk}" ;;
+  *purge*) rm -f "{self.ctk}" "{self.state}" ;;
+esac; exit 0''')
+        self.tool("dpkg-query", f'''[ -s "{self.ctk}" ] && {{ echo "nvidia-container-toolkit ii "; echo "libnvidia-container1 ii "; }}
+echo "docker-ce ii "; exit 0''')
+
+    def driver_on(self):
+        with open(self.state, "w") as f:
+            f.write("610.57.04 nvidia-driver-610\n")
+
+    def test_the_toolkit_adds_nvidias_source_installs_and_restarts_docker(self):
+        self.toolkit()
+        self.driver_on()
+        rc, said, ran = self.run_helper("gpu-container", "install")
+        self.assertEqual(rc, 0, said)
+        with open(self.list) as f:
+            src = f.read()
+        self.assertIn(f"deb [signed-by={self.key}] https://nvidia.github.io/libnvidia-container", src)
+        self.assertTrue(os.path.getsize(self.key))
+        lines = ran.splitlines()
+        install = next(i for i, ln in enumerate(lines) if " install " in ln and "nvidia-container-toolkit" in ln)
+        self.assertIn("DPkg::Lock::Timeout", lines[install])
+        configure = lines.index("nvidia-ctk runtime configure --runtime=docker")
+        self.assertLess(install, configure)
+        self.assertLess(configure, lines.index("systemctl restart docker"))
+
+    def test_the_toolkit_waits_for_the_driver(self):
+        self.toolkit()
+        rc, said, ran = self.run_helper("gpu-container", "install")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("driver is not installed", said)
+        self.assertEqual(ran, "")
+        self.assertFalse(os.path.exists(self.list))
+
+    def test_a_source_that_does_not_answer_leaves_nothing_behind(self):
+        self.toolkit()
+        self.driver_on()
+        self.tool("curl", "exit 22")
+        rc, said, ran = self.run_helper("gpu-container", "install")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("could not fetch", said)
+        self.assertFalse(os.path.exists(self.list))
+        self.assertFalse(os.path.exists(self.key))
+        self.assertNotIn("apt-get", ran)
+
+    def test_removing_the_toolkit_takes_its_source_with_it(self):
+        self.toolkit()
+        for f in (self.list, self.key, self.ctk):
+            with open(f, "w") as h:
+                h.write("x\n")
+        rc, said, ran = self.run_helper("gpu-container", "remove")
+        self.assertEqual(rc, 0, said)
+        purge = [ln for ln in ran.splitlines() if " purge " in ln][0]
+        self.assertIn("nvidia-container-toolkit", purge)
+        self.assertIn("libnvidia-container1", purge)
+        self.assertNotIn("docker-ce", purge)
+        self.assertIn("nvidia-ctk runtime configure --runtime=docker --unset", ran)
+        self.assertLess(ran.index("--unset"), ran.index(" purge "))
+        self.assertIn("systemctl restart docker", ran)
+        self.assertFalse(os.path.exists(self.list) or os.path.exists(self.key))
 
     def test_a_picked_branch_on_a_machine_with_no_driver(self):
         rc, said, ran = self.run_helper("gpu-driver", "install", "nvidia-driver-610")

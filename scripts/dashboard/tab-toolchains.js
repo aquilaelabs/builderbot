@@ -321,6 +321,50 @@ function tcDriverRow(m, busy, job){
   </div>`;
 }
 
+// The NVIDIA container toolkit (R102): the second of the machine's own
+// rows, under the driver it needs. It is what lets a container on this
+// machine reserve the card, comes from NVIDIA's package source rather than
+// the distribution's, and restarts Docker going on and coming off, which
+// is said before either.
+const TC_TOOLKIT = "nvidia-container-toolkit";
+function tcToolkitLine(m){
+  const nodesBtn = ` <button type="button" class="link" data-tcnodes>Open the Nodes tab</button>`;
+  switch (m.state){
+    case "absent": return `<span class="sub where">not installed: a container here cannot reserve the card${
+      m.driver ? "" : ". It needs the driver above: tick both, and the driver goes on first"}</span>`;
+    case "unconfigured": return `<span class="sub warn">installed, but Docker here does not list the nvidia runtime: tick it and press Install selected, which configures Docker again</span>`;
+    case "ready": return m.driver_loaded
+      ? `<span class="sub where on">installed: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)</span>`
+      : `<span class="sub warn">installed; a container sees the card once the driver above is running it</span>`;
+    default: return `<span class="sub warn">this node's agent does not report the container toolkit yet: update it on the Nodes tab.${nodesBtn}</span>`;
+  }
+}
+function tcToolkitRow(m, busy, job){
+  const mine = !!(job && job.running && job.action !== "check" && job.current === TC_TOOLKIT);
+  const doing = job && job.action === "remove" ? "removing" : "installing";
+  const may = m.managed && mayToolchains() && m.state !== "unknown";
+  // Ticked and dead where it is installed, current and known to Docker;
+  // live where a tick has something to do (install, update, configure).
+  const upToDate = !mine && m.state === "ready" && !m.newer;
+  return `<div class="tc tcdrv${upToDate ? " done" : ""}">
+    <input type="checkbox" id="tcCtkTick" value="${TC_TOOLKIT}" aria-label="NVIDIA container toolkit"${
+      busy || !may ? " disabled" : ""}${
+      upToDate ? ` checked disabled title="installed and up to date"`
+               : tcTicked.has(TC_TOOLKIT) ? " checked" : ""}>
+    <span class="grow">
+      <label class="nm" for="tcCtkTick">${esc(m.label)}${m.installed ? ` <span class="pill" title="installed">${esc(m.installed.split("-")[0])}</span>` : ""}</label>
+      <span class="sub">Lets a container on this machine use the card. From NVIDIA's own package source, which installing adds and removing takes away; Docker restarts both times, which stops this machine's containers for a moment.</span>
+      ${mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcToolkitLine(m)}
+      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer.split("-")[0])}. Tick it and press Install selected</span>` : ""}
+      ${job?.errors?.[TC_TOOLKIT] && !mine ? `<span class="sub bad">${esc(job.errors[TC_TOOLKIT])}</span>` : ""}
+      ${!m.managed ? `<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: the toolkit is installed there by hand.</span>` : ""}
+    </span>
+    ${m.here && !mine && may ? `<button class="eye rm" data-tcctkrm aria-label="uninstall the NVIDIA container toolkit"${
+      busy ? ` disabled title="another toolchain operation is running"`
+           : ` title="remove the container toolkit from this machine"`}>${BIN}</button>` : ""}
+  </div>`;
+}
+
 function renderToolchainsInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -426,7 +470,7 @@ function renderToolchainsInto(i){
             : `This node's owner installs them: the agent does not administer the machine.`}</div>`;
     })()}
     ${onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
-      d.machine.map(m => tcDriverRow(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
+      d.machine.map(m => (m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
     <div class="tcs">${(d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join("")}</div>
     ${(() => {
@@ -483,6 +527,10 @@ function renderToolchainsInto(i){
   el.querySelectorAll("[data-tcdrvrm]").forEach(b => b.onclick = () => {
     if (confirm(`Remove NVIDIA's driver from ${toolchains?.name || "this node"}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))
       tcAct("remove", [TC_DRIVER]);
+  });
+  el.querySelectorAll("[data-tcctkrm]").forEach(b => b.onclick = () => {
+    if (confirm(`Remove the NVIDIA container toolkit from ${toolchains?.name || "this node"}? Docker restarts, which stops every container there for a moment, and a container that reserves the card no longer starts.`))
+      tcAct("remove", [TC_TOOLKIT]);
   });
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on
@@ -553,6 +601,10 @@ async function tcAct(action, only){
   // before anything is queued.
   const drv = names.includes(TC_DRIVER) && action === "install";
   if (drv && !confirm(`Install NVIDIA's driver on ${toolchains?.name || "this node"}? It takes the card only when the machine restarts, which ends every session on it.`))
+    return;
+  // ...and the toolkit is the one whose install restarts Docker.
+  if (names.includes(TC_TOOLKIT) && action === "install"
+      && !confirm(`Install the NVIDIA container toolkit on ${toolchains?.name || "this node"}? It adds NVIDIA's package source to the machine and restarts Docker, which stops every container there for a moment.`))
     return;
   // The ticks stay: a toolchain being installed reads as chosen, and the boxes
   // are ghosted anyway. What happens to them afterwards is decided by how it

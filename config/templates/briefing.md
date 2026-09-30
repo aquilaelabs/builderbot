@@ -282,9 +282,13 @@ a heavy job as `bb gpu run [--mem MB] -- CMD`, which waits for its turn and
 for that much free memory instead of failing on a full card halfway
 through. Where `bb gpu` says the card is not this session's (the node's
 switch, or this project's setting), a program finds no card and takes its
-CPU path: say so in your reply rather than looking for a way round. The
-driver and the node's switches are the operator's, on the Toolchains and
-Nodes tabs.
+CPU path: say so in your reply rather than looking for a way round. A
+container gets the card when its compose file reserves it
+(`deploy.resources.reservations.devices` with `driver: nvidia`) and the
+node carries the NVIDIA container toolkit, which `bb toolchains` names; a
+rebuild of one that asks where it cannot be given says why instead of
+starting. The driver, the toolkit and the node's switches are the
+operator's, on the Toolchains and Nodes tabs.
 <!-- BUILDERBOT:END -->
 
 ## Containers

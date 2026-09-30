@@ -713,12 +713,25 @@ def _node_errors(job_id, failed, verb):
             parts[cur].append(line)
     out = {}
     for name in failed:
-        if name == DRIVER:
+        if name in (DRIVER, TOOLKIT):
             # bb-sandbox says why on a line of its own ("!! ..."), and the
             # agent's refusal begins "refused:"; its sections are not bb's.
             # apt's own first complaint ("E: ...") is the reason; bb-sandbox's
             # last line only says apt had one (the dev node's lock, 30 Sep).
-            log = [x.strip() for x in (nodes.job_tail(job_id, 20000) or "").splitlines()]
+            # Each of the machine's two rows reads its own part of the log,
+            # from the agent's header for it to the header of the other.
+            # A log with no such header is all one row's.
+            mine = "gpu-container" if name == TOOLKIT else "gpu-driver"
+            whole = [x.strip() for x in (nodes.job_tail(job_id, 20000) or "").splitlines()]
+            log, on = [], not any(x.startswith("== bb-sandbox gpu-") for x in whole)
+            for x in whole:
+                if x.startswith("== bb-sandbox gpu-"):
+                    on = x.startswith(f"== bb-sandbox {mine} ")
+                if x.startswith("refused:"):
+                    if (TOOLKIT in x) == (name == TOOLKIT):
+                        log.append(x)
+                elif on:
+                    log.append(x)
             apt = next((x[3:].strip() for x in log if x.startswith("E: ")), "")
             why = next((x.lstrip("! ") for x in reversed(log) if x.startswith(("!!", "refused:"))), "")
             out[name] = " · ".join([w for w in (apt or why,) if w] + [f"{verb} failed on the node"])[-400:]
@@ -871,7 +884,7 @@ def payload_for_node(nid):
     if nodes:
         for j in nodes.jobs_for(node_id=nid, type="toolchain", active=True, n=1):
             job = {"running": True, "action": (j.get("spec") or {}).get("action", ""),
-                   "queue": [DRIVER if str(x).startswith(DRIVER) else x
+                   "queue": [DRIVER if str(x).startswith(DRIVER + ":") else x
                              for x in (j.get("spec") or {}).get("names", [])],
                    "current": j.get("step", ""),
                    "log": nodes.job_tail(j["id"], 1200).splitlines()[-16:], "done": [],
@@ -892,11 +905,10 @@ def payload_for_node(nid):
                 if j.get("state") not in ("succeeded", "failed", "canceled"):
                     break
                 sp = j.get("spec") or {}
-                names = [DRIVER if str(x).startswith(DRIVER) else str(x) for x in (sp.get("names") or [])]
+                names = [DRIVER if str(x).startswith(DRIVER + ":") else str(x) for x in (sp.get("names") or [])]
                 act = sp.get("action") or "install"
                 here = {i["name"] for i in items if i["installed"]}
-                if (driver_row(n) or {}).get("here"):
-                    here.add(DRIVER)
+                here |= {r["name"] for r in (driver_row(n), container_row(n)) if r and r["here"]}
                 done = [x for x in names if (x in here) == (act == "install")]
                 failed = [x for x in names if x not in done]
                 job = {"running": False, "action": act, "queue": [], "current": "",
@@ -930,25 +942,26 @@ def payload_for_node(nid):
             i["state"] = r["status"]
         checked = int(j.get("ended") or 0)
         break
-    machine = [r for r in (driver_row(n),) if r]
+    machine = [r for r in (driver_row(n), container_row(n)) if r]
     for m in machine:
-        # The census after a job that touched the driver is what says where
-        # it stands now; until it has arrived the tab keeps asking, two
-        # minutes at most for an agent gone quiet.
+        # The census after a job that touched the driver or the toolkit is
+        # what says where it stands now; until it has arrived the tab keeps
+        # asking, two minutes at most for an agent gone quiet.
         ended = 0
         for j in nodes.jobs_for(node_id=nid, type="toolchain", n=1) if nodes else []:
             sp = j.get("spec") or {}
             # ...and after a check, which reads apt's lists again on the node.
             if j.get("state") in ("succeeded", "failed", "canceled") and (
                     sp.get("action") == "check"
-                    or any(str(x).startswith(DRIVER) for x in sp.get("names") or [])):
+                    or any(str(x).startswith(DRIVER) or str(x) == TOOLKIT for x in sp.get("names") or [])):
                 ended = int(j.get("ended") or 0)
         # The agent's hello at the end of a job lands a moment before the
         # job's result does, so a census from the job's last seconds counts.
         m["settling"] = bool(ended) and int(rep.get("at") or 0) < ended - 5 and time.time() - ended < 120
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # What is this machine's rather than the store's: the NVIDIA
-            # driver, where the node has the card (R102).
+            # driver and the container toolkit, where the node has the card
+            # (R102).
             "machine": machine,
             # Held recipes whose system packages this machine lacks, and
             # whether the agent may install them there (roadmap R51).
@@ -1239,6 +1252,84 @@ def store_busy(nid):
     return ""
 
 
+TOOLKIT = "nvidia-container-toolkit"
+
+
+def container_row(n):
+    """The NVIDIA container toolkit as a row of the node's Toolchains tab
+    (R102), or None where the node reports no NVIDIA card or no Docker: what
+    lets a container there reserve the card. The machine's own like the
+    driver it needs, and from NVIDIA's package source, which its install
+    adds and its removal takes away. Docker is restarted by both, so the
+    row says that before either."""
+    rep = n.get("reported") or {}
+    if not rep.get("gpu_card") or not rep.get("docker"):
+        return None
+    gc = rep.get("gpu_container")
+    known = isinstance(gc, dict)
+    gc = gc if known else {}
+    inst, cand = gc.get("installed") or "", gc.get("candidate") or ""
+    drv = driver_row(n) or {}
+    state = ("unknown" if not known
+             else "absent" if not inst
+             else "ready" if gc.get("runtime")
+             else "unconfigured")
+    return {"name": TOOLKIT, "label": "NVIDIA container toolkit", "installed": inst,
+            "state": state, "managed": bool(rep.get("sandbox")), "here": bool(inst),
+            "newer": cand if inst and cand and cand != inst else "",
+            # The driver on the machine, which the toolkit hands to a
+            # container: without it an install is refused, by name.
+            "driver": bool(drv.get("here")),
+            # ...and running the card, which is when a container sees it.
+            "driver_loaded": drv.get("state") in ("loaded", "update")}
+
+
+def container_why(n):
+    """Why a container on this node cannot be given its NVIDIA card, in
+    words for the row that asked, or "" when it can: the card, the driver
+    running it, the toolkit, and Docker listing the runtime."""
+    if not n:
+        return "there is no node with an NVIDIA card behind it"
+    row = container_row(n)
+    name = n.get("name") or "its node"
+    if not (n.get("reported") or {}).get("gpu_card"):
+        return f"{name} has no NVIDIA card"
+    if not row:
+        return f"{name} reports no Docker"
+    if row["state"] == "unknown":
+        return f"{name}'s agent does not report the NVIDIA container toolkit yet: update it on the Nodes tab"
+    if row["state"] == "absent":
+        return (f"{name} has no NVIDIA container toolkit, which is what hands the card to a container: "
+                "an administrator installs it from that node's Toolchains tab")
+    if row["state"] == "unconfigured":
+        return (f"Docker on {name} does not list the nvidia runtime, though the toolkit is installed: "
+                "install the toolkit again from that node's Toolchains tab, which configures it")
+    if not row["driver_loaded"]:
+        return f"NVIDIA's driver is not running the card on {name}: its Toolchains tab says where it stands"
+    return ""
+
+
+def _machine_name(n, action, name, also):
+    """(the name the job carries, error) for the container toolkit, by the
+    machine's own rules as the driver's are: a sandbox's, an agent that
+    reports it, not a locked node, and the driver there first (or in the
+    same batch, which installs it first)."""
+    row = container_row(n)
+    if not row:
+        return "", f"{n['name']} reports no NVIDIA card with Docker beside it"
+    if not row["managed"]:
+        return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: the container toolkit "
+                    "is installed or removed there, the way NVIDIA's guide does it")
+    if row["state"] == "unknown":
+        return "", f"{n['name']}'s agent does not report the container toolkit yet: update it on the Nodes tab first"
+    if (n.get("config") or {}).get("lock"):
+        return "", f"{n['name']} is locked to its console: nothing on it is installed from here"
+    if action == "install" and not row["driver"] and DRIVER not in also:
+        return "", (f"the NVIDIA driver is not installed on {n['name']}, and the toolkit hands its libraries "
+                    "to a container: tick the driver as well, or install it first")
+    return name, ""
+
+
 def _driver_name(n, action, pkg):
     """(the name the job carries for the driver, error): nvidia-driver, or
     nvidia-driver:PACKAGE for a branch picked on the row. The machine's own
@@ -1285,12 +1376,16 @@ def node_job(principal, nid, action, names, driver=""):
                          "system packages are its owner's to install; the row names them"}
     # The driver leaves the list for the store's checks and joins it again
     # at the end, since it is the machine's and ends at a restart.
-    drv = ""
+    drv = ctk = ""
+    if TOOLKIT in names:
+        ctk, why = _machine_name(n, action, TOOLKIT, names)
+        if why:
+            return {"error": why}
     if DRIVER in names:
         drv, why = _driver_name(n, action, driver)
         if why:
             return {"error": why}
-        names = [x for x in names if x != DRIVER]
+    names = [x for x in names if x not in (DRIVER, TOOLKIT)]
     if action == "install" and names:
         # What these need, ahead of them. android-tools without a jdk fails
         # inside sdkmanager with a message that names neither.
@@ -1324,7 +1419,7 @@ def node_job(principal, nid, action, names, driver=""):
     # installs under <store>/<os>-<arch> (roadmap R19), so a Mac and a Linux
     # box sharing a share is the design, not a mistake.
     r = nodes.job_add(principal, {"node": nid}, "toolchain",
-                      {"action": action, "names": names + ([drv] if drv else []), "timeout": 3600})
+                      {"action": action, "names": names + [x for x in (drv, ctk) if x], "timeout": 3600})
     if r.get("ok") and added:
         r["added"] = added
     return r
@@ -1472,7 +1567,7 @@ def verb(action, req, principal):
         # The NVIDIA driver is a name like the others on a node that has
         # the card (R102); node_job decides whether it may be touched.
         if (node.get("reported") or {}).get("gpu_card"):
-            known = known | {DRIVER}
+            known = known | {DRIVER, TOOLKIT}
         if action == "check":
             # Every row, or the ones named: the question a check answers
             # is "is any of this out of date", and an uninstalled row's

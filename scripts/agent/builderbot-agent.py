@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.120"
+AGENT_VERSION = "0.7.121"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -288,6 +288,8 @@ SYS_ROOT = os.environ.get("BUILDERBOT_SYS_ROOT", "/sys")
 # The NVIDIA driver's name in a toolchain job: alone, or with the package
 # apt is to install after a colon (nvidia-driver:nvidia-driver-610-open).
 DRIVER = "nvidia-driver"
+# ...and the container toolkit, the second of the machine's own rows there.
+TOOLKIT = "nvidia-container-toolkit"
 # The session's view (R35): the root helper that builds it, the file that
 # tells it this machine's layout, and the sudo rule that is the session
 # account's only way to it. Installed and kept by this agent from the bundle,
@@ -1889,6 +1891,43 @@ def _gpu_driver_apt():
             "recommended": rec, "options": options}
 
 
+def _gpu_container(card=None):
+    """Where the NVIDIA container toolkit stands on this machine, for its
+    row on the Toolchains tab (R102): the version installed, the version apt
+    would move it to (known only while NVIDIA's package source is on the
+    machine, which the row's install adds), and whether Docker lists the
+    nvidia runtime, which is what a container reserving the card needs. {}
+    with no NVIDIA card or no Docker: there is nothing to hand to a
+    container, and the row is not drawn."""
+    if not (card if card is not None else _gpu_card()) or not shutil.which("docker"):
+        return {}
+
+    def out(argv, timeout=15):
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, check=False)
+            return p.stdout if p.returncode == 0 else ""
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    installed = candidate = ""
+    if shutil.which("dpkg-query"):
+        f = out(["dpkg-query", "-W", "-f", "${Version} ${db:Status-Abbrev}\n", TOOLKIT]).split()
+        if len(f) >= 2 and f[1].startswith("ii"):
+            installed = f[0]
+    if not installed and shutil.which("nvidia-ctk"):
+        # Installed some other way (a family apt does not manage, or by
+        # hand): its own tool says the version.
+        m = re.search(r"version\s+(\S+)", out(["nvidia-ctk", "--version"]))
+        installed = m.group(1) if m else ""
+    if shutil.which("apt-cache"):
+        for line in out(["apt-cache", "policy", TOOLKIT]).splitlines():
+            if "Candidate:" in line:
+                v = line.split("Candidate:", 1)[1].strip()
+                candidate = "" if v == "(none)" else v
+    runtimes = out(["docker", "info", "--format", "{{json .Runtimes}}"])
+    return {"installed": installed[:60], "candidate": candidate[:60],
+            "runtime": '"nvidia"' in runtimes}
+
+
 def _gpu_display():
     try:
         with open(GPU_DISPLAY_STATE, encoding="utf-8", errors="replace") as f:
@@ -1931,6 +1970,7 @@ def census(state):
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "gpu_card": _gpu_card(),
         "gpu_driver": _gpu_driver(),
+        "gpu_container": _gpu_container(),
         "gpu_display": _gpu_display(),
         "sshd": _sshd_listening(),
         "stores": _stores(state.get("stores"), used=True),
@@ -5176,7 +5216,9 @@ class Agent:
         # the machine's and not the store's: installed or removed as root by
         # bb-sandbox, after the store's names, since it ends at a restart.
         drv = [n for n in names if n == DRIVER or n.startswith(DRIVER + ":")]
-        names = [n for n in names if n not in drv]
+        # ...and the container toolkit beside it, the machine's as well.
+        ctk = [n for n in names if n == TOOLKIT]
+        names = [n for n in names if n not in drv and n not in ctk]
         if action == "check":
             # apt's lists brought current first, as root, so the census after
             # the check says what the driver would update to.
@@ -5215,26 +5257,32 @@ class Agent:
                 bad += 1
                 if st_ == "canceled":
                     return st_, code
-        for name in drv[:1]:
-            job.step(DRIVER)
-            pkg = name.partition(":")[2]
+        # The machine's own two, in the order each needs: the toolkit hands
+        # the driver's libraries to a container, so it goes on after the
+        # driver and comes off before it.
+        own = [*drv[:1], *ctk[:1]] if action == "install" else [*ctk[:1], *drv[:1]]
+        for name in own:
+            mine = TOOLKIT if name == TOOLKIT else DRIVER
+            job.step(mine)
+            pkg = name.partition(":")[2] if mine == DRIVER else ""
             if pkg and not DRIVER_PKG.fullmatch(pkg):
                 job.say(f"refused: {pkg} is not a driver package apt offers by that name\n")
                 bad += 1
             elif not os.access(SANDBOX_BIN, os.X_OK):
                 # The stamp, as every job that changes the machine itself
                 # asks; bb-sandbox refuses by itself where it is not root.
-                job.say("refused: the NVIDIA driver is this machine's own, and this node was not "
+                job.say(f"refused: {mine} is this machine's own, and this node was not "
                         f"provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
                 bad += 1
             else:
                 self.refresh_sandbox_tool(job)
-                job.say(f"== bb-sandbox gpu-driver {action} {pkg}\n")
-                if self._sh(job, [SANDBOX_BIN, "gpu-driver", action, *([pkg] if pkg else [])], timeout=2400):
+                verb = "gpu-container" if mine == TOOLKIT else "gpu-driver"
+                job.say(f"== bb-sandbox {verb} {action} {pkg}\n")
+                if self._sh(job, [SANDBOX_BIN, verb, action, *([pkg] if pkg else [])], timeout=2400):
                     bad += 1
         self.hello()
         if bad:
-            job.say(f"{bad} of {len(names) + len(drv[:1])} did not {action}\n")
+            job.say(f"{bad} of {len(names) + len(own)} did not {action}\n")
             return "failed", 1
         return "succeeded", 0
 

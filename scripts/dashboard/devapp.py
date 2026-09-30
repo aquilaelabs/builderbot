@@ -73,6 +73,10 @@ node_addr = None
 ENVDIR = None
 write_json = None
 field = None                     # server.py's one-string-field reader, for act()
+# Why a container of a project on a node cannot be given that node's NVIDIA
+# card, or "": server.py's, which knows the node's switch, the project's
+# setting and what the node's Toolchains tab holds (R102).
+gpu_why = None
 
 DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
 
@@ -3392,6 +3396,46 @@ def risk_digest(rs):
     if not rs:
         return ""
     return hashlib.sha256("\n".join(sorted(rs)).encode()).hexdigest()[:12]
+
+
+def gpu_asks(cfg):
+    """The services of this compose that reserve an NVIDIA GPU, by name, in
+    any of the three spellings compose takes: a device reservation under
+    deploy.resources (driver nvidia, or the gpu capability with no driver
+    named), `runtime: nvidia`, or `gpus:`."""
+    out = []
+    for name, sv in sorted(_services(cfg).items()):
+        res = (((sv.get("deploy") or {}).get("resources") or {}).get("reservations") or {}) \
+            if isinstance(sv.get("deploy"), dict) else {}
+        devs = res.get("devices") if isinstance(res, dict) else None
+        asks = str(sv.get("runtime") or "") == "nvidia" or bool(sv.get("gpus"))
+        for d in devs if isinstance(devs, list) else []:
+            if not isinstance(d, dict):
+                continue
+            caps = [str(c) for c in (d.get("capabilities") or [])] if isinstance(d.get("capabilities"), list) else []
+            drv = str(d.get("driver") or "")
+            if drv == "nvidia" or (not drv and "gpu" in caps):
+                asks = True
+        if asks:
+            out.append(name)
+    return out
+
+
+def gpu_gate(project, instance=MAIN, cfg=None):
+    """The reason a compose that reserves the GPU cannot start on this
+    instance's node, or "": Docker's own answer there is "could not select
+    device driver nvidia", after the build, which names neither the toolkit
+    nor the setting that said no (R102)."""
+    if gpu_why is None:
+        return ""
+    asks = gpu_asks(cfg if cfg is not None else _config(project, instance))
+    if not asks:
+        return ""
+    why = gpu_why(project, _instance_node(project, instance))
+    if not why:
+        return ""
+    return (f"{', '.join(asks[:3])} reserve{'s' if len(asks) == 1 else ''} the NVIDIA GPU in the compose file, and "
+            + why)
 
 
 def _risk_gate(project, instance=MAIN, ack=""):

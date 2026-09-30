@@ -2255,6 +2255,77 @@ ok(page.errors.length === 0,
     ok(page.dialogs.length === nr + 1 && /nouveau takes the card back/.test(page.dialogs[nr] || '') && rd?.action === 'remove' && (rd.queue || []).includes('nvidia-driver'),
        `Remove asks first, in the driver's own words, and queues the removal (${(page.dialogs[nr] || '').slice(0, 50)})`);
     await napi('/api/v1/jobs', { action: 'cancel', id: rd?.id });
+    // The container toolkit (R102): the machine's second row, under the
+    // driver it needs. Refused alone where there is no driver and queued
+    // after it when both are ticked; its install and its removal each say
+    // first that Docker restarts; and there is no row without Docker.
+    {
+      const KIT = 'nvidia-container-toolkit';
+      const kitOf = async id => ((await napi(`/api/toolchains?node=${id}`)).machine || []).find(m => m.name === KIT);
+      const running = async () => { for (let i = 0; i < 40; i++){ const d = await napi(`/api/toolchains?node=${shed.id}`); if (d.job?.running) return d.job; await new Promise(res => setTimeout(res, 250)); } return null; };
+      const on = { ...apt, installed: '595.91.07', loaded: '595.91.07', bound: 'nvidia',
+        package: 'nvidia-driver-595', pkg_version: '595.91.07-0ubuntu1', candidate: '595.91.07-0ubuntu1' };
+      const none = { installed: '', candidate: '', runtime: false };
+      await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on });
+      const old = await kitOf(shed.id);
+      const kearly = await napi('/api/toolchains', { action: 'install', names: [KIT], node: shed.id });
+      ok(old?.state === 'unknown' && /update it on the Nodes tab/.test(kearly.error || ''),
+         `an agent that does not report the container toolkit reads as unknown, and an install waits for its update (${old?.state}; ${kearly.error})`);
+      await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: absent, gpu_container: none });
+      const lone = await napi('/api/toolchains', { action: 'install', names: [KIT], node: shed.id });
+      ok(/tick the driver as well/.test(lone.error || ''), `without the driver the toolkit alone is refused, saying what to tick (${lone.error})`);
+      const both = await napi('/api/toolchains', { action: 'install', names: [KIT, 'nvidia-driver', 'zig'], node: shed.id });
+      const bj = both.job ? await napi(`/api/v1/jobs?id=${both.job}`) : {};
+      ok(both.ok && JSON.stringify((bj.spec?.names || []).slice(-2)) === `["nvidia-driver","${KIT}"]` && bj.spec.names.includes('zig'),
+         `ticked together they are one job: the store's first, then the driver, then the toolkit (${both.error || (bj.spec?.names || []).join(', ')})`);
+      await cancel(both);
+      await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on, gpu_container: none });
+      await page.evaluate(() => loadToolchains());
+      await page.waitForFunction(() => /a container here cannot reserve the card/.test(document.querySelector('.doc .tctab #tcCtkTick')?.closest('.tcdrv')?.textContent || '')
+                                       && !document.querySelector('.doc .tctab #tcCtkTick').disabled, null, { timeout: 20000 });
+      const kd = await page.$eval('.doc .tctab #tcCtkTick', b => ({ on: b.checked, text: b.closest('.tcdrv').textContent.replace(/\s+/g, ' ').trim(),
+        under: !!b.closest('.tcdrv').previousElementSibling?.querySelector('#tcDrvTick') && !!b.closest('.tcmachine'),
+        rm: !!b.closest('.tcdrv').querySelector('[data-tcctkrm]') }));
+      ok(!kd.on && kd.under && !kd.rm && /NVIDIA container toolkit/.test(kd.text) && /Docker restarts both times/.test(kd.text),
+         `the tab draws the toolkit's row under the driver's, with a tick box and what it costs (${kd.text.slice(0, 80)})`);
+      await page.click('.doc .tctab #tcCtkTick');
+      const ni = page.dialogs.length;
+      await page.click('.doc .tctab [data-tc="install"]');
+      const ij = await running();
+      const ijob = ij ? await napi(`/api/v1/jobs?id=${ij.id}`) : {};
+      ok(page.dialogs.length === ni + 1 && /restarts Docker, which stops every container there/.test(page.dialogs[ni] || '')
+         && JSON.stringify(ijob.spec?.names) === `["${KIT}"]` && ijob.spec?.action === 'install',
+         `Install selected asks first, saying Docker restarts, and queues the toolkit (${(page.dialogs[ni] || '').slice(0, 60)}; ${JSON.stringify(ijob.spec?.names)})`);
+      await napi('/api/v1/jobs', { action: 'cancel', id: ij?.id });
+      // Installed and known to Docker: the dead tick of an installed row,
+      // how a compose file asks for the card, and Remove.
+      await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on, gpu_container: { installed: '1.17.8-1', candidate: '1.17.8-1', runtime: true } });
+      await page.evaluate(() => loadToolchains());
+      await page.waitForFunction(() => /a compose file reserves the card/.test(document.querySelector('.doc .tctab #tcCtkTick')?.closest('.tcdrv')?.textContent || ''), null, { timeout: 20000 });
+      const ki = await page.$eval('.doc .tctab #tcCtkTick', b => ({ tick: [b.checked, b.disabled], pill: b.closest('.tcdrv').querySelector('.pill')?.textContent,
+        rm: !!b.closest('.tcdrv').querySelector('[data-tcctkrm]') }));
+      ok(ki.tick[0] && ki.tick[1] && ki.pill === '1.17.8' && ki.rm, `installed, its tick is the dead one of an installed row, with its version and Remove (${ki.pill})`);
+      const nk = page.dialogs.length;
+      await page.click('.doc .tctab [data-tcctkrm]');
+      const kr = await running();
+      ok(page.dialogs.length === nk + 1 && /Docker restarts/.test(page.dialogs[nk] || '') && kr?.action === 'remove' && (kr.queue || []).includes(KIT),
+         `Remove asks first, saying Docker restarts, and queues the removal (${(page.dialogs[nk] || '').slice(0, 60)})`);
+      await napi('/api/v1/jobs', { action: 'cancel', id: kr?.id });
+      // Installed but unknown to Docker, or with a newer one on offer: the
+      // tick is alive, since there is something for an install to do.
+      const alive = [];
+      for (const [gc, want] of [[{ installed: '1.17.8-1', candidate: '1.17.8-1', runtime: false }, /does not list the nvidia runtime/],
+                                [{ installed: '1.17.8-1', candidate: '1.18.0-1', runtime: true }, /update available: 1\.18\.0/]]){
+        await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on, gpu_container: gc });
+        await page.evaluate(() => loadToolchains());
+        alive.push(await page.waitForFunction(re => { const b = document.querySelector('.doc .tctab #tcCtkTick');
+          return !!b && !b.disabled && new RegExp(re).test(b.closest('.tcdrv').textContent); }, want.source, { timeout: 20000 }).then(() => true, () => false));
+      }
+      ok(alive.every(Boolean), `unknown to Docker, or with a newer one on offer, the row says so and its tick comes alive (${alive.join(', ')})`);
+      await hello(shed, { sandbox: true, docker: '', gpu_card: card, gpu_driver: on, gpu_container: none });
+      ok(await kitOf(shed.id) === undefined, 'a machine with no Docker has no toolkit row');
+      await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on, gpu_container: none });
+    }
     // A guest machine: whose it is, on the row, and no press.
     await hello(plain, { gpu_card: card, gpu_driver: absent });
     const guest = await rowOf(plain.id);

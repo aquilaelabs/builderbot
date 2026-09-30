@@ -218,6 +218,29 @@ also writes a boot unit that makes the card's device nodes,
 no-new-privileges, so CUDA's setuid helper cannot make them on a program's
 first use. `bb toolchains` names where the driver stands too.
 
+**The NVIDIA container toolkit is the row under it**, shown where the node
+has the card and Docker: what lets a container there reserve the card. It
+is the machine's as well, and it needs the driver, so ticked alone on a
+machine with no driver it is refused by name, and ticked with the driver
+the two are one job, the driver first; removed together, the toolkit comes
+off first. Neither Ubuntu nor Debian carries it, so installing it adds
+NVIDIA's own package source and its signing key to the machine
+(`bb-sandbox gpu-container install`), tells Docker about the runtime and
+restarts Docker, which stops that machine's containers for a moment; the
+row says so and the press asks first. Removing it takes the package, the
+runtime's entry and the package source away again. The row reads installed,
+newer on offer (Check for updates reads NVIDIA's list with apt's), and
+whether Docker lists the runtime, which is the thing a container needs. A
+compose file asks for the card the way compose always has
+(`deploy.resources.reservations.devices` with `driver: nvidia`, or
+`runtime: nvidia`, or `gpus:`), and one that asks is checked before it
+starts: where the node has no card, no running driver or no toolkit, or the
+node's switch or the project's *The node's GPU* setting says the card is
+not for it, the Docker tab's row says the compose cannot start as written
+and why, and an Up or a Rebuild asked anyway (a session's `bb devapp
+rebuild` included) is refused in the same words, rather than failing after
+the build with Docker's "could not select device driver".
+
 **What the card is used for** is three settings and a queue, none of which
 moves work onto it: a program uses a GPU only if it was written to, through
 CUDA or the video encoder. A node with a card has a **GPU** section on the

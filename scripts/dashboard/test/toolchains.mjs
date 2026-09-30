@@ -785,8 +785,23 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
      && /^580\.95\.05, running the card/.test(lines[2]) && /^575\.64 running the card; 580\.95\.05 takes over/.test(lines[3])
      && /^removed; it keeps the card until the machine restarts$/.test(lines[4]),
      `bb toolchains says where the NVIDIA driver stands, read from the machine (${lines.map(x => x.slice(0, 24)).join(' | ')})`);
+  // ...and the container toolkit's line beside it, by its own tool. On a
+  // PATH of this check's own, so a machine that really has the toolkit
+  // reads the same as one that does not.
+  const kbin = mkdtempSync(`${tmpdir()}/bbkit-`);
+  for (const t of ['cat', 'sed', 'head'])
+    ln(execFileSync('bash', ['-c', `command -v ${t}`], { encoding: 'utf8' }).trim(), `${kbin}/${t}`);
+  const bash = execFileSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).trim();
+  const kit = () => execFileSync(bash, ['-c', `. ${JSON.stringify(SDK)}; sdk_nvidia_container_line`],
+    { encoding: 'utf8', env: { ...process.env, BB_SYS_ROOT: sysr, PATH: kbin } }).trim();
+  const nokit = kit();
+  wf(`${kbin}/nvidia-ctk`, '#!/bin/sh\necho "NVIDIA Container Toolkit CLI version 1.17.8"\necho "commit: abc"\n', { mode: 0o755 });
+  const haskit = kit();
+  ok(/^no container toolkit: a container here cannot reserve the card/.test(nokit)
+     && /^toolkit 1\.17\.8: a compose file reserves the card with deploy\.resources\.reservations\.devices/.test(haskit),
+     `...and whether a container there can be given the card, by the container toolkit's own tool (${nokit.slice(0, 20)} | ${haskit.slice(0, 14)})`);
   wf(`${devd}/vendor`, '0x1234\n');
-  ok(nv('', '', '') === '', '...and nothing at all on a machine with no NVIDIA card');
+  ok(nv('', '', '') === '' && kit() === '', '...and nothing at all on a machine with no NVIDIA card');
 }
 
 await done(browser);

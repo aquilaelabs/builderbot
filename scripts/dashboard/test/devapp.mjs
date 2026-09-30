@@ -814,6 +814,33 @@ const probs = await devLines("bad");
 ok(probs.length === 1 && /this container's path/.test(probs[0]),
    'a bind the host cannot resolve is named on its own line, before anything starts');
 
+// A compose that reserves the NVIDIA GPU on a node that cannot hand it to a
+// container (R102): Docker's own answer is "could not select device driver
+// nvidia", after the build. Said on the row as a compose that cannot start
+// as written, with the reason, and a rebuild asked anyway is refused by its
+// job in the same words.
+{
+  writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
+    deploy: { resources: { reservations: { devices: [{ driver: 'nvidia', count: 1, capabilities: ['gpu'] }] } } } } } }));
+  await nudge();
+  await page.waitForFunction(() => /reserves the NVIDIA GPU/.test(
+    document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
+  const held = await devLines("bad");
+  ok(held.length === 1 && /^app reserves the NVIDIA GPU in the compose file, and .*NVIDIA card/.test(held[0]),
+     `a compose that reserves the GPU where the node cannot give it is named on the row, with why (${(held[0] || '').slice(0, 110)})`);
+  const r = await page.evaluate(async () => (await (await fetch('/api/devapp', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', action: 'rebuild', ack: '' }) })).json()));
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  let job = null;
+  for (let i = 0; i < 60 && r.job && !(job && ['failed', 'succeeded', 'canceled'].includes(job.state)); i++){
+    await sleep(500);
+    job = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?id=' + r.job, { headers: H })).json();
+  }
+  ok(job?.state === 'failed' && /reserves the NVIDIA GPU/.test(job.error || ''),
+     `...and a rebuild asked anyway is refused by its job, in the same words (${r.error || job?.state}: ${String(job?.error).slice(0, 60)})`);
+}
+
 risky(['/:/host']);
 await nudge();
 await page.waitForFunction(() => /asks for more than its own directory/.test(

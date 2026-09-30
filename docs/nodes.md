@@ -1486,7 +1486,9 @@ GPU node for the life of the job and return results as artifacts: no network
 adb involved. The GPU display arrangement is `bb-sandbox gpu` on a node that
 has the card, pressed from its row (R20); the driver alone, for compute
 as well as the display, is `bb-sandbox gpu-driver install|remove`, pressed
-from the driver's row on the Toolchains tab (R102). The interactive `device-host` service (a
+from the driver's row on the Toolchains tab (R102), and the container toolkit
+under it is `bb-sandbox gpu-container install|remove`, which adds or takes
+away NVIDIA's package source and restarts Docker. The interactive `device-host` service (a
 long-lived emulator a session reaches over network adb) is designed in §2 and
 built only if the job-scoped path proves insufficient.
 
