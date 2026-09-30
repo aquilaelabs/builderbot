@@ -90,8 +90,30 @@ const names = await page.$$eval('.artrow b', bs => bs.map(b => b.textContent));
   ok(dev.join() === ['alpha-1.2.0-dev.3-abcdef3-debug.apk', 'alpha-1.2.0-dev.4-abcdef4-debug.apk', 'alpha-1.2.0-dev.5-abcdef5-debug.apk'].join()
      && names.includes('alpha-1.2.0-debug.apk') && !existsSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-dev.1-abcdef1-debug.apk`),
      `of five dev builds of one APK the newest three are kept and the release beside them stays (${dev.join(', ')})`);
-  ok(/newest 3 of each/.test(note) && /A release is kept/.test(note),
+  ok(/newest 3 of each/.test(note) && /A release is kept/.test(note) && /anything pinned/.test(note),
      `...and the tab says so (${note.replace(/\s+/g, ' ').slice(0, 120)})`);
+  // A pin keeps one whatever comes after it (the operator, 30 Sep): the
+  // oldest kept is pinned on its row, two newer builds arrive, and it is
+  // still there, marked, while the ones beside it went.
+  const oldest = 'alpha-1.2.0-dev.3-abcdef3-debug.apk';
+  await page.evaluate(n => [...document.querySelectorAll('#artList .artrow')]
+    .find(r => r.querySelector('b')?.textContent === n)?.querySelector('[data-artpin]')?.click(), oldest);
+  await page.waitForFunction(n => [...document.querySelectorAll('#artList .artrow')]
+    .some(r => r.querySelector('b')?.textContent === n && /pinned/.test(r.textContent)), oldest, { timeout: 15000 });
+  const t1 = Math.floor(Date.now() / 1000);
+  for (const n of [6, 7]){
+    const f = `${DIR}/ws/alpha/dist/alpha-1.2.0-dev.${n}-abcdef${n}-debug.apk`;
+    writeFileSync(f, 'dev build');
+    utimesSync(f, t1 - 100 + n, t1 - 100 + n);
+  }
+  const after = await page.evaluate(async () => (await (await fetch('/api/artifacts?project=alpha')).json()).artifacts
+    .filter(a => /-dev\./.test(a.name)).map(a => a.name + (a.pinned ? '*' : '')).sort());
+  ok(after.join() === ['alpha-1.2.0-dev.3-abcdef3-debug.apk*', 'alpha-1.2.0-dev.5-abcdef5-debug.apk',
+                       'alpha-1.2.0-dev.6-abcdef6-debug.apk', 'alpha-1.2.0-dev.7-abcdef7-debug.apk'].join(),
+     `a pinned build stays when newer ones arrive, and is not one of the three kept beside it (${after.join(', ')})`);
+  const unpin = await page.evaluate(async n => (await (await fetch('/api/artifacts', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', action: 'unpin', path: `dist/${n}` }) })).json()), oldest);
+  ok(unpin.ok && unpin.pinned === false, '...and unpinned, it goes like any other build');
 }
 ok(names.includes('streamlift-1.2.apk') && names.includes('companion-0.2.0.xpi'),
    `dist/ is listed, subdirectories included (${names.join(', ')})`);

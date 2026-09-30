@@ -52,6 +52,39 @@ class DevBuilds(unittest.TestCase):
         self.assertEqual(artifacts.dev_kind(a), artifacts.dev_kind("P-1.0.0-dev.2-2345678-app.apk"))
         self.assertEqual(artifacts.sweep_dev_builds("proj", keep=1), [a])
 
+    def test_a_pinned_build_stays_and_is_not_one_of_the_three(self):
+        import json
+        builds = [self.make(f"P-0.1.0-dev.{n}-abcdef{n}-debug.apk") for n in range(1, 7)]
+        state = Path(tempfile.mkdtemp())
+        written = {}
+
+        def write_json(path, d):
+            written["d"] = d
+            Path(path).write_text(json.dumps(d))
+        self.addCleanup(setattr, artifacts, "PINS", artifacts.PINS)
+        self.addCleanup(setattr, artifacts, "_write_json", artifacts._write_json)
+        artifacts.PINS, artifacts._write_json = state / "artifact-pins.json", write_json
+        was_cap = artifacts._capture
+
+        class Cap:
+            CAPTURE_DIRS = ("reel", "emu")
+        artifacts._capture = Cap
+        self.addCleanup(setattr, artifacts, "_capture", was_cap)
+        self.assertEqual(artifacts.pin("proj", f"dist/{builds[0]}", True, by="ann")[1], 200)
+        gone = artifacts.sweep_dev_builds("proj")
+        left = sorted(p.name for p in self.dist.iterdir())
+        self.assertEqual(left, sorted([builds[0]] + builds[3:]))
+        self.assertEqual(sorted(gone), sorted(builds[1:3]))
+        self.assertEqual(artifacts.pins("proj")[f"dist/{builds[0]}"]["by"], "ann")
+        artifacts.pin("proj", f"dist/{builds[0]}", False)
+        self.assertEqual(artifacts.pins("proj"), {})
+        self.assertNotIn("proj", written["d"])
+        self.assertEqual(artifacts.pin("proj", "dist/none.apk", True)[1], 404)
+        self.assertEqual(artifacts.pin("proj", "../secret", True)[1], 404)
+        (self.dist / "reel").mkdir()
+        (self.dist / "reel" / "sheet.png").write_text("x")
+        self.assertEqual(artifacts.pin("proj", "dist/reel/sheet.png", True)[1], 400)
+
     def test_no_dist_is_nothing(self):
         self.assertEqual(artifacts.sweep_dev_builds("nothing-here"), [])
 

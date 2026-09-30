@@ -240,7 +240,8 @@ and it says when each applies. Shippable build output goes in this
 project's dist/, named with `bb version --file` and gitignored (`bb
 build` names it so), and the Artifacts tab lists it; nothing else goes
 there, and scratch goes anywhere else. Of each kind of dev build the tab
-keeps the newest three and lets the older go; a release is kept.
+keeps the newest three and lets the older go; a release is kept, and so
+is anything a person pinned there.
 
 ## Git
 

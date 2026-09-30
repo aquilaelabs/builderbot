@@ -2170,7 +2170,7 @@ import workspace                                                 # noqa: E402
 # Each account's git worktree of a project: <this>/<project>/<uid> (common.sh
 # session_dir). The Git view and the Artifacts tab both read them.
 WORKTREES = Path(os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"))
-artifacts.configure(workspace=WORKSPACE, worktrees=WORKTREES)
+artifacts.configure(workspace=WORKSPACE, worktrees=WORKTREES, state=STATE, write_json=write_json)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -5234,9 +5234,14 @@ class Handler(BaseHTTPRequestHandler):
         # 26 Sep). A capture it lets go of with bb capture prune, in the tree.
         if who.get("session"):
             return self._json({"error": "a session asks for the phone with bb phone run and lets a "
-                                        "capture go with bb capture prune NAME; neither is done from here"}, 403)
+                                        "capture go with bb capture prune NAME; neither is done from here, "
+                                        "and a pin is a person's"}, 403)
         if field(req, "action") == "forget-capture":
             return self._json(*artifacts.forget_capture(name, field(req, "name")))
+        # A pin keeps an artifact from the dev builds' sweep, a person's.
+        if field(req, "action") in ("pin", "unpin"):
+            return self._json(*artifacts.pin(name, field(req, "path"), field(req, "action") == "pin",
+                                             by=who.get("name") or ""))
         return self._json(*phone.artifact_verb(name, field(req, "action"), req,
                                                uid=users.uid_of(who), me=who.get("name") or "somebody",
                                                by=self._principal()))

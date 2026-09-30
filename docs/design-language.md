@@ -1163,7 +1163,7 @@ Layout of a notebook: Artifacts on a desktop frame (12 columns by 8 rows), from 
   5. List (rows of like things): what is in dist/, divided by hairlines, each a download, across the bottom, rows 6 to 8 of 8
   6. List (rows of like things): Captures apart: each with whose it is and its age, and how long they are kept, across the bottom, row 8 of 8, inside block 5 (List: what is in dist/)
 Notes:
-  Captures are not what the project ships, so they are listed apart, each saying whose it is, and go by age.
+  Captures are not what the project ships, so they are listed apart, each saying whose it is, and go by age. Each artifact row ends with a pin, the project row's own tack: lit when pinned, with a pinned tag beside the name and who pinned it on the line under. Dev builds past the newest three of each go when the tab draws, and a line over the list says so; a pinned one stays.
 
 ### a notebook: Docker (Web app)
 

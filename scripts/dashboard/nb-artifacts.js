@@ -213,16 +213,17 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // Dev builds go on their own past the newest few of each (R105): said
     // once, over the list, where there are any.
     const devNote = rows.some(a => /\d+\.\d+\.\d+-dev\.\d+-[0-9a-f]{7}/.test(a.name))
-      ? `<div class="hint dim">Dev builds keep the newest ${art.dev_keep ?? 3} of each; older ones are removed as new ones arrive. A release is kept.</div>` : "";
+      ? `<div class="hint dim">Dev builds keep the newest ${art.dev_keep ?? 3} of each; older ones are removed as new ones arrive. A release is kept, and so is anything pinned.</div>` : "";
     list.innerHTML = devHtml + (!rows.length
       ? `<div class="hint">Nothing in <b>dist/</b> yet: a build copies what it keeps there.</div>`
       : devNote + jobHtml + instHtml + rows.map((a, i) => `
         <div class="artrow">
           <span class="grow">
             <span class="top"><span class="pill">${esc(a.kind)}</span>
-              <b>${esc(a.name)}</b></span>
+              <b>${esc(a.name)}</b>${a.pinned ? ` <span class="pill on">pinned</span>` : ""}</span>
             <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}${
-              a.path !== a.name ? ` · ${esc(a.path)}` : ""}</span>${
+              a.path !== a.name ? ` · ${esc(a.path)}` : ""}${
+              a.pinned && a.pinned_by ? ` · pinned by ${esc(a.pinned_by)}` : ""}</span>${
             // What built it, when a job did (docs/nodes.md §6): the job,
             // the node, the snapshot. A file somebody copied in says nothing.
             a.prov ? `<span class="dim">built by ${esc(a.prov.job)} on ${
@@ -246,6 +247,10 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                 title="read it here, without downloading it">View</button>` : ""}
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
               }&path=${encodeURIComponent(a.path)}" download>Download</a>
+            <button type="button" class="eye pin${a.pinned ? " on" : ""}" data-artpin="${i}"
+              aria-label="${a.pinned ? "unpin" : "pin"}" title="${a.pinned
+                ? "unpin: it goes like any other build when newer ones arrive"
+                : "pin: keep it, whatever builds come after it"}">${TACK}</button>
           </span>
         </div>`).join(""));
     paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
@@ -362,6 +367,17 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // A shipped script is a thing people read before they run it, and on a
     // phone a download is the end of that. Over the panel like a History, the
     // text as it is; nothing here runs it, and the tab has no way to.
+    list.querySelectorAll("[data-artpin]").forEach(b => b.onclick = async () => {
+      const a = rows[+b.dataset.artpin];
+      if (!a) return;
+      b.disabled = true;
+      try{
+        const j = await (await postJSON("/api/artifacts", {project, action: a.pinned ? "unpin" : "pin", path: a.path})).json();
+        if (j.error){ b.disabled = false; return notify(j.error, true); }
+        notify(j.pinned ? `pinned ${a.name}: it stays` : `unpinned ${a.name}`);
+      }catch(e){ b.disabled = false; return notify(String(e), true); }
+      loadArtifacts();
+    });
     list.querySelectorAll("[data-artview]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artview)];
       const pane = document.createElement("div");

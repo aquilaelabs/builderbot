@@ -34,9 +34,11 @@ capture prune` applies on a node.
 """
 import importlib.util
 import io
+import json
 import os
 import re
 import subprocess
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -81,9 +83,11 @@ MAX_VIEW = 256 * 1024
 MAX_DEPTH = 2
 
 
-def configure(*, workspace, worktrees=None, capture=None):
+def configure(*, workspace, worktrees=None, capture=None, state=None, write_json=None):
     globals().update(WORKSPACE=Path(workspace),
-                     WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees")
+                     WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
+                     PINS=Path(state) / "artifact-pins.json" if state else None,
+                     _write_json=write_json)
     path = Path(capture) if capture else Path(__file__).resolve().parent.parent / "lib" / "capture.py"
     spec = importlib.util.spec_from_file_location("bb_capture", path)
     mod = importlib.util.module_from_spec(spec)
@@ -325,6 +329,58 @@ def forget_capture(project, name):
 
 # ---- the tab's read and its downloads, one call each from the dashboard --------
 
+# ---- pins: an artifact a person does not want to lose --------------------------
+# {project: {path under the project, "dist/...": {by, at}}}, under /config, so
+# a pin is the controller's record of a person's choice and not a file in the
+# tree a build or a session could overwrite. A pinned artifact is never swept
+# and does not count toward the dev builds kept beside it (the operator, 30
+# Sep). A pin on a file that is gone is left and harmless: the listing only
+# marks files that are there.
+PINS = None
+_write_json = None
+_pins_lock = threading.Lock()
+
+
+def _pins_all():
+    try:
+        with open(PINS, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def pins(project):
+    """{path: {by, at}} pinned in this project's dist/."""
+    got = _pins_all().get(project) if PINS else None
+    return got if isinstance(got, dict) else {}
+
+
+def pin(project, rel, on, by=""):
+    """Pin or unpin one artifact in the project's dist/. (payload, status)."""
+    if PINS is None or _write_json is None:
+        return {"error": "pins are not kept on this controller"}, 500
+    rel = str(rel or "")
+    f = resolve(project, rel)
+    if on and f is None:
+        return {"error": "no such artifact"}, 404
+    if rel.split("/")[1:2] and rel.split("/")[1] in _capture.CAPTURE_DIRS:
+        return {"error": "a capture goes by the project's days; pin what the project ships"}, 400
+    with _pins_lock:
+        d = _pins_all()
+        mine = d.get(project) if isinstance(d.get(project), dict) else {}
+        if on:
+            mine[rel] = {"by": str(by or "")[:60], "at": int(time.time())}
+        else:
+            mine.pop(rel, None)
+        if mine:
+            d[project] = mine
+        else:
+            d.pop(project, None)
+        _write_json(PINS, d)
+    return {"ok": True, "path": rel, "pinned": bool(on)}, 200
+
+
 # ---- dev builds: the newest few of each (R105) ---------------------------------
 # A dev build carries its version in its name the way bb version --file
 # spells it (0.1.0-dev.17-9e09ad3, -dirty when the tree was), and a session
@@ -361,8 +417,11 @@ def sweep_dev_builds(project, keep=DEV_KEEP):
             kinds.setdefault(k, []).append((p.stat().st_mtime, p))
         except OSError:
             continue
+    # A pinned one is kept, and is not one of the `keep` beside it.
+    held = {Path(r).name for r in pins(project) if r.count("/") == 1}
     gone = []
     for rows in kinds.values():
+        rows = [r for r in rows if r[1].name not in held]
         for _, p in sorted(rows, key=lambda r: -r[0])[keep:]:
             try:
                 p.unlink()
@@ -378,7 +437,10 @@ def tab_view(name, uid):
     (B237) apart from dist/, which is what ships, what the project can and
     cannot do off this box, its dev instances, and the phone."""
     sweep_dev_builds(name)
-    return ({"artifacts": listing_of(name), "dev_keep": DEV_KEEP,
+    held = pins(name)
+    return ({"artifacts": [a | ({"pinned": True, "pinned_by": held[a["path"]].get("by", "")}
+                                if a.get("path") in held else {}) for a in listing_of(name)],
+             "dev_keep": DEV_KEEP,
              "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
                           for g in branches(name)],
              "build": build_state(name)}
