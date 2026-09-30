@@ -236,14 +236,22 @@ branch only the host has.
 The emulator, the system images, the GPU and adb are this machine's:
 `bb emu list|start|status|stop|log|gpu`, and `bb emu shot|gfx PKG|install FILE`,
 which write into dist/. It is not started for you and runs one at a time.
+Start it with `bb emu start`, never with the emulator binary: it picks the
+GPU this node has (hardware where the card has a display, software
+otherwise), waits for the boot to finish before it returns, keeps the log
+where `bb emu log` reads it, and refuses a second one. A session that
+started the binary by hand slept five seconds and met a cold boot's "System
+UI isn't responding" dialog instead of its own app (30 Sep).
 An API level exists here where the store holds a system image for it:
 `bb emu images` lists them and `bb emu create <api>` fetches one on demand.
 Adding or removing one deliberately is the operator's, from the Emulator tab.
 
-Three blank-screen failures here are the emulator's rather than your code's, and
-all three look like a bug you just wrote: every frame blank with the view
-hierarchy intact; a window that stops updating part way through a long session
-(force-stop and relaunch); the emulator exiting silently (`bb emu log -p`).
+Four failures here are the emulator's rather than your code's, and all four
+look like a bug you just wrote: every frame blank with the view hierarchy
+intact; a window that stops updating part way through a long session
+(force-stop and relaunch); the emulator exiting silently (`bb emu log -p`);
+and a "System UI isn't responding" dialog over a cold boot under software
+rendering, which Wait dismisses and a finished boot does not show.
 `bb emu gpu` says whether you got hardware or software. Under software
 `screenrecord` captures about 10fps, so never judge animation timing from it.
 Use `dumpsys gfxinfo PKG framestats`.

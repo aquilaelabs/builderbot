@@ -27,7 +27,6 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 ### Changed
 
 - The companion app's note that Claude is waiting on you names the project first and follows the project's During a test run setting: at once where a new ask interrupts a run, and when the tests finish where it waits for them; bb test now tells the dashboard when a run starts and ends
-
 - bb tests preflight picks its suites by the covered run when there is one: the function each changed line falls in and the suites that reached it (bb map affected), so a change to one handler in server.py runs that handler's suites rather than all 49; a whole run refreshes the covered run
 - The Design view has no prompt box and no Copy: a session reads the design piece by piece with bb design show, and the view only records it
 - Every control on a row is one height, the finger's: a field, a pulldown, a one-line prose box and a button beside each other were four sizes; the design suite now fails a line of controls that differ
@@ -69,6 +68,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The design language is each theme's: type, corners, space, motion, the families and the rules sit with the theme in the Themes section, the first theme's being the design's own; a new theme starts blank, from a preset or as a copy of a theme, and a new page can be a copy of a page (43710dd)
 - The Projects card's rows carry the pin, so a project is unpinned from the sidebar, and their more button slides the row open as the Projects tab's does (1b63482)
 - The setting During a test run, a change asked for: restart now means any run is cut for the new ask, not the final gate alone (1b63482)
+- The briefing's Android section says to start the emulator with bb emu start rather than the binary, and why (the GPU picked, the boot waited out, the log kept), and names a cold boot's System UI not responding dialog as the emulator's (e75a82b)
 
 ### Removed
 
