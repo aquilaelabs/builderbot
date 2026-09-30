@@ -356,6 +356,53 @@ sdk_status_local() {
     else
         printf '  cmdline-tools are missing from this image\n'
     fi
+    sdk_builds_with "$(sdk_dir android)"
+}
+
+# The names in a directory, one per line, or nothing: what the listings
+# below read, without ls's word-splitting.
+sdk_names_in() {
+    [ -d "$1" ] || return 0
+    find "$1" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null
+}
+
+# What a build here can use, said as a build reads it (R100): the newest
+# platform is the compileSdk ceiling, and a library that wants a newer one
+# fails checkDebugAarMetadata before anything compiles; and what the Gradle
+# cache already holds, since a build offline or in a hurry uses that. A
+# session dug through platforms/ and ~/.gradle by hand for these, asked
+# dl.google.com for versions, and hit the ceiling anyway (Shebang-DevBoard,
+# 30 Sep). Read from the directories, never from sdkmanager or Gradle: a
+# status is instant.
+sdk_builds_with() {
+    local sdk="$1" plats tools newest
+    plats="$(sdk_names_in "$sdk/platforms" | sed -n 's/^android-//p' | sort -n | tr '\n' ' ')"
+    plats="${plats% }"
+    tools="$(sdk_names_in "$sdk/build-tools" | sort -V | tr '\n' ' ')"
+    printf '\n== builds with ==\n'
+    if [ -n "$plats" ]; then
+        newest="${plats##* }"
+        printf '  %-14s %s\n' platforms "$plats"
+        printf '  %-14s %s\n' compileSdk "up to ${newest}: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains tab"
+    else
+        printf '  %-14s %s\n' platforms "none: nothing compiles here until the operator adds one on the Toolchains tab"
+    fi
+    [ -n "$tools" ] && printf '  %-14s %s\n' build-tools "${tools% }"
+    local gh="${GRADLE_USER_HOME:-$HOME/.gradle}" m dists k v
+    m="$gh/caches/modules-2/files-2.1"
+    printf '  %-14s %s\n' "gradle cache" "$gh"
+    dists="$(sdk_names_in "$gh/wrapper/dists" | sed -n 's/^gradle-\(.*\)-\(bin\|all\)$/\1/p' | sort -V | tr '\n' ' ')"
+    [ -n "$dists" ] && printf '  %-14s %s\n' "  gradle" "${dists% } (wrapper distributions, no download)"
+    if [ -d "$m" ]; then
+        for k in "AGP:com.android.tools.build/gradle" "kotlin:org.jetbrains.kotlin/kotlin-gradle-plugin" \
+                 "compose BOM:androidx.compose/compose-bom"; do
+            v="$(sdk_names_in "$m/${k#*:}" | sort -V | tr '\n' ' ')"
+            [ -n "$v" ] && printf '  %-14s %s\n' "  ${k%%:*}" "${v% }"
+        done
+    else
+        printf '  %-14s %s\n' "  modules" "none cached yet: the first build fetches them"
+    fi
+    return 0
 }
 
 # sdk_fetch URL DEST: download with a progress line, into a temp file first.

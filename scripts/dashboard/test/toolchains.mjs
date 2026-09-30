@@ -738,6 +738,31 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   mkdirSync(`${odd}/${scope}/${scope}`, { recursive: true });
   ok(sh(`${odd}/${scope}`) === `${odd}/${scope} ${odd}/${scope}/${scope}`,
      '...while a store whose own name is the scope keeps it, since it holds one');
+
+  // ---- what a build here can use (R100) ------------------------------------
+  // The newest platform is the compileSdk ceiling and the Gradle cache is
+  // what a build has without fetching: read from the directories, said in
+  // one block, so a session does not list platforms/ and ~/.gradle by hand
+  // (Shebang-DevBoard, 30 Sep).
+  const sdk = `${store}/${scope}/android`, gh = mkdtempSync(`${tmpdir()}/bbgradle-`);
+  for (const d of ['platforms/android-35', 'platforms/android-36', 'build-tools/36.0.0']) mkdirSync(`${sdk}/${d}`, { recursive: true });
+  for (const d of ['wrapper/dists/gradle-9.7.1-bin', 'caches/modules-2/files-2.1/com.android.tools.build/gradle/9.4.1',
+                   'caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-gradle-plugin/2.4.20']) mkdirSync(`${gh}/${d}`, { recursive: true });
+  const SDK = LIB.replace(/common\.sh$/, 'sdk.sh');
+  const builds = execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_builds_with ${JSON.stringify(sdk)}`],
+                              { encoding: 'utf8', env: { ...process.env, GRADLE_USER_HOME: gh } });
+  ok(/== builds with ==/.test(builds) && /platforms\s+35 36\n/.test(builds)
+     && /compileSdk\s+up to 36: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains tab/.test(builds)
+     && /build-tools\s+36\.0\.0/.test(builds),
+     `bb toolchains says the platforms, the compileSdk ceiling and the build-tools as a build reads them (${builds.split('\n')[2]?.trim()})`);
+  ok(/gradle\s+9\.7\.1 \(wrapper distributions, no download\)/.test(builds) && /AGP\s+9\.4\.1\n/.test(builds)
+     && /kotlin\s+2\.4\.20\n/.test(builds) && !/compose BOM/.test(builds),
+     '...and what the Gradle cache holds, naming only what is there');
+  const bare = execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_builds_with ${JSON.stringify(`${odd}/none`)}`],
+                            { encoding: 'utf8', env: { ...process.env, GRADLE_USER_HOME: `${odd}/nogradle` } });
+  ok(/platforms\s+none: nothing compiles here until the operator adds one on the Toolchains tab/.test(bare)
+     && /modules\s+none cached yet: the first build fetches them/.test(bare),
+     '...and an empty store and an empty cache are said as such rather than as a blank');
 }
 
 await done(browser);
