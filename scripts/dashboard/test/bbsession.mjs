@@ -400,6 +400,20 @@ ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0]
   ok(st.filter(x => x[0] === 'hidefile' && x[1] === join(M, 'run', 'docker.sock')).length === 1
      && !st.some(x => x[x.length - 1] === join(M, 'var', 'run', 'docker.sock')),
      'the container daemon\'s socket is covered, once, where /var/run\'s link to /run really puts it (B308)');
+  // Computing on the NVIDIA card switched off for this session (R102): the
+  // device CUDA cannot start without is covered, and the card's other nodes
+  // are not, since the emulator's rendering opens those. A character device
+  // cannot be made here without root, so the fake root's nvidia-uvm is a
+  // link to /dev/null, which is one; the step names where it really is.
+  mkdirSync(join(M, 'dev'), { recursive: true });
+  symlinkSync('/dev/null', join(M, 'dev', 'nvidia-uvm'));
+  symlinkSync('/dev/null', join(M, 'dev', 'nvidia0'));
+  const offPlan = on('--cuda', 'off'), onPlan = on('--cuda', 'on');
+  const covered = r => (r.code === 0 ? JSON.parse(r.out) : []).filter(x => x[0] === 'hidefile' && x[1] === '/dev/null').length;
+  ok(offPlan.code === 0 && covered(offPlan) === 1 && covered(onPlan) === 0 && covered(r) === 0,
+     `--cuda off covers the unified-memory device and nothing else of the card; on, or unsaid, covers nothing (${covered(offPlan)}, ${covered(onPlan)}, ${covered(r)})`);
+  const badWord = on('--cuda', 'sometimes');
+  ok(badWord.code !== 0 && /--cuda is on or off/.test(badWord.out), `any other word is refused (${badWord.out.trim().slice(0, 60)})`);
   sock.close();
 
   // A place the project is set to see (its settings, --sees): inside a
