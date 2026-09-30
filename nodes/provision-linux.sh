@@ -1968,6 +1968,17 @@ EOF
         say "the driver is installed and takes the card at the next boot (nouveau holds it now): Reboot on this node's row, and the display comes up on its own"
     fi
 }
+# The emulator off the card (R102): the display's unit stopped and
+# disabled, the driver and the device nodes left as they are, so sessions
+# may still compute on the card. Its state line says it was switched off,
+# which is not the same as down.
+cmd_gpu_off() {
+    if have systemctl; then
+        systemctl disable --now "$GPU_UNIT" >/dev/null 2>&1 || true
+    fi
+    gpu_state "off: switched off on the Nodes tab; an emulator here renders in software"
+    say "the GPU display is off: an emulator here renders in software from its next start"
+}
 cmd_gpu_display() {
     local bus b d f busid pid reason=""
     if ! nvidia-smi -L >/dev/null 2>&1; then
@@ -2054,7 +2065,7 @@ gpu_driver_version() {
     local m
     for m in modinfo /sbin/modinfo /usr/sbin/modinfo; do
         command -v "$m" >/dev/null 2>&1 || continue
-        "$m" -F version nvidia 2>/dev/null | head -1
+        "$m" -F version nvidia 2>/dev/null | head -1 || true
         return 0
     done
 }
@@ -2134,7 +2145,10 @@ cmd_gpu_driver() {
             held=""
             if command -v dpkg-query >/dev/null 2>&1; then
                 # shellcheck disable=SC2016
-                held="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 'nvidia-driver*' 2>/dev/null | awk '$2 ~ /^ii/ {print $1}' | sort -V | tail -1)"
+                # dpkg-query exits 1 when nothing matches, which under this
+                # script's set -e and pipefail ended it without a word on a
+                # machine with no driver (found on the dev node, 30 Sep).
+                held="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 'nvidia-driver*' 2>/dev/null | awk '$2 ~ /^ii/ {print $1}' | sort -V | tail -1 || true)"
             fi
             if [ -n "$ver" ] && [ -n "$want" ] && [ -n "$held" ] && [ "$want" != "$held" ]; then
                 die "$held is installed: remove it first, then install $want. One branch at a time, since their libraries do not mix"
@@ -2211,6 +2225,7 @@ case "${1-}" in
     uninstall)   shift; cmd_uninstall "${1-}" ;;
     gpu)         cmd_gpu ;;
     gpu-display) cmd_gpu_display ;;
+    gpu-off)     cmd_gpu_off ;;
     gpu-driver)  shift; cmd_gpu_driver "${1-}" "${2-}" ;;
     gpu-nodes)   cmd_gpu_nodes ;;
     list)        shift; if [ "${1-}" = "--json" ]; then cmd_list_json; else cmd_list; fi ;;
