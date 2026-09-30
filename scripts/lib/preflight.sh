@@ -107,13 +107,20 @@ cmd_tests_preflight() {
     [ -z "$by" ] || cmd_map affected --base "$mb_ref" "${mapped[@]}" | sed 's/^/  /'
     # Code the map could place with no suite is a hole in the map, not a
     # clean change (B280): named, and the verdict is not clean.
-    local unplaced=()
+    # ...unless the unit tier runs it: a unit file that names the changed
+    # file is one that loads or runs it (the provisioner's helper, a bb
+    # library), and that tier runs first below. Said, so the plan shows what
+    # stands in for a suite.
+    local unplaced=() units="${BB_REPO:-$PWD}/scripts/dashboard/unit" by_unit
     if [ "${#suites[@]}" -eq 0 ]; then
         for f in "${files[@]}"; do
             case "$f" in
                 *.md|*.txt|*.json|*.png) ;;
                 scripts/dashboard/unit/*) ;;
-                scripts/*|nodes/*) unplaced+=("$f") ;;
+                scripts/*|nodes/*)
+                    by_unit="$(grep -lF -- "$(basename "$f")" "$units"/test_*.py 2>/dev/null | xargs -r -n1 basename | tr '\n' ' ' || true)"
+                    if [ -n "$by_unit" ]; then printf '  unit:    %s is run by %s\n' "$f" "${by_unit% }"
+                    else unplaced+=("$f"); fi ;;
             esac
         done
     fi

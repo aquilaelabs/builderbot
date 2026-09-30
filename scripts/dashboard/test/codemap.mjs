@@ -109,6 +109,16 @@ ok(/suites:\s+ALL/.test(pre('scripts/dashboard/server.py')), 'a change to server
 ok(/suites:\s+none/.test(pre('README.md')) && /checks:\s+lint voice$/m.test(pre('README.md')),
    'a change with no suite still gets the lint and voice checks');
 
+// A file no browser suite reaches but a unit file runs (the provisioner's
+// root helper, which test_sandbox_gpu.py runs as the bash it is) is placed
+// by that unit file, since the unit tier is the first thing a preflight
+// runs: before this a change there could never come out clean.
+{
+  const prov = pre('nodes/provision-linux.sh');
+  ok(/unit:\s+nodes\/provision-linux\.sh is run by .*test_sandbox_gpu\.py/.test(prov) && !/no suite reaches/.test(prov),
+     `a change only the unit tier runs is placed by the unit file that names it (${prov.match(/unit:.*/)?.[0].slice(0, 80)})`);
+}
+
 // The other C-shaped languages: the companion app's Kotlin. `fun` opens a
 // definition, a trailing lambda (Row(...) { ... }) is a call and not a
 // method, and a default lambda in a parameter list does not open the body.
