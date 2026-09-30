@@ -69,6 +69,13 @@ class Census(unittest.TestCase):
         self.assertEqual(agent._gpu_container(card=CARD),
                          {"installed": "1.17.8-1", "candidate": "1.18.0-1", "runtime": True})
 
+    def test_the_word_elsewhere_in_dockers_answer_is_not_the_runtime(self):
+        self.docker('{"runc":{"status":{"features":"nvidia"}}}')
+        self.tool("dpkg-query", "printf '1.17.8-1 ii \\n'")
+        self.assertFalse(agent._gpu_container(card=CARD)["runtime"])
+        self.docker("not json")
+        self.assertFalse(agent._gpu_container(card=CARD)["runtime"])
+
     def test_removed_but_not_purged_is_not_installed(self):
         self.docker()
         self.tool("dpkg-query", "printf '1.17.8-1 rc \\n'")

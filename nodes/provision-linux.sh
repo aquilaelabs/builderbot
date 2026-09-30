@@ -2229,7 +2229,10 @@ cmd_gpu_driver() {
 # which stops this machine's containers for a moment (those with a restart
 # policy come back). The machine's own, like the driver it needs.
 NVCT_LIST=/etc/apt/sources.list.d/nvidia-container-toolkit.list
-NVCT_KEY=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+# The key as NVIDIA publishes it, armored: apt reads an .asc named by
+# signed-by as it is, so nothing here needs gpg, which a minimal Ubuntu
+# does not carry (the dev node, 30 Sep).
+NVCT_KEY=/usr/share/keyrings/nvidia-container-toolkit-keyring.asc
 NVCT_URL=https://nvidia.github.io/libnvidia-container
 cmd_gpu_container() {
     local pkgs
@@ -2239,10 +2242,11 @@ cmd_gpu_container() {
             have docker || die "no docker on this machine, so there is no container to hand the card to"
             [ -n "$(gpu_driver_version)" ] || die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains tab first; the toolkit hands its libraries to a container"
             have curl || die "curl is not on this machine, and the package source is fetched with it"
-            have gpg || die "gpg is not on this machine, and the package source's key is unpacked with it"
             say "adding NVIDIA's package source for the container toolkit"
-            curl -fsSL "$NVCT_URL/gpgkey" | gpg --dearmor --yes -o "$NVCT_KEY" \
+            curl -fsSL "$NVCT_URL/gpgkey" > "$NVCT_KEY" \
                 || { rm -f "$NVCT_KEY"; die "could not fetch the package source's signing key from $NVCT_URL"; }
+            grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$NVCT_KEY" \
+                || { rm -f "$NVCT_KEY"; die "what $NVCT_URL answered with is not a signing key"; }
             chmod 0644 "$NVCT_KEY"
             curl -fsSL "$NVCT_URL/stable/deb/nvidia-container-toolkit.list" \
                 | sed "s#deb https://#deb [signed-by=$NVCT_KEY] https://#g" > "$NVCT_LIST" \

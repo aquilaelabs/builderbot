@@ -67,10 +67,10 @@ case "$2" in nvidia:610) echo "610.57.04 nvidia-driver-610" > "{self.state}" ;; 
 
     def toolkit(self):
         """Stand-ins for what the container toolkit's verbs touch: NVIDIA's
-        package source over curl, gpg, docker, nvidia-ctk and systemctl, and
+        package source over curl, docker, nvidia-ctk and systemctl, and
         the helper's two files moved under the scratch directory."""
         self.list = os.path.join(self.dir, "nvidia-container-toolkit.list")
-        self.key = os.path.join(self.dir, "nvidia-container-toolkit-keyring.gpg")
+        self.key = os.path.join(self.dir, "nvidia-container-toolkit-keyring.asc")
         self.ctk = os.path.join(self.dir, "toolkit")
         with open(self.helper, encoding="utf-8") as f:
             text = f.read()
@@ -85,7 +85,6 @@ case "$*" in
   *.list*) echo "deb https://nvidia.github.io/libnvidia-container/stable/deb/\\$(ARCH) /" ;;
   *) exit 22 ;;
 esac''')
-        self.tool("gpg", 'while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done; cat > "$out"')
         self.tool("docker", "exit 0")
         self.tool("nvidia-ctk", f'echo "nvidia-ctk $*" >> "{self.log}"')
         self.tool("systemctl", f'echo "systemctl $*" >> "{self.log}"')
@@ -134,6 +133,16 @@ echo "docker-ce ii "; exit 0''')
         self.assertIn("could not fetch", said)
         self.assertFalse(os.path.exists(self.list))
         self.assertFalse(os.path.exists(self.key))
+        self.assertNotIn("apt-get", ran)
+
+    def test_an_answer_that_is_not_a_key_is_not_kept(self):
+        self.toolkit()
+        self.driver_on()
+        self.tool("curl", 'echo "<html>moved</html>"')
+        rc, said, ran = self.run_helper("gpu-container", "install")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("not a signing key", said)
+        self.assertFalse(os.path.exists(self.key) or os.path.exists(self.list))
         self.assertNotIn("apt-get", ran)
 
     def test_removing_the_toolkit_takes_its_source_with_it(self):

@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.121"
+AGENT_VERSION = "0.7.122"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1923,9 +1923,16 @@ def _gpu_container(card=None):
             if "Candidate:" in line:
                 v = line.split("Candidate:", 1)[1].strip()
                 candidate = "" if v == "(none)" else v
-    runtimes = out(["docker", "info", "--format", "{{json .Runtimes}}"])
+    # Read as the JSON it is: each runtime's entry carries runc's whole
+    # feature list, thousands of characters a word search would be reading.
+    try:
+        runtimes = json.loads(out(["docker", "info", "--format", "{{json .Runtimes}}"]) or "{}")
+    except ValueError:
+        runtimes = {}
+    if isinstance(runtimes, dict) and isinstance(runtimes.get("Runtimes"), dict):
+        runtimes = runtimes["Runtimes"]
     return {"installed": installed[:60], "candidate": candidate[:60],
-            "runtime": '"nvidia"' in runtimes}
+            "runtime": isinstance(runtimes, dict) and "nvidia" in runtimes}
 
 
 def _gpu_display():
