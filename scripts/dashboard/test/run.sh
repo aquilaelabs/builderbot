@@ -279,6 +279,13 @@ rm -f "$LOCK" 2>/dev/null || true
     || die "cannot take $LOCK: $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
 fi
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
+# Where each suite's seconds are kept for the worker plan (run_file,
+# bucket_plan): beside the code map in the tree the run was made from, which
+# is this node's own and gitignored; workers inherit the path.
+if [ -z "${SUITE_TIMES:-}" ]; then
+    _o="${BB_TEST_ORIGIN:-$(cd "$HERE/../../.." && pwd)}"
+    mkdir -p "$_o/.bb-map" 2>/dev/null && export SUITE_TIMES="$_o/.bb-map/suite-times.tsv"
+fi
 echo $$ > "$S/.bb-run-pid"
 if [ -n "${BB_COVERAGE:-}" ]; then
     # A worker counts into its parent's directory, which is where the one
@@ -338,28 +345,55 @@ default_suites() {
 # because a bare "N passed, M failed" is a suite's total to those readers.
 bucket_plan() {
     # $1 workers; $2 a file of "name<TAB>lines" per suite (a file, since the
-    # heredoc is python's stdin); stdout: "bucket<TAB>name", buckets
-    # numbered from 0, each bucket's names in the order a single run has.
-    python3 - "$1" "$2" <<'PY'
-import sys
-n = int(sys.argv[1])
-SLOW = ["agent", "devapp", "nodes", "cards", "git", "roles", "uniform"]
+    # heredoc is python's stdin); $3 the times file run_file appends to;
+    # stdout: "bucket<TAB>name", buckets numbered from 0, each bucket's
+    # names in the order a single run has.
+    #
+    # By measured seconds, longest first, each to the emptiest bucket. It
+    # was by line count behind a hand-kept list of the slow files, and line
+    # count is a poor clock: uniform.mjs is 1471 lines and 227 s, devapp.mjs
+    # 4109 lines and 199 s, so one worker carried uniform, roles and cards
+    # (about 450 s) while the others idled (30 Sep). A suite never timed on
+    # this node is costed from its lines at the tree's own median rate. The
+    # median of the last five passes per suite, so one slow run on a busy
+    # box does not move the plan, and the file is trimmed to those five.
+    python3 - "$1" "$2" "${3:-}" <<'PY'
+import os, statistics, sys
+n, sizes, times = int(sys.argv[1]), sys.argv[2], sys.argv[3]
+base = lambda k: k.rsplit("/", 1)[-1][:-4] if k.endswith(".mjs") else k.rsplit("/", 1)[-1]
 size = {}
-for line in open(sys.argv[2]):
+for line in open(sizes):
     if line.strip():
         name, lines = line.rstrip("\n").split("\t")
         size[name] = int(lines or 0)
-base = lambda k: k.rsplit("/", 1)[-1][:-4] if k.endswith(".mjs") else k.rsplit("/", 1)[-1]
-rank = lambda k: SLOW.index(base(k)) if base(k) in SLOW else len(SLOW)
-order = sorted(size, key=lambda k: (rank(k), -size[k], k))
-buckets, load = [[] for _ in range(n)], [0] * n
-for i, name in enumerate(order):
-    b = i if (rank(name) < len(SLOW) and i < n) else load.index(min(load))
+seen = {}
+if times and os.path.isfile(times):
+    for line in open(times, errors="replace"):
+        k, _, v = line.rstrip("\n").partition("\t")
+        if k and v.isdigit():
+            seen.setdefault(k, []).append(int(v))
+    seen = {k: v[-5:] for k, v in seen.items()}
+    try:
+        with open(times + ".tmp", "w") as f:
+            for k in sorted(seen):
+                f.writelines(f"{k}\t{v}\n" for v in seen[k])
+        os.replace(times + ".tmp", times)
+    except OSError:
+        pass
+secs = {k: statistics.median(v) for k, v in seen.items()}
+rates = [size[k] / secs[base(k)] for k in size if secs.get(base(k)) and size[k]]
+rate = statistics.median(rates) if rates else 12.0
+cost = {k: secs.get(base(k), size[k] / rate) for k in size}
+buckets, load = [[] for _ in range(n)], [0.0] * n
+for name in sorted(cost, key=lambda k: (-cost[k], k)):
+    b = load.index(min(load))
     buckets[b].append(name)
-    load[b] += size[name]
+    load[b] += cost[name]
 for b, names in enumerate(buckets):
     for name in sorted(names):
         print(f"{b}\t{name}")
+print(f"planned: {' '.join(f'{x:.0f}s' for x in load)} by {'measured seconds' if secs else 'line count'}"
+      f" ({sum(1 for k in size if base(k) in secs)} of {len(size)} suites timed)", file=sys.stderr)
 PY
 }
 free_ports() {
@@ -416,7 +450,8 @@ run_workers() {
         case "$t" in /*) f="$t" ;; *) f="$HERE/${t%.mjs}.mjs" ;; esac
         printf '%s\t%s\n' "$t" "$(wc -l < "$f" 2>/dev/null || echo 0)"
     done > "$S/sizes"
-    plan="$(bucket_plan "$n" "$S/sizes")"
+    plan="$(bucket_plan "$n" "$S/sizes" "${SUITE_TIMES:-}" 2> "$S/plan.said")"
+    log "workers $(cat "$S/plan.said" 2>/dev/null)"
     mapfile -t ports < <(free_ports "$n")
     [ "${#ports[@]}" = "$n" ] || die "could not find $n free ports for the workers' servers"
     for ((i = 0; i < n; i++)); do
@@ -1426,14 +1461,24 @@ sys.exit(0 if n and float((n[0].get("agent") or {}).get("last_seen") or 0) >= si
     done
     warn "the stub agent did not dial in again within ten seconds"
 }
+# BB_TEST_PHASES=1 says what each part of a suite's set-up cost, which is
+# the time no check measures: a suite's own seconds are its checks', and
+# roles and bugs measured 91 s of checks in 182 s of run (30 Sep).
+phase() {
+    [ -n "${BB_TEST_PHASES:-}" ] || { "$@"; return; }
+    local t0 rc=0; t0="$(date +%s%N)"
+    "$@" || rc=$?
+    log "phase $1: $(( ($(date +%s%N) - t0) / 1000000 )) ms"
+    return "$rc"
+}
 fresh_world() {
     local since
-    stop_world
-    restore_world
+    phase stop_world
+    phase restore_world
     since="$(date +%s)"
-    start_server
-    start_stub
-    wait_stub "$since"
+    phase start_server
+    phase start_stub
+    phase wait_stub "$since"
 }
 stop_world
 snapshot_world
@@ -1475,11 +1520,20 @@ run_file() {
     # file's and the map can say which suite reached a handler.
     BB_COVERAGE_SUITE="$(basename "${1%.mjs}")"
     export BB_COVERAGE_SUITE
+    local t0 rc=0
+    t0="$(date +%s)"
     fresh_world
-    fresh
+    phase fresh
     log "== $(basename "$1")${2:+ $2} =="
     DASHBOARD_TEST_URL="http://127.0.0.1:$PORT/" DASHBOARD_TEST_CHROME="$CHROME" \
-    DASHBOARD_TEST_DIR="$S" node "$1"
+    DASHBOARD_TEST_DIR="$S" node "$1" || rc=$?
+    # What the suite cost, world and all, for the next run's worker plan
+    # (bucket_plan): a pass in a whole run only, since a failure can stop
+    # early or wait out a timeout, and a rerun runs on an idle box. One
+    # short line appended, so four workers at once do not tear it.
+    [ "$rc" = 0 ] && [ -z "${2:-}" ] && [ -n "${SUITE_TIMES:-}" ] \
+        && printf '%s\t%s\n' "$BB_COVERAGE_SUITE" "$(( $(date +%s) - t0 ))" >> "$SUITE_TIMES" 2>/dev/null
+    return "$rc"
 }
 rc=0
 failed=()
