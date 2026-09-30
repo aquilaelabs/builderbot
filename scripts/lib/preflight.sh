@@ -56,6 +56,10 @@ cmd_tests_preflight() {
             scripts/dashboard/test/lib.mjs|scripts/dashboard/test/run.sh) all_dash=1 ;;
             scripts/dashboard/server.py) [ -f "${BB_REPO:-$PWD}/.bb-map/coverage.json" ] && mapped+=("$f") || all_dash=1 ;;
             scripts/dashboard/test/*.mjs) own+=("$(basename "$f" .mjs)") ;;
+            # The unit tier runs every one of these first, whatever changed;
+            # handed to the map, a changed one came back as a browser suite
+            # the harness has no file for.
+            scripts/dashboard/unit/*) ;;
             *) mapped+=("$f") ;;
         esac
     done
@@ -108,6 +112,7 @@ cmd_tests_preflight() {
         for f in "${files[@]}"; do
             case "$f" in
                 *.md|*.txt|*.json|*.png) ;;
+                scripts/dashboard/unit/*) ;;
                 scripts/*|nodes/*) unplaced+=("$f") ;;
             esac
         done
