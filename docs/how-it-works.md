@@ -166,7 +166,11 @@ of uv's own inside the toolchain's directory, so nothing depends on the
 node's Python, and pandoc; about 650 MB) and **office** (LibreOffice's
 AppImage unpacked; about 750 MB). The Python environment holds absolute
 paths, so a store mounted at another path on another node needs the
-toolchain installed from that node.
+toolchain installed from that node. The documents toolchain also puts a
+`pdftoppm` and a `pdfinfo` on the node's PATH, drawn with PyMuPDF
+(`scripts/lib/poppler.py`): they are what Claude Code's own PDF reader asks
+for, and no node carries poppler, so without them a session could not read
+a PDF it had fetched.
 
 `bb` re-execs as `builder` automatically: `docker exec` lands as root, which
 would break file ownership. A bare `docker exec -it BuilderBot bash` is still

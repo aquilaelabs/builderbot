@@ -12,6 +12,7 @@ from contextlib import redirect_stderr
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
 import docs  # noqa: E402
+import poppler  # noqa: E402
 
 
 def refused(fn, *a):
@@ -56,6 +57,33 @@ class Usage(unittest.TestCase):
 
     def test_an_unknown_verb(self):
         self.assertIn("bb tool docs read", refused(docs.main, ["show", "x"]))
+
+
+class Poppler(unittest.TestCase):
+    """The pdftoppm and pdfinfo the documents toolchain puts on a node for
+    Claude Code's own PDF reader (R103): what it answers before PyMuPDF is
+    needed. Drawing pages was walked with Claude Code itself reading a PDF
+    through them (30 Sep)."""
+
+    def exits(self, *argv):
+        err = io.StringIO()
+        with redirect_stderr(err), self.assertRaises(SystemExit) as e:
+            poppler.main(list(argv))
+        return e.exception.code, err.getvalue()
+
+    def test_the_version_check_claude_code_makes_answers(self):
+        code, said = self.exits("pdftoppm", "-v")
+        self.assertEqual(code, 0)
+        self.assertIn("pdftoppm version", said)
+
+    def test_what_is_refused_is_poppler_shaped(self):
+        self.assertEqual(self.exits("pdftoppm", "-jpeg", "one.pdf")[0], 99)
+        code, said = self.exits("pdftoppm", "-singlefile", "a.pdf", "p")
+        self.assertEqual(code, 99)
+        self.assertIn("Command Line Error", said)
+        self.assertEqual(self.exits("pdftoppm", "-r", "x", "a.pdf", "p")[0], 99)
+        self.assertEqual(self.exits("pdfinfo")[0], 99)
+        self.assertEqual(self.exits("pdftotext", "a.pdf")[0], 99)
 
 
 if __name__ == "__main__":

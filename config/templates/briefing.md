@@ -95,7 +95,8 @@ PDF, a Word document, a slide deck or a spreadsheet, as Markdown), and
 looked at with `bb tool docs pages FILE [--pages N-M]`, which draws its
 pages as pictures for your image reader when layout, charts or a scan
 matter. `bb tool office convert FILE --to pdf|docx|xlsx|pptx` changes its
-format. They need the documents and office toolchains on this node; where
+format. With the documents toolchain here your own Read tool reads a PDF's
+pages too. They need the documents and office toolchains on this node; where
 one is missing the verb says so, and installing it is the operator's.
 
 A test run finds `BB_TEST_WORKERS` in its environment, on the node and

@@ -33,6 +33,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb gpu says what the node's card is, how much of its memory is free and whether this session may compute on it, bb status carries the same line, and bb gpu run -- CMD gives a heavy job a turn on the card so two do not run out of memory together (c4fbd9d)
 - The NVIDIA container toolkit is a row on a node's Toolchains tab, under the driver: installing it lets a dev container reserve the card. A compose file that reserves the GPU where the node cannot give it is refused before it starts, with the reason. (1dfa37f)
 - Two toolchains for documents: documents (bb tool docs read turns a PDF, Word document, slide deck or spreadsheet into Markdown, and bb tool docs pages draws its pages as pictures) and office (LibreOffice with no window: bb tool office convert). (2a07cae)
+- Claude Code's own PDF reader works on a node with the documents toolchain: it installs a pdftoppm and a pdfinfo drawn with PyMuPDF, which is what the reader asks for. (d6c29bd)
 
 ### Changed
 
