@@ -729,12 +729,12 @@ Each page is a layout of labeled blocks on a frame, named for what it is for, on
 ### the dashboard (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the dashboard on a desktop frame (12 columns by 8 rows), from the App shell template:
-  Header (the band at the top): the brand, the build stamp, the bell, the gear and sign out, across the top, row 1 of 8
-  Sidebar (a side column): the cards: Doctor, Tools, Administration, Runner, Projects; folding, the one arrangement stored, on the left, columns 1 to 3 of 12, rows 2 to 8 of 8
-  Tabs (a strip of tabs switching one area): the tab strip: terminals and document tabs, a + to open one, on the right, columns 4 to 12 of 12, row 2 of 8
-  Content (the main reading or working area): the pane: a terminal or a document tab, one on show, two panes side by side on a wide desk, on the right, columns 4 to 12 of 12, rows 3 to 7 of 8
-  Footer (the band at the foot): the bottom bar: Commands, Sessions, Chat, on the right, columns 4 to 12 of 12, row 8 of 8
+Layout of the dashboard on a desktop frame (12 columns by 8 rows), from the App shell template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the brand, the build stamp, the bell, the gear and sign out, across the top, row 1 of 8
+  2. Sidebar (a side column): the cards: Doctor, Tools, Administration, Runner, Projects; folding, the one arrangement stored, on the left, columns 1 to 3 of 12, rows 2 to 8 of 8
+  3. Tabs (a strip of tabs switching one area): the tab strip: terminals and document tabs, a + to open one, on the right, columns 4 to 12 of 12, row 2 of 8
+  4. Content (the main reading or working area): the pane: a terminal or a document tab, one on show, two panes side by side on a wide desk, on the right, columns 4 to 12 of 12, rows 3 to 7 of 8
+  5. Footer (the band at the foot): the bottom bar: Commands, Sessions, Chat, on the right, columns 4 to 12 of 12, row 8 of 8
 Notes:
   A document tab is a reading surface built by docSurface: a bar band, the band list, a quiet footer. Everything that appears or changes state moves, and nothing fades its own ground.
 This page's own rules:
@@ -770,10 +770,10 @@ an error band in its own tab, never a dead dashboard.
 ### a notebook (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Content (the main reading or working area): the view: its head row first, then its sections (docSection folds) and lists, adding at the top, across the middle, rows 2 to 7 of 8
-  Footer (the band at the foot): Save and Revert, only on the views that stage something, across the bottom, row 8 of 8
+Layout of a notebook on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Content (the main reading or working area): the view: its head row first, then its sections (docSection folds) and lists, adding at the top, across the middle, rows 2 to 7 of 8
+  3. Footer (the band at the foot): Save and Revert, only on the views that stage something, across the bottom, row 8 of 8
 Notes:
   One notebook per project, a clone of one template. Every view opens with the same head row at one height. A row with detail behind it is a fold that opens to be read, never as a form.
 This page's own rules:
@@ -807,24 +807,30 @@ something behind them (Roadmap, Briefing, Design, the version on
 Artifacts). A view that writes through or only reads (Bugs, Tests,
 Analysis, Git) has no foot.
 
-The Design view is three folds under its head row and add bar: Pages,
-Design language and Themes, in that order, so the boards are the first
-thing seen. The pages and the themes show one at a time, chosen on a
-pulldown at the fold's top, and what is added is what is shown: every page
-and every theme at once was the whole view scrolled past (the operator, 28
-Sep). The one shown is fields like any tab's, never a box of its own. Rules
+The Design view is two folds under its head row: Pages and Themes, in
+that order, both closed on a new tab so the view opens short, and each
+showing one entry at a time, chosen on a pulldown at the fold's top: every
+page and every theme at once was the whole view scrolled past (the
+operator, 28 Sep). The one shown is fields like any tab's, never a box of
+its own. Adding is inside the fold it adds to (the operator, 30 Sep): Add
+page, with its platform, its template and a page here to copy, is the first
+band inside Pages; Add theme, from blank, a preset or a copy of a theme, the
+first inside Themes; blank is the default of both, and what is added is
+what is shown. The design language is each theme's (the operator, 30 Sep):
+the first theme is the default, and its type, corners, space, motion,
+families and rules are the design's; another theme's are its own. Rules
 live inside the entry they hold for and nowhere else (the operator, 29
-Sep): a Rules section inside the Design language fold for the whole
-design, one inside each theme above its colors, one inside each page
-under its board, each following the pulldown; a rules fold below
+Sep): a Rules section inside each theme above its colors and one inside
+each page under its board, each following the pulldown; a rules fold below
 everything read as the rules. Every rules list here is the Briefing's
 (nb-rules.js): Add a rule first, a folded row a rule with its name and when
-it reaches a session, Edit turning the row into its form. A new project's design is empty, no theme and no
-page: the session that builds it chooses the look and puts it here after. The view is passive: nothing on it reaches
+it reaches a session, Edit turning the row into its form. A new project's
+design is empty, no theme and no page: the session that builds it chooses
+the look and puts it here after. The view is passive: nothing on it reaches
 into a session and nothing on it is a prompt; a session reads the design
-piece by piece, through its rules and `bb design show`, never as one dump. A theme and a page each carry rules of their own under
-them, one shown at a time like the language's, for what holds for that
-theme or that page alone; a session meets one as HOLDER/RULE.
+piece by piece, through its rules and `bb design show`, never as one dump.
+A session meets a theme's or a page's own rule as HOLDER/RULE, and the
+default theme's bare.
 
 **The Design view's board is the one surface here whose colors are data.**
 A page's blocks are painted in the project's own language (`nb-design.js`,
@@ -841,11 +847,11 @@ field, prose in a proseline.
 ### the dashboard on a phone (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the dashboard on a phone on a phone frame (6 columns by 12 rows), from the Blank template:
-  Header (the band at the top): the brand, the uptime, the bell, the gear and sign out, across the top, row 1 of 12
-  Tabs (a strip of tabs switching one area): Dashboard or Terminal: the two panels take turns, across the middle, row 2 of 12
-  Content (the main reading or working area): the sidebar's cards, or the tab strip and the pane, across the middle, rows 3 to 11 of 12
-  Footer (the band at the foot): Keys, Commands, Sessions, Chat, sharing the width, across the bottom, row 12 of 12
+Layout of the dashboard on a phone on a phone frame (6 columns by 12 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the brand, the uptime, the bell, the gear and sign out, across the top, row 1 of 12
+  2. Tabs (a strip of tabs switching one area): Dashboard or Terminal: the two panels take turns, across the middle, row 2 of 12
+  3. Content (the main reading or working area): the sidebar's cards, or the tab strip and the pane, across the middle, rows 3 to 11 of 12
+  4. Footer (the band at the foot): Keys, Commands, Sessions, Chat, sharing the width, across the bottom, row 12 of 12
 Notes:
   Sections open on a desktop and shut on a phone. The notebook's strip wraps into rows of equal tabs. A bar of buttons shares the width so the last is never cut off, down to a 344px fold cover.
 This page's own rules:
@@ -875,8 +881,8 @@ a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
 ### a dialog (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a dialog on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): a modal: its h3, every line a field band, groups headed by a label, the foot with the state, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of a dialog on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): a modal: its h3, every line a field band, groups headed by a label, the foot with the state, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   Two gaps down a dialog and no others: the field gap between the things in a band, the label gap between a label and its control. It scrolls in one place; a text box and a listbox are the only things that scroll inside it.
 This page's own rules:
@@ -905,379 +911,388 @@ sentence and offers Close.
 ### signing in (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of signing in on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Card (a box holding one thing): one panel in the middle of the page: the mark and the name, then the form, in the middle, columns 5 to 8 of 12, rows 3 to 6 of 8
-  Form (fields a person fills in): Username, Password and Sign in, the one filled button; a refusal is said under it, in the middle, columns 5 to 8 of 12, rows 4 to 6 of 8
+Layout of signing in on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Card (a box holding one thing): one panel in the middle of the page: the mark and the name, then the form, in the middle, columns 5 to 8 of 12, rows 3 to 6 of 8
+  2. Form (fields a person fills in): Username, Password and Sign in, the one filled button; a refusal is said under it, in the middle, columns 5 to 8 of 12, rows 4 to 6 of 8
 Notes:
   The only page with nothing around it: the page's ground and one panel, 340px wide, centered both ways. The mark is the scheme's accent and the button is the deep accent with ink on it, as every filled surface is. Nothing else is reachable before it.
 
 ### a terminal tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a terminal tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the pane bar: which session this is, by its kind and its project, across the top, row 1 of 8
-  Content (the main reading or working area): the terminal itself, the session as tmux has it: Claude or a shell, across the middle, rows 2 to 7 of 8
-  Footer (the band at the foot): Commands, Sessions and Chat; on a phone Keys joins them for what a touch keyboard lacks, across the bottom, row 8 of 8
+Layout of a terminal tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the pane bar: which session this is, by its kind and its project, across the top, row 1 of 8
+  2. Content (the main reading or working area): the terminal itself, the session as tmux has it: Claude or a shell, across the middle, rows 2 to 7 of 8
+  3. Footer (the band at the foot): Commands, Sessions and Chat; on a phone Keys joins them for what a touch keyboard lacks, across the bottom, row 8 of 8
 Notes:
   A terminal is the one surface here that is not the dashboard's to draw: the frame shows the session and the chrome stays out of it. The bar wears the project's color as a stripe. Commands types a line from the fixed tables or the operator's own list into a shell, never into a Claude session; Sessions lists what is running; Chat is between accounts.
 
 ### the Toolchains tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Toolchains tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node's store this is, and Refresh, across the top, row 1 of 8
-  Text (a block of prose): the store's path on that node, across the middle, row 2 of 8
-  List (rows of like things): the toolchains by group, each a row to tick: what it is, its size, what it needs, its version, across the middle, rows 3 to 6 of 8
-  List (rows of like things): Not for this node: a fold of the ones its platform cannot run, with why, across the middle, row 7 of 8
-  Button (an action to press): Install selected and Check for updates; what the one job is doing is said beside them, across the bottom, row 8 of 8
+Layout of the Toolchains tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node's store this is, and Refresh, across the top, row 1 of 8
+  2. Text (a block of prose): the store's path on that node, across the middle, row 2 of 8
+  3. List (rows of like things): the toolchains by group, each a row to tick: what it is, its size, what it needs, its version, across the middle, rows 3 to 6 of 8
+  4. List (rows of like things): Not for this node: a fold of the ones its platform cannot run, with why, across the middle, row 7 of 8
+  5. Button (an action to press): Install selected and Check for updates; what the one job is doing is said beside them, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). Toolchains are installed on nodes and never on the controller, so the picker lists agent nodes only. An install is a job on the node: the rows are read again as it runs, and the line beside the buttons says what it is doing rather than the button changing its words.
 
 ### the Emulator tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Emulator tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node, and Refresh, across the top, row 1 of 8
-  Text (a block of prose): the store the images live in, across the middle, row 2 of 8
-  Form (fields a person fills in): add an image: the API level, the flavor, and Add, across the middle, row 3 of 8
-  List (rows of like things): the images held: what each is and can do, its size, its package and the AVD made from it, across the middle, rows 4 to 7 of 8
-  Footer (the band at the foot): the terms the images come under, across the bottom, row 8 of 8
+Layout of the Emulator tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node, and Refresh, across the top, row 1 of 8
+  2. Text (a block of prose): the store the images live in, across the middle, row 2 of 8
+  3. Form (fields a person fills in): add an image: the API level, the flavor, and Add, across the middle, row 3 of 8
+  4. List (rows of like things): the images held: what each is and can do, its size, its package and the AVD made from it, across the middle, rows 4 to 7 of 8
+  5. Footer (the band at the foot): the terms the images come under, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). The flavors say what they are for in a sentence (Play services or not, rootable or not), since the package name says it to nobody.
 
 ### the Docker tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node's daemon, and how it is reached, across the top, row 1 of 8
-  List (rows of like things): containers grouped by the project that owns them; the ones with no project last, across the middle, rows 2 to 6 of 8
-  Card (a box holding one thing): one container: its state, where it came from, Details, its actions, Ports and mounts, in the middle, columns 2 to 11 of 12, rows 3 to 5 of 8
-  Button (an action to press): the container's own action bar: Up, Down, Env or Edit, Rebuild, Remove, in the middle, columns 2 to 11 of 12, row 6 of 8
-  Footer (the band at the foot): New container and Refresh, across the bottom, row 8 of 8
+Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node's daemon, and how it is reached, across the top, row 1 of 8
+  2. List (rows of like things): containers grouped by the project that owns them; the ones with no project last, across the middle, rows 2 to 6 of 8
+  3. Card (a box holding one thing): one container: its state, where it came from, Details, its actions, Ports and mounts, in the middle, columns 2 to 11 of 12, rows 3 to 5 of 8
+  4. Button (an action to press): the container's own action bar: Up, Down, Env or Edit, Rebuild, Remove, in the middle, columns 2 to 11 of 12, row 6 of 8
+  5. Footer (the band at the foot): New container and Refresh, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). A group is headed by its project in the project's color. A container's row says whether it runs as a pill, never as colored words alone. Why a control is dead is written under the row in red, since a tooltip is nothing on a phone. A session's request to rebuild is answered here.
 
 ### the Nodes tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Nodes tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node, Create sandbox VM and Enroll node, across the top, row 1 of 8
-  Card (a box holding one thing): the node: online and live as pills, where it dials in from, its agent, and Test, across the middle, rows 2 to 3 of 8
-  List (rows of like things): its sections, each a fold with its own Apply: Health, Storage, Network, Runner and the rest, across the middle, rows 4 to 7 of 8
-  Footer (the band at the foot): what a node is for, in a sentence, across the bottom, row 8 of 8
+Layout of the Nodes tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node, Create sandbox VM and Enroll node, across the top, row 1 of 8
+  2. Card (a box holding one thing): the node: online and live as pills, where it dials in from, its agent, and Test, across the middle, rows 2 to 3 of 8
+  3. List (rows of like things): its sections, each a fold with its own Apply: Health, Storage, Network, Runner and the rest, across the middle, rows 4 to 7 of 8
+  4. Footer (the band at the foot): what a node is for, in a sentence, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). Health draws meters: a track with a fill, the number beside it. A section the node cannot offer says why in its place rather than being missing.
 
 ### the Jobs tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Jobs tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: a filter for the ones still running, across the top, row 1 of 8
-  List (rows of like things): jobs, newest first: state as a pill, its kind, where, when, how long, who asked, and Log, across the bottom, rows 2 to 8 of 8
+Layout of the Jobs tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: a filter for the ones still running, across the top, row 1 of 8
+  2. List (rows of like things): jobs, newest first: state as a pill, its kind, where, when, how long, who asked, and Log, across the bottom, rows 2 to 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). A long list pages rather than scrolling forever. Log opens the job's output in a dialog.
 
 ### the Phone tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Phone tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: which node the phone is plugged into or paired with, and Refresh, across the top, row 1 of 8
-  Card (a box holding one thing): whether a phone is connected, as a pill, and Connect, the filled button, across the middle, rows 2 to 3 of 8
-  Form (fields a person fills in): pairing: the code from the phone, and Pair, with the steps to get one, across the middle, rows 4 to 6 of 8
-  List (rows of like things): what sessions have asked of the phone, each with its reason, Allow and Deny, across the middle, row 7 of 8
-  Footer (the band at the foot): a session reaches the phone only by asking, across the bottom, row 8 of 8
+Layout of the Phone tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: which node the phone is plugged into or paired with, and Refresh, across the top, row 1 of 8
+  2. Card (a box holding one thing): whether a phone is connected, as a pill, and Connect, the filled button, across the middle, rows 2 to 3 of 8
+  3. Form (fields a person fills in): pairing: the code from the phone, and Pair, with the steps to get one, across the middle, rows 4 to 6 of 8
+  4. List (rows of like things): what sessions have asked of the phone, each with its reason, Allow and Deny, across the middle, row 7 of 8
+  5. Footer (the band at the foot): a session reaches the phone only by asking, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface).
 
 ### Controller settings (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of Controller settings on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: what this tab is, and where appearance lives instead, across the top, row 1 of 8
-  List (rows of like things): seven sections, each a group of fields with its own Apply at its foot, across the middle, rows 2 to 7 of 8
-  Footer (the band at the foot): when a change takes effect: at once, or at the next start, across the bottom, row 8 of 8
+Layout of Controller settings on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: what this tab is, and where appearance lives instead, across the top, row 1 of 8
+  2. List (rows of like things): seven sections, each a group of fields with its own Apply at its foot, across the middle, rows 2 to 7 of 8
+  3. Footer (the band at the foot): when a change takes effect: at once, or at the next start, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). Nothing here takes effect on the change: each section is a draft until its Apply. The color scheme is not here; it is in the gear, since a theme is looked at and not decided.
 
 ### the Users tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Users tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: who may sign in here, and which projects they see, across the top, row 1 of 8
-  List (rows of like things): accounts: the role as a pill, what each sees, its Claude sign-in, Edit and Remove, across the middle, rows 2 to 4 of 8
-  Text (a block of prose): What an account gets: a fold saying what a user and an admin each are, across the middle, row 5 of 8
-  Form (fields a person fills in): Add somebody: a name, a role, and Add, across the middle, rows 6 to 7 of 8
-  Footer (the band at the foot): how a password is set from a shell, across the bottom, row 8 of 8
+Layout of the Users tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: who may sign in here, and which projects they see, across the top, row 1 of 8
+  2. List (rows of like things): accounts: the role as a pill, what each sees, its Claude sign-in, Edit and Remove, across the middle, rows 2 to 4 of 8
+  3. Text (a block of prose): What an account gets: a fold saying what a user and an admin each are, across the middle, row 5 of 8
+  4. Form (fields a person fills in): Add somebody: a name, a role, and Add, across the middle, rows 6 to 7 of 8
+  5. Footer (the band at the foot): how a password is set from a shell, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). The owner's row says it cannot be deleted or given another role, under the row, where a dead button would otherwise be the first you heard of it.
 
 ### the Profile tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Profile tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: who you are here, your role, and your Claude sign-in, across the top, row 1 of 8
-  List (rows of like things): five sections: Who you are, Password, Claude, Plugins and Conversations, each with its own Save, across the middle, rows 2 to 7 of 8
-  Footer (the band at the foot): your commits carry the git name and email above, across the bottom, row 8 of 8
+Layout of the Profile tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: who you are here, your role, and your Claude sign-in, across the top, row 1 of 8
+  2. List (rows of like things): five sections: Who you are, Password, Claude, Plugins and Conversations, each with its own Save, across the middle, rows 2 to 7 of 8
+  3. Footer (the band at the foot): your commits carry the git name and email above, across the bottom, row 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). Conversations lists the account's own sessions with Claude, newest first, divided by hairlines as the Artifacts list is, each a download.
 
 ### the Analysis tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Analysis tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar: the scanners' reports, by project, across the top, row 1 of 8
-  List (rows of like things): findings grouped by project and scanner, severity as a badge, each opening to its detail, across the bottom, rows 2 to 8 of 8
+Layout of the Analysis tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: the scanners' reports, by project, across the top, row 1 of 8
+  2. List (rows of like things): findings grouped by project and scanner, severity as a badge, each opening to its detail, across the bottom, rows 2 to 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). With no reports folder connected the tab says so in one line and where to read how.
 
 ### the Projects tab (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the Projects tab on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Header (the band at the top): the bar, and New project, across the top, row 1 of 8
-  List (rows of like things): every project the account may see: its branch, whether it is on the sidebar, what is wrong, across the bottom, rows 2 to 8 of 8
+Layout of the Projects tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar, and New project, across the top, row 1 of 8
+  2. List (rows of like things): every project the account may see: its branch, whether it is on the sidebar, what is wrong, across the bottom, rows 2 to 8 of 8
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). The eye on a row puts the project on the sidebar or takes it off: the sidebar shows the ones you work on, this tab all of them.
 
 ### a notebook: Briefing (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Briefing on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: what every session here starts with, and History, across the middle, row 2 of 8
-  Chart (a chart or a meter): Code base: the languages as one bar, counted from what git tracks, across the middle, row 3 of 8
-  List (rows of like things): Your rules: standing ones in full, named ones with what calls for each, across the middle, rows 4 to 5 of 8
-  Text (a block of prose): What a session is sent: the exact text, its size, and each part against its share, across the middle, row 6 of 8
-  List (rows of like things): Memories, and Write a memory, across the middle, row 7 of 8
-  Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
+Layout of a notebook: Briefing on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: what every session here starts with, and History, across the middle, row 2 of 8
+  3. Chart (a chart or a meter): Code base: the languages as one bar, counted from what git tracks, across the middle, row 3 of 8
+  4. List (rows of like things): Your rules: standing ones in full, named ones with what calls for each, across the middle, rows 4 to 5 of 8
+  5. Text (a block of prose): What a session is sent: the exact text, its size, and each part against its share, across the middle, row 6 of 8
+  6. List (rows of like things): Memories, and Write a memory, across the middle, row 7 of 8
+  7. Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
 Notes:
   What a session is sent is shut by default: a thing to check, not to read every time. It turns amber when a part is over its share of a session's prompt, and says what that part left out.
 
 ### a notebook: Design (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Design on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: Write the file, and a new page by platform and template, across the middle, row 2 of 8
-  Content (the main reading or working area): Pages: a pulldown of them, the chosen one's board, its blocks, its rules and its notes, across the middle, rows 3 to 4 of 8
-  Form (fields a person fills in): Design language: type, corners, space and motion, the families, what it governs, its rules, across the middle, row 5 of 8
-  List (rows of like things): Themes: a pulldown of them, the chosen one's colors as name, hex and what each is for, its rules, across the middle, rows 6 to 7 of 8
-  Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
+Layout of a notebook: Design on a desktop frame (12 columns by 14 rows: the frame shows 8 of them, and the page scrolls), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 14
+  2. Header (the band at the top): the head row: how many pages, whether docs/design-language.md is written and current, and Write the file, across the middle, row 2 of 14
+  3. Content (the main reading or working area): Pages: a fold, closed on a new tab, its count on the fold; one page shown at a time, across the middle, rows 3 to 9 of 14
+  4. Form (fields a person fills in): Add page: the platform, the template it starts from, or a copy of a page here (blank by default), across the middle, row 3 of 14, inside block 3 (Content: Pages)
+  5. Form (fields a person fills in): the page pulldown, then the page's For, Key, Platform, Frame and Rows, across the middle, row 4 of 14, inside block 3 (Content: Pages)
+  6. Content (the main reading or working area): the board: the blocks on the frame in the project's colors; drag to move, a corner to size; a child stays in its parent, on the left, columns 1 to 8 of 12, rows 5 to 7 of 14, inside block 3 (Content: Pages)
+  7. List (rows of like things): the layers, top first: each block's name; tap to select, up and down to reorder, on the right, columns 9 to 12 of 12, rows 5 to 7 of 14, inside block 3 (Content: Pages)
+  8. Form (fields a person fills in): the selected block: Kind, what it's for, Inside (the block it is part of), Remove block; Add block above it, across the middle, row 8 of 14, inside block 3 (Content: Pages)
+  9. Card (a box holding one thing): Rules: what holds for this page alone, as PAGE/RULE, the Briefing's list; then Notes and Remove page, across the middle, row 9 of 14, inside block 3 (Content: Pages)
+  10. List (rows of like things): Themes: a fold, closed on a new tab; the count and the default's type and corners on the fold; one shown at a time, across the middle, rows 10 to 13 of 14
+  11. Form (fields a person fills in): Add theme from blank, a preset's ten colors or a copy of a theme here; Governs; Theme pulldown, the first the default, across the middle, row 10 of 14, inside block 10 (List: Themes)
+  12. Form (fields a person fills in): the theme: Name, Mode, Fill from; its Type, Corners, Space and Motion, custom naming a rule of its own; Families, across the middle, row 11 of 14, inside block 10 (List: Themes)
+  13. Card (a box holding one thing): Rules: the default theme's are the design's, another's hold for it alone as THEME/RULE; the Briefing's list, across the middle, row 12 of 14, inside block 10 (List: Themes)
+  14. List (rows of like things): Colors: each a name, a hex chip and what it is for, added and cut one by one, across the middle, row 13 of 14, inside block 10 (List: Themes)
+  15. Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 14 of 14
 Notes:
-  One page and one theme on show at a time, each on its pulldown. Rules sit inside what they hold for: the language's in the language, a theme's in the theme, a page's in the page, and each list is the Briefing's rules list. The four choices of the language start on 'not chosen'. The view is passive: no prompt, no Copy, nothing sent to a session.
+  Two folds, Pages and Themes, both closed on a new tab, each showing one entry on its pulldown. The design language is each theme's: the first theme is the default and its type, corners, space, motion, families and rules are the design's; another theme's hold for it alone. A page keeps rules of its own under its board. Adding is inside the fold it adds to: a new page from a platform and a template (Blank, App shell, Dashboard, Landing page, List and detail, Settings for a desktop frame; Mobile app and Mobile feed for a phone's), or a copy of a page here (blocks, layouts, rules and notes), and a new theme blank, from a preset or as a copy of a theme (colors, choices and rules); blank is the default. The board is the width of the view with the layers list beside it, top layer first; a later layer draws over an earlier one, and a block can be inside another, drawn over it and kept within it however either moves, so a card sits in a list and a pill in a bar. The view is passive: no prompt, no Copy, nothing sent to a session; a session reads the design through bb design show and the rules that reach it.
 
 ### a notebook: Roadmap (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Roadmap on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: what is on the list, and History, across the middle, row 2 of 8
-  Form (fields a person fills in): Add an item, and Reorder, across the middle, row 3 of 8
-  List (rows of like things): the items, each with its steps; the next step can be sent to the session that is open, across the middle, rows 4 to 7 of 8
-  Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
+Layout of a notebook: Roadmap on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: what is on the list, and History, across the middle, row 2 of 8
+  3. Form (fields a person fills in): Add an item, and Reorder, across the middle, row 3 of 8
+  4. List (rows of like things): the items, each with its steps; the next step can be sent to the session that is open, across the middle, rows 4 to 7 of 8
+  5. Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
 Notes:
   A done step is struck with a tick where its number was. A parked item is dim and carries no steps. Finished items are behind their own view, not at the foot of this one.
 
 ### a notebook: Bugs (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Bugs on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: how many are open, and History, across the middle, row 2 of 8
-  Form (fields a person fills in): Report a bug: the title, where it lives, how to reproduce it, the severity, across the middle, row 3 of 8
-  Search (a search box): the sort bar: by severity, newest, oldest, recently changed or title, across the middle, row 4 of 8
-  List (rows of like things): the bugs, open first: number, severity as a badge, title; a row opens to its fields, across the bottom, rows 5 to 8 of 8
+Layout of a notebook: Bugs on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: how many are open, and History, across the middle, row 2 of 8
+  3. Form (fields a person fills in): Report a bug: the title, where it lives, how to reproduce it, the severity, across the middle, row 3 of 8
+  4. Search (a search box): the sort bar: by severity, newest, oldest, recently changed or title, across the middle, row 4 of 8
+  5. List (rows of like things): the bugs, open first: number, severity as a badge, title; a row opens to its fields, across the bottom, rows 5 to 8 of 8
 Notes:
   Severity wears the badge palette: the same colors on every scheme.
 
 ### a notebook: Git (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Git on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: the branch and how it stands with its host, and Refresh, across the middle, row 2 of 8
-  Button (an action to press): the network bar: Fetch, Pull and Push, as the project's push rights allow, across the middle, row 3 of 8
-  List (rows of like things): Changes: what is not committed, each file opening to its diff, and Commit all, across the middle, rows 4 to 5 of 8
-  List (rows of like things): Branches, and Commits drawn as a graph in lanes, across the bottom, rows 6 to 8 of 8
+Layout of a notebook: Git on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: the branch and how it stands with its host, and Refresh, across the middle, row 2 of 8
+  3. Button (an action to press): the network bar: Fetch, Pull and Push, as the project's push rights allow, across the middle, row 3 of 8
+  4. List (rows of like things): Changes: what is not committed, each file opening to its diff, and Commit all, across the middle, rows 4 to 5 of 8
+  5. List (rows of like things): Branches, and Commits drawn as a graph in lanes, across the bottom, rows 6 to 8 of 8
 Notes:
   Reads to a beginner and stays exact for a developer: the host is named (GitHub, Gitea), never 'origin'. Whose working tree it is is said to anybody else, who is offered nothing that changes it.
 
 ### a notebook: Artifacts (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Artifacts on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: what the project ships, and Download source, across the middle, row 2 of 8
-  Card (a box holding one thing): Build: the node it builds on. Version: where the tree is, and the buttons that move it, across the middle, rows 3 to 4 of 8
-  Text (a block of prose): the dev instance: what it was built from, and whether the tree has moved past it, across the middle, row 5 of 8
-  List (rows of like things): what is in dist/, divided by hairlines, each a download; Captures apart, with their age, across the bottom, rows 6 to 8 of 8
+Layout of a notebook: Artifacts on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: what the project ships, and Download source, across the middle, row 2 of 8
+  3. Card (a box holding one thing): Build: the node it builds on. Version: where the tree is, and the buttons that move it, across the middle, rows 3 to 4 of 8
+  4. Text (a block of prose): the dev instance: what it was built from, and whether the tree has moved past it, across the middle, row 5 of 8
+  5. List (rows of like things): what is in dist/, divided by hairlines, each a download; Captures apart, with their age, across the bottom, rows 6 to 8 of 8
 Notes:
   Captures are not what the project ships, so they are listed apart, each saying whose it is, and go by age.
 
 ### a notebook: Docker (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Docker on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: this project's containers, and a way to the Docker tab, across the middle, row 2 of 8
-  List (rows of like things): the project's own containers, each as the Docker tab draws one, across the bottom, rows 3 to 8 of 8
+Layout of a notebook: Docker on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: this project's containers, and a way to the Docker tab, across the middle, row 2 of 8
+  3. List (rows of like things): the project's own containers, each as the Docker tab draws one, across the bottom, rows 3 to 8 of 8
 Notes:
   The same rows as the Docker tab, for one project: a second drawing of them would be a second place to be wrong.
 
 ### a notebook: Tests (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Tests on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: the last run, and Open the run's output, across the middle, row 2 of 8
-  Search (a search box): sort and filter: by suite, by what is slow, by what is flagged, across the middle, row 3 of 8
-  Table (columns of data): the tests: suite, name, what it protects, how long it took, whether it is suspect, across the bottom, rows 4 to 8 of 8
+Layout of a notebook: Tests on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: the last run, and Open the run's output, across the middle, row 2 of 8
+  3. Search (a search box): sort and filter: by suite, by what is slow, by what is flagged, across the middle, row 3 of 8
+  4. Table (columns of data): the tests: suite, name, what it protects, how long it took, whether it is suspect, across the bottom, rows 4 to 8 of 8
 Notes:
   With no run on record the view says how one is made, in one line.
 
 ### a notebook: Analysis (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a notebook: Analysis on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
-  Header (the band at the top): the head row: the scanners' findings for this project, and History, across the middle, row 2 of 8
-  List (rows of like things): findings by scanner, severity as a badge; one can be sent to the session or dismissed with a reason, across the bottom, rows 3 to 8 of 8
+Layout of a notebook: Analysis on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  2. Header (the band at the top): the head row: the scanners' findings for this project, and History, across the middle, row 2 of 8
+  3. List (rows of like things): findings by scanner, severity as a badge; one can be sent to the session or dismissed with a reason, across the bottom, rows 3 to 8 of 8
 Notes:
   The project's share of the Analysis tab.
 
 ### a project's settings (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a project's settings on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): Project settings: name and color, the remote, the node, build and test, Claude settings, yours here, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of a project's settings on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): Project settings: name and color, the remote, the node, build and test, Claude settings, yours here, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   The longest dialog, so it is the one that proves the layout: groups headed by a label, every line a field band, one foot. Claude may is seven dials, each auto, ask or deny. Yours on this project is the person's own: model, effort, replies, questions. Unlink and Delete project are apart from Save, and each asks once, saying what goes and what stays.
 
 ### a new project (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a new project on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): New project: the source (a new repository, a clone, an archive), its name, its node, what Claude may do, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of a new project on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): New project: the source (a new repository, a clone, an archive), its name, its node, what Claude may do, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   The three sources are one row of buttons and the fields under them change with the pick. A clone or a link runs as a job the Projects card reports; the dialog does not wait on the network.
 
 ### a first session (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a first session on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): First session: the brief typed when the project was made, the model and effort, Build it or Start without it, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of a first session on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): First session: the brief typed when the project was made, the model and effort, Build it or Start without it, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   Shown the first time Claude is started on a project that has a brief. Either button takes the brief out of the tree.
 
 ### a new container (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a new container on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): New container: its name, its node and project, and its definition from an image or a compose file, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of a new container on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): New container: its name, its node and project, and its definition from an image or a compose file, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   The env file's values are never shown back, only its keys.
 
 ### waiting for your approval (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of waiting for your approval on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): What a session added under an ask dial: each with Approve and Deny, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of waiting for your approval on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): What a session added under an ask dial: each with Approve and Deny, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   Reached from the bell. A thing approved lands as if the session had been allowed it; a thing denied is said to the session.
 
 ### the gear (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of the gear on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): Layout (reset the sidebar's cards), Color scheme (thirteen swatches), Account (Profile), in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of the gear on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): Layout (reset the sidebar's cards), Color scheme (thirteen swatches), Account (Profile), in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   A menu under the gear, not a modal. A swatch applies on the press, the one setting that does: a theme is looked at, not decided. Each swatch is drawn in its own scheme.
 
 ### about (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of about on a desktop frame (12 columns by 8 rows), from the Blank template:
-  Overlay (a dialog, sheet, drawer, popover or toast over the page): About: the build, the license, Getting started and Changelog, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Layout of about on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): About: the build, the license, Getting started and Changelog, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   The changelog is the same text the welcome panel shows after an update.
 
 ### the app: signing in (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: signing in on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): BuilderBot, and what to sign in with, across the middle, rows 4 to 5 of 12
-  Form (fields a person fills in): the dashboard's address, the account, the password, and Sign in, across the middle, rows 6 to 9 of 12
-  Text (a block of prose): over http, said before the sign-in: it travels in the clear, across the middle, row 10 of 12
+Layout of the app: signing in on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): BuilderBot, and what to sign in with, across the middle, rows 4 to 5 of 12
+  2. Form (fields a person fills in): the dashboard's address, the account, the password, and Sign in, across the middle, rows 6 to 9 of 12
+  3. Text (a block of prose): over http, said before the sign-in: it travels in the clear, across the middle, row 10 of 12
 Notes:
   The app wears the dashboard's schemes by the same names and hexes, chosen under More and kept on the device. Text buttons are the accent; a filled button is the deep accent with ink.
 
 ### the app: projects (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: projects on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): the mark, the account, the build and the host, and Refresh, across the top, row 1 of 12
-  Card (a box holding one thing): the bell's row: questions waiting and nodes that need attention, a bar down its side, across the middle, rows 2 to 3 of 12
-  Card (a box holding one thing): the doctor's problems, for an administrator, only when there are any, across the middle, row 4 of 12
-  Search (a search box): a box to find a project in, once the list is longer than a screen, across the middle, row 5 of 12
-  List (rows of like things): projects: the color down the side, the session as working or waiting on you, what is waiting, across the middle, rows 6 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: projects on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the mark, the account, the build and the host, and Refresh, across the top, row 1 of 12
+  2. Card (a box holding one thing): the bell's row: questions waiting and nodes that need attention, a bar down its side, across the middle, rows 2 to 3 of 12
+  3. Card (a box holding one thing): the doctor's problems, for an administrator, only when there are any, across the middle, row 4 of 12
+  4. Search (a search box): a box to find a project in, once the list is longer than a screen, across the middle, row 5 of 12
+  5. List (rows of like things): projects: the color down the side, the session as working or waiting on you, what is waiting, across the middle, rows 6 to 11 of 12
+  6. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   The question a phone is picked up to ask is whether it is done, so the list answers it before anything is opened. Pull down to read again, on every list.
 
 ### the app: a project (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: a project on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): the project, its color, and its session as a pill: working, or waiting on you, across the top, row 1 of 12
-  Tabs (a strip of tabs switching one area): the view strip, scrolling sideways: Claude first, then the notebook's views, Git, Settings, across the middle, row 2 of 12
-  Form (fields a person fills in): Claude: what the session is doing, and a box to say a line to it, across the middle, rows 3 to 5 of 12
-  List (rows of like things): your conversations here, each with Read the end and Share, across the middle, rows 6 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: a project on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the project, its color, and its session as a pill: working, or waiting on you, across the top, row 1 of 12
+  2. Tabs (a strip of tabs switching one area): the view strip, scrolling sideways: Claude first, then the notebook's views, Git, Settings, across the middle, row 2 of 12
+  3. Form (fields a person fills in): Claude: what the session is doing, and a box to say a line to it, across the middle, rows 3 to 5 of 12
+  4. List (rows of like things): your conversations here, each with Read the end and Share, across the middle, rows 6 to 11 of 12
+  5. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   A project opens on Claude. The terminals stay the browser's; a line said here goes into the account's own session and nowhere else. Design is read here, not edited. Docker's Start, Stop and Rebuild each ask before they act. Settings are a draft until Save.
 
 ### the app: approvals (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: approvals on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): Approvals, and Refresh, across the top, row 1 of 12
-  List (rows of like things): what waits on your answer: the ask, its reason, its command, Deny and Allow, across the middle, rows 2 to 6 of 12
-  List (rows of like things): changes a session has waiting, by project, each with Deny and Approve, across the middle, rows 7 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: approvals on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): Approvals, and Refresh, across the top, row 1 of 12
+  2. List (rows of like things): what waits on your answer: the ask, its reason, its command, Deny and Allow, across the middle, rows 2 to 6 of 12
+  3. List (rows of like things): changes a session has waiting, by project, each with Deny and Approve, across the middle, rows 7 to 11 of 12
+  4. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   Root on a node wears red down its side and everything else amber. The same asks arrive as notifications with Approve and Deny on them, which need the phone unlocked.
 
 ### the app: nodes (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: nodes on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): Nodes, and Refresh, across the top, row 1 of 12
-  List (rows of like things): nodes: live or not down the side, what the machine is, Lock system changes and Drain, across the middle, rows 2 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: nodes on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): Nodes, and Refresh, across the top, row 1 of 12
+  2. List (rows of like things): nodes: live or not down the side, what the machine is, Lock system changes and Drain, across the middle, rows 2 to 11 of 12
+  3. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   An administrator's. Enrolling and the node's sections stay the dashboard's.
 
 ### the app: more (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: more on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): More, across the top, row 1 of 12
-  Card (a box holding one thing): whether the app and the dashboard are on the same API, and Install it when the app is behind, across the middle, rows 2 to 3 of 12
-  List (rows of like things): the other pages as rows: Profile, Tools, Jobs, Users, What's new, across the middle, rows 4 to 6 of 12
-  Form (fields a person fills in): The watch: questions, a turn finished, how often to ask; one Save, across the middle, rows 7 to 9 of 12
-  List (rows of like things): Colors: the thirteen schemes, each drawn in its own; About; Sign out, across the middle, rows 10 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: more on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): More, across the top, row 1 of 12
+  2. Card (a box holding one thing): whether the app and the dashboard are on the same API, and Install it when the app is behind, across the middle, rows 2 to 3 of 12
+  3. List (rows of like things): the other pages as rows: Profile, Tools, Jobs, Users, What's new, across the middle, rows 4 to 6 of 12
+  4. Form (fields a person fills in): The watch: questions, a turn finished, how often to ask; one Save, across the middle, rows 7 to 9 of 12
+  5. List (rows of like things): Colors: the thirteen schemes, each drawn in its own; About; Sign out, across the middle, rows 10 to 11 of 12
+  6. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   The watch's settings are a draft until Save. The scheme applies on the press, as it does on the dashboard.
 
 ### the app: tools (Android app)
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
-Layout of the app: tools on a phone frame (6 columns by 12 rows), from the Mobile app template:
-  Header (the band at the top): Tools, and Refresh, across the top, row 1 of 12
-  Tabs (a strip of tabs switching one area): the nodes, as chips; never the controller, across the middle, row 2 of 12
-  Text (a block of prose): the store's path on that node, across the middle, row 3 of 12
-  List (rows of like things): toolchains: what each is, its version or not installed, Install or Remove for an administrator, across the middle, rows 4 to 11 of 12
-  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Layout of the app: tools on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): Tools, and Refresh, across the top, row 1 of 12
+  2. Tabs (a strip of tabs switching one area): the nodes, as chips; never the controller, across the middle, row 2 of 12
+  3. Text (a block of prose): the store's path on that node, across the middle, row 3 of 12
+  4. List (rows of like things): toolchains: what each is, its version or not installed, Install or Remove for an administrator, across the middle, rows 4 to 11 of 12
+  5. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   Install and Remove ask first, saying the size. Android system images are not here: choosing one wants the room the dashboard's tab has.
