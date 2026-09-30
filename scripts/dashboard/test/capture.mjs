@@ -78,7 +78,9 @@ if (ff.status !== 0){
   ok(none.status !== 0 && /prune NAME\.\.\. removes those; --days N/.test(none.stderr), 'prune with nothing to go by says what it takes');
   const missing = cap('prune', `${S}/dist`, 'nope');
   ok(missing.status !== 0 && /no such capture: nope; bb capture ls names them/.test(missing.stderr), 'a name that is not there is refused, naming ls');
+  const work = JSON.parse(readFileSync(`${S}/dist/reel/cut/frames.json`, 'utf8')).work;
   const byName = cap('prune', `${S}/dist`, 'cut');
+  ok(work && !existsSync(work), `pruning a reel takes its working files on this machine with it (report 42: ${work})`);
   ok(byName.status === 0 && !existsSync(`${S}/dist/reel/cut`) && /no captures/.test(cap('ls', `${S}/dist`).stderr),
      'prune NAME lets a capture go now whatever its age');
 }

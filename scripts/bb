@@ -3759,6 +3759,7 @@ cmd_capture() {
         # and applies the one rule the Artifacts tab's sweep also does.
         ls|prune)
             local verb="$1"; shift
+            case "${1:-}" in -h|--help) cmd_capture --help; return 0 ;; esac
             local proj; proj="$(project_here 2>/dev/null || true)"
             local dist="${proj:+${WORKSPACE}/${proj}/dist}"
             [ -n "$dist" ] || dist="$PWD/dist"

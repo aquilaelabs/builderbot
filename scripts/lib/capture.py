@@ -134,8 +134,17 @@ def captures(dist):
 
 
 def remove(c):
-    """One capture gone: a reel's directory, a shot and its record."""
+    """One capture gone: a reel's directory, a shot and its record, and a
+    reel's working files on this machine (the recording, the full-size
+    frames), which frames.json names in `work`. Only a directory under the
+    capture scratch: the record is a file on the share, and it names what
+    is deleted (report 42: the work stayed behind)."""
     if c["kind"] == "reel":
+        work = str(record_of(os.path.join(c["file"], "frames.json")).get("work") or "")
+        base = os.path.realpath(os.environ.get("BB_CAPTURE_SCRATCH") or os.path.join(
+            os.environ.get("TMPDIR") or "/tmp", f"bb-capture-{os.getuid()}"))
+        if work and os.path.dirname(os.path.realpath(work)) == base and os.path.isdir(work):
+            shutil.rmtree(work, ignore_errors=True)
         shutil.rmtree(c["file"], ignore_errors=True)
     else:
         for p in (c["file"], os.path.join(os.path.dirname(c["file"]), f".{c['name']}.json")):
