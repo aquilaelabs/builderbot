@@ -2743,14 +2743,27 @@ run_here() {
     [ "$role" = test ] && tests_going end "$rid" >/dev/null
     if [ "$code" -eq 0 ] && [ "${#outs[@]}" -gt 0 ]; then
         mkdir -p dist
+        # A build's files are named the way the briefing asks for shipped
+        # output: the project and its version before the file's own name
+        # (Shebang-DevBoard-0.1.0-dev.9-3bf328e-app-debug.apk), so two builds
+        # are two files and the Artifacts tab can say which is which. Named
+        # as the file is where the version cannot be read. A session copied
+        # every APK by hand to get that name, and never used bb build (R104).
+        local pre="" proj ver
+        if [ "$role" = build ]; then
+            proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
+            ver="$(BB_PROJECT="$proj" "$0" version --file 2>/dev/null | tail -1 | tr -cd 'A-Za-z0-9._+-')" || ver=""
+            [ -z "$ver" ] || pre="${proj}-${ver}-"
+        fi
         for g in "${outs[@]}"; do
             for f in $g; do
                 [ -f "$f" ] || continue
                 # A glob that names a file already in dist/ (a build that
                 # writes there itself) is left where it is: cp onto itself
                 # prints "are the same file" and calls the build noisy.
+                case "$f" in dist/*|./dist/*) continue ;; esac
                 [ "$f" -ef "dist/$(basename "$f")" ] && continue
-                cp -f "$f" "dist/$(basename "$f")" && log "into dist/: $(basename "$f")"
+                cp -f "$f" "dist/${pre}$(basename "$f")" && log "into dist/: ${pre}$(basename "$f")"
             done
         done
     fi

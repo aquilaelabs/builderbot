@@ -2279,6 +2279,34 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       catch (e) { other = String(e.stdout) + String(e.stderr); }
       ok(/ran on this node/.test(here) && !/ran on this node/.test(other) && /no node called elsewhere/.test(other),
          `on a node, bb run runs here, and --node naming another machine goes to the controller instead of running here (${other.trim().split('\n').pop().slice(0, 90)})`);
+      // ...and bb build there puts what the outputs name into dist/ under
+      // the project and its version, the name the briefing asks shipped
+      // output to carry, so a session need not copy it by hand (R104).
+      // A version needs a repository with a commit, which this fixture's
+      // alpha is not: made one for the check and put back after it. Without
+      // one the file keeps its own name, which the check below it holds.
+      const plain = execFileSync('bash', [`${REPO}/scripts/bb`, 'build'],
+        { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: onNode, stdio: 'pipe' });
+      ok(/into dist\/: app-1\.0\.apk/.test(plain), 'on a node, a build of a project with no version keeps its file\'s own name');
+      const hadGit = existsSync(`${DIR}/ws/alpha/.git`), hadVersion = existsSync(`${DIR}/ws/alpha/VERSION`);
+      if (!hadVersion) writeFileSync(`${DIR}/ws/alpha/VERSION`, '1.2.0\n');
+      const git = (...a) => execFileSync('git', ['-C', `${DIR}/ws/alpha`, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...a], { stdio: 'pipe' });
+      // The fixture's alpha may be a repository with no commit yet, which
+      // has no version either: one commit for the check, taken back after.
+      if (!hadGit) git('init', '-q');
+      let hadHead = true;
+      try { git('rev-parse', '-q', '--verify', 'HEAD'); } catch { hadHead = false; }
+      if (!hadHead){ git('add', 'VERSION'); git('commit', '-qm', 'v', '--', 'VERSION'); }
+      const b = execFileSync('bash', [`${REPO}/scripts/bb`, 'build'],
+        { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: onNode, stdio: 'pipe' });
+      if (!hadGit) rmSync(`${DIR}/ws/alpha/.git`, { recursive: true, force: true });
+      else if (!hadHead){ git('update-ref', '-d', 'HEAD'); git('rm', '-q', '--cached', 'VERSION'); }
+      if (!hadVersion) rmSync(`${DIR}/ws/alpha/VERSION`, { force: true });
+      rmSync(`${DIR}/ws/alpha/dist/app-1.0.apk`, { force: true });
+      const m = /into dist\/: (alpha-[0-9][^\s]*-app-1\.0\.apk)/.exec(b);
+      ok(!!m && existsSync(`${DIR}/ws/alpha/dist/${m[1]}`),
+         `on a node, bb build names what it puts in dist/ with the project and its version (${m ? m[1] : b.trim().split('\n').pop().slice(0, 90)})`);
+      if (m) rmSync(`${DIR}/ws/alpha/dist/${m[1]}`, { force: true });
     }
     const built = execFileSync('bash', [`${REPO}/scripts/bb`, 'build'],
       { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();

@@ -78,8 +78,17 @@ bug in the map to file with `bb bug add`, not a reason to grep instead.
 ## Building and testing
 
     bb build           this project's build command, here
-    bb test            its test command
+    bb test [ARGS]     its test command, with ARGS after it
     bb run -- CMD      anything else, here
+
+Build and test through these rather than typing the command yourself. `bb
+build` puts what the project's outputs name into dist/ under its version,
+which is how the Artifacts tab offers it; by hand, that copy and its name
+are yours to get right. `bb test` tells the dashboard a run is going: the
+project's row says so, and the project's During-a-test-run setting and the
+companion app's notes wait on it. Narrow a run with arguments, which follow
+the command (`bb test --tests 'FooTest'`); a task the command does not run
+(installing on the emulator, a single module) is `bb run -- ./gradlew ...`.
 
 A project whose build or test command is not set refuses and says so:
 `bb settings set build|test|outputs "..."` fills the field in for the
