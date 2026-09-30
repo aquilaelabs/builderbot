@@ -3209,8 +3209,12 @@ and a sign-in on any other node is untouched. A node that is not answering
 offers neither, with the reason on the row.
 
 **A project's Claude button knows which node it is about.** Where this
-account is signed in on the project's node, the press starts the session or
-opens the chooser with Resume and New conversation, as it always has. Where
+account's session is already running, the press opens the chooser rather
+than jumping to the tab: **Open tab** and **End session** for the node it
+runs on, and the project's other nodes offered beside it, so a session on a
+second node can be started from the same place. Where this account is
+signed in on the project's node, the press starts the session or opens the
+chooser with Resume and New conversation, as it always has. Where
 it is not, the chooser offers **Sign in on** that node in their place, which
 opens the Nodes tab on that node with its Claude Code section unfolded. A
 project on several nodes lists each under its name: Resume and New

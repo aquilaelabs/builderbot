@@ -209,7 +209,7 @@ function projectRow(p, live, cls, inTab){
                    ? `Claude: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
                  : p.session_at
                    ? `Claude: a session on ${p.session_at}, this project's node`
-                 : live.has(myClaude(p.name)) ? "Claude: session running, go to its tab"
+                 : live.has(myClaude(p.name)) ? "Claude: your session is running; open its tab or end it"
                  : p.last_claude ? "Claude: no session running; resume or start one"
                  : "Claude: start a session here"}">${SPARK}</button>`}
       ${mayShell() ? `<button class="eye" data-s="${esc(p.name)}" aria-label="shell"

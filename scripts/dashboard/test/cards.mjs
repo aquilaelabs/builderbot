@@ -2148,7 +2148,38 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
     return { label: t.label, url: ttydUrl(t.arg) }; });
   ok(tab.label === 'Claude: alpha (ubu)' && /%3Ab%3Ab-ubu/.test(tab.url),
      `...and a pick opens the terminal on that node, named on the tab and stamped with that node's boot (${tab.label}; ${tab.url})`);
-  await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:'))); drawPanes(); });
+  // With this account's session running on one node, the press opens the
+  // same chooser rather than jumping to the tab: Open tab and End session
+  // for that node, and the other nodes still offered beside it.
+  const live = JSON.parse(await (await page.waitForFunction(() => {
+    state.projects.find(x => x.name === 'alpha').session_nodes = [
+      { id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu' },
+      { id: 'n_new', name: 'fresh', where: 'node', why: '', boot: 'b-new' }];
+    state.sessions = [...(state.sessions || []).filter(s => s.name !== myClaude('alpha')),
+                      { name: myClaude('alpha'), node_id: 'n_ubu', attached: false }];
+    resumeFor = null; openClaude('alpha');
+    const m = document.getElementById('resumemenu');
+    if (!m || !m.querySelector('[data-end]')) return null;
+    return JSON.stringify({ lines: [...m.querySelectorAll('.sub')].map(e => e.textContent.replace(/\s+/g, ' ').trim()),
+      buttons: [...m.querySelectorAll('button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.end || b.dataset.signinNode || ''}`) });
+  }, null, { timeout: 10000 })).jsonValue());
+  ok(/your session is running here/.test(live.lines[0]) && live.buttons.join() === 'Open tab:n_ubu,End session:n_ubu,Sign in on fresh:n_new',
+     `with a session running on one node the press opens the chooser: Open tab and End session there, the other nodes still offered (${live.buttons.join(' | ')})`);
+  const ended = await page.evaluate(async () => {
+    const real = endSession; let asked = null;
+    window.endSession = async (name, node) => { asked = { name, node }; return { ok: true }; };
+    const before = tabs.length;
+    document.querySelector('#resumemenu [data-end]').click();
+    await new Promise(r => setTimeout(r, 300));
+    window.endSession = real;
+    return { asked, dropped: before - tabs.length, open: !!document.getElementById('resumemenu'),
+             tab: tabs.some(t => String(t.arg) === 'claude:alpha:n:n_ubu') };
+  });
+  ok(/End your Claude session on alpha on ubu\?/.test(page.dialogs.at(-1) || '') && ended.asked?.node === 'n_ubu'
+     && ended.asked?.name === await page.evaluate(() => myClaude('alpha')) && ended.dropped === 1 && !ended.tab && !ended.open,
+     `End session asks first, ends that node's session and drops its tab (${JSON.stringify(ended)})`);
+  await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:')));
+    state.sessions = (state.sessions || []).filter(s => s.name !== myClaude('alpha')); drawPanes(); });
   await freePoll(page);
   page.errors = [];
 }
