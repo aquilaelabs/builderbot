@@ -122,7 +122,9 @@ Two ways to look, and which one is the question you are asking:
 
 - `bb capture shot` is one picture at rest: `URL FILE` for a page,
   `--emu [PKG] [FILE]` for the running emulator's screen (into `dist/emu/`
-  when no file is named), `--display :N FILE` for an X display. At rest
+  when no file is named; PKG is launched only when it is not already on
+  the screen, so a keyboard or a dialog you drove up stays in the picture),
+  `--display :N FILE` for an X display. At rest
   means it waits until a second of shots a quarter second apart match, so
   a modal still arriving or a list still loading is not what you read;
   `--now` takes the one shot at once, and `--drive FILE.sh` works the

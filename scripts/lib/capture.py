@@ -172,6 +172,32 @@ def emu_ready(adb):
         die("no emulator is running: bb emu start boots one")
 
 
+def in_front(adb, pkg):
+    """Whether PKG already owns the screen: the focused window is its (an
+    activity, a dialog of its), or its keyboard is up, since an IME's
+    window is never the focused one. Read from the window manager's dump,
+    where the focus line names the package and every window its own."""
+    r = run([adb, "shell", "dumpsys", "window", "windows"], timeout=20)
+    out = r.stdout or ""
+    m = re.search(r"mCurrentFocus=Window\{[^}]*\s([\w.]+)(?:/[^\s}]*)?\}", out)
+    if m and m.group(1) == pkg:
+        return True
+    for block in re.split(r"(?=\n\s*Window #\d+ )", out):
+        if "InputMethod" in block.split("\n", 1)[0] and f"package={pkg} " in block \
+                and re.search(r"isVisible=true|mHasSurface=true", block):
+            return True
+    return False
+
+
+def bring_up(adb, pkg):
+    """Put PKG on the screen when it is not already there. Not when it is:
+    a launch restarts its launcher activity, which takes down the dialog,
+    the deep screen or the keyboard a session just drove into place, and
+    the shot came back with the app's front page instead (B387)."""
+    if pkg and not in_front(adb, pkg):
+        run([adb, "shell", "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"], timeout=30)
+
+
 def display_ready(display):
     num = display.lstrip(":").split(".")[0]
     if not num.isdigit() or not os.path.exists(f"/tmp/.X11-unix/X{num}"):
@@ -241,8 +267,7 @@ def shot(a):
     if a.emu is not None:
         adb = _adb()
         emu_ready(adb)
-        if a.emu:
-            run([adb, "shell", "monkey", "-p", a.emu, "-c", "android.intent.category.LAUNCHER", "1"], timeout=30)
+        bring_up(adb, a.emu)
         drive(a.drive, {"ADB": adb})
         png = at_rest(lambda: frame_emu(adb), a.settle)
     else:
@@ -320,7 +345,7 @@ def from_emu(pkg, seconds, drive, work, out):
     if r.returncode or "device" not in (r.stdout or ""):
         die("no emulator is running: bb emu start boots one")
     if pkg:
-        run([adb, "shell", "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"], timeout=30)
+        bring_up(adb, pkg)
         run([adb, "shell", "dumpsys", "gfxinfo", pkg, "reset"], timeout=20)
     rec = subprocess.Popen([adb, "shell", "screenrecord", "--time-limit", str(seconds), "/sdcard/bb-reel.mp4"],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

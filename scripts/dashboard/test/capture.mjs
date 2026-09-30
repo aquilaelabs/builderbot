@@ -64,6 +64,42 @@ if (ff.status !== 0){
   ok(byName.status === 0 && !existsSync(`${S}/dist/reel/cut`) && /no captures/.test(cap('ls', `${S}/dist`).stderr),
      'prune NAME lets a capture go now whatever its age');
 }
+// --emu PKG launches the package only when it is not already on the screen
+// (B387): a launch restarts its launcher activity, and the keyboard, dialog
+// or deep screen a session had just driven into place was gone from the
+// shot. adb is stood in for by a script that answers get-state, the window
+// dump from a file, and screencap with one fixed picture, and logs a launch.
+{
+  const A = `${S}/adb`; mkdirSync(A, { recursive: true });
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kAAAAABJRU5ErkJggg==', 'base64');
+  writeFileSync(`${A}/frame.png`, png);
+  writeFileSync(`${A}/adb`, `#!/bin/sh
+case "$1 $2 $3" in
+  "get-state  ") echo device ;;
+  "shell dumpsys window") cat "${A}/windows.txt" ;;
+  "shell monkey "*) echo "monkey $4 $5" >> "${A}/log" ;;
+  "exec-out screencap -p") cat "${A}/frame.png" ;;
+esac
+exit 0
+`, { mode: 0o755 });
+  const shot = (name, windows) => {
+    writeFileSync(`${A}/windows.txt`, windows);
+    writeFileSync(`${A}/log`, '');
+    const r = spawnSync('python3', [`${REPO}/scripts/lib/capture.py`, 'shot', '--emu', 'dev.x', '--now', `${A}/${name}.png`],
+                        { encoding: 'utf8', env: { ...env, BB_CAPTURE_ADB: `${A}/adb` } });
+    return { r, launched: readFileSync(`${A}/log`, 'utf8').trim() };
+  };
+  const front = shot('front', '  mCurrentFocus=Window{1a2b u0 dev.x/dev.x.Main}\n');
+  ok(front.r.status === 0 && front.launched === '' && existsSync(`${A}/front.png`),
+     `a package whose activity has the focus is not launched again (${front.launched || 'no launch'}; ${(front.r.stderr || '').trim().slice(0, 60)})`);
+  const ime = shot('ime', '  Window #7 Window{9c u0 InputMethod}\n    mOwnerUid=10123 showForAllUsers=false package=dev.x appop=NONE\n    isVisible=true\n  Window #8 Window{2d u0 com.other/.Main}\n  mCurrentFocus=Window{2d u0 com.other/com.other.Main}\n');
+  ok(ime.r.status === 0 && ime.launched === '',
+     `...nor one whose keyboard is up over another app's window (${ime.launched || 'no launch'})`);
+  const away = shot('away', '  Window #8 Window{2d u0 com.other/.Main}\n  mCurrentFocus=Window{2d u0 com.other/com.other.Main}\n');
+  ok(away.r.status === 0 && /^monkey dev\.x/.test(away.launched),
+     `...and one that is not on the screen is launched first (${away.launched})`);
+}
+
 // The sources refuse in their own words when the node lacks what they need.
 const noSrc = reel('--name', 'x');
 ok(noSrc.status !== 0 && /one source: --video FILE, --url URL, --emu \[PKG\] or --display :N/.test(noSrc.stderr || ''),
