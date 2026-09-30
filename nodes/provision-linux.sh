@@ -1865,12 +1865,16 @@ gpu_card() {
 # unattended upgrade, a toolchain's system packages) may hold it at the
 # moment a press arrives, and a removal failed on exactly that on the dev
 # node (30 Sep). Up to five minutes for the holder to finish, and apt-get
-# itself told to wait as long for the lock.
+# itself told to wait as long for the lock. An unattended upgrade is found
+# by its command line, not its name: Ubuntu keeps a helper of nearly the
+# same name (unattended-upgrade-shutdown) running from boot to shutdown,
+# whose fifteen-character name is the upgrade's own, and waiting on that
+# made every apt call here five minutes long (B403).
 apt_idle() {
     local i
     for i in $(seq 1 100); do
         pgrep -x apt-get >/dev/null 2>&1 || pgrep -x dpkg >/dev/null 2>&1 \
-            || pgrep -x unattended-upgr >/dev/null 2>&1 || return 0
+            || pgrep -f '(^|/)unattended-upgrade( |$)' >/dev/null 2>&1 || return 0
         [ "$i" = 1 ] && say "waiting for the machine's own apt to finish"
         sleep 3
     done

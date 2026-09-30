@@ -53,6 +53,8 @@ case "$2" in nvidia:610) echo "610.57.04 nvidia-driver-610" > "{self.state}" ;; 
 
     def tool(self, name, body):
         f = os.path.join(self.bin, name)
+        if os.path.lexists(f):
+            os.remove(f)             # a link to the real tool, not the tool
         with open(f, "w") as h:
             h.write("#!/bin/sh\n" + body + "\n")
         os.chmod(f, os.stat(f).st_mode | stat.S_IEXEC)
@@ -222,6 +224,35 @@ echo "docker-ce ii "; exit 0''')
         got, said = self.removed("{not json")
         self.assertEqual(got, "{not json")
         self.assertIn("could not take the nvidia runtime out", said)
+
+    def machine(self, *running):
+        """A pgrep that answers from a list of command lines, the way the
+        real one does for -x (the name, fifteen characters of it) and -f
+        (the whole line, as a pattern); and a sleep that does not."""
+        ps = os.path.join(self.dir, "ps")
+        with open(ps, "w") as f:
+            f.write("".join(line + "\n" for line in running))
+        self.tool("pgrep", f"""case "$1" in
+  -x) while read -r line; do for w in $line; do case "$w" in -*) continue ;; esac
+        n="${{w##*/}}"; [ "$(printf '%.15s' "$n")" = "$2" ] && exit 0; done; done < "{ps}"; exit 1 ;;
+  -f) grep -Eq -- "$2" "{ps}" ;;
+  *) exit 1 ;;
+esac""")
+        self.tool("sleep", f': > "{ps}"')
+
+    def test_ubuntus_shutdown_helper_is_not_an_upgrade_in_progress(self):
+        self.machine("/usr/bin/python3 /usr/share/unattended-upgrades/unattended-upgrade-shutdown --wait-for-signal")
+        rc, said, ran = self.run_helper("gpu-driver", "refresh")
+        self.assertEqual(rc, 0, said)
+        self.assertNotIn("waiting for the machine's own apt", said)
+        self.assertIn("update", ran)
+
+    def test_a_real_upgrade_or_an_apt_of_the_machines_own_is_waited_for(self):
+        for line in ("/usr/bin/python3 /usr/bin/unattended-upgrade", "apt-get -y install something", "/usr/bin/dpkg --configure -a"):
+            self.machine(line)
+            rc, said, _ = self.run_helper("gpu-driver", "refresh")
+            self.assertEqual(rc, 0, said)
+            self.assertIn("waiting for the machine's own apt", said, line)
 
     def test_a_picked_branch_on_a_machine_with_no_driver(self):
         rc, said, ran = self.run_helper("gpu-driver", "install", "nvidia-driver-610")
