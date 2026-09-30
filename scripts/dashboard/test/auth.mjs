@@ -1134,15 +1134,16 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   // box it is later than that, which read back as `auto`, came out of
   // parseFloat as NaN, and failed a rule about placement with a number
   // nobody could place.
-  await page.waitForFunction(() => {
+  // Measured in the same read that waits for it: a second read after the
+  // wait could meet a redrawn tooltip with no width yet, and came back NaN
+  // in a whole run (B397).
+  const fit = await (await page.waitForFunction(() => {
     const el = document.querySelector('.profiletab .help.on');
-    return el && parseFloat(getComputedStyle(el, '::after').width) > 0;
-  }, null, { timeout: 10000 });
-  const fit = await page.$eval('.profiletab .help.on', el => {
+    if (!el) return null;
     const cs = getComputedStyle(el, '::after');
-    const x = parseFloat(el.style.getPropertyValue('--tipx'));
-    return { x, right: x + parseFloat(cs.width), pos: cs.position, vw: innerWidth };
-  });
+    const w = parseFloat(cs.width), x = parseFloat(el.style.getPropertyValue('--tipx'));
+    return w > 0 && Number.isFinite(x) ? { x, right: x + w, pos: cs.position, vw: innerWidth } : null;
+  }, null, { timeout: 10000 })).jsonValue();
   ok(fit.pos === 'fixed' && fit.x >= 0 && fit.right <= fit.vw,
      `on a phone the tooltip is placed inside the screen (${Math.round(fit.x)}..${Math.round(fit.right)} of ${fit.vw})`);
   await page.click('.profiletab h4');
