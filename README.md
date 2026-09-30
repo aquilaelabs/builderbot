@@ -184,6 +184,8 @@ bb git policy      what a session may push here (its own branches, main) from
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
+bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--pre MS] [--hold MS]
+                   a timed touch on the running emulator, in screen pixels
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb nodes           the machines enrolled as nodes, read-only in a terminal;

@@ -37,6 +37,7 @@ scripts/
   lib/devapp-verbs.py            `bb devapp`: status, rebuild, test, new, env, remove, ls, log, start, stop, restart
   lib/capture.py                 `bb capture`: the sources anything that draws gives (a page, the emulator, an X display) and a shot at rest
   lib/reel.py                    `bb capture reel`: the frames of a recording that changed, stamped and tiled
+  lib/touch.py                   `bb emu touch` and a drive script's $BB_TOUCH: a tap, hold or glide with its timing kept, through sendevent
   lib/container-verbs.py         `bb container`: status and new
   lib/phone-verbs.py             `bb phone`: status and run
   lib/root-verbs.py              `bb root`: status and run

@@ -100,6 +100,54 @@ exit 0
      `...and one that is not on the screen is launched first (${away.launched})`);
 }
 
+// A timed touch (R101): touch.py finds the panel and the screen through adb
+// and sends the whole gesture as one shell of sendevent lines with sleeps,
+// in the panel's own range, turned with the screen. The same stand-in adb,
+// answering getevent -p, wm size and dumpsys input from files, and logging
+// the shell it is handed.
+{
+  const A = `${S}/adb2`; mkdirSync(A, { recursive: true });
+  writeFileSync(`${A}/adb`, `#!/bin/sh
+case "$1 $2 $3" in
+  "shell getevent -p") printf 'add device 1: /dev/input/event3\n  name:     "qwerty2"\n  events:\n    KEY (0001): 0001\nadd device 2: /dev/input/event2\n  name:     "virtio_input_multi_touch_1"\n  events:\n    ABS (0003): 002f  : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0\n                0035  : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0\n                0036  : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0\n' ;;
+  "shell wm size") echo "Physical size: 1080x2400" ;;
+  "shell dumpsys input") cat "${A}/rotation.txt" ;;
+  "shell "*) printf '%s\n' "$2" >> "${A}/log" ;;
+esac
+exit 0
+`, { mode: 0o755 });
+  const touch = (...a) => {
+    writeFileSync(`${A}/log`, '');
+    const r = spawnSync('python3', [`${REPO}/scripts/lib/touch.py`, ...a],
+                        { encoding: 'utf8', env: { ...env, BB_CAPTURE_ADB: `${A}/adb` } });
+    return { r, sent: readFileSync(`${A}/log`, 'utf8').trim().split(';') };
+  };
+  writeFileSync(`${A}/rotation.txt`, '  SurfaceOrientation: 0\n');
+  const tap = touch('tap', '540', '1200');
+  ok(tap.r.status === 0 && tap.sent[0] === 'sendevent /dev/input/event2 3 47 0'
+     && tap.sent.includes('sendevent /dev/input/event2 3 53 16398') && tap.sent.includes('sendevent /dev/input/event2 3 54 16390')
+     && tap.sent.at(-2) === 'sendevent /dev/input/event2 3 57 -1' && !tap.sent.some(l => l.startsWith('sleep'))
+     && /^tap 540,1200: 11 events on \/dev\/input\/event2, about 0 ms$/.test(tap.r.stdout.trim()),
+     `a tap finds the panel, scales the screen pixel into its range, and lifts (${tap.r.stdout.trim()} ${(tap.r.stderr || '').trim().slice(0, 80)})`);
+  const hold = touch('hold', '100', '100', '--ms', '700');
+  ok(hold.r.status === 0 && hold.sent.includes('sleep 0.7') && hold.sent.indexOf('sleep 0.7') < hold.sent.indexOf('sendevent /dev/input/event2 3 57 -1'),
+     'a hold keeps the finger down for its time before lifting');
+  const glide = touch('glide', '100', '1000', '600', '1000', '--pre', '150', '--hold', '300');
+  const moves = glide.sent.filter(l => l === 'sleep 0.012').length;
+  ok(glide.r.status === 0 && moves === 20 && glide.sent[8] === 'sleep 0.15' && glide.sent.at(-4) === 'sleep 0.3'
+     && /about 690 ms/.test(glide.r.stdout),
+     `a glide moves in 25px steps 12 ms apart, holding first and last where asked (${moves} moves; ${glide.r.stdout.trim()})`);
+  writeFileSync(`${A}/rotation.txt`, '  SurfaceOrientation: 1\n');
+  const turned = touch('tap', '2399', '0');
+  ok(turned.r.status === 0 && turned.sent.includes('sendevent /dev/input/event2 3 53 32767') && turned.sent.includes('sendevent /dev/input/event2 3 54 32767')
+     && /rotation 1/.test(turned.r.stdout),
+     `a landscape tap is turned into the panel's own frame (${turned.r.stdout.trim()})`);
+  const bad = touch('glide', '1', '2');
+  ok(bad.r.status !== 0 && /a glide needs at least two points/.test(bad.r.stderr), 'a glide of one point is refused in words');
+  const noms = touch('hold', '1', '2');
+  ok(noms.r.status !== 0 && /hold takes --ms N/.test(noms.r.stderr), '...and a hold without its time');
+}
+
 // The sources refuse in their own words when the node lacks what they need.
 const noSrc = reel('--name', 'x');
 ok(noSrc.status !== 0 && /one source: --video FILE, --url URL, --emu \[PKG\] or --display :N/.test(noSrc.stderr || ''),

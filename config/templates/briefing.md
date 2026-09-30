@@ -128,7 +128,8 @@ Two ways to look, and which one is the question you are asking:
   means it waits until a second of shots a quarter second apart match, so
   a modal still arriving or a list still loading is not what you read;
   `--now` takes the one shot at once, and `--drive FILE.sh` works the
-  surface first (`$ADB shell input ...`, or `xdotool` with DISPLAY set).
+  surface first (`$ADB shell input ...`, `$BB_TOUCH tap|hold|glide` for a
+  touch whose timing matters, or `xdotool` with DISPLAY set).
   Read the file with your image reader. Reach for it when the question is
   what a screen looks like.
 - `bb capture reel` is change over time: the frames of a recording that changed,
@@ -244,6 +245,13 @@ otherwise), waits for the boot to finish before it returns, keeps the log
 where `bb emu log` reads it, and refuses a second one. A session that
 started the binary by hand slept five seconds and met a cold boot's "System
 UI isn't responding" dialog instead of its own app (30 Sep).
+`bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--pre MS] [--hold MS]`
+is a touch with its timing kept, in screen pixels: adb's own input verbs
+cost about 300 ms a call, which cannot time a glide across letters or tell
+a long-press from a slide. Two things an emulator does to a keyboard under
+test: its AVD reports a hardware keyboard, so an IME shows only after
+`settings put secure show_ime_with_hard_keyboard 1`; and a force-stop of an
+IME's package deselects it, so `ime set` again after one.
 An API level exists here where the store holds a system image for it:
 `bb emu images` lists them and `bb emu create <api>` fetches one on demand.
 Adding or removing one deliberately is the operator's, from the Emulator tab.

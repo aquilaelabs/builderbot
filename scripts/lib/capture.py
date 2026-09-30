@@ -254,11 +254,16 @@ def at_rest(grab, settle=True, quiet=4, cap=6.0):
     return last
 
 
+# A timed touch for a drive script on the emulator ($BB_TOUCH tap|hold|glide,
+# touch.py): adb's input verbs are too slow to time a gesture (R101).
+TOUCH = f"python3 {os.path.join(os.path.dirname(os.path.abspath(__file__)), 'touch.py')}"
+
+
 def drive(script, env):
     """The script that works the surface before the picture, with the
-    surface's own handle in its environment ($ADB, or DISPLAY)."""
+    surface's own handle in its environment ($ADB and $BB_TOUCH, or DISPLAY)."""
     if script:
-        subprocess.run(["sh", script], timeout=600, check=False, env=dict(os.environ, **env))
+        subprocess.run(["sh", script], timeout=600, check=False, env=dict(os.environ, BB_TOUCH=TOUCH, **env))
 
 
 def shot(a):
@@ -351,7 +356,7 @@ def from_emu(pkg, seconds, drive, work, out):
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if drive:
         subprocess.run(["sh", drive], timeout=seconds + 60, check=False,
-                       env=dict(os.environ, ADB=adb, BB_CAPTURE_SECONDS=str(seconds)))
+                       env=dict(os.environ, ADB=adb, BB_TOUCH=TOUCH, BB_CAPTURE_SECONDS=str(seconds)))
     rec.wait(timeout=seconds + 60)
     video = os.path.join(work, "screen.mp4")
     r = run([adb, "pull", "/sdcard/bb-reel.mp4", video], timeout=120)
