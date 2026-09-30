@@ -58,15 +58,21 @@ class Store(context: Context) {
     var scheme: String
         get() = plain.getString("scheme", "Default") ?: "Default"
         set(v) { plain.edit().putString("scheme", v).apply() }
-    // Whether a session finishing its turn is worth a notification, and
-    // what the sessions were doing at the last look, so one is posted when
-    // a session goes from working to waiting and not on every poll.
+    // Whether a session coming free is worth a notification, and which
+    // projects' sessions were busy (working, or testing under a project
+    // that waits for its tests) at the last look, so one is posted when a
+    // session goes from busy to waiting on you and not on every poll.
+    // lastTesting is which had a test run going, so the note can say the
+    // tests finished.
     var turns: Boolean
         get() = plain.getBoolean("turns", true)
         set(v) { plain.edit().putBoolean("turns", v).apply() }
     var lastWorking: Set<String>
         get() = plain.getStringSet("working", emptySet()) ?: emptySet()
         set(v) { plain.edit().putStringSet("working", v).apply() }
+    var lastTesting: Set<String>
+        get() = plain.getStringSet("testing", emptySet()) ?: emptySet()
+        set(v) { plain.edit().putStringSet("testing", v).apply() }
 
     fun api(): Api? = if (signedIn) Api(server, user, password) else null
 }

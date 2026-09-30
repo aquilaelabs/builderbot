@@ -763,8 +763,10 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Tell me when Claude finishes")
-                Dim("a note when a session of yours goes from working to waiting on you")
+                Text("Tell me when Claude can take a message")
+                Dim("a note, naming the project, when a session of yours is waiting on you: " +
+                    "at once where the project's During-a-test-run setting interrupts a run, " +
+                    "and when its tests finish where it waits for them")
             }
             Switch(checked = turns, enabled = watch, onCheckedChange = { turns = it; watchSaid = "" })
         }

@@ -559,6 +559,41 @@ ok((await page.evaluate(async () => {
 // every one. Cleared here so the check below is about the page.
 page.errors = [];
 
+// ---- a run in progress ------------------------------------------------------
+// `bb test` says when a run starts and ends (run_here's tests_going), and the
+// status poll carries it on the project row, so the companion app can hold
+// its "waiting on you" note until the tests finish where the project's
+// During-a-test-run setting waits for them (the operator, 30 Sep).
+const post = body => page.evaluate(async b => {
+  const r = await fetch('/api/tests', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  return { status: r.status, body: await r.json() };
+}, body);
+const testingOf = async () => (await page.evaluate(async () =>
+  (await (await fetch('/api/status')).json()).projects)).find(p => p.name === 'alpha').testing;
+ok((await testingOf()) === null, 'a project with no run going says testing: null on the status poll');
+const begun = await post({ project: 'alpha', action: 'begin', cmd: 'npm test cards' });
+ok(begun.status === 200 && /^[0-9a-f]{12}$/.test(begun.body.testing?.id || ''),
+   `begin answers the run's id (${JSON.stringify(begun.body)})`);
+const going = await testingOf();
+ok(going && going.cmd === 'npm test cards' && typeof going.by === 'string' && !('id' in going)
+   && Math.abs(going.since - Date.now() / 1000) < 60,
+   `...and the row says what is running, by whom and since when, without the id (${JSON.stringify(going)})`);
+const other = await post({ project: 'alpha', action: 'end', id: 'not-this-run' });
+ok(other.body.ended === false && (await testingOf()) !== null,
+   "another run's end does not end this one");
+const ended = await post({ project: 'alpha', action: 'end', id: begun.body.testing.id });
+ok(ended.body.ended === true && (await testingOf()) === null, 'its own end clears it');
+ok((await post({ project: 'alpha', action: 'end', id: '' })).body.ended === false,
+   '...and an end with no run going says so rather than failing');
+// A run whose end never came (the session under it killed) is forgotten
+// after four hours: the module's own clock, read in process.
+const stale = execFileSync('python3', ['-c', `
+import sys, time; sys.path.insert(0, '${dirname(BB)}/dashboard'); import testreg
+testreg.begin('alpha', 'x'); testreg.RUNNING['alpha']['since'] -= testreg.STALE_S + 1
+print(testreg.running('alpha'), 'alpha' in testreg.RUNNING)`]).toString().trim();
+ok(stale === 'None False', `a run with no end is forgotten after four hours (${stale})`);
+
 ok(page.errors.length === 0, `zero console errors${
   page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 await done(browser);

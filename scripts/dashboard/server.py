@@ -937,6 +937,11 @@ def _project_columns(who, facts):
                     "todo_batch": roadmap_batches.get(d.name),
                     "bugs": bug_counts.get(d.name, 0),
                     "tests": test_counts.get(d.name, 0),
+                    # The test run going right now, if `bb test` said so:
+                    # {since, cmd, by}, or null. The companion app times
+                    # its turn note by it and the project's During-a-test-run
+                    # setting.
+                    "testing": testreg.running(d.name),
                     "rules": rule_counts.get(d.name, 0),
                     "pending": pend_counts.get(d.name, 0),
                     # Why nothing routed to this project's node runs right
@@ -5341,11 +5346,19 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         if self._not_project(name):
             return
+        # A run's start and end are not a write to the notebook: a locked
+        # project's tests still run, and the record is memory the status
+        # poll reads (testreg.running).
+        act = field(req, "action")
+        if act in ("begin", "end"):
+            me = self._who() or {}
+            req = dict(req, by=me.get("name") or "")
+            return self._json(*testreg.verb(name, act, req))
         if self._readonly(name):
             return None
         if (bad := projects.locked_out(name)):
             return self._json(bad, 409)
-        return self._json(*testreg.verb(name, field(req, "action"), req))
+        return self._json(*testreg.verb(name, act, req))
 
     def _presence(self, req):
         """This browser is in a project's notebook, and who else is (roadmap

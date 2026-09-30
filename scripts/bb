@@ -2624,6 +2624,28 @@ bb_relay() {
     return $rc
 }
 
+# tests_going begin CMD | end ID: tell the controller a test run of this
+# project starts or ends (testreg.begin/end). Prints the run's id on begin.
+tests_going() {
+    local act="$1" arg="${2:-}" proj
+    proj="$(bb_project 2>/dev/null || true)"
+    [ -n "$proj" ] || return 0
+    BB_LIB="$BB_LIB" BB_AUTH_HEADER="$(bb_auth_header 2>/dev/null || true)" BB_PROJ="$proj" \
+        python3 - "$act" "$arg" 2>/dev/null <<'EOF' || true
+import os
+import sys
+
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi  # noqa: E402
+
+act, arg = sys.argv[1:3]
+body = {"project": os.environ["BB_PROJ"], "action": act}
+body["cmd" if act == "begin" else "id"] = arg
+r = bbapi.call("/api/tests", body, timeout=10)
+print((r.get("testing") or {}).get("id", "") if isinstance(r, dict) else "")
+EOF
+}
+
 # run_here ROLE [GLOB...] -- CMD...: `bb run` on the node the session is on:
 # the command in this tree, and each output glob's matches into dist/.
 run_here() {
@@ -2641,8 +2663,16 @@ run_here() {
         shown="${3% \"\$@\"}${5:+ ${*:5}}"
     fi
     log "$role: running here, on ${BB_NODE:-this node}: $shown"
+    # A test run says to the controller when it starts and ends, so the
+    # companion app can hold its "Claude is waiting on you" note until the
+    # run is over where the project's During-a-test-run setting says a new
+    # ask waits for it (the operator, 30 Sep). Best effort: a controller
+    # that does not answer costs one note's timing, never the run.
+    local rid=""
+    [ "$role" = test ] && rid="$(tests_going begin "$shown")"
     local code=0
     "$@" || code=$?
+    [ "$role" = test ] && tests_going end "$rid" >/dev/null
     if [ "$code" -eq 0 ] && [ "${#outs[@]}" -gt 0 ]; then
         mkdir -p dist
         for g in "${outs[@]}"; do
