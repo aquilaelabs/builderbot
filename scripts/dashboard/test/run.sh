@@ -121,11 +121,32 @@ fi
 # read android/api-surface.json and app/build.gradle.kts, so android itself
 # comes along); dist/, for the same reason; and .git, because nothing here runs
 # git against this repository, only against the fixtures it makes.
+# What a run ended by its process group left behind (B347): its copy of
+# the tree, its state dir and its private tmux server. The cleanup below
+# runs on a normal exit only, so each is stamped with the pid that made it
+# and the next start removes the ones whose maker is gone. A kept fixture's
+# maker is alive, so a keep is never swept from under an attached run.
+sweep_leftovers() {
+    local d p
+    for d in "${TMPDIR:-/tmp}"/bb-suite.?????? "${TMPDIR:-/tmp}"/dashboard-test.??????; do
+        [ -d "$d" ] || continue
+        p="$(cat "$d/.bb-run-pid" 2>/dev/null || true)"
+        if [ -z "$p" ] || ! kill -0 "$p" 2>/dev/null; then
+            # ...and the tmux server that ran inside it, by its socket.
+            [ -d "$d/tmux" ] && for sock in "$d"/tmux/*; do
+                [ -S "$sock" ] && tmux -S "$sock" kill-server 2>/dev/null || true
+            done
+            rm -rf "$d"
+        fi
+    done
+}
+[ -n "${BB_TEST_WORKER:-}" ] || sweep_leftovers
 # BB_TEST_INPLACE=1 runs from the checkout for anyone debugging this.
 if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
    && [ "$(stat -f -c %T "$HERE" 2>/dev/null)" = nfs ]; then
     _src="$(cd "$HERE/../../.." && pwd)"
     _dst="$(mktemp -d "${TMPDIR:-/tmp}/bb-suite.XXXXXX")"
+    echo $$ > "$_dst/.bb-run-pid"
     # tar exits 1 for a file that changed under it (a CHANGELOG.md write, a
     # session's edit) and the copy is still whole: that is not a failed copy.
     { tar -C "$_src" -cf - --warning=no-file-changed --exclude=./.git --exclude=./dist \
@@ -228,7 +249,7 @@ fi
 # In a directory of its own, NOT a file straight under /tmp. /tmp is sticky,
 # and with fs.protected_regular (on by default since Ubuntu 20.04) a file
 # there that another account owns cannot be opened for writing whatever its
-# mode, so a lock a cancelled CI job left as `bb` could never be taken over
+# mode, so a lock a canceled CI job left as `bb` could never be taken over
 # by a session, or the reverse, and every run died on "cannot take" until
 # somebody with that account removed it (measured on bb-sandbox, 9 Sep). A
 # world-writable directory that is not sticky has no such rule: anyone can
@@ -258,6 +279,7 @@ rm -f "$LOCK" 2>/dev/null || true
     || die "cannot take $LOCK: $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
 fi
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
+echo $$ > "$S/.bb-run-pid"
 if [ -n "${BB_COVERAGE:-}" ]; then
     # A worker counts into its parent's directory, which is where the one
     # merge at the end of the run reads; a directory per worker would be a
@@ -929,13 +951,13 @@ case "$1" in
     echo "99.stub"; exit 0 ;;
   # What the daemon says it is. The provisioner's label lives here, and this is
   # how BuilderBot tells the sandbox from any other machine that answers
-  # Docker, so the suite can take the stamp away (unlabelled.fail) and can
+  # Docker, so the suite can take the stamp away (unlabeled.fail) and can
   # make it a DIFFERENT sandbox (uid file), which is the other question:
   # whether records from the last one are cleared when a new one is plugged in.
   info)
     [ -f "$ST/info.fail" ] && { echo "cannot connect to the daemon"; exit 1; }
     lbl='["builderbot.sandbox=1"]'
-    [ -f "$ST/unlabelled" ] && lbl='["com.example.other=1"]'
+    [ -f "$ST/unlabeled" ] && lbl='["com.example.other=1"]'
     uid="STUBDAEMON1"
     [ -f "$ST/uid" ] && uid="$(cat "$ST/uid")"
     printf '{"ID":"%s","Labels":%s,"ServerVersion":"99.stub"}\n' "$uid" "$lbl"
@@ -1219,7 +1241,7 @@ fresh
 #
 # DOCKER_HOST names an ssh:// address because that shape is now the feature's
 # switch: a sandbox VM is the only daemon the manager drives, so anything else
-# greys every control out and the suite would be testing a dead tab. The stub
+# grays every control out and the suite would be testing a dead tab. The stub
 # docker on PATH answers whatever it is pointed at, so no VM is involved.
 #
 # DOCKER_HOST_PATHS is cleared for the same reason and was found the same way.

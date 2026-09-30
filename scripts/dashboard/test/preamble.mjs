@@ -44,7 +44,7 @@ put('bugs.json', { projects: {} });
 let p = await pre();
 ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules'
    && /this node carries git, tmux, jq, python3 and curl by itself/.test(p.text)
-   && /\(global\)/.test(p.text) && p.capped === false,
+   && /\(global\)/.test(p.text) && (p.notes || []).length === 0,
    `a project with nothing set still gets the briefing and the shipped global rules (${
      (p.parts || []).map(x => x.name).join(',') || 'none'}, ${p.bytes} bytes)`);
 // The line between the two: the briefing states what is true of the machine,
@@ -80,13 +80,6 @@ const more = await pre();
 ok(/Questions to the person: more/.test(more.text) && /before a judgment call/.test(more.text),
    '...and more, for a person who wants the judgment calls put to them (the operator, 25 Sep)');
 await setPref({ asks: '' });
-const full = await pre();
-await setPref({ brief: 'terse' });
-const tersed = await pre();
-ok(tersed.bytes < full.bytes * 0.85 && /Ask map before grepping/.test(tersed.text) && /bb map who-calls NAME/.test(tersed.text)
-   && /never holds reply/.test(tersed.text),
-   `terse drops the filler words and keeps the commands, the names and the words that turn a sentence (${tersed.bytes} of ${full.bytes} bytes)`);
-await setPref({ brief: 'full' });
 await setChange('wait');
 ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length <= 2,
    'an obligation reaches a session once, as a rule, and not again from the briefing; the shelf is said by the roadmap\'s own note');
@@ -112,7 +105,7 @@ ok(at('RULESMARK') < at('ROADMAPMARK') && at('ROADMAPMARK') < at('BUGMARK'),
    '...in that order: how to work on it, then what there is, then what is broken');
 ok(!/\n\n\n/.test(p.text),
    '...joined by one blank line, so a store with nothing leaves no gap where it would have been');
-ok(p.bytes === Buffer.byteLength(p.text, 'utf8') && p.capped === false,
+ok(p.bytes === Buffer.byteLength(p.text, 'utf8') && (p.notes || []).length === 0,
    `...and the size is the block's own (${p.bytes} bytes)`);
 ok((p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules,roadmap,bugs',
    `...with each named and measured separately, the briefing first (${
@@ -125,27 +118,78 @@ ok(at('RULESMARK') >= 0 && !/BUGMARK/.test(p.text) && !/\n\n\n/.test(p.text)
    && (p.parts || []).map(x => x.name).join(',') === 'briefing,live,rules,roadmap',
    'a tracker with nothing open drops out of the block entirely, gap included');
 
-// ---- the cap ---------------------------------------------------------------
-// One argument cannot pass the kernel's MAX_ARG_STRLEN, and past it exec
-// answers "Argument list too long" and the pane dies without saying why. The
-// cut lands on a line boundary and says so IN the text, so a session reading
-// it knows it has part of a list rather than all of one.
-const many = [];
-for (let i = 0; i < 3000; i++)
-  many.push({ id: i + 1, by: 'you',
-              text: `item ${i} with enough words on it to be a real line of about fifty bytes` });
-const big = read('roadmap.json');
-big.projects = { alpha: many };
-put('roadmap.json', big);
-p = await pre();
-ok(p.capped === true && p.bytes > p.max,
-   `a list past the limit is reported as cut, with its real size (${p.bytes} of ${p.max})`);
-ok(Buffer.byteLength(p.text, 'utf8') <= p.max + 200,
-   `...and what a session gets is the limit, not the list (${Buffer.byteLength(p.text, 'utf8')} bytes)`);
-ok(/did not fit in the prompt/.test(p.text),
-   '...saying so in the text, where the session reading it will see it');
-ok(/\n\[the rest/.test(p.text),
-   '...after a line boundary, so the cut never lands mid-item');
+// ---- a share for each part, and no tail to lose ------------------------------
+// A project only grows (the operator, 29 Sep). The block used to be cut at
+// its end past a fixed size, so the bugs went first and then the roadmap's
+// last items, blind to what they were, and the notebook refused a 31st
+// item to keep it short. Now what is kept and what is sent are two things:
+// each part that grows has a share, one over it says less per row before it
+// leaves a row out, and every part is always there.
+const SHARE = { rules: 16384, roadmap: 16384, bugs: 8192 };
+const part = name => (p.parts || []).find(x => x.name === name) || {};
+{
+  const steps = [{ text: 'the first step, which is done', done: true }, { text: 'the second step, to do' }];
+  const big = read('roadmap.json');
+  big.projects = { alpha: [{ id: 1, by: 'you', text: 'ROADMAPMARK a plan half done', steps },
+                           { id: 2, by: 'you', text: 'PARKEDMARK a parked one', shelved: 1790000000 }] };
+  put('roadmap.json', big);
+  p = await pre();
+  ok(/1 of 2 steps done; still open:\n {4}2\. the second step, to do/.test(p.text) && !/the first step, which is done/.test(p.text),
+     'a step that is done is counted and not printed, and an open one keeps its own number');
+  ok(part('roadmap').share === SHARE.roadmap && part('rules').share === SHARE.rules
+     && part('briefing').share === undefined && !part('roadmap').left,
+     `each part that grows carries its share, and one inside it leaves nothing out (${
+       (p.parts || []).map(x => `${x.name} ${x.bytes}${x.share ? ' of ' + x.share : ''}`).join(' · ')})`);
+
+  // Sixty items with steps: over the share with everything said, inside it
+  // as titles, so the steps are what goes and every item is still named.
+  const mid = [];
+  for (let i = 0; i < 60; i++)
+    mid.push({ id: i + 1, by: 'you', text: `MIDITEM ${i} with enough words on it to be a real line of about fifty bytes`,
+               steps: [{ text: 'a step of some length that says what has to be true' }, { text: 'and another one of the same kind' },
+                       { text: 'and a third so that the steps are the long half' }, { text: 'and a fourth' }, { text: 'and a fifth of them' }] });
+  big.projects = { alpha: mid.concat([{ id: 900, by: 'you', text: 'PARKEDMARK a parked one', shelved: 1790000000 }]) };
+  put('roadmap.json', big);
+  p = await pre();
+  ok(part('roadmap').bytes <= SHARE.roadmap && part('roadmap').left === 'the steps of its items'
+     && (p.text.match(/- R\d+ {2}MIDITEM/g) || []).length === 60 && /MIDITEM 59[^\n]*\(5 of 5 steps open\)/.test(p.text)
+     && /PARKEDMARK/.test(p.text) && !/a step of some length/.test(p.text),
+     `a list over its share says less per item first: every title, the steps as a count (${part('roadmap').bytes} bytes)`);
+  ok(/The list is longer than its share of your prompt, so this leaves out the steps of its items: `bb roadmap` prints all of it/.test(p.text)
+     && (p.notes || []).length === 1 && /the roadmap part is over its share/.test(p.notes[0]),
+     '...saying so in the text, where the session reading it will see it, and in a note for whoever opened the terminal');
+
+  // Three thousand items and four hundred bugs: what fits, in the
+  // operator's own order, and the rest as a count. The bugs are after the
+  // roadmap and all of them used to be lost to it.
+  const many = [];
+  for (let i = 0; i < 3000; i++)
+    many.push({ id: i + 1, by: 'you', text: `item ${i} with enough words on it to be a real line of about fifty bytes` });
+  big.projects = { alpha: many };
+  put('roadmap.json', big);
+  const bugsFile = read('bugs.json');
+  const was = JSON.stringify(bugsFile);
+  bugsFile.projects = { alpha: Array.from({ length: 400 }, (_, i) => ({ id: i + 1, status: 'open',
+    severity: i === 7 ? 'high' : i % 2 ? 'medium' : 'low',
+    title: i === 7 ? 'BUGMARK the one that matters most' : `bug ${i} with a title of a usual length, which says what is wrong and where` })) };
+  put('bugs.json', bugsFile);
+  p = await pre();
+  const kept = (p.text.match(/^- R\d+ {2}item /gm) || []).length;
+  ok(part('roadmap').bytes <= SHARE.roadmap && kept > 50 && kept < 3000 && /- R1 {2}item 0 /.test(p.text)
+     && new RegExp(`\\nand ${3000 - kept} more open\\.`).test(p.text)
+     && new RegExp(`leaves out ${3000 - kept} of its 3000 open items`).test(p.text),
+     `a list far over its share fills what room there is from the top and counts the rest (${kept} of 3000 in ${part('roadmap').bytes} bytes)`);
+  const bugsKept = (p.text.match(/^- B\d+ \[/gm) || []).length;
+  ok(part('bugs').share === SHARE.bugs && part('bugs').bytes <= SHARE.bugs && bugsKept > 20 && bugsKept < 400
+     && p.text.indexOf('BUGMARK the one that matters most') > 0
+     && p.text.indexOf('BUGMARK') < p.text.indexOf('- B', p.text.indexOf('BUGMARK') + 10)
+     && /\nand \d+ more \(\d+ medium, \d+ low\)\./.test(p.text) && /`bb bug` lists every one/.test(p.text),
+     `...and the bugs are all still there in their own share, the worst first, the rest counted by severity (${bugsKept} of 400)`);
+  ok(p.bytes === Buffer.byteLength(p.text, 'utf8') && p.bytes < 70000 && /next session looks first\.$/.test(p.text)
+     && (p.notes || []).length === 2,
+     `the block ends on its own last words and not on a cut (${p.bytes} bytes)`);
+  put('bugs.json', JSON.parse(was));
+}
 
 // ---- and the tab shows exactly that ----------------------------------------
 // The whole point. A section that renders its own join would be a section that

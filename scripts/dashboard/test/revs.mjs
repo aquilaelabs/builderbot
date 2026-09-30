@@ -111,7 +111,7 @@ ok(onStatus.length === 0,
    `...and no revision is left on the status payload${
      onStatus.length ? `; still there: ${onStatus.join(', ')}` : ''}`);
 
-// The behaviour all of that is for: another window writes, and this one shows
+// The behavior all of that is for: another window writes, and this one shows
 // it without being touched. Bounded, because the point is the clock: the
 // status poll could not do this in the time allowed, and before this change
 // it was the only thing that would have.

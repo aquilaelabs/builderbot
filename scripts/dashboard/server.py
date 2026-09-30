@@ -249,6 +249,11 @@ CLAUDE_PROJECTS = Path(
 # Every request body here is a handful of short JSON fields. Anything larger is
 # a mistake or a probe, and reading it into memory unbounded helps neither.
 MAX_BODY = 64 * 1024
+# The one body that is a document: a project's whole design, which its own
+# limits let run to megabytes (forty pages, sixty rules of twenty thousand
+# characters). At 64 kB a design of forty pages and thirteen themes was
+# refused as "body too large" with every part of it inside its limit.
+MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024}
 
 # One field out of a request body, read the one way here and in every
 # module a handler calls into (fields.py).
@@ -1632,7 +1637,7 @@ def uptime():
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
 # field listed there bumps all three together: the app, the file, this.
-APP_API = 3
+APP_API = 4
 
 
 def app_apk():
@@ -1856,18 +1861,25 @@ def _mem_edited(project):
         print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
 
 
-def session_mark_own(project, uid, who):
+def session_mark_own(project, uid, who, since=None):
     """A session's own write to the notebook or the settings is seen by it
-    as it lands, so its next prompt does not read it back as news."""
+    as it lands, so its next prompt does not read it back as news. With
+    `since`, the tokens as they stood before the write, only the halves
+    that moved across it are marked: a bb verb relayed from a node may be
+    a read, and a read must not mark what somebody else changed as seen."""
     if not project or not uid:
         return
     try:
         now = _seen_now(project, who)
+        if since is not None:
+            now = {k: v for k, v in now.items() if since.get(k) != v}
+            if not now:
+                return
         with _seen_lock:
             d = _seen_load()
             for key, rec in d.items():
                 if key.startswith(f"{project}|{uid}|") and isinstance(rec, dict):
-                    rec["revs"] = now
+                    rec["revs"] = {**(rec.get("revs") or {}), **now}
             write_json(STATE / SESSION_SEEN, d)
     except Exception as e:                                                # noqa: BLE001
         print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
@@ -2111,7 +2123,7 @@ pending.configure(write_json=write_json, state=STATE)
 # identity lands.
 settings.configure(write_json=write_json, state=STATE)
 settings.forget_runners = lambda: runners.reset()
-# What may be offered: the catalogues gate their unvetted entries on this
+# What may be offered: the catalogs gate their unvetted entries on this
 # one switch (roadmap R54, step 6), read live so a save takes at once.
 forges.unvetted_ok = lambda: bool(settings.get("offer_unvetted"))
 
@@ -2264,8 +2276,8 @@ import brief                                                     # noqa: E402
 brief.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
 
 # ---- a project's design language and its pages ------------------------------
-# What the project looks like, kept: colours as tokens, type, shape, space and
-# the operator's rules, and pages laid out as labelled blocks; a prompt a
+# What the project looks like, kept: colors as tokens, type, shape, space and
+# the operator's rules, and pages laid out as labeled blocks; a prompt a
 # session is pointed at and docs/design-language.md written from it: design.py.
 import design                                                    # noqa: E402
 
@@ -3037,7 +3049,7 @@ def snapshot(who):
         # everybody including the asker. More than one may (roadmap #24), each
         # in a worktree of their own, so this is a list and it is information
         # rather than a refusal: the row says who is here and nothing is
-        # greyed for it. The page decides how to word "you and alice".
+        # grayed for it. The page decides how to word "you and alice".
         "claude_with": projsessions.with_(sessions),
         # ...and which of them are working on a prompt right now, for the
         # dot beside each name (the operator, 24 Sep).
@@ -3057,7 +3069,7 @@ def snapshot(who):
         # the panel is open. This rides the poll because it is small and it
         # is what decides whether the button wears a dot.
         "chat": _chat_summary(who, ps),
-        # This account's colour scheme, for a browser that has none stored.
+        # This account's color scheme, for a browser that has none stored.
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),
         # Whether this account has read the getting-started guide, and
@@ -3082,6 +3094,7 @@ GET_ROUTES = (
     ("prefix", "/api/status", "_get_status"),
     ("prefix", "/api/findings", "_get_findings"),
     ("prefix", "/api/profile", "_profile"),
+    ("prefix", "/api/transcripts", "_get_transcripts"),
     ("prefix", "/api/transcript", "_get_transcript"),
     ("prefix", "/api/git", "_get_git"),
     ("prefix", "/api/project-sessions", "_get_project_sessions"),
@@ -3989,7 +4002,7 @@ class Handler(BaseHTTPRequestHandler):
     def _get_trace(self):
         """GET /api/trace?since=T: what this server was asked since T,
         grouped by endpoint (R75 step 4). For an admin or a session: the
-        page's own behaviour is what it describes, and a session diagnosing
+        page's own behavior is what it describes, and a session diagnosing
         a tab that asks too much is the reader it exists for. Paths and
         query KEYS only, never values: a project's name in a query is the
         one thing here that is somebody's."""
@@ -4373,8 +4386,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _design(self, req):
         """POST /api/design: the notebook's Save of the language and the
-        pages, a prompt preview and the file written into the tree:
-        design.verb, for an account that works on the project."""
+        pages, and the file written into the tree: design.verb, for an
+        account that works on the project."""
         name = field(req, "project")
         if self._not_project(name) or self._readonly(name):
             return
@@ -4456,8 +4469,9 @@ class Handler(BaseHTTPRequestHandler):
         not at all. None means an answer was already sent."""
         try:
             n = int(self.headers.get("Content-Length", "0"))
-            if not 0 <= n <= MAX_BODY:
-                self._json({"error": "body too large"}, 413)
+            most = MAX_BODY_FOR.get(self.path.partition("?")[0], MAX_BODY)
+            if not 0 <= n <= most:
+                self._json({"error": f"body too large: {n} bytes, and this takes {most}"}, 413)
                 return None
             req = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, TypeError):
@@ -4584,6 +4598,12 @@ class Handler(BaseHTTPRequestHandler):
         # not, because a node is shared and moving a project onto one
         # reaches every other project there.
         if ("node" in req or "nodes" in req) and self._refused("node", name):
+            return
+        # ...and so are the places on it a session here is shown (sees): a
+        # share on a node is every project's there, so naming one is for
+        # whoever may set the node. Only a change is asked about.
+        if req.get("sees") is not None and prefs.sees_changed(name, req.get("sees")) \
+                and self._refused("node", name):
             return
         # ...nor is the dial that hands a session this project's container:
         # it lets a session create one and set its env, which is Docker
@@ -4743,11 +4763,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"{me['name']} has no shell, so this terminal is the "
                                         "read-only one"}, 403)
         # ...and the projects this one reads, for the view bb-session builds
-        # (their trees read-only) and the walls bb-tty gives Claude.
+        # (their trees read-only) and the walls bb-tty gives Claude; and the
+        # places on its node it is shown, which the view otherwise leaves out.
         return self._json({"uid": me["uid"], "name": me["name"], "project": project,
                            "owner": me.get("role") == "owner",
                            "reads": [r for r in (prefs.get(project) or {}).get("reads") or []
-                                     if (WORKSPACE / r).is_dir()]})
+                                     if (WORKSPACE / r).is_dir()],
+                           "sees": (prefs.get(project) or {}).get("sees") or []})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24):
@@ -4778,7 +4800,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*no)
         if self._refused("bb", project):
             return None
-        return self._json(*bbrelay.run(me, req, project))
+        # A session's bb bug add, bb rules add or bb settings set is its own
+        # write like one through the notebook's routes, and was told to it
+        # on its next prompt as somebody else's (B375): what moved across
+        # the verb is marked seen for the session that ran it.
+        before = _seen_now(project, me) if me.get("session") else None
+        out = bbrelay.run(me, req, project)
+        if before is not None:
+            session_mark_own(project, me.get("uid") or "", me, since=before)
+        return self._json(*out)
 
     def _agent(self):
         """The node agent's door (docs/nodes.md §4): channel.py says what each
@@ -4893,7 +4923,7 @@ class Handler(BaseHTTPRequestHandler):
                           users.get(users.owner_name() or ""))) == me)
         if busy:
             # Said as projects, not tmux names: "u_3deb3420~claude-hello"
-            # named nothing a person recognises, and every one listed is
+            # named nothing a person recognizes, and every one listed is
             # the asker's own.
             projs = sorted({tmux_base(n)[len("claude-"):] for n in busy})
             return self._json({"error": "end your Claude session"
@@ -5406,19 +5436,35 @@ class Handler(BaseHTTPRequestHandler):
         payload, status, renamed = profiletab.verb(me, field(req, "action"), req)
         return self._json(payload, status, cookie=make_token(renamed) if renamed else None)
 
-    def _get_transcript(self):
-        """GET /api/transcript?project=NAME&id=SESSION: one of the signed-in
-        account's own conversations with Claude on that project as a text
-        file, every command and answer in it (transcripts.render). Anybody
-        signed in, their own only: the file is looked for under their own
-        transcripts directory and nowhere else, so another account's id is
-        simply not found."""
+    def _get_transcripts(self):
+        """GET /api/transcripts?project=NAME: the signed-in account's own
+        conversations with Claude on that project, newest first
+        (transcripts.mine). Anybody signed in, their own only, a session
+        included: on its own project and on one its project reads, it
+        lists the account's conversations there for `bb transcripts`."""
         me = self._who()
         uid = users.uid_of(me) if me else ""
         if not me or not uid:
             return self._json({"error": "not an account"}, 403)
-        if me.get("session"):
-            return self._json({"error": "a session has the transcript already"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json({"project": name, "rows": transcripts.mine(uid, [name])})
+
+    def _get_transcript(self):
+        """GET /api/transcript?project=NAME&id=SESSION: one of the signed-in
+        account's own conversations with Claude on that project as a text
+        file, every command and answer in it (transcripts.render); as JSON
+        with as=json, which is what `bb transcripts show` reads. Anybody
+        signed in, their own only, a session included on its own project
+        and on one its project reads: the file is looked for under the
+        account's own transcripts directory and nowhere else, so another
+        account's id is simply not found."""
+        me = self._who()
+        uid = users.uid_of(me) if me else ""
+        if not me or not uid:
+            return self._json({"error": "not an account"}, 403)
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         name = q.get("project", [""])[0]
         if self._not_project(name):
@@ -5427,6 +5473,8 @@ class Handler(BaseHTTPRequestHandler):
                                          transcripts.zone(q.get("tz", [""])[0]))
         if text is None:
             return self._json({"error": fname}, 404)
+        if q.get("as", [""])[0] == "json":
+            return self._json({"name": fname, "text": text})
         return self._attachment(fname, text.encode("utf-8"), "text/plain; charset=utf-8")
 
     def _git_act(self, req):
@@ -5712,7 +5760,22 @@ class Handler(BaseHTTPRequestHandler):
         # and not a session's.
         if self._not_project(name) or self._refused("lock", name):
             return None
-        return self._json(*projects.lock_verb(name, on))
+        body, code = projects.lock_verb(name, on)
+        # Every Claude session on the project, whoever's and wherever it
+        # runs: lock_verb ends the owner's here, from before sessions moved
+        # onto nodes (R47), and a lock that left another account's session
+        # running on a node was a lock that had not taken (the operator,
+        # 29 Sep). Named in the answer, so the page can say what went.
+        if on and code == 200:
+            want = claude_session(name)
+            ended = []
+            for s in [x for x in tmux_sessions() if tmux_base(x["name"]) == want] \
+                    + [x for x in node_tmux_sessions() if tmux_base(x["name"]) == want]:
+                r = end_session(s["name"], str(s.get("node_id") or ""))
+                if not r.get("error") and not r.get("gone") and s["name"] not in ended:
+                    ended.append(s["name"])
+            body = dict(body) | {"ended": ended}
+        return self._json(body, code)
 
     def _trash(self, req):
         """Move a project out of the workspace: projects.trash, once

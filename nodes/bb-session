@@ -12,11 +12,26 @@ mount, PID and IPC namespace in which:
     share, and in that share the other projects' transcripts are empty;
   * the account's home is the only home, and its BuilderBot cache holds only
     this project's folder and the account's own;
-  * /tmp, /var/tmp and /dev/shm are the session's own;
+  * /tmp, /var/tmp and /dev/shm are the session's own, made new with every
+    start, but for what Claude Code keeps there between the turns of one
+    conversation (/tmp/claude-<uid>), which is kept in the project's cache
+    folder and outlives a restart of the session;
   * the agent's stores show only what a session reads: its own CI logs and
     artifacts, and the emulator's logs; jobs, compose files, the runner's
-    checkouts and the terminal log are gone;
-  * the process list holds only the session's own processes.
+    checkouts and the terminal log are gone, and so is everything else in
+    the agent's own directory (other projects' build caches, their
+    containers' data, the agent's tools);
+  * the base home holds what a session runs from it (the launchers on PATH
+    and Claude Code) and nothing else of the account that owns it: no keys,
+    no history, no settings;
+  * nothing else on the machine that is not the system's own is there: a
+    share or a disk mounted on the node, a directory somebody made at the
+    top of it. The view is built from what a session is given, so what the
+    node gains later is out of it without anybody naming it. A share a
+    project is meant to work with is named in the project's settings and
+    handed over as --sees;
+  * the process list holds only the session's own processes;
+  * the container daemon's socket is not there: the daemon is the node's.
 
 Then it drops to the session account for good (no_new_privs) and runs the
 session under a small init that forwards a stop and reaps what is orphaned.
@@ -37,9 +52,9 @@ file is read only after the drop, as the session.
 
     bb-session check
         exit 0 when this machine can build the view; root only
-    bb-session plan  --project P --account U --home H --cwd D [--reads R]...
+    bb-session plan  --project P --account U --home H --cwd D [--reads R]... [--sees PATH]...
         the mounts, as JSON, without making any; anybody
-    bb-session enter --project P --account U --home H --cwd D [--reads R]... --env FILE -- COMMAND...
+    bb-session enter --project P --account U --home H --cwd D [--reads R]... [--sees PATH]... --env FILE -- COMMAND...
         the session, inside the view; through sudo
     bb-session check-net
         exit 0 when this helper can give a session a network of its own; root
@@ -47,6 +62,7 @@ file is read only after the drop, as the session.
 """
 import contextlib
 import ctypes
+import errno
 import fcntl
 import json
 import os
@@ -64,6 +80,20 @@ STAGE = "/run/bb-session"
 PROJECT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 ACCOUNT = re.compile(r"u_[0-9a-f]{8}")
 ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# A place on the node a project is set to see: a path in plain characters,
+# so the launcher line that carries it stays words a respawn can read back.
+SEES = re.compile(r"(?:/[A-Za-z0-9._-]{1,80}){1,12}")
+# The names at the top of a machine that are the system's own. Everything
+# else there is somebody's: a share, a disk, a directory made by hand. /home
+# is here because the homes in it are kept apart by their own permissions and
+# the session account's is trimmed by name below; /opt because what is
+# installed there is run, not kept.
+SYSTEM = frozenset(("bin", "boot", "dev", "etc", "home", "lib", "lib32", "lib64", "libx32",
+                    "lost+found", "nix", "opt", "proc", "root", "run", "sbin", "snap", "sys",
+                    "tmp", "usr", "var"))
+# What a session runs from the base home: the launchers on its PATH, what
+# they load, and Claude Code. The rest of that home is its owner's.
+BASE_KEEPS = (".local/bin", ".local/lib", ".local/share/claude", ".npm-global")
 # What the pane itself knows better than the file bb-tty wrote: sudo keeps
 # these, and the terminal tmux gave the pane is not the one ttyd gave bb-tty.
 FROM_PANE = ("TERM", "COLORTERM", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES")
@@ -94,6 +124,9 @@ def conf():
     c = {"SESSION_USER": "builder", "WORKSPACE": "/workspace", "HOME_ROOT": "",
          "DATA_STORE": "/var/lib/builderbot/data", "ARTIFACTS_STORE": "/var/lib/builderbot/artifacts",
          "RUNNER_DIR": "/var/lib/builderbot/runner", "HIDE": "/devdata",
+         # The agent's own directory: in the view it holds the stores above
+         # and nothing else of what the agent keeps there.
+         "STATE_DIR": "/var/lib/builderbot",
          # The scoped toolchain store, whose .bb bundle is the bb and bb-tty a
          # session and the agent run. Empty until the agent writes it, and then
          # the bundle is read-only in the view (B157); empty here just leaves
@@ -147,6 +180,43 @@ def _ours(entry, ws, project):
         re.escape(_slug(f"{ws}/.worktrees/{project}/")) + r"u-[0-9a-f]{8}", name) is not None
 
 
+def _inside(path, tops):
+    """Whether `path` is one of `tops` or under one."""
+    return any(path == t or path.startswith(t + "/") for t in tops if t)
+
+
+def _holds(path, roots):
+    """Whether one of `roots` is `path` or under it."""
+    return any(r == path or r.startswith(path + "/") for r in roots if r)
+
+
+def _top():
+    """Where the machine starts: "" on a node. Another place only for
+    somebody who is not root, which is `plan` run by the suite against a
+    stand-in for a machine's top."""
+    if os.geteuid() != 0:
+        return os.environ.get("BB_SESSION_ROOT", "").rstrip("/")
+    return ""
+
+
+def _mounts():
+    """Every mount point in this process's mount table, in its order. The
+    table writes a space, a tab, a newline and a backslash as octal."""
+    path = "/proc/self/mountinfo"
+    if os.geteuid() != 0:
+        path = os.environ.get("BB_SESSION_MOUNTS", path)
+    out = []
+    try:
+        with open(path) as f:
+            for line in f:
+                parts = line.split(" ")
+                if len(parts) > 4:
+                    out.append(re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), parts[4]))
+    except OSError:
+        pass
+    return out
+
+
 def net_conf(c):
     """The session network (R79) when this node keeps each session to its own
     project's network, or None. On only where the agent wrote it on, which it
@@ -179,6 +249,11 @@ def args(argv):
         # line stays words a respawn can read back (RESPAWNABLE).
         if a == "--reads" and i + 1 < len(argv):
             out.setdefault("reads", []).append(argv[i + 1])
+            i += 2
+            continue
+        # A place on the node this project is set to see, once per place.
+        if a == "--sees" and i + 1 < len(argv):
+            out.setdefault("sees", []).append(argv[i + 1])
             i += 2
             continue
         raise Refused(f"bb-session: '{a}' is not an option it takes")
@@ -238,6 +313,75 @@ def plan(c, a, uid):
             caches.setdefault(os.path.realpath(path), set()).update(keep)
     caches = sorted(caches.items())
     data, art = c["DATA_STORE"].rstrip("/"), c["ARTIFACTS_STORE"].rstrip("/")
+    store = c["TOOLCHAINS_STORE"].rstrip("/") if c.get("TOOLCHAINS_STORE") else ""
+    # What every scope of the toolchain store keeps once, beside them: the
+    # Android system images, which the scoped store links to by a relative
+    # path, so the view holds it wherever it holds the store.
+    beside = f"{os.path.dirname(store)}/shared" if store and _real_dir(store) else ""
+    if not _real_dir(beside):
+        beside = ""
+    state = c["STATE_DIR"].rstrip("/") if c.get("STATE_DIR") else ""
+    top = _top()
+
+    # The places on the node this project is set to see (its settings, the
+    # operator's to write): a share it works with, which is otherwise out of
+    # the view like every other. Only ever somebody's place: nothing of the
+    # system's, of the projects share, of a home or of the agent's, so
+    # naming one cannot bring back what the view leaves out on purpose. One
+    # that is not on this node is another of the project's nodes' and is
+    # passed over.
+    sees = []
+    for p in a.get("sees", []):
+        p = p.rstrip("/")
+        name = p[len(top):].split("/")[1] if p.startswith(top + "/") else ""
+        if not SEES.fullmatch(p) or ".." in p.split("/") or not name:
+            raise Refused(f"bb-session: '{p}' is not a place a project could be shown")
+        if name in SYSTEM or _inside(p, (ws, home_root, state, data, art, store)) \
+                or _holds(p, (ws, home_root, state, data, art, store)):
+            raise Refused(f"bb-session: {p} is the machine's own or BuilderBot's, not a place a project could be shown")
+        if _real_dir(p) and not _inside(p, sees):
+            sees = [s for s in sees if not _inside(s, (p,))] + [p]
+
+    # What the view is built from. Everything else at the top of the
+    # machine that is not the system's own is out: covered where it holds
+    # one of these, so that one can be put back inside it, and hidden whole
+    # where it holds none. It is decided by what is kept and never by what
+    # is known to be there, so a share mounted on the node next month is out
+    # of every view without anybody naming it (B378: the view used to cover
+    # the projects share, the two stores and what HIDE named, and a session
+    # listed other projects' container data, the dev instance's projects
+    # and the base home's keys).
+    roots = [r for r in (ws, home_root, data, art, store, beside) if r] + sees
+    covers, gone = [], []
+    try:
+        names = sorted(os.listdir(top or "/"))
+    except OSError:
+        names = []
+    for name in names:
+        d = f"{top}/{name}"
+        if name in SYSTEM or not _real_dir(d) or _inside(d, roots):
+            continue
+        (covers if _holds(d, roots) else gone).append(d)
+    # ...and the agent's own directory the same way, which is under /var.
+    if state and _real_dir(state) and not _inside(state, roots + covers + gone):
+        covers.append(state)
+    # The mounts inside what is covered or hidden are let go as well, the
+    # topmost of each, which takes what is mounted inside it along: a
+    # cover alone leaves them in the mount table, where each one names the
+    # export it is from.
+    #
+    # ...and one at the top that could not be read at all (a share whose
+    # server has gone is a name nothing can stat, root included) is let go
+    # too, since it is nobody's to keep and there is nothing to cover.
+    letgo = []
+    for m in sorted(set(_mounts()), key=len):
+        name = m[len(top):].split("/")[1] if m.startswith(top + "/") else ""
+        if _inside(m, letgo):
+            continue
+        if _inside(m, covers + gone) or (name and name not in SYSTEM
+                                         and not _inside(m, roots) and not _holds(m, roots)):
+            letgo.append(m)
+    out_of_sight = covers + gone
 
     # Everything that is about to be covered is bound aside first, so what
     # stays in the view can be bound back from there.
@@ -249,12 +393,35 @@ def plan(c, a, uid):
         steps.append(("bind", data, f"{STAGE}/data"))
     if art and _real_dir(art):
         steps.append(("bind", art, f"{STAGE}/artifacts"))
+    if base and _real_dir(home_root):
+        steps.append(("bind", home_root, f"{STAGE}/base"))
+    store_from, beside_from = store, beside
+    if store and _real_dir(store) and _inside(store, covers):
+        store_from = f"{STAGE}/store"
+        steps.append(("bind", store, store_from))
+    if beside and _inside(beside, covers):
+        beside_from = f"{STAGE}/store-shared"
+        steps.append(("bind", beside, beside_from))
+    shown = [(i, p) for i, p in enumerate(sees) if _inside(p, covers)]
+    for i, p in shown:
+        steps.append(("bind", p, f"{STAGE}/sees{i}"))
     # The GPU display's socket (R20): /tmp is the session's own below, so
     # the X server's socket directory is staged here and bound back, and a
     # `bb emu start` inside the session finds :0.
     x11 = _real_dir("/tmp/.X11-unix")
     if x11:
         steps.append(("bind", "/tmp/.X11-unix", f"{STAGE}/x11"))
+
+    # What is not the view's goes first, so that everything below is put
+    # back inside a cover rather than under one.
+    for m in letgo:
+        steps.append(("letgo", m))
+    for d in covers:
+        steps.append(("tmpfs", d, "mode=0755"))
+    for d in gone:
+        steps.append(("hide", d))
+    for i, p in shown:
+        steps.append(("bind", f"{STAGE}/sees{i}", p))
 
     # The projects share: this project, its worktrees, the account's share,
     # and in that share the other projects' transcripts empty.
@@ -266,22 +433,41 @@ def plan(c, a, uid):
     # theirs beyond the tree: no worktrees, no caches, no stores.
     for r in reads:
         steps.append(("bindro", f"{STAGE}/ws/{r}", f"{ws}/{r}"))
+    # The account's transcripts: this project's stay, a read project's are
+    # there to read (the account's own conversations there, read-only, the
+    # operator's ask of 29 Sep), and every other project's are empty.
     transcripts = f"{ws}/.claude/{account}/projects"
     if _real_dir(transcripts):
         for entry in sorted(os.listdir(transcripts)):
-            if _real_dir(f"{transcripts}/{entry}") and not _ours(entry, ws, project):
+            if not _real_dir(f"{transcripts}/{entry}") or _ours(entry, ws, project):
+                continue
+            if any(_ours(entry, ws, r) for r in reads):
+                steps.append(("bindro", f"{STAGE}/ws/.claude/{account}/projects/{entry}", f"{transcripts}/{entry}"))
+            else:
                 steps.append(("hide", f"{transcripts}/{entry}"))
-    # Homes: the account's own is the only one, and when it is not the base
-    # home, the base home's Claude login and history are out of sight too.
+    # Homes: the account's own is the only one. The base home is another's
+    # (on a node every account is homed under users/, and the session
+    # account's own home is the base): in the view it is new, and holds what
+    # a session runs from it, read-only (B157), and the account's home.
+    # Every session runs as the account that owns it, so its permissions
+    # kept nothing back: the Claude login and history were hidden by name,
+    # and the keys, the shell history and the settings beside them were
+    # there to read (B378).
+    launcher = f"{home_root}/.local/bin/claude" if home_root else ""
+    real = os.path.realpath(launcher) if launcher and os.path.exists(launcher) else ""
+    if base and _real_dir(home_root):
+        steps.append(("tmpfs", home_root, "mode=0755"))
+        for rel in BASE_KEEPS:
+            if _real_dir(f"{home_root}/{rel}"):
+                steps.append(("bindro", f"{STAGE}/base/{rel}", f"{home_root}/{rel}"))
+        # The launcher's own file where it is anywhere else in that home.
+        if real and os.path.isfile(real) and _inside(real, (home_root,)) \
+                and not _inside(real, [f"{home_root}/{rel}" for rel in BASE_KEEPS]):
+            steps.append(("bindro", f"{STAGE}/base/{real[len(home_root) + 1:]}", real))
     if _real_dir(users):
         steps.append(("tmpfs", users, "mode=0755"))
         if base:
             steps.append(("bind", f"{STAGE}/home", f"{users}/{account}"))
-    if base:
-        if _real_dir(f"{home_root}/.claude"):
-            steps.append(("hide", f"{home_root}/.claude"))
-        if os.path.isfile(f"{home_root}/.claude.json") and not os.path.islink(f"{home_root}/.claude.json"):
-            steps.append(("hidefile", f"{home_root}/.claude.json"))
     # BuilderBot's caches: this project's folder, the account's and the
     # machine's; the base home's down to the machine's.
     for i, (cache, keep) in enumerate(caches):
@@ -321,9 +507,10 @@ def plan(c, a, uid):
     # nothing can be planted there under a command's name, and bin/cache, which
     # only flutter itself runs from, is given back. What is left is a session
     # changing what a flutter command runs, on a node that has flutter.
-    store = c["TOOLCHAINS_STORE"].rstrip("/") if c.get("TOOLCHAINS_STORE") else ""
     if store and _real_dir(store):
-        steps.append(("bindro", store, store))
+        steps.append(("bindro", store_from, store))
+        if beside:
+            steps.append(("bindro", beside_from, beside))
         flutter = f"{store}/flutter"
         if _real_dir(f"{flutter}/bin/cache"):
             steps.append(("bindrw", flutter, flutter))
@@ -357,31 +544,68 @@ def plan(c, a, uid):
     # down. The base home being read-only in the view, below, is what stops
     # that: nothing in it can be replaced any more, and an account's own
     # pip --user installs go to its own home (common.sh, unshare_dotfiles).
-    if home_root:
+    #
+    # Where the account's home is the base home there is no new home to put
+    # them in, and they are made read-only where they are. Where it is not,
+    # they are among what the new base home holds, above, and only a
+    # launcher kept outside every home is left to do here.
+    if home_root and not (base and _real_dir(home_root)):
         shared = f"{home_root}/.local/share/claude/versions"
         if _real_dir(shared):
             steps.append(("bindro", shared, shared))
-        launcher = f"{home_root}/.local/bin/claude"
-        real = os.path.realpath(launcher) if os.path.exists(launcher) else ""
         if real and os.path.isfile(real) and not real.startswith(shared + "/"):
             steps.append(("bindro", real, real))
-    # ...and the base home itself, last, over everything mounted inside it
-    # (B157). It is nobody's on a node, where every account is homed under
-    # users/, and it was writable: the dotfiles every home linked to, the
-    # .bashrc a new home is copied from and the launcher every session runs
-    # all sat in it. The recursive bind carries the mounts above with it, so
-    # the account's own home under users/ stays writable and the hidden parts
-    # stay hidden; only the base home's own files become read-only.
-    if base and _real_dir(home_root):
-        steps.append(("bindro", home_root, home_root))
+    elif real and os.path.isfile(real) and not _inside(real, (home_root,)):
+        steps.append(("bindro", real, real))
+    # What the layout names to hide, where it is not out of sight already:
+    # under a cover it is not there to mount on.
     for hidden in [c["RUNNER_DIR"]] + [x for x in c["HIDE"].split(":") if x]:
-        if _real_dir(hidden.rstrip("/")):
+        if _real_dir(hidden.rstrip("/")) and not _inside(hidden.rstrip("/"), out_of_sight):
             steps.append(("hide", hidden.rstrip("/")))
     for t in ("/tmp", "/var/tmp", "/dev/shm"):
         if _real_dir(t):
             steps.append(("tmpfs", t, "mode=1777"))
+    # The container daemons' sockets (B308): the daemon is the node's and
+    # its group keeps a session out today, and the briefing says a session
+    # has no socket at all, which was not so. One usermod or chmod on the
+    # node and every session was root there; now there is nothing to widen.
+    # /var/run is a link to /run, so each is covered where it really is.
+    covered = set()
+    for sock in ("/run/docker.sock", "/var/run/docker.sock", "/run/containerd/containerd.sock",
+                 "/run/podman/podman.sock"):
+        real = os.path.realpath(f"{top}{sock}")
+        try:
+            is_sock = stat.S_ISSOCK(os.lstat(real).st_mode)
+        except OSError:
+            is_sock = False
+        if is_sock and real not in covered:
+            covered.add(real)
+            steps.append(("hidefile", real))
     if x11:
         steps.append(("bind", f"{STAGE}/x11", "/tmp/.X11-unix"))
+    # What Claude Code keeps between the turns of one conversation (the
+    # files it was told to put in its scratchpad, what its background
+    # commands printed) is under /tmp/claude-<uid>, by the conversation's
+    # own id. A session is started again on the same conversation whenever
+    # the controller is updated, and each start made /tmp new: a session
+    # lost its scripts and measurements twice in a day, between two
+    # prompts of one conversation (B376). The launcher makes the folder in
+    # the project's cache as the session account; only one that is a
+    # directory of that account's own is bound, and one that is not leaves
+    # /tmp as it was.
+    try:
+        whose = uid if uid is not None else pwd.getpwnam(c["SESSION_USER"]).pw_uid
+    except KeyError:
+        whose = None
+    for i, (cache, _keep) in enumerate(caches if whose is not None else []):
+        kept = f"u/{account}/project/{project}/scratch"
+        try:
+            st = os.lstat(f"{cache}/{kept}")
+        except OSError:
+            continue
+        if stat.S_ISDIR(st.st_mode) and st.st_uid == whose:
+            steps.append(("bind", f"{STAGE}/cache{i}/{kept}", f"/tmp/claude-{whose}"))
+            break
     # A network of its own (R79): the agent's resolver file over the node's,
     # which names a resolver on the node's loopback that the session's own
     # namespace cannot reach; then the agent's folder out of sight, since it
@@ -453,8 +677,16 @@ def apply(steps, uid, gid):
             # with a read project met "mount: No such file or directory".
             # Only where nothing is: a read-only bind lands on files too (the
             # claude binary's link), and making a directory there is EEXIST.
+            #
+            # A file put back into a new home has a file to land on made
+            # for it, in the folder made for that.
             if not os.path.lexists(target):
-                _mkdirs(target, uid, gid)
+                if os.path.isdir(src):
+                    _mkdirs(target, uid, gid)
+                else:
+                    _mkdirs(os.path.dirname(target), uid, gid)
+                    with open(target, "x"):
+                        pass
             _mount(src, target, None, MS_BIND | MS_REC)
             _mount(src, target, None, MS_BIND | MS_REMOUNT | MS_RDONLY)
         elif kind == "bindrw":
@@ -477,6 +709,15 @@ def apply(steps, uid, gid):
             _mount(step[1], target, None, MS_BIND)
         elif kind == "detach":
             _call("umount2", target.encode(), ctypes.c_int(MNT_DETACH))
+        elif kind == "letgo":
+            # A mount of the node's that is not the view's. One that went
+            # between the plan and now, or with the one it was inside, is
+            # gone already, which is what was asked.
+            try:
+                _call("umount2", target.encode(), ctypes.c_int(MNT_DETACH))
+            except OSError as e:
+                if e.errno not in (errno.EINVAL, errno.ENOENT):
+                    raise
 
 
 def _ipbin():

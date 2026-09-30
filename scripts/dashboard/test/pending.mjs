@@ -8,7 +8,7 @@
 // hook line that tells the session what was decided, and the endpoint's
 // refusal of a session's own token. What is faked: nothing. The hook is the
 // shipped script run as a process, and bb is the checkout's.
-import { launch, newPage, ok, done, ready, URL, DIR, nbShown, sleep } from './lib.mjs';
+import { launch, newPage, ok, done, ready, saveDialog, URL, DIR, nbShown, sleep } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -66,8 +66,7 @@ await page.selectOption('#rnGateRoadmap', 'ask');
 await page.selectOption('#rnGateBugs', 'ask');
 await page.selectOption('#rnGateRules', 'deny');
 await page.selectOption('#rnGateSettings', 'ask');
-await page.click('#rnGo');
-await gone('#rnmodal');
+await saveDialog(page);
 const gate = () => file('claude-prefs.json').projects?.alpha?.gate || {};
 ok(gate().roadmap === 'ask' && gate().bugs === 'ask' && gate().rules === 'deny' && gate().settings === 'ask',
    'saving writes the four words beside the project\'s other settings');

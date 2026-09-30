@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.113"
+AGENT_VERSION = "0.7.115"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3421,6 +3421,10 @@ class Agent:
         self.session_stale = ""           # a newer bundle's directory, for the loop to restart onto
         self.session_bound = ""           # the address the ttyds were bound to, to notice it moving
         self.session_mount = None         # (mounted, writable) as the last census said, to notice it moving
+        # The census for the loop's next hello, taken beside the loop rather
+        # than in it (B380): the thread, and what it came back with.
+        self.census_thread = None
+        self.census_next = None
         self.fw_checked = 0.0             # when the session ports' firewall rule was last checked
         self.tool_lock = threading.Lock()  # the session tool's files, written from two threads
         self.sessnet = SessionNet(self)    # each session kept to its own project's network (R79)
@@ -3509,18 +3513,62 @@ class Agent:
                 return
 
     # -- the channel -------------------------------------------------------
-    def hello(self):
-        # `running` is the list of job ids this process still holds. The
-        # controller reconciles against it: a job its row says is running
-        # here that this agent does not know was lost with a restart, and is
-        # failed there rather than left running forever (docs/nodes.md §9).
-        # The layout's one standing rule, kept by the running agent (never
-        # by `enroll`, which may run with a store it cannot write yet).
+    def census_take(self):
+        """The census a hello carries. The layout's one standing rule first,
+        kept by the running agent (never by `enroll`, which may run with a
+        store it cannot write yet)."""
         try:
             share_images((self.state.get("stores") or {}).get("toolchains") or "")
         except OSError as e:
             log(f"toolchain store: could not share the images ({e})")
-        c = census(self.state)
+        return census(self.state)
+
+    def hello_step(self):
+        """The loop's ten-minute hello, with its census taken on a thread
+        beside the loop (B380). The census asks the slow questions (the
+        toolchain store, docker, the session half), and the loop used to
+        stand still for it right after holding a full-length work poll; the
+        controller stamps last heard from at the start of each work call and
+        at the end of hello, and reads a node unheard for three polls as not
+        answering, so a census slower than fifty seconds put "its agent is
+        not answering" on every project row for one poll. Now the loop keeps
+        polling while the census is taken, and says hello with it once it
+        is there. Returns hello's (status, answer) when one was said, and
+        None while the census is still being taken. The first hello of the
+        process is said at once, as it always was: nothing here should run
+        before the controller has heard from this agent."""
+        if not self.hello_at:
+            # ...and one asked for now (the clock zeroed by a refusal or a
+            # job that changed the machine) is said with a census of its
+            # own; a census still on its way from before is let go.
+            self.census_thread = None
+            self.census_next = None
+            return self.hello()
+        if self.census_thread is None:
+            self.census_next = None
+
+            def take():
+                try:
+                    self.census_next = self.census_take()
+                except Exception as e:                               # noqa: BLE001
+                    log(f"census: {type(e).__name__}: {e}")
+            self.census_thread = threading.Thread(target=take, daemon=True, name="census")
+            self.census_thread.start()
+            return None
+        if self.census_thread.is_alive():
+            return None
+        self.census_thread = None
+        c, self.census_next = self.census_next, None
+        return self.hello(taken=c) if c is not None else self.hello()
+
+    def hello(self, taken=None):
+        # `running` is the list of job ids this process still holds. The
+        # controller reconciles against it: a job its row says is running
+        # here that this agent does not know was lost with a restart, and is
+        # failed there rather than left running forever (docs/nodes.md §9).
+        # `taken` is a census hello_step took beside the loop; anybody else
+        # takes one here, now.
+        c = taken if taken is not None else self.census_take()
         se = c.get("session") or {}
         self.session_mount = (bool(se.get("workspace")), bool(se.get("writable"))) if se else None
         st, r = self.ctl.call("hello", {"census": c,
@@ -3598,6 +3646,12 @@ class Agent:
             # not a node with no agent.
             before = self.session_bundle
             self.session_try(r.get("bundle") or "")
+            # The helper the new bundle carries goes in with the bundle. The
+            # loop refreshes it before its hello and the bundle arrives after,
+            # so it waited for the next hello: for ten minutes a session was
+            # started by the new launcher under the old helper (B377).
+            if self.session_bundle != before:
+                self.refresh_session_tool()
             self.runner_env_sync()
             # A bundle that moved carries a catalog that may have moved with
             # it, and the census read that catalog before the fetch: one more
@@ -3725,7 +3779,10 @@ class Agent:
             if not self.hello_at or time.monotonic() - self.hello_at > 600:
                 self.refresh_session_tool()
                 self.quiet_distro_ttyd()
-                st, r = self.hello()
+                said = self.hello_step()
+                # None: the census is on its way; the work poll below is the
+                # heartbeat meanwhile, and the next turn of the loop asks again.
+                st, r = said if said is not None else (200, {})
                 if st == 401:
                     log(f"refused: {r.get('error')}; this node's credential "
                         "is no longer good. Re-enroll with a new token.")
@@ -6052,8 +6109,8 @@ class Agent:
             with contextlib.suppress(OSError):
                 os.remove(os.path.join(d, ".runner"))
         # act_runner's --instance is the forge's ROOT: the scope (an
-        # organisation or a repository) is what the registration token
-        # carries. Given the organisation's URL it pings /lab/api/... and
+        # organization or a repository) is what the registration token
+        # carries. Given the organization's URL it pings /lab/api/... and
         # retries a 404 forever (measured against a real Gitea, 15 Sep).
         u = urllib.parse.urlsplit(url)
         instance = f"{u.scheme}://{u.netloc}"
@@ -6068,7 +6125,7 @@ class Agent:
             f.write(",".join(labels))
         # The address the token was stored for, beside the labels: .runner
         # records only the root it registered with, and the row says the
-        # organisation or repository, which is what a person typed.
+        # organization or repository, which is what a person typed.
         with open(os.path.join(d, ".builderbot-url"), "w") as f:
             f.write(url)
         logs = ci_log_dir(self.state)

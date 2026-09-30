@@ -444,7 +444,7 @@ const mb = (...a) => {
 ok(mb('--code').out === '4' && mb('--for', 'extension', '--code').out === '1',
    "a component's ordinal counts only the commits that touched it");
 ok(mb('--for', 'extension', '--semver').out.startsWith('2.1.0-dev.1+'),
-   '...so an untouched product stops moving when its neighbour is edited');
+   '...so an untouched product stops moving when its neighbor is edited');
 ok(mb('--semver').out.startsWith('0.4.0-dev.4+'),
    '...while the project keeps its own count');
 ok(/two-products\/extension\s+2\.1\.0/.test(mb('--list').out)
@@ -619,6 +619,22 @@ ok(missing.code !== 0 && /no unreleased entry 9/.test(missing.out),
      && nums.every((n, i) => n === i + 1),
      'the numbered list names each category, an uncategorised line above them all, and counts straight through');
   cl('rm', numOf('LOOSE'));
+
+  // The limit is on what is being written, not on what the file holds
+  // (B352): a line longer than it, there by hand, refused every add after
+  // it in words that blamed the new line, and the verbs could not shorten
+  // it either, since each of them writes the whole section.
+  const long = 'LONGLINE ' + 'a line that ran on '.repeat(20);
+  writeFileSync(`${M}/CHANGELOG.md`, file().replace('### Added\n\n', `### Added\n\n- ${long.trim()}\n`));
+  ok(cl('add', 'SHORT beside a long one', '--cat', 'Fixed').code === 0 && /SHORT beside a long one/.test(file())
+     && file().includes(long.trim()),
+     'an entry is filed beside one already over the limit, which stays as it was');
+  const over = cl('add', 'TOOLONG ' + 'and on '.repeat(60), '--cat', 'Fixed');
+  ok(over.code !== 0 && /this one is \d+, and begins: TOOLONG/.test(over.out) && !/TOOLONG/.test(file()),
+     '...a new one over it is refused, and the refusal says which entry and how long');
+  ok(cl('edit', numOf('LONGLINE'), 'LONGLINE cut to size').code === 0 && !file().includes(long.trim()),
+     '...and the long one is shortened through the verb');
+  cl('rm', numOf('LONGLINE')); cl('rm', numOf('SHORT beside'));
 
   ok(cl('edit', numOf('CATME a fix'), 'CATME a fix, moved', '--cat', 'Added').code === 0,
      'an entry moves between categories with --cat');
@@ -930,7 +946,7 @@ ok(r0['building towards'] === '0.4.0',
    'the tab says what the project is building towards');
 // Build and Version are sections of this tab, and a shut one still answers:
 // the node on the first, the number on the second. They were three unnamed
-// bands stacked, which on a phone is one scroll with nothing labelling it.
+// bands stacked, which on a phone is one scroll with nothing labeling it.
 {
   const sects = await page.$$eval(`${NB} .nbview[data-view="artifacts"] .sect > summary`,
     ss => ss.map(s => [s.querySelector('.t')?.textContent,

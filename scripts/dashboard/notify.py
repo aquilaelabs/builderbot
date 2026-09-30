@@ -12,7 +12,7 @@ permission dialog on the operator's behalf, blind, is the worst thing anything
 in this dashboard could do. The pane title cannot tell those apart: both are
 waiting.
 
-So this does not try to recognise a dialog, which would mean pattern-matching a
+So this does not try to recognize a dialog, which would mean pattern-matching a
 TUI that changes with every release. It uses the one property every text input
 has and no dialog does: **it echoes what you type**. Type the line, look at the
 pane, and press Enter only if the line is now on the screen. A dialog swallows

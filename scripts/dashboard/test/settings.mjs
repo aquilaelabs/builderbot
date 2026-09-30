@@ -6,7 +6,7 @@
 // identity landing in the repo's own config through /api/prefs and coming out
 // of bb settings, and bb_setting (the boot scripts' read) run as bash
 // against the same file.
-import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, saveDialog, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -190,8 +190,7 @@ ok(!!(await page.$('#rnGitName')) && !!(await page.$('#rnGitEmail')),
    'the project dialog asks for a commit author again, as this account\'s own');
 await page.fill('#rnGitName', 'Alter Ego');
 await page.fill('#rnGitEmail', 'alter@example.invalid');
-await page.click('#rnGo');
-await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout: 15000 });
+await saveDialog(page);
 ok(gitc('user.name') === 'dashboard test' && gitc('user.email') === 'test@example.invalid',
    '...and saving it still writes nothing into the repository, which is what the old one got wrong');
 const over = JSON.parse(execFileSync('bash', [join(HERE, '..', '..', 'bb'), 'settings', '--json'],

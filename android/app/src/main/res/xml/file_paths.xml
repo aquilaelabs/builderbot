@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- What the FileProvider is allowed to hand out, and it is one directory:
-     the cache subdirectory the downloaded APK lands in. A provider with a
-     wider path would be a way to read the app's whole sandbox through an
-     intent, which is the thing FileProvider exists to stop. -->
+<!-- What the FileProvider is allowed to hand out, and it is three cache
+     subdirectories: the one the downloaded APK lands in, the one a
+     conversation's text is shared from, and the one an artifact is opened
+     from. A provider with a wider path would be a way to read the app's
+     whole sandbox through an intent, which is the thing FileProvider
+     exists to stop. -->
 <paths>
     <cache-path name="apk" path="apk/" />
+    <cache-path name="logs" path="logs/" />
+    <cache-path name="open" path="open/" />
 </paths>

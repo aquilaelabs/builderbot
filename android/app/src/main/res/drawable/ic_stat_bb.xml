@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The mark again, for the status bar: white on transparent, as a
      notification icon has to be, with the eyes and mouth cut out by the
-     even-odd rule since there is no ground colour to paint them in. -->
+     even-odd rule since there is no ground color to paint them in. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

@@ -494,6 +494,84 @@ print(len(t)); print(t.splitlines()[0]); print('uninstall)' in t)
       ok(Number(tool[0]) > 5000 && /^#!/.test(tool[1]) && tool[2] === 'True',
          `the agent lifts bb-sandbox out of the provisioner's heredoc whole, uninstall verb included (${tool.join(' | ').slice(0, 80)})`);
     }
+    // B377: the helper a new bundle carries goes in with the bundle. The
+    // loop refreshes it before its hello and the bundle arrives after, so
+    // it waited ten minutes for the next hello, and a session restarted in
+    // between lost what the new helper keeps. Driven in process: a hello
+    // whose answer names a bundle the node does not have, then one that
+    // names the one it has.
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+m.share_images = lambda *a, **k: None
+m.census = lambda state: {}
+m.own_digest = lambda: 'sha256:agent'
+m.save_state = lambda s: None
+def case(have, shipped):
+    a = object.__new__(m.Agent)
+    a.state, a.warned_caps, a.session_bundle, did = {}, True, have, []
+    class Ctl:
+        def call(self, verb, body, timeout=30):
+            return 200, {'bundle': shipped, 'node': {'id': 'n1', 'name': 'n', 'state': 'online'}}
+    a.ctl = Ctl()
+    a.running_ids = lambda: []
+    a.keep_session_tokens = lambda rows: None
+    a.runner_env_sync = lambda: did.append('runners')
+    a.refresh_session_tool = lambda: did.append('helper')
+    def take(digest):
+        did.append('bundle ' + digest)
+        a.session_bundle = digest
+    a.session_try = take
+    a.hello()
+    return did
+print(json.dumps({'moved': case('sha256:old', 'sha256:new'), 'same': case('sha256:new', 'sha256:new')}))
+`], { encoding: 'utf8' }).trim();
+      const r = JSON.parse(said);
+      ok(r.moved.indexOf('helper') === r.moved.indexOf('bundle sha256:new') + 1,
+         `a bundle that moved has its helper installed in the same hello, straight after it is taken (${r.moved.join(', ')})`);
+      ok(!r.same.includes('helper'), `...and one that did not move installs nothing (${r.same.join(', ')})`);
+    }
+    // The loop's hello takes its census beside the loop (B380): the
+    // census asks the slow questions right after a full-length work poll,
+    // and the loop stood still for it, so a node whose census took longer
+    // than fifty seconds read as not answering on every project row for
+    // one poll. Driven in process: a slow census, and the step that says
+    // hello only once it is there.
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json, time, threading
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+a = object.__new__(m.Agent)
+a.hello_at, a.census_thread, a.census_next = 1.0, None, None
+said = []
+a.hello = lambda taken=None: said.append(taken) or (200, {'taken': taken})
+def slow():
+    time.sleep(0.4)
+    return {'slow': True}
+a.census_take = slow
+first = a.hello_step()
+second, turns = None, 0
+while second is None and turns < 100:
+    time.sleep(0.05); turns += 1
+    second = a.hello_step()
+# ...and a hello asked for at once (the clock zeroed) is said now, with a
+# census of its own, and a census still on its way is let go.
+a.hello_at = 0
+a.census_thread = threading.Thread(target=lambda: time.sleep(0.2)); a.census_thread.start()
+a.census_next = {'stale': True}
+now = a.hello_step()
+print(json.dumps({'first': first, 'second': second, 'said': said, 'now': now, 'dropped': a.census_next is None and a.census_thread is None}))
+`], { encoding: 'utf8' }).trim();
+      const r = JSON.parse(said);
+      ok(r.first === null && r.second && r.second[1].taken && r.second[1].taken.slow && r.said.length === 2
+         && r.said[0] && r.said[0].slow && r.now && r.said[1] === null && r.dropped,
+         `the loop's hello waits for a census taken beside it and says hello with it, and a hello asked for at once takes its own census and lets a pending one go (${said})`);
+    }
     // B167: the distribution's own root ttyd is switched off by the agent on
     // a managed node, not only by a provisioner run that may never come
     // again; left alone when it is already off, and never on a guest.
@@ -557,7 +635,7 @@ print(json.dumps(open(seen).read().splitlines() if os.path.exists(seen) else [])
     }
     // The session's view (R35): the helper travels in the bundle, and what
     // the agent writes for it is one rule for one command, the layout, and a
-    // respawn that runs again only a launcher it recognises.
+    // respawn that runs again only a launcher it recognizes.
     {
       const bin = '/opt/fake/bb-session';
       const out = JSON.parse(execFileSync('python3', ['-c', `
@@ -2181,7 +2259,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
        'the Tools tab reads that node\'s own toolchain store');
     ok(view && view.items.find(i => i.name === 'zig')?.installed === true
        && view.items.find(i => i.name === 'android:ndk')?.installed === true,
-       'a toolchain present in the store reads as installed, whatever the census summarises');
+       'a toolchain present in the store reads as installed, whatever the census summarizes');
     ok(view && view.items.find(i => i.name === 'swift')?.installed === false
        && view.items.every(i => i.unknown === false),
        '...and one that is not there reads as absent, not as unknown');
@@ -3202,7 +3280,7 @@ nd_text = open(nd_file).read()
 a.hello = lambda: (503, {})
 j2 = J(); r2 = a._apply_network(j2, {'network': {'mode': 'dhcp', 'interface': 'eth0'}})
 nd_after = open(nd_file).read()
-# ifupdown: networkd out of the way, an interfaces file with a neighbour to keep
+# ifupdown: networkd out of the way, an interfaces file with a neighbor to keep
 m.NETWORKCTL_BIN = '/nonexistent/networkctl'
 orig = 'auto lo\\niface lo inet loopback\\n\\nauto eth0\\niface eth0 inet dhcp\\n\\nauto eth1\\niface eth1 inet static\\n    address 192.168.9.9/24\\n'
 open(ifs, 'w').write(orig)
@@ -3232,7 +3310,7 @@ print(json.dumps({'fam': fam, 'nd_backend': nd_backend, 'r1': r1, 'nd_text': nd_
      && /iface eth0 inet static\n    address 10\.2\.2\.5\/24\n    gateway 10\.2\.2\.1\n    dns-nameservers 10\.2\.2\.1\n/.test(R.if_text)
      && /auto lo\niface lo inet loopback/.test(R.if_text) && /iface eth1 inet static\n    address 192\.168\.9\.9\/24/.test(R.if_text)
      && !/iface eth0 inet dhcp/.test(R.if_text) && /ifdown eth0\nifup eth0/.test(R.calls),
-     `with ifupdown the interface's own stanza is replaced and the neighbours kept (${R.if_backend}, ${R.r3[0]})`);
+     `with ifupdown the interface's own stanza is replaced and the neighbors kept (${R.if_backend}, ${R.r3[0]})`);
   ok(R.r4[0] === 'failed' && R.if_after === R.if_text,
      '...and its revert is the whole file as it was before the change');
 }

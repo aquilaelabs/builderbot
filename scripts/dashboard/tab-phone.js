@@ -10,7 +10,7 @@
 //
 // One owner per connection. Whoever connects a phone is the only account
 // that can disconnect it, and the only one asked when a session wants to
-// touch it. Everybody else sees the connection with its controls greyed and
+// touch it. Everybody else sees the connection with its controls grayed and
 // the owner named: the phone is on somebody's desk, and they are the one
 // who said yes to it.
 //

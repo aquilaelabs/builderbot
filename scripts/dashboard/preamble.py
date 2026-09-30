@@ -40,10 +40,14 @@ rules_mod = roadmap_mod = bugs_mod = None
 # (the server and bb) already run with it set and neither has to be taught.
 WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
 
-MAX = 200000
-
-CUT = ("[the rest of this list did not fit in the prompt; `bb roadmap`"
-       " and `bb bug` show all of it]")
+# What each part that grows with a project may take of a session's prompt,
+# in bytes (share.py): the block is an index into the notebook, and a part
+# over its share says less per row before it leaves a row out. The
+# briefing itself is the template's size and the project's own for nothing.
+# Sixteen kilobytes is about four thousand tokens; on this project, the
+# day these were set, the rules were 9.7 KB and the roadmap 17.2, of which
+# 4.8 were steps already done.
+SHARES = {"rules": 16 * 1024, "roadmap": 16 * 1024, "bugs": 8 * 1024}
 
 
 live_fn = None
@@ -80,85 +84,6 @@ TEST_CHANGE_SAID = {
 }
 
 
-# ---- terse: the block with its filler words dropped ------------------------
-# What a person reads in the notebook and what a session reads need not be
-# the same text (the operator, 25 Sep): a third of the words in a block are
-# function words, and a model reads telegraphic prose fine. Deterministic on
-# purpose, never a model: a summariser could rewrite meaning, and this only
-# removes words that carry none. What it never touches: code spans and
-# indented command lines, names and labels (nothing capitalised is dropped),
-# numbers, and the words that turn a sentence around, which are the KEEP
-# list and win over the filler list.
-# "or", "rather than", "by", "be", "then" and "so" turn a sentence too (the
-# review of 26 Sep read "rather than working from the title" tersed to the
-# opposite, and "Fixed or Security" to a list of one), so they are kept.
-_FILL = frozenset("the a an of to and is are was were been being it its this that "
-                  "these those there here which who whom in on at for with as from into "
-                  "very just also some such any each".split())
-_KEEP = frozenset("not never no nor unless only before after until if when while without "
-                  "except but must may cannot always first last same other another every "
-                  "all none or rather than by be then so".split())
-_PHRASES = [("in order to", "to"), ("as well as", "and"), ("so that", "so"),
-            ("make sure", "ensure"), ("at the moment", "now"), ("a number of", "several"),
-            ("the fact that", "that")]
-_PUNCT = ".,;:"
-
-
-def _terse_words(seg):
-    # The segment's own edges kept: a code span sits between two of these,
-    # and the space either side of it is what keeps it a word.
-    lead = seg[:len(seg) - len(seg.lstrip(" "))]
-    trail = seg[len(seg.rstrip(" ")):]
-    seg = seg.strip(" ")
-    for a, b in _PHRASES:
-        seg = re.sub(re.escape(a), b, seg, flags=re.IGNORECASE)
-    out = []
-    quoted = False
-    for tok in seg.split(" "):
-        core = tok.strip(_PUNCT + "()\"'")
-        # Inside double quotes nothing is dropped: a quoted label is a name.
-        # A token carrying a bracket or a quote stays whole: dropping it took
-        # the bracket with it, and the sentence lost its shape.
-        opens = tok.count('"')
-        keep_whole = any(c in tok for c in "()\"") or quoted
-        if (core and core.islower() and core in _FILL and core not in _KEEP
-                and "-" not in tok and not keep_whole):
-            punct = tok[len(tok.rstrip(_PUNCT)):]
-            if punct and out:
-                out[-1] = out[-1].rstrip(_PUNCT) + punct
-        else:
-            out.append(tok)
-        if opens % 2:
-            quoted = not quoted
-    return lead + " ".join(t for t in out if t != "") + trail
-
-
-def terse(text):
-    """`text` with its filler words dropped, outside code. A code span can
-    wrap onto the next line, so the backticks are counted across a
-    paragraph rather than a line: counted per line, the words after a
-    wrapped span were read as code, or code as words."""
-    out, para = [], []
-
-    def flush():
-        if not para:
-            return
-        segs = "\n".join(para).split("`")
-        for i in range(0, len(segs), 2):
-            segs[i] = "\n".join(_terse_words(ln) for ln in segs[i].split("\n"))
-        out.extend("`".join(segs).split("\n"))
-        para.clear()
-
-    for line in (text or "").split("\n"):
-        if not line.strip() or line.startswith(("    ", "\t")):
-            flush()
-            out.append(line)
-            continue
-        para.append(line)
-    flush()
-    return "\n".join(out)
-
-
 REPLY_SAID = {
     "minimal": ("Replies to the person: minimal, their setting. Answer in as few "
                 "words as carry it: the outcome, what to look at, what is left; no preamble, "
@@ -185,20 +110,27 @@ def person_part(reply, asks):
     return "## Replies\n\n" + "\n\n".join(said) if said else ""
 
 
-def _brief_mode(project):
-    if prefs_mod is None:
-        return "full"
-    try:
-        return (prefs_mod.get(project) or {}).get("brief") or "full"
-    except Exception:                                                # noqa: BLE001
-        return "full"
-
-
 # The projects this one reads (prefs.reads), said where the session will
 # act on it: their trees are at /workspace/NAME read-only, and their
 # notebooks answer to bb from inside them. Nothing when there are none:
 # the shipped rule already says to stay in the project.
 _READS = "<!-- BUILDERBOT:READS -->"
+
+
+def sees_line(project):
+    """The places on its node this project is shown (prefs.sees), said so a
+    session knows they are there and that nothing else of the node is."""
+    sees = []
+    if prefs_mod is not None:
+        try:
+            sees = list((prefs_mod.get(project) or {}).get("sees") or [])
+        except Exception:                                            # noqa: BLE001
+            sees = []
+    if not sees:
+        return ""
+    return (f"Of the shares and disks mounted on its node, this project is shown "
+            f"{', '.join(sees)}, as the node has each; one that is missing here is not on "
+            f"this node.")
 
 
 def reads_line(project):
@@ -215,7 +147,9 @@ def reads_line(project):
             f"`bb -p NAME` in front of `bb roadmap`, `bb bug`, `bb rules`, `bb design`, "
             f"`bb tests` or `bb map` makes the verb answer for it, so its notebook and its code "
             f"are yours to read, and its containers answer from here on this project's nodes, so "
-            f"`bb -p NAME devapp` says where its page is and `bb capture shot` photographs it. "
+            f"`bb -p NAME devapp` says where its page is and `bb capture shot` photographs it; "
+            f"`bb -p NAME transcripts` lists this account's own conversations with Claude there "
+            f"and `show ID` prints one, and their files are under ~/.claude/projects read-only. "
             f"Nothing there is yours to change: a write to its tree fails, a write to its notebook is "
             f"refused, and its containers are not yours to start or stop; a session on that project is "
             f"what changes them.")
@@ -234,8 +168,20 @@ def design_line(project):
         rec = design.saved(project)
     except Exception:                                    # noqa: BLE001
         return ""
+    dial = _design_dial(project)
+    fill = {"auto": "a save of yours lands",
+            "ask": "a save of yours waits for the operator's approval on the notebook",
+            "deny": "the project refuses a session's save, so say in your reply what you would put there"}[dial]
     if not rec:
-        return ""
+        # Nothing designed beforehand (the operator, 29 Sep): build as you
+        # would, then put what you arrived at into the notebook so the next
+        # session finds it there.
+        return ("The notebook's Design view is empty: no theme, no page, no design rule. Build as you "
+                "would and choose the look yourself; then put what you arrived at into the design with "
+                "`bb design save` (the themes with their colors as tokens, the type, corners, space and "
+                "motion you settled on, the pages you built, the rules you followed; `bb design schema` "
+                "prints the shape) so the next session finds it there. "
+                f"Under the project's dial Claude may: Add to the design, {fill}.")
     lang, pages = rec["language"], rec["pages"]
     themes = ", ".join(t["name"] for t in lang["themes"])
     own = sum(len(t.get("rules") or []) for t in lang["themes"]) + sum(len(p.get("rules") or []) for p in pages)
@@ -243,15 +189,35 @@ def design_line(project):
     if pages:
         bits.append(f"{len(pages)} page{'' if len(pages) == 1 else 's'}: "
                     + ", ".join(p["name"] or f"page {p['id']}" for p in pages[:8]) + (", ..." if len(pages) > 8 else ""))
-    if lang["rules"] or own:
-        bits.append(f"{len(lang['rules'])} design rule{'' if len(lang['rules']) == 1 else 's'}"
+    # The default theme's rules are the design's; the other themes' and
+    # the pages' are their own.
+    mine = design.lead(lang)["rules"]
+    own -= len(mine)
+    if mine or own:
+        bits.append(f"{len(mine)} design rule{'' if len(mine) == 1 else 's'}"
                     + (f" and {own} of a theme's or a page's own" if own else ""))
+    left = design.open_choices(lang)
+    if left:
+        bits.append(", ".join(left) + " not chosen yet")
     empty = _no_code_yet(project)
     return (f"This project's notebook holds a design already: {'; '.join(bits)}. "
             + ("The tree has no code yet, so the design, the rules and the roadmap are the "
                "specification: build to them from the first file. " if empty else "")
             + "Read `bb design show` before laying out or styling anything, `bb design show NAME` for "
-              "one page or one theme, and keep docs/design-language.md in step (`bb design file`).")
+              "one page or one theme. docs/design-language.md is yours to write and commit with the work "
+              "(`bb design file > docs/design-language.md`); the notebook never writes it into the tree by itself. What the "
+              "design leaves open and you had to decide (a color it does not name, a page it does not have, "
+              "a choice of its language nobody has made) "
+              f"goes back into it with `bb design save` so it is complete; under the project's dial, {fill}.")
+
+
+def _design_dial(project):
+    """The project's dial Claude may: Add to the design, as pending reads it."""
+    try:
+        import pending                                   # beside this module
+        return pending.mode(project, "design") or "auto"
+    except Exception:                                    # noqa: BLE001
+        return "auto"
 
 
 def _no_code_yet(project):
@@ -335,7 +301,8 @@ def briefing(project):
             if not line.strip() and out and not out[-1].strip():
                 continue
             if line.strip() in (_READS, _DESIGN):
-                said = reads_line(project) if line.strip() == _READS else design_line(project)
+                said = "\n\n".join(x for x in (reads_line(project), sees_line(project)) if x) \
+                    if line.strip() == _READS else design_line(project)
                 if said:
                     out.append(said)
                 elif out and not out[-1].strip():
@@ -353,7 +320,8 @@ def _has(tree, pattern):
 
 
 def parts(project, reply="", asks=""):
-    """The pieces, in the order a session reads them.
+    """The pieces, in the order a session reads them, each as (name, text,
+    what it left out to keep to its share).
 
     The briefing first, because it is what the rest is said in terms of; then
     how the operator wants this worked on; then what there is to work on.
@@ -363,56 +331,46 @@ def parts(project, reply="", asks=""):
     gap where the tracker would have been.
     """
     out = []
-    mode = _brief_mode(project)
-    for name, fn in (("briefing", lambda: briefing(project)),
+    for name, fn in (("briefing", lambda: (briefing(project), "")),
                      # What is running, as a fact rather than a guess (R75
                      # step 5): a session argued from a build it assumed once.
-                     ("live", lambda: live_fn() if live_fn else ""),
-                     ("replies", lambda: person_part(reply, asks)),
-                     ("rules", lambda: rules_mod.block(project)),
-                     ("roadmap", lambda: roadmap_mod.prompt(project)),
-                     ("bugs", lambda: bugs_mod.prompt(project))):
+                     ("live", lambda: (live_fn() if live_fn else "", "")),
+                     ("replies", lambda: (person_part(reply, asks), "")),
+                     ("rules", lambda: rules_mod.fitted(project, SHARES["rules"])),
+                     ("roadmap", lambda: roadmap_mod.fitted(project, SHARES["roadmap"])),
+                     ("bugs", lambda: bugs_mod.fitted(project, SHARES["bugs"]))):
         try:
-            text = (fn() or "").strip("\n")
+            text, left = fn()
+            text = (text or "").strip("\n")
         except Exception as e:                              # noqa: BLE001
             # One store failing is a smaller thing than no session: bb-tty
             # swallowed each of these separately for exactly this reason.
             # Broad because each store is its own module; the log names it.
-            text = ""
+            text, left = "", ""
             print(f"dashboard: preamble: {name} for {project} left out: {type(e).__name__}: {e}",
                   file=sys.stderr, flush=True)
-        if text and mode == "terse" and name != "live":
-            text = terse(text)
         if text:
-            out.append((name, text))
+            out.append((name, text, left))
     return out
 
 
 def block(project, reply="", asks=""):
-    """The whole thing, uncapped."""
-    return "\n\n".join(t for _, t in parts(project, reply, asks))
-
-
-def fit(text):
-    """(what a session gets, whether it was cut, how big it was).
-
-    The cut lands on a line boundary rather than mid-line, and never inside a
-    UTF-8 character; `head -c` was happy to do both.
-    """
-    raw = text.encode("utf-8")
-    if len(raw) <= MAX:
-        return text, False, len(raw)
-    cut = raw[:MAX].decode("utf-8", "ignore")
-    cut = cut[:cut.rfind("\n") + 1] if "\n" in cut else cut
-    return cut + CUT, True, len(raw)
+    """The whole thing, as a session is sent it."""
+    return "\n\n".join(t for _, t, _ in parts(project, reply, asks))
 
 
 def payload(project, reply="", asks=""):
     """What the Briefing tab draws, and what `bb preamble --json` prints.
     `reply` and `asks` are the asker's own settings on the project (prefs
-    USER_CHOICES): how Claude writes to them and how often it asks them."""
+    USER_CHOICES): how Claude writes to them and how often it asks them.
+    Each part carries its size, its share where it has one, and what it
+    left out to keep to it; `notes` says the last in a sentence each, for
+    whoever opens the terminal."""
     ps = parts(project, reply, asks)
-    whole = "\n\n".join(t for _, t in ps)
-    text, capped, size = fit(whole)
-    return {"text": text, "bytes": size, "max": MAX, "capped": capped,
-            "parts": [{"name": n, "bytes": len(t.encode("utf-8"))} for n, t in ps]}
+    text = "\n\n".join(t for _, t, _ in ps)
+    return {"text": text, "bytes": len(text.encode("utf-8")),
+            "parts": [{"name": n, "bytes": len(t.encode("utf-8")),
+                       **({"share": SHARES[n]} if n in SHARES else {}),
+                       **({"left": left} if left else {})} for n, t, left in ps],
+            "notes": [f"the {n} part is over its share of a session's prompt and leaves out {left}"
+                      for n, _, left in ps if left]}

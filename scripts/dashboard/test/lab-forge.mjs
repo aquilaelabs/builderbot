@@ -2,7 +2,7 @@
 // the `gitea` service of BuilderBot's own dev stack under its compose file's
 // `lab` profile, brought up from the Docker tab like any project's stack. Everything the harness's
 // create.mjs cannot prove with stand-ins is proved here: the token check on
-// GET /api/v1/user, a repository created under an organisation and under the
+// GET /api/v1/user, a repository created under an organization and under the
 // account, a push authenticating on a stored credential line with a port and
 // a plain-http scheme, the refusal of a repository that is not empty, and the
 // refusal to create under somebody else's name.
@@ -55,8 +55,8 @@ const forge = async (method, path, body, auth = null) => {
   const org = await forge('GET', '/orgs/lab');
   if (org.status !== 200){
     const made = await forge('POST', '/orgs', { username: 'lab', visibility: 'private' });
-    ok(made.status === 201, `the lab organisation exists (${made.status})`);
-  } else ok(true, 'the lab organisation exists');
+    ok(made.status === 201, `the lab organization exists (${made.status})`);
+  } else ok(true, 'the lab organization exists');
 }
 
 // ---- the dashboard ---------------------------------------------------------
@@ -86,7 +86,7 @@ git('beta', 'add', '-A'); git('beta', 'commit', '-q', '-m', 'lab: the commit the
 const sha = git('beta', 'rev-parse', 'HEAD');
 const made = [];   // owner/repo pairs to delete at the end
 
-// A repository under the organisation, created by the link because it does
+// A repository under the organization, created by the link because it does
 // not exist yet, then the commit pushed over the stored credential.
 {
   const repo = `lab/beta-${stamp}`;
@@ -94,7 +94,7 @@ const made = [];   // owner/repo pairs to delete at the end
   ok(r.status === 200 && r.body.started, `linking beta to ${repo} starts the job (${r.status}: ${r.body.error || 'ok'})`);
   const j = await jobDone();
   ok(!j.error && /created lab\/beta-.* on Gitea/.test(j.note || '') && /pushed/.test(j.note || ''),
-     `...which creates the repository under the organisation and pushes (${j.error || j.note})`);
+     `...which creates the repository under the organization and pushes (${j.error || j.note})`);
   made.push(repo);
   const got = await forge('GET', `/repos/${repo}`);
   ok(got.status === 200 && got.body?.private === true, 'the forge has it, and it is private');
@@ -124,7 +124,7 @@ const made = [];   // owner/repo pairs to delete at the end
      '...and no remote was added to the project that asked');
 }
 
-// Unlinked, then linked again under the ACCOUNT rather than the organisation:
+// Unlinked, then linked again under the ACCOUNT rather than the organization:
 // the fallback to the token's own account, taken only because the owner is
 // that account.
 {
@@ -147,8 +147,8 @@ const made = [];   // owner/repo pairs to delete at the end
   const repo = `nobody-${stamp}/x`;
   const r = await api('/api/link', { name: 'delta', url: `${GITEA}/${repo}`, forge: 'gitea', token });
   const j = await jobDone();
-  ok(r.status === 200 && /is not an organisation this token can create in/.test(j.error || ''),
-     `a path under a name that is neither an organisation nor the account is refused with the reason (${(j.error || j.note || '').slice(0, 120)})`);
+  ok(r.status === 200 && /is not an organization this token can create in/.test(j.error || ''),
+     `a path under a name that is neither an organization nor the account is refused with the reason (${(j.error || j.note || '').slice(0, 120)})`);
   const got = await forge('GET', `/repos/${USER}/x`);
   ok(got.status === 404, '...and nothing was created under the account instead');
 }

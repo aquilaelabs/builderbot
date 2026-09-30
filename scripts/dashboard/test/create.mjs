@@ -60,11 +60,11 @@ ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
 // The four gates are on the dialog (R78): what a session may enter into
 // the notebook, auto on every open, so it is a choice made rather than a
 // default found later in the settings dialog.
-ok(await page.$$eval('#pGateField select', s => s.length === 5 && s.every(x => x.options.length === 3)
+ok(await page.$$eval('#pGateField select', s => s.length === 6 && s.some(x => x.id === 'pGateDesign') && s.every(x => x.options.length === 3)
                                               && s.filter(x => x.id !== 'pGateDocker').every(x => x.value === 'auto')
                                               && s.find(x => x.id === 'pGateDocker')?.value === 'deny')
    && await page.$eval('#pGateField', el => !el.hidden),
-   'the five Claude gates are offered on a new local repo: the notebook four at auto, Run its container at deny');
+   'the six Claude gates are offered on a new local repo: the notebook five at auto, the design among them, Run its container at deny');
 const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    '...with the cursor in none of its fields');
@@ -555,7 +555,7 @@ ok(await post({ mode: 'clone', url: 'https://github.com/owner/pushless',
 const rights = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys, tempfile
 # projects.py imports its peer forges.py, so the directory it lives in has to
-# be importable; loading one file by path does not put its neighbours on the
+# be importable; loading one file by path does not put its neighbors on the
 # path for it.
 sys.path.insert(0, ${
   JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
@@ -673,7 +673,7 @@ for (const token of ['has space', 'two\nlines', 'sh', '#{}!'])
 const tok = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys, tempfile
 # projects.py imports its peer forges.py, so the directory it lives in has to
-# be importable; loading one file by path does not put its neighbours on the
+# be importable; loading one file by path does not put its neighbors on the
 # path for it.
 sys.path.insert(0, ${
   JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
@@ -717,7 +717,7 @@ ok(tj.gone, 'and forgetting one removes it');
 const authOut = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys, tempfile
 # projects.py imports its peer forges.py, so the directory it lives in has to
-# be importable; loading one file by path does not put its neighbours on the
+# be importable; loading one file by path does not put its neighbors on the
 # path for it.
 sys.path.insert(0, ${
   JSON.stringify(new globalThis.URL('..', import.meta.url).pathname)})
@@ -1139,8 +1139,8 @@ print(json.dumps(out))
   ok(r.target?.scheme === 'http' && r.target?.host === 'git.home.lan:3000',
      '...and the scheme and host it was stored for can be read back, so switching a remote to it spells the URL the same way');
   ok(r.own === '' && r.own_calls.length === 2 && /\/user\/repos$/.test(r.own_calls[1]),
-     'a repository under the token\'s own account is created there when the owner is not an organisation');
-  ok(/alice is not an organisation/.test(r.other) && r.other_calls.length === 1,
+     'a repository under the token\'s own account is created there when the owner is not an organization');
+  ok(/alice is not an organization/.test(r.other) && r.other_calls.length === 1,
      `...and one under somebody else is refused with the reason, never created under the wrong owner (${r.other})`);
   ok(r.forge[0] === 'gitea' && r.forge[1] === 'gitea',
      'a self-hosted forge remembered with its port is still Gitea when the same host is named without one');

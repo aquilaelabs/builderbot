@@ -27,7 +27,7 @@ function paintBar(pane, t, i){
     ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
   bar.innerHTML = `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
-  // The project's colour on the strip too, so a split pane says whose it is.
+  // The project's color on the strip too, so a split pane says whose it is.
   const tone = colorTone(projectColor(tabProject(t)));
   bar.classList.toggle("pc", !!tone);
   bar.style.setProperty("--pc", tone || "");
@@ -42,14 +42,14 @@ function paintBar(pane, t, i){
 //
 // The flash was never the terminal being slow. The frame's load event fires
 // when its document exists, and ttyd's stylesheet dresses `.xterm-viewport`
-// and nothing above it: `body,html{height:100%;margin:0}` and no colour at
+// and nothing above it: `body,html{height:100%;margin:0}` and no color at
 // all. A document with no background of its own is a transparent canvas, and
 // a transparent canvas is what a browser paints white; Firefox on Android
 // does it over whatever the iframe element underneath is set to.
 //
 // So rather than cover that window for a guessed number of milliseconds, this
 // closes it: /term is proxied through this server, the frame is same-origin,
-// and one inline style on its <html> gives it the pane's own colour. There is
+// and one inline style on its <html> gives it the pane's own color. There is
 // then no white to hide, and the cover comes off on the next frame.
 //
 // The cover stays, for the two moments this cannot reach: before load, when
@@ -59,7 +59,7 @@ function paintBar(pane, t, i){
 // backstop, not the mechanism.
 const VEIL_MAX  = 400;                 // longest it will ever stay
 const VEIL_FADE = 120;                 // matches the CSS transition
-const PANE_BG   = "#2b2b2b";           // the same colour as .pane iframe
+const PANE_BG   = "#2b2b2b";           // the same color as .pane iframe
 
 // Give a terminal frame's document a background of its own. True if it took,
 // null if the frame cannot be reached, which is the only case the clock is
@@ -82,7 +82,7 @@ function unveil(frame){
     veil.classList.add("gone");
     setTimeout(() => veil.remove(), VEIL_FADE + 60);
   };
-  // One frame's grace either way: after dressing it, so the colour is on the
+  // One frame's grace either way: after dressing it, so the color is on the
   // screen before the cover over it goes.
   if (dressFrame(frame) === null) setTimeout(lift, VEIL_MAX);
   else requestAnimationFrame(lift);

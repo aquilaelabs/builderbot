@@ -186,7 +186,10 @@ function endCardDrag(){
 // here rather than taking the button away. What IS refused is a second session
 // on one Anthropic account, and that refusal comes from the server when the
 // terminal is opened, in its own words.
-const withMe = p => (state?.claude_with || {})[p] || [];
+// Keyed by the tmux-safe name (claude_with comes off the session names),
+// so a project with a dot in its name is looked up by that: by its own
+// name its row said nobody was here while a session ran (29 Sep).
+const withMe = p => (state?.claude_with || {})[tmuxName(p)] || (state?.claude_with || {})[p] || [];
 // The others, for the places that are about somebody else being here.
 const othersOn = p => withMe(p).filter(n => n !== state?.me);
 // Who has a conversation open here, one line each with a dot in front:
@@ -213,7 +216,12 @@ function sessionRows(proj){
   if (!all.length) return "";
   const busy = new Set((state?.claude_busy || {})[proj] || []);
   const names = [...all].sort((a, b) => (a === state?.me) - (b === state?.me));
-  return names.map(n => `<div class="sessone"><span class="sdot${busy.has(n) ? " on" : ""}" title="${
+  // The session dot, the same one the session's tab, the phone's Terminal
+  // tab and the Sessions card wear (stateDot's rule): working pulses in
+  // the note color, waiting is the warn color. The row had a dot of its
+  // own in other colors, and the same state read differently in each
+  // place (the operator, 29 Sep).
+  return names.map(n => `<div class="sessone"><span class="st ${busy.has(n) ? "working" : "waiting"}" title="${
     busy.has(n) ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(n)}${
     n === state?.me ? " (you)" : ""}</div>`).join("");
 }

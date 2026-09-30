@@ -105,7 +105,7 @@ picked (a job each; the tab shows the running one). A new empty project
 settings took the node, `./gradlew assembleDebug` and the APK glob, and
 `bb build` was run on the node under the exact environment a session gets
 there (read off a live session's process). Gradle downloaded, AGP fetched
-Build-Tools 35 and platform 35 into the store against the licences the
+Build-Tools 35 and platform 35 into the store against the licenses the
 recipe had accepted, and the build succeeded in under two minutes with the
 APK copied into `dist/`, where the Artifacts view listed it with Download
 live and Install ghosted for want of a phone. Setting the first version from
@@ -421,7 +421,7 @@ holding one container, `web-dev`, on `bb-dev-sandbox`.
 3. **Send again.** The dialog opened on `web-2`, saying it goes beside the
    two it already has. With the Docker tab's branches loaded, Build from
    showed too, carrying the same ports sentence a second time; that one
-   went (`5391ae1`). Cancelled there.
+   went (`5391ae1`). Canceled there.
 4. **What a session is handed.** `web`'s briefing (the Briefing tab's
    source, `/api/preamble`) carries the new paragraph: `bb devapp new
    [NAME] [--branch REF]` is Send done from a session, and it, not `bb

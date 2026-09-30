@@ -4,9 +4,9 @@ What this project looks like, in one place. Written by BuilderBot's Design view 
 
 It governs the dashboard (scripts/dashboard: index.html and the scripts beside it), which the companion app mirrors.
 
-## Colour
+## Color
 
-Colour comes only from these tokens, named once in the stylesheet. The app starts on Default; a theme picker, where the app has one, offers the themes by name, and every theme names the same tokens:
+Color comes only from these tokens, named once in the stylesheet. The app starts on Default; a theme picker, where the app has one, offers the themes by name, and every theme names the same tokens:
 
 ### Default (dark, the default)
 
@@ -17,7 +17,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e6edf3` | the text, and text on a filled accent |
 | `--dim` | `#9fa9b4` | secondary text and field labels |
 | `--line` | `#4d5c6f` | hairlines and borders, 1px |
-| `--accent` | `#3fb950` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#3fb950` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d29922` | a warning, and the amber marks |
 | `--bad` | `#f8524a` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#58a6ff` | an informational mark, the low level |
@@ -31,7 +31,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#dcecee` | the text, and text on a filled accent |
 | `--dim` | `#93a9ac` | secondary text and field labels |
 | `--line` | `#3e5e66` | hairlines and borders, 1px |
-| `--accent` | `#2fb8c6` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#2fb8c6` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d7ab4c` | a warning, and the amber marks |
 | `--bad` | `#ef6a63` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#6fb3e0` | an informational mark, the low level |
@@ -45,7 +45,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e2e4e0` | the text, and text on a filled accent |
 | `--dim` | `#a1a59f` | secondary text and field labels |
 | `--line` | `#555955` | hairlines and borders, 1px |
-| `--accent` | `#a3b18a` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#a3b18a` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#cfa94a` | a warning, and the amber marks |
 | `--bad` | `#e26d60` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#82a7b8` | an informational mark, the low level |
@@ -59,7 +59,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e8e8ea` | the text, and text on a filled accent |
 | `--dim` | `#9d9da4` | secondary text and field labels |
 | `--line` | `#53535b` | hairlines and borders, 1px |
-| `--accent` | `#e64e53` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#e64e53` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ff6b6b` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7aa2f7` | an informational mark, the low level |
@@ -73,7 +73,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#f0e4d8` | the text, and text on a filled accent |
 | `--dim` | `#af9f90` | secondary text and field labels |
 | `--line` | `#67533e` | hairlines and borders, 1px |
-| `--accent` | `#f0873f` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#f0873f` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e8bb50` | a warning, and the amber marks |
 | `--bad` | `#ef5f52` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#8fb4d9` | an informational mark, the low level |
@@ -87,7 +87,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e3edf5` | the text, and text on a filled accent |
 | `--dim` | `#9aa8ae` | secondary text and field labels |
 | `--line` | `#465b6c` | hairlines and borders, 1px |
-| `--accent` | `#58c7e8` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#58c7e8` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d3ab52` | a warning, and the amber marks |
 | `--bad` | `#ee6a68` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7cc0ff` | an informational mark, the low level |
@@ -101,7 +101,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#dfe9df` | the text, and text on a filled accent |
 | `--dim` | `#9daba0` | secondary text and field labels |
 | `--line` | `#48604f` | hairlines and borders, 1px |
-| `--accent` | `#63c98a` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#63c98a` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d6ad4e` | a warning, and the amber marks |
 | `--bad` | `#e8695f` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#74b3d8` | an informational mark, the low level |
@@ -115,7 +115,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#e4e2f5` | the text, and text on a filled accent |
 | `--dim` | `#a2a0c1` | secondary text and field labels |
 | `--line` | `#53537b` | hairlines and borders, 1px |
-| `--accent` | `#9d7cff` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#9d7cff` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e0b24d` | a warning, and the amber marks |
 | `--bad` | `#f2637b` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7cb0ff` | an informational mark, the low level |
@@ -129,10 +129,34 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#d7e3c8` | the text, and text on a filled accent |
 | `--dim` | `#95a488` | secondary text and field labels |
 | `--line` | `#405b37` | hairlines and borders, 1px |
-| `--accent` | `#ffb000` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#ffb000` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#ffd166` | a warning, and the amber marks |
 | `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9ad07a` | an informational mark, the low level |
+
+#### Rules of Nostromo's own
+
+##### nostromo/textures
+
+Applies to: scripts/dashboard/static/nostromo, scripts/dashboard/index.html; texture, hull, svg, decal
+
+This scheme alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
+served by the page's allow-list): hull plating behind the page, ribbing in
+the left gutter and a glyph strip in the header. Each bakes its own opacity, none sits under text above a third, and
+none moves the layout: a texture lives in space the page already leaves
+empty. The same suite measures the contrast with them in place. Its panels, the bar of a pane and the ground under a document are `--glass`: the panel color at 70% over the hull, so the plating shows through.
+
+##### nostromo/fold
+
+Applies to: scripts/dashboard/page-motion.js, scripts/dashboard/index.html; fold, fade, card
+
+This scheme asks for the fade fold with `--fold: fade` on the card: its smoked glass sliding into the title bar read as a bug, so the body fades where it stands, then the gap closes, and the cards below still ride the height.
+
+##### nostromo/corners
+
+Applies to: scripts/dashboard/index.html; corner, radius, square
+
+This scheme squares all three corner tokens; the pills and the dots stay round, as everywhere.
 
 ### Plum (dark)
 
@@ -143,7 +167,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#eddff2` | the text, and text on a filled accent |
 | `--dim` | `#ae9cb7` | secondary text and field labels |
 | `--line` | `#654d73` | hairlines and borders, 1px |
-| `--accent` | `#c874d8` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#c874d8` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#dfae52` | a warning, and the amber marks |
 | `--bad` | `#ee6183` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#83aee8` | an informational mark, the low level |
@@ -157,7 +181,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#ecdedb` | the text, and text on a filled accent |
 | `--dim` | `#ae9d99` | secondary text and field labels |
 | `--line` | `#6a4e4a` | hairlines and borders, 1px |
-| `--accent` | `#cf6a4c` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#cf6a4c` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#e8544a` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7fa8c9` | an informational mark, the low level |
@@ -171,7 +195,7 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#ece0cb` | the text, and text on a filled accent |
 | `--dim` | `#b0a28c` | secondary text and field labels |
 | `--line` | `#63563e` | hairlines and borders, 1px |
-| `--accent` | `#d3a94f` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#d3a94f` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#e3c069` | a warning, and the amber marks |
 | `--bad` | `#e0705f` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#9db98c` | an informational mark, the low level |
@@ -185,20 +209,18 @@ Colour comes only from these tokens, named once in the stylesheet. The app start
 | `--ink` | `#dfe5ec` | the text, and text on a filled accent |
 | `--dim` | `#9fa6ae` | secondary text and field labels |
 | `--line` | `#4f5a68` | hairlines and borders, 1px |
-| `--accent` | `#6ea8fe` | the one colour that means this is the one: the active tab, the primary button, a link |
+| `--accent` | `#6ea8fe` | the one color that means this is the one: the active tab, the primary button, a link |
 | `--warn` | `#d9a441` | a warning, and the amber marks |
 | `--bad` | `#ef6f6c` | an error, a destructive verb, the reason under a dead control |
 | `--note` | `#7fb8ff` | an informational mark, the low level |
 
-A filled accent surface carries the text colour on it, at AA contrast.
-
 ## Type
 
-The platform's own sans-serif: system-ui on Web, Roboto on Android, SF Pro on iOS, the desktop's own on Linux, SF Pro on macOS, Segoe UI Variable on Windows, set as system-ui for the page; a monospace stack (--mono) for data: names, paths, versions, anything a terminal could print; --f-note, --f-ui and --f-tag for the three secondary voices. Monospace for data: names, paths, numbers.
+The platform's own sans-serif: system-ui on Web, Roboto on Android, SF Pro on iOS, the desktop's own on Linux, SF Pro on macOS, Segoe UI Variable on Windows, set as system-ui for the page; a monospace stack (--mono) for data: names, paths, versions, anything a terminal could print; --f-note, --f-ui and --f-tag for the three secondary voices.
 
 ## Shape
 
-Small radii: 6px on controls, 8px on boxes, 4px on tags. Hairlines are 1px in `--line`.
+Small radii: 6px on controls, 8px on boxes, 4px on tags.
 
 ## Space
 
@@ -219,11 +241,11 @@ any surface, and extend the group selectors named here rather than restyling
 locally. `test/uniform.mjs` measures most of what follows on every tab and
 fails by name; the house rule `design` points here and runs it.
 
-### colour
+### color
 
-Applies to: scripts/dashboard/index.html, scripts/dashboard/static; colour, color, scheme, theme, palette, hex, contrast
+Applies to: scripts/dashboard/index.html, scripts/dashboard/static; color, scheme, theme, palette, hex, contrast
 
-Colour comes only from the tokens in `:root`: surfaces `--bg` / `--panel` /
+Color comes only from the tokens in `:root`: surfaces `--bg` / `--panel` /
 `--sunk` / `--flyout` (page, raised box, set-into-the-panel, and what the
 terminal's bottom bar opens: tinted towards the accent, with an accent edge
 and a shadow, so it never reads as part of the bar or the page), edge `--line`, text `--ink`
@@ -239,15 +261,13 @@ exactly this reason: the accents range from `#2fb8c6` to `#ffb000`, and
 forty percent of black is not enough darkening under the bright ones. Five
 schemes had text on that fill under AA before the cap, nostromo worst at
 3.56:1. `test/uniform.mjs` measures the rendered pixels on every scheme.
-Nostromo alone carries drawn textures (`static/nostromo/*.svg`, hand-written,
-served by the page's allow-list): hull plating behind the page, ribbing in
-the left gutter and a glyph strip in the header. Each bakes its own opacity, none sits under text above a third, and
-none moves the layout: a texture lives in space the page already leaves
-empty. The same suite measures the contrast with them in place.
+A scheme that carries drawn textures says so in its own rules (Nostromo does).
 
 Watch the class the words wear. A tab's name is a `.lbl`, which is also the
-field-label helper, so it arrived wearing the quiet colour meant for "Your
+field-label helper, so it arrived wearing the quiet color meant for "Your
 email" above a text box, on an accent fill, at 2.51:1.
+
+The edge of a filled accent surface, and the tick of a checkbox, is `--accent-mid`: the accent darkened by 14%, between the accent and `--accent-deep`.
 
 ### shape
 
@@ -259,7 +279,7 @@ modals), `--r-control` (6px) for controls (buttons, fields, tabs), `--r-small`
 does. 99px for pills and 50% for dots are not corners and stay round
 everywhere. Hairlines are `1px solid var(--line)`.
 
-A colour is a token too, including the ones that look like a one-off: a
+A color is a token too, including the ones that look like a one-off: a
 danger edge is `--red2-edge`, a warn edge `--gold-edge`, text on a filled
 accent is `--bg`, and a hover shade is `color-mix()` of the scheme's own.
 A hex outside the scheme blocks is the default scheme leaking into the
@@ -272,8 +292,10 @@ Applies to: scripts/dashboard/index.html; font, mono, typography, text, size
 `--mono` for data: names, paths, versions, anything a terminal could print.
 Three secondary voices: `--f-note` (a quiet explainer, in `var(--dim)`),
 `--f-ui` (secondary UI), `--f-tag` (pills and badges). Severity and level
-colours agree everywhere: error and high are red, warning and medium yellow,
+colors agree everywhere: error and high are red, warning and medium yellow,
 note and low blue.
+
+What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
 
 ### space
 
@@ -327,9 +349,18 @@ inside, because there is nothing to mistake them for once typed in. A text
 field is wide enough for what goes in it: a name, an email, a password take
 the row up to the cap, and only a number field is a few characters wide.
 
+**Every control on a row is one height, the finger's (`--ctl`, which is
+`--tap`).** A field, a pulldown, a one-line prose box and a button beside
+each other were 35, 35, 38 and 30px (the operator, 29 Sep): now every
+input, select, proseline and button in a document, a notebook or a dialog
+takes `min-height: var(--ctl)`, the color swatches alone keeping their
+circle, and `test/uniform.mjs` fails a line of controls that are not one
+height. The sidebar's cards and the header keep their own smaller buttons,
+which sit beside no field.
+
 **Controls on a row line up at their bottom edge.** A row mixes fields that
 carry a label above them with bare controls (a select, a button, a remove)
-and a centred line floats the bare one between its neighbour's label and its
+and a centered line floats the bare one between its neighbor's label and its
 field. The bottom is the line the eye reads, whatever is stacked above it and
 whatever each control's own height is, so a row of controls sets
 `align-items: flex-end` and a row whose text column holds a field does the
@@ -376,7 +407,7 @@ node", not "Enroll node…": whether a dialog follows is not the reader's
 problem, and the dots are not a word.
 
 **A list of choices is in ALPHABETICAL order unless something says
-otherwise, and what says otherwise says why in place.** The colour schemes,
+otherwise, and what says otherwise says why in place.** The color schemes,
 the git hosts, the hypervisors and the toolchain catalog were each in the order
 somebody happened to write them in; this box's own hypervisor first, then
 whatever was added next, which is an order only that person can predict, and
@@ -440,7 +471,7 @@ control that cannot be reconsidered, and the same section's Save then means
 two different things. So every group of settings, on the Settings, Users,
 Nodes and Artifacts tabs and in the project dialogs: has one Save or Apply
 at its foot, and reads its fields when that is pressed. The one exception
-is the colour scheme in the gear: a theme is looked at, not decided, and a
+is the color scheme in the gear: a theme is looked at, not decided, and a
 swatch that needed a second press to be seen would be answering a question
 nobody asked. Buttons that *do* something (install, build, connect, end)
 are actions, not settings, and act on the press.
@@ -468,31 +499,6 @@ tag in `index.html`. `bb map sections FILE` reads a file by its
 headers, with each section's outside callers, what runs at load and what
 the suite covers.
 
-### document-tabs
-
-Applies to: scripts/dashboard/tab-*.js; tab, document, docsurface, bar
-
-Reading surfaces, not terminals. A new kind does not write its own chrome: it
-calls `docSurface(i, kind)`, which builds the standard skeleton (a
-`.doctab.<kind>tab` box capped at `var(--doc-w)`: a filter/actions bar slot,
-the band list, a quiet `.fnote` footer) and returns the slots to fill. States
-are `.loading` / `.empty` / `.hint.bad` inside the list.
-
-**The bar is a band, not a row of controls.** What the tab is about goes at
-its left (a node picker, the filters, a one-line count) and the action on
-it at the right, where a row's buttons and a section's status already sit, so
-every tab's Refresh is in one place and lines up with the column of actions
-under it. The band spans the tab; the controls in it are capped one by one
-like any other. A tab that builds its own chrome instead misses all of this:
-the Toolchains tab kept its picker in a band of its own and its Refresh landed
-somewhere no other tab's does.
-
-A new tab lands as: its own classic script file beside `index.html`, an entry
-in `TABKINDS` there and `TAB_KINDS` in `server.py`, its top-level names in
-`test/surface.mjs`, a driver in `test/uniform.mjs`, and a content test beside
-its siblings. Renderers run inside `renderGuarded`, so a throwing renderer is
-an error band in its own tab, never a dead dashboard.
-
 ### sections-and-action-bars
 
 Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; section, fold, action, bar, actbar, hidden
@@ -519,24 +525,6 @@ sits after something that cannot be undone. A button that started something
 wears `busy(btn, verb)` until the repaint replaces it. Icon clusters with no
 text are exempt.
 
-### dialogs
-
-Applies to: scripts/dashboard/index.html, scripts/dashboard/page-*.js; dialog, modal, popup, pop-up, foot
-
-A dialog is `.modal > .box` (`.wide` for a list or an editor), titled by its
-`h3`. Every line of its body is a `.field` band, which is where the inset
-lives: a hint, a control, a list, never text at box level, which draws flush
-against the edge. A group of fields inside it is headed by a `label`, the dim
-small heading every dialog uses, never an `h4`; a dialog that is prose to
-read rather than fields to fill (About) says so with `.box.prose` and may use
-headings. The buttons are the `.foot`: a
-`.state` first when there is one, then `.sp`, then the verbs, the primary
-first and anything destructive last. A switch is a checkbox inside its label,
-beside the thing it names, the way the Settings tab draws them
-(`.logdays.setrow` holding a `label.ndcap`). What has nothing to act on is
-hidden rather than disabled: a dialog with an empty list says so in one
-sentence and offers Close.
-
 ### rows-you-open
 
 Applies to: scripts/dashboard/nb-*.js, scripts/dashboard/tab-profile.js, scripts/dashboard/nb-artifacts.js; row, fold, edit, cancel, download
@@ -550,7 +538,7 @@ shape too.
 A row opens to be read, never as a form. Edit on its action bar swaps the
 fields in; Cancel (`.stop`) puts them away and drops what was typed, and
 Save puts them away having written it. A row Add made has nothing to go
-back to, so cancelling it removes it.
+back to, so canceling it removes it.
 
 A list of things to download or open is the Artifacts tab's rows
 (`.artrow`) wherever it appears: the name in bold with its facts in the
@@ -587,77 +575,6 @@ template, so its ids belong to every open notebook at once; a key that
 forgets which notebook it is in is one bucket shared by all of them, which
 is how a page came to turn itself back.
 
-### the-notebook
-
-Applies to: scripts/dashboard/nb-*.js; notebook, view, head, row, strip
-
-Every view opens with the same head row: its one-line summary on the left
-and its controls, History where it has one, on the right. That row is the
-first band of the view and sits at one height on all nine views.
-
-The view strip is one row on a desktop. On a phone it wraps into rows of
-equal-width tabs rather than scrolling sideways: nine labels do not fit
-393px, and a strip that hides its last two behind an edge is a strip whose
-last two views nobody opens. Every tab stays visible at every width. The
-view a notebook is on comes back with a reload, the way the tab strip and
-the active pane do; closing the notebook's tab forgets it.
-
-Adding goes at the top. The control that adds to a view is the first band
-under its head row, above the list, one shape on every view (`.addbar`, a
-button named for what it adds, `data-add`), and the form it opens unrolls
-in that band's place. Never at the foot: a phone should not scroll past the
-list to add to it.
-
-Save and Revert at the notebook's foot show only on the views that stage
-something behind them (Roadmap, Briefing, Design, the version on
-Artifacts). A view that writes through or only reads (Bugs, Tests,
-Analysis, Git) has no foot.
-
-The Design view is four folds under its head row and add bar: Pages, Design
-language, Themes and Rules, in that order, so the boards are the first
-thing seen. A fold that holds a list (the pages, the themes, the rules)
-shows one of it at a time, chosen on a pulldown at its top, and what is
-added is what is shown: every page and every theme at once was the whole
-view scrolled past (the operator, 28 Sep). The one shown is fields like any
-tab's, never a box of its own. The view is passive: nothing on it reaches
-into a session; the prompt under the language and under each page is text
-to copy, and a session reads the design by itself through its rules and
-`bb design show`. A theme and a page each carry rules of their own under
-them, one shown at a time like the language's, for what holds for that
-theme or that page alone; a session meets one as HOLDER/RULE.
-
-**The Design view's board is the one surface here whose colours are data.**
-A page's blocks are painted in the project's own language (`nb-design.js`,
-`blockStyle`), inline from the saved hex, because the board is a picture of
-that project and not chrome of this page; everything around the board (the
-frame's edge, the selection outline, the sizing corner) is the page's
-tokens, and the corner shows on the selected block only, since a tap
-selects a block before anything drags it. Its controls are the framework's:
-choices in labelled selects on a `.dsrow` that lines up at the bottom, the
-row's prose field growing only to the width the other tabs give a field so
-what follows it stays beside it, colours as a chip beside a seven-character
-field, prose in a proseline, and the prompt in a read-only textarea, which
-is a page of text and not a control.
-
-### both-sizes
-
-Applies to: scripts/dashboard/index.html; phone, mobile, touch, tap, width, responsive, fold, cover
-
-The phone and the desktop are both first-class. A surface is not done until
-it has been looked at at both widths: sections open on a desktop and shut on
-a phone, no control spans the screen at either, and a typed field is 16px
-on iOS alone, so Safari does not zoom.
-
-A finger is not a pointer. On a coarse pointer (`@media(pointer:coarse)`)
-every button in a dialog and in the notebook is `--tap` high, and the small
-controls a thumb meets (a tab's close and minimize, the new-tab button, the
-colour swatches) are at least 30px; a desktop keeps its tighter strip. A bar
-of buttons that spans a phone shares its width (`flex: 1 1 0; min-width: 0`)
-rather than each taking its text's, so the last one is never cut off: at
-344px, a folding phone's cover screen, four did not fit. "Both widths" means
-a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
-840, still the phone layout) and a desktop.
-
 ### motion
 
 Applies to: scripts/dashboard/index.html, scripts/dashboard/page-motion.js; motion, animation, animate, fade, transition, tween
@@ -667,19 +584,17 @@ menu arrives (`menuIn`), a document brought to the front fades in over its
 own ground (`docIn`, contentIn's frames under a name of its own, so a
 document that already wears contentIn from its first paint still fades when
 it comes forward), a section or card folds over its height
-(`slideBody`, the section tween), a button or tab eases its colour, a
+(`slideBody`, the section tween), a button or tab eases its color, a
 tooltip fades, a toast
 slides, a modal leaves the way it arrived (caught off the `hidden` attribute
 by one observer, so no close site has to remember), and a row folding its
 controls out on a phone slides over the height that takes. A change that
 snaps is a change the eye has to find. Every one of them is off under
 `prefers-reduced-motion`. A scheme may ask for a different fold with
-`--fold: fade` on the card (nostromo does: its smoked glass sliding into
-the title bar read as a bug): the body fades where it
-stands, then the gap closes, and the cards below still ride the height.
+`--fold: fade` on the card; a scheme that does says why in its own rules (Nostromo does).
 
 **What fades is what is drawn, never the ground under it.** A document's
-ground (the page colour, the panel colour, nostromo's glass and scanlines)
+ground (the page color, the panel color, nostromo's glass and scanlines)
 is painted by the pane's stack while that document is the one on show, and
 the document box itself paints none, so the fade on it carries only its
 content. When the box painted its own ground, the ground faded in with the
@@ -783,7 +698,7 @@ has neither.
 
 ### words-on-the-screen
 
-Applies to: scripts/dashboard; hint, wording, text, copy, sentence, empty, state, state, line
+Applies to: scripts/dashboard; hint, wording, text, copy, sentence, empty, state, line
 
 One sentence that tells the person what they need to know to act, in their
 words: what the control does, and the one consequence they could not guess.
@@ -795,21 +710,62 @@ comment, the README or Help, never inline. A stacked row
 is `flex-wrap: nowrap`; a long token in it wraps or scrolls inside its own
 box, and nothing scrolls the page or the pane sideways on a phone.
 
+### badges
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/nb-*.js; badge, pill, tag, severity, sev
+
+A tag that says who or what (a memory's type, a bug's severity and state, who wrote a history line) wears one of five badge colors, the same on every scheme, named once on `:root`, each with an edge for the pill's border: `--purple` `#b79ae0` (edge `--purple-edge` `#38294a`) for who did it, a reference and a state that does not apply; `--green2` `#7fc08a` (`--green2-edge` `#1f3f28`) for what is new, a project's own and fixed; `--blue2` `#77b7e8` (`--blue2-edge` `#1e3a4a`) for the user's, low and open; `--gold` `#d8b25c` (`--gold-edge` `#4a3c1e`) for a note, feedback, medium and a toggle that is on; `--red2` `#e0796f` (`--red2-edge` `#94423d`) for what is gone and high. Never a hex at the site: the day one shade drifts is the day two tags of one family stop looking like it. The pill's text is `--f-tag`.
+
+### project-color
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/page-panes.js, scripts/dashboard/page-projsettings.js, scripts/dashboard/tab-docker.js; project color, stripe, swatch, tone
+
+A project may carry a color, one of the nine swatches in its settings, and the page says whose a thing is with it in four places and no others: its tab in the strip (a 3px stripe on the left, a tint of 10% at rest and 28% when it is the one in front), its row in the sidebar (the stripe and a 6% tint, on the card), the bar of the pane showing it (the stripe only), and the heading of its group in the Docker manager (a 4px stripe and a 16% tint, as `--gc`, the line color for containers that belong to no project). The bar keeps the ground every bar has: a tint there sat over the pane's black and made a notebook's bar the one bar that looked like no other (the operator, 29 Sep). The color arrives as `--pc` on the element; the swatches are circles of their own size, never the control height.
+
 ## Pages
 
-Each page is a layout of labelled blocks on a frame, named for what it is for, on the platform it is built for.
+Each page is a layout of labeled blocks on a frame, named for what it is for, on the platform it is built for.
 
 ### the dashboard (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
 Layout of the dashboard on a desktop frame (12 columns by 8 rows), from the App shell template:
-  Header (the top bar with the name and the account): the brand, the build stamp, the bell, the gear and sign out, across the top, row 1 of 8
-  Sidebar (a side column of links or filters): the cards: Doctor, Tools, Administration, Runner, Projects; folding, the one arrangement stored, on the left, columns 1 to 3 of 12, rows 2 to 8 of 8
+  Header (the band at the top): the brand, the build stamp, the bell, the gear and sign out, across the top, row 1 of 8
+  Sidebar (a side column): the cards: Doctor, Tools, Administration, Runner, Projects; folding, the one arrangement stored, on the left, columns 1 to 3 of 12, rows 2 to 8 of 8
   Tabs (a strip of tabs switching one area): the tab strip: terminals and document tabs, a + to open one, on the right, columns 4 to 12 of 12, row 2 of 8
   Content (the main reading or working area): the pane: a terminal or a document tab, one on show, two panes side by side on a wide desk, on the right, columns 4 to 12 of 12, rows 3 to 7 of 8
-  Footer (a footer with the quiet links): the bottom bar: Commands, Sessions, Chat, on the right, columns 4 to 12 of 12, row 8 of 8
+  Footer (the band at the foot): the bottom bar: Commands, Sessions, Chat, on the right, columns 4 to 12 of 12, row 8 of 8
 Notes:
   A document tab is a reading surface built by docSurface: a bar band, the band list, a quiet footer. Everything that appears or changes state moves, and nothing fades its own ground.
+This page's own rules:
+  the-dashboard/document-tabs: scripts/dashboard/tab-*.js; tab, document, docsurface, bar (`bb design show the-dashboard/document-tabs` reads it)
+
+#### Rules of the dashboard's own
+
+##### the-dashboard/document-tabs
+
+Applies to: scripts/dashboard/tab-*.js; tab, document, docsurface, bar
+
+Reading surfaces, not terminals. A new kind does not write its own chrome: it
+calls `docSurface(i, kind)`, which builds the standard skeleton (a
+`.doctab.<kind>tab` box capped at `var(--doc-w)`: a filter/actions bar slot,
+the band list, a quiet `.fnote` footer) and returns the slots to fill. States
+are `.loading` / `.empty` / `.hint.bad` inside the list.
+
+**The bar is a band, not a row of controls.** What the tab is about goes at
+its left (a node picker, the filters, a one-line count) and the action on
+it at the right, where a row's buttons and a section's status already sit, so
+every tab's Refresh is in one place and lines up with the column of actions
+under it. The band spans the tab; the controls in it are capped one by one
+like any other. A tab that builds its own chrome instead misses all of this:
+the Toolchains tab kept its picker in a band of its own and its Refresh landed
+somewhere no other tab's does.
+
+A new tab lands as: its own classic script file beside `index.html`, an entry
+in `TABKINDS` there and `TAB_KINDS` in `server.py`, its top-level names in
+`test/surface.mjs`, a driver in `test/uniform.mjs`, and a content test beside
+its siblings. Renderers run inside `renderGuarded`, so a throwing renderer is
+an error band in its own tab, never a dead dashboard.
 
 ### a notebook (Web app)
 
@@ -817,20 +773,104 @@ Platform: a responsive web app: the layout holds at phone and desktop widths, an
 Layout of a notebook on a desktop frame (12 columns by 8 rows), from the Blank template:
   Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
   Content (the main reading or working area): the view: its head row first, then its sections (docSection folds) and lists, adding at the top, across the middle, rows 2 to 7 of 8
-  Footer (a footer with the quiet links): Save and Revert, only on the views that stage something, across the bottom, row 8 of 8
+  Footer (the band at the foot): Save and Revert, only on the views that stage something, across the bottom, row 8 of 8
 Notes:
   One notebook per project, a clone of one template. Every view opens with the same head row at one height. A row with detail behind it is a fold that opens to be read, never as a form.
+This page's own rules:
+  a-notebook/views: scripts/dashboard/nb-*.js; notebook, view, head, row, strip (`bb design show a-notebook/views` reads it)
+
+#### Rules of a notebook's own
+
+##### a-notebook/views
+
+Applies to: scripts/dashboard/nb-*.js; notebook, view, head, row, strip
+
+Every view opens with the same head row: its one-line summary on the left
+and its controls, History where it has one, on the right. That row is the
+first band of the view and sits at one height on all nine views.
+
+The view strip is one row on a desktop. On a phone it wraps into rows of
+equal-width tabs rather than scrolling sideways: nine labels do not fit
+393px, and a strip that hides its last two behind an edge is a strip whose
+last two views nobody opens. Every tab stays visible at every width. The
+view a notebook is on comes back with a reload, the way the tab strip and
+the active pane do; closing the notebook's tab forgets it.
+
+Adding goes at the top. The control that adds to a view is the first band
+under its head row, above the list, one shape on every view (`.addbar`, a
+button named for what it adds, `data-add`), and the form it opens unrolls
+in that band's place. Never at the foot: a phone should not scroll past the
+list to add to it.
+
+Save and Revert at the notebook's foot show only on the views that stage
+something behind them (Roadmap, Briefing, Design, the version on
+Artifacts). A view that writes through or only reads (Bugs, Tests,
+Analysis, Git) has no foot.
+
+The Design view is three folds under its head row and add bar: Pages,
+Design language and Themes, in that order, so the boards are the first
+thing seen. The pages and the themes show one at a time, chosen on a
+pulldown at the fold's top, and what is added is what is shown: every page
+and every theme at once was the whole view scrolled past (the operator, 28
+Sep). The one shown is fields like any tab's, never a box of its own. Rules
+live inside the entry they hold for and nowhere else (the operator, 29
+Sep): a Rules section inside the Design language fold for the whole
+design, one inside each theme above its colors, one inside each page
+under its board, each following the pulldown; a rules fold below
+everything read as the rules. Every rules list here is the Briefing's
+(nb-rules.js): Add a rule first, a folded row a rule with its name and when
+it reaches a session, Edit turning the row into its form. A new project's design is empty, no theme and no
+page: the session that builds it chooses the look and puts it here after. The view is passive: nothing on it reaches
+into a session and nothing on it is a prompt; a session reads the design
+piece by piece, through its rules and `bb design show`, never as one dump. A theme and a page each carry rules of their own under
+them, one shown at a time like the language's, for what holds for that
+theme or that page alone; a session meets one as HOLDER/RULE.
+
+**The Design view's board is the one surface here whose colors are data.**
+A page's blocks are painted in the project's own language (`nb-design.js`,
+`blockStyle`), inline from the saved hex, because the board is a picture of
+that project and not chrome of this page; everything around the board (the
+frame's edge, the selection outline, the sizing corner) is the page's
+tokens, and the corner shows on the selected block only, since a tap
+selects a block before anything drags it. Its controls are the framework's:
+choices in labeled selects on a `.dsrow` that lines up at the bottom, the
+row's prose field growing only to the width the other tabs give a field so
+what follows it stays beside it, colors as a chip beside a seven-character
+field, prose in a proseline.
 
 ### the dashboard on a phone (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
 Layout of the dashboard on a phone on a phone frame (6 columns by 12 rows), from the Blank template:
-  Header (the top bar with the name and the account): the brand, the uptime, the bell, the gear and sign out, across the top, row 1 of 12
+  Header (the band at the top): the brand, the uptime, the bell, the gear and sign out, across the top, row 1 of 12
   Tabs (a strip of tabs switching one area): Dashboard or Terminal: the two panels take turns, across the middle, row 2 of 12
   Content (the main reading or working area): the sidebar's cards, or the tab strip and the pane, across the middle, rows 3 to 11 of 12
-  Footer (a footer with the quiet links): Keys, Commands, Sessions, Chat, sharing the width, across the bottom, row 12 of 12
+  Footer (the band at the foot): Keys, Commands, Sessions, Chat, sharing the width, across the bottom, row 12 of 12
 Notes:
   Sections open on a desktop and shut on a phone. The notebook's strip wraps into rows of equal tabs. A bar of buttons shares the width so the last is never cut off, down to a 344px fold cover.
+This page's own rules:
+  the-dashboard-on-a-phone/both-sizes: scripts/dashboard/index.html; phone, mobile, touch, tap, width, responsive, fold, cover (`bb design show the-dashboard-on-a-phone/both-sizes` reads it)
+
+#### Rules of the dashboard on a phone's own
+
+##### the-dashboard-on-a-phone/both-sizes
+
+Applies to: scripts/dashboard/index.html; phone, mobile, touch, tap, width, responsive, fold, cover
+
+The phone and the desktop are both first-class. A surface is not done until
+it has been looked at at both widths: sections open on a desktop and shut on
+a phone, no control spans the screen at either, and a typed field is 16px
+on iOS alone, so Safari does not zoom.
+
+A finger is not a pointer. On a coarse pointer (`@media(pointer:coarse)`)
+every button in a dialog and in the notebook is `--tap` high, and the small
+controls a thumb meets (a tab's close and minimize, the new-tab button, the
+color swatches) are at least 30px; a desktop keeps its tighter strip. A bar
+of buttons that spans a phone shares its width (`flex: 1 1 0; min-width: 0`)
+rather than each taking its text's, so the last one is never cut off: at
+344px, a folding phone's cover screen, four did not fit. "Both widths" means
+a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
+840, still the phone layout) and a desktop.
 
 ### a dialog (Web app)
 
@@ -839,3 +879,405 @@ Layout of a dialog on a desktop frame (12 columns by 8 rows), from the Blank tem
   Overlay (a dialog, sheet, drawer, popover or toast over the page): a modal: its h3, every line a field band, groups headed by a label, the foot with the state, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
 Notes:
   Two gaps down a dialog and no others: the field gap between the things in a band, the label gap between a label and its control. It scrolls in one place; a text box and a listbox are the only things that scroll inside it.
+This page's own rules:
+  a-dialog/layout: scripts/dashboard/index.html, scripts/dashboard/page-*.js; dialog, modal, popup, pop-up, foot (`bb design show a-dialog/layout` reads it)
+
+#### Rules of a dialog's own
+
+##### a-dialog/layout
+
+Applies to: scripts/dashboard/index.html, scripts/dashboard/page-*.js; dialog, modal, popup, pop-up, foot
+
+A dialog is `.modal > .box` (`.wide` for a list or an editor), titled by its
+`h3`. Every line of its body is a `.field` band, which is where the inset
+lives: a hint, a control, a list, never text at box level, which draws flush
+against the edge. A group of fields inside it is headed by a `label`, the dim
+small heading every dialog uses, never an `h4`; a dialog that is prose to
+read rather than fields to fill (About) says so with `.box.prose` and may use
+headings. The buttons are the `.foot`: a
+`.state` first when there is one, then `.sp`, then the verbs, the primary
+first and anything destructive last. A switch is a checkbox inside its label,
+beside the thing it names, the way the Settings tab draws them
+(`.logdays.setrow` holding a `label.ndcap`). What has nothing to act on is
+hidden rather than disabled: a dialog with an empty list says so in one
+sentence and offers Close.
+
+### signing in (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of signing in on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Card (a box holding one thing): one panel in the middle of the page: the mark and the name, then the form, in the middle, columns 5 to 8 of 12, rows 3 to 6 of 8
+  Form (fields a person fills in): Username, Password and Sign in, the one filled button; a refusal is said under it, in the middle, columns 5 to 8 of 12, rows 4 to 6 of 8
+Notes:
+  The only page with nothing around it: the page's ground and one panel, 340px wide, centered both ways. The mark is the scheme's accent and the button is the deep accent with ink on it, as every filled surface is. Nothing else is reachable before it.
+
+### a terminal tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a terminal tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the pane bar: which session this is, by its kind and its project, across the top, row 1 of 8
+  Content (the main reading or working area): the terminal itself, the session as tmux has it: Claude or a shell, across the middle, rows 2 to 7 of 8
+  Footer (the band at the foot): Commands, Sessions and Chat; on a phone Keys joins them for what a touch keyboard lacks, across the bottom, row 8 of 8
+Notes:
+  A terminal is the one surface here that is not the dashboard's to draw: the frame shows the session and the chrome stays out of it. The bar wears the project's color as a stripe. Commands types a line from the fixed tables or the operator's own list into a shell, never into a Claude session; Sessions lists what is running; Chat is between accounts.
+
+### the Toolchains tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Toolchains tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: which node's store this is, and Refresh, across the top, row 1 of 8
+  Text (a block of prose): the store's path on that node, across the middle, row 2 of 8
+  List (rows of like things): the toolchains by group, each a row to tick: what it is, its size, what it needs, its version, across the middle, rows 3 to 6 of 8
+  List (rows of like things): Not for this node: a fold of the ones its platform cannot run, with why, across the middle, row 7 of 8
+  Button (an action to press): Install selected and Check for updates; what the one job is doing is said beside them, across the bottom, row 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Toolchains are installed on nodes and never on the controller, so the picker lists agent nodes only. An install is a job on the node: the rows are read again as it runs, and the line beside the buttons says what it is doing rather than the button changing its words.
+
+### the Emulator tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Emulator tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: which node, and Refresh, across the top, row 1 of 8
+  Text (a block of prose): the store the images live in, across the middle, row 2 of 8
+  Form (fields a person fills in): add an image: the API level, the flavor, and Add, across the middle, row 3 of 8
+  List (rows of like things): the images held: what each is and can do, its size, its package and the AVD made from it, across the middle, rows 4 to 7 of 8
+  Footer (the band at the foot): the terms the images come under, across the bottom, row 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The flavors say what they are for in a sentence (Play services or not, rootable or not), since the package name says it to nobody.
+
+### the Docker tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: which node's daemon, and how it is reached, across the top, row 1 of 8
+  List (rows of like things): containers grouped by the project that owns them; the ones with no project last, across the middle, rows 2 to 6 of 8
+  Card (a box holding one thing): one container: its state, where it came from, Details, its actions, Ports and mounts, in the middle, columns 2 to 11 of 12, rows 3 to 5 of 8
+  Button (an action to press): the container's own action bar: Up, Down, Env or Edit, Rebuild, Remove, in the middle, columns 2 to 11 of 12, row 6 of 8
+  Footer (the band at the foot): New container and Refresh, across the bottom, row 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). A group is headed by its project in the project's color. A container's row says whether it runs as a pill, never as colored words alone. Why a control is dead is written under the row in red, since a tooltip is nothing on a phone. A session's request to rebuild is answered here.
+
+### the Nodes tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Nodes tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: which node, Create sandbox VM and Enroll node, across the top, row 1 of 8
+  Card (a box holding one thing): the node: online and live as pills, where it dials in from, its agent, and Test, across the middle, rows 2 to 3 of 8
+  List (rows of like things): its sections, each a fold with its own Apply: Health, Storage, Network, Runner and the rest, across the middle, rows 4 to 7 of 8
+  Footer (the band at the foot): what a node is for, in a sentence, across the bottom, row 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Health draws meters: a track with a fill, the number beside it. A section the node cannot offer says why in its place rather than being missing.
+
+### the Jobs tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Jobs tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: a filter for the ones still running, across the top, row 1 of 8
+  List (rows of like things): jobs, newest first: state as a pill, its kind, where, when, how long, who asked, and Log, across the bottom, rows 2 to 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). A long list pages rather than scrolling forever. Log opens the job's output in a dialog.
+
+### the Phone tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Phone tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: which node the phone is plugged into or paired with, and Refresh, across the top, row 1 of 8
+  Card (a box holding one thing): whether a phone is connected, as a pill, and Connect, the filled button, across the middle, rows 2 to 3 of 8
+  Form (fields a person fills in): pairing: the code from the phone, and Pair, with the steps to get one, across the middle, rows 4 to 6 of 8
+  List (rows of like things): what sessions have asked of the phone, each with its reason, Allow and Deny, across the middle, row 7 of 8
+  Footer (the band at the foot): a session reaches the phone only by asking, across the bottom, row 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface).
+
+### Controller settings (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of Controller settings on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: what this tab is, and where appearance lives instead, across the top, row 1 of 8
+  List (rows of like things): seven sections, each a group of fields with its own Apply at its foot, across the middle, rows 2 to 7 of 8
+  Footer (the band at the foot): when a change takes effect: at once, or at the next start, across the bottom, row 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Nothing here takes effect on the change: each section is a draft until its Apply. The color scheme is not here; it is in the gear, since a theme is looked at and not decided.
+
+### the Users tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Users tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: who may sign in here, and which projects they see, across the top, row 1 of 8
+  List (rows of like things): accounts: the role as a pill, what each sees, its Claude sign-in, Edit and Remove, across the middle, rows 2 to 4 of 8
+  Text (a block of prose): What an account gets: a fold saying what a user and an admin each are, across the middle, row 5 of 8
+  Form (fields a person fills in): Add somebody: a name, a role, and Add, across the middle, rows 6 to 7 of 8
+  Footer (the band at the foot): how a password is set from a shell, across the bottom, row 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The owner's row says it cannot be deleted or given another role, under the row, where a dead button would otherwise be the first you heard of it.
+
+### the Profile tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Profile tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: who you are here, your role, and your Claude sign-in, across the top, row 1 of 8
+  List (rows of like things): five sections: Who you are, Password, Claude, Plugins and Conversations, each with its own Save, across the middle, rows 2 to 7 of 8
+  Footer (the band at the foot): your commits carry the git name and email above, across the bottom, row 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Conversations lists the account's own sessions with Claude, newest first, divided by hairlines as the Artifacts list is, each a download.
+
+### the Analysis tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Analysis tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar: the scanners' reports, by project, across the top, row 1 of 8
+  List (rows of like things): findings grouped by project and scanner, severity as a badge, each opening to its detail, across the bottom, rows 2 to 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). With no reports folder connected the tab says so in one line and where to read how.
+
+### the Projects tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Projects tab on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Header (the band at the top): the bar, and New project, across the top, row 1 of 8
+  List (rows of like things): every project the account may see: its branch, whether it is on the sidebar, what is wrong, across the bottom, rows 2 to 8 of 8
+Notes:
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The eye on a row puts the project on the sidebar or takes it off: the sidebar shows the ones you work on, this tab all of them.
+
+### a notebook: Briefing (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook: Briefing on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Header (the band at the top): the head row: what every session here starts with, and History, across the middle, row 2 of 8
+  Chart (a chart or a meter): Code base: the languages as one bar, counted from what git tracks, across the middle, row 3 of 8
+  List (rows of like things): Your rules: standing ones in full, named ones with what calls for each, across the middle, rows 4 to 5 of 8
+  Text (a block of prose): What a session is sent: the exact text, its size, and each part against its share, across the middle, row 6 of 8
+  List (rows of like things): Memories, and Write a memory, across the middle, row 7 of 8
+  Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
+Notes:
+  What a session is sent is shut by default: a thing to check, not to read every time. It turns amber when a part is over its share of a session's prompt, and says what that part left out.
+
+### a notebook: Design (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook: Design on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Header (the band at the top): the head row: Write the file, and a new page by platform and template, across the middle, row 2 of 8
+  Content (the main reading or working area): Pages: a pulldown of them, the chosen one's board, its blocks, its rules and its notes, across the middle, rows 3 to 4 of 8
+  Form (fields a person fills in): Design language: type, corners, space and motion, the families, what it governs, its rules, across the middle, row 5 of 8
+  List (rows of like things): Themes: a pulldown of them, the chosen one's colors as name, hex and what each is for, its rules, across the middle, rows 6 to 7 of 8
+  Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
+Notes:
+  One page and one theme on show at a time, each on its pulldown. Rules sit inside what they hold for: the language's in the language, a theme's in the theme, a page's in the page, and each list is the Briefing's rules list. The four choices of the language start on 'not chosen'. The view is passive: no prompt, no Copy, nothing sent to a session.
+
+### a notebook: Roadmap (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook: Roadmap on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Header (the band at the top): the head row: what is on the list, and History, across the middle, row 2 of 8
+  Form (fields a person fills in): Add an item, and Reorder, across the middle, row 3 of 8
+  List (rows of like things): the items, each with its steps; the next step can be sent to the session that is open, across the middle, rows 4 to 7 of 8
+  Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 8 of 8
+Notes:
+  A done step is struck with a tick where its number was. A parked item is dim and carries no steps. Finished items are behind their own view, not at the foot of this one.
+
+### a notebook: Bugs (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook: Bugs on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Header (the band at the top): the head row: how many are open, and History, across the middle, row 2 of 8
+  Form (fields a person fills in): Report a bug: the title, where it lives, how to reproduce it, the severity, across the middle, row 3 of 8
+  Search (a search box): the sort bar: by severity, newest, oldest, recently changed or title, across the middle, row 4 of 8
+  List (rows of like things): the bugs, open first: number, severity as a badge, title; a row opens to its fields, across the bottom, rows 5 to 8 of 8
+Notes:
+  Severity wears the badge palette: the same colors on every scheme.
+
+### a notebook: Git (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook: Git on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Header (the band at the top): the head row: the branch and how it stands with its host, and Refresh, across the middle, row 2 of 8
+  Button (an action to press): the network bar: Fetch, Pull and Push, as the project's push rights allow, across the middle, row 3 of 8
+  List (rows of like things): Changes: what is not committed, each file opening to its diff, and Commit all, across the middle, rows 4 to 5 of 8
+  List (rows of like things): Branches, and Commits drawn as a graph in lanes, across the bottom, rows 6 to 8 of 8
+Notes:
+  Reads to a beginner and stays exact for a developer: the host is named (GitHub, Gitea), never 'origin'. Whose working tree it is is said to anybody else, who is offered nothing that changes it.
+
+### a notebook: Artifacts (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook: Artifacts on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Header (the band at the top): the head row: what the project ships, and Download source, across the middle, row 2 of 8
+  Card (a box holding one thing): Build: the node it builds on. Version: where the tree is, and the buttons that move it, across the middle, rows 3 to 4 of 8
+  Text (a block of prose): the dev instance: what it was built from, and whether the tree has moved past it, across the middle, row 5 of 8
+  List (rows of like things): what is in dist/, divided by hairlines, each a download; Captures apart, with their age, across the bottom, rows 6 to 8 of 8
+Notes:
+  Captures are not what the project ships, so they are listed apart, each saying whose it is, and go by age.
+
+### a notebook: Docker (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook: Docker on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Header (the band at the top): the head row: this project's containers, and a way to the Docker tab, across the middle, row 2 of 8
+  List (rows of like things): the project's own containers, each as the Docker tab draws one, across the bottom, rows 3 to 8 of 8
+Notes:
+  The same rows as the Docker tab, for one project: a second drawing of them would be a second place to be wrong.
+
+### a notebook: Tests (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook: Tests on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Header (the band at the top): the head row: the last run, and Open the run's output, across the middle, row 2 of 8
+  Search (a search box): sort and filter: by suite, by what is slow, by what is flagged, across the middle, row 3 of 8
+  Table (columns of data): the tests: suite, name, what it protects, how long it took, whether it is suspect, across the bottom, rows 4 to 8 of 8
+Notes:
+  With no run on record the view says how one is made, in one line.
+
+### a notebook: Analysis (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a notebook: Analysis on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Tabs (a strip of tabs switching one area): the views: Briefing, Design, Roadmap, Bugs, Git, Artifacts, Docker, Tests, Analysis, across the top, row 1 of 8
+  Header (the band at the top): the head row: the scanners' findings for this project, and History, across the middle, row 2 of 8
+  List (rows of like things): findings by scanner, severity as a badge; one can be sent to the session or dismissed with a reason, across the bottom, rows 3 to 8 of 8
+Notes:
+  The project's share of the Analysis tab.
+
+### a project's settings (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a project's settings on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Overlay (a dialog, sheet, drawer, popover or toast over the page): Project settings: name and color, the remote, the node, build and test, Claude settings, yours here, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Notes:
+  The longest dialog, so it is the one that proves the layout: groups headed by a label, every line a field band, one foot. Claude may is seven dials, each auto, ask or deny. Yours on this project is the person's own: model, effort, replies, questions. Unlink and Delete project are apart from Save, and each asks once, saying what goes and what stays.
+
+### a new project (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a new project on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Overlay (a dialog, sheet, drawer, popover or toast over the page): New project: the source (a new repository, a clone, an archive), its name, its node, what Claude may do, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Notes:
+  The three sources are one row of buttons and the fields under them change with the pick. A clone or a link runs as a job the Projects card reports; the dialog does not wait on the network.
+
+### a first session (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a first session on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Overlay (a dialog, sheet, drawer, popover or toast over the page): First session: the brief typed when the project was made, the model and effort, Build it or Start without it, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Notes:
+  Shown the first time Claude is started on a project that has a brief. Either button takes the brief out of the tree.
+
+### a new container (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of a new container on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Overlay (a dialog, sheet, drawer, popover or toast over the page): New container: its name, its node and project, and its definition from an image or a compose file, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Notes:
+  The env file's values are never shown back, only its keys.
+
+### waiting for your approval (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of waiting for your approval on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Overlay (a dialog, sheet, drawer, popover or toast over the page): What a session added under an ask dial: each with Approve and Deny, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Notes:
+  Reached from the bell. A thing approved lands as if the session had been allowed it; a thing denied is said to the session.
+
+### the gear (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the gear on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Overlay (a dialog, sheet, drawer, popover or toast over the page): Layout (reset the sidebar's cards), Color scheme (thirteen swatches), Account (Profile), in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Notes:
+  A menu under the gear, not a modal. A swatch applies on the press, the one setting that does: a theme is looked at, not decided. Each swatch is drawn in its own scheme.
+
+### about (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of about on a desktop frame (12 columns by 8 rows), from the Blank template:
+  Overlay (a dialog, sheet, drawer, popover or toast over the page): About: the build, the license, Getting started and Changelog, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
+Notes:
+  The changelog is the same text the welcome panel shows after an update.
+
+### the app: signing in (Android app)
+
+Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
+Layout of the app: signing in on a phone frame (6 columns by 12 rows), from the Mobile app template:
+  Header (the band at the top): BuilderBot, and what to sign in with, across the middle, rows 4 to 5 of 12
+  Form (fields a person fills in): the dashboard's address, the account, the password, and Sign in, across the middle, rows 6 to 9 of 12
+  Text (a block of prose): over http, said before the sign-in: it travels in the clear, across the middle, row 10 of 12
+Notes:
+  The app wears the dashboard's schemes by the same names and hexes, chosen under More and kept on the device. Text buttons are the accent; a filled button is the deep accent with ink.
+
+### the app: projects (Android app)
+
+Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
+Layout of the app: projects on a phone frame (6 columns by 12 rows), from the Mobile app template:
+  Header (the band at the top): the mark, the account, the build and the host, and Refresh, across the top, row 1 of 12
+  Card (a box holding one thing): the bell's row: questions waiting and nodes that need attention, a bar down its side, across the middle, rows 2 to 3 of 12
+  Card (a box holding one thing): the doctor's problems, for an administrator, only when there are any, across the middle, row 4 of 12
+  Search (a search box): a box to find a project in, once the list is longer than a screen, across the middle, row 5 of 12
+  List (rows of like things): projects: the color down the side, the session as working or waiting on you, what is waiting, across the middle, rows 6 to 11 of 12
+  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Notes:
+  The question a phone is picked up to ask is whether it is done, so the list answers it before anything is opened. Pull down to read again, on every list.
+
+### the app: a project (Android app)
+
+Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
+Layout of the app: a project on a phone frame (6 columns by 12 rows), from the Mobile app template:
+  Header (the band at the top): the project, its color, and its session as a pill: working, or waiting on you, across the top, row 1 of 12
+  Tabs (a strip of tabs switching one area): the view strip, scrolling sideways: Claude first, then the notebook's views, Git, Settings, across the middle, row 2 of 12
+  Form (fields a person fills in): Claude: what the session is doing, and a box to say a line to it, across the middle, rows 3 to 5 of 12
+  List (rows of like things): your conversations here, each with Read the end and Share, across the middle, rows 6 to 11 of 12
+  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Notes:
+  A project opens on Claude. The terminals stay the browser's; a line said here goes into the account's own session and nowhere else. Design is read here, not edited. Docker's Start, Stop and Rebuild each ask before they act. Settings are a draft until Save.
+
+### the app: approvals (Android app)
+
+Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
+Layout of the app: approvals on a phone frame (6 columns by 12 rows), from the Mobile app template:
+  Header (the band at the top): Approvals, and Refresh, across the top, row 1 of 12
+  List (rows of like things): what waits on your answer: the ask, its reason, its command, Deny and Allow, across the middle, rows 2 to 6 of 12
+  List (rows of like things): changes a session has waiting, by project, each with Deny and Approve, across the middle, rows 7 to 11 of 12
+  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Notes:
+  Root on a node wears red down its side and everything else amber. The same asks arrive as notifications with Approve and Deny on them, which need the phone unlocked.
+
+### the app: nodes (Android app)
+
+Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
+Layout of the app: nodes on a phone frame (6 columns by 12 rows), from the Mobile app template:
+  Header (the band at the top): Nodes, and Refresh, across the top, row 1 of 12
+  List (rows of like things): nodes: live or not down the side, what the machine is, Lock system changes and Drain, across the middle, rows 2 to 11 of 12
+  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Notes:
+  An administrator's. Enrolling and the node's sections stay the dashboard's.
+
+### the app: more (Android app)
+
+Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
+Layout of the app: more on a phone frame (6 columns by 12 rows), from the Mobile app template:
+  Header (the band at the top): More, across the top, row 1 of 12
+  Card (a box holding one thing): whether the app and the dashboard are on the same API, and Install it when the app is behind, across the middle, rows 2 to 3 of 12
+  List (rows of like things): the other pages as rows: Profile, Tools, Jobs, Users, What's new, across the middle, rows 4 to 6 of 12
+  Form (fields a person fills in): The watch: questions, a turn finished, how often to ask; one Save, across the middle, rows 7 to 9 of 12
+  List (rows of like things): Colors: the thirteen schemes, each drawn in its own; About; Sign out, across the middle, rows 10 to 11 of 12
+  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Notes:
+  The watch's settings are a draft until Save. The scheme applies on the press, as it does on the dashboard.
+
+### the app: tools (Android app)
+
+Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
+Layout of the app: tools on a phone frame (6 columns by 12 rows), from the Mobile app template:
+  Header (the band at the top): Tools, and Refresh, across the top, row 1 of 12
+  Tabs (a strip of tabs switching one area): the nodes, as chips; never the controller, across the middle, row 2 of 12
+  Text (a block of prose): the store's path on that node, across the middle, row 3 of 12
+  List (rows of like things): toolchains: what each is, its version or not installed, Install or Remove for an administrator, across the middle, rows 4 to 11 of 12
+  Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+Notes:
+  Install and Remove ask first, saying the size. Android system images are not here: choosing one wants the room the dashboard's tab has.

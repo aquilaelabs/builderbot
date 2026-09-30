@@ -72,6 +72,7 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
 import pending  # noqa: E402
+import share  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 write_json = None
@@ -125,7 +126,12 @@ NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 # Long enough for a real rule (the worked example that prompted this is four
 # short paragraphs) and short enough that nobody pastes a document in.
 MAX_TEXT = 2000
+# What is kept and what a session is sent are two things (share.py). A
+# standing rule is read whole into every session, so those are the ones
+# counted: forty. A named one costs its name and is read when it fires, so
+# a project may keep many more of them.
 MAX_RULES = 40
+MAX_NAMED = 200
 MAX_TRIGGERS = 12
 
 # Global rules (R63) live under a key no project can be called: a project is a
@@ -357,9 +363,9 @@ def replace(project, rules, rev=None, force=False):
     """
     if not isinstance(rules, list):
         return {"error": "expected a list of rules"}
-    if len(rules) > MAX_RULES:
-        return {"error": f"{MAX_RULES} rules is the limit: every standing one "
-                         "is read into every session that starts here"}
+    over = _over([r for r in rules if isinstance(r, dict)])
+    if over:
+        return {"error": over}
     with _lock:
         was = {x.get("name"): x for x in
                ((load().get("projects") or {}).get(project) or {}).get("rules") or []}
@@ -482,10 +488,11 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
         d = load()
         p = _project(d, project)
         rs = p.setdefault("rules", [])
-        if len(rs) >= MAX_RULES:
-            return {"error": f"{MAX_RULES} rules is the limit here"}
         r = _clean({"name": name, "text": text, "paths": paths,
                     "words": words, "by": by, "doc": doc, "check": check}, len(rs))
+        over = _over(rs + [r])
+        if over:
+            return {"error": over}
         taken = {x.get("name") for x in rs}
         if project != GLOBAL:
             taken |= {str(x.get("name") or "") for x in globals_now()}
@@ -618,17 +625,45 @@ def rules(project):
     return [r for r in (got.get("rules") or []) if isinstance(r, dict)]
 
 
-def block(project):
-    """What goes in front of every session started here, or "".
+def _over(rules):
+    """Why a list of rules is more than a project keeps, or ""."""
+    standing = sum(1 for r in rules if not conditional(r))
+    if standing > MAX_RULES:
+        return (f"{MAX_RULES} standing rules is the limit: each is read whole into every "
+                "session that starts here. Give one a file or a word that calls for it, "
+                "and it is read when that comes up")
+    if len(rules) - standing > MAX_NAMED:
+        return f"{MAX_NAMED} named rules is the limit here"
+    return ""
+
+
+def fitted(project, budget=None):
+    """(what goes in front of every session started here, what it left out
+    to keep to `budget`), or ("", "").
 
     Standing rules in full; conditional ones as one line each saying they
     exist and how to read them. That line is what stops a trigger that misses
     being a rule the session never heard of, which is the worse of the two failures,
     because the session cannot even know to ask.
+
+    A standing rule is never said short: it is what a session is held to.
+    Over its share of the prompt (share.py) it is the named ones that say
+    less, their names without what calls for each, since the text of one
+    arrives on the turn that calls for it either way.
     """
     rs = effective(project)
     if not rs:
-        return ""
+        return "", ""
+    return share.fitted([lambda: (_block(rs, True), ""),
+                         lambda: (_block(rs, False), "what calls for each named rule")], budget)
+
+
+def block(project):
+    """The rules' block with nothing left out: `bb rules --prompt`."""
+    return fitted(project)[0]
+
+
+def _block(rs, triggers):
     # WHOSE each one is, marked, because a session's own note must not reach
     # the next session wearing the operator's authority. Same reason the
     # roadmap marks the items a session added.
@@ -677,11 +712,26 @@ def block(project):
         out.append("Named, not quoted: `bb rules show <name>` reads one, and "
                    "its text arrives on the turn you edit a file or are asked "
                    "about a word it names.")
-        for r in named:
-            on = "; ".join(x for x in [", ".join(r.get("paths") or []),
-                                       ", ".join(r.get("words") or [])] if x)
-            mine = "*" if r.get("by") == "claude" else ""
-            out.append(f"  {mine}{r['name']}: {on}{frame(r)}")
+        if triggers:
+            for r in named:
+                on = "; ".join(x for x in [", ".join(r.get("paths") or []),
+                                           ", ".join(r.get("words") or [])] if x)
+                mine = "*" if r.get("by") == "claude" else ""
+                out.append(f"  {mine}{r['name']}: {on}{frame(r)}")
+        else:
+            # The names alone, and the two things about one that a session
+            # acts on without being called: which it must check before it
+            # hands back, and which have a document to read first.
+            out.append("The rules are longer than their share of your prompt, so this leaves out "
+                       "what calls for each: `bb rules` lists them with it.")
+            out.append("  " + ", ".join(("*" if r.get("by") == "claude" else "") + r["name"] for r in named))
+            checked = [r["name"] for r in named if r.get("check")]
+            if checked:
+                out.append("Checked before handing back, each with `bb rules check NAME`: "
+                           + ", ".join(checked) + ".")
+            docs = [f"{r['name']} in {r['doc']}" for r in named if r.get("doc")]
+            if docs:
+                out.append("Defined in full, and read first: " + "; ".join(docs) + ".")
     return "\n".join(out).strip()
 
 

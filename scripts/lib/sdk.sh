@@ -88,7 +88,7 @@ sdkmgr() {
 # The android SDK licenses, once per toolchain store root.
 #
 # sdkmanager installs nothing into a root whose licenses have not been
-# accepted, and the refusal names the package rather than the licence: "The
+# accepted, and the refusal names the package rather than the license: "The
 # following packages can not be installed since their licenses or those of
 # the packages they depend on were not accepted". This image accepts them at
 # build time (Dockerfile) into the image's own <sdk>/licenses, which is why
@@ -98,7 +98,7 @@ sdkmgr() {
 #
 # Skipped when the directory is there: accepting is a JVM start, and a store
 # that has been through this once does not need it again. If Google ships a
-# new licence the install refuses with the message above, which at least
+# new license the install refuses with the message above, which at least
 # names what to do.
 sdk_android_licenses() {
     local root; root="${ANDROID_HOME:-$(sdk_dir android)}"

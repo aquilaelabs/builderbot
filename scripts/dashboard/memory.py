@@ -453,7 +453,7 @@ def _write(p, text):
 _fallback_lock = threading.RLock()
 
 
-def _serialised(fn):
+def _serialized(fn):
     """One writer at a time per memory directory, across threads and processes.
 
     save, save_index, create and delete each read MEMORY.md, change it and
@@ -466,7 +466,7 @@ def _serialised(fn):
     not beside MEMORY.md: that directory is Claude Code's, and a stray file of
     ours in it is one more thing a session has to wonder about. Claude writes
     its own memories with its own tools and takes no lock of ours, so this
-    serialises the dashboard against itself, which is the half that can be.
+    serializes the dashboard against itself, which is the half that can be.
     """
     @functools.wraps(fn)
     def held(project, *a, **kw):
@@ -508,7 +508,7 @@ def _conflict(p, rev, what):
             "conflict": {"rev": _rev(now), "current": now, "at": at}}
 
 
-@_serialised
+@_serialized
 def save(project, file, text, rev=None, home=None):
     d = memory_dir(project, home)
     if d is None:
@@ -535,7 +535,7 @@ def save(project, file, text, rev=None, home=None):
     return {"ok": True, "when": int(time.time())}
 
 
-@_serialised
+@_serialized
 def save_index(project, entries, rev=None, home=None):
     """Rewrite MEMORY.md from the one line each memory carries.
 
@@ -600,7 +600,7 @@ def save_index(project, entries, rev=None, home=None):
     return {"ok": True, "when": int(time.time())}
 
 
-@_serialised
+@_serialized
 def create(project, name, title, hook, mtype, body, home=None):
     """Write a new memory, and give it its line in the index.
 
@@ -676,7 +676,7 @@ def _unindex(d, file):
             pass
 
 
-@_serialised
+@_serialized
 def delete(project, file, home=None):
     d = memory_dir(project, home)
     if d is None:

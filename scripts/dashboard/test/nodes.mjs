@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -636,7 +636,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${ROW} .ndconf`, e => /now 10\.0\.0\.40\/24 on ens3 via 10\.0\.0\.1/.test(e.textContent)),
      'it reports the address the node is on');
   // The census's numbers as meters rather than as a sentence: one per store,
-  // labelled, with the free space on the right.
+  // labeled, with the free space on the right.
   const meters = await page.$$eval(`${ROW} .ndmeter`, ms => ms.map(m => ({
     label: m.querySelector('.lbl').textContent,
     val: m.querySelector('.val').textContent,
@@ -1160,7 +1160,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     // Two architectures on one store is the design now, not a clash: each
     // machine installs under its own <os>-<arch> scope (roadmap R19), so
     // the x86_64 node's install is queued while the arm64 node shares the
-    // share. Cancelled at once, so the one-at-a-time rule below starts clean.
+    // share. Canceled at once, so the one-at-a-time rule below starts clean.
     const clash = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
     ok(clash.job && !clash.error,
        `a store shared across architectures takes the install: each machine has its own scope in it (${
@@ -1369,8 +1369,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.fill('#rnBuildCmd', './gradlew assembleDebug');
   await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
   await page.fill('#rnCaptureDays', '3');
-  await page.click('#rnGo');
-  await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
+  await saveDialog(page);
   const saved = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha;
   ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
      && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi' && saved.capture_days === 3,
@@ -1534,7 +1533,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   const uj = upd.job ? await napi(`/api/v1/jobs?id=${upd.job}`) : null;
   ok(upd.ok && uj && uj.type === 'self-update' && uj.spec.digest === shipped.digest && uj.node === minted.id,
      `Update agent queues a self-update naming the shipped digest (${upd.job || upd.error})`);
-  // ...and it stays greyed while that job is queued, through the repaint
+  // ...and it stays grayed while that job is queued, through the repaint
   // that replaces the button. pressing() only covers the round trip; the
   // render is what has to know, and node_list only tracked system jobs, so
   // Update agent came back live the instant it answered.
@@ -1547,7 +1546,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     document.querySelector(sel + ' [data-nd="update-agent"]')?.textContent || ''),
     ROW, { timeout: 10000 });
   ok(await page.$eval(`${ROW} [data-nd="update-agent"]`, b => b.disabled),
-     '...and stays greyed while the update is queued, not only for the round trip');
+     '...and stays grayed while the update is queued, not only for the round trip');
   if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
   // ---- an agent from ANOTHER window stops work, and says which projects ----
   // Inside a window being behind is routine; across one nothing sent is
@@ -2208,6 +2207,31 @@ print(m.mint_session('alpha'))
      `Update ends the Claude session there and queues the job naming the version (${up.job || up.error}; ended ${JSON.stringify(up.ended)})`);
   const held = (await napi('/api/status')).projects.find(p => p.name === 'beta')?.held || '';
   ok(/Claude Code is updating on clbox/.test(held), `...and the node's project is held with the reason while it runs (${held.slice(0, 60)})`);
+  // ...from the press, not from the job: ending the sessions comes first,
+  // a round trip each, and the hold used to read nothing until the job
+  // existed, so a Claude button pressed in those seconds started a
+  // session the update was about to end (the operator, 29 Sep).
+  {
+    const said = execFileSync('python3', ['-c', `
+import sys, json
+sys.path.insert(0, ${JSON.stringify(REPO + '/scripts/dashboard')})
+import claudecode as m
+seen = []
+class N:
+    def node(self, i): return {"id": i, "name": "clbox", "kind": "agent", "live": True, "reported": {"session": {"up": True}}}
+    def jobs_for(self, *a, **k): return []
+    def session_kill(self, nid, name):
+        seen.append(m.updating(nid)); return {"ok": True}
+    def job_add(self, who, sel, typ, spec): return {"ok": True, "job": "j_1"}
+m.configure(nodes_module=N(), node_sessions=lambda: [{"node_id": "n1", "name": "u_1~claude-beta"}], tmux_base=lambda s: s.split("~")[-1])
+m._latest["version"] = "1.2.0"
+r = m.update("test", "n1")
+print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.get("ok")}))
+`], { encoding: 'utf8' }).trim();
+    const r = JSON.parse(said);
+    ok(r.ok && r.held_while_ending.length === 1 && r.held_while_ending[0] === true && r.after === false,
+       `the hold is up from the press, while the node's sessions are being ended, and is the job's alone once it is queued (${said})`);
+  }
   ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
      '...and the bell row is gone while the update is queued');
   const again = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });

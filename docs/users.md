@@ -84,7 +84,7 @@ The first page a container with no accounts serves is the **first-run
 screen**, and it asks for the owner's name and password; until that is done
 nothing else is reachable, and after it the store is the truth. Nothing at
 boot reads a credential from the environment: one there stays readable
-forever. The one place `DASHBOARD_AUTH=name:password` is honoured is `bb`,
+forever. The one place `DASHBOARD_AUTH=name:password` is honored is `bb`,
 for a single command from a plain `docker exec` shell that has no session
 token.
 
@@ -112,7 +112,7 @@ nowhere to come from until users exist.
 
 ## Enforcement, and why it is mostly one function
 
-A project you cannot see does not appear, not greyed out, not present and
+A project you cannot see does not appear, not grayed out, not present and
 refused. Absent.
 
 That is cheaper than it sounds, because there is already one chokepoint.
@@ -152,7 +152,7 @@ not given can, with effort, from a session they were given.
 These roles are therefore for **scoping, not containment**: deciding who works
 on what, keeping the dashboard honest about it, and making the audit trail
 name a person. It is meant for people you would already trust with a shell on
-this box. It is not a defence against one of them deciding to go looking.
+this box. It is not a defense against one of them deciding to go looking.
 
 Building it as though it were would mean sandboxing every session, and that is
 a different and much larger project, and one the node work has quietly made

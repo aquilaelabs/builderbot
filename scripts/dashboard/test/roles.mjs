@@ -162,16 +162,16 @@ for (const who of CAST) {
   const road = JSON.stringify(await api(user2.page, '/api/roadmap?project=alpha'));
   ok(['test', 'w.admin1', 'w.admin2', 'w.user1', 'w.user2'].every(n => road.includes(`walked by ${n}`)),
      'everybody on alpha reads the items the others added to its roadmap');
-  const colour = await api(owner.page, '/api/prefs', { project: 'alpha', color: 'teal' });
-  ok(colour.status === 200, `the owner sets alpha's colour (${colour.status})`);
+  const color = await api(owner.page, '/api/prefs', { project: 'alpha', color: 'teal' });
+  ok(color.status === 200, `the owner sets alpha's color (${color.status})`);
   // Waited for, not read after one refresh(): a poll already on its way when
   // it is called makes it queue another and return at once, so one call can
   // read the state from before the write. On a loaded box, the whole run, a
   // poll is on its way often enough that this read undefined (B238).
-  const colourOf = () => (state.projects || []).find(p => p.name === 'alpha')?.prefs?.color;
+  const colorOf = () => (state.projects || []).find(p => p.name === 'alpha')?.prefs?.color;
   await refreshUntil(user1.page, () => (state.projects || []).find(p => p.name === 'alpha')?.prefs?.color === 'teal',
                      { timeout: 20000 }).catch(() => {});
-  const seen = await user1.page.evaluate(colourOf);
+  const seen = await user1.page.evaluate(colorOf);
   ok(seen === 'teal', `...which is alpha's for everybody (${seen})`);
   await Promise.all([owner, user1, user2].map(p => refreshUntil(p.page,
     () => ((state.projects || []).find(p => p.name === 'alpha')?.yours?.model || '') === 'sonnet',

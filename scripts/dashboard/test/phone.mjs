@@ -138,7 +138,7 @@ await page.waitForFunction(
   () => { const d = document.querySelector('#bBell .dot');
           return d && !d.hidden && d.classList.contains('ask'); },
   null, { timeout: 15000 });
-ok(true, 'an ask lights the bell, in the colour that means somebody is waiting');
+ok(true, 'an ask lights the bell, in the color that means somebody is waiting');
 await page.click('#bBell');
 await page.waitForSelector('#bellPanel .bnote.ask', { timeout: 10000 });
 ok(/read the Firefox version/.test(await page.$eval('#bellPanel .bnote.ask', e => e.textContent))

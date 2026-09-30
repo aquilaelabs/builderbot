@@ -341,7 +341,7 @@ def siblings_of(mountinfo, workspace):
 def nonproject_dirs(valid):
     """Top-level workspace directories that are not projects.
 
-    Derived by subtraction rather than by recognising each kind: everything in
+    Derived by subtraction rather than by recognizing each kind: everything in
     the share that is not a project worth reading findings for is one of these.
     That set is the one the card already computes (listed, not excluded, no
     error-level issue), so asking for it and taking the remainder needs no

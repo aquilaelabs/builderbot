@@ -213,7 +213,7 @@ function drawTabs(){
     // Only a split has sides worth marking; a lone pane is just "the screen".
     const where = !isSplit() ? "" : panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
     const held = drag?.moved && drag.id === t.id ? " held" : "";
-    // A notebook wears its project's colour; a tool tab wears the icon its
+    // A notebook wears its project's color; a tool tab wears the icon its
     // button on the Tools card carries.
     const pc = colorAttrs(projectColor(tabProject(t)));
     const icon = TABKINDS[t.kind]?.icon || "";

@@ -155,7 +155,7 @@ def prune():
     """Drop what is past the policy. Returns how many files went.
 
     Only the streams this container writes: a /logs share may hold somebody
-    else's files, and a retention setting on this page is not a licence to
+    else's files, and a retention setting on this page is not a license to
     delete them.
 
     The live generation is never touched, whatever its age: a container that

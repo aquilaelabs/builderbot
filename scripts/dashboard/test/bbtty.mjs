@@ -55,7 +55,7 @@ case "\${1:-}" in
   bug)     [ "\${2:-}" = --prompt ] && printf 'the bugs block\\n' ;;
   rules)   [ "\${2:-}" = --prompt ] && printf 'THE HOUSE RULES\\n' ;;
   # What bb-tty actually asks for now: the three blocks already assembled, in
-  # the order a session reads them, with the cap applied. The real assembly is
+  # the order a session reads them, each kept to its share. The real assembly is
   # preamble.py and is tested against the real stores in preamble.mjs; this
   # stands in for it so the SIZE stays the thing these cases control.
   # Nothing at all when asked for it: what a controller that is not answering
@@ -70,14 +70,16 @@ if n:
     parts.append("\\n".join(
         "- #%d  an item with enough words in it to be about fifty" % i for i in range(n)))
 parts.append("the bugs block")
+SHARE = 100000
+notes = []
+if len(parts) == 3 and len(parts[1].encode()) > SHARE:
+    rows = parts[1].split("\\n")
+    kept = SHARE // 60
+    parts[1] = "\\n".join(rows[:kept]) + "\\nand %d more open." % (len(rows) - kept)
+    notes = ["the roadmap part is over its share of a session prompt and leaves out %d of its %d open items"
+             % (len(rows) - kept, len(rows))]
 t = "\\n\\n".join(parts)
-MAX = 100000
-b = t.encode()
-capped = len(b) > MAX
-if capped:
-    c = b[:MAX].decode("utf-8", "ignore")
-    t = c[:c.rfind("\\n") + 1] + "[the rest of this list did not fit in the prompt]"
-print(json.dumps({"text": t, "bytes": len(b), "max": MAX, "capped": capped, "parts": []}))' ;;
+print(json.dumps({"text": t, "bytes": len(t.encode()), "parts": [], "notes": notes}))' ;;
   settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid","git_ready":%s}\\n' "$([ "\${FAKE_GIT_READY:-1}" = 0 ] && echo false || echo true)" ;;
   # A brief staged with Build it, taken once, the way the controller hands
   # it over (brief.py): the file is the stage, and taking it clears it.
@@ -227,16 +229,16 @@ ok(pref.indexOf('THE HOUSE RULES') >= 0
    && pref.indexOf('THE HOUSE RULES') < pref.indexOf('the bugs block'),
    '...with the house rules ahead of the roadmap and the bugs');
 
-// The cap is preamble.py's own now rather than the kernel's: every session
-// pays for the whole block, so a list past it is cut to fit, said out loud,
-// and the session still starts.
+// Every session pays for the whole block, so a part past its share says
+// less (share.py), says so, and the session still starts, with the parts
+// after it all there.
 out = connect(250000);
 await sleep(400);
 ok(alive('claude-alpha'), 'a roadmap past what a session should be asked to read still starts');
-ok(/too long to fit/.test(out) && /bb roadmap/.test(out),
-   '...saying so, and where to trim it');
-ok(prefFile().includes('did not fit in the prompt'),
-   '...and the prompt itself says it was cut, rather than ending mid-item');
+ok(/the roadmap part is over its share/.test(out) && /leaves out \d+ of its \d+ open items/.test(out),
+   '...whoever opened the terminal is told what it left out');
+ok(/and \d+ more open\./.test(prefFile()) && prefFile().includes('the bugs block'),
+   '...and the prompt says so where the list stops, with the bugs after it still there');
 
 // The ordinary case still goes through the same path, so it is the one that
 // gets exercised rather than a fallback nobody reaches until a list grows.
@@ -859,6 +861,35 @@ print(uid)`);
              readFileSync(envf, 'utf8').split('\0').find(l => l.startsWith('BB_READS=')) || 'unset'}; deny ${deny.filter(d => /alpha|beta/.test(d)).join(' ')})`);
         tmuxKill(`${ownerUid}~claude-${vproj}`);
         setReads([]);
+        // The places on the node it is shown (prefs.sees) ride the grant
+        // the same way, one --sees each (B378), to a helper that takes
+        // the word: one from before the setting is asked first and gets
+        // none, since it would refuse the word and start no session.
+        const setSees = sees => {
+          const d = existsSync(prefsFile) ? JSON.parse(readFileSync(prefsFile, 'utf8')) : { projects: {}, users: {} };
+          d.projects = d.projects || {};
+          d.projects[vproj] = { ...(d.projects[vproj] || {}), sees };
+          writeFileSync(prefsFile, JSON.stringify(d));
+        };
+        setSees(['/mnt/media', '/srv/samples']);
+        runView(`u:${ownerUid}:claude:${vproj}:b:${boot}`);
+        await sleep(400);
+        const scmd = tmuxFmt(`${ownerUid}~claude-${vproj}`, '#{pane_start_command}');
+        ok(scmd.includes(` --cwd ${join(DIR, 'ws', vproj)} --sees /mnt/media --sees /srv/samples --env `),
+           `a place the project is set to see goes to the helper as --sees (${scmd.slice(scmd.indexOf('--cwd'), scmd.indexOf('--cwd') + 160)})`);
+        tmuxKill(`${ownerUid}~claude-${vproj}`);
+        writeFileSync(helper, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${calls}\n`
+          + 'case " $* " in *" --sees "*) echo "bb-session: \'--sees\' is not an option it takes" >&2; exit 2 ;; esac\n'
+          + 'case "$1" in check|plan) exit 0 ;; esac\n'
+          + 'while [ "$1" != -- ]; do shift; done; shift\nexec "$@"\n', { mode: 0o755 });
+        runView(`u:${ownerUid}:claude:${vproj}:b:${boot}`);
+        await sleep(400);
+        const ocmd = tmuxFmt(`${ownerUid}~claude-${vproj}`, '#{pane_start_command}');
+        ok(alive(`${ownerUid}~claude-${vproj}`) && !ocmd.includes('--sees') && ocmd.includes(` --cwd ${join(DIR, 'ws', vproj)} --env `),
+           `...and a helper from before the setting is handed none and still starts the session (${ocmd.slice(ocmd.indexOf('--cwd'), ocmd.indexOf('--cwd') + 100)})`);
+        tmuxKill(`${ownerUid}~claude-${vproj}`);
+        writeFileSync(helper, helperSrc(false), { mode: 0o755 });
+        setSees([]);
       }
       writeFileSync(helper, helperSrc(true), { mode: 0o755 });
       tmuxKill(`${ownerUid}~shell-${vproj}`);

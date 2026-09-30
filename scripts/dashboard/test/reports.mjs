@@ -4,7 +4,7 @@
 // the report waits on the controller, is read in the diagnostics behind their
 // gate, and is filed into a tracker or closed from there; the session that
 // made it reads what became of it. No browser: it is an API and a verb.
-import { launch, newPage, ready, ok, done, URL, DIR } from './lib.mjs';
+import { launch, newPage, ready, ok, done, saveDialog, URL, DIR } from './lib.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
@@ -94,8 +94,9 @@ const bugsNow = () => (JSON.parse(readFileSync(`${DIR}/state/bugs.json`, 'utf8')
 const had = bugsNow();
 const own = bb(['bug', 'add', 'bb devapp status says the env is the operator\'s'],
                { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
-ok(own.status !== 0 && /not filed: this names BuilderBot.*bb report.*add --here/.test(own.stderr) && bugsNow() === had,
-   `a bug that names BuilderBot, filed in another project, is not filed there but sent to bb report (${own.stderr.trim().slice(0, 110)})`);
+ok(own.status !== 0 && /^\[builderbot\] not filed yet\. Send it with bb report .*or add --here/.test(own.stderr)
+   && own.stderr.indexOf('bb report') < 60 && own.stderr.indexOf('--here') < 200 && bugsNow() === had,
+   `a bug that names BuilderBot, filed in another project, is not filed there, and both ways on are in the first of what it says (${own.stderr.trim().slice(0, 110)})`);
 const colon = bb(['bug', 'add', 'bb: tests preflight runs every suite', '--sev', 'high'],
                  { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(colon.status !== 0 && bugsNow() === had,
@@ -118,7 +119,7 @@ ok(/setting Report BuilderBot bugs is deny/.test(quiet) && /`bb bug add --here` 
    '...and its sessions are told what deny means: the verb refuses, and --here files it in this tracker');
 const noNudge = bb(['bug', 'add', 'bb devapp status is wrong about the env'],
                    { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
-ok(noNudge.status === 0 && !/this names BuilderBot/.test(noNudge.stderr),
+ok(noNudge.status === 0 && !/not filed yet/.test(noNudge.stderr),
    '...and a bug naming BuilderBot filed there is not pointed at it');
 ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.report === 'deny',
    '...stored on the project as the one word that differs from the default');
@@ -134,7 +135,7 @@ await page.waitForSelector('#rnmodal:not([hidden]) #rnGateReport', { timeout: 15
 ok(await page.$eval('#rnGateReport', e => e.value === 'auto' && [...e.options].map(o => o.value).join() === 'auto,deny'),
    "the project's settings carry it under Claude may, on auto, with nothing to ask");
 await page.selectOption('#rnGateReport', 'deny');
-await page.click('#rnGo');
+await saveDialog(page);
 await page.waitForFunction(async () => {
   const j = await (await fetch('/api/status')).json();
   return (j.projects || []).find(p => p.name === 'alpha')?.prefs?.report === 'deny';
@@ -165,6 +166,15 @@ ok(page.dialogs.length === 1 && new RegExp(`Delete all ${before.all} reports`).t
    `Clear reports in Controller settings asks first, naming how many and how many are open (${page.dialogs[0]})`);
 const next = await call('/api/reports', { action: 'add', text: 'the first one after a clear' }, ALPHA);
 ok(next.id > lastId, `...clears every one, and the next report does not take a number already used (#${next.id} after #${lastId})`);
+// ...and the session whose reports went is told so, with how many and
+// when, rather than that it never made any (B343).
+const afterClear = await call('/api/reports', { action: 'mine' }, ALPHA);
+ok(afterClear.cleared && afterClear.cleared.n >= 1 && afterClear.cleared.at > 0,
+   `mine says how many of the project's reports the operator cleared and when (${JSON.stringify(afterClear.cleared)})`);
+const clearedSaid = execFileSync('bash', [`${REPO}/scripts/bb`, 'report'], { encoding: 'utf8',
+  env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token('alpha'), BB_PROJECT: 'alpha', XDG_CACHE_HOME: `${DIR}/cache-reports` } });
+ok(/earlier reports? from alpha (was|were) cleared by the operator on .* \(Controller settings\)/.test(clearedSaid) && !/no reports from alpha/.test(clearedSaid),
+   `bb report says it too (${clearedSaid.split('\n')[0].slice(0, 100)})`);
 page.dialogs.length = 0;
 await call('/api/reports', { action: 'clear' });
 await page.click('#setReportsClear');

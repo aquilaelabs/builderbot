@@ -1,4 +1,4 @@
--- 0004: what BuilderBot installs from its catalogue is a toolchain (the
+-- 0004: what BuilderBot installs from its catalog is a toolchain (the
 -- operator's word, 19 Sep), in the store, the job and the census alike.
 --
 -- A job of that kind is typed toolchain; a node's desired stores and the

@@ -1,11 +1,11 @@
-// The app's look, in one place: the dashboard's own tokens (index.html's
-// :root, the default scheme) and the few shapes every screen is built from.
-// A pill, a tag, a panel with a hairline and an optional colour bar, a
+// The app's look, in one place: the few shapes every screen is built from,
+// painted in the dashboard's own tokens (Theme.kt, the scheme in front).
+// A pill, a tag, a panel with a hairline and an optional color bar, a
 // section head in the card-title voice, and the robot mark. The dashboard's
 // design language (docs/design-language.md) is the reference: a filled
 // accent surface is the deep accent with ink on it, a hairline is the line
 // token, corners are 8dp for a surface and 6dp for a control, and severity
-// colours agree with the site: high red, medium amber, low blue.
+// colors agree with the site: high red, medium amber, low blue.
 package dev.builderbot.app.ui
 
 import androidx.compose.foundation.Canvas
@@ -38,25 +38,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // ---- the tokens ---------------------------------------------------------------
-val Bg = Color(0xFF1A1F26)
-val Panel = Color(0xFF212730)
-val Sunk = Color(0xFF161B22)
-val Line = Color(0xFF4D5C6F)
-val Ink = Color(0xFFE6EDF3)
-val Dim = Color(0xFF9FA9B4)
-val Accent = Color(0xFF3FB950)        // the site's green
-val AccentDeep = Color(0xFF1F6F36)    // what a filled accent surface is
-val Warn = Color(0xFFD29922)
-val Bad = Color(0xFFF8524A)
-val Note = Color(0xFF58A6FF)
-val Ok = Accent
+// In Theme.kt, read from the scheme in front: the app wears the dashboard's
+// thirteen schemes now, not the default one alone.
 
-// A project's colour, the eight the dashboard offers, by the name it stores.
+// A project's color, the eight the dashboard offers, by the name it stores.
 private val TONES = mapOf(
     "red" to Color(0xFFE5534B), "orange" to Color(0xFFE8883A), "yellow" to Color(0xFFD4B33A),
     "green" to Color(0xFF57AB5A), "teal" to Color(0xFF39B5B0), "blue" to Color(0xFF539BF5),
     "violet" to Color(0xFFA371F7), "pink" to Color(0xFFE0669E))
 fun projectTone(name: String): Color? = TONES[name]
+val TONE_NAMES: List<String> get() = TONES.keys.toList()
 
 // Severity and level agree with the site: error and high are red, warning
 // and medium amber, note and low blue.
@@ -64,7 +55,7 @@ fun severityColor(s: String): Color = when (s) { "high" -> Bad; "medium" -> Warn
 
 // ---- the pieces ---------------------------------------------------------------
 
-/** A pill: the site's badge, a hairline box in the tag voice. The colour is
+/** A pill: the site's badge, a hairline box in the tag voice. The color is
  *  the text and the edge; the ground stays the surface's. */
 @Composable
 fun Pill(text: String, color: Color = Dim, modifier: Modifier = Modifier) {
@@ -86,7 +77,7 @@ fun Tag(text: String, color: Color = Ink, modifier: Modifier = Modifier) {
 }
 
 /** A panel: the site's card. A hairline in the line token on the panel
- *  colour, 8dp corners, and, where the thing has a colour of its own (a
+ *  color, 8dp corners, and, where the thing has a color of its own (a
  *  project, a kind of ask), a 3dp bar down the left, the way the notebook
  *  tab wears it. */
 @Composable
@@ -100,6 +91,29 @@ fun Panel(modifier: Modifier = Modifier, bar: Color? = null, content: @Composabl
         if (bar != null) Box(Modifier.width(3.dp).fillMaxHeight().background(bar, RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)))
         Column(Modifier.padding(12.dp)) { content() }
     }
+}
+
+/** A quiet button: words alone, in the scheme's accent. Material paints
+ *  one in its primary, which here is the deep accent a filled surface
+ *  wears, and that on the page's ground is too dark to read; so every
+ *  screen takes its buttons from here. */
+@Composable
+fun TextButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
+               content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    androidx.compose.material3.TextButton(onClick = onClick, modifier = modifier, enabled = enabled,
+        colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = Accent),
+        content = content)
+}
+
+/** A control: the site's button, ink on the ground with a hairline. */
+@Composable
+fun OutlinedButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
+                   content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    androidx.compose.material3.OutlinedButton(onClick = onClick, modifier = modifier, enabled = enabled,
+        shape = RoundedCornerShape(6.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Line),
+        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = Ink),
+        content = content)
 }
 
 /** A section head, in the card title's voice: small, uppercase, spaced. */

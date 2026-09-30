@@ -12,7 +12,7 @@
 #
 #
 # Never fatal. A daemon that is down is a feature that is off, not a container
-# that should refuse to start: the dev-instance controls grey out and say why,
+# that should refuse to start: the dev-instance controls gray out and say why,
 # and everything else in here works without it.
 #
 set -euo pipefail

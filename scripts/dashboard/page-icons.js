@@ -14,7 +14,7 @@
 // The project row's own button. It stopped being a pencil when the dialog
 // stopped being only a rename: it holds the credential switch and what Claude
 // runs on, and a pencil promises editing one thing. Drawn stroked at the same
-// 1.4 weight as its neighbours: an eight-toothed ring and a hub, which is the
+// 1.4 weight as its neighbors: an eight-toothed ring and a hub, which is the
 // only gear shape that stays legible at 16px.
 // The rest of a row's controls, folded on a phone. An icon rather than a
 // typed ellipsis: every other control in that cluster is one, and a cluster
@@ -33,7 +33,7 @@ const GEAR = `<svg viewBox="0 0 16 16" aria-hidden="true">
 
 // A padlock, for a project the operator keeps and runs themselves. Only the
 // shackle differs between the two states (the body stays put), so which one
-// a row is wearing reads at a glance without comparing it to its neighbours.
+// a row is wearing reads at a glance without comparing it to its neighbors.
 // A padlock with a wide shackle and a keyhole: at 16px the old narrow
 // shackle over a low body read as another list icon beside the notebook's
 // ticks (R58), and the keyhole is the one mark no list has.

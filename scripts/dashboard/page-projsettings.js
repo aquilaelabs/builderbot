@@ -1,5 +1,5 @@
 // A project's settings dialog: its name, its nodes, the model and effort
-// every session starts on, its colour, the dials of what Claude may do
+// every session starts on, its color, the dials of what Claude may do
 // there, the git credential, and the submit that applies each change in
 // turn. Unlinking and deleting a project start here too.
 //
@@ -10,7 +10,7 @@
 
 "use strict";
 
-// ---- a project's settings: model, effort, colour and the dials ----------
+// ---- a project's settings: model, effort, color and the dials ----------
 
 // The Claude card: the standing model/effort every send applies. Options are
 // the same tables the send box used to carry; "Claude's default" is the empty
@@ -62,16 +62,16 @@ function rnLoadModelNow(name){
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
-                 node: "", nodes: "", reads: "", build: "", test: "", outputs: "",
+                 node: "", nodes: "", reads: "", sees: "", build: "", test: "", outputs: "",
                  capture_days: "7", gate: "", color: ""};
-// The colours a project can be, by the names prefs.py stores (COLORS there)
+// The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
 const PROJECT_COLORS = [["", ""], ["red", "#e5534b"], ["orange", "#e8883a"],
                         ["yellow", "#d4b33a"], ["green", "#57ab5a"], ["teal", "#39b5b0"],
                         ["blue", "#539bf5"], ["violet", "#a371f7"], ["pink", "#e0669e"]];
 const colorTone = name => (PROJECT_COLORS.find(([n]) => n === name) || [])[1] || "";
-// The class and variable an element wears for a project's colour, or
+// The class and variable an element wears for a project's color, or
 // nothing for a project with none.
 const colorAttrs = name => {
   const tone = colorTone(name);
@@ -79,7 +79,7 @@ const colorAttrs = name => {
 };
 const projectColor = name =>
   (state?.projects || []).find(x => x.name === name)?.prefs?.color || "";
-// The project a tab is about, for its colour: a notebook's, or the project
+// The project a tab is about, for its color: a notebook's, or the project
 // whose Claude session a terminal tab holds. A plain shell has none.
 const tabProject = t => t.kind === "notebook" ? t.arg
   : t.kind === "term" && String(t.arg).startsWith("claude:") ? t.arg.slice(7).split(":")[0] : "";
@@ -105,13 +105,14 @@ function rnFillPrefs(p){
                node: p?.prefs?.node || "",
                nodes: (p?.prefs?.nodes || []).join(","),
                reads: (p?.prefs?.reads || []).join(","),
+               sees: (p?.prefs?.sees || []).join(", "),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
-               brief: p?.prefs?.brief || "full", reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
+               reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
                color: p?.prefs?.color || ""};
@@ -123,6 +124,7 @@ function rnFillPrefs(p){
   $("rnGitHint").textContent = rnPrefWas.git_name || rnPrefWas.git_email
     ? "Your commits here use these instead of your Profile."
     : "Empty uses your Profile. Set these to commit here under a different name.";
+  $("rnSees").value = rnPrefWas.sees;
   rnFillNode();
   rnFillPrefsRest(p);
   rnFillReads();
@@ -149,6 +151,9 @@ function rnFillNode(){
     // Hidden with the rest of the project's own settings when this dialog was
     // opened by the chain, which asks about the remote and nothing else.
     wrap.hidden = rnMode === "git" || !pick.length;
+    // The places a session is shown are places on a node, so the field is
+    // there when a node is.
+    $("rnSeesField").hidden = wrap.hidden;
     // What each node carries, on its own option: the node does everything
     // for this project, so the only question left is what is installed on it.
     const tools = n => Object.keys(n.reported?.toolchains || {});
@@ -204,7 +209,6 @@ function rnFillPrefsRest(p){
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.tests_in || "node";
   $("rnTestChange").value = p?.prefs?.test_change || "wait";
-  $("rnBrief").value = p?.prefs?.brief || "full";
   $("rnReply").value = p?.yours?.reply || "";
   $("rnAsks").value = p?.yours?.asks || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
@@ -268,10 +272,10 @@ function rnDrawPrefs(){
     ? "Locked; this project is yours to run, so no session starts here."
     : running
       ? (changed
-          ? "A session is running here. Saving restarts it onto this: the "
-            + "conversation is resumed, but anything mid-turn is lost."
-          : "Applies when a session starts; changing it restarts the one running "
-            + "here, on the same conversation." + dflt)
+          ? "A session is running here. Save asks whether to end it now (the "
+            + "conversation resumes from the Claude button) or keep it running."
+          : "Applies when a session starts; changing it asks about the one running "
+            + "here." + dflt)
       : "Applied the next time Claude starts here, and kept until you change it." + dflt;
   $("rnPrefHint").classList.toggle("bad", !shut && running && changed);
 }
@@ -311,6 +315,16 @@ async function unlinkProject(name){
 // rather than hides: the alternative is a project whose roadmap silently
 // stayed behind under a name nothing points at any more.
 let rnFor = null;                        // the project the dialog is open on
+// The answer to the question at the foot (rnRestartAsk): "end" or "keep"
+// once one of its two buttons was pressed, null while it has not been asked.
+let rnAsked = null;
+
+// The question put away: on open, on close, and on a save that failed.
+function rnAskReset(){
+  rnAsked = null;
+  $("rnRestartAsk").hidden = true;
+  $("rnKeep").hidden = true;
+}
 let rnMode = "all";                      // "all" from the gear, "git" from the chain
 
 function renameProject(name, mode = "all"){
@@ -382,6 +396,7 @@ function renameProject(name, mode = "all"){
   if (!git && state?.admin) rnSessionsLoad(name);
   $("rnGo").disabled = false;
   $("rnGo").textContent = "Save";
+  rnAskReset();
   // Nothing to save is nothing to press: with no credential to set, Cancel is
   // the only honest way out of this door, but Unlink still is one.
   $("rnGo").hidden = !$("rnGitNone").hidden;
@@ -513,7 +528,7 @@ function rnShow(){
     : "That leaves nothing to name a directory after";
 }
 
-function closeRename(){ $("rnmodal").hidden = true; rnFor = null; }
+function closeRename(){ $("rnmodal").hidden = true; rnFor = null; rnAskReset(); }
 
 async function rnSubmit(){
   const name = rnFor, to = $("rnName").value, token = $("rnToken").value.trim();
@@ -528,6 +543,7 @@ async function rnSubmit(){
   const node = $("rnNode").value;
   const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
   const reads = [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value);
+  const sees = $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean);
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const capture_days = $("rnCaptureDays").value.trim();
@@ -536,24 +552,39 @@ async function rnSubmit(){
   // With the node's group: nothing here restarts a session.
   const tests_in = $("rnDevTest").value || "node";
   const test_change = $("rnTestChange").value || "wait";
-  const brief = $("rnBrief").value || "full", reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
+  const reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
-    || reads.join(",") !== rnPrefWas.reads
+    || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
-    || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change || brief !== rnPrefWas.brief
+    || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change
     || devbuild !== rnPrefWas.devbuild
     || report !== rnPrefWas.report;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
   // project's group: the same request, a different store on the server.
-  // Only the launch flags are worth interrupting a session for: the model and
-  // the effort are read when claude starts, the author is read per commit.
-  const launchChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
-  const prefChanged = launchChanged || reply !== rnPrefWas.reply || asks !== rnPrefWas.asks
+  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort
+    || reply !== rnPrefWas.reply || asks !== rnPrefWas.asks
     || git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email;
+  // What a running session takes only when it starts, named as the dialog
+  // labels it: the launch flags (model, effort), the author it commits as
+  // and the briefing it is handed (replies, questions, how a test run
+  // meets a change, how long captures are kept), the node it runs on, and
+  // the view it runs in (reads, sees). Everything else here is read when
+  // it is used (the build and test commands, the dials, where tests run),
+  // so a change to those reaches a running session without a restart.
+  const takesAtStart = [
+    [model !== rnPrefWas.model, "Model"], [effort !== rnPrefWas.effort, "Effort"],
+    [reply !== rnPrefWas.reply, "Replies"], [asks !== rnPrefWas.asks, "Questions"],
+    [git_name !== rnPrefWas.git_name || git_email !== rnPrefWas.git_email, "Commit name and email"],
+    [node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes, "Node"],
+    [reads.join(",") !== rnPrefWas.reads, "Reads"], [sees.join(", ") !== rnPrefWas.sees, "Also sees"],
+    [test_change !== rnPrefWas.test_change, "During a test run, a change asked for"],
+    [capture_days !== rnPrefWas.capture_days, "Captures kept"],
+  ].filter(([changed]) => changed).map(([, label]) => label);
+  const launchChanged = takesAtStart.length > 0;
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
@@ -576,12 +607,22 @@ async function rnSubmit(){
   // landed, and restarting the session by hand afterwards changed nothing,
   // because there was nothing to read. Saving and interrupting are two
   // decisions and only one of them was being asked about.
-  const restartNow = !(launchChanged && running)
-    ? false
-    : confirm(`End the Claude session in ${name} now?\n\n`
-        + `OK ends it; press Claude to start it again on the new setting, with `
-        + `the conversation resumed. Cancel saves the setting and leaves it `
-        + `running.`);
+  //
+  // Asked in the dialog itself, naming the changes, with the two answers
+  // in the foot (the operator, 29 Sep): the first press of Save shows the
+  // question and saves nothing; the press that answers it saves.
+  let restartNow = false;
+  if (launchChanged && running){
+    if (rnAsked === null){
+      $("rnRestartWhat").textContent = `Changed: ${takesAtStart.join(", ")}.`;
+      $("rnRestartAsk").hidden = false;
+      $("rnKeep").hidden = false;
+      $("rnGo").textContent = "Save and end it";
+      $("rnRestartAsk").scrollIntoView({block: "nearest"});
+      return;
+    }
+    restartNow = rnAsked === "end";
+  }
   // Only what actually changed goes to the server. A rename request is
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
@@ -589,14 +630,14 @@ async function rnSubmit(){
   const needRename = renaming || !!token || !!auth || clear_token;
   $("rnGo").disabled = true; $("rnGo").textContent = "Saving…";
   const stop = m => { $("rnGo").disabled = false; $("rnGo").textContent = "Save";
-                      return fail(m); };
+                      rnAskReset(); return fail(m); };
   try{
     if (prefChanged || nodeChanged){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
-                              node, nodes, reads, build, test, gate, color,
-                              tests_in, test_change, brief, reply, asks, devbuild, report,
+                              node, nodes, reads, sees, build, test, gate, color,
+                              tests_in, test_change, reply, asks, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
                               // The node binding never restarts a session;
@@ -607,7 +648,7 @@ async function rnSubmit(){
       // Said out loud when it did not happen, and which of the two reasons it
       // is: a session quietly left on the old model is exactly the confusion
       // this whole thing exists to remove, and a session deliberately left
-      // running is not a fault to colour red.
+      // running is not a fault to color red.
       if (running && launchChanged && !j.ended)
         notify(restartNow
                  ? `${name}: saved, but the session was not ended: `

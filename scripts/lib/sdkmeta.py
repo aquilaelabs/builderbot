@@ -145,7 +145,7 @@ def for_platform(value):
 # A check asks about thirteen toolchains in thirteen separate processes, and
 # several of them want the same file: sdkmanager's package index answers for
 # the emulator, the NDK and CMake alike, which is four hundred kilobytes
-# fetched three times over. Anything upstream publishes as a catalogue changes
+# fetched three times over. Anything upstream publishes as a catalog changes
 # on the order of days, so a few minutes of reuse costs nothing in accuracy
 # and takes a check from 2.7MB to about half that.
 #
@@ -181,7 +181,7 @@ def _cached(key, produce):
 
 def _web(url):
     """`url`, or a ValueError for any scheme but http(s). Every URL here
-    comes from the shipped catalogue or from a release API answering for one,
+    comes from the shipped catalog or from a release API answering for one,
     so this never fires in practice; it is what makes that a fact urlopen can
     rely on rather than one a reader has to trace, since urlopen would as
     happily open file:// and hand back a file on this machine."""

@@ -99,11 +99,17 @@ map unused` what nothing calls or passes by name. R76: a refactor knows
 its regression net before it starts.
 
 `bb tests preflight` is what a session runs before a push: the files the
-branch changed, the suites the code map says reach them (a page function
-they call bare, an id or class they name, an API path a changed python
-module answers through the server's route table, a file named outright),
-and the lint, voice and design checks, run together; `--dry` prints the
-plan. R75's third step, so the suites are never picked by hand.
+branch changed, the suites that reach them, and the lint, voice and design
+checks, run together; `--dry` prints the plan. With a covered run on
+record the suites are the ones that reached the functions the changed
+lines fall in, and the ones naming an id or class those lines draw
+(`bb map affected`), which is why a change to one handler is a
+five-minute gate and not the whole suite; a changed function no covered
+run has seen falls back to what the code map says of the file (a page
+function a suite calls bare, an id or class it names, an API path a
+changed python module answers through the server's route table, a file
+named outright), and in `server.py` to every suite. A whole run refreshes
+the covered run. R75's third step, so the suites are never picked by hand.
 `tools/no-net-growth.sh` is a measurement beside it, not a gate: the four
 largest files against the ceilings in `tools/ratchet.txt`, which a change
 that shrinks one lowers with `--tighten` (roadmap R77).
@@ -220,7 +226,7 @@ checked before it is trusted.
 **No size is written down anywhere.** A size typed into a file is wrong the
 next time upstream ships. A row shows the footprint once the toolchain is
 installed (measured, and remembered after it is removed) and before that
-what an install would *download*, which is a different number and is labelled
+what an install would *download*, which is a different number and is labeled
 as one: Swift arrives as a gigabyte and unpacks to three.
 
 Upstream is asked for that download figure rather than guessed at, three ways,
@@ -597,17 +603,17 @@ arrangement and it survives restarts and image updates. The **▤** button in
 the top bar opens the appearance menu, whose first item puts it all back:
 default order (Doctor on top) with every card expanded.
 
-**Under it, twelve colour schemes**, all dark, because this page is read in a
+**Under it, twelve color schemes**, all dark, because this page is read in a
 dim room beside a terminal and a light one would be a different design rather
-than a recolour of this one. A scheme is nine custom properties: every rule in
+than a recolor of this one. A scheme is nine custom properties: every rule in
 the stylesheet draws from them, and the button and accent families are mixed
 from the scheme's own panel and accent (`color-mix`, with flat fallbacks), so
-a recolour reaches the tabs, the primaries and the active states rather than
+a recolor reaches the tabs, the primaries and the active states rather than
 stopping at the background. Each swatch is defined for `.sw[data-theme=…]` as
 well as for the page, which means the preview *is* the palette rather than a
 second copy of it that can drift.
 
-**Nostromo** is the one that is more than a recolour: amber phosphor on a
+**Nostromo** is the one that is more than a recolor: amber phosphor on a
 green-black hull, with a hazard decal along the header's bottom edge, a stencil
 tick on each card title, faint scanlines on the panels and a vignette on the
 page. All of it drawn: gradients and one pseudo-element, no image files. That
@@ -617,7 +623,7 @@ Nothing in it moves the layout, so switching schemes never nudges the page.
 
 The choice is kept in the browser (`localStorage`, `bb.theme`) rather than on
 the server beside the card order; that describes the work and should follow
-you between machines; which colours are comfortable is about the room you are
+you between machines; which colors are comfortable is about the room you are
 sitting in, and a phone in the dark may reasonably differ from a desktop at
 noon. It is also applied from a block in `<head>`, before the first paint,
 which a value fetched from the server could not be without a flash. The sidebar is what the *box* is doing; the command lists and
@@ -798,7 +804,7 @@ lives in its body. The cards:
   which name: they live under `bb tool NAME` (`bb tool graphics`, `bb tool
   diagrams`), one name per recipe, so the row says what installing it adds,
   two toolchains may both have a `render`, and none can shadow a verb of
-  bb's own; the suite holds the catalogue to the script. Each row also names the system packages its tool puts
+  bb's own; the suite holds the catalog to the script. Each row also names the system packages its tool puts
   on the picked machine, in that machine's package manager's names, and for
   one already installed which of them are missing there. They install with
   the tool and only then; uninstalling a tool leaves them, since another may
@@ -940,7 +946,7 @@ instances stay, since their compose file and env are this side's.
 **With no daemon reachable, the controls that would drive one are disabled**,
 each carrying the reason as its tooltip, and the manager tab says the same
 thing in words at the top: a tooltip is not reachable on a phone, and *"why is
-everything greyed out"* should be answered by looking. That is the node
+everything grayed out"* should be answered by looking. That is the node
 unset, or a sandbox VM this container
 cannot reach; `available()` in `devapp.py` already distinguishes them, and the
 answer rides the status poll memoised, because asking it properly is a
@@ -956,7 +962,7 @@ can run it. And the manager tab still opens, because disabling the way to
 instance *is*: its name, its project, what it was last built from, what its
 env still wants: lives on this side of the wire and needs no daemon; only
 whether it is *running* is the daemon's to know. So a manager opened against a
-VM that is off lists everything on record, greyed, each row saying **state
+VM that is off lists everything on record, grayed, each row saying **state
 unknown** rather than reporting one nobody asked for: an unreachable daemon is
 not evidence that anything stopped. It is also fast, because a daemon known to
 be off is asked nothing: `docker ps` over ssh to a machine that is not there
@@ -966,7 +972,7 @@ sits until its timeout, and that used to be the whole cost of finding out.
 with the `docker-host` capability are listed online or not; picking one
 switches the whole view to that node's daemon: one tab, re-rendered, never a
 tab per node. Each node's last-known container list is kept, so switching to
-an offline node paints instantly in the greyed state above rather than
+an offline node paints instantly in the grayed state above rather than
 spinning at a machine that will not answer, and the reason is that node's
 own. **New container** and **Send to Docker manager** gain the same select,
 defaulting to the project's own node from its settings dialog (a per-project
@@ -1146,11 +1152,11 @@ first use and refuses a different one after.
 
 Two nodes may point `toolchains` at the same NFS export deliberately, and then
 they are one store, and what is installed on either is installed for both: a
-node's toolchains are read from the store at every census, so its neighbour's
+node's toolchains are read from the store at every census, so its neighbor's
 install shows up within the census interval. What that arrangement needs is a
 lock, and it has one: an install is refused while a toolchain job is running on
 any node sharing that store, naming which, and the Toolchains tab says the store
-is shared before you press. Sharing is recognised by the mount's source, not
+is shared before you press. Sharing is recognized by the mount's source, not
 by the path, since every node's default path is the same string.
 
 **Four stores per node**, each a directory of its own: `data` (job
@@ -1230,6 +1236,15 @@ Read allowed, Edit denied. The briefing names the projects a session reads,
 and the shipped "stay in project" rule carries the exception. Set by the
 operator in the dialog, never by a session.
 
+**Also sees.** Beside them, a project's settings name the places on its
+node a session is shown: a share or a disk mounted there that the project
+works with, by its path (`/mnt/media`). A session's view holds no other
+(see the session's view, below), so this is how a project is given one. Set
+by whoever may set the project's node, never by a session; a path that is
+the system's own, the projects share, a home or the agent's is refused, and
+a session started after the save sees the place. A path one of the
+project's nodes does not have is passed over there.
+
 **Compose runs on the node, not from here.** A dev instance's Up, Down,
 Rebuild and Remove are executed by the agent with the node's own docker: the
 dashboard sends the plan and the compose file, the node runs it. So an
@@ -1259,7 +1274,7 @@ it is not needed to *be* a node (the agent is Python, and the provisioner
 installs that), but a project built with npm needs it, and so does anything
 driving a browser through Playwright, which declares it.
 
-**Two machines may share one toolchain store, and BuilderBot recognises the
+**Two machines may share one toolchain store, and BuilderBot recognizes the
 pair.** An NFS export mounted by the controller and by a node is one
 directory, and installing into it from both at once is version skew nobody
 can debug, so a toolchain job waits for any other on a machine that shares
@@ -1399,7 +1414,11 @@ Code writes as the session goes (transcripts.py reads the account's
 stamped in the browser's own zone, the one the page shows times in, so the
 log and the page agree; a line headed System is what BuilderBot or Claude
 Code put in front of Claude. Claude's private reasoning is not conversation
-and is left out, and another account's file is simply not found. The commit identity is per account rather than per project, and
+and is left out, and another account's file is simply not found. A session
+reads the same: `bb transcripts` lists the account's own conversations on
+its project and `bb transcripts show ID` prints one, and with `bb -p NAME`
+the same on a project its own reads, whose transcript files of the account's
+are in the session's view read-only as well; nobody else's are anywhere. The commit identity is per account rather than per project, and
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured, so two people on one
 project are two authors. The **Administration** card on the sidebar, shown
@@ -1418,7 +1437,7 @@ methods, Debian's and RHEL's families for the provisioner), dev is the rest,
 written to each product's documented shape and never run. Off, only alpha
 is in the pickers and a dev entry asked for by name is refused with the
 sentence that names the switch; on, dev appears tagged *(dev)* and the
-header says *dev*, so the two dashboards are never confused. Each catalogue
+header says *dev*, so the two dashboards are never confused. Each catalog
 entry carries the evidence that vetted it (`forges.py`, `vmtemplate.py`,
 the provisioner's family list), and an entry crosses over when a lab suite
 or a real run proves it. At its foot, **Reset BuilderBot** starts the
@@ -1598,26 +1617,55 @@ of its own, one per project, and as many open at once as you have projects;
 each is its own instance, so what is half-typed in one survives working in
 another, and the button lights green while that project's is open. Its tab
 strip: **Briefing** (the rules, and what Claude remembers here), **Design**
-(what the project looks like, in four folds: the pages, laid out as
-labelled blocks on a phone or desktop frame, each named for what it is for
+(what the project looks like, in two folds: the pages, laid out as
+labeled blocks on a phone or desktop frame, each named for what it is for
 and the platform it is built for, a web app or an Android, iOS, Linux,
-macOS or Windows app, since one project can be several; the design
-language, type and the exact families, shape, space, motion and what it
-governs; the themes, each a named set of colours, dark or light, that a
-preset fills and you add to or cut, the app starting on the first; and
-your own design rules; a theme and a page each carry rules of their own
-as well, for what holds for that theme or that page alone (the Nostromo
-scheme's textures, say), which reach a session named under their holder,
-`nostromo/hull`; the folds that hold a list show one of it at a
-time, chosen on a pulldown at the top; a project designed before it is
-built is built to the design: its briefing says the notebook holds one,
-what is in it, and that on a tree with no code yet the design, the rules
-and the roadmap are the specification; every edit is
-staged behind Save, the prompt under each is the server's words to copy
-into a session when you want it applied, and nothing on the view reaches
-into one: a session meets the design by itself, through the rules its
-briefing names and `bb design show`; a session asked to put a design into
-the notebook writes the same record with `bb design save`, and Write the
+macOS or Windows app, since one project can be several; and the themes,
+each a named set of colors, dark or light, that a preset fills and you add
+to or cut, the app starting on the first, and each carrying the design
+language of its own: type and the exact families, shape, space, motion,
+and its rules. The first theme is the default, and its choices and rules
+are the design's: said bare, as the design's own, in the briefing and the
+file; another theme's are said under it where they differ, and its rules
+reach a session named under the theme, `nostromo/hull`. What the language
+governs sits at the top of the themes. A page carries rules of its own as
+well, for what holds for that page alone, named under the page. Every
+rules list reads as the Briefing's does, a folded row a rule, inside the
+entry it holds for: a theme's under its choices, a page's under its
+board. A new theme starts blank, from a preset or as a copy of a theme
+here, choices and rules included, and a new page from a template or as a
+copy of a page here. The pages and the themes show one at a time, chosen
+on a pulldown; a frame is
+one screen and a page may be longer than one, up to 240 rows, which
+scrolls, and a page keeps where its blocks sit on each frame it has been
+laid out for, which `bb design show` and the file say after the frame it is
+on; blocks may overlap, and the blocks' order is the drawing order, a
+later one over an earlier one, which a layers list beside the board shows
+top first, a row selecting a block another covers and its arrows moving it
+up or down the stack; a block may be set inside another (a card in a list,
+a form in a card), which it then stays within as either is moved or sized,
+on every frame, and the board takes the width the tab gives it, with
+Pages, Design language and Themes folded on a new tab and Add page inside
+Pages; a page may have a short key of its own, which its rules are addressed under
+(`now/live`) in place of its whole name; each of the language's four
+choices may be left not chosen, or be custom, which hands it to the
+design's rules and can name the one that says it, whose text a session
+then reads in the choice's place; the words a session reads
+are the record's own and nothing is added to them; a new project's
+design is empty, no theme and no page, and a project built that way is
+built as a session sees fit, the session then putting the look it arrived
+at into the design so the next one finds it; a project designed before it
+is built is built to the design: its briefing says the notebook holds one,
+what is in it, that on a tree with no code yet the design, the rules
+and the roadmap are the specification, and that what the design leaves
+open goes back into it, under the project's dial; every edit is
+staged behind Save, nothing on the view is a prompt and nothing on it
+reaches into a session: a session meets the design by itself and piece by
+piece, through the rules its briefing names and `bb design show`, which
+prints the language, one page, one theme or one rule; a session asked to put a design into
+the notebook writes the same record with `bb design save`, which keeps a
+record as it was sent or refuses it whole with everything wrong with it
+listed, never moving a block to fit or dropping a layout; and Write the
 file puts `docs/design-language.md` into the tree for every session to
 read), the
 **Roadmap** (the shared list of design work and ordered plans), **Bugs**,
@@ -1783,7 +1831,8 @@ them alongside the words.
 
 **A group is one goal with an order to it.** Its title is that goal in plain
 words ("make the picker usable on a phone") and the steps under it carry the
-detail. Steps only exist because of one physical constraint: each is a message
+detail; the group folds like a bug's row, its title the heading and a tap on
+it opening every step under it. Steps only exist because of one physical constraint: each is a message
 *you* send by hand, one at a time, waiting on each. So a step is not a task,
 it is a point at which the previous work has to have finished before the next
 can start, and a session that splits work into more steps than that costs you
@@ -1797,7 +1846,7 @@ only if it can see that it arrived. There is no IPC into a session; the only
 door is its terminal, and a session "waiting for input" is either at its prompt
 or holding a permission dialog, which the title cannot tell apart. Answering a
 permission dialog on your behalf, blind, is the worst thing anything here could
-do, so instead of trying to recognise a dialog, it uses the one property every
+do, so instead of trying to recognize a dialog, it uses the one property every
 text box has and no dialog does: **it echoes what you type**. Type the line,
 look at the pane, and press Enter only if there is now one more of it on screen
 than there was. If it did not appear, the line is left in the input box unsent
@@ -1900,7 +1949,7 @@ gets sent twice.
 
 **Model and effort** are not questions in that box and are not applied by it.
 They are the project's own setting, at the bottom of its **settings dialog**
-(the gear on its row, which also gives the project a **colour**: a bar down
+(the gear on its row, which also gives the project a **color**: a bar down
 the left of its row and its notebook tab, so several open notebooks tell
 apart without reading each label), and `bb-tty` passes them as `--model` and `--effort`
 when it starts a session there, so a session that is up is already on them
@@ -1908,7 +1957,7 @@ and a send is only ever the send.
 
 **How much of what a session adds lands on its own** is the last row of the
 same dialog: *Claude may* add to the roadmap, file bugs, add rules and fill
-in build and test, each **auto**, **ask** or **deny**. Auto is today's behaviour: an item, report or
+in build and test, each **auto**, **ask** or **deny**. Auto is today's behavior: an item, report or
 rule a session adds lands at once, marked as its own. Ask holds it instead: the
 session is told "held for approval as R12", the notebook shows a band above
 its tabs with how many changes are waiting (and a count on each tab), the bell
@@ -1923,13 +1972,21 @@ already on a list a session may still tick, note and reword under every
 setting, and the session is told on its next turn what you decided. The
 settled ones are in `bb history` under *waiting*.
 
-**Changing it while a session is running restarts that session**, and the
-dialog says so before you save. The restart is `tmux respawn-pane`, so the
-browser stays attached and the pane simply comes back: the launcher re-reads
-the setting and resumes the newest transcript, which continues the
-conversation on the new model rather than replacing it. Anything mid-turn is
-lost, which is the whole reason it asks. *Leave as is* passes no flag, and
-claude uses its own default.
+**Changing it while a session is running asks about that session.** Some
+settings a session takes only when it starts: the model and effort, the
+author it commits as, the projects it reads and the places it sees, its
+node, and what its briefing says (replies, questions, how a test run meets
+a change, how long captures are kept). Save with one of those changed while
+your session is running and the dialog names the changes and puts two
+answers in the foot: *Save and end it*, which ends the session so the next
+press of Claude starts it on the new setting with the conversation resumed,
+or *Save, keep it running*, which saves and leaves the session on what it
+started with until you end it yourself. The setting lands either way;
+only the interruption is asked about. Anything mid-turn is lost when it is
+ended, which is the whole reason it asks. Everything else in the dialog
+(the build and test commands, the dials, where tests run) is read when it
+is used, so those save without a question. *Leave as is* passes no flag,
+and claude uses its own default.
 
 A group's own arrow **stands for its next step**: picking either lights both,
 because they are one choice. A crossed-off line cannot be sent at all; put it
@@ -2020,7 +2077,7 @@ rest of this is careful about.
 **Artifacts** is the fifth view: what the project has built, listed from its
 `dist/` directory, and the convention is the feature. Build systems scatter
 their outputs (gradle five directories deep, cargo into `target/`), and a tab
-that went looking for all of those would be a catalogue of build systems that
+that went looking for all of those would be a catalog of build systems that
 is wrong the week a new one arrives. So the deal is one word long: **what
 ships goes in `dist/`**, a session that builds something copies it there, and
 the tab lists `dist/` and nothing else. An empty tab on a project that builds
@@ -2240,7 +2297,7 @@ free of error-level issues; a locked one still counts: are set aside rather
 than shown as "unattributed". The label is reserved for paths that genuinely
 place nowhere, which is the case worth a look.
 
-That rule is a subtraction, and deliberately so: rather than recognising each
+That rule is a subtraction, and deliberately so: rather than recognizing each
 kind of thing that is not a project, findings attribute only to the projects
 worth reading them for, and everything else in the share falls out together.
 It matters because of how the toolchain store is mapped here, beside the projects
@@ -2383,31 +2440,42 @@ is read on Thursday without anybody remembering to mention it. Items a session
 added are marked, so you can see what it put there. It is given as context
 rather than instructions: a session works an item when you ask, or when it is
 plainly part of what you asked, and adds one when it notices something out of
-scope for what it is on. The block travels to the session in a file rather than
-on tmux's command line, which takes at most 16KB and answers a longer one with
-`command too long` and nothing else: a full notebook made every Claude session
-on that project unstartable, and the pane filled with that line as the terminal
-reconnected into it. Past 100KB the block is cut at an item boundary and says
-so, in the prompt and in the pane: one argument cannot exceed the kernel's
-131072 bytes, and a list that big has outgrown being read at the start of every
-conversation anyway.
+scope for what it is on. A step that is done is counted and not printed: the
+plan's past is a `bb roadmap show` away. The block travels to the session in a
+file rather than on tmux's command line, which takes at most 16KB and answers a
+longer one with `command too long` and nothing else.
+
+**What is kept and what a session is sent are two things.** A project only
+grows, and every conversation pays for the block. So the notebook keeps what
+there is (two hundred open roadmap items, the parked ones not counted; two
+hundred open bugs; forty standing rules and two hundred named ones), and the
+block is an index into it. Each part that grows has a share of a session's
+prompt: 16 KB for the rules, 16 KB for the roadmap, 8 KB for the bugs. A part
+over its share says less per row before it leaves a row out. The roadmap gives
+its items with their open steps, then their titles with the steps as a count,
+then the titles cut short with the parked ones as a count, then as many as fit
+in your own order with the rest as a count. The tracker gives every title,
+then the titles cut short, then as many as fit, the worst first, with the rest
+counted by severity. The rules keep every standing rule whole, since that is
+what a session is held to, and give the named ones without what calls for
+each. What a part left out is said in the part, where the session reading it
+sees it, with the verb that prints all of it; and every part is always there,
+whatever the others hold.
 
 **And you can read the whole of it.** The Briefing tab's last fold, *What a
 session is sent*, holds the exact string a session started here is handed: the
 house rules, then the open roadmap, then the open bugs, with its size on the
-heading and each part's size under it. It is the same string, not a rendering
+heading and each part's size under it against its share, so a part that has
+started saying less is seen there before a session meets it. It is the same string, not a rendering
 of the same idea: the tab and `bb-tty` both ask `bb preamble` for it, so the
 fold cannot quietly stop describing what sessions get. Shut by default, since
 it is a thing to check rather than to read every time.
 
 Two settings shape that string without touching what you read in the
-notebook. A project's **Briefing a session reads** can be *terse*: the filler
-words are dropped from every part but the live line, deterministically and
-never by a model, with code, names, numbers and the words that turn a
-sentence kept, which takes a third off the block. And each person's
-**Replies** pick on a project, beside model and effort, says how wordy
-Claude's replies to them are there, and their **Questions** pick how often
-Claude asks them, more, fewer or rarely; both ride the block as its own part and
+notebook. Each person's **Replies** pick on a project, beside model and
+effort, says how wordy Claude's replies to them are there, and their
+**Questions** pick how often Claude asks them, more, fewer or rarely; both
+ride the block as its own part and
 govern the replies and the asks only, so the notebook, commits and files are
 written as ever.
 
@@ -2649,7 +2717,7 @@ anyway. The node scans for it, on its own network.
 
 **A connection has one owner.** The account that connects a phone is the
 only one that can disconnect it; everybody else sees the connection with
-its controls greyed and the owner named. Every command a session asks for
+its controls grayed and the owner named. Every command a session asks for
 goes to that account (on their Phone tab and their bell, nobody else's),
 because the phone is on their desk and they are the one who said yes to it.
 
@@ -2784,7 +2852,7 @@ settings file that denies its file tools; `Read`, `Edit`, `Write` and
 `NotebookEdit`, since a deny rule names one tool and Read does not imply the
 rest: access to every *other* project under `/workspace`. Siblings are
 enumerated by name rather than matched by
-pattern, so a project called `app[1]` cannot quietly take its neighbours out of
+pattern, so a project called `app[1]` cannot quietly take its neighbors out of
 the list. That file is passed with
 `--settings`, which ranks as a command-line argument: above the project's own
 `.claude/settings.json` and `.claude/settings.local.json`, so a session cannot
@@ -2806,11 +2874,36 @@ transcripts are empty); the account's home is the only home and its
 BuilderBot cache keeps only this project's folder; `/tmp`, `/var/tmp` and
 `/dev/shm` are the session's own; the agent's stores keep only the
 emulator's logs and the project's own CI logs and artifacts; the toolchain
-store and the base home are read-only, so nothing a session writes can reach
+store is read-only, so nothing a session writes can reach
 a command another account or a job runs (Flutter's own tree is the one
 exception, since it writes there on every run, with its `bin` still
 read-only); and the process list and tmux server of other sessions are out of
-reach. Each account on a node keeps its own tool caches and dotfiles
+reach.
+
+The view is built from what a session is given, not from a list of what to
+hide. At the top of the machine the system's own directories stay (`/usr`,
+`/etc`, `/var`, `/opt`, `/home` and the rest), and everything else there is
+out: a directory that holds one of the view's own places (the toolchain
+store under `/mnt`, say) is covered and that place put back inside it, and
+one that holds none is hidden whole, with the mounts inside either let go so
+the mount table names no export. The agent's own directory
+(`/var/lib/builderbot`) is covered the same way, so other projects' build
+caches, their containers' data and the agent's tools are not there. The
+base home, which belongs to the account every session runs as, is new in
+the view and holds what a session runs from it, read-only: the launchers on
+its `PATH` and Claude Code. Its keys, history and settings are not there. So
+a share mounted on the node next month is out of every view without anybody
+naming it. A share a project works with is named in the project's settings
+(**Also sees**, a path on the node, set by whoever may set the project's
+node); it is handed to the helper as `--sees` and put back as the node has
+it. The helper refuses one that names the system's own, the projects share,
+a home or the agent's stores, so the setting cannot bring back what the view
+leaves out on purpose. Two things are known to show through: the names of
+the account's own other projects, as empty folders under
+`~/.claude/projects`, and a share mounted under one of the system's own
+directories, which is left as the node has it.
+
+Each account on a node keeps its own tool caches and dotfiles
 (`.gradle`, `.m2`, `.npm`, `.cache`, the Rust crate cache and the rest)
 rather than sharing the base home's, so a person's first build on a node
 downloads its own dependencies. Java tools take their home from the session
@@ -3001,8 +3094,11 @@ rather than the page: the ttyd URL is reachable on its own, and so are the
 API paths, so a rule only the UI honored would be advice. Locking a project:
 
 - refuses `claude:<project>` at launch, with a message saying why
-- ends any Claude session already running there, rather than taking effect
-  "next time"
+- ends every Claude session already running there, whoever's and on
+  whatever node, rather than taking effect "next time"; the padlock's
+  question names who is running one before it does
+- is an administrator's: a user account sees the padlock dead and the
+  server refuses the request
 - makes its notebook **read-only**: the roadmap, the bugs and the memories
   open and cannot be changed, by you or by anything else
 - refuses to write a `CLAUDE.md` into it, so the `no CLAUDE.md: create one`
@@ -3116,7 +3212,7 @@ Each account works as itself:
   you to delete. The login itself stays in the home, per machine
 - **its own terminals.** A shell session is named for the account, so two
   people opening a terminal on one project do not land in the same one
-- **its own tab strip and colour scheme**, which follow the account to any
+- **its own tab strip and color scheme**, which follow the account to any
   browser it signs in on rather than living in one browser
 - **the owner keeps this container's original home and session names**, so an
   install with one operator is unchanged by any of it
@@ -3156,7 +3252,7 @@ uncommitted at once. Two answers, and the cheap one is the truthful one: **git**
 is exact: a file changed in two trees at once is a collision whatever anybody
 intended, and it needs nothing recorded, while a **PreToolUse hook** adds the
 finer grain, naming the definition an edit lands in, which is a guess and is
-labelled as one. The hook also tells the second session, before its edit, that
+labeled as one. The hook also tells the second session, before its edit, that
 somebody else has that file open. It does not refuse it: each session is in its
 own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
@@ -3288,7 +3384,7 @@ All of them persist across updates, are secret-redacted, and move together to
 the `/logs` mount if you map one.
 
 **Kept for a number of days, not a number of boots.** Thirty by default, set
-in the dashboard's settings menu: the gear, beside the colour schemes. A
+in the dashboard's settings menu: the gear, beside the color schemes. A
 count was the wrong unit for the question anybody has (*was that this week?*)
 and a container in a crash loop can burn five generations in a minute;
 a ceiling of sixty generations survives for exactly that case.
@@ -3351,11 +3447,34 @@ first enrollment is the proof.
 
 `android/` is an Android app that does most of what the dashboard does,
 minus the terminals: the projects and their notebooks (roadmap, bugs,
-briefing, artifacts, the repository's state), the approvals, the nodes, the
-accounts and your profile, in the shape an Android app takes, screens and
-a bottom bar, not the tabs a browser page needs. Sign in with the
-dashboard's address and your account; the credential is kept in the
-device's encrypted preferences.
+briefing, design, artifacts, containers, tests, the repository's state),
+the approvals, the nodes, the jobs, the accounts and your profile, in the
+shape an Android app takes, screens and a bottom bar, not the tabs a
+browser page needs. Sign in with the dashboard's address and your account;
+the credential is kept in the device's encrypted preferences.
+
+**Claude, from the phone.** A project opens on its Claude view. Where a
+session of your own is open on it, the view says whether it is working or
+waiting on you and carries a box to say something to it, which goes into
+that session's input and nowhere else (`/api/say`). Under it are your
+conversations on the project: **Read the end** shows what was said last,
+and **Share** hands the whole text to another app. Starting a session
+stays the dashboard's, since that opens a terminal. The projects list says
+the same per project, so the question a phone is picked up to ask, *is it
+done?*, is answered before anything is opened.
+
+**What else a project's views do.** Design is read here: the pages as
+their boards, the themes with their colors, and the rules under what they
+hold for. Docker lists the project's containers with Start, Stop and
+Rebuild, each asked twice and run as a job on its node. Artifacts names
+the version and opens a file of `dist/` with whatever the phone has for
+its kind, which for an APK is the installer. Git fetches, pulls
+(fast-forward only) and pushes under the project's push rights. Settings
+sets the model, the effort and the project's color, staged until Save.
+The controller's own settings are not in the app.
+
+**Its look.** The app wears the dashboard's schemes, by the same names and
+hexes, chosen under More and kept on the device.
 
 **Notifications.** The app asks the dashboard what the bell would show and
 posts it: on the interval you set while the app is open, and about once a
@@ -3363,8 +3482,10 @@ minute in the background through an inexact alarm, so nothing stays in the
 shade between questions and the icon carries no dot of its own. A session
 asking for your phone or for root on a node arrives as a notification with
 **Approve** and **Deny** on it, answered without opening the app; changes a
-session has waiting, and a node whose agent is behind or out of window or
-whose Claude Code is behind, arrive as notes that open the right screen. A
+session has waiting, a session of your own going from working to waiting
+on you (a switch under More turns that one off), and a node whose agent is
+behind or out of window or whose Claude Code is behind, arrive as notes
+that open the right screen. A
 phone left alone can hold the alarm back for some minutes, which is why the
 dashboard's bell carries the same questions. There is no push service: the phone reaches
 your BuilderBot directly, on your network or over your tailnet, so nothing
@@ -3387,3 +3508,8 @@ touches `android/`, names it by `bb version --file`, drops it into
 BuilderBot's `dist/` where the runner's machine mounts the projects share,
 and uploads it as a workflow artifact. Locally, `cd android && ./gradlew
 assembleDebug` with `JAVA_HOME` and `ANDROID_HOME` pointed at a node's store.
+On a node the build writes under the node's own disk rather than the
+projects share (a job's cache folder, or the account's `~/.cache/builderbot/gradle`),
+because a directory emptied and removed in one build on NFS can fail to go
+(B351); `./gradlew bbApk -PbbOut=NAME.apk` puts the debug APK into `dist/`
+from wherever it was built, and that is what `bb build` runs.

@@ -4,7 +4,7 @@ each account's worktree's dist/, listed apart as builds made on a branch.
 
 The convention is the feature. Build systems scatter their outputs (gradle
 five directories deep, web-ext into web-ext-artifacts/, cargo into target/)
-and a tab that went looking for all of those would be a catalogue of build
+and a tab that went looking for all of those would be a catalog of build
 systems that is wrong the week a new one arrives. So the deal is one word
 long: **a project puts what it ships in dist/**, and this lists dist/ and
 nothing else. A session that builds an APK copies it there; the template

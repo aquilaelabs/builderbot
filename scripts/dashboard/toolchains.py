@@ -6,7 +6,7 @@ and what version upstream has, and the one-job-at-a-time worker that installs,
 updates, removes and checks. The server imports this and hands it two helpers;
 nothing here reaches back into the server.
 
-The division of labour with bb is the point. This module decides *when* to ask
+The division of labor with bb is the point. This module decides *when* to ask
 and remembers the answers; bb decides *how*, out of config/toolchains.json,
 which holds every URL, flag and argument any of it needs. Neither of them has
 a toolchain name written into it.

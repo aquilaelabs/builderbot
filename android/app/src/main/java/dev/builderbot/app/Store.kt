@@ -54,5 +54,19 @@ class Store(context: Context) {
         get() = plain.getString("pending", "") ?: ""
         set(v) { plain.edit().putString("pending", v).apply() }
 
+    // The color scheme, by the dashboard's name for it, on this device.
+    var scheme: String
+        get() = plain.getString("scheme", "Default") ?: "Default"
+        set(v) { plain.edit().putString("scheme", v).apply() }
+    // Whether a session finishing its turn is worth a notification, and
+    // what the sessions were doing at the last look, so one is posted when
+    // a session goes from working to waiting and not on every poll.
+    var turns: Boolean
+        get() = plain.getBoolean("turns", true)
+        set(v) { plain.edit().putBoolean("turns", v).apply() }
+    var lastWorking: Set<String>
+        get() = plain.getStringSet("working", emptySet()) ?: emptySet()
+        set(v) { plain.edit().putStringSet("working", v).apply() }
+
     fun api(): Api? = if (signedIn) Api(server, user, password) else null
 }

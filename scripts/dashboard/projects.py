@@ -154,7 +154,7 @@ def keyname_ok(req):
 
 
 def sanitize_name(raw):
-    """A typed name, as the directory it will become: GitHub's own behaviour.
+    """A typed name, as the directory it will become: GitHub's own behavior.
 
     GitHub does not refuse "My New App": it replaces what it cannot use with a
     dash and shows you what you are about to get. This refused it, which is
@@ -251,9 +251,9 @@ def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
 # the same quiet way when it is missed: the directory is there under its new
 # name, and its roadmap, its bugs, its dev-instance data or its version history
 # simply are not. Nothing errors. So the places are a table rather than a
-# sequence of statements (the defence against forgetting one is being able to
+# sequence of statements (the defense against forgetting one is being able to
 # read the whole list in a single screen), and what moved is reported back
-# rather than summarised as success.
+# rather than summarized as success.
 
 # {file: [the keys inside it whose sub-dicts are keyed by project]}. None means
 # the file's own top level is the keyed dict.
@@ -413,7 +413,7 @@ def rename(req):
     auth = _field(req, "auth").strip()
     # Ignored when a token came with it: the dialog does not send both, and a
     # request that did would be asking to write a credential and delete it in
-    # the same breath. The write is the intention worth honouring.
+    # the same breath. The write is the intention worth honoring.
     clear = bool(req.get("clear_token")) and not token
     if not old or not PROJECT_NAME.fullmatch(old):
         return {"error": "unknown project"}, 400
@@ -1957,7 +1957,7 @@ def create_from_dialog(req, *, env, account, may_node):
         r = set_prefs(name, node=nid)
         if r.get("error"):
             body["note"] = f"{body.get('note') or 'ready'}; node not set: {r['error']}"
-    # ...and the four gates (roadmap #27), when the dialog offered them:
+    # ...and the gates (roadmap #27), the design's among them, when the dialog offered them:
     # the same write the settings dialog makes, so what a session may
     # enter into the notebook is decided where the project is made.
     gate = req.get("gate")

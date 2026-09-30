@@ -80,7 +80,7 @@ function makeNotebook(project){
   // full was a wall. Kept across redraws so a reword does not shut the fold.
   nb.ruleOpen = new Set();
   // What each row read when its Edit was pressed, so Cancel has somewhere
-  // to go back to. A row with no entry here is one Add made: cancelling
+  // to go back to. A row with no entry here is one Add made: canceling
   // that is removing it.
   nb.ruleWas = new Map();
   // How many memories the tab found (null until read), for the head row that
@@ -740,7 +740,7 @@ function makeNotebook(project){
       // Whether a step can be sent is a fact about the session running beside
       // it, and that fact arrived only with the list, which is fetched when
       // the notebook opens and then not again. So starting Claude while
-      // looking at the Roadmap left every arrow grey, correctly describing
+      // looking at the Roadmap left every arrow gray, correctly describing
       // the world as it had been when the tab opened, until the tab was
       // closed and reopened. It is read off the poll now, like everything
       // else on this row.

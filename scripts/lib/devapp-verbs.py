@@ -43,6 +43,8 @@ def status():
         print(f"  {'built from':<12} {st['built_rev']}")
     elif st.get("needs_build"):
         print(f"  {'built from':<12} nothing here yet")
+    if st.get("running"):
+        _answers_at(st.get("name") or "")
     miss = st.get("missing_env") or []
     if miss:
         # Kept by BuilderBot for this container, never a file in the project.
@@ -54,6 +56,32 @@ def status():
         print(f"  {'job':<12} {job.get('step') or 'working'}")
     elif job.get("error"):
         print(f"  {'job':<12} last one failed: {str(job['error'])[:120]}")
+
+
+def _answers_at(name):
+    """Where a running instance answers, said with its status. A session
+    has a network of its own, so localhost and the machine's address there
+    are the session's and nothing of the node's: one that asked 127.0.0.1
+    for its containers was refused, took them for down, and could not say
+    so anywhere (29 Sep). Best effort: the list is the node's to give, and
+    a node that is slow with it costs this one line."""
+    try:
+        d = bbapi.call("/api/docker?project=" + urllib.parse.quote(os.environ["BB_DEV_PROJECT"]),
+                       auth=os.environ["BB_DEV_AUTH"], timeout=60)
+    except Exception:                                   # noqa: BLE001
+        return
+    row = next((i for i in (d.get("instances") or []) if i.get("name") == name), None) \
+        if isinstance(d, dict) else None
+    url = ((row or {}).get("route") or {}).get("url") or ""
+    if not url:
+        if row is not None and not row.get("ports"):
+            print(f"  {'answers at':<12} nowhere: its compose file publishes no port")
+        return
+    host = urllib.parse.urlsplit(url).hostname or ""
+    others = [p.split("->")[0].rsplit(":", 1)[-1] for p in (row.get("ports") or [])]
+    others = [p for p in others if p.isdigit() and f":{p}/" not in url and not url.endswith(f":{p}")]
+    print(f"  {'answers at':<12} {url}" + (f" (and on {host}: " + ", ".join(others) + ")" if others else ""))
+    print(f"  {'':<12} from a session too: localhost here is the session's own, never the node's")
 
 
 def _client(instance=None):

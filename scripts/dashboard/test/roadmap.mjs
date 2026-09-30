@@ -49,7 +49,7 @@ const open = () => page.$$eval('#roadmapList .roadmap', ts => ts.map(t => ({
 // ---- adding ------------------------------------------------------------
 // An icon now, and no count: the number was the panel's business, and the
 // row's job is to say the notebook exists and whether it is open. Lit is a
-// colour class rather than a filled button, so that is what is asserted.
+// color class rather than a filled button, so that is what is asserted.
 ok(await page.$eval(`${row('alpha')} [data-m]`,
      b => !!b.querySelector('svg') && !b.classList.contains('on')),
    'the row offers a notebook icon, unlit while no tab is open');
@@ -327,6 +327,32 @@ execFileSync(BB, ['roadmap', 'add', 'rework the picker',
            WORKSPACE: `${DIR}/ws` } });
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadmap[data-step="1"]').length === 1);
+// A group is a fold now (the operator, 29 Sep): its row is the summary and
+// its steps open under it on a tap. Checked once, then every group is
+// opened as it is drawn, since the rest of this file reaches into steps.
+{
+  await page.waitForSelector('#roadmapList details.grp:has(.roadmap[data-step="1"])', { timeout: 15000 });
+  const first = await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => ({ open: d.open, steps: d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])').length,
+    shown: [...d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])')].some(r => r.checkVisibility()) }));
+  ok(!first.open && !first.shown, `a group starts folded, its steps out of sight (${JSON.stringify(first)})`);
+  // The send is the Claude mark among the row's own buttons on the right,
+  // the caret is where the arrow was, and the words open the fold (the
+  // pencil rewords a group).
+  const shape = await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"]) > summary .roadmap', r => {
+    const kids = [...r.children].map(e => e.className.split(' ')[0]);
+    return { kids, goHasMark: !!r.querySelector('.go svg'), noBox: !r.querySelector('.rwbox, textarea') };
+  });
+  ok(shape.kids[0] === 'eye' && shape.kids.indexOf('body') < shape.kids.indexOf('eye', 1) && shape.goHasMark,
+     `the group row leads with the fold's caret, its words, then Send to Claude first among its buttons (${shape.kids.join(' ')})`);
+  await page.click('#roadmapList details.grp:has(.roadmap[data-step="1"]) > summary .txt');
+  await page.waitForFunction(() => document.querySelector('#roadmapList details.grp:has(.roadmap[data-step="1"])').open, null, { timeout: 5000 });
+  ok(await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => d.open && !d.querySelector('textarea')
+       && [...d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])')].every(r => r.checkVisibility())),
+     '...and a tap on its words opens every step under it rather than a reword box');
+  await page.evaluate(() => new MutationObserver(() => document.querySelectorAll('#roadmapList details.grp:not([open])').forEach(d => { d.open = true; }))
+    .observe(document.getElementById('roadmapList'), { childList: true, subtree: true }));
+  await page.evaluate(() => document.querySelectorAll('#roadmapList details.grp:not([open])').forEach(d => { d.open = true; }));
+}
 items = await open();
 const g = items.find(i => i.text === 'rework the picker');
 const s1 = items.find(i => i.text === 'widen the select');
@@ -859,7 +885,19 @@ ok(await page.$eval('#roadmapList .roadmap:has(.who) .body',
 // pressed and nothing is crossed out.
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'stty -echo']);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
-await new Promise(r => setTimeout(r, 400));
+// Waited for on the pane's own tty rather than slept for (B345): under a
+// whole run's load the shell had not run stty when the send began, the line
+// echoed, and Enter followed. This check failed in five whole runs in a row
+// and passed alone every time.
+{
+  const tty = execFileSync('tmux', ['display-message', '-p', '-t', 'claude-alpha', '#{pane_tty}'], { encoding: 'utf8' }).trim();
+  let off = false;
+  for (let i = 0; i < 100 && !off; i++){
+    try { off = /(^|\s)-echo(\s|$)/.test(execFileSync('stty', ['-a', '-F', tty], { encoding: 'utf8' })); } catch { off = false; }
+    if (!off) await new Promise(r => setTimeout(r, 100));
+  }
+  ok(off, 'the stand-in session has echo off, read from its tty, before the send');
+}
 const quiet = await post({ action: 'send', project: 'alpha', id: Number(mine.id) });
 ok(quiet.status === 200 && quiet.body.typed && !quiet.body.sent,
    'a session that does not echo gets the line typed but not submitted');
@@ -940,14 +978,26 @@ for (const [what, body] of [
 }
 page.errors = [];
 
-// The ceiling exists because this is read at the start of every conversation.
+// What is kept and what a session is sent are two things (the operator, 29
+// Sep): the list kept 30 with the parked ones counted, to keep the prompt
+// short, and a project with 17 open and 13 parked could not record a 31st.
+// The prompt keeps to a share now (preamble.mjs), and the list's own limit
+// is on the open ones.
 const many = read();
 many.projects.gamma = Array.from({ length: 30 }, (_, i) =>
+  ({ id: i + 1, text: `item ${i + 1}`, done: false, added: 1, by: 'you' }))
+  .concat(Array.from({ length: 40 }, (_, i) =>
+    ({ id: 500 + i, text: `parked ${i + 1}`, done: false, added: 1, by: 'you', shelved: 1790000000 })));
+writeFileSync(FILE, JSON.stringify(many));
+const more = await post({ action: 'add', project: 'gamma', text: 'a thirty-first, beside forty parked' });
+ok(more.status === 200 && !more.body.error,
+   'a list of thirty open and forty parked takes another: the parked are not counted and thirty is not the limit');
+many.projects.gamma = Array.from({ length: 200 }, (_, i) =>
   ({ id: i + 1, text: `item ${i + 1}`, done: false, added: 1, by: 'you' }));
 writeFileSync(FILE, JSON.stringify(many));
 const over = await post({ action: 'add', project: 'gamma', text: 'one too many' });
-ok(over.status === 400 && /limit/.test(over.body.error),
-   'a list long enough to stop being readable refuses to grow');
+ok(over.status === 400 && /200 open items is the limit: finish, park or drop some first/.test(over.body.error),
+   `...and two hundred open is where it says what to do instead (${over.body.error})`);
 page.errors = [];
 
 // ---- building a plan in the panel --------------------------------------
@@ -1391,7 +1441,7 @@ ok(!/notes about how you work/.test(told.slice(beforeQuiet)),
 // Whether a step can be sent is a fact about the session running beside it,
 // and it used to arrive only with the list, fetched when the notebook opened
 // and then never again. So starting Claude while looking at the Roadmap left
-// every arrow grey until the tab was closed and reopened.
+// every arrow gray until the tab was closed and reopened.
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadmap').length > 0);
 ok((await open()).some(i => i.can), 'with the session up, something can be sent');
@@ -1453,6 +1503,7 @@ ok(strip.clipped && strip.onScreen,
    'the notebook strip scrolls rather than spilling, with the current tab in view');
 
 await phone.click('.pane .nb .nbtabs [data-v="briefing"]'); // every control on screen at once
+await phone.evaluate(() => { document.getElementById('memSect').open = true; });
 await phone.waitForFunction(() => document.getElementById('memList').checkVisibility());
 const wide = await phone.evaluate(() => {
   const out = [];
@@ -1561,8 +1612,8 @@ ok(drawn.find(d => d.step === '0').can && !drawn.find(d => d.step === '2').can
    '...the frontier is still step 1, and step 3 waits on it, not on the done one');
 ok(drawn.find(d => d.step === '1').can && /finished this/.test(drawn.find(d => d.step === '1').why),
    '...and the done step stays sendable, worded as the override it would be');
-ok(/2\. fit the widget  \(done\)/.test(bbRoadmapEarly('--prompt')),
-   'the session prompt says (done) on it, not "already sent"');
+ok(/1 of \d+ steps done; still open:/.test(bbRoadmapEarly('--prompt')) && !/2\. fit the widget/.test(bbRoadmapEarly('--prompt')),
+   'the session prompt counts it as done and no longer prints it, sent or not');
 ok(/done-step.*step 2 of R\d+  fit the widget/.test(bbRoadmapEarly('history', '-n', '3'))
    && /why: told in chat/.test(bbRoadmapEarly('history', '-n', '3')),
    '...and the log records who finished what, with the note');

@@ -238,7 +238,7 @@ Two paths. The second needs no tooling on your side at all.
 
 Download an Ubuntu 26.04 **cloud** image (or a Debian **genericcloud** qcow2),
 resize it, and boot it with the seed in `nodes/cloud-init/` attached as a second
-drive labelled `cidata`. Fill in
+drive labeled `cidata`. Fill in
 the ssh key and the share tags first. `growpart` sizes the root filesystem,
 cloud-init installs Docker and mounts the shares, and the machine is ready on
 first boot.
@@ -395,11 +395,11 @@ alone, so re-running the provisioner for a mount does not re-enroll.
 `authorized_keys`. Nothing private is ever put on this machine. The private
 key stays on BuilderBot in `/secrets/ssh`, loaded into the root-owned agent,
 where sessions can use it to connect but cannot read it; the VM holds only the
-line that authorises the connection and never dials out itself.
+line that authorizes the connection and never dials out itself.
 
 Give the sandbox its **own** key rather than reusing a GitHub deploy key. Both
 are safe (the private half of a deploy key never leaves the agent either),
-but one key authorising two unrelated things means rotating it for a GitHub
+but one key authorizing two unrelated things means rotating it for a GitHub
 reason silently breaks the sandbox. On the host:
 
 ```bash
@@ -604,7 +604,7 @@ Three settings on the container's template, then the proxy comes off.
 **1. The VM's host key is met on first use, and there is nothing to do.**
 `docker -H ssh://…` shells out to `ssh`, and ssh run non-interactively
 REFUSES an unknown host rather than asking, so this used to stop everything
-with "Host key verification failed" and a greyed-out tab. The controller now
+with "Host key verification failed" and a grayed-out tab. The controller now
 scans the key itself the first time a daemon refuses for that reason, using
 the address the node reported on its own authenticated dial-in, and asks
 again. It is written into the home volume, so it survives a restart.
@@ -637,7 +637,7 @@ and `DOCKER_HOST_PATHS`, which named that machine before there were nodes,
 are gone with that kind and are read nowhere.
 
 Nothing but a sandbox VM is accepted, and the address is only half of what
-decides that. An address of any other kind greys every Docker control out with
+decides that. An address of any other kind grays every Docker control out with
 a sentence saying why, rather than half-working, and so does an ssh address
 whose daemon does not **say it is the sandbox**. `provision-linux.sh` writes a
 `builderbot.sandbox` label into `/etc/docker/daemon.json` and restarts the

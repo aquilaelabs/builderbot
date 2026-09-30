@@ -54,7 +54,7 @@ function nbPendingView({$, nb, project, root}){
   // rather than marked on one of the buttons, so that reordering it moves
   // the default with it and the two cannot drift apart.
   //
-  // That it is only set HERE is the rest of the behaviour: this clone is
+  // That it is only set HERE is the rest of the behavior: this clone is
   // parked and reused while the tab is on the strip, so leaving the tab and
   // coming back finds the view where you left it, and closing the tab
   // destroys the instance (see hideTab), which forgets the view, so the next
@@ -138,7 +138,7 @@ function drawPendingModal(j){
       for (const k of ["build", "test", "outputs"]) if (a[k]) bits.push(`${k}: ${Array.isArray(a[k]) ? a[k].join(", ") : a[k]}`);
     } else if (r.kind === "design"){
       const L = a.language || {};
-      (L.themes || []).forEach(t => bits.push(`theme ${t.name} (${t.mode}): ${(t.colors || []).length} colours`));
+      (L.themes || []).forEach(t => bits.push(`theme ${t.name} (${t.mode}): ${(t.colors || []).length} colors`));
       (L.rules || []).forEach(r2 => bits.push(`rule ${r2.name}: ${(r2.text || "").slice(0, 120)}`));
       (a.pages || []).forEach(p => bits.push(`page ${p.name || "(unnamed)"}: ${(p.blocks || []).length} blocks on a ${p.frame || "desktop"}`));
     }

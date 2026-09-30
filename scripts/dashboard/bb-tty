@@ -124,6 +124,10 @@ GRANT
     # into the view read-only, and Claude's walls let it read them.
     BB_READS="$(printf '%s' "$grant" | jq -r '(.reads // []) | join(" ")')"
     export BB_READS
+    # ...and the places on this node it is shown besides (prefs.sees): a
+    # share the view would otherwise leave out with every other.
+    BB_SEES="$(printf '%s' "$grant" | jq -r '(.sees // []) | join(" ")')"
+    export BB_SEES
     if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
         export BB_TREE_OWNER=1
     else
@@ -154,7 +158,7 @@ fi
 # Kotlin compile daemon all wrote under the base home, which the view makes
 # read-only: an Android build in a session died on Gradle's wrapper lock
 # (B182). Each is pointed at the account's own home by the variable it
-# honours: GRADLE_USER_HOME for Gradle's caches and wrapper, ANDROID_USER_HOME
+# honors: GRADLE_USER_HOME for Gradle's caches and wrapper, ANDROID_USER_HOME
 # for the debug keystore and the SDK tools' settings, and XDG_DATA_HOME,
 # which is where the Kotlin daemon keeps its run files on Linux. Per account,
 # as the crate cache is: the operator's call for B157.
@@ -291,10 +295,28 @@ in_view() {
     envf="$(cache_project_dir "$proj")/session.env"
     ( umask 077; env -0 > "$envf.new" && mv -f "$envf.new" "$envf" ) \
         || bad "Could not write this session's environment to $envf, so its view cannot start."
+    # Where what Claude Code keeps in /tmp between the turns of a
+    # conversation lives, so a session started again on the same
+    # conversation finds it (B376): the view binds this over
+    # /tmp/claude-<uid>. Made here, as the session account. A conversation's
+    # folder nothing has written to in two weeks goes, so it does not grow
+    # for good; one still in use is written to on every turn.
+    local scratch
+    scratch="$(cache_project_dir "$proj")/scratch"
+    if ( umask 077; mkdir -p "$scratch" ) 2>/dev/null; then
+        find "$scratch" -mindepth 2 -maxdepth 2 -type d -mtime +14 -exec rm -rf {} + 2>/dev/null || true
+    fi
     # The projects this one reads, one --reads each: the helper binds their
     # trees read-only, and repeated words keep the launcher line respawnable.
     local reads=() r
     for r in ${BB_READS:-}; do reads+=(--reads "$r"); done
+    # ...and the places it is shown, one --sees each, for a helper that
+    # takes them: one from before the setting would refuse the word and
+    # start no session at all, so it is asked first.
+    if [ -n "${BB_SEES:-}" ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
+            --home "$HOME" --cwd "$dir" --sees /nowhere-a-node-has >/dev/null 2>&1; then
+        for r in ${BB_SEES:-}; do reads+=(--sees "$r"); done
+    fi
     why="$("$SESSION_BIN" plan --project "$proj" --account "${account:-}" --home "$HOME" \
                --cwd "$dir" "${reads[@]}" 2>&1 >/dev/null)" \
         || bad "This node keeps each session to its own project, and could not for this one:" "$why"
@@ -997,21 +1019,12 @@ case "$target" in
         # since the briefing joined it, empty means the fetch failed (B160).
         pre="$(BB_PROJECT="$proj" BB_UID="$account" bb preamble --json 2>/dev/null || true)"
         roadmap_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
-        # The block goes in a file now, so the kernel's argv ceiling is not
-        # the limit any more; what is left is what a session should be asked
-        # to read, since every conversation pays for all of it. preamble.py
-        # cuts it at a line boundary and says so in the text; this says so to
-        # whoever opened the terminal, because a list nobody can afford is
-        # worth hearing about once rather than meeting as a session that has
-        # read half of it.
-        if [ "$(printf '%s' "$pre" | jq -r '.capped // false' 2>/dev/null)" = true ]; then
-            echo "WARNING: this project's rules, roadmap and bugs are" >&2
-            echo "too long to fit in a session's prompt; only the first" >&2
-            echo "$(printf '%s' "$pre" | jq -r '.max // 0' 2>/dev/null)" >&2
-            echo "bytes are in this one." >&2
-            echo "Trim the list with \`bb roadmap\`, or the rest of it is invisible" >&2
-            echo "to every session started here." >&2
-        fi
+        # The block goes in a file, so the kernel's argv ceiling is not the
+        # limit; what bounds it is what a session should be asked to read,
+        # since every conversation pays for all of it. Each part keeps to a
+        # share (share.py) and says in the text what it left out; this says
+        # so to whoever opened the terminal as well.
+        printf '%s' "$pre" | jq -r '(.notes // [])[]' >&2 2>/dev/null || true
         # Kept beside the command rather than in it: the fallback below starts
         # the session without this block, and cannot if the two are one array.
         #

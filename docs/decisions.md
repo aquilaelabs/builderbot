@@ -162,7 +162,7 @@ the code adds bounds the **shape** of what gets sent rather than what it may
 reach: every docker call goes through one function, which refuses any argv
 that is not a `compose` call carrying a `--project-name`, two reads (`version`
 and `ps`), or one of the three one-shot commands that tend the dev-data
-directory, recognised by rebuilding the exact argv rather than by allowing the
+directory, recognized by rebuilding the exact argv rather than by allowing the
 verb. So a bug in a caller cannot become a freeform docker call. The **compose file** is the other half, and the one no
 check on a NAME can bound: a file that says `privileged: true` and mounts `/`
 produces a container named as innocently as any other. So it is read before anything

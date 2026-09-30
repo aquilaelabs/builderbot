@@ -52,7 +52,7 @@ KEYS = {
     "claude_shared_login": {"default": False, "kind": "bool", "applied": "now"},
     # Off, the pickers offer only what has been proven: the git hosts, the
     # hypervisors and the provisioner's OS families that carry a vetting
-    # note (the date and what proved them) in their catalogue: the alpha
+    # note (the date and what proved them) in their catalog: the alpha
     # tier. On, every entry is offered, the unproven ones tagged dev, and
     # the header says dev. One tree behaves as two products: production
     # leaves this off, a dev instance turns it on, and an entry crosses

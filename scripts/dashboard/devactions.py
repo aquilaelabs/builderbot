@@ -119,7 +119,7 @@ def sync_work_tree(project, instance):
 
 # The plan an agent node runs for one action (roadmap #18). The controller
 # still decides what: these are the same docker calls the controller used to
-# make over ssh, in the same order, with the compose file and env travelling
+# make over ssh, in the same order, with the compose file and env traveling
 # beside them, so a node needs nothing but the token it enrolled with.
 # `{cdir}` is the directory the agent writes those files into.
 def _plan(project, instance, action, extra=None):
@@ -444,7 +444,7 @@ def remove_instance(project, instance):
 
     What is NOT removed is the env file and the data directory. Removing is
     the way to tidy the list, not a way to destroy work, and an instance
-    remade under the same name finding its old env there is the behaviour
+    remade under the same name finding its old env there is the behavior
     somebody who removed one by mistake would want. Deleting those is a shell
     away and is not something a button here should do quietly.
 
@@ -526,7 +526,7 @@ def _exists(project, instance=devapp.MAIN):
     A container that EXITED (a crash, a bad entrypoint, an OOM) is still
     there, still holding its name and the project's network, and `down` is the
     only thing that clears it. Asking only about RUNNING containers is what
-    left a crashed instance with a greyed-out Down and no way out of the
+    left a crashed instance with a grayed-out Down and no way out of the
     dashboard at all.
     """
     n = devapp._agent_here()

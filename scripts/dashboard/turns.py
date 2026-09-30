@@ -28,7 +28,7 @@ that was killed, or interrupted, or whose Stop never came.
 WAITING, NOT REFUSING. A prompt over the limit waits for a turn rather than
 being thrown away, since a refused prompt is gone from the box it was typed
 in. Waiters are served in the order they asked. A waiter that stops asking
-(its hook was cancelled) drops out of the queue after WAIT_STALE seconds.
+(its hook was canceled) drops out of the queue after WAIT_STALE seconds.
 
 In memory and nowhere else. Every fact here is about processes running now,
 the heartbeat rebuilds the working half within one poll of a restart, and a
@@ -46,7 +46,7 @@ CLAIM_MAX = 12 * 3600
 # A waiter that has not asked again for this long has gone.
 WAIT_STALE = 20
 # The largest limit an administrator may set; past it the number means
-# nothing a machine this project runs on could honour.
+# nothing a machine this project runs on could honor.
 LIMIT_MAX = 64
 
 _lock = threading.Lock()

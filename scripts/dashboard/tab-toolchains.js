@@ -4,7 +4,7 @@
 // (roadmap R55 step 4).
 //
 // Chrome comes from docSurface() and the hard rules are held by uniform.mjs;
-// this file only fills slots. The catalogue is config/toolchains.json, read
+// this file only fills slots. The catalog is config/toolchains.json, read
 // through /api/toolchains; an install is a JOB on the node, so the list keeps
 // reporting progress rather than freezing on a request that cannot return.
 //

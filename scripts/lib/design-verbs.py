@@ -7,7 +7,8 @@ line and the pages; `show` prints the prompt for the language, or for one
 page named by its id or its name; `file` prints docs/design-language.md as
 the notebook would write it, for `bb design file > docs/design-language.md`;
 `json` prints the record (language, pages, and the presets they are drawn
-from: every kind, template, scheme and choice by key); `save FILE` (or `-`
+from: every kind, template, scheme and choice by key); `schema` prints the
+record's shape with every limit (B342); `save FILE` (or `-`
 for stdin) writes a record of that shape back, whole, which is how a
 session asked to put a design language into the notebook does it. A page
 without an id is new; one with its id replaces that page; one left out is
@@ -24,17 +25,22 @@ argv = sys.argv[1:]
 verb = argv[0] if argv else "list"
 auth = os.environ["BB_DESIGN_AUTH"]
 proj = os.environ["BB_DESIGN_PROJECT"]
-USAGE = "usage: bb design [list | show [ID|NAME] | file | json | save FILE]"
+USAGE = "usage: bb design [list | show [ID|NAME] | file | json | schema | save FILE]"
 
 
 def fail(msg):
     sys.exit(f"[builderbot] ERROR: {msg}")
 
 
+if verb == "save" and (len(argv) < 2 or argv[1] in ("-h", "--help")):
+    # Help, not a file called -h (B342): the shape and every limit.
+    r = bbapi.call("/api/design?project=" + urllib.parse.quote(proj) + "&show=schema", auth=auth)
+    print("bb design save FILE (or - for stdin): a JSON file of this shape, saved whole")
+    print()
+    print(r.get("text", "") if isinstance(r, dict) else "")
+    raise SystemExit(0 if len(argv) > 1 else 1)
 if verb == "save":
-    src = argv[1] if len(argv) > 1 else ""
-    if not src:
-        fail("bb design save FILE: a JSON file of the shape bb design json prints, or - for stdin")
+    src = argv[1]
     try:
         raw = sys.stdin.read() if src == "-" else open(src, encoding="utf-8").read()
         rec = json.loads(raw)
@@ -60,7 +66,7 @@ if verb == "save":
 
 if verb == "show":
     which = " ".join(argv[1:]).strip() or "language"
-elif verb in ("list", "file", "json"):
+elif verb in ("list", "file", "json", "schema"):
     which = verb
 elif verb in ("-h", "--help"):
     print(USAGE)

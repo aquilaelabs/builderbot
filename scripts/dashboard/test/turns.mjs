@@ -139,6 +139,20 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   await call('/api/bugs', { project: 'alpha', action: 'add', title: 'the session found one', severity: 'low' }, bearer(toks[1]));
   const own = await sess({ node: 'nodeA' });
   ok(!/somebody else changed/.test(own.line || ''), `...and the session's own bug is not (${(own.line || 'no line').slice(0, 90)})`);
+  // ...nor one it filed with bb bug add, which reaches the controller
+  // through the relay and not the notebook's route, and was told back to
+  // the session that filed it as somebody else's (B375). A read through
+  // the relay marks nothing: what the operator did is still news after it.
+  const relay = argv => call('/api/v1/bb', { argv }, bearer(toks[1]));
+  const filed = await relay(['bug', 'add', 'the session found another', '--sev', 'low', '--here']);
+  const ownRelay = await sess({ node: 'nodeA' });
+  ok(/filed B\d+/.test(filed.out || '') && !/somebody else changed/.test(ownRelay.line || ''),
+     `...nor one it filed with bb bug add (${(filed.out || filed.error || '').trim().slice(0, 40)}; ${(ownRelay.line || 'no line').slice(0, 60)})`);
+  await call('/api/bugs', { project: 'alpha', action: 'add', title: 'the operator found a second', severity: 'low' });
+  await relay(['bug']);
+  const afterRead = await sess({ node: 'nodeA' });
+  ok(/somebody else changed this project's bugs/.test(afterRead.line || ''),
+     `...while a read of the list by the session hides nothing the operator did (${(afterRead.line || 'no line').slice(0, 90)})`);
   await call('/api/prefs', { project: 'alpha', build: 'make it' });
   const st = await sess({ node: 'nodeA' });
   ok(/somebody else changed this project's settings: read `bb settings`/.test(st.line || ''),
@@ -173,7 +187,7 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   ok(r.status === 403, `a session cannot set its own node's limit (${r.status})`);
   r = await call('/api/v1/nodes', { action: 'reboot', id: minted.id }, bearer(toks[1]));
   ok(r.status === 403, `...nor reboot or shut down the machine it runs on (${r.status})`);
-  // A job is cancelled by somebody whose project it is (the review of 26
+  // A job is canceled by somebody whose project it is (the review of 26
   // Sep): a session's token for alpha cannot end beta's job, an
   // administrator can, and the code for the controller's own Claude sign-in
   // is not a session's to type.

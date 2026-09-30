@@ -13,7 +13,7 @@ the slash-command route could not manage:
 
   - `/model` now raises a confirmation, and there is no IPC into a session
     (only tmux send-keys), so the dashboard was typing the next line into a
-    dialog. notify.py predicted exactly this: it refuses to recognise dialogs,
+    dialog. notify.py predicted exactly this: it refuses to recognize dialogs,
     because that means pattern-matching a TUI that changes every release.
   - a slash-command switch is saved as claude's default for NEW sessions too,
     so a per-send switch quietly changed global state. A launch flag is the
@@ -25,6 +25,7 @@ case that cannot wait for a launch, so the dialog says so and the session is
 respawned onto the same transcript.
 """
 import json
+import re
 import threading
 from pathlib import Path
 
@@ -57,20 +58,16 @@ TESTS_IN = ("node", "up", "only")
 # for the run, or ends it, lands, and the run starts again. Two house rules
 # used to disagree about this per project; it is a setting now (25 Sep).
 TEST_CHANGE = ("wait", "restart")
-# How the block a session reads is written: as the notebook has it, or
-# with the filler words dropped (preamble.terse), meaning kept. A project
-# setting, since the block is per project (the operator, 25 Sep).
-BRIEF = ("full", "terse")
 # Whether this project's sessions report BuilderBot's own problems with
 # `bb report` (reports.py): on everywhere by default, and off where the
 # project IS BuilderBot, whose sessions file those in its own tracker (the
 # operator, 24 Sep). Two of the gates' words, since there is nothing to ask.
 REPORT_MODES = ("auto", "deny")
-# A colour for the project, worn by its notebook tab and its row so that
+# A color for the project, worn by its notebook tab and its row so that
 # eight open notebooks can be told apart at a glance. Names, not hex: the
 # page maps each to a tone that sits on its palette, and a name survives a
 # theme change where a hex value picked against one background does not.
-# "" is no colour, which is the default and leaves nothing on the file.
+# "" is no color, which is the default and leaves nothing on the file.
 COLORS = ("red", "orange", "yellow", "green", "teal", "blue", "violet", "pink")
 
 _lock = threading.Lock()
@@ -220,7 +217,7 @@ def _load():
 
 
 def _clean(rec):
-    """One project's pair, with anything unrecognised read as "leave as is".
+    """One project's pair, with anything unrecognized read as "leave as is".
 
     Unset and invalid deliberately land in the same place: an entry
     hand-edited into nonsense should mean claude's own default, not an error
@@ -248,13 +245,19 @@ def _clean(rec):
             # to them refused. Named here by the operator, never by a
             # session; a project never reads itself.
             "reads": _reads_of(rec),
+            # The places on its node a session here is shown besides its own
+            # project: a share it works with. A session's view is built from
+            # what it is given (bb-session, B378), so a share mounted on the
+            # node is out of it unless it is named here, by whoever may set
+            # the project's node.
+            "sees": _sees_of(rec),
             # What `bb build` / `bb test` run there, and the globs whose
             # matches come back into dist/.
             "build": str(rec.get("build") or "")[:500],
             "test": str(rec.get("test") or "")[:500],
             "outputs": [str(g)[:200] for g in (rec.get("outputs") or [])
                         if str(g)][:16] if isinstance(rec.get("outputs"), list) else [],
-            # Anything unrecognised reads as auto, for the same reason an
+            # Anything unrecognized reads as auto, for the same reason an
             # unknown model reads as "leave as is": a hand-edited file must
             # not lock a session out of the notebook by typo.
             # What a session may do with git's network half (roadmap R36):
@@ -288,7 +291,6 @@ def _clean(rec):
             "tests_in": _tests_in(rec),
             # During a test run, a change asked for: one of TEST_CHANGE.
             "test_change": rec.get("test_change") if rec.get("test_change") in TEST_CHANGE else "wait",
-            "brief": rec.get("brief") if rec.get("brief") in BRIEF else "full",
             # Claude may: Report BuilderBot bugs. Off takes `bb report` and
             # the rule that points at it away from this project's sessions.
             "report": "deny" if rec.get("report") == "deny" else "auto",
@@ -333,7 +335,7 @@ def get(project):
 # and the settings field shows it as the placeholder it would use.
 #
 # Tests only. "Run the tests" has one conventional answer per ecosystem;
-# "build" does not (which target, which flavour, which of an Android
+# "build" does not (which target, which flavor, which of an Android
 # project's four), so `bb build` still refuses and says so rather than
 # guessing at somebody's release variant.
 def all_projects(workspace=None):
@@ -356,6 +358,14 @@ def _reads_of(rec):
         if n and "/" not in n and not n.startswith(".") and n not in out:
             out.append(n)
     return out[:16]
+
+
+def sees_changed(project, sees):
+    """Whether `sees`, as the dialog sends it, is another list than the one
+    stored: the dialog sends every field on every save."""
+    got = sees if isinstance(sees, list) else str(sees).split(",")
+    got = [str(p).strip().rstrip("/") for p in got if str(p).strip()]
+    return got != ((get(project) or {}).get("sees") or [])
 
 
 def rename_reads(old, new):
@@ -387,10 +397,43 @@ def _nodes_of(rec):
     return out[:16]
 
 
+# A place on a node, as bb-session takes one: plain characters, from the
+# top, and nothing of the system's own, which the helper refuses whatever
+# the settings say. The first names here are the ones it keeps.
+SEES = re.compile(r"(?:/[A-Za-z0-9._-]{1,80}){1,12}")
+SEES_NEVER = ("bin", "boot", "dev", "etc", "home", "lib", "lib32", "lib64", "libx32",
+              "lost+found", "nix", "opt", "proc", "root", "run", "sbin", "snap", "sys",
+              "tmp", "usr", "var", "workspace")
+SEES_MAX = 8
+
+
+def sees_problem(path):
+    """Why `path` is not a place a project could be shown, or ""."""
+    if not SEES.fullmatch(path) or ".." in path.split("/"):
+        return (f"{path} is not a place on a node: a path from the top, in letters, "
+                f"digits, dots, dashes and underscores")
+    if path.split("/")[1] in SEES_NEVER:
+        return (f"{path} is the machine's own or BuilderBot's: a project is shown a share "
+                f"or a disk mounted on its node, like /mnt/media")
+    return ""
+
+
+def _sees_of(rec):
+    """The places this project sees, as stored: the ones that could be a
+    place, at most SEES_MAX, in the order given."""
+    got = rec.get("sees") if isinstance(rec.get("sees"), list) else []
+    out = []
+    for p in got:
+        p = str(p or "").strip().rstrip("/")
+        if p and p not in out and not sees_problem(p):
+            out.append(p)
+    return out[:SEES_MAX]
+
+
 def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None,
-              test_change=None, brief=None, capture_days=None, reads=None):
+              test_change=None, capture_days=None, reads=None, sees=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -414,6 +457,15 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         if reads is not None:
             got = reads if isinstance(reads, list) else str(reads).split(",")
             cur["reads"] = [r for r in _reads_of({"reads": got}) if r != project]
+        if sees is not None:
+            got = sees if isinstance(sees, list) else str(sees).split(",")
+            got = [str(p).strip().rstrip("/") for p in got if str(p).strip()]
+            for p in got:
+                if sees_problem(p):
+                    return {"error": sees_problem(p)}
+            if len(set(got)) > SEES_MAX:
+                return {"error": f"a project is shown {SEES_MAX} places at most, not {len(set(got))}"}
+            cur["sees"] = _sees_of({"sees": got})
         if build is not None:
             cur["build"] = str(build)[:500].strip()
         if test is not None:
@@ -457,10 +509,6 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if test_change not in TEST_CHANGE:
                 return {"error": f"test_change is one of {', '.join(TEST_CHANGE)}, not {test_change}"}
             cur["test_change"] = test_change
-        if brief is not None:
-            if brief not in BRIEF:
-                return {"error": f"brief is one of {', '.join(BRIEF)}, not {brief}"}
-            cur["brief"] = brief
         if capture_days is not None:
             try:
                 n = int(capture_days)
@@ -472,11 +520,11 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if (cur["node"] or cur["color"] or cur["reads"]
+        if (cur["node"] or cur["color"] or cur["reads"] or cur["sees"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
-                or cur["test_change"] != "wait" or cur["brief"] != "full"
+                or cur["test_change"] != "wait"
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
@@ -586,9 +634,9 @@ def dialog_save(name, req, uid):
                   gate=req.get("gate"), gitpol=req.get("gitpol"),
                   devbuild=req.get("devbuild"),
                   tests_in=req.get("tests_in"),
-                  test_change=req.get("test_change"), brief=req.get("brief"),
+                  test_change=req.get("test_change"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
-                  color=req.get("color"), reads=req.get("reads"),
+                  color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   workspace=WORKSPACE)
     # ...and what is the ASKING ACCOUNT's rather than the project's: the
     # model and effort its sessions launch on, and the author its commits

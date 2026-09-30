@@ -199,13 +199,20 @@ elif op == "add":
     # --here is the answer "it is this project's own". Not where the project
     # has reporting BuilderBot bugs off, BuilderBot's own among them, whose
     # tracker it is.
+    #
+    #
+    # What to do comes first in the line, and both ways on are commands to
+    # copy: a session that read the first 200 bytes of the old one met
+    # neither, filed nothing and reported nothing, and its containers
+    # being out of reach went unsaid (29 Sep).
     import re
     import prefs
     if not here and prefs.get(proj).get("report") != "deny" \
             and re.search(r"\bbuilder ?bot\b|\bbb\b", said, re.I):
-        print(f"[builderbot] not filed: this names BuilderBot. A problem with BuilderBot "
-              "itself goes to bb report \"what happened\" [--area A] [--repro \"...\"], "
-              f"not {proj}'s tracker; if it is {proj}'s own bug, add --here to file it here",
+        print("[builderbot] not filed yet. Send it with bb report \"what happened\" [--area A] "
+              f"[--repro \"...\"] if it is a problem with BuilderBot itself, or add --here if it is "
+              f"{proj}'s own bug. It names BuilderBot or bb, and BuilderBot's problems go to its "
+              f"maintainers, not into {proj}'s tracker",
               file=sys.stderr)
         sys.exit(1)
     r = bugs.add(proj, title, by="claude",
