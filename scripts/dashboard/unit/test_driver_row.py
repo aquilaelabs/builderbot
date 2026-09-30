@@ -58,6 +58,34 @@ class DriverRow(unittest.TestCase):
         self.assertEqual(row({**base, "candidate": ""})["newer"], "")
 
 
+class DriverError(unittest.TestCase):
+    """The reason on the row when the driver's part of a job failed: apt's
+    own first complaint, not bb-sandbox's note that apt had one."""
+
+    def why(self, log):
+        class Nodes:
+            @staticmethod
+            def job_tail(job_id, n=0):
+                return log
+        was, toolchains.nodes = toolchains.nodes, Nodes
+        toolchains._node_errors_seen.clear()
+        try:
+            return toolchains._node_errors("j_1", ["nvidia-driver"], "remove")["nvidia-driver"]
+        finally:
+            toolchains.nodes = was
+
+    def test_apts_own_line_is_the_reason(self):
+        got = self.why("== removing: nvidia-driver-595\nE: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 12562 (apt-get)\n"
+                       "E: Unable to acquire the dpkg frontend lock\n!! apt could not remove them; its output above says why\n")
+        self.assertIn("Could not get lock", got)
+        self.assertNotIn("its output above", got)
+        self.assertTrue(got.endswith("remove failed on the node"))
+
+    def test_without_one_the_helpers_last_word(self):
+        self.assertIn("is not a driver package", self.why("!! nvidia-driver-9 is not a driver package: nvidia-driver-NNN\n"))
+        self.assertIn("not provisioned", self.why("refused: the NVIDIA driver is this machine's own, and this node was not provisioned as a BuilderBot sandbox\n"))
+
+
 class DriverName(unittest.TestCase):
     """What the job carries for the driver, and what is refused first."""
     OPTS = [{"pkg": "nvidia-driver-610", "version": "610.57.04", "open": False},

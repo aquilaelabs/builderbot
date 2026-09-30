@@ -716,9 +716,12 @@ def _node_errors(job_id, failed, verb):
         if name == DRIVER:
             # bb-sandbox says why on a line of its own ("!! ..."), and the
             # agent's refusal begins "refused:"; its sections are not bb's.
+            # apt's own first complaint ("E: ...") is the reason; bb-sandbox's
+            # last line only says apt had one (the dev node's lock, 30 Sep).
             log = [x.strip() for x in (nodes.job_tail(job_id, 20000) or "").splitlines()]
+            apt = next((x[3:].strip() for x in log if x.startswith("E: ")), "")
             why = next((x.lstrip("! ") for x in reversed(log) if x.startswith(("!!", "refused:"))), "")
-            out[name] = " · ".join([w for w in (why,) if w] + [f"{verb} failed on the node"])[-400:]
+            out[name] = " · ".join([w for w in (apt or why,) if w] + [f"{verb} failed on the node"])[-400:]
             continue
         lines = []
         for ln in parts.get(name) or []:

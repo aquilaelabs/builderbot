@@ -1861,6 +1861,22 @@ gpu_card() {
     done
     return 0
 }
+# apt, waiting for its lock: the machine's own apt (the daily update, an
+# unattended upgrade, a toolchain's system packages) may hold it at the
+# moment a press arrives, and a removal failed on exactly that on the dev
+# node (30 Sep). Up to five minutes for the holder to finish, and apt-get
+# itself told to wait as long for the lock.
+apt_idle() {
+    local i
+    for i in $(seq 1 100); do
+        pgrep -x apt-get >/dev/null 2>&1 || pgrep -x dpkg >/dev/null 2>&1 \
+            || pgrep -x unattended-upgr >/dev/null 2>&1 || return 0
+        [ "$i" = 1 ] && say "waiting for the machine's own apt to finish"
+        sleep 3
+    done
+    return 0
+}
+apt_get() { apt_idle; apt-get -o DPkg::Lock::Timeout=300 "$@"; }
 # The distribution's NVIDIA driver, from apt: the Toolchains tab's driver
 # row (R102), and nothing else installs it.
 gpu_install_driver() {
@@ -1875,22 +1891,23 @@ gpu_install_driver() {
         *" ubuntu "*)
             say "installing the NVIDIA driver${want:+ ($want)} with apt; this takes minutes"
             export DEBIAN_FRONTEND=noninteractive
-            apt-get update -qq
-            apt-get install -y -qq ubuntu-drivers-common pciutils
+            apt_get update -qq
+            apt_get install -y -qq ubuntu-drivers-common pciutils
+            apt_idle
             if [ -n "$want" ]; then
                 # By branch through ubuntu-drivers, which brings this kernel's
                 # prebuilt modules; by package name where it will not take
                 # the branch, which builds them with dkms.
                 ubuntu-drivers install "nvidia:${want#nvidia-driver-}" \
-                    || apt-get install -y -qq "$want"
+                    || apt_get install -y -qq "$want"
             else
                 ubuntu-drivers install
             fi ;;
         *" debian "*)
             say "installing the NVIDIA driver with apt (non-free); this takes minutes"
             export DEBIAN_FRONTEND=noninteractive
-            apt-get update -qq
-            apt-get install -y -qq nvidia-driver firmware-misc-nonfree pciutils \
+            apt_get update -qq
+            apt_get install -y -qq nvidia-driver firmware-misc-nonfree pciutils \
                 || die "apt could not install nvidia-driver: Debian keeps it in non-free, so add 'contrib non-free non-free-firmware' to the sources on this machine first, then try again" ;;
         *)
             die "the NVIDIA driver is not installed from here on ${ID:-this family} yet: install it from NVIDIA's repository for it, then try again" ;;
@@ -1916,8 +1933,8 @@ cmd_gpu() {
         have apt-get || die "no Xorg on this machine, and it is not installed from here on this family: install an X server, then set the display up again"
         say "installing a headless X server with apt"
         export DEBIAN_FRONTEND=noninteractive
-        apt-get update -qq
-        apt-get install -y -qq xserver-xorg-core pciutils
+        apt_get update -qq
+        apt_get install -y -qq xserver-xorg-core pciutils
     fi
     gpu_nodes_unit
     command -v Xorg >/dev/null 2>&1 || die "no Xorg on this machine after the install; the display half needs one"
@@ -2101,7 +2118,7 @@ cmd_gpu_driver() {
             # update line say what is on offer now: Check for updates.
             have apt-get || return 0
             say "reading the package lists again"
-            apt-get update -qq || warn "apt-get update did not finish; the lists are as they were" ;;
+            apt_get update -qq || warn "apt-get update did not finish; the lists are as they were" ;;
         install)
             if [ -z "$card" ]; then
                 say "no NVIDIA card on this machine (lspci); nothing to install"
@@ -2126,9 +2143,9 @@ cmd_gpu_driver() {
                 # Installed already: brought up to what apt has for its branch.
                 say "the NVIDIA driver $ver is installed; bringing it up to date"
                 export DEBIAN_FRONTEND=noninteractive
-                apt-get update -qq
+                apt_get update -qq
                 # shellcheck disable=SC2016,SC2046
-                apt-get install -y -qq --only-upgrade $(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
+                apt_get install -y -qq --only-upgrade $(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
                     | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-|libnvidia-|linux-(modules|objects|signatures)-nvidia-|xserver-xorg-video-nvidia)/ {print $1}') \
                     || die "apt could not update it; its output above says why"
                 say "the NVIDIA driver is $(gpu_driver_version) now"
@@ -2146,17 +2163,6 @@ cmd_gpu_driver() {
                 say "it takes the card at the next boot, since nouveau holds it now: Reboot on this node's row in the Nodes tab, which ends every session on it"
             fi ;;
         remove)
-            # The display runs on the driver, so it goes first; the device
-            # nodes' unit with it.
-            if have systemctl; then
-                for u in "$GPU_UNIT" "$GPU_NODES_UNIT"; do
-                    systemctl disable --now "$u" >/dev/null 2>&1 || true
-                    rm -f "/etc/systemd/system/$u.service"
-                done
-                systemctl daemon-reload >/dev/null 2>&1 || true
-            fi
-            rm -f "$GPU_CONF"
-            gpu_state "none: the NVIDIA driver was removed"
             have dpkg-query || die "the driver was not installed from here on this family: remove it the way it was installed"
             # Every NVIDIA driver package on the machine, by name, whichever
             # of the distributions' layouts put it there: the kernel module's
@@ -2171,9 +2177,22 @@ cmd_gpu_driver() {
                 say "removing: $pkgs"
                 export DEBIAN_FRONTEND=noninteractive
                 # shellcheck disable=SC2086
-                apt-get purge -y -qq $pkgs || die "apt could not remove them; its output above says why"
-                apt-get autoremove -y -qq >/dev/null 2>&1 || true
+                apt_get purge -y -qq $pkgs || die "apt could not remove them; its output above says why"
+                apt_get autoremove -y -qq >/dev/null 2>&1 || true
             fi
+            # The packages first and these after (30 Sep): a removal apt
+            # refused used to leave the machine with its driver and without
+            # its display. The display runs on the driver, so it goes with
+            # it, and the device nodes' unit too.
+            if have systemctl; then
+                for u in "$GPU_UNIT" "$GPU_NODES_UNIT"; do
+                    systemctl disable --now "$u" >/dev/null 2>&1 || true
+                    rm -f "/etc/systemd/system/$u.service"
+                done
+                systemctl daemon-reload >/dev/null 2>&1 || true
+            fi
+            rm -f "$GPU_CONF"
+            gpu_state "none: the NVIDIA driver was removed"
             # A blacklist an earlier hand install left keeps nouveau off the
             # card for good; the packages' own go with them.
             rm -f /etc/modprobe.d/blacklist-nvidia-nouveau.conf
