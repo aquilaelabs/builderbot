@@ -2225,9 +2225,11 @@ cmd_gpu_driver() {
 # which hands the driver's libraries and the device nodes to a container
 # that asks for a GPU. Ubuntu and Debian do not carry it, so it comes from
 # NVIDIA's own package source, added here with its signing key and taken
-# away again on removal; Docker is told about the runtime and restarted,
-# which stops this machine's containers for a moment (those with a restart
-# policy come back). The machine's own, like the driver it needs.
+# away again on removal; Docker is told about the runtime and reloads its
+# configuration, which it takes a runtime from without stopping a container.
+# A restart would stop every one, and those with no restart policy stay
+# down after it (the dev node's own, 30 Sep), so it is the fallback only
+# where a reload did not take. The machine's own, like the driver it needs.
 NVCT_LIST=/etc/apt/sources.list.d/nvidia-container-toolkit.list
 # The key as NVIDIA publishes it, armored: apt reads an .asc named by
 # signed-by as it is, so nothing here needs gpg, which a minimal Ubuntu
@@ -2256,9 +2258,15 @@ cmd_gpu_container() {
             apt_get update -qq
             say "installing the NVIDIA container toolkit with apt"
             apt_get install -y -qq nvidia-container-toolkit || die "apt could not install it; its output above says why"
-            say "telling Docker about the runtime, and restarting it: this machine's containers stop for a moment"
+            say "telling Docker about the runtime; it reloads its configuration and running containers keep running"
             nvidia-ctk runtime configure --runtime=docker >/dev/null || die "nvidia-ctk could not write Docker's configuration"
-            if have systemctl; then systemctl restart docker || die "Docker did not come back after the restart: journalctl -u docker says why"; fi
+            if have systemctl; then
+                systemctl reload docker 2>/dev/null || true
+                if ! docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'; then
+                    say "Docker did not take the runtime on a reload, so it is restarted: a container with no restart policy stays down until it is started again"
+                    systemctl restart docker || die "Docker did not come back after the restart: journalctl -u docker says why"
+                fi
+            fi
             say "installed: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)" ;;
         remove)
             have dpkg-query || die "the toolkit was not installed from here on this family: remove it the way it was installed"
@@ -2280,8 +2288,7 @@ cmd_gpu_container() {
             fi
             rm -f "$NVCT_LIST" "$NVCT_KEY"
             if have systemctl && have docker; then
-                say "restarting Docker without the runtime: this machine's containers stop for a moment"
-                systemctl restart docker || warn "Docker did not come back after the restart: journalctl -u docker says why"
+                systemctl reload docker 2>/dev/null || warn "Docker did not reload its configuration: the nvidia runtime stays listed until Docker next starts"
             fi
             say "removed, with NVIDIA's package source" ;;
         *) die "usage: bb-sandbox gpu-container install|remove" ;;

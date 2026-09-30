@@ -85,9 +85,20 @@ case "$*" in
   *.list*) echo "deb https://nvidia.github.io/libnvidia-container/stable/deb/\\$(ARCH) /" ;;
   *) exit 22 ;;
 esac''')
-        self.tool("docker", "exit 0")
-        self.tool("nvidia-ctk", f'echo "nvidia-ctk $*" >> "{self.log}"')
-        self.tool("systemctl", f'echo "systemctl $*" >> "{self.log}"')
+        # Docker lists the runtime once it has been told (configured) and has
+        # read its configuration again: on a reload, or only on a restart
+        # where the test takes self.reloads away.
+        self.told = os.path.join(self.dir, "configured")
+        self.listed = os.path.join(self.dir, "listed")
+        self.reloads = os.path.join(self.dir, "reloads")
+        with open(self.reloads, "w") as f:
+            f.write("1")
+        self.tool("docker", f"""if [ -e "{self.listed}" ]; then echo '{{"nvidia":{{}},"runc":{{}}}}'; else echo '{{"runc":{{}}}}'; fi""")
+        self.tool("nvidia-ctk", f"""echo "nvidia-ctk $*" >> "{self.log}"
+case "$*" in *--unset*) rm -f "{self.told}" ;; *) echo 1 > "{self.told}" ;; esac""")
+        self.tool("systemctl", f"""echo "systemctl $*" >> "{self.log}"
+case "$1" in reload) [ -e "{self.reloads}" ] || exit 0 ;; esac
+if [ -e "{self.told}" ]; then echo 1 > "{self.listed}"; else rm -f "{self.listed}"; fi""")
         self.tool("apt-get", f'''echo "apt-get $*" >> "{self.log}"
 case "$*" in
   *install*nvidia-container-toolkit*) echo on > "{self.ctk}" ;;
@@ -100,7 +111,7 @@ echo "docker-ce ii "; exit 0''')
         with open(self.state, "w") as f:
             f.write("610.57.04 nvidia-driver-610\n")
 
-    def test_the_toolkit_adds_nvidias_source_installs_and_restarts_docker(self):
+    def test_the_toolkit_adds_nvidias_source_installs_and_reloads_docker(self):
         self.toolkit()
         self.driver_on()
         rc, said, ran = self.run_helper("gpu-container", "install")
@@ -114,7 +125,19 @@ echo "docker-ce ii "; exit 0''')
         self.assertIn("DPkg::Lock::Timeout", lines[install])
         configure = lines.index("nvidia-ctk runtime configure --runtime=docker")
         self.assertLess(install, configure)
-        self.assertLess(configure, lines.index("systemctl restart docker"))
+        self.assertLess(configure, lines.index("systemctl reload docker"))
+        self.assertNotIn("systemctl restart docker", lines)
+        self.assertIn("running containers keep running", said)
+
+    def test_a_docker_that_does_not_take_the_runtime_on_a_reload_is_restarted(self):
+        self.toolkit()
+        self.driver_on()
+        os.remove(self.reloads)
+        rc, said, ran = self.run_helper("gpu-container", "install")
+        self.assertEqual(rc, 0, said)
+        lines = ran.splitlines()
+        self.assertLess(lines.index("systemctl reload docker"), lines.index("systemctl restart docker"))
+        self.assertIn("stays down until it is started again", said)
 
     def test_the_toolkit_waits_for_the_driver(self):
         self.toolkit()
@@ -158,7 +181,8 @@ echo "docker-ce ii "; exit 0''')
         self.assertNotIn("docker-ce", purge)
         self.assertIn("nvidia-ctk runtime configure --runtime=docker --unset", ran)
         self.assertLess(ran.index("--unset"), ran.index(" purge "))
-        self.assertIn("systemctl restart docker", ran)
+        self.assertIn("systemctl reload docker", ran)
+        self.assertNotIn("systemctl restart docker", ran)
         self.assertFalse(os.path.exists(self.list) or os.path.exists(self.key))
 
     def test_a_picked_branch_on_a_machine_with_no_driver(self):

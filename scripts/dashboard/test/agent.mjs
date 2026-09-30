@@ -152,7 +152,7 @@ if a[0] == "gpu-container":
     else:
         for x in (kit, rt):
             if os.path.exists(x): os.remove(x)
-    print(f"gpu-container {a[1]}: done; Docker restarted"); sys.exit(0)
+    print(f"gpu-container {a[1]}: done"); sys.exit(0)
 if a[0] == "gpu-off":
     open(os.environ["BB_GPU_STATE"], "w").write("off: switched off on the Nodes tab; an emulator here renders in software\\n")
     print("the GPU display is off"); sys.exit(0)

@@ -323,9 +323,9 @@ function tcDriverRow(m, busy, job){
 
 // The NVIDIA container toolkit (R102): the second of the machine's own
 // rows, under the driver it needs. It is what lets a container on this
-// machine reserve the card, comes from NVIDIA's package source rather than
-// the distribution's, and restarts Docker going on and coming off, which
-// is said before either.
+// machine reserve the card, and comes from NVIDIA's package source rather
+// than the distribution's, which is said before it is added. Docker
+// reloads its configuration for it; no container stops.
 const TC_TOOLKIT = "nvidia-container-toolkit";
 function tcToolkitLine(m){
   const nodesBtn = ` <button type="button" class="link" data-tcnodes>Open the Nodes tab</button>`;
@@ -353,7 +353,7 @@ function tcToolkitRow(m, busy, job){
                : tcTicked.has(TC_TOOLKIT) ? " checked" : ""}>
     <span class="grow">
       <label class="nm" for="tcCtkTick">${esc(m.label)}${m.installed ? ` <span class="pill" title="installed">${esc(m.installed.split("-")[0])}</span>` : ""}</label>
-      <span class="sub">Lets a container on this machine use the card. From NVIDIA's own package source, which installing adds and removing takes away; Docker restarts both times, which stops this machine's containers for a moment.</span>
+      <span class="sub">Lets a container on this machine use the card. From NVIDIA's own package source, which installing adds and removing takes away. Running containers keep running.</span>
       ${mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcToolkitLine(m)}
       ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer.split("-")[0])}. Tick it and press Install selected</span>` : ""}
       ${job?.errors?.[TC_TOOLKIT] && !mine ? `<span class="sub bad">${esc(job.errors[TC_TOOLKIT])}</span>` : ""}
@@ -529,7 +529,7 @@ function renderToolchainsInto(i){
       tcAct("remove", [TC_DRIVER]);
   });
   el.querySelectorAll("[data-tcctkrm]").forEach(b => b.onclick = () => {
-    if (confirm(`Remove the NVIDIA container toolkit from ${toolchains?.name || "this node"}? Docker restarts, which stops every container there for a moment, and a container that reserves the card no longer starts.`))
+    if (confirm(`Remove the NVIDIA container toolkit from ${toolchains?.name || "this node"}? A container that reserves the card no longer starts; NVIDIA's package source goes with it.`))
       tcAct("remove", [TC_TOOLKIT]);
   });
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
@@ -602,9 +602,10 @@ async function tcAct(action, only){
   const drv = names.includes(TC_DRIVER) && action === "install";
   if (drv && !confirm(`Install NVIDIA's driver on ${toolchains?.name || "this node"}? It takes the card only when the machine restarts, which ends every session on it.`))
     return;
-  // ...and the toolkit is the one whose install restarts Docker.
+  // ...and the toolkit is the one that adds a package source of somebody
+  // else's to the machine.
   if (names.includes(TC_TOOLKIT) && action === "install"
-      && !confirm(`Install the NVIDIA container toolkit on ${toolchains?.name || "this node"}? It adds NVIDIA's package source to the machine and restarts Docker, which stops every container there for a moment.`))
+      && !confirm(`Install the NVIDIA container toolkit on ${toolchains?.name || "this node"}? It adds NVIDIA's own package source to the machine. Running containers keep running.`))
     return;
   // The ticks stay: a toolchain being installed reads as chosen, and the boxes
   // are ghosted anyway. What happens to them afterwards is decided by how it

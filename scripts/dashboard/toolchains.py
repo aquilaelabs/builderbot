@@ -1260,8 +1260,8 @@ def container_row(n):
     (R102), or None where the node reports no NVIDIA card or no Docker: what
     lets a container there reserve the card. The machine's own like the
     driver it needs, and from NVIDIA's package source, which its install
-    adds and its removal takes away. Docker is restarted by both, so the
-    row says that before either."""
+    adds and its removal takes away; Docker reloads its configuration for
+    it, and no container stops."""
     rep = n.get("reported") or {}
     if not rep.get("gpu_card") or not rep.get("docker"):
         return None

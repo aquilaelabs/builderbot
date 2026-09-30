@@ -2257,8 +2257,8 @@ ok(page.errors.length === 0,
     await napi('/api/v1/jobs', { action: 'cancel', id: rd?.id });
     // The container toolkit (R102): the machine's second row, under the
     // driver it needs. Refused alone where there is no driver and queued
-    // after it when both are ticked; its install and its removal each say
-    // first that Docker restarts; and there is no row without Docker.
+    // after it when both are ticked; its install says first that it adds
+    // NVIDIA's package source; and there is no row without Docker.
     {
       const KIT = 'nvidia-container-toolkit';
       const kitOf = async id => ((await napi(`/api/toolchains?node=${id}`)).machine || []).find(m => m.name === KIT);
@@ -2286,16 +2286,16 @@ ok(page.errors.length === 0,
       const kd = await page.$eval('.doc .tctab #tcCtkTick', b => ({ on: b.checked, text: b.closest('.tcdrv').textContent.replace(/\s+/g, ' ').trim(),
         under: !!b.closest('.tcdrv').previousElementSibling?.querySelector('#tcDrvTick') && !!b.closest('.tcmachine'),
         rm: !!b.closest('.tcdrv').querySelector('[data-tcctkrm]') }));
-      ok(!kd.on && kd.under && !kd.rm && /NVIDIA container toolkit/.test(kd.text) && /Docker restarts both times/.test(kd.text),
+      ok(!kd.on && kd.under && !kd.rm && /NVIDIA container toolkit/.test(kd.text) && /Running containers keep running/.test(kd.text),
          `the tab draws the toolkit's row under the driver's, with a tick box and what it costs (${kd.text.slice(0, 80)})`);
       await page.click('.doc .tctab #tcCtkTick');
       const ni = page.dialogs.length;
       await page.click('.doc .tctab [data-tc="install"]');
       const ij = await running();
       const ijob = ij ? await napi(`/api/v1/jobs?id=${ij.id}`) : {};
-      ok(page.dialogs.length === ni + 1 && /restarts Docker, which stops every container there/.test(page.dialogs[ni] || '')
+      ok(page.dialogs.length === ni + 1 && /adds NVIDIA's own package source/.test(page.dialogs[ni] || '')
          && JSON.stringify(ijob.spec?.names) === `["${KIT}"]` && ijob.spec?.action === 'install',
-         `Install selected asks first, saying Docker restarts, and queues the toolkit (${(page.dialogs[ni] || '').slice(0, 60)}; ${JSON.stringify(ijob.spec?.names)})`);
+         `Install selected asks first, saying whose package source it adds, and queues the toolkit (${(page.dialogs[ni] || '').slice(0, 60)}; ${JSON.stringify(ijob.spec?.names)})`);
       await napi('/api/v1/jobs', { action: 'cancel', id: ij?.id });
       // Installed and known to Docker: the dead tick of an installed row,
       // how a compose file asks for the card, and Remove.
@@ -2308,8 +2308,8 @@ ok(page.errors.length === 0,
       const nk = page.dialogs.length;
       await page.click('.doc .tctab [data-tcctkrm]');
       const kr = await running();
-      ok(page.dialogs.length === nk + 1 && /Docker restarts/.test(page.dialogs[nk] || '') && kr?.action === 'remove' && (kr.queue || []).includes(KIT),
-         `Remove asks first, saying Docker restarts, and queues the removal (${(page.dialogs[nk] || '').slice(0, 60)})`);
+      ok(page.dialogs.length === nk + 1 && /no longer starts/.test(page.dialogs[nk] || '') && kr?.action === 'remove' && (kr.queue || []).includes(KIT),
+         `Remove asks first, saying what stops working, and queues the removal (${(page.dialogs[nk] || '').slice(0, 60)})`);
       await napi('/api/v1/jobs', { action: 'cancel', id: kr?.id });
       // Installed but unknown to Docker, or with a newer one on offer: the
       // tick is alive, since there is something for an install to do.
