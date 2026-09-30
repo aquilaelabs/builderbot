@@ -503,6 +503,9 @@ def payload(project):
         # The last run's own wall time, for the honest gap between what the
         # tests cost and what the suite costs: the difference is the harness.
         "last_wall_ms": int((runs[-1].get("wall") or 0) * 1000) if runs else 0,
+        # The run going right now, if bb test said so (begin/end), or None:
+        # the view names it before the last run's record (R99).
+        "running": running(project),
     }
 
 
@@ -552,12 +555,26 @@ RUNNING = {}
 STALE_S = 4 * 3600
 
 
+def _moved(project):
+    """The project's revision, moved: an open Tests view re-reads only when
+    it moves (revisions), and a run's start and end are what it has to
+    show first, so each moves it, in the file the counter lives in."""
+    if not FILE:
+        return
+    with _lock:
+        d = load()
+        p = _project(d, project)
+        p["rev"] = int(p.get("rev") or 0) + 1
+        save(d)
+
+
 def begin(project, cmd="", by=""):
     """A test run has started on `project`: the record, with the id its end
     quotes so a later run's start is not undone by an earlier run's end."""
     rec = {"id": os.urandom(6).hex(), "since": int(time.time()),
            "cmd": str(cmd or "")[:200], "by": str(by or "")}
     RUNNING[project] = rec
+    _moved(project)
     return rec
 
 
@@ -568,6 +585,7 @@ def end(project, rid=""):
     if not rec or (rid and rec["id"] != rid):
         return False
     del RUNNING[project]
+    _moved(project)
     return True
 
 

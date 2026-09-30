@@ -262,6 +262,7 @@ function projectRow(p, live, cls, inTab){
       <button class="eye rowmore" data-more="${esc(p.name)}" aria-label="more"
         aria-expanded="false" title="the rest of this row's controls">${DOTS}</button>
       </span>
+      ${p.testing ? `<div class="sub sessline testing">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
       ${sessionRows(p.name) ? `<div class="sub sesslist">${sessionRows(p.name)}</div>`
         // WHO is here, or WHY nobody can be. Which machine they are on is
         // neither: it is on the project's settings, it is the same for every

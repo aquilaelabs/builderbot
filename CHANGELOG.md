@@ -23,6 +23,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A page on the Design view may be longer than one screen: Rows beside its frame, up to sixty, and the board grows with them (ed47d24)
 - A custom choice of a design's language can name the rule that says it, and that rule's text is what a session reads in the choice's place (6bb5358)
 - A page on the Design view can have a short key of its own, which its rules are addressed under (now/live) in place of the whole of its name (6bb5358)
+- bb toolchains ends with a builds-with block: the platforms and build-tools in the store, the compileSdk ceiling and what a library past it fails on, and what the Gradle cache holds (wrapper distributions, AGP, Kotlin, the compose BOM), so a session does not list them by hand (85ca0dd)
+- bb emu touch tap|hold|glide sends a touch with its timing kept through sendevent, in screen pixels and turned with the screen, and a capture's --drive script gets it as $BB_TOUCH: adb's own input verbs cost 300 ms a call and cannot time a glide or tell a long-press from a slide (85ca0dd)
+- A test run in progress is said on the dashboard where the app already reads it: the project's row says tests running and since when, and the notebook's Tests view names the run, who started it and the command before the last run's numbers (85ca0dd)
 
 ### Changed
 
