@@ -1117,9 +1117,9 @@ html:has(.modal:not([hidden])){overflow:hidden}
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
 /* A box that scrolls says so (scrollHints in page-motion.js): a shadow on
-   each edge with more past it, in the ink's own color so it reads on every
-   theme's ground, and a thin scrollbar where the platform draws one. */
-.modal .box,.modal .sheetslot,.pane .doc{--hint:color-mix(in srgb,var(--ink) 45%,transparent);
+   each edge with more past it, a darkening as a shadow falls (the operator,
+   30 Sep), and a thin scrollbar where the platform draws one. */
+.modal .box,.modal .sheetslot,.pane .doc{--hint:rgba(0,0,0,.75);
   scrollbar-width:thin;scrollbar-color:var(--line) transparent}
 .modal .box.scrolldown{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 -34px 26px -24px var(--hint)}
 .modal .box.scrollup{box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 34px 26px -24px var(--hint)}
