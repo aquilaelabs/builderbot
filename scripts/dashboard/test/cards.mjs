@@ -559,20 +559,38 @@ print(json.dumps(out))
     bs => bs.filter(b => b.offsetParent !== null).length);
   const folded = await shown();
   ok(folded === 3, `a phone row shows the session, the notebook and the fold (${folded})`);
-  await page.click(`${row} [data-more]`);
-  await page.waitForTimeout(250);
+  // On the same slide the Projects tab's rows use (the operator, 30 Sep):
+  // the card's list is a scroll box, so the card itself did not grow and
+  // the row snapped where the tab's row slid.
+  const slid = await animatedDuring(page, async () => { await page.click(`${row} [data-more]`); await page.waitForTimeout(250); });
   const open = await shown();
   ok(open > folded, `...and pressing it shows the rest (${folded} -> ${open})`);
+  ok(slid.some(k => /row|card/.test(k)), `...sliding over the height that takes, as the Projects tab's row does (${slid.join(' ')})`);
   ok(await page.$eval(`${row} [data-more]`, b => b.getAttribute('aria-expanded') === 'true'),
      '...saying so, for anything that is not looking at the pixels');
-  await page.click(`${row} [data-more]`);
-  await page.waitForTimeout(250);
+  // With the card's list a scroll box (a long list on a short phone) the
+  // card does not change height, and the row slides on its own.
+  await page.addStyleTag({ content: '#projects{max-height:90px;overflow:auto}' });
+  const slid2 = await animatedDuring(page, async () => { await page.click(`${row} [data-more]`); await page.waitForTimeout(250); });
   ok(await shown() === folded, '...and pressing it again folds them away');
+  ok(slid2.some(k => /row/.test(k)) && !slid2.some(k => /card/.test(k)),
+     `...the row itself sliding when the card's list scrolls and the card cannot grow (${slid2.join(' ')})`);
+  await page.evaluate(() => document.querySelectorAll('style').forEach(st => { if (st.textContent.startsWith('#projects{max-height')) st.remove(); }));
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.waitForTimeout(400);
   const desk = await shown();
   ok(desk > 3 && await page.$eval(`${row} [data-more]`, b => b.offsetParent === null),
      `on a desktop every icon is there and the fold is not (${desk} icons)`);
+  // The pin is on the card's rows too (the operator, 30 Sep), so a project
+  // is unpinned from the sidebar without a trip to the Projects tab; the
+  // Projects tab is where it is pinned back.
+  ok(await page.$eval(`${row} [data-p]`, b => b.getAttribute('aria-label') === 'unpin' && b.classList.contains('on')),
+     "the card's row carries the pin, lit, reading unpin");
+  await page.click(`${row} [data-p]`);
+  await page.waitForFunction(() => ![...document.querySelectorAll('#projects .row .name')].some(n => n.textContent.trim() === 'alpha'), null, { timeout: 15000 });
+  ok(true, '...and pressing it takes the project off the card');
+  await page.evaluate(() => setProjectPinned('alpha', true));
+  await page.waitForFunction(() => [...document.querySelectorAll('#projects .row .name')].some(n => n.textContent.trim() === 'alpha'), null, { timeout: 15000 });
 }
 
 // A phone's folds are the device's: a card opened there is still open after a
@@ -1949,12 +1967,12 @@ ok(!await page.$('#projects [data-del]'),
    'the sidebar card has no delete: that one is brushed past on a phone');
 ok(await page.$('.doc .projtab [data-del]'),
    '...and the Projects tab does');
-// The thumbtack went the same way. The card IS the pinned view, so a control
-// on it that takes a row off it is a button whose only effect is to remove
-// the thing you pressed, and the row it lived on is now one control shorter
-// on the crowded side.
-ok(!await page.$('#projects [data-p]') && await page.$('.doc .projtab [data-p]'),
-   'pinning is the Projects tab\'s, not the card the pins are shown in');
+// The thumbtack is on both since 30 Sep (the operator's ask): unpinning
+// from the card it is shown in, pinning back from the tab. It went the
+// delete's way once, on the crowded side of a phone's row; the phone folds
+// it behind the row's more button now.
+ok(await page.$('#projects [data-p]') && await page.$('.doc .projtab [data-p]'),
+   'the pin is on the card\'s rows as on the Projects tab\'s');
 
 // Locking, which is now the only gate there is. The eye that excluded a
 // project is gone: two buttons that looked alike, sat side by side and both
