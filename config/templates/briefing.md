@@ -245,6 +245,9 @@ otherwise), waits for the boot to finish before it returns, keeps the log
 where `bb emu log` reads it, and refuses a second one. A session that
 started the binary by hand slept five seconds and met a cold boot's "System
 UI isn't responding" dialog instead of its own app (30 Sep).
+`bb emu stop` when you are done with it, before you hand back: the
+emulator lives in this session's view, so another session of yours cannot
+reach it or start its own until you stop it or this session ends.
 `bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--pre MS] [--hold MS]`
 is a touch with its timing kept, in screen pixels: adb's own input verbs
 cost about 300 ms a call, which cannot time a glide across letters or tell

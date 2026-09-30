@@ -51,8 +51,18 @@ def shell(a, *words):
     return r.stdout or ""
 
 
+def _order(dev):
+    """Devices in the kernel's order, by their number: sorted as text,
+    /dev/input/event10 came before event2, and a phone with several
+    virtio multi-touch devices got the one the display ignores (report 43,
+    Shebang-DevBoard, 30 Sep). The first is the one bound to the display."""
+    m = re.search(r"(\d+)$", dev)
+    return (int(m.group(1)) if m else 1 << 30, dev)
+
+
 def panel(a):
-    """(device path, x max, y max) of the multi-touch panel."""
+    """(device path, x max, y max) of the multi-touch panel: the first one
+    reporting ABS_MT_POSITION_X, by device number."""
     want = os.environ.get("BB_TOUCH_DEV", "")
     dev, xs, ys = "", {}, {}
     for line in shell(a, "getevent", "-p").splitlines():
@@ -63,7 +73,7 @@ def panel(a):
         m = re.search(r"\b(0035|0036)\s*:\s*value \d+, min \d+, max (\d+)", line)
         if m and dev:
             (xs if m.group(1) == "0035" else ys)[dev] = int(m.group(2))
-    for d in [want] if want else sorted(xs):
+    for d in [want] if want else sorted(xs, key=_order):
         if d in xs and d in ys:
             return d, xs[d], ys[d]
     die("no touch panel found on the emulator (getevent -p reports none with ABS_MT_POSITION_X); "

@@ -10,7 +10,8 @@ while a script drives it, the emulator's screenrecord, an X display.
 Arguments: the source (--video FILE | --url URL | --emu PKG | --display :N),
 --seconds N for a recording, --drive FILE for the script that works the
 surface meanwhile, --name NAME for the reel's directory under dist/reel/,
---threshold T (ffmpeg's scene score, 0..1, that counts as a change) and
+--threshold T (ffmpeg's scene score, 0..1, that counts as a change; see
+THRESHOLD for the defaults) and
 --fps N (how often the recording is looked at). BB_CAPTURE_OUT is dist/reel,
 BB_CAPTURE_FFMPEG the ffmpeg binary, BB_CAPTURE_NODE_PATH and BB_CAPTURE_CHROME what
 the page source needs, BB_CAPTURE_ADB the emulator's adb.
@@ -36,6 +37,19 @@ from capture import die, ffmpeg, font, from_display, from_emu, from_url, maker, 
 
 
 # ---- the reel itself: from a video to a sheet and a log ------------------------
+
+# What counts as a change, by source. ffmpeg's scene score is the whole
+# frame's mean difference, so it scales with how much of the screen moved:
+# measured on a 1080x2400 keyboard screen (30 Sep), a typed letter scores
+# about 0.0004, a key's preview bubble 0.0026, a blinking text cursor 0.0001,
+# and a still frame 0.00005. At 0.02 every one of those was dropped, and a
+# reel of eight seconds of typing was one frame (Shebang-DevBoard, 30 Sep).
+# The emulator's is 0.0002: every letter, not the cursor. A page and an X
+# display keep 0.02, where a change is usually a region and a browser's
+# encoder is noisier; --threshold asks for another.
+THRESHOLD = {"emu": 0.0002}
+THRESHOLD_DEFAULT = 0.02
+
 
 def reel(video, out, work, threshold, fps):
     """The frames that changed, stamped and tiled: the sheet and frames.json
@@ -72,7 +86,7 @@ def reel(video, out, work, threshold, fps):
                     "t": round(times[i], 2) if i < len(times) else None,
                     # One score per kept frame, in order; the first is kept
                     # whatever it scored, and its score is against nothing.
-                    "change": round(scores[i], 3) if i and i < len(scores) else 0.0})
+                    "change": round(scores[i], 5) if i and i < len(scores) else 0.0})
     # The sheet: each frame scaled to one width and stamped with its time in
     # the corner, tiled four across. Without a font the stamp is left off and
     # frames.json is the map from position to time.
@@ -118,12 +132,14 @@ def main():
     ap.add_argument("--seconds", type=int, default=10)
     ap.add_argument("--drive")
     ap.add_argument("--name")
-    ap.add_argument("--threshold", type=float, default=0.02)
+    ap.add_argument("--threshold", type=float)
     ap.add_argument("--fps", type=int, default=10)
     a = ap.parse_args()
     picked = [k for k in ("video", "url", "emu", "display") if getattr(a, k) is not None]
     if len(picked) != 1:
         die("one source: --video FILE, --url URL, --emu [PKG] or --display :N")
+    if a.threshold is None:
+        a.threshold = THRESHOLD.get(picked[0], THRESHOLD_DEFAULT)
     base = os.environ.get("BB_CAPTURE_OUT") or os.path.join(os.getcwd(), "dist", "reel")
     name = a.name or (os.path.splitext(os.path.basename(a.video))[0] if a.video
                       else time.strftime("%Y%m%d-%H%M%S"))
@@ -145,7 +161,12 @@ def main():
           + f": {os.path.join(out, 'sheet.png')} and frames.json beside it; the frames are under {work}",
           file=sys.stderr)
     for f in log:
-        print(f"  {f['frame']:>3}  {f['t'] if f['t'] is not None else '?':>7}s  change {f['change']:.3f}")
+        print(f"  {f['frame']:>3}  {f['t'] if f['t'] is not None else '?':>7}s  change {f['change']:.5f}")
+    # One frame is the first one alone: nothing moved enough to count, which
+    # is not the same as nothing having happened, and says how to look closer.
+    if len(log) == 1:
+        print(f"[builderbot] nothing moved past a scene score of {a.threshold}: a smaller change (a typed "
+              f"letter is about 0.0004 on a phone screen) needs --threshold lower", file=sys.stderr)
 
 
 if __name__ == "__main__":

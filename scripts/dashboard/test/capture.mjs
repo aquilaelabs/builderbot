@@ -3,7 +3,7 @@
 // hard changes, so the answer is known: three frames, at 0, 2.0 and 3.5s.
 // ffmpeg is a toolchain recipe rather than a given, so a node without it
 // says so and this skips rather than failing for a tool it never had.
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { existsSync, readFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { ok, done, DIR } from './lib.mjs';
 
@@ -25,6 +25,24 @@ if (ff.status !== 0){
     '-i', 'color=c=navy:size=640x400:rate=10:duration=5',
     '-vf', "drawbox=x=100:y=100:w=300:h=150:color=orange:t=fill:enable='gte(t,2)',drawbox=x=420:y=40:w=150:h=300:color=white:t=fill:enable='gte(t,3.5)'",
     `${S}/cut.mp4`]);
+  // A change the size of a typed letter on a phone screen (Shebang-DevBoard,
+  // 30 Sep): a 20x40 block on 1080x2400 scores about 0.0003, dropped at a
+  // page's threshold, which then says so and how to look closer; kept at
+  // the emulator's.
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi',
+    '-i', 'color=c=white:size=1080x2400:rate=10:duration=4',
+    '-vf', "drawbox=x=130:y=1430:w=26:h=44:color=black:t=fill:enable='gte(t,1.5)',drawbox=x=160:y=1430:w=26:h=44:color=black:t=fill:enable='gte(t,2.5)'",
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', `${S}/letters.mp4`]);
+  const coarse = reel('--video', `${S}/letters.mp4`, '--name', 'letters');
+  const fine = reel('--video', `${S}/letters.mp4`, '--name', 'letters2', '--threshold', '0.0002');
+  const kept = n => (JSON.parse(readFileSync(`${S}/dist/reel/${n}/frames.json`, 'utf8')).frames || []).map(f => f.t);
+  ok(kept('letters').length === 1 && /nothing moved past a scene score of 0.02/.test(coarse.stderr) && /--threshold lower/.test(coarse.stderr),
+     `a letter-sized change is below a page's threshold, and the reel says so and how to see it (${coarse.stderr.trim().split('\n').pop().slice(0, 90)})`);
+  ok(fine.status === 0 && kept('letters2').length === 3 && Math.abs(kept('letters2')[1] - 1.5) < 0.2 && Math.abs(kept('letters2')[2] - 2.5) < 0.2,
+     `...and at the emulator's threshold each letter is a frame at its time (${JSON.stringify(kept('letters2'))})`);
+  ok(/THRESHOLD = \{"emu": 0\.0002\}/.test(readFileSync(`${REPO}/scripts/lib/reel.py`, 'utf8')),
+     '...which is the default for a reel of the emulator');
+  cap('prune', `${S}/dist`, 'letters', 'letters2');
   const r = reel('--video', `${S}/cut.mp4`, '--name', 'cut');
   const log = existsSync(`${S}/dist/reel/cut/frames.json`) ? JSON.parse(readFileSync(`${S}/dist/reel/cut/frames.json`, 'utf8')) : null;
   const ts = (log?.frames || []).map(f => f.t);
@@ -149,6 +167,41 @@ exit 0
 }
 
 // The sources refuse in their own words when the node lacks what they need.
+// An emulator another session holds (30 Sep): the AVD is the account's,
+// the emulator in that session's own view, so adb here lists nothing. The
+// emulator's lock on the AVD says it is running; status, start and stop
+// name it rather than saying none is running or waiting for one that
+// refuses to run twice.
+{
+  const home = `${S}/avdhome`;
+  mkdirSync(`${home}/builderbot-36.avd`, { recursive: true });
+  mkdirSync(`${home}/running`, { recursive: true });
+  writeFileSync(`${home}/builderbot-36.ini`, `path=${home}/builderbot-36.avd\n`);
+  writeFileSync(`${home}/builderbot-36.avd/config.ini`, 'image.sysdir.1=x\n');
+  writeFileSync(`${home}/builderbot-36.avd/multiinstance.lock`, '');
+  writeFileSync(`${home}/running/pid_4242.ini`, 'avd.name=builderbot-36\nport.adb=5555\n');
+  const bin = `${S}/emubin`;
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(`${bin}/adb`, '#!/bin/sh\n[ "$1" = devices ] && echo "List of devices attached"; exit 0\n', { mode: 0o755 });
+  writeFileSync(`${bin}/emulator`, '#!/bin/sh\necho "emulator ran" >&2; exit 1\n', { mode: 0o755 });
+  const emu = (...a) => spawnSync('bash', [`${REPO}/scripts/bb`, 'emu', ...a], { encoding: 'utf8',
+    env: { ...process.env, ANDROID_AVD_HOME: home, ANDROID_AVD_NAME: 'builderbot-36', PATH: `${bin}:${process.env.PATH}`,
+           BUILDERBOT_ROLE: 'node', HOME: `${S}/emuhome` } });
+  const holder = spawn('flock', [`${home}/builderbot-36.avd/multiinstance.lock`, 'sleep', '600'], { detached: true, stdio: 'ignore' });
+  await new Promise(r => setTimeout(r, 400));
+  const t0 = Date.now();
+  const st = emu('status'), start = emu('start'), stop = emu('stop');
+  // Its whole group: flock's sleep holds the lock too.
+  try { process.kill(-holder.pid, 'SIGTERM'); } catch {}
+  console.log(`[emu held] three calls took ${Date.now() - t0} ms`);
+  ok(/builderbot-36 is running in another of your sessions on this node/.test(st.stdout) && !/no emulator is running/.test(st.stdout),
+     `bb emu status names an emulator another session holds (${st.stdout.trim().split('\n').pop().slice(0, 80)})`);
+  ok(start.status !== 0 && /running in another of your sessions/.test(start.stderr) && !/emulator ran/.test(start.stderr),
+     `...bb emu start refuses at once, starting nothing (${start.stderr.trim().split('\n').pop().slice(0, 80)})`);
+  ok(/running in another of your sessions/.test(stop.stderr), '...and bb emu stop says whose it is to stop');
+  await new Promise(r => setTimeout(r, 200));
+  ok(/no emulator is running/.test(emu('status').stdout), '...and with the lock let go, none is running');
+}
 const noSrc = reel('--name', 'x');
 ok(noSrc.status !== 0 && /one source: --video FILE, --url URL, --emu \[PKG\] or --display :N/.test(noSrc.stderr || ''),
    `no source is refused naming the four (${(noSrc.stderr || '').trim().slice(0, 70)})`);

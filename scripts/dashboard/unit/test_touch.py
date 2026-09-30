@@ -36,5 +36,27 @@ class ToPanel(unittest.TestCase):
             self.assertLess(abs(py - MAX // 2), MAX // 50, rot)
 
 
+class Panel(unittest.TestCase):
+    """Which touch device a tap goes to: with several virtio multi-touch
+    devices, the first by number, which is the one bound to the display
+    (report 43: sorted as text, event10 came before event2)."""
+
+    def test_the_first_device_by_number(self):
+        lines = []
+        for n in list(range(2, 12)):
+            lines += [f"add device {n - 1}: /dev/input/event{n}",
+                      f'  name:     "virtio_input_multi_touch_{n - 1}"',
+                      "    0035  : value 0, min 0, max 32767",
+                      "    0036  : value 0, min 0, max 32767"]
+        was, was_env = touch.shell, os.environ.pop("BB_TOUCH_DEV", None)
+        touch.shell = lambda a, *w: "\n".join(lines)
+        try:
+            self.assertEqual(touch.panel("adb")[0], "/dev/input/event2")
+        finally:
+            touch.shell = was
+            if was_env is not None:
+                os.environ["BB_TOUCH_DEV"] = was_env
+
+
 if __name__ == "__main__":
     unittest.main()

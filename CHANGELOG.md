@@ -158,6 +158,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Installing the NVIDIA driver no longer fails without a word on a machine that has none: the node's helper exited on a package lookup that found nothing (c4fbd9d)
 - Reboot and Shut down on a node's row wait while a toolchain install or any change is applying there, the NVIDIA rows say installing, the GPU emulator tick stays ticked while it applies, and a project row lists each session under the node it runs on. (cc4e099)
 - A dialog or a document pane that scrolls shows a soft shadow on each edge with more past it, and a dialog opens at its top every time instead of where it was last left. (119b0a6)
+- bb capture reel of the emulator catches a typed letter, a key's preview and a glide trail: its change threshold was fifty times too coarse. bb emu touch lands on the display's own touch device, and bb emu status and start name an emulator another of your sessions is holding. (03fe116)
 
 ### Security
 
