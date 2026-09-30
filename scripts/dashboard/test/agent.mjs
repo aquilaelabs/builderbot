@@ -1618,14 +1618,15 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     // agent runs as bb-sandbox gpu-driver install PACKAGE; the hello after
     // it says the driver is installed and waiting for a restart; another
     // branch is then refused until this one is removed; and a check reads
-    // apt's lists again on the node.
+    // apt's lists again on the node. The waits are long: each state arrives
+    // with a census, which under a whole run's load took more than 40 s.
     {
       const drv = async () => ((await api(`/api/toolchains?node=${minted.id}`)).machine || [])[0];
       const job = async id => until(async () => {
         const r = await api(`/api/v1/jobs?id=${id}`);
         return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
-      }, 40000);
-      const first = await until(async () => { const x = await drv(); return x?.state && x.state !== 'unknown' && x.options?.length ? x : null; }, 40000);
+      }, 120000);
+      const first = await until(async () => { const x = await drv(); return x?.state && x.state !== 'unknown' && x.options?.length ? x : null; }, 120000);
       ok(first?.state === 'absent' && first.managed && /10de:2482/.test(first.card) && first.bound === 'nouveau' && !first.here,
          `the agent reports the card and no driver on it, nouveau holding it (${first?.state}, ${first?.bound})`);
       ok(first?.options.map(o => o.pkg).join(',') === 'nvidia-driver-610,nvidia-driver-595' && first.recommended === 'nvidia-driver-595',
@@ -1638,7 +1639,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const fin = await job(q.job);
       ok(fin?.type === 'toolchain' && fin.state === 'succeeded' && /gpu-driver install nvidia-driver-610: done/.test(fin.log || ''),
          `...which the agent runs as bb-sandbox gpu-driver install nvidia-driver-610 (${fin?.state}: ${(fin?.log || '').trim().slice(-70)})`);
-      const after = await until(async () => { const x = await drv(); return x?.state === 'waiting' ? x : null; }, 40000);
+      const after = await until(async () => { const x = await drv(); return x?.state === 'waiting' ? x : null; }, 120000);
       ok(after?.installed === '610.57.04' && after.package === 'nvidia-driver-610' && after.here && !after.newer,
          `...and the hello after it says installed, waiting for a restart (${after?.state} ${after?.installed} ${after?.package})`);
       const other = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-595', node: minted.id });
@@ -1678,7 +1679,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          `Check for updates reads apt's lists again on the node (${ck.error || ckf?.state})`);
       const rm = await api('/api/toolchains', { action: 'remove', names: ['nvidia-driver'], node: minted.id });
       const rmf = rm.ok ? await job(rm.job) : null;
-      const gone = await until(async () => { const x = await drv(); return x?.state === 'absent' ? x : null; }, 40000);
+      const gone = await until(async () => { const x = await drv(); return x?.state === 'absent' ? x : null; }, 120000);
       ok(rmf?.state === 'succeeded' && /gpu-driver remove: done/.test(rmf.log || '') && gone !== null,
          `Remove takes it off again, and the row reads not installed (${rm.error || rmf?.state}, ${gone?.state})`);
       rmSync(`${DIR}/nv-installed`, { force: true });
