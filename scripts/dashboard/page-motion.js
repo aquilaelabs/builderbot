@@ -33,10 +33,16 @@ function armModal(el){
     get(){ return this.hasAttribute("hidden") || this.classList.contains("leaving"); },
     set(v){
       if (!v){
+        const was = this.hasAttribute("hidden") || this.classList.contains("leaving");
         this.getAnimations().forEach(a => a.cancel());
         this.querySelector(":scope > .box")?.getAnimations().forEach(a => a.cancel());
         this.classList.remove("leaving");
         this.removeAttribute("hidden");
+        // A dialog opens at its top: the box kept where it was last scrolled
+        // to, and a field focused on the way in scrolled it further, so one
+        // opened on a phone could start halfway down (the operator, 30 Sep).
+        // Again after the frame, for what the opener fills and focuses.
+        if (was){ modalTop(this); requestAnimationFrame(() => { modalTop(this); scrollHints(this); }); }
         return;
       }
       if (this.hasAttribute("hidden") || this.classList.contains("leaving")) return;
@@ -49,6 +55,31 @@ function armModal(el){
         () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); } },
         () => {});                        // canceled: it was shown again, and stays
     }});
+}
+
+// Every scroller in a dialog back at its top, the dialog's own included.
+function modalTop(el){
+  el.scrollTop = 0;
+  el.querySelectorAll(".box, .box *").forEach(x => { if (x.scrollTop) x.scrollTop = 0; });
+}
+
+// ---- scroll hints -------------------------------------------------------
+// A box that scrolls says so: a soft shadow on each edge with more past it,
+// gone at the end (the operator, 30 Sep). A phone hides its scrollbars until
+// a finger moves, and a dialog cut off at a field boundary read as the whole
+// dialog. An inset shadow rather than a painted gradient, since several
+// themes put their own texture on these grounds; the classes are set here,
+// from the box's own numbers, on scroll and on a slow clock for content that
+// grows while nobody scrolls.
+const SCROLL_HINTED = ".modal:not([hidden]) > .box, .modal:not([hidden]) .sheetslot, .pane .doc.on";
+function scrollHint(el){
+  const more = el.scrollHeight - el.clientHeight > 2;
+  el.classList.toggle("scrollup", more && el.scrollTop > 2);
+  el.classList.toggle("scrolldown", more && el.scrollTop + el.clientHeight < el.scrollHeight - 2);
+}
+function scrollHints(root){
+  (root || document).querySelectorAll(SCROLL_HINTED).forEach(scrollHint);
+  if (root?.matches?.(SCROLL_HINTED)) scrollHint(root);
 }
 
 function flip(els, key){

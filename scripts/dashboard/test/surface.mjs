@@ -72,7 +72,7 @@ const SURFACE = [
   // The Emulator tab (tab-emulator.js).
   'openEmulator', 'emuPick', 'loadEmulator', 'emuAdder', 'emuRow', 'renderEmulatorInto', 'emuAct', 'tcRow', 'tcSystemLine', 'tcNeedsLine', 'tcDriverRow', 'tcDriverLine', 'tcDriverOption', 'tcToolkitRow', 'tcToolkitLine', 'nodesReadOnly',
   // The Claude sign-in on a node's row (page-signin.js), and the press that goes to it.
-  'signinRev', 'signinCannot', 'signinBusy', 'signinBlock', 'wireSignin', 'openNodeClaude', 'signinCancel', 'claudeSigninFirst', 'claudeNodes', 'claudeEnd',
+  'signinRev', 'signinCannot', 'signinBusy', 'signinBlock', 'wireSignin', 'openNodeClaude', 'signinCancel', 'claudeSigninFirst', 'claudeNodes', 'claudeEnd', 'modalTop', 'scrollHint', 'scrollHints',
   'openToolchainsOn', 'nodeGpuSection', 'tcTickDots', 'placeCard',
   'claudeNodeFacts', 'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',

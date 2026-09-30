@@ -2207,4 +2207,32 @@ ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 
   await freePoll(page);
   page.errors = [];
 }
+// ---- a dialog that scrolls says so, and opens at its top -------------------
+// On a short screen the project's settings dialog is taller than the room:
+// a shadow on its bottom edge says there is more, a shadow on the top one
+// once it has scrolled, none at the end; and closed and opened again it is
+// back at its top, however far down it was (the operator, 30 Sep).
+{
+  await page.setViewportSize({ width: 420, height: 560 });
+  const box = '#rnmodal > .box';
+  const cls = () => page.$eval(box, b => ({ up: b.classList.contains('scrollup'), down: b.classList.contains('scrolldown'),
+    top: b.scrollTop, room: b.scrollHeight - b.clientHeight, shadow: getComputedStyle(b).boxShadow }));
+  await page.evaluate(() => renameProject('alpha'));
+  await page.waitForFunction(s => document.querySelector(s)?.classList.contains('scrolldown'), box, { timeout: 10000 });
+  const a = await cls();
+  ok(a.room > 50 && a.down && !a.up && a.top === 0 && /inset/.test(a.shadow),
+     `a dialog taller than the screen opens at its top with a shadow on the edge that has more (${JSON.stringify({ ...a, shadow: a.shadow.slice(0, 40) })})`);
+  await page.$eval(box, b => { b.scrollTop = b.scrollHeight; b.dispatchEvent(new Event('scroll')); });
+  const b = await cls();
+  ok(b.up && !b.down, `...scrolled to its end, the shadow moves to the top edge and leaves the bottom (${JSON.stringify({ up: b.up, down: b.down })})`);
+  await page.evaluate(() => closeRename());
+  await page.waitForFunction(() => document.getElementById('rnmodal').hasAttribute('hidden'), null, { timeout: 5000 });
+  await page.evaluate(() => renameProject('alpha'));
+  await page.waitForFunction(s => document.querySelector(s)?.classList.contains('scrolldown'), box, { timeout: 10000 });
+  await page.waitForTimeout(200);
+  const c = await cls();
+  ok(c.top === 0 && !c.up, `...and opened again it is back at its top, not where it was left (${c.top})`);
+  await page.evaluate(() => closeRename());
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
 await done(browser);

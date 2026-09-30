@@ -157,6 +157,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node whose NVIDIA driver is installed but not yet loaded no longer shows nvidia-smi's failure sentence as its GPU's name on its row (8b5b172)
 - Installing the NVIDIA driver no longer fails without a word on a machine that has none: the node's helper exited on a package lookup that found nothing (c4fbd9d)
 - Reboot and Shut down on a node's row wait while a toolchain install or any change is applying there, the NVIDIA rows say installing, the GPU emulator tick stays ticked while it applies, and a project row lists each session under the node it runs on. (cc4e099)
+- A dialog or a document pane that scrolls shows a soft shadow on each edge with more past it, and a dialog opens at its top every time instead of where it was last left. (119b0a6)
 
 ### Security
 
