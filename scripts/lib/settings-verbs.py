@@ -104,6 +104,7 @@ def show():
     print(f"    During a test run, a change asked for   {rec.get('test_change') or 'wait'}")
     print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
     print(f"    Captures kept (days; 0 keeps them)      {rec.get('capture_days', 7)}")
+    print(f"    Dev builds kept of each (0 keeps all)   {rec.get('dev_keep', 3)}")
     # Every dial, each as it stands. The five the notebook gates are kept
     # together under `gate`, and read from the record's top they were never
     # found: the list showed two dials of seven, and a session told that

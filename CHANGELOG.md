@@ -35,6 +35,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Two toolchains for documents: documents (bb tool docs read turns a PDF, Word document, slide deck or spreadsheet into Markdown, and bb tool docs pages draws its pages as pictures) and office (LibreOffice with no window: bb tool office convert). (2a07cae)
 - Claude Code's own PDF reader works on a node with the documents toolchain: it installs a pdftoppm and a pdfinfo drawn with PyMuPDF, which is what the reader asks for. (d6c29bd)
 - An artifact can be pinned on the Artifacts tab: a pinned build is kept whatever builds come after it, and the row says who pinned it. (37366e3)
+- How many dev builds of each kind the Artifacts tab keeps is a project setting, Dev builds kept in the project's settings: 3 unless changed, and 0 keeps them all (d2405b8)
 
 ### Changed
 

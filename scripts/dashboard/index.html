@@ -3860,6 +3860,8 @@ body.booting .pane>.loading{margin:auto}
            session is still reading one (R96). -->
       <div class="logdays setrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-tip="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
         <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
+      <div class="logdays setrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-tip="of each kind of dev build in dist/ (the same file at another dev version), the newest this many stay and the older are removed; a release and anything pinned always stay; 0 keeps them all" tabindex="0">?</span></label>
+        <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each kind"> <span class="dim">of each</span></div>
       <!-- Where the tests run, which is this project's business and used to
            be set on the Docker tab, a machine surface it has no other reason
            to visit (R68 step 6). Only for a project that HAS a container to

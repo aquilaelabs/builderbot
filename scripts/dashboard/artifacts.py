@@ -60,6 +60,8 @@ DIST = "dist"
 UID_RE = re.compile(r"^u_[0-9a-f]{8}$")
 # The project's "captures kept" days, set by server.py from prefs.
 capture_days = None
+# ...and how many dev builds of each kind it keeps (R105), from prefs too.
+dev_keep = None
 # scripts/lib/capture.py, loaded by path: captures(dist) and prune(dist, days, names).
 _capture = None
 
@@ -387,7 +389,8 @@ def pin(project, rel, on, by=""):
 # building all day leaves one file per build: seven debug APKs, 133 MB, in
 # one day on Shebang-DevBoard (30 Sep). Files that are one build of the same
 # thing differ only in that version, so the name with it taken out is the
-# kind; of each kind the newest DEV_KEEP stay and the rest go when the tab
+# kind; of each kind the newest few stay (the project's "dev builds kept",
+# DEV_KEEP unless it says; 0 keeps them all) and the rest go when the tab
 # draws, like captures. A release (no -dev.N) is never swept, nor a file
 # whose name carries no version: nothing here can tell those are superseded.
 DEV_KEEP = 3
@@ -436,11 +439,13 @@ def tab_view(name, uid):
     sees it: what it built, each account's own builds from its worktree
     (B237) apart from dist/, which is what ships, what the project can and
     cannot do off this box, its dev instances, and the phone."""
-    sweep_dev_builds(name)
+    keep = dev_keep(name) if dev_keep else DEV_KEEP
+    if keep:
+        sweep_dev_builds(name, keep)
     held = pins(name)
     return ({"artifacts": [a | ({"pinned": True, "pinned_by": held[a["path"]].get("by", "")}
                                 if a.get("path") in held else {}) for a in listing_of(name)],
-             "dev_keep": DEV_KEEP,
+             "dev_keep": keep,
              "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
                           for g in branches(name)],
              "build": build_state(name)}

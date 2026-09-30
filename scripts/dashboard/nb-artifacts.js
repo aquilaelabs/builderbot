@@ -212,8 +212,11 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       </div>` : "";
     // Dev builds go on their own past the newest few of each (R105): said
     // once, over the list, where there are any.
+    const keep = art.dev_keep ?? 3;
     const devNote = rows.some(a => /\d+\.\d+\.\d+-dev\.\d+-[0-9a-f]{7}/.test(a.name))
-      ? `<div class="hint dim">Dev builds keep the newest ${art.dev_keep ?? 3} of each; older ones are removed as new ones arrive. A release is kept, and so is anything pinned.</div>` : "";
+      ? `<div class="hint dim">${keep
+          ? `Dev builds keep the newest ${keep} of each (the project's settings say how many); older ones are removed as new ones arrive. A release is kept, and so is anything pinned.`
+          : "Every dev build is kept: this project's settings say so (Dev builds kept)."}</div>` : "";
     list.innerHTML = devHtml + (!rows.length
       ? `<div class="hint">Nothing in <b>dist/</b> yet: a build copies what it keeps there.</div>`
       : devNote + jobHtml + instHtml + rows.map((a, i) => `

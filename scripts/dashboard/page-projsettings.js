@@ -63,7 +63,7 @@ function rnLoadModelNow(name){
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
                  node: "", nodes: "", reads: "", sees: "", build: "", test: "", outputs: "",
-                 capture_days: "7", gate: "", color: ""};
+                 capture_days: "7", dev_keep: "3", gate: "", color: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -109,6 +109,7 @@ function rnFillPrefs(p){
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
+               dev_keep: String(p?.prefs?.dev_keep ?? 3),
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
@@ -215,6 +216,7 @@ function rnFillPrefsRest(p){
   $("rnAsks").value = p?.yours?.asks || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
+  $("rnDevKeep").value = String(p?.prefs?.dev_keep ?? 3);
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
     if (el.dataset.built !== "1"){
@@ -549,6 +551,7 @@ async function rnSubmit(){
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const capture_days = $("rnCaptureDays").value.trim();
+  const dev_keep = $("rnDevKeep").value.trim();
   const gate = rnGateNow();
   const color = rnColorNow();
   // With the node's group: nothing here restarts a session.
@@ -561,6 +564,7 @@ async function rnSubmit(){
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
+    || dev_keep !== rnPrefWas.dev_keep
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
     || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change
     || gpu !== rnPrefWas.gpu
@@ -588,6 +592,7 @@ async function rnSubmit(){
     [test_change !== rnPrefWas.test_change, "During a test run, a change asked for"],
     [gpu !== rnPrefWas.gpu, "The node's GPU"],
     [capture_days !== rnPrefWas.capture_days, "Captures kept"],
+    [dev_keep !== rnPrefWas.dev_keep, "Dev builds kept"],
   ].filter(([changed]) => changed).map(([, label]) => label);
   const launchChanged = takesAtStart.length > 0;
   const running = liveSessions().has(myClaude(name));
@@ -595,6 +600,8 @@ async function rnSubmit(){
   if (!to.trim()) return fail("a new name is needed");
   if (capture_days !== "" && !/^\d{1,3}$/.test(capture_days))
     return fail("captures kept is a number of days, 0 to 365");
+  if (dev_keep !== "" && !/^\d{1,2}$/.test(dev_keep))
+    return fail("dev builds kept is a number of builds, 0 to 99");
   // The one combination the dialog will not write: authenticating with a token
   // it is being told to throw away. The hint has been saying so; this is what
   // makes it true rather than advice.
@@ -645,6 +652,7 @@ async function rnSubmit(){
                               tests_in, test_change, gpu, reply, asks, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
+                              ...(dev_keep !== "" ? {dev_keep: +dev_keep} : {}),
                               // The node binding never restarts a session;
                               // it is about containers, not the conversation.
                               restart: restartNow})});

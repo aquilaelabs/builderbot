@@ -2450,6 +2450,7 @@ artifacts.build_state = build_state
 
 artifacts.instance_states = devactions.row_states
 artifacts.capture_days = lambda name: prefs.get(name)["capture_days"]
+artifacts.dev_keep = lambda name: prefs.get(name)["dev_keep"]
 artifacts.phone_summary = lambda name, uid: phone.summary(
     prefs.get(name)["node"], uid,
     nodes.node(prefs.get(name)["node"]) if prefs.get(name)["node"] and not NODES_OK else None)

@@ -85,6 +85,16 @@ class DevBuilds(unittest.TestCase):
         (self.dist / "reel" / "sheet.png").write_text("x")
         self.assertEqual(artifacts.pin("proj", "dist/reel/sheet.png", True)[1], 400)
 
+    def test_the_project_says_how_many(self):
+        debug = [self.make(f"P-0.1.0-dev.{n}-abcdef{n}-debug.apk") for n in range(1, 5)]
+        self.assertEqual(sorted(artifacts.sweep_dev_builds("proj", 1)), sorted(debug[:3]))
+        self.assertEqual([p.name for p in self.dist.iterdir()], debug[3:])
+
+    def test_the_setting_is_a_count_or_the_default(self):
+        import prefs
+        self.assertEqual([prefs._dev_keep(v) for v in (None, "", "x", -1, 100, 0, "5", 99)],
+                         [3, 3, 3, 3, 3, 0, 5, 99])
+
     def test_no_dist_is_nothing(self):
         self.assertEqual(artifacts.sweep_dev_builds("nothing-here"), [])
 

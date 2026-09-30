@@ -111,6 +111,28 @@ const names = await page.$$eval('.artrow b', bs => bs.map(b => b.textContent));
   ok(after.join() === ['alpha-1.2.0-dev.3-abcdef3-debug.apk*', 'alpha-1.2.0-dev.5-abcdef5-debug.apk',
                        'alpha-1.2.0-dev.6-abcdef6-debug.apk', 'alpha-1.2.0-dev.7-abcdef7-debug.apk'].join(),
      `a pinned build stays when newer ones arrive, and is not one of the three kept beside it (${after.join(', ')})`);
+  // How many are kept is the project's setting (Dev builds kept, 3 unless
+  // it says): at 2, one more goes on the next read; at 0 nothing does; a
+  // value that is not a count is refused.
+  const setKeep = v => page.evaluate(async v => (await (await fetch('/api/prefs', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', dev_keep: v }) })).json()), v);
+  const devNow = () => page.evaluate(async () => { const j = await (await fetch('/api/artifacts?project=alpha')).json();
+    return { keep: j.dev_keep, names: j.artifacts.filter(a => /-dev\./.test(a.name) && !a.pinned).map(a => a.name).sort() }; });
+  const bad = await setKeep('lots');
+  await setKeep(2);
+  const two = await devNow();
+  ok(/dev builds kept is a number of builds/.test(bad.error || '') && two.keep === 2
+     && two.names.join() === 'alpha-1.2.0-dev.6-abcdef6-debug.apk,alpha-1.2.0-dev.7-abcdef7-debug.apk',
+     `the project's Dev builds kept says how many of each stay (2: ${two.names.join(', ')}), and a value that is not a count is refused`);
+  await setKeep(0);
+  const t2 = Math.floor(Date.now() / 1000);
+  for (const n of [8, 9]){
+    const f = `${DIR}/ws/alpha/dist/alpha-1.2.0-dev.${n}-abcdef${n}-debug.apk`;
+    writeFileSync(f, 'dev build'); utimesSync(f, t2 - 50 + n, t2 - 50 + n);
+  }
+  const all = await devNow();
+  ok(all.keep === 0 && all.names.length === 4, `...and 0 keeps every one (${all.names.length})`);
+  await setKeep(3);
   const unpin = await page.evaluate(async n => (await (await fetch('/api/artifacts', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', action: 'unpin', path: `dist/${n}` }) })).json()), oldest);
   ok(unpin.ok && unpin.pinned === false, '...and unpinned, it goes like any other build');

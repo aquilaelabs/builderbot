@@ -304,10 +304,23 @@ def _clean(rec):
             # dist/ before the Artifacts tab's sweep removes it (R96). By
             # age and never by need: two sessions on one project may each
             # be reading a reel the other made. 0 keeps them.
-            "capture_days": _capture_days(rec.get("capture_days"))}
+            "capture_days": _capture_days(rec.get("capture_days")),
+            # How many dev builds of each kind the Artifacts tab keeps in
+            # dist/ before it removes the older (R105); 0 keeps them all.
+            "dev_keep": _dev_keep(rec.get("dev_keep"))}
 
 
 CAPTURE_DAYS = 7
+DEV_KEEP = 3
+
+
+def _dev_keep(v):
+    """A whole number of builds, 0 to 99; anything else is the default."""
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return DEV_KEEP
+    return n if 0 <= n <= 99 else DEV_KEEP
 
 
 def _capture_days(v):
@@ -439,7 +452,7 @@ def _sees_of(rec):
 def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None,
-              test_change=None, capture_days=None, reads=None, sees=None, gpu=None):
+              test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -527,6 +540,14 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if not 0 <= n <= 365:
                 return {"error": f"captures kept is a number of days, 0 to 365, not {capture_days}"}
             cur["capture_days"] = n
+        if dev_keep is not None:
+            try:
+                n = int(dev_keep)
+            except (TypeError, ValueError):
+                n = -1
+            if not 0 <= n <= 99:
+                return {"error": f"dev builds kept is a number of builds, 0 to 99, not {dev_keep}"}
+            cur["dev_keep"] = n
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
@@ -536,6 +557,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
                 or cur["test_change"] != "wait" or cur["gpu"] != "on"
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
+                or cur["dev_keep"] != DEV_KEEP
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
             # file says only what somebody chose; _clean puts the defaults
@@ -555,6 +577,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("gpu", None)
             if cur["capture_days"] == CAPTURE_DAYS:
                 rec.pop("capture_days", None)
+            if cur["dev_keep"] == DEV_KEEP:
+                rec.pop("dev_keep", None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)
@@ -648,6 +672,7 @@ def dialog_save(name, req, uid):
                   tests_in=req.get("tests_in"),
                   test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
+                  dev_keep=req.get("dev_keep"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   workspace=WORKSPACE)
     # ...and what is the ASKING ACCOUNT's rather than the project's: the

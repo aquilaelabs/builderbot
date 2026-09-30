@@ -156,11 +156,12 @@ The dashboard's own tab icon is this command's output, from
 
 **Dev builds do not pile up.** A build named with `bb version --file` carries
 its dev version (`0.1.0-dev.17-9e09ad3`), so builds of the same thing differ
-only there; of each such kind the Artifacts tab keeps the newest three in
-`dist/` and removes the older when it draws, as it does captures past their
+only there; of each such kind the Artifacts tab keeps the newest few in
+`dist/` (the project's settings say how many, Dev builds kept: 3 unless
+changed, and 0 keeps them all) and removes the older when it draws, as it does captures past their
 days. A release (no `-dev.N`), a file whose name carries no version, and an
 artifact somebody **pinned** (the pin on its row, kept by the controller with
-who pinned it) are never removed, and a pinned build is not one of the three
+who pinned it) are never removed, and a pinned build is not one of those
 kept beside it. One day of a session building a keyboard left seven debug
 APKs, 133 MB, before this.
 
