@@ -1757,7 +1757,7 @@ cmd_uninstall() {
     say "stopping the agent and the session ports rule"
     # The GPU display's unit too (B394): left enabled, a machine BuilderBot
     # had left still started an Xorg on the card at every boot.
-    for u in builderbot-agent builderbot-session-ports builderbot-gpu-display; do
+    for u in builderbot-agent builderbot-session-ports builderbot-gpu-display builderbot-gpu-nodes; do
         if have systemctl; then
             systemctl disable --now "$u" >/dev/null 2>&1 || true
             rm -f "/etc/systemd/system/$u.service"
@@ -1861,6 +1861,29 @@ gpu_card() {
     done
     return 0
 }
+# The distribution's NVIDIA driver, with whatever else the caller names
+# (the display half wants an X server), from apt. Shared by the display's
+# set-up and the Toolchains tab's driver row (R102).
+gpu_install_driver() {
+    # shellcheck source=/dev/null
+    [ -r /etc/os-release ] && . /etc/os-release
+    case " ${ID:-} ${ID_LIKE:-} " in
+        *" ubuntu "*)
+            say "installing the NVIDIA driver${*:+ and $*} with apt; this takes minutes"
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq ubuntu-drivers-common pciutils "$@"
+            ubuntu-drivers install ;;
+        *" debian "*)
+            say "installing the NVIDIA driver${*:+ and $*} with apt (non-free); this takes minutes"
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq nvidia-driver firmware-misc-nonfree pciutils "$@" \
+                || die "apt could not install nvidia-driver: Debian keeps it in non-free, so add 'contrib non-free non-free-firmware' to the sources on this machine first, then try again" ;;
+        *)
+            die "the NVIDIA driver is not installed from here on ${ID:-this family} yet: install it from NVIDIA's repository for it, then try again" ;;
+    esac
+}
 cmd_gpu() {
     local card
     card="$(gpu_card)"
@@ -1871,25 +1894,9 @@ cmd_gpu() {
     fi
     say "card: $card"
     if ! command -v nvidia-smi >/dev/null 2>&1 || ! command -v Xorg >/dev/null 2>&1; then
-        # shellcheck source=/dev/null
-        [ -r /etc/os-release ] && . /etc/os-release
-        case " ${ID:-} ${ID_LIKE:-} " in
-            *" ubuntu "*)
-                say "installing the NVIDIA driver and a headless X server with apt; this takes minutes"
-                export DEBIAN_FRONTEND=noninteractive
-                apt-get update -qq
-                apt-get install -y -qq ubuntu-drivers-common xserver-xorg-core pciutils
-                ubuntu-drivers install ;;
-            *" debian "*)
-                say "installing the NVIDIA driver and a headless X server with apt (non-free); this takes minutes"
-                export DEBIAN_FRONTEND=noninteractive
-                apt-get update -qq
-                apt-get install -y -qq nvidia-driver firmware-misc-nonfree xserver-xorg-core pciutils \
-                    || die "apt could not install nvidia-driver: Debian keeps it in non-free, so add 'contrib non-free non-free-firmware' to the sources on this machine first, then press Set up GPU display again" ;;
-            *)
-                die "the NVIDIA driver is not installed from here on ${ID:-this family} yet: install it and Xorg from NVIDIA's repository for it, then press Set up GPU display again for the display half" ;;
-        esac
+        gpu_install_driver xserver-xorg-core
     fi
+    gpu_nodes_unit
     command -v Xorg >/dev/null 2>&1 || die "no Xorg on this machine after the install; the display half needs one"
     cat > "/etc/systemd/system/$GPU_UNIT.service" <<EOF
 # Written by bb-sandbox gpu. A headless X server on the NVIDIA card, for the
@@ -1993,11 +2000,150 @@ EOF
     return 1
 }
 
+# --- the NVIDIA driver as a row of the Toolchains tab (R102) -------------------
+# The driver alone, installed and removed from the tab, apart from the
+# emulator's display. It is the machine's and not the toolchain store's: its
+# kernel module is built for this machine's kernel and its libraries must
+# match that module exactly, so there is one per machine, installed as root,
+# and it takes the card only at the next boot, since nouveau holds it until
+# then. A session runs with no-new-privileges, so the setuid nvidia-modprobe
+# cannot make /dev/nvidia-uvm on a CUDA program's first use: a unit of this
+# machine's own makes the device nodes as root at every boot (gpu-nodes).
+GPU_NODES_UNIT=builderbot-gpu-nodes
+gpu_driver_version() {
+    local m
+    for m in modinfo /sbin/modinfo /usr/sbin/modinfo; do
+        command -v "$m" >/dev/null 2>&1 || continue
+        "$m" -F version nvidia 2>/dev/null | head -1
+        return 0
+    done
+}
+gpu_nodes_unit() {
+    have systemctl || return 0
+    cat > "/etc/systemd/system/$GPU_NODES_UNIT.service" <<EOF
+# Written by bb-sandbox. The NVIDIA device nodes a CUDA program opens, made
+# at boot as root: a session runs with no-new-privileges, so the setuid
+# nvidia-modprobe cannot make them on a program's first use.
+[Unit]
+Description=BuilderBot GPU nodes: the NVIDIA device nodes for sessions
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bb-sandbox gpu-nodes
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable "$GPU_NODES_UNIT" >/dev/null 2>&1 || true
+}
+cmd_gpu_nodes() {
+    # As NVIDIA's own install guide makes them on a machine with no X
+    # server: a node per card and the control node (major 195), then the
+    # unified-memory module and its two nodes. Quiet where the driver does
+    # not have the card yet, which is every boot until the one after the
+    # install.
+    local dev n=0 i=0 major
+    if ! modprobe nvidia 2>/dev/null; then
+        say "the nvidia module is not loaded (nouveau has the card until a reboot); no device nodes to make"
+        return 0
+    fi
+    for dev in /sys/bus/pci/devices/*; do
+        [ "$(cat "$dev/vendor" 2>/dev/null)" = 0x10de ] || continue
+        case "$(cat "$dev/class" 2>/dev/null)" in 0x03*) n=$((n + 1)) ;; esac
+    done
+    while [ "$i" -lt "$n" ]; do
+        [ -e "/dev/nvidia$i" ] || mknod -m 666 "/dev/nvidia$i" c 195 "$i"
+        i=$((i + 1))
+    done
+    [ -e /dev/nvidiactl ] || mknod -m 666 /dev/nvidiactl c 195 255
+    if modprobe nvidia-uvm 2>/dev/null; then
+        major="$(awk '$2 == "nvidia-uvm" {print $1}' /proc/devices)"
+        if [ -n "$major" ]; then
+            [ -e /dev/nvidia-uvm ] || mknod -m 666 /dev/nvidia-uvm c "$major" 0
+            [ -e /dev/nvidia-uvm-tools ] || mknod -m 666 /dev/nvidia-uvm-tools c "$major" 1
+        fi
+    fi
+    chmod 0666 /dev/nvidia[0-9]* /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-uvm-tools 2>/dev/null || true
+    say "device nodes: $(printf '%s ' /dev/nvidia*)"
+}
+cmd_gpu_driver() {
+    local card ver pkgs u
+    card="$(gpu_card)"
+    case "${1-}" in
+        install)
+            if [ -z "$card" ]; then
+                say "no NVIDIA card on this machine (lspci); nothing to install"
+                return 0
+            fi
+            say "card: $card"
+            ver="$(gpu_driver_version)"
+            if [ -n "$ver" ] && command -v nvidia-smi >/dev/null 2>&1; then
+                say "the NVIDIA driver $ver is already installed"
+            else
+                gpu_install_driver
+                ver="$(gpu_driver_version)"
+                [ -n "$ver" ] || die "the install ran, but no nvidia kernel module is there for this kernel ($(uname -r)); the apt output above says why"
+                say "installed the NVIDIA driver $ver"
+            fi
+            gpu_nodes_unit
+            if [ -d /sys/module/nvidia ] && nvidia-smi -L >/dev/null 2>&1; then
+                cmd_gpu_nodes
+                say "the driver has the card: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1)"
+            else
+                say "it takes the card at the next boot, since nouveau holds it now: Reboot on this node's row in the Nodes tab, which ends every session on it"
+            fi ;;
+        remove)
+            # The display runs on the driver, so it goes first; the device
+            # nodes' unit with it.
+            if have systemctl; then
+                for u in "$GPU_UNIT" "$GPU_NODES_UNIT"; do
+                    systemctl disable --now "$u" >/dev/null 2>&1 || true
+                    rm -f "/etc/systemd/system/$u.service"
+                done
+                systemctl daemon-reload >/dev/null 2>&1 || true
+            fi
+            rm -f "$GPU_CONF"
+            gpu_state "none: the NVIDIA driver was removed"
+            have dpkg-query || die "the driver was not installed from here on this family: remove it the way it was installed"
+            # Every NVIDIA driver package on the machine, by name, whichever
+            # of the distributions' layouts put it there: the kernel module's
+            # (dkms or Ubuntu's prebuilt modules), the libraries, the X module.
+            # shellcheck disable=SC2016
+            pkgs="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
+                | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-|libnvidia-|linux-(modules|objects|signatures)-nvidia-|xserver-xorg-video-nvidia|libcuda1|libnvcuvid1|libegl-nvidia|libgl1-nvidia|libgles-nvidia|libglx-nvidia|glx-alternative-nvidia|firmware-nvidia-)/ {print $1}' \
+                | tr '\n' ' ')"
+            if [ -z "${pkgs// /}" ]; then
+                say "no NVIDIA driver packages are installed here"
+            else
+                say "removing: $pkgs"
+                export DEBIAN_FRONTEND=noninteractive
+                # shellcheck disable=SC2086
+                apt-get purge -y -qq $pkgs || die "apt could not remove them; its output above says why"
+                apt-get autoremove -y -qq >/dev/null 2>&1 || true
+            fi
+            # A blacklist an earlier hand install left keeps nouveau off the
+            # card for good; the packages' own go with them.
+            rm -f /etc/modprobe.d/blacklist-nvidia-nouveau.conf
+            if have update-initramfs; then update-initramfs -u >/dev/null 2>&1 || true; fi
+            if [ -d /sys/module/nvidia ]; then
+                say "removed; the loaded driver keeps the card until the next boot, when nouveau takes it back: Reboot on this node's row in the Nodes tab"
+            else
+                say "removed; nouveau has the card"
+            fi ;;
+        *) die "usage: bb-sandbox gpu-driver install|remove" ;;
+    esac
+}
+
 case "${1-}" in
     "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
     uninstall)   shift; cmd_uninstall "${1-}" ;;
     gpu)         cmd_gpu ;;
     gpu-display) cmd_gpu_display ;;
+    gpu-driver)  shift; cmd_gpu_driver "${1-}" ;;
+    gpu-nodes)   cmd_gpu_nodes ;;
     list)        shift; if [ "${1-}" = "--json" ]; then cmd_list_json; else cmd_list; fi ;;
     add-nfs)     shift; cmd_add_nfs "${1-}" ;;
     add-share)   shift; cmd_add_share "${1-}" ;;

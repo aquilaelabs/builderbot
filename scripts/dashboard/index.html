@@ -959,6 +959,12 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
 .tc:last-child{border-bottom:0}
 .tc input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto}
+/* The NVIDIA driver's row (R102): no tick box, so a spacer of the box's width
+   keeps its words in line with the store's rows; not a label, so no pointer;
+   and the hairline the rows share, under it, before the store's list. */
+.tc.tcdrv{cursor:default}
+.tc .tcgap{width:16px;flex:0 0 auto}
+.tcs.tcmachine{border-bottom:1px solid var(--line)}
 .tc .nm{font:600 13px/1.35 system-ui,sans-serif}
 .tc .sub{display:block;color:var(--dim);font:var(--f-note)}
 .tc .where{font-family:var(--mono);overflow-wrap:anywhere}

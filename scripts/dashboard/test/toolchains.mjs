@@ -763,6 +763,30 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   ok(/platforms\s+none: nothing compiles here until the operator adds one on the Toolchains tab/.test(bare)
      && /modules\s+none cached yet: the first build fetches them/.test(bare),
      '...and an empty store and an empty cache are said as such rather than as a blank');
+  // The NVIDIA driver's line (R102), read from this machine's sysfs and
+  // modinfo: none without a card, and each of the states the row has.
+  const sysr = mkdtempSync(`${tmpdir()}/bbsys-`), fbin = mkdtempSync(`${tmpdir()}/bbbin-`);
+  const devd = `${sysr}/bus/pci/devices/0000:04:00.0`;
+  mkdirSync(devd, { recursive: true });
+  const { writeFileSync: wf, symlinkSync: ln, rmSync: rm } = await import('node:fs');
+  wf(`${devd}/vendor`, '0x10de\n'); wf(`${devd}/class`, '0x030000\n');
+  const nv = (bound, inst, loaded) => {
+    rm(`${devd}/driver`, { force: true });
+    if (bound){ mkdirSync(`${sysr}/bus/pci/drivers/${bound}`, { recursive: true }); ln(`${sysr}/bus/pci/drivers/${bound}`, `${devd}/driver`); }
+    rm(`${sysr}/module`, { recursive: true, force: true });
+    if (loaded){ mkdirSync(`${sysr}/module/nvidia`, { recursive: true }); wf(`${sysr}/module/nvidia/version`, loaded + '\n'); }
+    wf(`${fbin}/modinfo`, inst ? `#!/bin/sh\necho ${inst}\n` : '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    return execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_nvidia_line`],
+      { encoding: 'utf8', env: { ...process.env, BB_SYS_ROOT: sysr, PATH: `${fbin}:${process.env.PATH}` } }).trim();
+  };
+  const lines = [nv('nouveau', '', ''), nv('nouveau', '580.95.05', ''), nv('nvidia', '580.95.05', '580.95.05'),
+                 nv('nvidia', '580.95.05', '575.64'), nv('nvidia', '', '580.95.05')];
+  ok(/^not installed: nouveau has the card/.test(lines[0]) && /^580\.95\.05 installed; it takes the card when the machine restarts$/.test(lines[1])
+     && /^580\.95\.05, running the card/.test(lines[2]) && /^575\.64 running the card; 580\.95\.05 takes over/.test(lines[3])
+     && /^removed; it keeps the card until the machine restarts$/.test(lines[4]),
+     `bb toolchains says where the NVIDIA driver stands, read from the machine (${lines.map(x => x.slice(0, 24)).join(' | ')})`);
+  wf(`${devd}/vendor`, '0x1234\n');
+  ok(nv('', '', '') === '', '...and nothing at all on a machine with no NVIDIA card');
 }
 
 await done(browser);

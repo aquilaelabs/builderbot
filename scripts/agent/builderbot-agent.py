@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.117"
+AGENT_VERSION = "0.7.118"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -281,6 +281,10 @@ SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandb
 # What the GPU display's unit last said (bb-sandbox gpu-display, R20): one
 # line, read into the census so the row says it.
 GPU_DISPLAY_STATE = os.environ.get("BUILDERBOT_GPU_DISPLAY_STATE", "/run/builderbot-gpu-display")
+# The machine's sysfs, where the card and its driver are read from. The
+# suite's is a tree of its own with a card in it, so what it checks does
+# not depend on the box it runs on; lspci is not asked then.
+SYS_ROOT = os.environ.get("BUILDERBOT_SYS_ROOT", "/sys")
 # The session's view (R35): the root helper that builds it, the file that
 # tells it this machine's layout, and the sudo rule that is the session
 # account's only way to it. Installed and kept by this agent from the bundle,
@@ -1739,15 +1743,15 @@ def _gpu_card():
     Nodes tab offers Set up GPU display on (R20). A VM's virtual adapter is
     not one, and neither is a card of another make, which the verb would
     refuse."""
-    for line in _run(["lspci", "-nn"], timeout=10).splitlines():
+    for line in (_run(["lspci", "-nn"], timeout=10) if SYS_ROOT == "/sys" else "").splitlines():
         low = line.lower()
         if "nvidia" in low and ("vga compatible" in low or "3d controller" in low):
             return line.split(": ", 1)[-1].strip()[:120]
     # No pciutils (a minimal Rocky): sysfs says the same without the name,
     # a display-class device (0x03) of NVIDIA's vendor id (0x10de).
     try:
-        for dev in sorted(os.listdir("/sys/bus/pci/devices")):
-            base = f"/sys/bus/pci/devices/{dev}"
+        for dev in sorted(os.listdir(f"{SYS_ROOT}/bus/pci/devices")):
+            base = f"{SYS_ROOT}/bus/pci/devices/{dev}"
             with open(f"{base}/vendor") as f, open(f"{base}/class") as g, open(f"{base}/device") as h:
                 vendor, cls, did = f.read().strip(), g.read().strip(), h.read().strip()
             if vendor == "0x10de" and cls.startswith("0x03"):
@@ -1771,6 +1775,56 @@ def _gpu_name():
     except (OSError, subprocess.SubprocessError):
         return ""
     return p.stdout.strip() if p.returncode == 0 else ""
+
+
+def _gpu_driver(sys_root=None, modinfo=None):
+    """Where the NVIDIA driver stands on this machine, for the Toolchains
+    tab's driver row (R102): the version installed for this kernel (the
+    module modinfo finds), the version loaded now, and which driver has the
+    card. {} with no NVIDIA card. Read from the files, never from
+    nvidia-smi, which only answers once the driver has the card, and the
+    row has to tell "not installed" from "installed, waiting for a reboot"
+    and from "removed, still loaded until one"."""
+    sys_root = sys_root or SYS_ROOT
+    bound = ""
+    card = False
+    try:
+        base = os.path.join(sys_root, "bus", "pci", "devices")
+        for dev in sorted(os.listdir(base)):
+            d = os.path.join(base, dev)
+            try:
+                with open(os.path.join(d, "vendor")) as f, open(os.path.join(d, "class")) as g:
+                    if f.read().strip() != "0x10de" or not g.read().strip().startswith("0x03"):
+                        continue
+            except OSError:
+                continue
+            card = True
+            link = os.path.join(d, "driver")
+            if os.path.islink(link):
+                bound = os.path.basename(os.readlink(link))
+            break
+    except OSError:
+        pass
+    if not card:
+        return {}
+    loaded = ""
+    try:
+        with open(os.path.join(sys_root, "module", "nvidia", "version")) as f:
+            loaded = f.read().strip()[:40]
+    except OSError:
+        pass
+    installed = ""
+    tool = modinfo or next((m for m in ("modinfo", "/sbin/modinfo", "/usr/sbin/modinfo")
+                            if shutil.which(m) or os.path.isfile(m)), "")
+    if tool:
+        try:
+            p = subprocess.run([tool, "-F", "version", "nvidia"], capture_output=True,
+                               text=True, timeout=10, check=False)
+            if p.returncode == 0:
+                installed = (p.stdout.strip().splitlines() or [""])[0][:40]
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return {"installed": installed, "loaded": loaded, "bound": bound[:20]}
 
 
 def _gpu_display():
@@ -1814,6 +1868,7 @@ def census(state):
         if shutil.which("docker") else "",
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "gpu_card": _gpu_card(),
+        "gpu_driver": _gpu_driver(),
         "gpu_display": _gpu_display(),
         "sshd": _sshd_listening(),
         "stores": _stores(state.get("stores"), used=True),
@@ -5238,7 +5293,7 @@ class Agent:
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
-        if what in ("storage", "network", "root", "gpu") and not os.access(SANDBOX_BIN, os.X_OK):
+        if what in ("storage", "network", "root", "gpu", "gpu-driver") and not os.access(SANDBOX_BIN, os.X_OK):
             job.say(f"refused: {what} edits this machine's own configuration, and this node "
                     f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
             return "failed", 77
@@ -5259,6 +5314,8 @@ class Agent:
             return self._apply_power(job, what)
         if what == "gpu":
             return self._apply_gpu(job)
+        if what == "gpu-driver":
+            return self._apply_gpu_driver(job, cfg)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
 
@@ -5268,6 +5325,19 @@ class Agent:
         a reboot has to follow; then a hello, so the row reads the display's
         state now rather than at the next census."""
         rc = self._sh(job, [SANDBOX_BIN, "gpu"], timeout=1800)
+        self.hello_at = 0
+        return ("succeeded", 0) if rc == 0 else ("failed", rc)
+
+    def _apply_gpu_driver(self, job, cfg):
+        """The NVIDIA driver installed or removed on its own, from the
+        Toolchains tab's driver row (R102): bb-sandbox gpu-driver does it
+        and says whether a reboot has to follow; then a hello, so the row
+        reads where the driver stands now rather than at the next census."""
+        act = str((cfg or {}).get("action") or "")
+        if act not in ("install", "remove"):
+            job.say(f"refused: the driver is installed or removed, not {act!r}\n")
+            return "failed", 64
+        rc = self._sh(job, [SANDBOX_BIN, "gpu-driver", act], timeout=2400)
         self.hello_at = 0
         return ("succeeded", 0) if rc == 0 else ("failed", rc)
 

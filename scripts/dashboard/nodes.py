@@ -936,6 +936,13 @@ def _census(c):
     for k in ("gpu_card", "gpu_display"):
         if c.get(k):
             out[k] = str(c[k])[:200]
+    # Where the NVIDIA driver stands (R102): installed for this kernel,
+    # loaded now, and which driver has the card, for the Toolchains tab's
+    # driver row. Absent from an agent too old to say, which the row names.
+    gd = c.get("gpu_driver")
+    if c.get("gpu_card") and isinstance(gd, dict):
+        out["gpu_driver"] = {k: re.sub(r"[^A-Za-z0-9._-]", "", str(gd.get(k) or ""))[:40]
+                             for k in ("installed", "loaded", "bound")}
     # Whether the agent may install system packages there: the stamp and
     # root.
     out["administers"] = bool(c.get("administers"))
@@ -1841,6 +1848,43 @@ def node_gpu_display(principal, node_id):
                 {"apply": "gpu", "config": {}, "timeout": 1800})
     if r.get("ok"):
         audit(principal, "node-gpu-display", node_id, {"job": r["job"]})
+    return r
+
+
+def node_gpu_driver(principal, node_id, action):
+    """Install or remove the NVIDIA driver on a node from the Toolchains
+    tab's driver row (R102): a system job the agent answers with
+    bb-sandbox gpu-driver, as root, on a node provisioned as a sandbox and
+    never on a guest machine, whose driver is its owner's. One system job
+    at a time, and not beside a toolchain job, which may be holding apt."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if action not in ("install", "remove"):
+        return {"error": "the driver is installed or removed"}
+    if n.get("kind") != "agent":
+        return {"error": "only an agent node's driver is changed from here"}
+    rep = n.get("reported") or {}
+    if not rep.get("gpu_card"):
+        return {"error": f"{n['name']} reports no NVIDIA card"}
+    if not rep.get("sandbox"):
+        return {"error": f"{n['name']} is its owner's machine, not a BuilderBot sandbox: "
+                         "its driver is installed or removed there, the way its distribution does it"}
+    if "gpu_driver" not in rep:
+        return {"error": f"{n['name']}'s agent does not report the driver yet: update it on the Nodes tab first"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    if jobs_for(node_id=node_id, type="toolchain", active=True, n=1):
+        return {"error": "a toolchain job is running there, and it may be holding apt; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "gpu-driver", "config": {"action": action}, "timeout": 2400})
+    if r.get("ok"):
+        audit(principal, "node-gpu-driver", node_id, {"job": r["job"], "action": action})
     return r
 
 

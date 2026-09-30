@@ -952,12 +952,13 @@ Platform: a responsive web app: the layout holds at phone and desktop widths, an
 Layout of the Toolchains tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
   1. Header (the band at the top): the bar: which node's store this is, and Refresh, across the top, row 1 of 8
   2. Text (a block of prose): the store's path on that node, across the middle, row 2 of 8
-  3. List (rows of like things): the toolchains by group, across the middle, rows 3 to 6 of 8
-  4. Card (a box holding one thing): a row to tick: what it is, its size, what it needs, its version; installed as a pill, across the middle, row 4 of 8, inside block 3 (List: the toolchains by group)
-  5. List (rows of like things): Not for this node: a fold of the ones its platform cannot run, with why, across the middle, row 7 of 8
-  6. Button (an action to press): Install selected and Check for updates; what the one job is doing is said beside them, across the bottom, row 8 of 8
+  3. Card (a box holding one thing): this machine's own: the NVIDIA driver where there is a card, no tick box, Install or Remove as root, a restart away, across the middle, row 3 of 8
+  4. List (rows of like things): the toolchains by group, across the middle, rows 4 to 6 of 8
+  5. Card (a box holding one thing): a row to tick: what it is, its size, what it needs, its version; installed as a pill, across the middle, row 5 of 8, inside block 4 (List: the toolchains by group)
+  6. List (rows of like things): Not for this node: a fold of the ones its platform cannot run, with why, across the middle, row 7 of 8
+  7. Button (an action to press): Install selected and Check for updates; what the one job is doing is said beside them, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Toolchains are installed on nodes and never on the controller, so the picker lists agent nodes only. An install is a job on the node: the rows are read again as it runs, and the line beside the buttons says what it is doing rather than the button changing its words.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Toolchains are installed on nodes and never on the controller, so the picker lists agent nodes only. An install is a job on the node: the rows are read again as it runs, and the line beside the buttons says what it is doing rather than the button changing its words. The NVIDIA driver is the machine's and not the store's (R102): its row sits above the store's list, never in a batch with them, says where the driver stands in one line (not installed, waiting for a restart, running the card, removed but still loaded), and on a guest machine says whose it is instead of offering a press.
 
 ### the Emulator tab (Web app)
 

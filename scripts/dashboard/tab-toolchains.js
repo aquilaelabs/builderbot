@@ -240,6 +240,63 @@ function tcRow(p, busy, job, managed){
   </label>`;
 }
 
+// The NVIDIA driver (R102): a row of this machine's, not of the store's.
+// Its kernel module is built for this machine's kernel and its libraries
+// must match that module exactly, so it is installed here as root, one per
+// machine, and it takes the card only when the machine restarts, since
+// nouveau holds it until then. No tick box: it never goes in a batch with
+// the store's toolchains, because it ends in a reboot.
+function tcDriverLine(m){
+  const nodesBtn = ` <button type="button" class="link" data-tcnodes>Open the Nodes tab</button>`;
+  switch (m.state){
+    case "absent": return `<span class="sub where">not installed: nouveau has the card, so nothing here can compute on it</span>`;
+    case "waiting": return `<span class="sub warn">installed; it takes the card when the machine restarts, which Reboot on the node's row does and which ends every session there.${nodesBtn}</span>`;
+    case "update": return `<span class="sub warn">${esc(m.installed)} is installed and takes over from ${esc(m.loaded)} when the machine restarts.${nodesBtn}</span>`;
+    case "leaving": return `<span class="sub warn">removed; it keeps the card until the machine restarts, when nouveau takes it back.${nodesBtn}</span>`;
+    case "loaded": return `<span class="sub where on">installed, and running the card</span>`;
+    default: return `<span class="sub warn">this node's agent does not report the driver yet: update it on the Nodes tab.${nodesBtn}</span>`;
+  }
+}
+function tcDriverRow(m, blocked){
+  const card = m.gpu || (String(m.card).match(/\[([^\]]*(?:GeForce|RTX|Quadro|Tesla|TITAN)[^\]]*)\]/)?.[1]) || m.card;
+  const ver = m.installed || m.loaded;
+  const running = !!m.job?.running;
+  const doing = m.job?.action === "remove" ? "removing" : "installing";
+  const can = m.managed && mayToolchains() && !running && !blocked && m.state !== "unknown";
+  const act = !can ? ""
+    : m.state === "absent"
+      ? `<button type="button" data-tcdrv="install" title="install NVIDIA's driver on this machine">Install</button>`
+    : m.state === "leaving" ? ""
+      : `<button class="eye rm" data-tcdrv="remove" aria-label="remove the NVIDIA driver" title="remove NVIDIA's driver from this machine">${BIN}</button>`;
+  return `<div class="tc tcdrv">
+    <span class="tcgap" aria-hidden="true"></span>
+    <span class="grow">
+      <span class="nm">${esc(m.label)}${ver ? ` <span class="pill" title="${m.installed ? "installed" : "loaded"}">${esc(ver)}</span>` : ""}</span>
+      <span class="sub">For this machine's ${esc(card)}: CUDA, the hardware video encoder and the emulator's GPU rendering need it. It is this machine's own, not a copy on the store.</span>
+      ${running ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcDriverLine(m)}
+      ${m.job?.failed && !running ? `<span class="sub bad">${esc(m.job.failed)}</span>` : ""}
+      ${!m.managed ? `<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: its driver is installed there by hand.</span>` : ""}
+    </span>
+    ${act}
+  </div>`;
+}
+
+async function tcDriver(action){
+  const d = toolchains || {};
+  const where = d.name || "this node";
+  if (!confirm(action === "install"
+      ? `Install NVIDIA's driver on ${where}? It comes from the distribution's packages and takes the card only when the machine restarts, which ends every session on it.`
+      : `Remove NVIDIA's driver from ${where}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))
+    return;
+  try{
+    const r = await postJSON("/api/toolchains", {action, names: ["nvidia-driver"], node: tcNode});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
+    notify(`${action === "install" ? "installing" : "removing"} NVIDIA's driver on ${where}; this takes minutes`);
+    loadToolchains();
+  }catch(e){ notify("could not start: " + e, true); }
+}
+
 function renderToolchainsInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -344,6 +401,8 @@ function renderToolchainsInto(i){
                  title="install these on ${esc(d.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
             : `This node's owner installs them: the agent does not administer the machine.`}</div>`;
     })()}
+    ${onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
+      d.machine.map(m => tcDriverRow(m, busy || pstale || d.live === false)).join("")}</div>` : ""}
     <div class="tcs">${(d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join("")}</div>
     ${(() => {
@@ -390,6 +449,8 @@ function renderToolchainsInto(i){
   if (sd) sd.onclick = () => tcAct("sysdeps");
   el.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = () => tcAct("sysdeps", [b.dataset.tcsys]));
   el.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = () => tcAct("install", [b.dataset.tcneed]));
+  el.querySelectorAll("[data-tcdrv]").forEach(b => b.onclick = () => tcDriver(b.dataset.tcdrv));
+  el.querySelectorAll("[data-tcnodes]").forEach(b => b.onclick = () => openNodesTab());
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.
@@ -413,10 +474,17 @@ function renderToolchainsInto(i){
   // revision poll: the tab would go from idle to done having never said
   // "installing". Half a second is how often that is worth looking at, and it
   // stops the moment the job does.
+  // The driver's job is a system job, minutes long, and a reboot away from
+  // done: sampled while it runs, and until the census after it has landed
+  // (settling), since that census is what says where the driver stands.
+  const drvRunning = (d.machine || []).some(m => m.job?.running);
+  const drvSettling = (d.machine || []).some(m => m.settling);
   clearTimeout(tcPoll);
   if (busy)
     tcPoll = setTimeout(loadToolchains, 500);
-  const ticking = busy;
+  else if (drvRunning || drvSettling)
+    tcPoll = setTimeout(loadToolchains, 2000);
+  const ticking = busy || drvRunning;
   if (ticking && !tcDotsTimer) tcDotsTimer = setInterval(tcTickDots, 400);
   if (!ticking && tcDotsTimer){ clearInterval(tcDotsTimer); tcDotsTimer = null; }
   else if (!busy && (job.done || []).length) refresh();

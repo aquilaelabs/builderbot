@@ -192,6 +192,21 @@ bb toolchains remove flutter
 bb toolchains env                 # the PATH lines; new shells get them automatically
 ```
 
+**The NVIDIA driver is the machine's, not the store's.** On a node whose
+census names an NVIDIA card, the Toolchains tab shows a row of its own
+above the store's, with Install and Remove and no tick box. It is not a
+recipe: the kernel module is built for that machine's kernel and the
+libraries must match it exactly, so it is installed as root on that node
+alone, through `bb-sandbox gpu-driver`, and it takes the card only when the
+machine restarts, since nouveau holds it until then. The row reads where the
+driver stands from the census (not installed, installed and waiting for a
+restart, running the card, removed but still loaded) and follows the job
+while it runs. A guest machine's driver is its owner's, so there the row
+says so and offers nothing. The install also writes a boot unit that makes
+the card's device nodes, `/dev/nvidia-uvm` among them, as root: a session
+runs with no-new-privileges, so CUDA's setuid helper cannot make them on a
+program's first use. `bb toolchains` names where the driver stands too.
+
 The Android system images live on the same store without being toolchains
 (one exists at every API level at once), so they have verbs of their own:
 

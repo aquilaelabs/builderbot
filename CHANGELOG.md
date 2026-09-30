@@ -26,6 +26,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb toolchains ends with a builds-with block: the platforms and build-tools in the store, the compileSdk ceiling and what a library past it fails on, and what the Gradle cache holds (wrapper distributions, AGP, Kotlin, the compose BOM), so a session does not list them by hand (85ca0dd)
 - bb emu touch tap|hold|glide sends a touch with its timing kept through sendevent, in screen pixels and turned with the screen, and a capture's --drive script gets it as $BB_TOUCH: adb's own input verbs cost 300 ms a call and cannot time a glide or tell a long-press from a slide (85ca0dd)
 - A test run in progress is said on the dashboard where the app already reads it: the project's row says tests running and since when, and the notebook's Tests view names the run, who started it and the command before the last run's numbers (85ca0dd)
+- The Toolchains tab shows the NVIDIA driver as a row of its own on a node with an NVIDIA card: Install and Remove as root on that machine alone, where it stands (not installed, waiting for a restart, running the card, removed but still loaded), and whose it is on a guest machine (a636d54)
+- Installing the NVIDIA driver from BuilderBot also makes the card's device nodes at every boot, so CUDA works from a session, which cannot make them itself; bb toolchains says where the driver stands (a636d54)
 
 ### Changed
 

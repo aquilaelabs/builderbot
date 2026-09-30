@@ -2107,6 +2107,68 @@ ok(page.errors.length === 0,
        `the row's Health names the card, says the emulator is on software, and offers the set-up, busy while the job runs (${line[0].slice(0, 90)})`);
     await napi('/api/v1/jobs', { action: 'cancel', id: g.job });
   }
+  // The NVIDIA driver as a row of the Toolchains tab (R102): its state read
+  // from the census, installed or removed on its own as a system job on a
+  // sandbox node, and said rather than offered on a guest machine or behind
+  // an agent too old to report it.
+  {
+    const card = 'NVIDIA Corporation GA104 [GeForce RTX 3070 Ti] [10de:2482] (rev a1)';
+    const hello = (who, census) => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + who.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true, ...census },
+                             version: shipped.version, digest: shipped.digest }) });
+    const rowOf = async id => ((await napi(`/api/toolchains?node=${id}`)).machine || [])[0];
+    await hello(shed, { sandbox: true, gpu_card: card });
+    let r = await rowOf(shed.id);
+    ok(r?.state === 'unknown' && r.managed === true, `an agent that does not report the driver reads as unknown (${r?.state})`);
+    const early = await napi('/api/toolchains', { action: 'install', names: ['nvidia-driver'], node: shed.id });
+    ok(/update it on the Nodes tab/.test(early.error || ''), `...and an install waits for the agent's update (${early.error})`);
+    const seen = [];
+    for (const [gd, want] of [
+      [{ installed: '', loaded: '', bound: 'nouveau' }, 'absent'],
+      [{ installed: '580.95.05', loaded: '', bound: 'nouveau' }, 'waiting'],
+      [{ installed: '580.95.05', loaded: '580.95.05', bound: 'nvidia' }, 'loaded'],
+      [{ installed: '580.95.05', loaded: '575.64', bound: 'nvidia' }, 'update'],
+      [{ installed: '', loaded: '580.95.05', bound: 'nvidia' }, 'leaving']]){
+      await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: gd });
+      seen.push([(await rowOf(shed.id))?.state, want]);
+    }
+    ok(seen.every(([got, want]) => got === want), `the row's state follows the census (${seen.map(x => x[0]).join(', ')})`);
+    await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: { installed: '', loaded: '', bound: 'nouveau' } });
+    const mixed = await napi('/api/toolchains', { action: 'install', names: ['nvidia-driver', 'node'], node: shed.id });
+    ok(/on its own/.test(mixed.error || ''), `the driver never goes in a batch with the store's toolchains (${mixed.error})`);
+    // Drawn on the tab: its own row above the store's, no tick box, the card
+    // by name, the state in words, and Install; pressing it asks first.
+    await page.evaluate(() => { nodesList = null; openToolchains(); });
+    await page.waitForFunction(id => [...document.querySelectorAll('.doc .tctab #tcNodeSel option')].some(o => o.value === id),
+                               shed.id, { timeout: 20000 });
+    await page.selectOption('.doc .tctab #tcNodeSel', shed.id);
+    await page.waitForSelector('.doc .tctab .tcmachine .tcdrv [data-tcdrv="install"]', { timeout: 20000 });
+    const drawn = await page.$eval('.doc .tctab .tcdrv', e => ({ text: e.textContent.replace(/\s+/g, ' ').trim(),
+      box: !!e.querySelector('input'), first: e.closest('.tcs')?.nextElementSibling?.classList.contains('tcs') }));
+    ok(/NVIDIA driver/.test(drawn.text) && /GeForce RTX 3070 Ti/.test(drawn.text) && /not installed: nouveau has the card/.test(drawn.text)
+       && !drawn.box && drawn.first, `the tab draws the driver's own row above the store's, with no tick box (${drawn.text.slice(0, 110)})`);
+    const nd = page.dialogs.length;
+    await page.click('.doc .tctab .tcdrv [data-tcdrv="install"]');
+    r = await (async () => { for (let i = 0; i < 40; i++){ const x = await rowOf(shed.id); if (x?.job?.id) return x; await new Promise(res => setTimeout(res, 250)); } return null; })();
+    ok(page.dialogs.length === nd + 1 && /takes the card only when the machine restarts/.test(page.dialogs[nd] || '')
+       && r?.job?.running && r.job.action === 'install',
+       `Install asks first, saying it needs a restart, then queues the job the row follows (${(page.dialogs[nd] || '').slice(0, 60)})`);
+    const qj = await napi(`/api/v1/jobs?id=${r?.job?.id}`);
+    ok(qj.spec?.apply === 'gpu-driver' && qj.spec?.config?.action === 'install' && qj.node === shed.id,
+       `...a system job asking the agent for bb-sandbox gpu-driver install (${JSON.stringify(qj.spec)})`);
+    const again = await napi('/api/toolchains', { action: 'remove', names: ['nvidia-driver'], node: shed.id });
+    ok(/one at a time/.test(again.error || ''), '...and a second press waits for it');
+    await page.waitForFunction(() => /installing/.test(document.querySelector('.doc .tctab .tcdrv')?.textContent || ''), null, { timeout: 20000 });
+    ok(!(await page.$('.doc .tctab .tcdrv [data-tcdrv]')), '...while the row says installing, and offers nothing to press');
+    await napi('/api/v1/jobs', { action: 'cancel', id: r?.job?.id });
+    // A guest machine: whose it is, on the row, and no press.
+    await hello(plain, { gpu_card: card, gpu_driver: { installed: '', loaded: '', bound: 'nouveau' } });
+    const guest = await rowOf(plain.id);
+    const gq = await napi('/api/toolchains', { action: 'install', names: ['nvidia-driver'], node: plain.id });
+    ok(guest?.managed === false && /owner's machine/.test(gq.error || ''),
+       `a guest machine's driver is its owner's: the row says so and an install is refused (${gq.error})`);
+  }
   const no = await napi('/api/v1/nodes', { action: 'uninstall', id: plain.id });
   ok(/only a node provisioned as a BuilderBot sandbox/.test(no.error || '') && /sudo bb-sandbox uninstall/.test(no.error || ''),
      `a node that is not a sandbox is refused, and told the command to run on the machine (${no.error})`);

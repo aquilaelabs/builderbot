@@ -359,6 +359,36 @@ sdk_status_local() {
     sdk_builds_with "$(sdk_dir android)"
 }
 
+# Where the NVIDIA driver stands on this machine, in a line, or nothing
+# with no NVIDIA card (R102). The machine's and not the store's, so read
+# here from sysfs and modinfo: which driver has the card, the version
+# loaded, the version installed for this kernel. BB_SYS_ROOT is the tests'.
+sdk_nvidia_line() {
+    local sys="${BB_SYS_ROOT:-/sys}" dev bound="" card="" loaded="" inst="" m
+    for dev in "$sys"/bus/pci/devices/*; do
+        [ "$(cat "$dev/vendor" 2>/dev/null)" = 0x10de ] || continue
+        case "$(cat "$dev/class" 2>/dev/null)" in 0x03*) ;; *) continue ;; esac
+        card=1
+        [ -L "$dev/driver" ] && bound="$(basename "$(readlink "$dev/driver")")"
+        break
+    done
+    [ -n "$card" ] || return 0
+    loaded="$(cat "$sys/module/nvidia/version" 2>/dev/null)"
+    for m in modinfo /sbin/modinfo /usr/sbin/modinfo; do
+        command -v "$m" >/dev/null 2>&1 || continue
+        inst="$("$m" -F version nvidia 2>/dev/null | head -1)"
+        break
+    done
+    if [ "$bound" = nvidia ] || [ -n "$loaded" ]; then
+        if [ -z "$inst" ]; then echo "removed; it keeps the card until the machine restarts"
+        elif [ -n "$loaded" ] && [ "$inst" != "$loaded" ]; then echo "$loaded running the card; $inst takes over when the machine restarts"
+        else echo "$inst, running the card: nvidia-smi says how much of its memory is free"
+        fi
+    elif [ -n "$inst" ]; then echo "$inst installed; it takes the card when the machine restarts"
+    else echo "not installed: nouveau has the card; the operator installs the driver on the Toolchains tab"
+    fi
+}
+
 # The names in a directory, one per line, or nothing: what the listings
 # below read, without ls's word-splitting.
 sdk_names_in() {
@@ -388,6 +418,8 @@ sdk_builds_with() {
         printf '  %-14s %s\n' platforms "none: nothing compiles here until the operator adds one on the Toolchains tab"
     fi
     [ -n "$tools" ] && printf '  %-14s %s\n' build-tools "${tools% }"
+    local nv; nv="$(sdk_nvidia_line)"
+    [ -z "$nv" ] || printf '  %-14s %s\n' "nvidia driver" "$nv"
     local gh="${GRADLE_USER_HOME:-$HOME/.gradle}" m dists k v
     m="$gh/caches/modules-2/files-2.1"
     printf '  %-14s %s\n' "gradle cache" "$gh"

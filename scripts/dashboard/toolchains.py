@@ -916,7 +916,11 @@ def payload_for_node(nid):
             i["state"] = r["status"]
         checked = int(j.get("ended") or 0)
         break
+    machine = [r for r in (driver_row(n),) if r]
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
+            # What is this machine's rather than the store's: the NVIDIA
+            # driver, where the node has the card (R102).
+            "machine": machine,
             # Held recipes whose system packages this machine lacks, and
             # whether the agent may install them there (roadmap R51).
             "sysdeps": rep.get("sysdeps") or {}, "sandbox": bool(rep.get("sandbox")),
@@ -931,6 +935,57 @@ def payload_for_node(nid):
             "free_mb": store.get("free_mb"),
             "shared": False, "checked": checked, "sizing": False,
             "items": items, "job": job or {"running": False}}
+
+
+def driver_row(n):
+    """The NVIDIA driver as a row of the node's Toolchains tab (R102), or
+    None where the node reports no NVIDIA card. Its state is read from the
+    census the agent sends (installed for this kernel, loaded now, which
+    driver has the card), and its job is the latest system job that
+    installed or removed it. The machine's and not the store's: built for
+    its kernel, installed as root, taking the card at the next boot."""
+    rep = n.get("reported") or {}
+    card = rep.get("gpu_card")
+    if not card:
+        return None
+    gd = rep.get("gpu_driver")
+    known = isinstance(gd, dict)
+    gd = gd if known else {}
+    inst, loaded, bound = gd.get("installed") or "", gd.get("loaded") or "", gd.get("bound") or ""
+    has = bound == "nvidia" or bool(loaded)
+    state = ("unknown" if not known
+             else "update" if has and inst and loaded and inst != loaded
+             else "loaded" if has and inst
+             else "leaving" if has
+             else "waiting" if inst
+             else "absent")
+    job, ended = {"running": False}, 0
+    if nodes:
+        for j in nodes.jobs_for(node_id=n["id"], type="system", n=8):
+            sp = j.get("spec") or {}
+            if sp.get("apply") != "gpu-driver":
+                continue
+            act = (sp.get("config") or {}).get("action") or ""
+            st = j.get("state")
+            if st in ("queued", "assigned", "running"):
+                job = {"running": True, "action": act, "id": j["id"]}
+            elif st == "failed":
+                tail = [x.strip() for x in nodes.job_tail(j["id"], 1600).splitlines() if x.strip()]
+                said = next((x for x in reversed(tail) if x.startswith(("!!", "refused", "E:"))), tail[-1] if tail else "")
+                job = {"running": False, "action": act, "failed": said.lstrip("!= ")[:300], "id": j["id"]}
+            if st in ("succeeded", "failed", "canceled"):
+                ended = int(j.get("ended") or 0)
+            break
+    return {"name": "nvidia-driver", "label": "NVIDIA driver", "card": str(card),
+            "gpu": str(rep.get("gpu") or ""), "installed": inst, "loaded": loaded,
+            "bound": bound, "state": state, "managed": bool(rep.get("sandbox")),
+            "job": job,
+            # A job that has ended is followed by the agent's hello, whose
+            # census says where the driver stands now. Until that census has
+            # arrived (its `at` is after the job's end), the row is still the
+            # job's to follow; two minutes at most, for an agent gone quiet.
+            "settling": bool(ended) and int(rep.get("at") or 0) <= ended
+                        and time.time() - ended < 120}
 
 
 def _store_share(n):
@@ -1348,6 +1403,18 @@ def verb(action, req, principal):
     string this server chose, which is the rule every other executing
     endpoint here follows. (payload, status)."""
     nid = field(req, "node")
+    # The NVIDIA driver is the machine's, not the store's (R102): installed
+    # or removed on its own as a system job, never in a batch of toolchains,
+    # since it takes a reboot to take the card.
+    if nid and nid != "local" and "nvidia-driver" in (req.get("names") or []):
+        if nodes is None:
+            return {"error": "the node store did not open"}, 500
+        if action not in ("install", "remove"):
+            return {"error": "the driver is installed or removed"}, 400
+        if [x for x in req.get("names") or [] if x != "nvidia-driver"]:
+            return {"error": "the driver is installed on its own: it takes the card at the next restart"}, 400
+        r = nodes.node_gpu_driver(principal, nid, action)
+        return r, (400 if r.get("error") else 200)
     if nid and nid != "local":
         # On another node the install is a job against that node's
         # toolchain store (docs/nodes.md §6): same catalog, same names,

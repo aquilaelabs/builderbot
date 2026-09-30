@@ -8,7 +8,7 @@
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
          tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync, chmodSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync, chmodSync, symlinkSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -80,6 +80,22 @@ ok(minted.ok && /^bbe_[A-Za-z0-9_-]{20,}$/.test(minted.token) && /^n_/.test(mint
 // a JSON list the same verbs edit, and netplan as a log of what was applied.
 // Neither needs root; what the agent does with them is what is under test.
 const SANDBOX_STATE = `${DIR}/sandbox-mounts.json`;
+// A card of its own for the agent to find (R102): a sysfs tree with an
+// NVIDIA display device bound to nouveau, and a modinfo that finds a
+// module only once the stand-in bb-sandbox has "installed" one, so the
+// census reads the same on any box the suite runs on.
+{
+  const dev = `${DIR}/sys/bus/pci/devices/0000:04:00.0`;
+  mkdirSync(dev, { recursive: true });
+  mkdirSync(`${DIR}/sys/bus/pci/drivers/nouveau`, { recursive: true });
+  writeFileSync(`${dev}/vendor`, '0x10de\n'); writeFileSync(`${dev}/class`, '0x030000\n'); writeFileSync(`${dev}/device`, '0x2482\n');
+  try { symlinkSync(`${DIR}/sys/bus/pci/drivers/nouveau`, `${dev}/driver`); } catch {}
+  writeFileSync(`${DIR}/bin/modinfo`, `#!/bin/sh
+f="\${BB_NV_STATE:-/nonexistent}"
+if [ -s "$f" ]; then cat "$f"; exit 0; fi
+echo "modinfo: ERROR: Module nvidia not found." >&2; exit 1
+`, { mode: 0o755 });
+}
 writeFileSync(`${DIR}/bin/bb-sandbox`, `#!/usr/bin/env python3
 import json, os, sys
 f = os.environ["BB_SANDBOX_STATE"]
@@ -88,6 +104,12 @@ except Exception: ms = []
 a = sys.argv[1:]
 def save(): json.dump(ms, open(f, "w"))
 if a[:2] == ["list", "--json"]: print(json.dumps(ms)); sys.exit(0)
+if a[0] == "gpu-driver":
+    # The driver row's verb (R102): "installed" is the version the stand-in
+    # modinfo answers with, as a real install puts a module there.
+    if a[1] == "install": open(os.environ["BB_NV_STATE"], "w").write("580.95.05\\n")
+    elif os.path.exists(os.environ["BB_NV_STATE"]): os.remove(os.environ["BB_NV_STATE"])
+    print(f"gpu-driver {a[1]}: done; it takes effect at the next boot"); sys.exit(0)
 if a[0] == "gpu":
     open(os.environ["BB_GPU_STATE"], "w").write("reboot: the NVIDIA driver is installed and takes the card at the next boot\\n")
     print("card: NVIDIA Test Card [10de:0000]"); print("the driver is installed and takes the card at the next boot: Reboot on this node's row"); sys.exit(0)
@@ -272,6 +294,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_ACT_RUNNER_BIN: `${DIR}/bin/act_runner`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
   BB_GPU_STATE: `${DIR}/gpu-state`, BUILDERBOT_GPU_DISPLAY_STATE: `${DIR}/gpu-state`,
+  BUILDERBOT_SYS_ROOT: `${DIR}/sys`, BB_NV_STATE: `${DIR}/nv-installed`,
   BUILDERBOT_NETPLAN_BIN: `${DIR}/bin/netplan`, BUILDERBOT_NETPLAN_DIR: `${DIR}/netplan` };
 {
   let out = '';
@@ -1577,6 +1600,29 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         return /^reboot/.test(n.reported?.gpu_display || '') ? n : null;
       }, 30000);
       ok(told !== null, `...and the display's state line reaches the row with the hello that follows (${told?.reported?.gpu_display})`);
+    }
+    // The NVIDIA driver row (R102), end to end with the real agent: the
+    // census reads the card and where its driver stands from sysfs and
+    // modinfo, Install on the Toolchains tab's row is a system job that runs
+    // bb-sandbox gpu-driver install, and the hello after it says the driver
+    // is installed and waiting for the machine to restart.
+    {
+      const drv = async () => ((await api(`/api/toolchains?node=${minted.id}`)).machine || [])[0];
+      const first = await until(async () => { const x = await drv(); return x?.state && x.state !== 'unknown' ? x : null; }, 30000);
+      ok(first?.state === 'absent' && first.managed && /10de:2482/.test(first.card) && first.bound === 'nouveau',
+         `the agent reports the card and no driver on it, nouveau holding it (${first?.state}, ${first?.bound})`);
+      const q = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], node: minted.id });
+      ok(q.ok && /^j_/.test(q.job || ''), `Install on the driver row queues a system job (${q.job || q.error})`);
+      const fin = await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${q.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      ok(fin?.state === 'succeeded' && /gpu-driver install: done/.test(fin.log || ''),
+         `...which the agent runs as bb-sandbox gpu-driver install (${fin?.state}: ${(fin?.log || '').trim().slice(-60)})`);
+      const after = await until(async () => { const x = await drv(); return x?.state === 'waiting' ? x : null; }, 30000);
+      ok(after?.installed === '580.95.05' && after.settling === false,
+         `...and the hello after it says installed, waiting for a restart (${after?.state} ${after?.installed})`);
+      rmSync(`${DIR}/nv-installed`, { force: true });
     }
 
     // ---- a store under a share that is not mounted ------------------------
