@@ -1755,7 +1755,9 @@ cmd_uninstall() {
         [ "$a" = uninstall ] || die "left as it was"
     fi
     say "stopping the agent and the session ports rule"
-    for u in builderbot-agent builderbot-session-ports; do
+    # The GPU display's unit too (B394): left enabled, a machine BuilderBot
+    # had left still started an Xorg on the card at every boot.
+    for u in builderbot-agent builderbot-session-ports builderbot-gpu-display; do
         if have systemctl; then
             systemctl disable --now "$u" >/dev/null 2>&1 || true
             rm -f "/etc/systemd/system/$u.service"
@@ -1815,6 +1817,7 @@ cmd_uninstall() {
     # The session account's sudo rule first: it is the one grant here that
     # reaches root, and it must not outlive the helper it names (R35).
     rm -f /etc/sudoers.d/builderbot-session /etc/bb-session.conf /usr/local/sbin/bb-session
+    rm -f /etc/X11/builderbot-gpu.conf /run/builderbot-gpu-display
     rm -rf /var/lib/builderbot /etc/builderbot /etc/bb-sandbox.conf /etc/profile.d/builderbot-session.sh /usr/local/sbin/builderbot-agent
     # ttyd only when the provisioner fetched it: a package's copy is the distribution's
     if [ -x /usr/local/bin/ttyd ]; then
