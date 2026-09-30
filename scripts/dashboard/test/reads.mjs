@@ -113,6 +113,18 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   const g = await api('/api/v1/tty-grant', { arg: 'claude:alpha' }, asSession(tok));
   ok(Array.isArray(g.sees) && g.sees.join() === '/mnt/media,/srv/samples',
      `the terminal's grant names them, for bb-session (${JSON.stringify(g.sees)})`);
+  // Whether the session may compute on its node's NVIDIA card (R102) rides
+  // the same grant: on unless the project's setting, or the node's switch,
+  // says otherwise, and the grant says which.
+  ok(g.gpu === 'on', `the grant says the card is the session's to compute on by default (${g.gpu})`);
+  const goff = await api('/api/prefs', { project: 'alpha', gpu: 'off' });
+  const g2 = await api('/api/v1/tty-grant', { arg: 'claude:alpha' }, asSession(tok));
+  ok(goff.status === 200 && g2.gpu === 'project'
+     && (await api('/api/status')).projects.find(p => p.name === 'alpha').prefs.gpu === 'off',
+     `a project set to leave the GPU alone has its sessions told so, and by whom (${g2.gpu})`);
+  const gbad = await api('/api/prefs', { project: 'alpha', gpu: 'sometimes' });
+  ok(gbad.status === 400 && /gpu is one of on, off/.test(gbad.error || ''), `a value that is neither is refused (${gbad.error})`);
+  await api('/api/prefs', { project: 'alpha', gpu: 'on' });
   const said = (await api('/api/preamble?project=alpha')).text;
   ok(/Of the shares and disks mounted on its node, this project is shown \/mnt\/media, \/srv\/samples, as the node has each/.test(said)
      && /A share or\s+a disk mounted on the node, another project's build cache or container data,\s+and the home of the account sessions run as are not in its view/.test(said),
@@ -123,7 +135,10 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   ok(/^\s+sees\s+\/mnt\/media, \/srv\/samples$/m.test(shown), `bb settings lists them (${(shown.match(/^.*sees.*$/m) || ['nothing'])[0].trim()})`);
   // The dialog: a field beside the node's, there when there is a node to
   // be on, filled with what is stored and read when Save is pressed.
-  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.sees?.join() === '/mnt/media,/srv/samples', { timeout: 20000 });
+  // ...the GPU setting back on too: the dialog fills from the poll, and one
+  // from a moment ago still carried the off this file had just set.
+  await refreshUntil(page, () => { const p = (state?.projects || []).find(p => p.name === 'alpha')?.prefs;
+    return p?.sees?.join() === '/mnt/media,/srv/samples' && (p.gpu || 'on') === 'on'; }, { timeout: 20000 });
   await page.evaluate(() => { nodesList = [{ id: 'n_0000test', name: 'box', kind: 'agent', state: 'ready', reported: {} }]; renameProject('alpha', 'all'); });
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   await page.waitForSelector('#rnSeesField:not([hidden])', { timeout: 10000 });
@@ -131,8 +146,17 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
     help: document.querySelector('label[for=rnSees] .help')?.dataset.tip || '', hint: !!document.querySelector('#rnSeesField .hint') }));
   ok(field.value === '/mnt/media, /srv/samples' && field.label === 'Also sees' && /share or a disk mounted on the node/.test(field.help) && !field.hint,
      `the project's settings carry the places in a field under the node, labeled above, its one sentence behind the ? (${JSON.stringify(field).slice(0, 140)})`);
+  // ...and the GPU setting with the other Claude settings, a pulldown read
+  // at Save like the rest.
+  ok(await page.$eval('#rnGpu', e => e.value === 'on' && [...e.options].map(o => o.value).join() === 'on,off'
+                        && /The node's GPU/.test(e.closest('label').textContent)),
+     "the dialog carries The node's GPU with the Claude settings, on by default");
+  await page.selectOption('#rnGpu', 'off');
   await page.fill('#rnSees', '/mnt/media');
   await saveDialog(page);
+  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gpu === 'off', { timeout: 20000 });
+  ok(true, '...and Save stores it');
+  await api('/api/prefs', { project: 'alpha', gpu: 'on' });
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.sees?.join() === '/mnt/media', { timeout: 20000 });
   ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.sees.join() === '/mnt/media',
      '...and Save keeps what the field says');

@@ -3888,6 +3888,11 @@ body.booting .pane>.loading{margin:auto}
           <option value="wait">waits: the ask in hand is finished and tested first</option>
           <option value="restart">interrupts any test run for the new ask</option>
         </select></label>
+        <label class="pick wide">The node's GPU <select id="rnGpu"
+          aria-label="whether this project's sessions, builds and tests may compute on its node's NVIDIA card">
+          <option value="on">may be computed on, where the node has one and allows it</option>
+          <option value="off">is not for this project: it runs as if the machine had none</option>
+        </select></label>
       </div>
       <label id="rnGateMayLabel" class="sub dim">Claude may</label>
       <div class="prefrow" role="group" aria-labeledby="rnGateMayLabel">

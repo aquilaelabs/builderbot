@@ -27,6 +27,25 @@ prefs.configure(write_json=statefile.write_json, state=state)
 design.configure(workspace=os.environ.get("WORKSPACE", "/workspace"), state=state,
                  write_json=statefile.write_json)
 preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, prefs_mod=prefs)
+
+
+def node_gpu(project):
+    """Whether the project's node reports an NVIDIA card (R102), read from
+    the node store as it stands, read-only: what decides the briefing's GPU
+    section. No store, no node or no answer is no card."""
+    nid = (prefs.get(project) or {}).get("node") or ""
+    if not nid:
+        return False
+    try:
+        import nodes
+        nodes.db.open_readonly(state)
+        n = nodes.node(nid)
+    except Exception:
+        return False
+    return bool(n and (n.get("reported") or {}).get("gpu_card"))
+
+
+preamble.node_gpu = node_gpu
 # The account the session is for (bb-tty hands it over as BB_UID): its own
 # reply style on the project rides the block.
 mine = prefs.all_for_user(os.environ.get("BB_UID", "")).get(proj) or {}

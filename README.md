@@ -186,6 +186,11 @@ bb git policy      what a session may push here (its own branches, main) from
 bb emu start [api] | stop | status | list | log [-p]
 bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--pre MS] [--hold MS]
                    a timed touch on the running emulator, in screen pixels
+bb gpu             this node's NVIDIA card: how much of its memory is free, who is
+                   computing on it, and whether this session may
+bb gpu run [--mem MB] -- CMD
+                   CMD with a turn on the card: one heavy job at a time per node, waiting
+                   for its turn and for MB of free memory rather than failing on a full card
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb nodes           the machines enrolled as nodes, read-only in a terminal;

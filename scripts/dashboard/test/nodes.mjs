@@ -2102,10 +2102,55 @@ ok(page.errors.length === 0,
     await page.waitForFunction(id => [...document.querySelectorAll('.nodestab #ndPick option')].some(o => o.value === id), shed.id, { timeout: 15000 });
     await page.selectOption('.nodestab #ndPick', shed.id);
     await page.waitForSelector(`.ndrow[data-node="${shed.id}"] .ndgpu`, { timeout: 20000 });
-    const line = await page.$eval(`.ndrow[data-node="${shed.id}"] .ndgpu`, e => [e.textContent.replace(/\s+/g, ' ').trim(), !!e.querySelector('[data-nd="gpu-display"]'), e.querySelector('[data-nd="gpu-display"]')?.disabled]);
-    ok(/RTX 3070 Ti/.test(line[0]) && /renders in software/.test(line[0]) && line[1] && line[2] === true,
-       `the row's Health names the card, says the emulator is on software, and offers the set-up, busy while the job runs (${line[0].slice(0, 90)})`);
+    const line = await page.$eval(`.ndrow[data-node="${shed.id}"] .ndgpu`, e => e.textContent.replace(/\s+/g, ' ').trim());
+    ok(/RTX 3070 Ti/.test(line) && /renders in software/.test(line),
+       `the row's Health names the card and says the emulator is on software (${line.slice(0, 90)})`);
     await napi('/api/v1/jobs', { action: 'cancel', id: g.job });
+    // What the card is for (R102): a GPU section with two switches and one
+    // Apply. Neither writes on the click; Apply sends each only where its
+    // tick differs from what the node has.
+    const sect = `.ndrow[data-node="${shed.id}"] details[data-sect="nodes:gpu"]`;
+    await page.waitForSelector(sect, { state: 'attached', timeout: 20000 });
+    await page.evaluate(s => { const d = document.querySelector(s); if (d && !d.open) d.open = true; }, sect);
+    const sw = async () => page.$eval(sect, e => ({ emu: e.querySelector('[data-k="gpuemu"]').checked, comp: e.querySelector('[data-k="gpucomp"]').checked,
+      emuDead: e.querySelector('[data-k="gpuemu"]').disabled, apply: !!e.querySelector('[data-nd="gpu-apply"]'), status: e.querySelector('.sst')?.textContent.trim() }));
+    let s0 = await sw();
+    ok(!s0.emu && s0.comp && !s0.emuDead && s0.apply && s0.status === 'compute',
+       `the GPU section has the two switches and one Apply: the emulator off the card, compute allowed by default (${JSON.stringify(s0)})`);
+    await page.click(`${sect} [data-k="gpucomp"]`);
+    const before = ((await napi('/api/v1/nodes')).nodes.find(n => n.id === shed.id).config || {}).no_gpu_compute;
+    ok(before === undefined, 'unticking compute writes nothing until Apply');
+    await page.click(`${sect} [data-nd="gpu-apply"]`);
+    await page.waitForFunction(async id => ((await (await fetch('/api/v1/nodes')).json()).nodes.find(n => n.id === id).config || {}).no_gpu_compute === true,
+                               shed.id, { timeout: 15000 });
+    ok(true, '...and Apply turns compute off for sessions started on the node from now on');
+    await page.waitForFunction(s => document.querySelector(s)?.querySelector('.sst')?.textContent.trim() === 'not used', sect, { timeout: 15000 });
+    await page.evaluate(s => { const d = document.querySelector(s); if (d && !d.open) d.open = true; }, sect);
+    await page.click(`${sect} [data-k="gpucomp"]`);
+    await page.click(`${sect} [data-k="gpuemu"]`);
+    await page.click(`${sect} [data-nd="gpu-apply"]`);
+    const ej = await (async () => { for (let i = 0; i < 60; i++){ const n = (await napi('/api/v1/nodes')).nodes.find(x => x.id === shed.id);
+      const j = (n.jobs || []).find(x => x.apply === 'gpu'); if (j && !(n.config || {}).no_gpu_compute) return j; await new Promise(r => setTimeout(r, 250)); } return null; })();
+    ok(ej !== null, 'ticking both and Apply turns compute back on and queues the emulator set-up as a job on the node');
+    if (ej?.id) await napi('/api/v1/jobs', { action: 'cancel', id: ej.id });
+    // The emulator off the card: its own system job, where the display is up.
+    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + shed.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', docker: true, sandbox: true,
+                                       gpu_card: 'NVIDIA Corporation GA104 [GeForce RTX 3070 Ti]', gpu_display: 'up' },
+                             version: shipped.version, digest: shipped.digest }) });
+    const off = await napi('/api/v1/nodes', { action: 'gpu-display', id: shed.id, on: false });
+    const oj = off.job ? await napi(`/api/v1/jobs?id=${off.job}`) : {};
+    ok(off.ok && oj.spec?.apply === 'gpu-off', `taking the emulator off the card is its own system job (${off.error || oj.spec?.apply})`);
+    await napi('/api/v1/jobs', { action: 'cancel', id: off.job });
+    // The briefing's GPU section reaches a session only where its project's
+    // node reports a card: a fact about the machine, not the tree.
+    const without = (await napi('/api/preamble?project=delta')).text || '';
+    await napi('/api/prefs', { project: 'delta', node: shed.id });
+    const withCard = (await napi('/api/preamble?project=delta')).text || '';
+    await napi('/api/prefs', { project: 'delta', node: '' });
+    ok(!/## The GPU/.test(without) && /## The GPU/.test(withCard) && /bb gpu run \[--mem MB\] -- CMD/.test(withCard),
+       'the briefing carries its GPU section for a project whose node has a card, and for no other');
   }
   // The NVIDIA driver as a row of the Toolchains tab (R102): a row like the
   // store's, ticked into the same Install selected and asked by the same

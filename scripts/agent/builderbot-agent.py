@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.119"
+AGENT_VERSION = "0.7.120"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -5383,7 +5383,7 @@ class Agent:
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
-        if what in ("storage", "network", "root", "gpu") and not os.access(SANDBOX_BIN, os.X_OK):
+        if what in ("storage", "network", "root", "gpu", "gpu-off") and not os.access(SANDBOX_BIN, os.X_OK):
             job.say(f"refused: {what} edits this machine's own configuration, and this node "
                     f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
             return "failed", 77
@@ -5404,6 +5404,12 @@ class Agent:
             return self._apply_power(job, what)
         if what == "gpu":
             return self._apply_gpu(job)
+        if what == "gpu-off":
+            # The emulator off the card (R102): the display's unit stopped,
+            # the driver left alone; then a hello, as the set-up sends.
+            rc = self._sh(job, [SANDBOX_BIN, "gpu-off"], timeout=120)
+            self.hello_at = 0
+            return ("succeeded", 0) if rc == 0 else ("failed", rc)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
 

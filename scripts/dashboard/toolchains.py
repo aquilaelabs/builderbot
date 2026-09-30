@@ -943,7 +943,9 @@ def payload_for_node(nid):
                     sp.get("action") == "check"
                     or any(str(x).startswith(DRIVER) for x in sp.get("names") or [])):
                 ended = int(j.get("ended") or 0)
-        m["settling"] = bool(ended) and int(rep.get("at") or 0) <= ended and time.time() - ended < 120
+        # The agent's hello at the end of a job lands a moment before the
+        # job's result does, so a census from the job's last seconds counts.
+        m["settling"] = bool(ended) and int(rep.get("at") or 0) < ended - 5 and time.time() - ended < 120
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # What is this machine's rather than the store's: the NVIDIA
             # driver, where the node has the card (R102).

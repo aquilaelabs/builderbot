@@ -112,6 +112,7 @@ function rnFillPrefs(p){
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
+               gpu: p?.prefs?.gpu || "on",
                reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
@@ -209,6 +210,7 @@ function rnFillPrefsRest(p){
   $("rnTestWhere").hidden = !canDevTest;
   $("rnDevTest").value = p?.prefs?.tests_in || "node";
   $("rnTestChange").value = p?.prefs?.test_change || "wait";
+  $("rnGpu").value = p?.prefs?.gpu || "on";
   $("rnReply").value = p?.yours?.reply || "";
   $("rnAsks").value = p?.yours?.asks || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
@@ -552,6 +554,7 @@ async function rnSubmit(){
   // With the node's group: nothing here restarts a session.
   const tests_in = $("rnDevTest").value || "node";
   const test_change = $("rnTestChange").value || "wait";
+  const gpu = $("rnGpu").value || "on";
   const reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
@@ -560,6 +563,7 @@ async function rnSubmit(){
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
     || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change
+    || gpu !== rnPrefWas.gpu
     || devbuild !== rnPrefWas.devbuild
     || report !== rnPrefWas.report;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
@@ -582,6 +586,7 @@ async function rnSubmit(){
     [node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes, "Node"],
     [reads.join(",") !== rnPrefWas.reads, "Reads"], [sees.join(", ") !== rnPrefWas.sees, "Also sees"],
     [test_change !== rnPrefWas.test_change, "During a test run, a change asked for"],
+    [gpu !== rnPrefWas.gpu, "The node's GPU"],
     [capture_days !== rnPrefWas.capture_days, "Captures kept"],
   ].filter(([changed]) => changed).map(([, label]) => label);
   const launchChanged = takesAtStart.length > 0;
@@ -637,7 +642,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, nodes, reads, sees, build, test, gate, color,
-                              tests_in, test_change, reply, asks, devbuild, report,
+                              tests_in, test_change, gpu, reply, asks, devbuild, report,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
                               // The node binding never restarts a session;

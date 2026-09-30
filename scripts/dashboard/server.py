@@ -1053,6 +1053,23 @@ def session_cwds():
 SPINNER_GLYPHS = tuple("◐◓◑◒")
 
 
+def gpu_for(project, node_id=""):
+    """Whether a session on `project` may compute on its node's NVIDIA card
+    (R102): "on"; "node" when the node's switch is off; "project" when the
+    project's own setting is. The project's says no first, being the
+    narrower of the two. The node is the one the session was started on,
+    else the project's own."""
+    p = prefs.get(project) or {}
+    if p.get("gpu") == "off":
+        return "project"
+    if not NODES_OK:
+        nid = node_id or p.get("node") or ""
+        n = nodes.node(nid) if nid else None
+        if n and (n.get("config") or {}).get("no_gpu_compute"):
+            return "node"
+    return "on"
+
+
 def claude_state(title):
     """(state, task) for a Claude pane title: "working" or "waiting"."""
     working = title.startswith(SPINNER_GLYPHS)
@@ -2310,6 +2327,19 @@ import prefs                                                     # noqa: E402
 # section (what a change asked for during a run does); prefs is imported
 # after preamble is configured, so it is handed over here.
 preamble.prefs_mod = prefs
+
+
+def _project_node_gpu(project):
+    """Whether the project's own node reports an NVIDIA card: what decides
+    the briefing's GPU section."""
+    if NODES_OK:
+        return False
+    nid = (prefs.get(project) or {}).get("node") or ""
+    n = nodes.node(nid) if nid else None
+    return bool(n and (n.get("reported") or {}).get("gpu_card"))
+
+
+preamble.node_gpu = _project_node_gpu
 
 prefs.configure(write_json=write_json, state=STATE)
 # Said again, now that prefs exists: users.git_identity resolves a per-project
@@ -4774,7 +4804,11 @@ class Handler(BaseHTTPRequestHandler):
                            "owner": me.get("role") == "owner",
                            "reads": [r for r in (prefs.get(project) or {}).get("reads") or []
                                      if (WORKSPACE / r).is_dir()],
-                           "sees": (prefs.get(project) or {}).get("sees") or []})
+                           "sees": (prefs.get(project) or {}).get("sees") or [],
+                           # Whether it may compute on its node's NVIDIA card
+                           # (R102): "on", or who said no, the node or the
+                           # project, which bb gpu then says to the session.
+                           "gpu": gpu_for(project, _arg_node(arg))})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24):

@@ -58,6 +58,10 @@ TESTS_IN = ("node", "up", "only")
 # for the run, or ends it, lands, and the run starts again. Two house rules
 # used to disagree about this per project; it is a setting now (25 Sep).
 TEST_CHANGE = ("wait", "restart")
+# Whether this project's sessions, builds and tests may compute on their
+# node's NVIDIA card (R102): on unless somebody said otherwise, since an
+# unused card costs nothing; off runs them as if the machine had none.
+GPU = ("on", "off")
 # Whether this project's sessions report BuilderBot's own problems with
 # `bb report` (reports.py): on everywhere by default, and off where the
 # project IS BuilderBot, whose sessions file those in its own tracker (the
@@ -291,6 +295,8 @@ def _clean(rec):
             "tests_in": _tests_in(rec),
             # During a test run, a change asked for: one of TEST_CHANGE.
             "test_change": rec.get("test_change") if rec.get("test_change") in TEST_CHANGE else "wait",
+            # May compute on the node's NVIDIA card: one of GPU.
+            "gpu": rec.get("gpu") if rec.get("gpu") in GPU else "on",
             # Claude may: Report BuilderBot bugs. Off takes `bb report` and
             # the rule that points at it away from this project's sessions.
             "report": "deny" if rec.get("report") == "deny" else "auto",
@@ -433,7 +439,7 @@ def _sees_of(rec):
 def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None,
-              test_change=None, capture_days=None, reads=None, sees=None):
+              test_change=None, capture_days=None, reads=None, sees=None, gpu=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -509,6 +515,10 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if test_change not in TEST_CHANGE:
                 return {"error": f"test_change is one of {', '.join(TEST_CHANGE)}, not {test_change}"}
             cur["test_change"] = test_change
+        if gpu is not None:
+            if gpu not in GPU:
+                return {"error": f"gpu is one of {', '.join(GPU)}, not {gpu}"}
+            cur["gpu"] = gpu
         if capture_days is not None:
             try:
                 n = int(capture_days)
@@ -524,7 +534,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
-                or cur["test_change"] != "wait"
+                or cur["test_change"] != "wait" or cur["gpu"] != "on"
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
@@ -541,6 +551,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("tests_in", None)
             if cur["report"] == "auto":
                 rec.pop("report", None)
+            if cur["gpu"] == "on":
+                rec.pop("gpu", None)
             if cur["capture_days"] == CAPTURE_DAYS:
                 rec.pop("capture_days", None)
             d["projects"][project] = rec
@@ -634,7 +646,7 @@ def dialog_save(name, req, uid):
                   gate=req.get("gate"), gitpol=req.get("gitpol"),
                   devbuild=req.get("devbuild"),
                   tests_in=req.get("tests_in"),
-                  test_change=req.get("test_change"),
+                  test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   workspace=WORKSPACE)

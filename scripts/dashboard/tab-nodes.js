@@ -107,27 +107,69 @@ function nodeGpu(n){
   if (!card) return "";
   const st = n.reported?.gpu_display || "";
   const up = /^up/.test(st), reboot = /^reboot/.test(st);
-  const busy = (n.jobs || []).some(j => j.apply === "gpu");
   // The display runs on NVIDIA's driver and does not install it (R102): the
   // driver is a row on this node's Toolchains tab, and until it is on the
-  // machine this line says so and opens that tab instead of offering the
-  // set-up. An agent too old to report the driver keeps the old offer.
+  // machine this line says so and opens that tab. What the card is used
+  // for is the GPU section's two switches, below.
   const gd = n.reported?.gpu_driver;
   const nodriver = !!gd && !gd.installed;
   const word = up ? "display up: an emulator here renders on the card"
     : nodriver ? "no NVIDIA driver on it yet: an emulator here renders in software"
     : reboot ? "driver installed; Reboot under Advanced lets it take the card"
     : /^down/.test(st) ? st
-    : "no display for it yet: an emulator here renders in software";
+    : "no display for it: an emulator here renders in software";
   const cls = up ? "ok" : reboot && !nodriver ? "note" : "warn";
   return `<div class="actbar ndgpu">
     <span class="state ${cls}">gpu: ${esc(card)} · ${esc(word)}</span>
     ${nodriver ? `<button type="button" data-ndtc="${esc(n.id)}"
-      title="the driver is installed from this node's Toolchains tab">Install the driver</button>`
-    : !up && n.reported?.sandbox ? `<button type="button" data-nd="gpu-display" ${busy ? "disabled" : ""}
-      title="start a headless X server on the card, for the emulator; a reboot may follow">${
-      busy ? "Setting up…" : "Set up GPU display"}</button>` : ""}
+      title="the driver is installed from this node's Toolchains tab">Install the driver</button>` : ""}
   </div>`;
+}
+// What this node's NVIDIA card is for (R102): two switches and one Apply.
+// The emulator renders on it or does not, which is the headless X server
+// the display needs; and sessions and jobs may compute on it or not, which
+// decides whether a session started here finds CUDA a device. Neither is a
+// way of moving work onto the card: a program uses it only if it was
+// written to. Both wait for the driver, which is the Toolchains tab's row.
+function nodeGpuSection(n){
+  const card = n.reported?.gpu_card;
+  if (!card || n.kind !== "agent") return "";
+  const gd = n.reported?.gpu_driver;
+  const st = n.reported?.gpu_display || "";
+  const emuOn = /^(up|starting|reboot)/.test(st);
+  const compOn = !n.config?.no_gpu_compute;
+  const c = nodeDraft(n);
+  if (c.draft.gpuEmu === undefined || c.draft.gpuEmuFrom !== emuOn){ c.draft.gpuEmu = emuOn; c.draft.gpuEmuFrom = emuOn; }
+  if (c.draft.gpuComp === undefined || c.draft.gpuCompFrom !== compOn){ c.draft.gpuComp = compOn; c.draft.gpuCompFrom = compOn; }
+  const nodriver = !!gd && !gd.installed;
+  const busy = (n.jobs || []).some(j => j.apply === "gpu" || j.apply === "gpu-off");
+  const managed = !!n.reported?.sandbox;
+  const name = n.reported?.gpu || (String(card).match(/\[([^\]]*(?:GeForce|RTX|Quadro|Tesla|TITAN)[^\]]*)\]/)?.[1]) || card;
+  const [status, cls] = nodriver ? ["no driver", "warn"]
+    : [[emuOn ? "emulator" : "", compOn ? "compute" : ""].filter(Boolean).join(" and ") || "not used", emuOn || compOn ? "ok" : ""];
+  const emuLine = /^up/.test(st) ? `<div class="sub">An emulator started here renders on the card.</div>`
+    : /^reboot/.test(st) ? `<div class="sub warn">It starts when the machine restarts: Reboot under Advanced.</div>`
+    : /^down/.test(st) ? `<div class="sub bad">${esc(st.replace(/^down:\s*/, ""))}.</div>`
+    : `<div class="sub dim">An emulator here renders in software.</div>`;
+  const body = `
+    <div class="sub">${esc(name)}${gd?.loaded ? ` on NVIDIA's driver ${esc(gd.loaded)}` : ""}.</div>
+    ${nodriver ? `<div class="sub warn">No NVIDIA driver on this machine yet, so nothing can use the card.
+        <button type="button" class="link" data-ndtc="${esc(n.id)}">Install the driver</button></div>` : ""}
+    <label class="ndcap"><input type="checkbox" data-k="gpuemu" ${c.draft.gpuEmu ? "checked" : ""}${
+      nodriver || !managed ? " disabled" : ""}>
+      render the Android emulator on the card</label>
+    ${nodriver ? "" : emuLine}
+    <label class="ndcap"><input type="checkbox" data-k="gpucomp" ${c.draft.gpuComp ? "checked" : ""}>
+      let sessions and jobs compute on it (CUDA, the hardware video encoder)</label>
+    ${compOn ? `<div class="sub dim">A project can turn this off for itself in its settings.</div>`
+             : `<div class="sub dim">A session started here from now on finds no card to compute on.</div>`}
+    <div class="actbar">
+      <span class="state"></span>
+      <button type="button" data-nd="gpu-apply"${busy ? " disabled" : ""}
+        title="apply both: the emulator's switch is a job on the node, the other takes effect for sessions started from now on">${
+        busy ? "Applying…" : "Apply"}</button>
+    </div>`;
+  return docSection("nodes", "gpu", "GPU", status, body, {cls});
 }
 function nodeGit(n){
   const v = String(n.reported?.git || "").trim();
@@ -1019,6 +1061,7 @@ function renderNodesInto(i){
       <div class="ndsections">
         ${health}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
@@ -1375,7 +1418,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", "claude-check": "Checking", "claude-update": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
-               retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-display": "Setting up",
+               retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
                paths: "Saving", "check-paths": "Checking",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
       if (act === "claude-check"){
@@ -1452,6 +1495,31 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         notify(said);
         return;
       }
+      if (act === "gpu-apply"){
+        // The GPU section's Apply: each switch only where its tick differs
+        // from what the node has. The emulator's is a job on the node.
+        const n = nodesList.find(x => x.id === id) || {};
+        const ge = box.querySelector('[data-k="gpuemu"]'), gc = box.querySelector('[data-k="gpucomp"]');
+        const emuWas = /^(up|starting|reboot)/.test(n.reported?.gpu_display || "");
+        const compWas = !n.config?.no_gpu_compute;
+        const c = nodesConf[id];
+        const said = [];
+        if (gc && gc.checked !== compWas){
+          const k = await nodeAct({action: "gpu-compute", id, on: gc.checked});
+          if (k.error) return;
+          if (c && c.draft) c.draft.gpuComp = undefined;
+          said.push(gc.checked ? "sessions started here from now on may compute on the card"
+                               : "sessions started here from now on find no card to compute on");
+        }
+        if (ge && !ge.disabled && ge.checked !== emuWas){
+          const k = await nodeAct({action: "gpu-display", id, on: ge.checked});
+          if (k.error) return;
+          if (c && c.draft) c.draft.gpuEmu = undefined;
+          said.push(ge.checked ? "setting the emulator up on the card" : "taking the emulator off the card");
+        }
+        notify(said.length ? said.join("; ") : "nothing changed");
+        return;
+      }
       if (act === "paths"){
         const inp = box.querySelector('[data-k="paths"]');
         await nodeAct({action: "paths", id, paths: inp ? inp.value : ""});
@@ -1515,6 +1583,11 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     if (sw) sw.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.sessnetOn = sw.checked; };
     const ra = box.querySelector('[data-k="rootasks"]');
     if (ra) ra.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.rootAsks = ra.checked; };
+    // The GPU section's two switches (R102): drafts until its Apply.
+    const ge = box.querySelector('[data-k="gpuemu"]');
+    if (ge) ge.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuEmu = ge.checked; };
+    const gc = box.querySelector('[data-k="gpucomp"]');
+    if (gc) gc.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.gpuComp = gc.checked; };
     const ti = box.querySelector('[data-k="turns"]');
     if (ti){
       ti.onfocus = () => { nodesFocus = {id, key: "turns"}; };

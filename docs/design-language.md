@@ -992,10 +992,10 @@ Layout of the Nodes tab on a desktop frame (12 columns by 8 rows), from the Blan
   1. Header (the band at the top): the bar: which node, Create sandbox VM and Enroll node, across the top, row 1 of 8
   2. Card (a box holding one thing): the node: online and live as pills, where it dials in from, its agent and its Claude Code, Update, and Test, across the middle, rows 2 to 3 of 8
   3. List (rows of like things): its sections, across the middle, rows 4 to 7 of 8
-  4. Card (a box holding one thing): a section: a fold with its own Apply: Health, Storage, Network, Runner and the rest; one the node cannot offer says why, across the middle, rows 5 to 6 of 8, inside block 3 (List: its sections)
+  4. Card (a box holding one thing): a section: a fold with its own Apply: Health, Sessions, GPU, Storage, Network, Runner; one a node cannot offer says why, across the middle, rows 5 to 6 of 8, inside block 3 (List: its sections)
   5. Footer (the band at the foot): what a node is for, in a sentence, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Health draws meters: a track with a fill, the number beside it. A section the node cannot offer says why in its place rather than being missing. The GPU line under Health names the card; with no NVIDIA driver on the machine it offers Install the driver, which opens that node's Toolchains tab, and only with the driver there does it offer Set up GPU display.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Health draws meters: a track with a fill, the number beside it. A section the node cannot offer says why in its place rather than being missing. A node with an NVIDIA card has a GPU section among its folds: two switches, render the Android emulator on the card and let sessions and jobs compute on it, and one Apply, as every section here. The GPU line under Health is a status: it names the card, and with no NVIDIA driver on the machine it offers Install the driver, which opens that node's Toolchains tab.
 
 ### the Jobs tab (Web app)
 
@@ -1205,7 +1205,7 @@ Layout of a project's settings on a desktop frame (12 columns by 8 rows), from t
   3. Form (fields a person fills in): groups headed by a label: name and color, the remote, the node and Also sees, build and test, Claude may, yours here, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8, inside block 1 (Overlay: Project settings)
   4. Footer (the band at the foot): the foot: Unlink and Delete apart from Save; Save lists what takes a restart and asks: end the session now, or keep it, in the middle, columns 4 to 9 of 12, row 8 of 8, inside block 1 (Overlay: Project settings)
 Notes:
-  Groups headed by a label, every line a field band, one foot. Claude may is seven dials, each auto, ask or deny. Also sees names the shares on the node a session may see, an allow-list since 29 Sep. During a test run says what a new ask does to a run going: wait for it, or interrupt it. Yours on this project is the person's own: model, effort, replies, questions. A saved change that takes a session restart (the model, the node, what it sees, the test setting) is listed at Save, which asks whether to end the running session now or keep it going (30 Sep). Unlink and Delete project are apart from Save, and each asks once, saying what goes and what stays.
+  Groups headed by a label, every line a field band, one foot. Claude may is seven dials, each auto, ask or deny. Also sees names the shares on the node a session may see, an allow-list since 29 Sep. During a test run says what a new ask does to a run going: wait for it, or interrupt it. Yours on this project is the person's own: model, effort, replies, questions. A saved change that takes a session restart (the model, the node, what it sees, the test setting) is listed at Save, which asks whether to end the running session now or keep it going (30 Sep). Unlink and Delete project are apart from Save, and each asks once, saying what goes and what stays. The node's GPU, with the Claude settings, says whether the project may compute on its node's NVIDIA card; off runs it as if the machine had none.
 
 ### a new project (Web app)
 

@@ -28,6 +28,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A test run in progress is said on the dashboard where the app already reads it: the project's row says tests running and since when, and the notebook's Tests view names the run, who started it and the command before the last run's numbers (85ca0dd)
 - The Toolchains tab shows the NVIDIA driver as a row of its own on a node with an NVIDIA card: Install and Remove as root on that machine alone, where it stands (not installed, waiting for a restart, running the card, removed but still loaded), and whose it is on a guest machine (a636d54)
 - Installing the NVIDIA driver from BuilderBot also makes the card's device nodes at every boot, so CUDA works from a session, which cannot make them itself; bb toolchains says where the driver stands (a636d54)
+- A node with an NVIDIA card has a GPU section on the Nodes tab: two switches with one Apply, render the Android emulator on the card, and let sessions and jobs compute on it, on by default (c4fbd9d)
+- A project's settings carry The node's GPU: off runs its sessions, builds and tests as if the machine had no card (c4fbd9d)
+- bb gpu says what the node's card is, how much of its memory is free and whether this session may compute on it, bb status carries the same line, and bb gpu run -- CMD gives a heavy job a turn on the card so two do not run out of memory together (c4fbd9d)
 
 ### Changed
 
@@ -147,6 +150,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb capture shot --emu PKG and bb capture reel --emu PKG launch the package only when it is not already on the screen, so a keyboard, a dialog or a deep screen a session drove up stays in the picture (0f97ecc)
 - Send to Claude no longer presses Enter on a line the input box never took: the line on screen is counted once the pane has stopped drawing, so a previous send's output that repeats the line is not read as this one's echo (47cceca)
 - A node whose NVIDIA driver is installed but not yet loaded no longer shows nvidia-smi's failure sentence as its GPU's name on its row (8b5b172)
+- Installing the NVIDIA driver no longer fails without a word on a machine that has none: the node's helper exited on a package lookup that found nothing (c4fbd9d)
 
 ### Security
 

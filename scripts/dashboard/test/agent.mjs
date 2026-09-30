@@ -136,6 +136,9 @@ if a[0] == "gpu-driver":
         open(os.environ["BB_NV_STATE"], "w").write({"nvidia-driver-610": "610.57.04"}.get(pkg, "595.91.07") + "\\n" + pkg + "\\n")
     elif os.path.exists(os.environ["BB_NV_STATE"]): os.remove(os.environ["BB_NV_STATE"])
     print(f"gpu-driver {' '.join(a[1:])}: done; it takes effect at the next boot"); sys.exit(0)
+if a[0] == "gpu-off":
+    open(os.environ["BB_GPU_STATE"], "w").write("off: switched off on the Nodes tab; an emulator here renders in software\\n")
+    print("the GPU display is off"); sys.exit(0)
 if a[0] == "gpu":
     open(os.environ["BB_GPU_STATE"], "w").write("reboot: the NVIDIA driver is installed and takes the card at the next boot\\n")
     print("card: NVIDIA Test Card [10de:0000]"); print("the driver is installed and takes the card at the next boot: Reboot on this node's row"); sys.exit(0)
@@ -1659,6 +1662,15 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
           return /^reboot/.test(n.reported?.gpu_display || '') ? n : null;
         }, 30000);
         ok(told !== null, `...and the display's state line reaches the row with the hello that follows (${told?.reported?.gpu_display})`);
+      }
+      // ...and taken off again: bb-sandbox gpu-off, whose state line says
+      // it was switched off, which the row then reads.
+      {
+        const o = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id, on: false });
+        const of = o.ok ? await job(o.job) : null;
+        const told = await until(async () => { const n = await nodeById(minted.id); return /^off/.test(n.reported?.gpu_display || '') ? n : null; }, 30000);
+        ok(of?.state === 'succeeded' && /gpu-off/.test(of.log || '') && told !== null,
+           `the emulator is taken off the card by bb-sandbox gpu-off, and the row reads it as switched off (${o.error || of?.state}; ${told?.reported?.gpu_display})`);
       }
       const ck = await api('/api/toolchains', { action: 'check', names: ['zig'], node: minted.id });
       const ckf = ck.ok ? await job(ck.job) : null;

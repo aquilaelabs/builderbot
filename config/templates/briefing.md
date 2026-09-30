@@ -267,6 +267,26 @@ rendering, which Wait dismisses and a finished boot does not show.
 Use `dumpsys gfxinfo PKG framestats`.
 <!-- BUILDERBOT:END -->
 
+<!-- BUILDERBOT:IF gpu node:gpu -->
+## The GPU
+
+This node has an NVIDIA card: `bb status` names it under "where" with
+its free memory, and `bb gpu` says who is computing on it and whether
+this session may. A program uses the card only if it was written to: CUDA
+(PyTorch, CuPy, a build of your own), or the video encoder, which the
+store's ffmpeg carries as `h264_nvenc` and `hevc_nvenc`. Reach for it when
+the work is that shape (training or running a model, encoding video, large
+array math) and not otherwise: a build or a test suite runs no faster for
+it. The card's memory is one pool for every session on the node, so start
+a heavy job as `bb gpu run [--mem MB] -- CMD`, which waits for its turn and
+for that much free memory instead of failing on a full card halfway
+through. Where `bb gpu` says the card is not this session's (the node's
+switch, or this project's setting), a program finds no card and takes its
+CPU path: say so in your reply rather than looking for a way round. The
+driver and the node's switches are the operator's, on the Toolchains and
+Nodes tabs.
+<!-- BUILDERBOT:END -->
+
 ## Containers
 
 A container on the Docker tab belongs to one project or to none, which the

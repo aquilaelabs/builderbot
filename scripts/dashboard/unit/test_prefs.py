@@ -35,3 +35,29 @@ class Sees(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Gpu(unittest.TestCase):
+    """The project's GPU setting (R102): on unless somebody said otherwise,
+    and stored only when it is not the default."""
+
+    def setUp(self):
+        import statefile
+        import tempfile
+        self.state = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.state, True)
+        ws = os.path.join(self.state, "ws")
+        os.makedirs(os.path.join(ws, "alpha"))
+        self.was = prefs.WORKSPACE if hasattr(prefs, "WORKSPACE") else None
+        prefs.configure(write_json=statefile.write_json, state=self.state)
+
+    def test_on_by_default_and_off_when_set(self):
+        self.assertEqual((prefs.get("alpha") or {}).get("gpu", "on"), "on")
+        r = prefs.set_prefs("alpha", gpu="off")
+        self.assertNotIn("error", r or {})
+        self.assertEqual(prefs.get("alpha")["gpu"], "off")
+        prefs.set_prefs("alpha", gpu="on")
+        self.assertEqual((prefs.get("alpha") or {}).get("gpu", "on"), "on")
+
+    def test_anything_else_is_refused(self):
+        self.assertIn("error", prefs.set_prefs("alpha", gpu="maybe"))

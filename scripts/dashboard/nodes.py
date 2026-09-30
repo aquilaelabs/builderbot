@@ -1864,6 +1864,51 @@ def node_gpu_display(principal, node_id):
     return r
 
 
+def node_gpu_display_off(principal, node_id):
+    """Stop rendering the emulator on the card (R102): a system job the
+    agent answers with bb-sandbox gpu-off, which stops the headless X
+    server and leaves the driver alone; an emulator there renders in
+    software from its next start."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("kind") != "agent" or not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "only a node provisioned as a BuilderBot sandbox is changed from here: "
+                         "on the machine, sudo bb-sandbox gpu-off"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "gpu-off", "config": {}, "timeout": 300})
+    if r.get("ok"):
+        audit(principal, "node-gpu-display-off", node_id, {"job": r["job"]})
+    return r
+
+
+def node_gpu_compute(principal, node_id, on):
+    """Whether sessions and jobs on this node may compute on its NVIDIA
+    card (R102): on unless switched off. Off, a session started there from
+    now on has CUDA told there is no device and the device CUDA needs
+    covered in its view; the emulator's rendering is its own switch."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    conf = dict(n.get("config") or {})
+    if on:
+        conf.pop("no_gpu_compute", None)
+    else:
+        conf["no_gpu_compute"] = True
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-gpu-compute", {"on": bool(on)})
+    return {"ok": True, "on": bool(on)}
+
+
 def node_power(principal, node_id, what):
     """Reboot or shut a node down from its row: a system job the agent
     answers by scheduling the machine's own reboot or power-off a few
@@ -3377,7 +3422,13 @@ def verb(principal, req):
         return node_power(principal, nid, act)
 
     def gpu_display():
+        # The emulator on the card, on or off (R102): each a system job.
+        if req.get("on") is False:
+            return node_gpu_display_off(principal, nid)
         return node_gpu_display(principal, nid)
+
+    def gpu_compute():
+        return node_gpu_compute(principal, nid, req.get("on") is True)
 
     def config():
         # The configuration plane (docs/nodes.md §12): what the operator
@@ -3551,6 +3602,7 @@ def verb(principal, req):
              "drain": state, "online": state, "retire": state,
              "lock": lock, "unlock": lock, "enroll": enroll,
              "reboot": power, "poweroff": power, "gpu-display": gpu_display,
+             "gpu-compute": gpu_compute,
              "config": config, "log-grant": log_grant, "turns": turns,
              "test-workers": test_workers, "session-net": session_net,
              "root-asks": root_asks, "apply": apply, "runner": runner,

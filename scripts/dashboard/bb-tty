@@ -128,6 +128,14 @@ GRANT
     # share the view would otherwise leave out with every other.
     BB_SEES="$(printf '%s' "$grant" | jq -r '(.sees // []) | join(" ")')"
     export BB_SEES
+    # Whether this session may compute on the node's NVIDIA card (R102):
+    # off on the node's row, or in the project's settings. CUDA is told
+    # there is no device, so a program falls back to its CPU path with a
+    # plain answer, and the view covers the device CUDA cannot start
+    # without. BB_GPU says why to bb gpu and bb status.
+    BB_GPU="$(printf '%s' "$grant" | jq -r '.gpu // "on"')"
+    export BB_GPU
+    case "$BB_GPU" in on) ;; *) export CUDA_VISIBLE_DEVICES="" ;; esac
     if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
         export BB_TREE_OWNER=1
     else
@@ -316,6 +324,12 @@ in_view() {
     if [ -n "${BB_SEES:-}" ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
             --home "$HOME" --cwd "$dir" --sees /nowhere-a-node-has >/dev/null 2>&1; then
         for r in ${BB_SEES:-}; do reads+=(--sees "$r"); done
+    fi
+    # ...and the card's compute device covered where it is not this
+    # session's, for a helper that takes the word (asked first, as above).
+    if [ "${BB_GPU:-on}" != on ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
+            --home "$HOME" --cwd "$dir" --cuda off >/dev/null 2>&1; then
+        reads+=(--cuda off)
     fi
     why="$("$SESSION_BIN" plan --project "$proj" --account "${account:-}" --home "$HOME" \
                --cwd "$dir" "${reads[@]}" 2>&1 >/dev/null)" \

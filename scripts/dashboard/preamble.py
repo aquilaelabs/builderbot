@@ -68,6 +68,10 @@ def configure(*, rules_mod, roadmap_mod, bugs_mod, live=None, prefs_mod=None):
 
 
 prefs_mod = None
+# Whether a project's node reports an NVIDIA card, from the server (R102):
+# a fact about the machine, not the tree, so the briefing's GPU section is
+# decided by it and costs a session on a node without one nothing.
+node_gpu = None
 _TESTCHANGE = "<!-- BUILDERBOT:TESTCHANGE -->"
 # What a change asked for during a test run does, in the words a session
 # reads: the project's setting (prefs.TEST_CHANGE), one answer per project
@@ -290,7 +294,9 @@ def briefing(project):
         m = _IF.search(line)
         if m:
             bits = m.group(1).split()
-            skip = not any(_has(tree, g) for g in bits[1:])
+            # `node:gpu` is evidence the node gives rather than the tree.
+            skip = not any((bool(node_gpu and node_gpu(project)) if g == "node:gpu" else _has(tree, g))
+                           for g in bits[1:])
             continue
         if _END in line:
             skip = False

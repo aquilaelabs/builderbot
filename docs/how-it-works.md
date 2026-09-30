@@ -218,6 +218,26 @@ also writes a boot unit that makes the card's device nodes,
 no-new-privileges, so CUDA's setuid helper cannot make them on a program's
 first use. `bb toolchains` names where the driver stands too.
 
+**What the card is used for** is three settings and a queue, none of which
+moves work onto it: a program uses a GPU only if it was written to, through
+CUDA or the video encoder. A node with a card has a **GPU** section on the
+Nodes tab with two switches and one Apply: *render the Android emulator on
+the card*, which starts or stops the headless X server the emulator needs,
+and *let sessions and jobs compute on it*, on by default. A project has its
+own setting in its dialog, *The node's GPU*, for running as if the machine
+had none. Where either says no, a session started from then on has
+`CUDA_VISIBLE_DEVICES` empty and the unified-memory device CUDA cannot start
+without covered in its view, so a program finds no card and takes its CPU
+path; the card's other device files stay, because the emulator's rendering
+opens those from inside the session and is its own switch. `bb gpu` says
+what the card is, how much of its memory is free, who is computing on it and
+whether this session may, and `bb status` carries the same in a line. The
+card's memory is one pool for every session on the node, so a heavy job is
+started as `bb gpu run [--mem MB] -- CMD`, which takes a lease (one at a
+time per node), waits for its turn and for that much free memory, and lets
+go when the command ends. The briefing tells a session all of this only
+where its project's node reports a card.
+
 The Android system images live on the same store without being toolchains
 (one exists at every API level at once), so they have verbs of their own:
 
