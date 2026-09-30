@@ -14,7 +14,7 @@
     {"method": "GET", "path": "/api/meta", "fields": ["api", "version", "apk", "apk_sha256"]},
     {"method": "GET", "path": "/api/status", "fields": ["me", "can", "image", "host", "projects", "attention", "phone_asks", "welcome",
                                                        "sessions", "tmux_prefix", "doctor"],
-     "projects": ["name", "git", "locked", "pending", "roadmap", "bugs", "session_at", "pinned", "prefs", "issues"],
+     "projects": ["name", "git", "locked", "pending", "roadmap", "bugs", "session_at", "pinned", "prefs", "issues", "testing"],
      "sessions": ["name"],
      "attention": ["kind", "node", "id", "from", "to", "window", "projects"],
      "can": ["admin"]},

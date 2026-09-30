@@ -540,6 +540,49 @@ def revisions():
 
 # ---- the Tests tab's writes, one call from the dashboard ---------------------
 
+# ---- a run in progress -----------------------------------------------------
+# What `bb test` says at its start and its end, per project, kept in memory
+# only: a controller restart forgets a run, which costs one note sent early
+# and never one held back. The companion app reads it to time its "Claude
+# is waiting on you" note by the project's During-a-test-run setting (the
+# operator, 30 Sep): where a new ask waits for the run, the note waits for
+# the run too. A run whose end never arrived (a session killed under it)
+# is forgotten after STALE_S rather than holding that note for good.
+RUNNING = {}
+STALE_S = 4 * 3600
+
+
+def begin(project, cmd="", by=""):
+    """A test run has started on `project`: the record, with the id its end
+    quotes so a later run's start is not undone by an earlier run's end."""
+    rec = {"id": os.urandom(6).hex(), "since": int(time.time()),
+           "cmd": str(cmd or "")[:200], "by": str(by or "")}
+    RUNNING[project] = rec
+    return rec
+
+
+def end(project, rid=""):
+    """A run has ended: forgotten when the id is the run on record, or when
+    none is quoted. True when a run was on record."""
+    rec = RUNNING.get(project)
+    if not rec or (rid and rec["id"] != rid):
+        return False
+    del RUNNING[project]
+    return True
+
+
+def running(project):
+    """The run in progress on `project`, or None: a copy without its id,
+    which is the ender's to know."""
+    rec = RUNNING.get(project)
+    if not rec:
+        return None
+    if time.time() - rec["since"] > STALE_S:
+        del RUNNING[project]
+        return None
+    return {"since": rec["since"], "cmd": rec["cmd"], "by": rec["by"]}
+
+
 def verb(name, act, req):
     """The hand-written half of the registry: describe a test (a
     write-through edit of one row, like the bug tracker's fields: there is
@@ -547,6 +590,10 @@ def verb(name, act, req):
     that already exists) or accept a changed one. Ingesting a run is `bb
     tests ingest`, in process: a run log is far past the body cap every
     request here has. (payload, status)."""
+    if act == "begin":
+        return {"testing": begin(name, req.get("cmd"), req.get("by"))}, 200
+    if act == "end":
+        return {"ended": end(name, str(req.get("id") or ""))}, 200
     if act == "describe":
         r = describe(name, field(req, "key"), protects=req.get("protects"),
                      notes=req.get("notes"))

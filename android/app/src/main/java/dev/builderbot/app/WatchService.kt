@@ -2,7 +2,8 @@
 // asks /api/status and /api/phone and posts what is new: a session asking
 // for the phone or for root, with Approve and Deny on the notification
 // itself; a notebook holding a session's changes; a session of the
-// account's own finishing its turn; a node whose agent is
+// account's own coming free to take a message, timed by its project's
+// During-a-test-run setting; a node whose agent is
 // behind or out of window, or whose Claude Code is behind. No push service:
 // the dashboard is on somebody's own network, reached directly or over a
 // tailnet, and asking it from here is what needs nobody's account and no
@@ -74,31 +75,44 @@ object Watch {
                 .build())
             store.lastPending = pendKey
         }
-        // A turn finished: a session of the account's own that was working
-        // at the last look and is waiting now. Told once, on the change; a
-        // session already waiting when the watch first looks is not news.
-        // A session that put a command in the background and handed the
-        // turn back is waiting too, as the dashboard says it is, and takes
-        // the note back by itself when the command ends and it works again.
+        // A turn finished: a session of the account's own that was busy at
+        // the last look and can take a message now. Told once, on the
+        // change; a session already waiting when the watch first looks is
+        // not news. What "busy" is follows the project's During-a-test-run
+        // setting (the operator, 30 Sep): where a new ask cuts into a run
+        // (restart), a session that put its tests in the background and
+        // handed the turn back can be interrupted, so it is waiting; where a
+        // new ask waits for the run (wait), the note waits for the run too,
+        // and comes when the tests finish. The run itself is what `bb test`
+        // reports to the dashboard (the project's `testing`).
         val prefix = st.str("tmux_prefix")
         val own = st.arr("projects").mapNotNull { p ->
             val want = prefix + ("claude-" + p.str("name")).replace(Regex("[.:]"), "_")
-            st.arr("sessions").firstOrNull { it.str("name") == want }?.let { p.str("name") to it.obj("claude") }
+            st.arr("sessions").firstOrNull { it.str("name") == want }?.let { Triple(p, it.obj("claude"), p.optJSONObject("testing")) }
         }
-        val working = own.filter { it.second.str("state") == "working" }.map { it.first }.toSet()
-        for ((project, claude) in own) {
+        val busy = own.filter { (p, claude, testing) ->
+            claude.str("state") == "working" || (testing != null && p.obj("prefs").str("test_change") != "restart")
+        }.map { it.first.str("name") }.toSet()
+        for ((p, claude, testing) in own) {
+            val project = p.str("name")
             val note = ID_TURN_BASE + (project.hashCode() and 0xfff)
-            if (project in working) { nm.cancel(note); continue }
+            if (project in busy) { nm.cancel(note); continue }
             if (project !in store.lastWorking || !store.turns) continue
+            val task = claude.str("task").ifBlank { "it finished what it was on" }
+            val text = if (testing != null) "tests are running, and a new ask cuts into them: $task"
+                       else if (p.obj("prefs").str("test_change") != "restart" && wasTesting(store, project)) "its tests finished: $task"
+                       else task
             nm.notify(note, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
-                .setContentTitle("Claude is waiting on you in $project")
-                .setContentText(claude.str("task").ifBlank { "it finished what it was on" })
+                .setContentTitle("$project: Claude is waiting on you")
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setContentIntent(openApp(context, "project/$project"))
                 .setAutoCancel(true)
                 .build())
         }
-        store.lastWorking = working
+        store.lastWorking = busy
+        store.lastTesting = own.filter { it.third != null }.map { it.first.str("name") }.toSet()
         // Nodes that need attention: an agent behind or out of window, or
         // Claude Code behind what is out.
         val att = st.arr("attention")
@@ -120,6 +134,10 @@ object Watch {
             store.lastAttention = attKey
         }
     }
+
+    /** Whether a project's tests were running at the last look: what the
+     *  note says when a session under "wait" comes free. */
+    private fun wasTesting(store: Store, project: String) = project in store.lastTesting
 
     /** The password changed, or the account went: asking on would be a
      *  refused request every minute for good, and the person would never

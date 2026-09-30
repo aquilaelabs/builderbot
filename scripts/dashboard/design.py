@@ -362,10 +362,22 @@ def _load():
 
 
 def _record(d, project):
+    """The stored record, read the forgiving way a save is checked: a
+    problem in it is noted and a stand-in used, never raised. Read strictly,
+    a record saved under the build before, valid then, took every bb design
+    verb down with it once the shape moved (B386), and nothing from a
+    session could get past it: schema could not even say the new shape."""
     rec = d.get(project)
     if not isinstance(rec, dict):
         rec = {}
-    lang = _clean_language(rec.get("language") or {})
+    outer = getattr(_collecting, "found", None)
+    if outer is None:
+        _collecting.found = []
+    try:
+        lang = _clean_language(rec.get("language") or {})
+    finally:
+        if outer is None:
+            _collecting.found = None
     # A page saved before pages had rules of their own reads as one with none.
     pages = [{**p, "rules": p.get("rules") if isinstance(p.get("rules"), list) else []}
              for p in (rec.get("pages") or []) if isinstance(p, dict)]
@@ -493,6 +505,11 @@ def _clean_language(lang):
         if not isinstance(t, dict):
             continue
         for k, v in carried.items():
+            # The custom map names the language's rules, which go to the
+            # first theme: it goes with them and to no other (B386: carried
+            # into a theme without the rules, it refused the whole record).
+            if k == "custom" and i:
+                continue
             if not t.get(k):
                 t[k] = v
         if i == 0 and old_rules:

@@ -249,14 +249,14 @@ function projectRow(p, live, cls, inTab){
           : "lock: run this project yourself. No Claude session starts here "
             + "and its notebook goes read-only"}"
         >${p.locked ? LOCK : LOCK_OPEN}</button>
-      ${inTab ? `<button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
+      <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
         title="${state?.admin === false ? "the pins are one set for everybody, so moving them is an administrator's"
           : p.pinned
           ? "unpin: take it off the sidebar; it stays on the Projects tab"
           : "pin: show it on the sidebar's Projects card"}"
-        >${TACK}</button>` : ""}
+        >${TACK}</button>
       ${inTab ? `<button class="eye rm bare" data-del="${esc(p.name)}" aria-label="delete"
         title="delete: moves it to the trash with everything it has; Put back restores it">${BIN}</button>` : ""}
       <button class="eye rowmore" data-more="${esc(p.name)}" aria-label="more"

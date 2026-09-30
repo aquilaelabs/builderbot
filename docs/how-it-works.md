@@ -3482,10 +3482,16 @@ minute in the background through an inexact alarm, so nothing stays in the
 shade between questions and the icon carries no dot of its own. A session
 asking for your phone or for root on a node arrives as a notification with
 **Approve** and **Deny** on it, answered without opening the app; changes a
-session has waiting, a session of your own going from working to waiting
-on you (a switch under More turns that one off), and a node whose agent is
+session has waiting, a session of your own coming free to take a message
+(a switch under More turns that one off), and a node whose agent is
 behind or out of window or whose Claude Code is behind, arrive as notes
-that open the right screen. A
+that open the right screen. The note that a session is waiting on you
+names the project first and follows the project's *During a test run*
+setting: where a new ask interrupts a run, it comes as soon as the session
+is waiting, tests running or not, and says so; where a new ask waits for
+the run, the note waits too, and comes when the tests finish. `bb test`
+tells the dashboard when a run starts and ends, which is how it knows;
+a run that never reports its end is forgotten after four hours. A
 phone left alone can hold the alarm back for some minutes, which is why the
 dashboard's bell carries the same questions. There is no push service: the phone reaches
 your BuilderBot directly, on your network or over your tailnet, so nothing

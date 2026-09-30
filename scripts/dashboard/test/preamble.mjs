@@ -59,8 +59,8 @@ ok(/a new ask never cuts in\. Finish the ask in hand, run the tests, fix what fa
 const setChange = mode => page.evaluate(async m => (await (await fetch('/api/prefs', { method: 'POST',
   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', test_change: m }) })).json()), mode);
 await setChange('restart');
-ok(/may cut into the final test run only.*end that run by the pid you started it with.*Work still in progress on the ask in hand.*finishes first/s.test((await pre()).text),
-   '...and, set the other way, that only the final run is interrupted and work in hand finishes first');
+ok(/cuts into whatever test run is going, a suite run in the middle of the work or the gate at its end.*end that run by the pid you started it with.*still yours to fix before the run that lands/s.test((await pre()).text),
+   '...and, set the other way, that any run is cut for the new ask and what it had found is still fixed');
 // The asker's own reply style rides the block (a per-account setting on
 // the project, 25 Sep), and the project's briefing style drops the filler
 // words of every part but the live line: fewer bytes, code and names kept.

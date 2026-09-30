@@ -232,16 +232,22 @@ function slideBody(el, mutate){
   // tab has no card and slides over its own height.
   const card = el.closest(".card, .mpanel") || el;
   if (noMotion()){ mutate(); return; }
-  const from = card.offsetHeight;
+  const from = card.offsetHeight, own = el.offsetHeight;
   // Only its own kind: canceling a card-level fold here would swallow the
   // class write that fold's finish handler was going to make.
   card.getAnimations().forEach(a => { if (a.id === "body") a.cancel(); });
   mutate();
   const to = card.offsetHeight;
-  if (from === to) return;
-  card.style.overflow = "hidden";
-  const anim = card.animate([{height: from + "px"}, {height: to + "px"}],
+  // A row inside a card's scroll box (the Projects card's list) grows
+  // without the card growing, so the card had nothing to tween and the
+  // row snapped, where the same row on the Projects tab slid (the
+  // operator, 30 Sep): then the row moves over its own height.
+  const host = from === to && el !== card && el.offsetHeight !== own ? el : card;
+  const [h0, h1] = host === card ? [from, to] : [own, el.offsetHeight];
+  if (h0 === h1) return;
+  host.style.overflow = "hidden";
+  const anim = host.animate([{height: h0 + "px"}, {height: h1 + "px"}],
                             {duration: 180, easing: "ease"});
   anim.id = "body";
-  anim.onfinish = () => card.style.overflow = "";
+  anim.onfinish = () => host.style.overflow = "";
 }

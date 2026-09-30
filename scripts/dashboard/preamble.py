@@ -76,11 +76,11 @@ TEST_CHANGE_SAID = {
     "wait": ("a new ask never cuts in. Finish the ask in hand, run the tests, fix what "
              "failed and run them again until they pass, then take the next ask; say it "
              "is queued when it arrives."),
-    "restart": ("a new ask may cut into the final test run only, the gate after the work "
-                "is done and committed: end that run by the pid you started it with (kill "
-                "its process group, never by name), make the change, and start the run again. "
-                "Work still in progress on the ask in hand, including fixing failures from "
-                "a run made in the middle of it, finishes first; the new ask waits until then."),
+    "restart": ("a new ask cuts into whatever test run is going, a suite run in the middle of "
+                "the work or the gate at its end: end that run by the pid you started it with "
+                "(kill its process group, never by name), take the new ask, and run again "
+                "afterwards. What the cut run had found is still yours to fix before the run "
+                "that lands; say what you cut and why."),
 }
 
 

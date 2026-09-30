@@ -808,6 +808,30 @@ await saved();
 const gone = await api(`/api/design?project=${P}`);
 ok(gone.pages.length === 0 && gone.language.themes.length === 1 && gone.language.themes[0].colors[0].hex === '#1a1f26',
    'Remove page and Save take the page out, and the language goes back to one theme filled from Default');
+// A record saved under the build before the choices were each theme's,
+// with a custom map naming the language's rules and a second theme with
+// no rules: read strictly it took every bb design verb down (B386, two
+// reports). It reads, the map lands on the first theme with the rules,
+// the second theme keeps its choice with no rule named, and the schema
+// prints whatever the store holds.
+{
+  const store = `${DIR}/state/designs.json`;
+  const all = existsSync(store) ? JSON.parse(readFileSync(store, 'utf8')) : {};
+  all.beta = { language: { themes: [{ name: 'Dark', mode: 'dark', colors: [], rules: [{ name: 'differences', text: 'x' }] }, { name: 'Light', mode: 'light', colors: [] }],
+                           corners: 'custom', motion: 'custom', custom: { corners: 'shape', motion: 'motion' },
+                           rules: [{ name: 'shape', text: 'radii 6px' }, { name: 'motion', text: 'none' }] }, pages: [], next: 1, at: 5 };
+  writeFileSync(store, JSON.stringify(all));
+  const old = await api('/api/design?project=beta');
+  const [dark, light] = old.language?.themes || [];
+  ok(old.status === 200 && dark?.custom?.corners === 'shape' && dark.rules.map(r => r.name).join() === 'shape,motion,differences'
+     && light?.corners === 'custom' && JSON.stringify(light.custom) === '{}' && light.rules.length === 0,
+     `a record from before the choices were each theme's reads: the custom map and the rules go to the first theme, the second keeps its choice with no rule named (${old.status} ${(old.error || '').slice(0, 80)})`);
+  ok(/^The record bb design save takes/.test((await api('/api/design?project=beta&show=schema')).text || '')
+     && /Dark \(dark\)/.test((await api('/api/design?project=beta&show=list')).text || ''),
+     'bb design schema and list answer over it');
+  delete all.beta;
+  writeFileSync(store, JSON.stringify(all));
+}
 rmSync(`${DIR}/ws/${P}/docs`, { recursive: true, force: true });
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 await done(browser);
