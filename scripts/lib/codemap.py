@@ -1488,6 +1488,12 @@ def affected(idx, cov, ranges, root=None):
                 suites.setdefault(s_, set()).add(f"{Path(f).name} (file)")
             why = "lines outside any function" if loose and not any(u.startswith(f + ":") for u in unknown) else "a function no covered run has seen"
             notes.append(f"{f}: {why}, so the file's {len(names)} suite{'' if len(names) == 1 else 's'}")
+    # A lab suite needs a real service and is run by name (bb tests lab),
+    # never picked, whichever road reached it: the file's own answer already
+    # left them out, and a drawn name did not, so a change posting to a path
+    # a lab suite also asks planned that lab suite (B395).
+    for s_ in [k for k in suites if k.startswith("lab-")]:
+        del suites[s_]
     return suites, notes, unknown, every
 
 
