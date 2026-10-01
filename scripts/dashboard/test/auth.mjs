@@ -1327,15 +1327,18 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
       // the owner too, and a session reads which keys exist but no secret.
       const listed = await sign({ action: 'keys' });
       const newKey = await sign({ action: 'generate', key: 'watch', route: 'sideload', why: 'the watch app' });
+      const rot = await sign({ action: 'rotate', from: 'default', to: 'watch', why: 'move the app to the new key' });
       const ownerAsks2 = await (await bare('/api/phone', { headers: ownerAuth })).json();
       const keyAsk = (ownerAsks2.asks || []).find(a => a.id === newKey.body.id);
+      const rotAsk = (ownerAsks2.asks || []).find(a => a.id === rot.body.id);
       await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', keys: 'deny' }) });
       const noKeys = await sign({ action: 'map', package: 'com.example.watch', key: 'watch', why: 'w' });
       ok(listed.status === 200 && 'default' in (listed.body.keys || {}) && !JSON.stringify(listed.body).includes('"pw"')
          && keyAsk && keyAsk.kind === 'sign-key' && keyAsk.cmd.join(' ') === 'sign key new watch --for sideload'
+         && rotAsk && rotAsk.cmd.join(' ') === 'sign rotate default watch'
          && noKeys.status === 403 && /Manage signing keys/.test(noKeys.body.error || ''),
          `...a session reads the keys without a secret, proposes a new one for the owner to allow, and at Deny is refused naming the setting (${keyAsk?.cmd?.join(' ')})`);
-      if (keyAsk) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: keyAsk.id }) });
+      for (const a of [keyAsk, rotAsk]) if (a) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: a.id }) });
       await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask', keys: 'ask', node: '' }) });
       rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
     }

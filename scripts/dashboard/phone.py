@@ -832,6 +832,8 @@ def ask_keys(why, project, action, args, to_uid, to_name, asker_name=""):
         cmd = ["sign", "key", "new", str(args.get("key")), "--for", str(args.get("route"))]
     elif action == "map":
         cmd = ["sign", "map", str(args.get("package")), str(args.get("key") or "default")]
+    elif action == "rotate":
+        cmd = ["sign", "rotate", str(args.get("from")), str(args.get("to"))]
     else:
         return {"error": f"not a key change: {action}"}
     return _queue("sign-key", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,

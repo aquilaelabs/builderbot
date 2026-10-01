@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.129"
+AGENT_VERSION = "0.7.130"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -5481,6 +5481,22 @@ class Agent:
                     os.chown(p, who["user"], who["group"])
             env.update({"BB_KS_PASS": str(k.get("store_pass") or ""),
                         "BB_KEY_PASS": str(k.get("key_pass") or k.get("store_pass") or "")})
+            # A rotated key (R106 step 7): the key it replaced signs first and
+            # the proof says the new one takes over, from Android 9 on.
+            prev = k.get("previous") if kind == ".apk" and k.get("lineage") else None
+            if prev:
+                pks, lin = os.path.join(work, "previous"), os.path.join(work, "lineage")
+                for path, data in ((pks, prev.get("keystore")), (lin, k.get("lineage"))):
+                    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, "wb") as f:
+                        f.write(base64.b64decode(data or ""))
+                    if who:
+                        os.chown(path, who["user"], who["group"])
+                env.update({"BB_PREV_KS": str(prev.get("store_pass") or ""),
+                            "BB_PREV_KEY": str(prev.get("key_pass") or prev.get("store_pass") or "")})
+            elif k.get("previous"):
+                job.say("a bundle carries no proof of rotation: it is signed with the new key alone, "
+                        "and Play upgrades its own key\n")
             alias = str(k.get("alias") or "")
             out = os.path.join(work, "out" + kind)
 
@@ -5500,9 +5516,13 @@ class Agent:
                 aligned = os.path.join(work, "aligned.apk")
                 if step([tools["zipalign"], "-p", "-f", "4", src, aligned], "zipalign") is None:
                     return "failed", 1
-                if step([tools["apksigner"], "sign", "--ks", ks, "--ks-key-alias", alias,
+                first = (["--ks", pks, "--ks-key-alias", str(prev.get("alias") or ""),
+                          "--ks-pass", "env:BB_PREV_KS", "--key-pass", "env:BB_PREV_KEY", "--next-signer"]
+                         if prev else [])
+                tail = (["--lineage", lin, "--rotation-min-sdk-version", "28"] if prev else [])
+                if step([tools["apksigner"], "sign", *first, "--ks", ks, "--ks-key-alias", alias,
                          "--ks-pass", "env:BB_KS_PASS", "--key-pass", "env:BB_KEY_PASS",
-                         "--out", out, aligned], "apksigner sign") is None:
+                         *tail, "--out", out, aligned], "apksigner sign") is None:
                     return "failed", 1
                 said = step([tools["apksigner"], "verify", "--verbose", "--print-certs", out], "apksigner verify")
             else:
@@ -5529,7 +5549,8 @@ class Agent:
             base = base.replace("-unsigned", "") if "-unsigned" in base else base
             name = f"{base}-signed{kind}"
             st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}&signed={route}"
-                                    f"&cert={cert or want}&schemes={schemes}&key={k.get('key') or 'default'}", out)
+                                    f"&cert={cert or want}&schemes={schemes}&key={k.get('key') or 'default'}"
+                                    + (f"&rotated={prev.get('key')}" if prev else ""), out)
             if st != 200 or r.get("error"):
                 job.say(f"could not deliver {name}: {r.get('error') or st}\n")
                 return "failed", 1

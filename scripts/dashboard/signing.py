@@ -50,6 +50,9 @@ keytool_path = None     # set by the server: the store's keytool, or None
 node_of = None
 job_add = None
 file_path = None
+# The store's newest apksigner, and the environment it needs (its java), set
+# by the server: what makes a proof of rotation (step 7), or (None, {}).
+apksigner_path = None
 
 
 def configure(*, state, project_name, keytool):
@@ -315,9 +318,90 @@ def set_map(project, package, key):
     return listing(project)
 
 
+def successor(project, key):
+    """The key a sideload key was rotated to, followed to the newest: a
+    retired key signs nothing itself, its builds go out with what replaced
+    it and the proof that it did."""
+    seen = set()
+    while key not in seen:
+        seen.add(key)
+        rec = _record(project, "sideload", key) or {}
+        nxt = rec.get("retired_for") or ""
+        if not nxt or not _record(project, "sideload", nxt):
+            return key
+        key = nxt
+    return key
+
+
+def lineage(project, key):
+    """The proof of rotation a key's sideload slot carries, or b""."""
+    try:
+        return (_dir(project, key) / "sideload.lineage").read_bytes()
+    except OSError:
+        return b""
+
+
+def rotate(project, old, new, by=""):
+    """Move an app from one sideload key to another (step 7): the proof of
+    rotation made here with apksigner from both keys, kept with the new one;
+    the old one retired, never signing alone again and kept, since the proof
+    and every device before Android 9 still need it; and the apps mapped to
+    the old key mapped to the new. (payload, status)."""
+    if not _ok_project(project) or not _ok_key(old) or not _ok_key(new):
+        return {"error": "unknown project or key"}, 400
+    if old == new:
+        return {"error": "a key is rotated to another key"}, 400
+    a, b = _record(project, "sideload", old), _record(project, "sideload", new)
+    if not a or not b:
+        return {"error": f"both keys need a sideload signing key: {old if not a else new} has none"}, 404
+    if a.get("retired_for"):
+        return {"error": f"{old} was rotated to {a['retired_for']} already"}, 409
+    if b.get("rotated_from") or b.get("retired_for"):
+        return {"error": f"{new} is part of a rotation already, so it cannot start another"}, 409
+    tool, env = apksigner_path() if apksigner_path else (None, {})
+    if not tool:
+        return {"error": "there is no apksigner here to make the proof with: install android-tools "
+                         "(Toolchains tab), which this controller reads from the shared store"}, 400
+    d = tempfile.mkdtemp(prefix="bb-sign-")
+    try:
+        os.chmod(d, 0o700)
+        for name, k in (("old", old), ("new", new)):
+            with open(os.open(os.path.join(d, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+                f.write((_dir(project, k) / "sideload.ks").read_bytes())
+        env = dict(os.environ, **env, BB_OLD_KS=a["store_pass"], BB_OLD_KEY=a.get("key_pass") or a["store_pass"],
+                   BB_NEW_KS=b["store_pass"], BB_NEW_KEY=b.get("key_pass") or b["store_pass"])
+        out = os.path.join(d, "lineage")
+        try:
+            p = subprocess.run([tool, "rotate", "--out", out,
+                                "--old-signer", "--ks", os.path.join(d, "old"), "--ks-key-alias", a["alias"],
+                                "--ks-pass", "env:BB_OLD_KS", "--key-pass", "env:BB_OLD_KEY",
+                                "--new-signer", "--ks", os.path.join(d, "new"), "--ks-key-alias", b["alias"],
+                                "--ks-pass", "env:BB_NEW_KS", "--key-pass", "env:BB_NEW_KEY"],
+                               env=env, capture_output=True, text=True, timeout=120, check=False)
+        except (OSError, subprocess.SubprocessError) as e:
+            return {"error": f"apksigner did not run: {e}"}, 500
+        if p.returncode != 0 or not os.path.isfile(out):
+            said = [ln for ln in ((p.stderr or "") + (p.stdout or "")).splitlines() if ln.strip()]
+            return {"error": "apksigner could not make the proof: " + (said[-1][:200] if said else f"exit {p.returncode}")}, 500
+        proof = Path(out).read_bytes()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    _write_private(_dir(project, new) / "sideload.lineage", proof)
+    b.update(rotated_from=old, rotated_at=int(time.time()), rotated_by=by)
+    _write_private(_dir(project, new) / "sideload.json", json.dumps(b).encode())
+    a.update(retired_for=new, retired_at=int(time.time()))
+    _write_private(_dir(project, old) / "sideload.json", json.dumps(a).encode())
+    m = {pkg: (new if k == old else k) for pkg, k in mapping(project).items()}
+    _write_private(_root(project) / "map.json", json.dumps(m).encode())
+    return listing(project)
+
+
 def remove(project, route, key=DEFAULT):
     if not _ok_project(project) or route not in ROUTES or not _ok_key(key):
         return {"error": "unknown project, key or route"}, 400
+    if route == "sideload" and (_record(project, "sideload", key) or {}).get("retired_for"):
+        return {"error": f"{key}'s sideload key was rotated to {(_record(project, 'sideload', key) or {})['retired_for']}, "
+                         "and the proof, and every device before Android 9, still need it: it is kept"}, 409
     gone = False
     for ext in ("ks", "json"):
         p = _dir(project, key) / f"{route}.{ext}"
@@ -432,6 +516,8 @@ def verb(req, by=""):
         return generate(project, route, key, by=by, name=str(req.get("name") or ""))
     if act == "map":
         return set_map(project, str(req.get("package") or ""), str(req.get("key") or ""))
+    if act == "rotate":
+        return rotate(project, str(req.get("from") or ""), str(req.get("to") or ""), by=by)
     if act == "remove":
         return remove(project, route, key)
     return {"error": f"unknown action {act!r}"}, 400

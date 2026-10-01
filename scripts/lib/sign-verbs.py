@@ -33,7 +33,11 @@ def keys_verb(sub, route, why, rest):
         if not d.get("keys"):
             print("  no keys yet: an administrator adds one under Signing keys in the project's settings")
         return
-    if sub == "--key":
+    if sub == "--rotate":
+        if len(rest) != 2:
+            sys.exit("[builderbot] ERROR: bb sign rotate OLD NEW --why \"...\" (two keys, each with a sideload key)")
+        body = {"action": "rotate", "from": rest[0], "to": rest[1]}
+    elif sub == "--key":
         if len(rest) != 2 or rest[0] != "new" or route not in ("play", "sideload"):
             sys.exit("[builderbot] ERROR: bb sign key new NAME --for play|sideload --why \"...\"")
         body = {"action": "generate", "key": rest[1], "route": route}

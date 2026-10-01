@@ -13,6 +13,7 @@ code that looks fine until it deadlocks.
 import base64
 import contextlib
 from html import escape as html_escape
+import glob
 import gzip
 import hashlib
 import hmac
@@ -2183,6 +2184,23 @@ def _keytool():
 
 
 signing.configure(state=STATE, project_name=PROJECT_NAME, keytool=_keytool)
+
+
+def _apksigner():
+    """The store's newest apksigner and the java it runs on, for a proof of
+    rotation (signing.rotate), or (None, {})."""
+    root = toolchains.sdk_root_path()
+    if not root:
+        return None, {}
+    tools = sorted(glob.glob(os.path.join(root, "android", "build-tools", "*", "apksigner")),
+                   key=lambda p: [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", os.path.basename(os.path.dirname(p)))])
+    jdk = os.path.join(root, "jdk")
+    if not tools or not os.access(os.path.join(jdk, "bin", "java"), os.X_OK):
+        return None, {}
+    return tools[-1], {"JAVA_HOME": jdk, "PATH": os.path.join(jdk, "bin") + os.pathsep + os.environ.get("PATH", "")}
+
+
+signing.apksigner_path = _apksigner
 import membership                                                # noqa: E402
 membership.configure(state=STATE, write_json=write_json)
 gitview.configure(workspace=WORKSPACE,
@@ -2546,6 +2564,8 @@ def _keymaker(action, project, args, by=""):
         return signing.generate(project, str(args.get("route") or ""), str(args.get("key") or "default"), by=by)
     if action == "map":
         return signing.set_map(project, str(args.get("package") or ""), str(args.get("key") or ""))
+    if action == "rotate":
+        return signing.rotate(project, str(args.get("from") or ""), str(args.get("to") or ""), by=by)
     return {"error": f"not a key change: {action}"}, 400
 
 
@@ -5282,12 +5302,12 @@ class Handler(BaseHTTPRequestHandler):
             # Sign a release). It never receives the key, the list, or a
             # backup; asking to sign is all a session does here.
             act = field(req, "action")
-            if act not in ("sign", "keys", "generate", "map") or name != who["session"]:
+            if act not in ("sign", "keys", "generate", "map", "rotate") or name != who["session"]:
                 return self._json({"error": "a session signs with bb sign, which never hands it the key; "
                                             "the keys are a person's to manage"}, 403)
             owner = membership.owner_of(name)
             acct = users.account_of(who) or {}
-            if act in ("keys", "generate", "map"):
+            if act in ("keys", "generate", "map", "rotate"):
                 # Manage signing keys (R106 step 6): which keys there are
                 # (names and fingerprints, never a secret), and a new key or
                 # a package's key proposed, under its own dial.
@@ -5297,8 +5317,9 @@ class Handler(BaseHTTPRequestHandler):
                                                 "keys (Claude may: Manage signing keys)"}, 403)
                 if act == "keys":
                     return self._json(*signing.listing(name))
-                args = ({"key": field(req, "key") or "default", "route": field(req, "route")}
-                        if act == "generate" else {"package": field(req, "package"), "key": field(req, "key")})
+                args = ({"key": field(req, "key") or "default", "route": field(req, "route")} if act == "generate"
+                        else {"from": field(req, "from"), "to": field(req, "to")} if act == "rotate"
+                        else {"package": field(req, "package"), "key": field(req, "key")})
                 if kmode == "auto":
                     return self._json(*_keymaker(act, name, args, by="claude"))
                 r = phone.ask_keys(field(req, "why"), name, act, args, owner,

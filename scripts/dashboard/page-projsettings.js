@@ -545,11 +545,18 @@ function rnDrawSigning(){
       : k ? `${word}: ${esc(k.alias)} <span class="dim">${esc(rnFp(k.sha256))}${k.generated ? ", made here" : ""}</span>`
       : `${word}: none`;
     const never = k && !d.remove && !d.file && route === "sideload" && !k.backed_up;
+    // Rotation (R106 step 7): what this key was rotated to or from, and the
+    // keys it could hand an app to.
+    const retired = route === "sideload" && k?.retired_for, rotated = route === "sideload" && k?.rotated_from;
+    const targets = route === "sideload" && k && !retired ? Object.entries(rnSignKeys)
+      .filter(([n, s]) => n !== key && s.sideload && !s.sideload.retired_for && !s.sideload.rotated_from).map(([n]) => n) : [];
     return `<div class="rnsign" data-key="${esc(key)}" data-route="${route}">
       <div>${now}</div>
       <div class="sub dim">${esc(about)}${k && !d.remove && !d.file
         ? ` ${k.backed_up ? `Backed up ${esc(ago(k.backed_up))}.` : "Not backed up yet."}` : ""}</div>
       ${never ? `<div class="sub bad">Never backed up: download a copy and keep it offline, since losing it is final.</div>` : ""}
+      ${retired ? `<div class="sub">Retired: rotated to ${esc(k.retired_for)}. Kept, since the proof and every device before Android 9 still need it.</div>` : ""}
+      ${rotated ? `<div class="sub">Rotated from ${esc(k.rotated_from)}: Android 9 and newer see this key, older devices still see ${esc(k.rotated_from)}.</div>` : ""}
       ${d.open ? `<div class="rnsignform">
         <input type="file" data-signfile accept=".jks,.p12,.pfx,.keystore" aria-label="${esc(word)} keystore">
         <input type="password" data-signpass autocomplete="new-password" placeholder="keystore password" aria-label="keystore password">
@@ -560,7 +567,10 @@ function rnDrawSigning(){
         <button type="button" class="link" data-signopen>${d.open ? "Never mind" : k ? "Replace" : "Upload one"}</button>
         ${!k && !d.open && rnSignTool ? `<button type="button" class="link" data-signgen>Generate</button>` : ""}
         ${k ? `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&route=${route}" download>Download backup</a>
-        <button type="button" class="link" data-signremove>${d.remove ? "Keep it after all" : "Remove"}</button>` : ""}
+        ${retired ? "" : `<button type="button" class="link" data-signremove>${d.remove ? "Keep it after all" : "Remove"}</button>`}` : ""}
+        ${targets.length ? `<select data-rotateto aria-label="the key to rotate ${esc(key)} to">${
+          targets.map(n => `<option>${esc(n)}</option>`).join("")}</select>
+        <button type="button" class="link" data-rotate>Rotate to it</button>` : ""}
       </div>
     </div>`;
   };
@@ -600,6 +610,17 @@ function rnDrawSigning(){
       if (j.error){ gen.disabled = false; return notify(j.error, true); }
       notify(`${key}: a ${route === "play" ? "Play upload" : "sideload signing"} key was made; download a backup`);
       rnSignNew = rnSignNew.filter(n => n !== key);
+      rnLoadSigning(name);
+    };
+    const rot = row.querySelector("[data-rotate]");
+    if (rot) rot.onclick = async () => {
+      const to = row.querySelector("[data-rotateto]").value;
+      if (!confirm(`Rotate ${key}'s sideload key to ${to}? Builds then go out signed with both and a proof: `
+            + `Android 9 and newer move to ${to}, older devices keep checking ${key}, and ${key} is kept for good.`)) return;
+      rot.disabled = true;
+      const j = await (await postJSON("/api/signing", {action: "rotate", project: name, from: key, to})).json();
+      if (j.error){ rot.disabled = false; return notify(j.error, true); }
+      notify(`${key} is rotated to ${to}: the apps it signed now sign with ${to} and the proof`);
       rnLoadSigning(name);
     };
     const rm = row.querySelector("[data-signremove]");

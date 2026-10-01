@@ -199,9 +199,13 @@ bb sign keys       the project's keys by name, their fingerprints and which
                    package each signs (never a key or a password)
 bb sign key new NAME --for play|sideload --why "..."
 bb sign map PACKAGE KEY --why "..."
+bb sign rotate OLD NEW --why "..."
                    a new key made on the controller, or an app's package mapped
                    to a key (KEY "" unmaps it), under Claude may: Manage signing
-                   keys: auto does it, ask waits for the project's owner
+                   keys: auto does it, ask waits for the project's owner. rotate
+                   moves the apps OLD's sideload key signs to NEW's: builds go out
+                   signed with both and a proof, Android 9 and newer take NEW,
+                   older devices keep checking OLD, which is kept for good
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -2336,7 +2340,7 @@ cmd_sign() {
     local auth proj
     proj="${BB_PROJECT:-$(project_here 2>/dev/null || true)}"
     case "${1:-}" in
-        keys|key|map)
+        keys|key|map|rotate)
             local sub="$1"; shift
             local -a rest=()
             while [ $# -gt 0 ]; do
@@ -2353,7 +2357,7 @@ cmd_sign() {
     esac
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help) sed -n '/^bb sign FILE/,/keys: auto does it/p' "$0"; return 0 ;;
+            -h|--help) sed -n '/^bb sign FILE/,/which is kept for good/p' "$0"; return 0 ;;
             --key) [ $# -ge 2 ] || die "--key needs a key's name after it"; key="$2"; shift 2 ;;
             --key=*) key="${1#--key=}"; shift ;;
             --for) [ $# -ge 2 ] || die "--for needs play or sideload after it"; route="$2"; shift 2 ;;

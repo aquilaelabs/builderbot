@@ -261,9 +261,13 @@ bb sign keys       the project's keys by name, their fingerprints and which
                    package each signs (never a key or a password)
 bb sign key new NAME --for play|sideload --why "..."
 bb sign map PACKAGE KEY --why "..."
+bb sign rotate OLD NEW --why "..."
                    a new key made on the controller, or an app's package mapped
                    to a key (KEY "" unmaps it), under Claude may: Manage signing
-                   keys: auto does it, ask waits for the project's owner
+                   keys: auto does it, ask waits for the project's owner. rotate
+                   moves the apps OLD's sideload key signs to NEW's: builds go out
+                   signed with both and a proof, Android 9 and newer take NEW,
+                   older devices keep checking OLD, which is kept for good
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -518,7 +522,11 @@ offline; its row says so in red until it has been. A signed build's Artifacts
 row gives the certificate's whole fingerprint, with **Copy for F-Droid** for
 its metadata. Using one key on Play, F-Droid and your own downloads (so users
 can move between them) means giving Play that key when the app is first set
-up there. [docs/how-it-works.md](docs/how-it-works.md#android-signing-keys)
+up there. A project can keep several named keys (one per app, or one shared),
+generated on the controller or uploaded, with each app's package mapped to its
+key, and a sideload key can be **rotated** to another: builds then carry both
+and a proof, Android 9 and newer move to the new key, and the old one is kept
+for the devices before that. [docs/how-it-works.md](docs/how-it-works.md#android-signing-keys)
 has the rest.
 
 ## Documentation

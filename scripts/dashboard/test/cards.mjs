@@ -1466,6 +1466,27 @@ const signErr = await page.$eval('#rnErr', e => e.textContent);
 ok(!await page.$eval('#rnmodal', e => e.hidden)
    && !(await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.default?.sideload,
    `...and one the server will not keep is refused in the dialog, which stays open, with nothing kept (${signErr.slice(0, 90)})`);
+// A rotated key (R106 step 7): the retired one says why it is kept and
+// offers no Remove; the one it went to says who still sees the old.
+{
+  const sd = `${DIR}/state/signing/alpha`;
+  for (const [k, rec] of [['default', { retired_for: 'watch' }], ['watch', { rotated_from: 'default' }]]){
+    mkdirSync(`${sd}/${k}`, { recursive: true });
+    writeFileSync(`${sd}/${k}/sideload.ks`, 'k');
+    writeFileSync(`${sd}/${k}/sideload.json`, JSON.stringify({ route: 'sideload', key: k, alias: k, backed_up: 1,
+      sha256: 'AB:'.repeat(31) + 'AB', store_pass: 'x', ...rec }));
+  }
+  await page.evaluate(() => rnLoadSigning('alpha'));
+  await page.waitForSelector('.rnsign[data-key="watch"][data-route="sideload"]', { timeout: 10000 });
+  const rows = await page.$$eval('.rnsign[data-route="sideload"]', rs => rs.map(r => ({ key: r.dataset.key,
+    text: r.textContent.replace(/\s+/g, ' '), remove: !!r.querySelector('[data-signremove]'), rotate: !!r.querySelector('[data-rotate]') })));
+  const old = rows.find(r => r.key === 'default'), now = rows.find(r => r.key === 'watch');
+  ok(old && /Retired: rotated to watch\. Kept, since the proof and every device before Android 9 still need it/.test(old.text) && !old.remove && !old.rotate
+     && now && /Rotated from default: Android 9 and newer see this key, older devices still see default/.test(now.text) && !now.rotate,
+     'a retired sideload key says why it is kept and offers no Remove, and the key it went to says who still sees the old one');
+  rmSync(sd, { recursive: true, force: true });
+  await page.evaluate(() => rnLoadSigning('alpha'));
+}
 await page.click('#rnCancel');
 
 // An invitation waiting on this account sits in the bell with its answer,

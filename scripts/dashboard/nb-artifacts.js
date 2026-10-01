@@ -241,7 +241,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
               a.prov.signed.key && a.prov.signed.key !== "default" ? `${esc(a.prov.signed.key)} key's ` : ""}${
               a.prov.signed.route === "play" ? "Play upload key" : "sideload signing key"}${
               a.prov.signed.from ? ` from ${esc(a.prov.signed.from)}` : ""}${
-              a.prov.signed.schemes?.length ? `, verified ${esc(a.prov.signed.schemes.join(", "))}` : ""}</span>
+              a.prov.signed.schemes?.length ? `, verified ${esc(a.prov.signed.schemes.join(", "))}` : ""}${
+              a.prov.signed.rotated_from ? `, rotated from ${esc(a.prov.signed.rotated_from)}: Android 8.1 and older still see ${esc(a.prov.signed.rotated_from)}` : ""}</span>
               <span class="artfp">SHA-256 ${esc(a.prov.signed.cert.match(/../g).join(":"))}
                 <button type="button" class="link" data-artfp="${i}" title="the fingerprint as F-Droid's AllowedAPKSigningKeys takes it: lowercase, no colons">Copy for F-Droid</button></span>` : ""}</span>
           <span class="acts">

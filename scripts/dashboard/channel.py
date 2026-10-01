@@ -137,6 +137,9 @@ def artifact(auth, q, stream, length):
             extra = {"signed": {"route": route, "cert": cert, "key": key,
                                 "schemes": [x for x in schemes.split(",") if x],
                                 "from": str((j.get("spec") or {}).get("file") or "")}}
+            rotated = q.get("rotated", [""])[0]
+            if rotated and signing.KEY_NAME.fullmatch(rotated):
+                extra["signed"]["rotated_from"] = rotated
     r = workspace.artifact_put(j, q.get("name", [""])[0], stream, length, extra=extra)
     if not r.get("error"):
         db.audit(auth["principal"], "artifact", j["id"],
@@ -193,6 +196,10 @@ def verb(name, auth, req, addr):
         # the project's default.
         package = field(req, "package")
         key = str(spec.get("key") or "") or signing.key_for(project, package)
+        # A retired sideload key signs nothing alone: its builds go out with
+        # the key it was rotated to and the proof (R106 step 7).
+        if route == "sideload":
+            key = signing.successor(project, key)
         got = signing.secret(project, route, key)
         if not got:
             return {"error": f"{project} has no {signing.WORDS.get(route, route)} named {key}"
@@ -202,9 +209,18 @@ def verb(name, auth, req, addr):
         db.audit(auth["principal"], "signing-key", j["id"],
                  {"project": project, "route": route, "key": key, "package": package,
                   "sha256": rec.get("sha256")})
-        return {"keystore": base64.b64encode(blob).decode(), "alias": rec.get("alias"),
-                "type": rec.get("type"), "store_pass": rec.get("store_pass"), "key": key,
-                "key_pass": rec.get("key_pass"), "sha256": rec.get("sha256")}, 200
+        out = {"keystore": base64.b64encode(blob).decode(), "alias": rec.get("alias"),
+               "type": rec.get("type"), "store_pass": rec.get("store_pass"), "key": key,
+               "key_pass": rec.get("key_pass"), "sha256": rec.get("sha256")}
+        if route == "sideload" and rec.get("rotated_from"):
+            prev = signing.secret(project, route, rec["rotated_from"])
+            proof = signing.lineage(project, key)
+            if prev and proof:
+                out["previous"] = {"keystore": base64.b64encode(prev[0]).decode(), "alias": prev[1].get("alias"),
+                                   "store_pass": prev[1].get("store_pass"), "key_pass": prev[1].get("key_pass"),
+                                   "key": rec["rotated_from"], "sha256": prev[1].get("sha256")}
+                out["lineage"] = base64.b64encode(proof).decode()
+        return out, 200
     if name == "hello":
         r = nodes.hello(nid, req.get("census"), addr,
                         field(req, "version"), field(req, "digest"),

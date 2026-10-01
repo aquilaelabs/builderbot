@@ -3248,6 +3248,22 @@ proposes a new one or a mapping (`bb sign keys`, `bb sign key new NAME --for
 sideload`, `bb sign map PACKAGE KEY`) under **Claude may: Manage signing
 keys**, ask by default, which puts it in front of the project's owner.
 
+**Moving an app to another sideload key.** **Rotate to it** on a key's
+sideload row (or `bb sign rotate OLD NEW`, under the same dial) makes a proof
+of rotation on the controller with the store's `apksigner`, signed by both
+keys, and keeps it with the new one. From then on every build that would have
+used the old key is signed with both and the proof, with the new key from
+Android 9 on (`--rotation-min-sdk-version 28`): Android 9 and newer accept
+updates signed by the new key, and older devices keep checking the old one.
+The apps mapped to the old key move to the new. The old key is **retired**:
+never signs alone again, and cannot be removed, since the proof and every
+device before Android 9 still need it. It cannot be done without the old key,
+which is the other reason a sideload key is backed up. A bundle carries no
+proof, so an `.aab` is signed with the new key alone; Play upgrades its own
+app signing key (which reaches Android 13 and newer), and F-Droid's own key
+cannot be rotated into, since F-Droid holds it. The Artifacts row of a build
+that carries a rotation says so, and which key older devices still see.
+
 **Signing a build.** A person signs from the **Artifacts** tab: an `.apk` or
 `.aab` row offers **Sign** for each key the project has. A session runs
 `bb sign FILE [--for play|sideload] [--why "..."]` (Play for an `.aab` and

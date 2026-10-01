@@ -165,3 +165,37 @@ class Start(unittest.TestCase):
         signing.node_of = lambda p: ""
         self.assertIn("no node", signing.start("u", "app", "app-release.apk", "sideload")[0]["error"])
         self.assertEqual(self.queued, [])
+
+
+STORE = next((d for d in glob.glob("/mnt/SDK/*") + glob.glob("/sdk/*")
+              if glob.glob(os.path.join(d, "android", "build-tools", "*", "apksigner"))
+              and os.access(os.path.join(d, "jdk", "bin", "java"), os.X_OK)), "")
+
+
+@unittest.skipUnless(KT and STORE, "no keytool, apksigner and java here")
+class Rotate(unittest.TestCase):
+    """A sideload key rotated to another (step 7), with the store's apksigner."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"),
+                          keytool=lambda: KT)
+        tool = sorted(glob.glob(os.path.join(STORE, "android", "build-tools", "*", "apksigner")))[-1]
+        jdk = os.path.join(STORE, "jdk")
+        signing.apksigner_path = lambda: (tool, {"JAVA_HOME": jdk, "PATH": jdk + "/bin:" + os.environ["PATH"]})
+        self.addCleanup(setattr, signing, "apksigner_path", None)
+        signing.generate("app", "sideload", "default")
+        signing.generate("app", "sideload", "watch2")
+        signing.set_map("app", "com.example.phone", "default")
+
+    def test_the_proof_is_kept_the_old_key_retired_and_the_apps_moved(self):
+        r, st = signing.rotate("app", "default", "watch2", by="sean")
+        self.assertEqual(st, 200, r)
+        self.assertGreater(len(signing.lineage("app", "watch2")), 0)
+        self.assertEqual(r["keys"]["default"]["sideload"]["retired_for"], "watch2")
+        self.assertEqual(r["keys"]["watch2"]["sideload"]["rotated_from"], "default")
+        self.assertEqual(signing.mapping("app")["com.example.phone"], "watch2")
+        self.assertEqual(signing.successor("app", "default"), "watch2")
+        self.assertEqual(signing.remove("app", "sideload", "default")[1], 409)
+        self.assertEqual(signing.rotate("app", "default", "watch2")[1], 409)

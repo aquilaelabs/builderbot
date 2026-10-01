@@ -45,6 +45,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb sign signs a build in dist/ with one of the project's keys on its node, behind the project's dial Claude may: Sign a release (ask by default, which waits for the project's owner in their bell); the Artifacts tab offers Sign on an .apk or .aab (00129fe)
 - A signed build's Artifacts row says which key signed it, what verified, and the certificate's whole fingerprint, with Copy for F-Droid for its AllowedAPKSigningKeys (01af12e)
 - A project keeps several named signing keys, uploaded or generated on the controller, and maps each app's package to one, so a repository of several apps signs each with its own key or a shared one; Claude may propose a key or a mapping under Manage signing keys (d32bb3d)
+- A sideload key can be rotated to another of the project's keys: builds then carry both and a proof, Android 9 and newer move to the new key, older devices keep the old, which is retired and kept (a7c3d31)
 
 ### Changed
 
