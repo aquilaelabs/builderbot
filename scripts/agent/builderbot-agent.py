@@ -56,6 +56,7 @@ Runs anywhere Python 3.8+ is, with nothing installed:
     builderbot-agent run            # the loop; what the unit runs
     builderbot-agent status         # what this node is, and does it answer
 """
+import base64
 import contextlib
 import errno
 import glob
@@ -96,7 +97,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.126"
+AGENT_VERSION = "0.7.127"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3077,6 +3078,8 @@ class Job(threading.Thread):
                     self.agent.session_renew()
             elif self.job.get("type") == "image":
                 state, code = self.agent.image(self, spec)
+            elif self.job.get("type") == "sign":
+                state, code = self.agent.sign(self, spec)
             elif self.job.get("type") == "cache-clear":
                 state, code = self.agent.cache_clear(self, spec)
             elif self.job.get("type") == "claude-login":
@@ -5388,6 +5391,129 @@ class Agent:
             job.say(f"{bad} of {len(names) + len(own)} did not {action}\n")
             return "failed", 1
         return "succeeded", 0
+
+    def sign(self, job, spec):
+        """Sign one build from the project's dist/ with one of its keys
+        (R106): the build fetched as a job input, the key fetched over this
+        agent's channel for this job alone, both into a 0700 directory of the
+        enrolled account that is removed whatever happens. zipalign then
+        apksigner for an .apk, jarsigner for an .aab, verified, and the result
+        delivered to dist/ as NAME-signed. The passwords reach the tools in
+        their environment, which another account cannot read.
+
+        Refused where a session could read the key while it is used: an agent
+        that is not root runs its jobs as the account its sessions run as,
+        and so does one whose enrolled account is the session one."""
+        enrolled = str(self.state.get("user") or "")
+        if os.geteuid() != 0 or not enrolled or enrolled == "root" or enrolled == self.session_account():
+            job.say("refused: jobs and Claude sessions run as one account on this node, so a session "
+                    "could read the key while it is used; sign on a node provisioned as a sandbox\n")
+            return "failed", 77
+        route, rel = str(spec.get("route") or ""), str(spec.get("file") or "")
+        kind = os.path.splitext(rel)[1].lower()
+        if kind not in (".apk", ".aab") or not route:
+            job.say("refused: a sign job names a route and an .apk or .aab\n")
+            return "failed", 64
+        store = tc_root(self.state)
+        tools = {}
+        if kind == ".apk":
+            bt = sorted(glob.glob(os.path.join(store, "android", "build-tools", "*")),
+                        key=lambda d: [int(x) if x.isdigit() else 0
+                                       for x in re.split(r"[.-]", os.path.basename(d))])
+            for name in ("zipalign", "apksigner"):
+                hit = next((os.path.join(d, name) for d in reversed(bt)
+                            if os.access(os.path.join(d, name), os.X_OK)), "")
+                if not hit:
+                    job.say(f"no {name} on this node: install android-tools from the Toolchains tab\n")
+                    return "failed", 69
+                tools[name] = hit
+        else:
+            tools["jarsigner"] = os.path.join(store, "jdk", "bin", "jarsigner")
+            if not os.access(tools["jarsigner"], os.X_OK):
+                job.say("no jarsigner on this node: install the jdk from the Toolchains tab\n")
+                return "failed", 69
+        env = dict(sdk_env(self.state))
+        who = self.drop_privileges(env)
+        stores = self.state.get("stores") or {}
+        work = os.path.join(stores.get("data") or "/tmp", "sign", re.sub(r"[^A-Za-z0-9_-]", "_", job.job["id"]))
+        try:
+            os.makedirs(work, mode=0o700, exist_ok=True)
+            os.chmod(work, 0o700)
+            if who:
+                os.chown(work, who["user"], who["group"])
+            src = os.path.join(work, "in" + kind)
+            st, _ = self.ctl.fetch(f"file?job={job.job['id']}&path={urllib.parse.quote(rel)}", src)
+            if st != 200:
+                job.say(f"could not fetch {rel} from the controller ({st})\n")
+                return "failed", 69
+            st, k = self.ctl.call("signing-key", {"job": job.job["id"]}, timeout=30)
+            if st != 200 or not isinstance(k, dict) or not k.get("keystore"):
+                job.say(f"the controller did not hand over the key: {(k or {}).get('error') or st}\n")
+                return "failed", 69
+            ks = os.path.join(work, "key")
+            fd = os.open(ks, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as f:
+                f.write(base64.b64decode(k["keystore"]))
+            for p in (src, ks):
+                if who:
+                    os.chown(p, who["user"], who["group"])
+            env.update({"BB_KS_PASS": str(k.get("store_pass") or ""),
+                        "BB_KEY_PASS": str(k.get("key_pass") or k.get("store_pass") or "")})
+            alias = str(k.get("alias") or "")
+            out = os.path.join(work, "out" + kind)
+
+            def step(argv, what):
+                try:
+                    p = subprocess.run(argv, env=env, cwd=work, capture_output=True, text=True,
+                                       timeout=600, check=False, **who)
+                except (OSError, subprocess.SubprocessError) as e:
+                    job.say(f"{what} did not run: {e}\n")
+                    return None
+                said = ((p.stdout or "") + (p.stderr or "")).strip()
+                if p.returncode != 0:
+                    job.say(f"{what} failed (exit {p.returncode}): {said[-800:]}\n")
+                    return None
+                return said
+            if kind == ".apk":
+                aligned = os.path.join(work, "aligned.apk")
+                if step([tools["zipalign"], "-p", "-f", "4", src, aligned], "zipalign") is None:
+                    return "failed", 1
+                if step([tools["apksigner"], "sign", "--ks", ks, "--ks-key-alias", alias,
+                         "--ks-pass", "env:BB_KS_PASS", "--key-pass", "env:BB_KEY_PASS",
+                         "--out", out, aligned], "apksigner sign") is None:
+                    return "failed", 1
+                said = step([tools["apksigner"], "verify", "--print-certs", out], "apksigner verify")
+            else:
+                shutil.copyfile(src, out)
+                if who:
+                    os.chown(out, who["user"], who["group"])
+                if step([tools["jarsigner"], "-keystore", ks, "-storepass:env", "BB_KS_PASS",
+                         "-keypass:env", "BB_KEY_PASS", out, alias], "jarsigner") is None:
+                    return "failed", 1
+                said = step([tools["jarsigner"], "-verify", out], "jarsigner -verify")
+            if said is None:
+                return "failed", 1
+            got = re.search(r"SHA-256 digest:\s*([0-9a-fA-F]{64})", said)
+            cert = got.group(1).upper() if got else ""
+            want = str(k.get("sha256") or "").replace(":", "").upper()
+            if cert and want and cert != want:
+                job.say("the signed build carries another certificate than the key that was kept\n")
+                return "failed", 1
+            base = os.path.basename(rel)[:-len(kind)]
+            base = base.replace("-unsigned", "") if "-unsigned" in base else base
+            name = f"{base}-signed{kind}"
+            st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}", out)
+            if st != 200 or r.get("error"):
+                job.say(f"could not deliver {name}: {r.get('error') or st}\n")
+                return "failed", 1
+            job.say(f"signed {rel} for {route} with {alias} ({str(k.get('sha256') or '')[:23]}…): "
+                    f"{r['path']}\n")
+            job.outputs.append({"kind": "artifact", "path": r["path"], "size": r.get("size"),
+                                "sha256": r.get("sha256"), "signed": route,
+                                "cert": k.get("sha256") or ""})
+            return "succeeded", 0
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
 
     def image(self, job, spec):
         """`bb emu image add|remove ID`: an Android system image onto this

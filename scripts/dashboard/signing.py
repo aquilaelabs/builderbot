@@ -42,6 +42,11 @@ MAX_BYTES = 1 << 20
 STATE = None
 PROJECT_NAME = None
 keytool_path = None     # set by the server: the store's keytool, or None
+# Set by the server for start(): the project's node, nodes.job_add and
+# workspace.file_path (a dist/ file a node may fetch for a job).
+node_of = None
+job_add = None
+file_path = None
 
 
 def configure(*, state, project_name, keytool):
@@ -215,6 +220,32 @@ def secret(project, route):
     except OSError:
         return None
     return (blob, rec) if rec else None
+
+
+def start(principal, project, rel, route):
+    """Queue the signing of one build in dist/ with one of the project's
+    keys, on the project's node (step 2). Refused before anything is queued
+    when there is no such key, no such build, or nowhere to sign it.
+    (payload, status)."""
+    if not _ok_project(project):
+        return {"error": "unknown project"}, 400
+    if route not in ROUTES:
+        return {"error": f"a build is signed for {' or '.join(ROUTES)}, not {route!r}"}, 400
+    if not _record(project, route):
+        return {"error": f"{project} has no {WORDS[route]}: an administrator adds one under "
+                         "Signing keys in its settings"}, 404
+    rel = str(rel or "").replace("\\", "/").strip()
+    rel = rel[len("dist/"):] if rel.startswith("dist/") else rel
+    if not rel.lower().endswith((".apk", ".aab")):
+        return {"error": "an Android build is an .apk or an .aab"}, 400
+    if file_path(project, rel) is None:
+        return {"error": f"no {rel} in {project}'s dist/: bb build puts a build there"}, 404
+    nid = node_of(project) or ""
+    if not nid:
+        return {"error": f"{project} has no node to sign on: its settings choose one"}, 400
+    r = job_add(principal, {"node": nid}, "sign", {"route": route, "file": rel, "timeout": 900},
+                project=project)
+    return r, (400 if r.get("error") else 200)
 
 
 def verb(req, by=""):

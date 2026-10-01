@@ -10,6 +10,7 @@ Authorization header, a file streamed, a body read, the long-poll's empty
 answer) and calls one function here, which says what the verb means. Each
 answers (payload, status), a file as {path or body, ctype, headers}.
 """
+import base64
 import re
 
 import claudegrant
@@ -17,12 +18,17 @@ import db
 import nodes
 import plugins
 import runners
+import signing
 import toolchains
 import workspace
 from fields import field
 
 # The server's, set by configure(): an account's home (home_for).
 home_for = None
+
+# The sign jobs a key has been handed to (R106): once per job, so a node
+# that asks twice is refused the second time rather than given it again.
+_keys_given = set()
 
 # The last fault auto_sysdeps met on each node, by id: hello logs one when
 # it changes, not on every poll.
@@ -155,6 +161,27 @@ def verb(name, auth, req, addr):
         r = runners.mint(kind, nid, slot, field(req, "runner_id"))
         db.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
         return _answer(r)
+    if name == "signing-key":
+        # A project's signing key for the sign job running on this node
+        # (R106): only that job's own node, only while it runs, once. The
+        # spec names the route and never carries a secret, so a session
+        # reading the job sees which key and not the key.
+        j = nodes.job(field(req, "job"), with_log=False)
+        if not j or j.get("type") != "sign" or j["node"] != nid or j["state"] not in nodes.JOB_ACTIVE:
+            return {"error": "not this node's running sign job"}, 403
+        if j["id"] in _keys_given:
+            return {"error": "the key was handed to this job already"}, 409
+        route = str((j.get("spec") or {}).get("route") or "")
+        got = signing.secret(j.get("project") or "", route)
+        if not got:
+            return {"error": f"{j.get('project')} has no {signing.WORDS.get(route, route)} any more"}, 404
+        blob, rec = got
+        _keys_given.add(j["id"])
+        db.audit(auth["principal"], "signing-key", j["id"],
+                 {"project": j.get("project"), "route": route, "sha256": rec.get("sha256")})
+        return {"keystore": base64.b64encode(blob).decode(), "alias": rec.get("alias"),
+                "type": rec.get("type"), "store_pass": rec.get("store_pass"),
+                "key_pass": rec.get("key_pass"), "sha256": rec.get("sha256")}, 200
     if name == "hello":
         r = nodes.hello(nid, req.get("census"), addr,
                         field(req, "version"), field(req, "digest"),

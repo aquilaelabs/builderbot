@@ -2290,7 +2290,11 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # A line typed into a Claude session on the node, Enter pressed
              # only once the pane echoes it (notify.py's rule, run where the
              # pane is): the roadmap's and the tracker's Send to Claude.
-             "tell")
+             "tell",
+             # A build in dist/ signed with one of the project's keys
+             # (signing.py, R106): the key fetched over the channel for this
+             # job alone, used as the enrolled account, never a session's.
+             "sign")
 JOB_END = ("succeeded", "failed", "canceled")
 
 # Probe jobs (run_wait's `forget`): a read the page makes to draw itself,

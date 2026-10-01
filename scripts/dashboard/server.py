@@ -2530,6 +2530,10 @@ claudegrant.home_for = home_for
 import channel                                                   # noqa: E402
 
 channel.configure(home_for=home_for)
+# A signing is a job on the project's node, of a build in its dist/ (R106).
+signing.node_of = lambda name: prefs.get(name)["node"]
+signing.job_add = nodes.job_add
+signing.file_path = workspace.file_path
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
 vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
@@ -5242,6 +5246,12 @@ class Handler(BaseHTTPRequestHandler):
                                         "the keys are a person's to manage"}, 403)
         if self._not_project(name):
             return None
+        if field(req, "action") == "sign":
+            # Signing a build with a key already kept is working on the
+            # project, not administering it.
+            if self._readonly(name):
+                return None
+            return self._json(*signing.start(self._principal(), name, field(req, "file"), field(req, "route")))
         if field(req, "action") != "list" and self._refused("admin"):
             return None
         return self._json(*signing.verb(req, by=str(who.get("name") or "")))

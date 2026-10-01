@@ -3217,6 +3217,18 @@ receives the key or a password, and is refused even the list of which keys
 exist: it signs with `bb sign`, which runs on the project's node as a job the
 session cannot look inside. Renaming the project carries its keys with it.
 
+**A signing is a job on the project's node.** It fetches the build from
+`dist/` as a job input and the key over the agent's own channel, which hands
+it only to that running job's node, once, and audits it; the job's spec names
+which key and never holds it. Both land in a 0700 directory of the enrolled
+account, never the session account: `zipalign`, `apksigner sign` and
+`apksigner verify` for an `.apk`, `jarsigner` and its `-verify` for an `.aab`,
+the passwords in the tools' environment only. The signed build has to carry
+the kept key's certificate, arrives in `dist/` as `NAME-signed.apk` (or
+`.aab`), and the directory is removed whatever happened. A node whose jobs
+and sessions run as one account is refused, since a session there could read
+the key while it is used.
+
 Picking a keystore, typing its password and marking one for removal are staged
 like everything else in the dialog: nothing is sent until Save.
 

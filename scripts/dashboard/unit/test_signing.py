@@ -97,3 +97,37 @@ class NoKeytool(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Start(unittest.TestCase):
+    """start() queues a sign job only for a key that exists, a build in
+    dist/ and a node to sign on, and the job's spec carries no secret."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"), keytool=lambda: None)
+        d = self.tmp / "signing" / "app"
+        d.mkdir(parents=True)
+        (d / "sideload.ks").write_bytes(b"k")
+        (d / "sideload.json").write_text('{"alias": "a", "store_pass": "SECRET"}')
+        self.queued = []
+        signing.node_of = lambda p: "n_1"
+        signing.file_path = lambda p, rel: Path("/x") if rel == "app-release.apk" else None
+        signing.job_add = lambda pr, pl, t, spec, project="": (self.queued.append((pl, t, spec, project)) or {"ok": True, "job": "j_1"})
+
+    def test_it_queues_the_job_with_no_secret_in_it(self):
+        r, st = signing.start("user:sean", "app", "dist/app-release.apk", "sideload")
+        self.assertEqual(st, 200, r)
+        pl, t, spec, project = self.queued[0]
+        self.assertEqual((pl, t, project), ({"node": "n_1"}, "sign", "app"))
+        self.assertEqual(spec["file"], "app-release.apk")
+        self.assertNotIn("SECRET", repr(spec))
+
+    def test_refusals(self):
+        self.assertIn("no Play upload key", signing.start("u", "app", "app-release.apk", "play")[0]["error"])
+        self.assertIn(".apk or an .aab", signing.start("u", "app", "notes.txt", "sideload")[0]["error"])
+        self.assertIn("bb build", signing.start("u", "app", "other.apk", "sideload")[0]["error"])
+        signing.node_of = lambda p: ""
+        self.assertIn("no node", signing.start("u", "app", "app-release.apk", "sideload")[0]["error"])
+        self.assertEqual(self.queued, [])
