@@ -25,6 +25,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/artifacts` | prefix | `_get_artifacts` | GET /api/artifacts: artifacts.tab_view, for a project this account sees. |  |
 | GET | `/api/artifact?` | prefix | `_get_artifact` | GET /api/artifact: one file of a project's, as a download (artifacts.download). |  |
 | GET | `/api/signing-backup?` | prefix | `_get_signing_backup` | GET /api/signing-backup: a project's keystore for an administrator's own copy (signing.backup), which marks it backed up. | refused: admin |
+| GET | `/api/node-busy` | prefix | `_get_node_busy` | GET /api/node-busy: whether one of a project's nodes is quiet enough to time anything on (busy.report, R108). |  |
 | GET | `/api/meta` | prefix | `_get_meta` | GET /api/meta. |  |
 | GET | `/api/welcome` | prefix | `_get_welcome` | GET /api/welcome: BuilderBot's own changelog for the welcome panel (changelog.welcome), and where this account last looked. |  |
 | GET | `/api/source?` | prefix | `_get_source` | GET /api/source: the code base as a zip, from the Artifacts tab (artifacts.source_download). |  |

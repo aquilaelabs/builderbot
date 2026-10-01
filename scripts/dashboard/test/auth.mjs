@@ -1341,6 +1341,9 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
       for (const a of [keyAsk, rotAsk]) if (a) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: a.id }) });
       await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask', keys: 'ask', node: '' }) });
       rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
+      // ...and how busy a node is (R108), for its own project only.
+      const nb = await bare('/api/node-busy?project=beta', { headers: sessAuth });
+      ok(nb.status === 403, `a session asks how busy only its own project's nodes are (${nb.status})`);
     }
     // A project's owner and its people (membership.py, the operator, 1 Oct).
     // Invite only keeps an administrator from adding themselves; BuilderBot's

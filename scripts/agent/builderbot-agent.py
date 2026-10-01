@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.130"
+AGENT_VERSION = "0.7.131"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1814,6 +1814,58 @@ def _gpu_sample():
             "gpu_mem_mb": round(sum(r[2] for r in rows))}
 
 
+# What is running on this machine by KIND, for a session judging whether it
+# is too busy to time anything on (R108). A session sees only its own
+# processes, so this is the one place the rest is visible; counted, never
+# named, so no other project's work is told to a session that is not on it.
+PROC_KINDS = (
+    ("emulator", lambda c, a: c.startswith("qemu-system")),
+    ("gradle", lambda c, a: c == "java" and ("GradleDaemon" in a or "gradle" in a.lower())),
+    ("java", lambda c, a: c == "java"),
+    ("compile", lambda c, a: c in ("cc1", "cc1plus", "rustc", "clang", "ld", "kotlinc", "javac", "go")),
+    ("browser", lambda c, a: c in ("chrome", "chromium", "headless_shell", "firefox")),
+    ("media", lambda c, a: c in ("ffmpeg", "ffprobe")),
+    ("docker build", lambda c, a: c in ("buildkitd", "buildctl") or (c == "docker" and " build" in a)),
+    ("claude", lambda c, a: c == "claude"),
+)
+
+
+def _proc_kinds(proc_root="/proc"):
+    """{kind: count} of what runs here, read from /proc: one pass, the
+    command name and the first part of its arguments, the first kind that
+    matches. A Gradle daemon is a java process, counted once as gradle."""
+    out = {}
+    try:
+        pids = [p for p in os.listdir(proc_root) if p.isdigit()]
+    except OSError:
+        return out
+    for pid in pids:
+        try:
+            with open(os.path.join(proc_root, pid, "comm"), encoding="utf-8", errors="replace") as f:
+                comm = f.read().strip()
+            with open(os.path.join(proc_root, pid, "cmdline"), "rb") as f:
+                args = f.read(4096).replace(b"\0", b" ").decode("utf-8", "replace")
+        except OSError:
+            continue
+        for kind, test in PROC_KINDS:
+            if test(comm, args):
+                out[kind] = out.get(kind, 0) + 1
+                break
+    return out
+
+
+def _gpu_procs():
+    """How many processes are computing on the card, or 0."""
+    if not shutil.which("nvidia-smi"):
+        return 0
+    try:
+        p = subprocess.run(["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"],
+                           capture_output=True, text=True, timeout=3, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return 0
+    return len([ln for ln in (p.stdout or "").splitlines() if ln.strip()]) if p.returncode == 0 else 0
+
+
 def _gpu_driver(sys_root=None, modinfo=None):
     """Where the NVIDIA driver stands on this machine, for the Toolchains
     tab's driver row (R102): the version installed for this kernel (the
@@ -2859,7 +2911,8 @@ class Sampler:
         return {"cpu_pct": round(100.0 * (dt - di) / dt, 1) if dt > 0 else 0.0,
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
                 "stores": _stores(state.get("stores")), "running": running,
-                **_gpu_sample()}
+                "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),
+                **_gpu_sample(), **({"gpu_procs": _gpu_procs()} if shutil.which("nvidia-smi") else {})}
 
 
 # ---------------------------------------------------------------------------

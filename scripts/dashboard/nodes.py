@@ -2165,6 +2165,17 @@ def heartbeat(nid, sample, addr, running=0):
         if k in s:
             with contextlib.suppress(TypeError, ValueError):
                 clean[k] = round(float(s.get(k) or 0), 1)
+    # What runs there by kind, its cores and who computes on its card, for
+    # a session judging whether the machine is quiet enough to time
+    # anything on (R108). Only the kinds the agent counts, as numbers.
+    with contextlib.suppress(TypeError, ValueError):
+        if "cores" in s:
+            clean["cores"] = max(0, min(4096, int(s.get("cores") or 0)))
+        if "gpu_procs" in s:
+            clean["gpu_procs"] = max(0, min(9999, int(s.get("gpu_procs") or 0)))
+    if isinstance(s.get("kinds"), dict):
+        clean["kinds"] = {k: max(0, min(9999, int(v))) for k, v in list(s["kinds"].items())[:16]
+                          if k in PROC_KINDS and isinstance(v, (int, float))}
     clean["running"] = int(running or 0)
     stores = s.get("stores") if isinstance(s.get("stores"), dict) else {}
     clean["stores"] = {str(r)[:20]: _mb((v or {}).get("free_mb"))
@@ -2308,6 +2319,8 @@ _probe_ids = set()
 def _quiet(job_id):
     return job_id in _probe_ids
 JOB_ACTIVE = ("queued", "assigned", "running")
+# The kinds an agent counts in its heartbeat (builderbot-agent.py PROC_KINDS).
+PROC_KINDS = ("emulator", "gradle", "java", "compile", "browser", "media", "docker build", "claude")
 # A driver package apt may be asked for (the agent holds the same rule).
 DRIVER_PKG = re.compile(r"nvidia-driver(-\d{3})?(-open)?")
 # What a selector may name (door 9: os and arch are placement dimensions).

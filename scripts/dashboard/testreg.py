@@ -117,6 +117,22 @@ FILETOT = re.compile(r"^(\d+) passed, (\d+) failed(?: in ([0-9.]+)s)?\s*$")
 STATUS = {"PASS": "pass", "FAIL": "fail", "SKIP": "skip", "TODO": "todo"}
 
 
+LOAD = re.compile(r"^\[dashboard-test\] load: ([0-9.]+) ([0-9.]+) on (\d+) cores")
+
+
+def load_of(text):
+    """{load1, load5, cores} as the run ended (the harness's own line), the
+    busiest of them when the log holds several, or None (R108)."""
+    best = None
+    for raw in text.splitlines():
+        m = LOAD.match(re.sub(r"^\d{9,}\.\d+ ", "", raw))
+        if m:
+            got = {"load1": float(m.group(1)), "load5": float(m.group(2)), "cores": int(m.group(3))}
+            if best is None or got["load5"] / got["cores"] > best["load5"] / best["cores"]:
+                best = got
+    return best
+
+
 def parse(text):
     """The runner's output as a roster: [{suite, ord, name, status, ms}].
 
@@ -305,7 +321,10 @@ def ingest(project, text, by="you"):
             "at": now, "by": "claude" if by == "claude" else "you",
             "n": len(roster), "suites": len(by_suite),
             "wall": round(sum(s["wall"] or 0 for s in suites.values()), 1),
-            "ms": sum(r["ms"] or 0 for r in roster)})
+            "ms": sum(r["ms"] or 0 for r in roster),
+            # What these seconds were measured under (R108): a run on a busy
+            # machine is not compared with a quiet one's as if it were.
+            **({"load": lo} if (lo := load_of(text)) else {})})
         del p["runs"][:-KEEP_RUNS]
         save(d)
     return {"ok": True, "n": len(roster), "suites": sorted(by_suite),

@@ -438,6 +438,14 @@ workers_cleanup() {
         log "the tree it ran from is kept at $BB_TEST_COPY"
     fi
 }
+# The machine's load as a run ends (R108), the one-minute and five-minute
+# averages and its cores: what a timing in this log was taken under, which
+# bb tests ingest keeps with the run so the Tests tab can tell a quiet run's
+# seconds from a busy one's.
+load_line() {
+    printf '[dashboard-test] load: %s on %s cores\n' "$(cut -d' ' -f1,2 /proc/loadavg 2>/dev/null)" \
+        "$(nproc 2>/dev/null || echo 1)"
+}
 run_workers() {
     local n="$1"; shift
     local names=("$@") t f plan i rc=0 wrc tp tf
@@ -499,6 +507,7 @@ run_workers() {
     if [ "${#flaky[@]}" -gt 0 ]; then
         warn "flaky: ${flaky[*]} failed in the whole run and passed again alone"
     fi
+    load_line
     [ "$rc" = 0 ] && log "dashboard tests: all passed" || warn "dashboard tests: FAILURES above"
     exit "$rc"
 }
@@ -1571,5 +1580,6 @@ stop_world
 if [ "${#flaky[@]}" -gt 0 ]; then
     warn "flaky: ${flaky[*]} failed in the whole run and passed again alone"
 fi
+load_line
 [ "$rc" = 0 ] && log "dashboard tests: all passed" || warn "dashboard tests: FAILURES above"
 exit "$rc"

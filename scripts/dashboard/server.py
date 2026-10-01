@@ -2202,6 +2202,7 @@ def _apksigner():
 
 signing.apksigner_path = _apksigner
 import membership                                                # noqa: E402
+import busy                                                      # noqa: E402
 membership.configure(state=STATE, write_json=write_json)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
@@ -3172,6 +3173,7 @@ GET_ROUTES = (
     ("prefix", "/api/artifacts", "_get_artifacts"),
     ("prefix", "/api/artifact?", "_get_artifact"),
     ("prefix", "/api/signing-backup?", "_get_signing_backup"),
+    ("prefix", "/api/node-busy", "_get_node_busy"),
     ("prefix", "/api/meta", "_get_meta"),
     ("prefix", "/api/welcome", "_get_welcome"),
     ("prefix", "/api/source?", "_get_source"),
@@ -5353,6 +5355,34 @@ class Handler(BaseHTTPRequestHandler):
         if field(req, "action") != "list" and self._refused("admin"):
             return None
         return self._json(*signing.verb(req, by=str(who.get("name") or "")))
+
+    def _get_node_busy(self):
+        """GET /api/node-busy: whether one of a project's nodes is quiet
+        enough to time anything on (busy.report, R108). For a session, its
+        own project's nodes; for a person, any project they see. Another
+        project's work there is counted, never named."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        who = self._who() or {}
+        if who.get("session") and name != who["session"]:
+            return self._json({"error": "a session asks about its own project's nodes"}, 403)
+        if self._not_project(name):
+            return None
+        if NODES_OK:
+            return self._json({"error": "the node store did not open"}, 500)
+        pr = prefs.get(name) or {}
+        mine = [pr.get("node")] + list(pr.get("nodes") or []) if pr.get("node") else []
+        want = q.get("node", [""])[0]
+        nodes_here = [n for n in (nodes.node(i) for i in dict.fromkeys(mine) if i) if n]
+        n = next((x for x in nodes_here if want in (x["id"], x["name"])), None) if want \
+            else (nodes_here[0] if nodes_here else None)
+        if not n:
+            return self._json({"error": f"{want} is not one of {name}'s nodes" if want
+                                        else f"{name} has no node"}, 404)
+        jobs = nodes.jobs_for(node_id=n["id"], active=True, n=100)
+        working = sum(1 for s in node_tmux_sessions()
+                      if s.get("node_id") == n["id"] and (s.get("claude") or {}).get("state") == "working")
+        return self._json(busy.report(n, jobs, working, project=name))
 
     def _get_signing_backup(self):
         """GET /api/signing-backup: a project's keystore for an administrator's

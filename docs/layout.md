@@ -69,6 +69,7 @@ scripts/
   lib/findings-verbs.py          `bb findings history` and `bb findings sample`
   lib/settings-verbs.py          `bb settings`: show, and set for build, test and outputs
   lib/sign-verbs.py              `bb sign`: a build signed on the node with one of the project's keys, and its keys and mapping
+  lib/busy-verbs.py              `bb node busy` and `bb node wait-quiet`: how busy this node is before a measurement
   lib/users-verbs.py             `bb users`: list, passwd, add, token
   lib/nodes-verbs.py             `bb nodes` and `bb ci-labels`
   lib/jobs-verbs.py              `bb jobs`
@@ -127,6 +128,7 @@ scripts/
     artifacts.py                 what a project built: dist/, and what a row may offer
     signing.py                   a project's Android signing keys, kept by the controller, never a session's (R106)
     membership.py                a project's owner, whether it is invite only, and the invitations to it
+    busy.py                      whether a node is quiet enough to time anything on, and why not (R108)
     devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
     devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs

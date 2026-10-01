@@ -30,6 +30,14 @@ class Parse(unittest.TestCase):
     def test_lines_outside_a_suite_are_ignored(self):
         self.assertEqual(testreg.parse("PASS  orphan\nnoise\n")[0], [])
 
+    def test_the_load_a_run_ended_under(self):
+        # R108: the harness's own line, the busiest when there are several
+        # (a whole run's workers each print one), timestamped or not.
+        log = ("[dashboard-test] load: 1.10 0.90 on 4 cores\n"
+               "1790000000.5 [dashboard-test] load: 6.00 5.20 on 4 cores\n")
+        self.assertEqual(testreg.load_of(log), {"load1": 6.0, "load5": 5.2, "cores": 4})
+        self.assertIsNone(testreg.load_of("PASS  one\n"))
+
 
 class Align(unittest.TestCase):
     """{new index: old index}, per file roster."""

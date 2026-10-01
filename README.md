@@ -184,6 +184,15 @@ bb gpu run [--mem MB] -- CMD
                    for its turn and for MB of free memory rather than failing on a full card
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
+bb node busy [--json]
+                   whether this node is quiet enough to time anything on: its load,
+                   memory and card, what runs there by kind (emulators, Gradle,
+                   compilers, browsers, other Claude sessions working, other
+                   projects' jobs, counted and never named) and a verdict: quiet,
+                   busy, saturated
+bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
+                   wait until it is (quiet twice, ten seconds apart), before a
+                   measurement; exits 1, saying how busy, if it never was
 bb nodes           the machines enrolled as nodes, read-only in a terminal;
                    the Nodes tab is where they are edited
 bb settings        this project's settings as the dashboard has them: node,

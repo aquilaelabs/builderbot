@@ -122,9 +122,21 @@ process by pid, or with `pkill -x NAME`.
 ## While tests run
 
 Start a run in the background and answer while it runs. What a change
-asked for meanwhile does is this project's setting (Claude settings,
-"During a test run, a change asked for"):
+asked for meanwhile does is this project's setting (Claude may, "While a
+test runs: a change asked for"):
 <!-- BUILDERBOT:TESTCHANGE -->
+
+## Measuring speed
+
+This machine is shared, and your view of it holds only your own processes:
+the load you can read says it is busy and never why. Before a timing means
+anything (a latency, a build's length, a benchmark, a suite's seconds),
+`bb node busy` says how busy the node is and what is running there (other
+sessions working, emulators, Gradle, compilers, other projects' jobs,
+counted by kind) with a verdict: quiet, busy or saturated. Measure when it
+is quiet, or `bb node wait-quiet` first; when you cannot wait, say the load
+with the number, and never compare two timings taken under different loads
+as if they were alike.
 
 ## Proving a change
 

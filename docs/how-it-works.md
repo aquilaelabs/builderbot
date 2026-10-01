@@ -183,6 +183,22 @@ toolchain installed from that node. The documents toolchain also puts a
 for, and no node carries poppler, so without them a session could not read
 a PDF it had fetched.
 
+**Is the machine quiet enough to measure on?** A session times things (a
+decoder's latency, a build, a suite) on a machine it shares, and its view
+holds only its own processes: the load average it can read says the machine
+is busy and never why. `bb node busy` asks the controller, which joins the
+node agent's last heartbeat (CPU over the last 25 s, the load against its
+cores, memory, the card's load and memory and how many compute on it, and
+what runs there by kind: emulators, Gradle, other Java, compilers,
+browsers, media, docker builds, Claude) with the jobs active on the node and
+the Claude sessions working there, and answers quiet, busy, saturated or
+unknown, with the reasons. Another project's work is counted and never
+named. The load right now is read in the session as well, since a heartbeat
+is up to 25 s old. `bb node wait-quiet` waits for two quiet readings ten
+seconds apart and exits 1, saying how busy, when the time runs out. A test
+run's log ends with the load it ran under, and `bb tests ingest` keeps it on
+the run, so a busy run's seconds are not read as a quiet one's.
+
 `bb` re-execs as `builder` automatically: `docker exec` lands as root, which
 would break file ownership. A bare `docker exec -it BuilderBot bash` is still
 root; use `bb shell` for the normal user.

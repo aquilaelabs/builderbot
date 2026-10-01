@@ -1400,6 +1400,17 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
      && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi' && saved.capture_days === 3
      && saved.dev_keep === 5,
      'Save writes the project\'s node, the command, the outputs, the days captures are kept and the dev builds kept of each onto the project record');
+  // Whether that node is quiet enough to time on (R108): the agent's
+  // heartbeat says its load and what runs there by kind, and the answer
+  // joins it with the jobs and sessions there, naming no other project.
+  await fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sample: { cpu_pct: 30, load1: 2.6, cores: 4, mem_mb: 8192, mem_used_mb: 2048,
+      kinds: { emulator: 1, gradle: 2, made_up: 5 } }, running: 0, wait: 0 }) });
+  const busyNow = await page.evaluate(async () => (await fetch('/api/node-busy?project=alpha')).json());
+  ok(busyNow.verdict === 'busy' && busyNow.cores === 4 && busyNow.kinds.emulator === 1 && !('made_up' in busyNow.kinds)
+     && busyNow.why.some(w => /1 emulator, 2 gradle/.test(w)) && busyNow.why.some(w => /load 2\.6 on 4 cores/.test(w)),
+     `the project's node says it is busy and why: its load, and an emulator and Gradle running there (${JSON.stringify(busyNow.why)})`);
 
   // ---- saved is not applied ----------------------------------------------
   // Apply used to be live whenever anything had been saved, so a node that
