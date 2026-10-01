@@ -180,6 +180,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb emu start makes adb root on every boot of a debuggable emulator image, and bb emu touch asks for root itself before it sends a touch, so a cold boot no longer leaves touch failing with Permission denied (b8ba848)
 - bb capture reel looks at every frame a recording has, not ten a second of it, and frames.json says the recording's own rate (recorded_fps); a recording too sparse for a short animation says so, and --fps N still asks for fewer (8073f72)
 - A node agent that cannot refresh an idle session's token says why in its log, once an hour per session, and bb token keep fails with the reason instead of succeeding at nothing (87d9fa5)
+- tools/build-image-here.sh tags the image the running builderbot container uses, asked of docker, so a renamed image name in the repository can no longer leave Apply recreating it on the old build (0384221)
 
 ### Security
 
