@@ -1864,6 +1864,29 @@ await page.evaluate(async () => {
   await page.evaluate(async () => { await fetch('/api/settings', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: true } }) }); });
 }
+// A VM catalog that lands after its dialog closed paints over nothing else
+// (B424): Render a VM, closed before the answer, Enroll opened in the same
+// box and typed into, then the answer, and the enroll form is still there.
+{
+  await page.evaluate(() => {
+    window.__realNodeAct = nodeAct;
+    nodeAct = b => b.action === 'vm-xml' && !b.name
+      ? new Promise(res => { window.__vmLand = () => res(window.__realNodeAct(b)); })
+      : window.__realNodeAct(b);
+  });
+  await page.click('.nodestab #ndVm');
+  await page.waitForSelector('#ndBody #vmGo', { timeout: 10000 });
+  await page.evaluate(() => { document.getElementById('ndmodal').hidden = true; });
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnName', { timeout: 10000 });
+  await page.fill('#ndBody #ndEnName', 'racebox');
+  await page.evaluate(async () => { window.__vmLand(); await new Promise(r => setTimeout(r, 300)); });
+  const after = await page.$eval('#ndBody', b => ({ name: b.querySelector('#ndEnName')?.value, vm: !!b.querySelector('#vmGo') }));
+  ok(after.name === 'racebox' && !after.vm,
+     `a VM catalog landing after its dialog closed leaves the Enroll form, and what was typed, alone (${JSON.stringify(after)})`);
+  await page.evaluate(() => { nodeAct = window.__realNodeAct; document.getElementById('ndmodal').hidden = true;
+    document.getElementById('ndBody').innerHTML = ''; });
+}
 await page.click('.nodestab #ndVm');
 await page.waitForSelector('#ndBody .vmform', { timeout: 10000 });
 ok(await page.$eval('#ndBody', b => !b.querySelector('.vmmade')),

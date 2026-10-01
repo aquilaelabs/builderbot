@@ -1380,7 +1380,11 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     // and the form redraws with the real picker when it lands.
     if (!vmKinds){
       const r = await nodeAct({action: "vm-xml", hv: vmDraft.hv});
-      if (r.catalog){ vmKinds = r.catalog; if (!body.querySelector(".vmmade")) vmForm(null); }
+      // Only onto the VM form it was asked for: closed by then and another
+      // form opened in the same box (Enroll), a late catalog painted over
+      // it and took what was typed (B424).
+      if (r.catalog){ vmKinds = r.catalog;
+        if (!modal.hidden && body.querySelector("#vmGo") && !body.querySelector(".vmmade")) vmForm(null); }
     }
   };
   const en = root.querySelector("#ndEnroll");
