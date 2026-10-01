@@ -192,7 +192,16 @@ bb sign FILE [--for play|sideload] [--why "..."]
                    key (the default for an .apk). The project's settings say
                    whether Claude may (Sign a release): auto signs, ask waits for
                    the project's owner to allow it, with --why as the reason.
-                   Arrives in dist/ as NAME-signed.apk or .aab
+                   Arrives in dist/ as NAME-signed.apk or .aab. --key NAME signs
+                   with that key; without it, the key the build's package is
+                   mapped to, else the project's default
+bb sign keys       the project's keys by name, their fingerprints and which
+                   package each signs (never a key or a password)
+bb sign key new NAME --for play|sideload --why "..."
+bb sign map PACKAGE KEY --why "..."
+                   a new key made on the controller, or an app's package mapped
+                   to a key (KEY "" unmaps it), under Claude may: Manage signing
+                   keys: auto does it, ask waits for the project's owner
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -2323,10 +2332,30 @@ cmd_container() {
 # its keys, which the session never receives. sign-verbs.py asks, follows an
 # ask to its answer and the job to its verdict.
 cmd_sign() {
-    local file="" route="" why="" a
+    local file="" route="" why="" key="" a
+    local auth proj
+    proj="${BB_PROJECT:-$(project_here 2>/dev/null || true)}"
+    case "${1:-}" in
+        keys|key|map)
+            local sub="$1"; shift
+            local -a rest=()
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --for) [ $# -ge 2 ] || die "--for needs play or sideload after it"; route="$2"; shift 2 ;;
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    *) rest+=("$1"); shift ;;
+                esac
+            done
+            auth="$(bb_auth_or_die)"
+            BB_SIGN_AUTH="$auth" BB_SIGN_PROJECT="$proj" \
+                python3 "$BB_LIB/sign-verbs.py" --"$sub" "$route" "$why" "${rest[@]}"
+            return $? ;;
+    esac
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help) sed -n '/^bb sign FILE/,/NAME-signed/p' "$0"; return 0 ;;
+            -h|--help) sed -n '/^bb sign FILE/,/keys: auto does it/p' "$0"; return 0 ;;
+            --key) [ $# -ge 2 ] || die "--key needs a key's name after it"; key="$2"; shift 2 ;;
+            --key=*) key="${1#--key=}"; shift ;;
             --for) [ $# -ge 2 ] || die "--for needs play or sideload after it"; route="$2"; shift 2 ;;
             --for=*) route="${1#--for=}"; shift ;;
             --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
@@ -2339,8 +2368,8 @@ cmd_sign() {
         case "$file" in *.aab) route=play ;; *) route=sideload ;; esac
     fi
     case "$route" in play|sideload) ;; *) die "--for is play or sideload, not $route" ;; esac
-    local auth; auth="$(bb_auth_or_die)"
-    BB_SIGN_AUTH="$auth" BB_SIGN_PROJECT="${BB_PROJECT:-$(project_here 2>/dev/null || true)}" \
+    auth="$(bb_auth_or_die)"
+    BB_SIGN_AUTH="$auth" BB_SIGN_PROJECT="$proj" BB_SIGN_KEY="$key" \
         python3 "$BB_LIB/sign-verbs.py" "${file#dist/}" "$route" "$why"
 }
 

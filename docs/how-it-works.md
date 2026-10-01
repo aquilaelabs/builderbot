@@ -3232,6 +3232,22 @@ the key while it is used.
 Picking a keystore, typing its password and marking one for removal are staged
 like everything else in the dialog: nothing is sent until Save.
 
+**Several apps, several keys.** A project keeps as many named keys as it needs,
+each with both slots; the first is **default**, which is where keys from
+before there were names went. **Generate** makes one on the controller with
+the store's `keytool` (RSA 4096, ten thousand days) behind a random password
+kept with it, so nobody types or sees one, and its backup is a zip of the
+keystore and that password. Under **Apps** an app's package is mapped to a
+key; a sign job reads the package from the build (`aapt2` for an `.apk`, the
+bundle's manifest for an `.aab`) and the controller hands it the mapped key, or
+the default for a package with no line, unless the signing named one
+(`bb sign FILE --key NAME`). Sharing one key between apps is allowed, and
+sensible for apps meant to trust each other; a key of their own keeps one
+app's lost key from being every app's. A session reads which keys exist and
+proposes a new one or a mapping (`bb sign keys`, `bb sign key new NAME --for
+sideload`, `bb sign map PACKAGE KEY`) under **Claude may: Manage signing
+keys**, ask by default, which puts it in front of the project's owner.
+
 **Signing a build.** A person signs from the **Artifacts** tab: an `.apk` or
 `.aab` row offers **Sign** for each key the project has. A session runs
 `bb sign FILE [--for play|sideload] [--why "..."]` (Play for an `.aab` and

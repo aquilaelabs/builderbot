@@ -86,7 +86,9 @@ class Sign(unittest.TestCase):
         aab = os.path.join(self.tmp, "app-release-unsigned.aab")
         with zipfile.ZipFile(aab, "w") as z:
             z.writestr("base/manifest/AndroidManifest.xml", "x")
-        key = {"keystore": base64.b64encode(open(ks, "rb").read()).decode(), "alias": "upload",
+        with open(ks, "rb") as h:
+            raw = h.read()
+        key = {"keystore": base64.b64encode(raw).decode(), "alias": "upload",
                "store_pass": "pw123456", "key_pass": "pw123456", "sha256": sha}
         a, j = self.agent_with(aab, key), Job()
         self.assertEqual(a.sign(j, {"route": "play", "file": "app-release-unsigned.aab"}), ("succeeded", 0),
@@ -94,7 +96,7 @@ class Sign(unittest.TestCase):
         self.assertEqual(a.ctl.got, "app-release-signed.aab")
         # ...and its upload says what signed it, for the Artifacts row.
         self.assertIn("&signed=play&cert=", a.ctl.path)
-        self.assertTrue(a.ctl.path.endswith("&schemes=jar"), a.ctl.path)
+        self.assertTrue(a.ctl.path.endswith("&schemes=jar&key=default"), a.ctl.path)
         self.assertEqual(j.outputs[0]["signed"], "play")
         self.assertEqual(os.listdir(os.path.join(self.tmp, "data", "sign")), [])
         self.assertNotIn("pw123456", "".join(j.lines))

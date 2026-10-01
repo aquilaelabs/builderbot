@@ -1317,6 +1317,9 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .artfp{font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
 .artfp .link{background:none;border:0;color:var(--warn);text-decoration:underline;cursor:pointer;padding:0 0 0 8px;font:inherit}
 .rnsign:first-child{border-top:0}
+/* One block per named key, and the Apps list under them (R106 step 6). */
+.rnsignkey{margin-bottom:10px}
+.rnsignname{font-weight:600;margin:8px 0 2px}
 .rnsignform{display:grid;gap:6px;margin:6px 0}
 .rnsignbar{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center}
 /* A project's people (membership.py): a pending invitation per line, and
@@ -3960,6 +3963,11 @@ body.booting .pane>.loading{margin:auto}
              the project's owner. -->
         <label class="pick">Sign a release <select id="rnGateSign"
           aria-label="signing a build with this project's keys, from a session"></select></label>
+        <!-- A new generated key, or an app's package mapped to a key, from a
+             session (R106 step 6). Ask by default: a new sideload key is an
+             app's identity for good. -->
+        <label class="pick">Manage signing keys <select id="rnGateKeys"
+          aria-label="making a signing key or mapping an app to one, from a session"></select></label>
         <label class="pick">Report BuilderBot bugs <select id="rnGateReport"
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>

@@ -49,8 +49,9 @@ class Signing(unittest.TestCase):
         self.assertEqual(r["key"]["alias"], "upload")
         self.assertRegex(r["key"]["sha256"], r"^([0-9A-F]{2}:){31}[0-9A-F]{2}$")
         self.assertNotIn("store_pass", r["key"])
-        d = self.tmp / "state" / "signing" / "app"
-        self.assertEqual(stat.S_IMODE(os.stat(d).st_mode), 0o700)
+        d = self.tmp / "state" / "signing" / "app" / "default"
+        for x in (d, d.parent, d.parent.parent):
+            self.assertEqual(stat.S_IMODE(os.stat(x).st_mode), 0o700, x)
         for f in d.iterdir():
             self.assertEqual(stat.S_IMODE(os.stat(f).st_mode), 0o600, f)
 
@@ -58,28 +59,61 @@ class Signing(unittest.TestCase):
         r, st = signing.put("app", "play", self.b64, "nope")
         self.assertEqual(st, 400)
         self.assertIn("password", r["error"])
-        self.assertIsNone(signing.listing("app")[0]["keys"]["play"])
+        self.assertEqual(signing.listing("app")[0]["keys"], {})
 
     def test_the_listing_never_carries_a_password(self):
         signing.put("app", "play", self.b64, "s3cret-pass")
         listed = signing.listing("app")[0]
         self.assertNotIn("s3cret-pass", repr(listed))
-        self.assertEqual(listed["keys"]["play"]["alias"], "upload")
-        self.assertIsNone(listed["keys"]["sideload"])
+        self.assertEqual(listed["keys"]["default"]["play"]["alias"], "upload")
+        self.assertIsNone(listed["keys"]["default"]["sideload"])
 
     def test_backup_hands_the_keystore_back_and_marks_it(self):
         signing.put("app", "sideload", self.b64, "s3cret-pass")
-        self.assertEqual(signing.listing("app")[0]["keys"]["sideload"]["backed_up"], 0)
+        self.assertEqual(signing.listing("app")[0]["keys"]["default"]["sideload"]["backed_up"], 0)
         (name, blob), st = signing.backup("app", "sideload")
         self.assertEqual(st, 200)
-        self.assertEqual(name, "app-sideload.p12")
+        self.assertEqual(name, "app-default-sideload.p12")
         self.assertEqual(blob, self.ks.read_bytes())
-        self.assertGreater(signing.listing("app")[0]["keys"]["sideload"]["backed_up"], 0)
+        self.assertGreater(signing.listing("app")[0]["keys"]["default"]["sideload"]["backed_up"], 0)
 
     def test_remove(self):
         signing.put("app", "play", self.b64, "s3cret-pass")
         self.assertEqual(signing.remove("app", "play")[1], 200)
         self.assertEqual(signing.remove("app", "play")[1], 404)
+
+    def test_keys_from_before_names_become_the_default(self):
+        old = self.tmp / "state" / "signing" / "older"
+        old.mkdir(parents=True)
+        (old / "play.ks").write_bytes(self.ks.read_bytes())
+        (old / "play.json").write_text('{"alias": "upload", "sha256": "AB", "store_pass": "s3cret-pass"}')
+        self.assertEqual(signing.listing("older")[0]["keys"]["default"]["play"]["alias"], "upload")
+        self.assertFalse((old / "play.ks").exists())
+        self.assertIsNotNone(signing.secret("older", "play"))
+
+    def test_a_generated_key_and_an_app_mapped_to_it(self):
+        r, st = signing.generate("app", "sideload", "watch", by="sean")
+        self.assertEqual(st, 200, r)
+        self.assertTrue(r["key"]["generated"])
+        self.assertEqual(signing.generate("app", "sideload", "watch")[1], 409)
+        blob, rec = signing.secret("app", "sideload", "watch")
+        self.assertEqual(signing.inspect(blob, rec["store_pass"], "watch")[2], rec["sha256"])
+        self.assertEqual(signing.set_map("app", "com.example.watch", "nope")[1], 404)
+        self.assertEqual(signing.set_map("app", "not a package", "watch")[1], 400)
+        self.assertEqual(signing.set_map("app", "com.example.watch", "watch")[1], 200)
+        self.assertEqual(signing.key_for("app", "com.example.watch"), "watch")
+        self.assertEqual(signing.key_for("app", "com.example.phone"), "default")
+        self.assertEqual(signing.routes_held("app"), ["sideload"])
+        # Its backup carries the password it was made with, which is in no head.
+        (name, data), st = signing.backup("app", "sideload", "watch")
+        self.assertEqual(name, "app-watch-sideload.zip")
+        import io
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            self.assertIn(rec["store_pass"], z.read("password.txt").decode())
+        # Removing a key's last slot takes its mappings with it.
+        signing.remove("app", "sideload", "watch")
+        self.assertEqual(signing.mapping("app"), {})
 
     def test_only_the_two_routes_and_a_real_project(self):
         self.assertEqual(signing.put("app", "other", self.b64, "s3cret-pass")[1], 400)

@@ -15,12 +15,50 @@ import waits
 
 auth = os.environ["BB_SIGN_AUTH"]
 project = os.environ.get("BB_SIGN_PROJECT", "")
-file, route, why = sys.argv[1], sys.argv[2], sys.argv[3]
 if not project:
     sys.exit("[builderbot] ERROR: run bb sign inside a project's tree")
 
-r = bbapi.call("/api/signing", {"action": "sign", "project": project, "file": file,
-                                "route": route, "why": why}, auth=auth, timeout=60)
+
+def keys_verb(sub, route, why, rest):
+    """bb sign keys | key new NAME | map PACKAGE KEY (R106 step 6)."""
+    if sub == "--keys":
+        d = bbapi.call("/api/signing", {"action": "keys", "project": project}, auth=auth)
+        if d.get("error"):
+            sys.exit(f"[builderbot] ERROR: {d['error']}")
+        for name, slots in (d.get("keys") or {}).items():
+            for rt, rec in slots.items():
+                print(f"  {name:<14} {rt:<9} " + (f"{rec.get('alias')}  {rec.get('sha256')}" if rec else "-"))
+        for pkg, k in (d.get("map") or {}).items():
+            print(f"  {pkg} -> {k}")
+        if not d.get("keys"):
+            print("  no keys yet: an administrator adds one under Signing keys in the project's settings")
+        return
+    if sub == "--key":
+        if len(rest) != 2 or rest[0] != "new" or route not in ("play", "sideload"):
+            sys.exit("[builderbot] ERROR: bb sign key new NAME --for play|sideload --why \"...\"")
+        body = {"action": "generate", "key": rest[1], "route": route}
+    else:
+        if len(rest) != 2:
+            sys.exit("[builderbot] ERROR: bb sign map PACKAGE KEY --why \"...\" (KEY \"\" unmaps it)")
+        body = {"action": "map", "package": rest[0], "key": rest[1]}
+    r = bbapi.call("/api/signing", body | {"project": project, "why": why}, auth=auth, timeout=180)
+    if r.get("error"):
+        sys.exit(f"[builderbot] ERROR: {r['error']}")
+    if r.get("id") and not r.get("keys") and not r.get("key"):
+        print(f"[builderbot] asked {r.get('to') or 'the project owner'} (#{r['id']}), waiting up to "
+              "15 minutes for Approve in their bell", file=sys.stderr)
+        o = waits.outcome(auth, r["id"], "the change was not allowed")
+        if o.get("code"):
+            sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it was not made'}")
+    print("[builderbot] done: bb sign keys says what the project has now", file=sys.stderr)
+
+
+if sys.argv[1].startswith("--"):
+    keys_verb(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:])
+    sys.exit(0)
+file, route, why = sys.argv[1], sys.argv[2], sys.argv[3]
+r = bbapi.call("/api/signing", {"action": "sign", "project": project, "file": file, "route": route,
+                                "key": os.environ.get("BB_SIGN_KEY", ""), "why": why}, auth=auth, timeout=60)
 if r.get("error"):
     sys.exit(f"[builderbot] ERROR: {r['error']}")
 job = r.get("job") or ""

@@ -131,9 +131,10 @@ def artifact(auth, q, stream, length):
         cert = q.get("cert", [""])[0].upper()
         schemes = q.get("schemes", [""])[0]
         route = q.get("signed", [""])[0]
+        key = q.get("key", [""])[0] or signing.DEFAULT
         if re.fullmatch(r"[0-9A-F]{64}", cert) and route in ("play", "sideload") \
-                and re.fullmatch(r"[a-z0-9.,]{0,40}", schemes):
-            extra = {"signed": {"route": route, "cert": cert,
+                and re.fullmatch(r"[a-z0-9.,]{0,40}", schemes) and signing.KEY_NAME.fullmatch(key):
+            extra = {"signed": {"route": route, "cert": cert, "key": key,
                                 "schemes": [x for x in schemes.split(",") if x],
                                 "from": str((j.get("spec") or {}).get("file") or "")}}
     r = workspace.artifact_put(j, q.get("name", [""])[0], stream, length, extra=extra)
@@ -184,16 +185,25 @@ def verb(name, auth, req, addr):
             return {"error": "not this node's running sign job"}, 403
         if j["id"] in _keys_given:
             return {"error": "the key was handed to this job already"}, 409
-        route = str((j.get("spec") or {}).get("route") or "")
-        got = signing.secret(j.get("project") or "", route)
+        spec = j.get("spec") or {}
+        route = str(spec.get("route") or "")
+        project = j.get("project") or ""
+        # Which key: the one the job names, else the one the build's package
+        # is mapped to, which the node read from the build (step 6), else
+        # the project's default.
+        package = field(req, "package")
+        key = str(spec.get("key") or "") or signing.key_for(project, package)
+        got = signing.secret(project, route, key)
         if not got:
-            return {"error": f"{j.get('project')} has no {signing.WORDS.get(route, route)} any more"}, 404
+            return {"error": f"{project} has no {signing.WORDS.get(route, route)} named {key}"
+                             + (f" (what {package} is mapped to)" if package and not spec.get("key") else "")}, 404
         blob, rec = got
         _keys_given.add(j["id"])
         db.audit(auth["principal"], "signing-key", j["id"],
-                 {"project": j.get("project"), "route": route, "sha256": rec.get("sha256")})
+                 {"project": project, "route": route, "key": key, "package": package,
+                  "sha256": rec.get("sha256")})
         return {"keystore": base64.b64encode(blob).decode(), "alias": rec.get("alias"),
-                "type": rec.get("type"), "store_pass": rec.get("store_pass"),
+                "type": rec.get("type"), "store_pass": rec.get("store_pass"), "key": key,
                 "key_pass": rec.get("key_pass"), "sha256": rec.get("sha256")}, 200
     if name == "hello":
         r = nodes.hello(nid, req.get("census"), addr,

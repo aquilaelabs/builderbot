@@ -68,6 +68,7 @@ scripts/
   lib/preamble-verbs.py          `bb preamble`
   lib/findings-verbs.py          `bb findings history` and `bb findings sample`
   lib/settings-verbs.py          `bb settings`: show, and set for build, test and outputs
+  lib/sign-verbs.py              `bb sign`: a build signed on the node with one of the project's keys, and its keys and mapping
   lib/users-verbs.py             `bb users`: list, passwd, add, token
   lib/nodes-verbs.py             `bb nodes` and `bb ci-labels`
   lib/jobs-verbs.py              `bb jobs`

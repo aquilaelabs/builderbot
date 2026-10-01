@@ -118,6 +118,7 @@ function rnFillPrefs(p){
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
                sign: p?.prefs?.sign || "ask",
+               keys: p?.prefs?.keys || "ask",
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
   $("rnGitName").value = rnPrefWas.git_name;
@@ -243,6 +244,14 @@ function rnFillPrefsRest(p){
       el.dataset.built = "1";
     }
     el.value = p?.prefs?.sign || "ask";
+  }
+  {
+    const el = $("rnGateKeys");
+    if (el.dataset.built !== "1"){
+      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = p?.prefs?.keys || "ask";
   }
   {
     const el = $("rnGateDocker");
@@ -494,27 +503,28 @@ async function rnSavePeople(name){
 }
 
 // ---- signing keys (R106) ----
-// A project's Android keys, an administrator's: a Play upload key and a
-// sideload app signing key, either or both. The controller keeps them and
-// bb sign uses them on the node; the dialog only ever sees the alias and
-// the fingerprint. A picked keystore, its password and a removal are a
-// draft until Save, like every other field here.
+// A project's Android keys, an administrator's: named keys (default first),
+// each with a Play upload slot and a sideload signing slot, and which of the
+// project's apps (by package) signs with which key. The controller keeps
+// them and bb sign uses them on the node; the dialog only ever sees aliases
+// and fingerprints. An upload, a removal and a mapping are a draft until
+// Save; Generate and Download backup are actions and act on the press.
 const RN_SIGN = [
   ["play", "Play upload key",
    "For Google Play with Play App Signing, which can reset a lost upload key."],
   ["sideload", "Sideload signing key",
    "Signs a build handed out directly. Lose it and no update reaches an existing install: keep a copy offline."]];
-let rnSignKeys = null, rnSignTool = false, rnSignDraft = {};
+let rnSignKeys = null, rnSignTool = false, rnSignDraft = {}, rnSignMap = {}, rnSignMapDraft = {}, rnSignNew = [];
 
 function rnLoadSigning(name){
-  rnSignKeys = null; rnSignDraft = {};
+  rnSignKeys = null; rnSignDraft = {}; rnSignMapDraft = {}; rnSignNew = [];
   $("rnSignField").hidden = true;
   if (rnMode === "git" || !state?.admin) return;
   postJSON("/api/signing", {action: "list", project: name})
     .then(r => r.json())
     .then(j => {
       if (rnFor !== name || j.error) return;
-      rnSignKeys = j.keys || {}; rnSignTool = !!j.keytool;
+      rnSignKeys = j.keys || {}; rnSignMap = j.map || {}; rnSignTool = !!j.keytool;
       rnDrawSigning();
     })
     .catch(() => {});
@@ -526,14 +536,16 @@ function rnDrawSigning(){
   if (!rnSignKeys) return;
   $("rnSignField").hidden = false;
   const name = rnFor;
-  $("rnSignRows").innerHTML = RN_SIGN.map(([route, word, about]) => {
-    const k = rnSignKeys[route], d = rnSignDraft[route] || {};
+  const names = [...new Set([...Object.keys(rnSignKeys), ...rnSignNew])];
+  if (!names.includes("default")) names.unshift("default");
+  const slot = (key, route, word, about) => {
+    const k = (rnSignKeys[key] || {})[route], d = rnSignDraft[`${key}:${route}`] || {};
     const now = d.remove ? `${word}: removed when you Save`
       : d.file ? `${word}: ${esc(d.file.name)}, kept when you Save`
-      : k ? `${word}: ${esc(k.alias)} <span class="dim">${esc(rnFp(k.sha256))}</span>`
+      : k ? `${word}: ${esc(k.alias)} <span class="dim">${esc(rnFp(k.sha256))}${k.generated ? ", made here" : ""}</span>`
       : `${word}: none`;
     const never = k && !d.remove && !d.file && route === "sideload" && !k.backed_up;
-    return `<div class="rnsign" data-route="${route}">
+    return `<div class="rnsign" data-key="${esc(key)}" data-route="${route}">
       <div>${now}</div>
       <div class="sub dim">${esc(about)}${k && !d.remove && !d.file
         ? ` ${k.backed_up ? `Backed up ${esc(ago(k.backed_up))}.` : "Not backed up yet."}` : ""}</div>
@@ -545,22 +557,50 @@ function rnDrawSigning(){
         <input type="password" data-signkeypass autocomplete="new-password" placeholder="key password, if not the same" aria-label="key password">
       </div>` : ""}
       <div class="rnsignbar">
-        <button type="button" class="link" data-signopen>${d.open ? "Never mind" : k ? "Replace" : "Add a key"}</button>
-        ${k ? `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&route=${route}" download>Download backup</a>
+        <button type="button" class="link" data-signopen>${d.open ? "Never mind" : k ? "Replace" : "Upload one"}</button>
+        ${!k && !d.open && rnSignTool ? `<button type="button" class="link" data-signgen>Generate</button>` : ""}
+        ${k ? `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&route=${route}" download>Download backup</a>
         <button type="button" class="link" data-signremove>${d.remove ? "Keep it after all" : "Remove"}</button>` : ""}
       </div>
     </div>`;
-  }).join("");
+  };
+  const maps = {...rnSignMap, ...rnSignMapDraft};
+  $("rnSignRows").innerHTML = names.map(key => `<div class="rnsignkey">
+      <div class="rnsignname">${key === "default" ? "Default key" : `Key: ${esc(key)}`}</div>
+      ${RN_SIGN.map(([route, word, about]) => slot(key, route, word, about)).join("")}</div>`).join("")
+    + `<div class="rnsignbar"><input id="rnSignNewName" autocomplete="off" spellcheck="false" placeholder="name, e.g. watch"
+         aria-label="a new key's name"><button type="button" class="link" id="rnSignNewGo">New key</button></div>
+    <div class="rnsignname">Apps</div>
+    <div class="sub dim">Which app signs with which key, by its package; one not listed signs with the default key.</div>
+    ${Object.entries(maps).filter(([, k]) => k !== null).map(([pkg, k]) => `<div class="rninvite" data-pkg="${esc(pkg)}">
+      <code>${esc(pkg)}</code> <span class="dim">signs with</span> <b>${esc(k)}</b>
+      <button type="button" class="link" data-unmap>Remove</button></div>`).join("")}
+    <div class="rninvitebar"><input id="rnMapPkg" autocomplete="off" spellcheck="false" placeholder="com.example.app"
+        aria-label="an app's package"><select id="rnMapKey" aria-label="the key it signs with">${
+        names.map(k => `<option>${esc(k)}</option>`).join("")}</select>
+      <button type="button" class="link" id="rnMapGo">Map it</button></div>`;
   $("rnSignHint").textContent = rnSignTool ? ""
-    : "No keytool here to check a key with: install the jdk toolchain, then add one.";
+    : "No keytool here to check or make a key with: install the jdk toolchain, then add one.";
   for (const row of $("rnSignRows").querySelectorAll(".rnsign")){
-    const route = row.dataset.route;
-    const d = rnSignDraft[route] = rnSignDraft[route] || {};
+    const key = row.dataset.key, route = row.dataset.route;
+    const d = rnSignDraft[`${key}:${route}`] = rnSignDraft[`${key}:${route}`] || {key, route};
     row.querySelector("[data-signopen]").onclick = () => {
       d.open = !d.open;
       if (!d.open){ delete d.file; d.pass = d.alias = d.keypass = ""; }
       else d.remove = false;
       rnDrawSigning();
+    };
+    const gen = row.querySelector("[data-signgen]");
+    if (gen) gen.onclick = async () => {
+      if (route === "sideload" && !confirm(`Make a new sideload signing key named ${key}? `
+            + "Once a build signed with it is out, it is that app's identity for good: download a backup straight after."))
+        return;
+      gen.disabled = true;
+      const j = await (await postJSON("/api/signing", {action: "generate", project: name, key, route})).json();
+      if (j.error){ gen.disabled = false; return notify(j.error, true); }
+      notify(`${key}: a ${route === "play" ? "Play upload" : "sideload signing"} key was made; download a backup`);
+      rnSignNew = rnSignNew.filter(n => n !== key);
+      rnLoadSigning(name);
     };
     const rm = row.querySelector("[data-signremove]");
     if (rm) rm.onclick = () => { d.remove = !d.remove; if (d.remove){ d.open = false; delete d.file; } rnDrawSigning(); };
@@ -569,13 +609,30 @@ function rnDrawSigning(){
     const f = row.querySelector("[data-signfile]");
     if (f){
       f.onchange = () => { d.file = f.files[0] || null; };
-      for (const [sel, key] of [["[data-signpass]", "pass"], ["[data-signalias]", "alias"], ["[data-signkeypass]", "keypass"]]){
+      for (const [sel, k] of [["[data-signpass]", "pass"], ["[data-signalias]", "alias"], ["[data-signkeypass]", "keypass"]]){
         const el = row.querySelector(sel);
-        el.value = d[key] || "";
-        el.oninput = () => { d[key] = el.value; };
+        el.value = d[k] || "";
+        el.oninput = () => { d[k] = el.value; };
       }
     }
   }
+  $("rnSignNewGo").onclick = () => {
+    const n = $("rnSignNewName").value.trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(n)) return notify("a key's name is lowercase letters, digits and dashes", true);
+    if (!names.includes(n)) rnSignNew.push(n);
+    rnDrawSigning();
+  };
+  $("rnMapGo").onclick = () => {
+    const pkg = $("rnMapPkg").value.trim();
+    if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(pkg)) return notify("a package name looks like com.example.app", true);
+    rnSignMapDraft[pkg] = $("rnMapKey").value;
+    rnDrawSigning();
+  };
+  $("rnSignRows").querySelectorAll("[data-unmap]").forEach(b => b.onclick = () => {
+    const pkg = b.closest("[data-pkg]").dataset.pkg;
+    if (rnSignMap[pkg]) rnSignMapDraft[pkg] = null; else delete rnSignMapDraft[pkg];
+    rnDrawSigning();
+  });
 }
 
 const fileB64 = f => new Promise((ok, bad) => {
@@ -585,17 +642,25 @@ const fileB64 = f => new Promise((ok, bad) => {
   r.readAsDataURL(f);
 });
 
+// What the draft changes, for Save: uploads, removals and mappings.
+const rnSignPending = () => Object.values(rnSignDraft).some(d => d.remove || d.file)
+  || Object.keys(rnSignMapDraft).length > 0;
+
 // The draft's writes, in Save's order; "" when they all landed, else why.
 async function rnSaveSigning(name){
-  for (const [route, word] of RN_SIGN){
-    const d = rnSignDraft[route] || {};
+  for (const d of Object.values(rnSignDraft)){
+    const word = (RN_SIGN.find(([r]) => r === d.route) || [])[1] || d.route;
     let body = null;
-    if (d.remove) body = {action: "remove", project: name, route};
-    else if (d.file) body = {action: "put", project: name, route, keystore: await fileB64(d.file),
+    if (d.remove) body = {action: "remove", project: name, key: d.key, route: d.route};
+    else if (d.file) body = {action: "put", project: name, key: d.key, route: d.route, keystore: await fileB64(d.file),
                              password: d.pass || "", alias: (d.alias || "").trim(), key_password: d.keypass || ""};
     if (!body) continue;
     const j = await (await postJSON("/api/signing", body)).json();
-    if (j.error) return `${word}: ${j.error}`;
+    if (j.error) return `${d.key} ${word}: ${j.error}`;
+  }
+  for (const [pkg, key] of Object.entries(rnSignMapDraft)){
+    const j = await (await postJSON("/api/signing", {action: "map", project: name, package: pkg, key: key || ""})).json();
+    if (j.error) return `${pkg}: ${j.error}`;
   }
   return "";
 }
@@ -762,6 +827,7 @@ async function rnSubmit(){
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
   const sign = $("rnGateSign").value || "ask";
+  const keys = $("rnGateKeys").value || "ask";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
@@ -771,7 +837,8 @@ async function rnSubmit(){
     || gpu !== rnPrefWas.gpu
     || devbuild !== rnPrefWas.devbuild
     || report !== rnPrefWas.report
-    || sign !== rnPrefWas.sign;
+    || sign !== rnPrefWas.sign
+    || keys !== rnPrefWas.keys;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
   // project's group: the same request, a different store on the server.
@@ -800,7 +867,7 @@ async function rnSubmit(){
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
-  const signDraft = Object.values(rnSignDraft).filter(d => d.remove || d.file);
+  const signDraft = rnSignPending() ? [1] : [];
   if (Object.values(rnSignDraft).some(d => d.open && !d.file && (d.pass || d.alias)))
     return fail("pick the keystore file for the key whose password you typed");
   if (Object.values(rnSignDraft).some(d => d.file && !d.pass))
@@ -856,7 +923,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, nodes, reads, sees, build, test, gate, color,
-                              tests_in, test_change, gpu, reply, asks, devbuild, report, sign,
+                              tests_in, test_change, gpu, reply, asks, devbuild, report, sign, keys,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
                               ...(dev_keep !== "" ? {dev_keep: +dev_keep} : {}),

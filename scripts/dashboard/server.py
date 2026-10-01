@@ -2537,7 +2537,20 @@ signing.node_of = lambda name: prefs.get(name)["node"]
 signing.job_add = nodes.job_add
 signing.file_path = workspace.file_path
 phone.signer = signing.start
-artifacts.sign_routes = lambda name: [r for r, k in (signing.listing(name)[0].get("keys") or {}).items() if k]
+
+
+def _keymaker(action, project, args, by=""):
+    """A new generated key or a package's key, for a session's auto dial and
+    for Allow on its ask (R106 step 6)."""
+    if action == "generate":
+        return signing.generate(project, str(args.get("route") or ""), str(args.get("key") or "default"), by=by)
+    if action == "map":
+        return signing.set_map(project, str(args.get("package") or ""), str(args.get("key") or ""))
+    return {"error": f"not a key change: {action}"}, 400
+
+
+phone.keymaker = _keymaker
+artifacts.sign_routes = signing.routes_held
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
 vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
@@ -5268,25 +5281,44 @@ class Handler(BaseHTTPRequestHandler):
             # bb sign: its own project's build, under its dial (Claude may:
             # Sign a release). It never receives the key, the list, or a
             # backup; asking to sign is all a session does here.
-            if field(req, "action") != "sign" or name != who["session"]:
+            act = field(req, "action")
+            if act not in ("sign", "keys", "generate", "map") or name != who["session"]:
                 return self._json({"error": "a session signs with bb sign, which never hands it the key; "
                                             "the keys are a person's to manage"}, 403)
+            owner = membership.owner_of(name)
+            acct = users.account_of(who) or {}
+            if act in ("keys", "generate", "map"):
+                # Manage signing keys (R106 step 6): which keys there are
+                # (names and fingerprints, never a secret), and a new key or
+                # a package's key proposed, under its own dial.
+                kmode = (prefs.get(name) or {}).get("keys") or "ask"
+                if kmode == "deny":
+                    return self._json({"error": f"{name}'s settings say Claude does not manage its signing "
+                                                "keys (Claude may: Manage signing keys)"}, 403)
+                if act == "keys":
+                    return self._json(*signing.listing(name))
+                args = ({"key": field(req, "key") or "default", "route": field(req, "route")}
+                        if act == "generate" else {"package": field(req, "package"), "key": field(req, "key")})
+                if kmode == "auto":
+                    return self._json(*_keymaker(act, name, args, by="claude"))
+                r = phone.ask_keys(field(req, "why"), name, act, args, owner,
+                                   membership.owner_name(name) or "the project's owner",
+                                   asker_name=str(acct.get("name") or ""))
+                return self._json(r, 400 if r.get("error") else 200)
             mode = (prefs.get(name) or {}).get("sign") or "ask"
             if mode == "deny":
                 return self._json({"error": f"{name}'s settings say Claude does not sign its builds "
                                             "(Claude may: Sign a release); a person signs from the "
                                             "Artifacts tab"}, 403)
-            file, route = field(req, "file"), field(req, "route")
-            no = signing.refusal(name, file, route)
+            file, route, key = field(req, "file"), field(req, "route"), field(req, "key")
+            no = signing.refusal(name, file, route, key)
             if no:
                 return self._json(*no)
             if mode == "auto":
-                return self._json(*signing.start(self._principal(), name, file, route))
-            owner = membership.owner_of(name)
-            acct = users.account_of(who) or {}
+                return self._json(*signing.start(self._principal(), name, file, route, key))
             r = phone.ask_sign(field(req, "why"), name, file, route, owner,
                                membership.owner_name(name) or "the project's owner",
-                               asker_name=str(acct.get("name") or ""), principal=self._principal())
+                               asker_name=str(acct.get("name") or ""), principal=self._principal(), key=key)
             return self._json(r, 400 if r.get("error") else 200)
         if self._not_project(name):
             return None
@@ -5295,7 +5327,8 @@ class Handler(BaseHTTPRequestHandler):
             # project, not administering it.
             if self._readonly(name):
                 return None
-            return self._json(*signing.start(self._principal(), name, field(req, "file"), field(req, "route")))
+            return self._json(*signing.start(self._principal(), name, field(req, "file"), field(req, "route"),
+                                             field(req, "key")))
         if field(req, "action") != "list" and self._refused("admin"):
             return None
         return self._json(*signing.verb(req, by=str(who.get("name") or "")))
@@ -5309,10 +5342,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "a session never receives a signing key"}, 403)
         if self._not_project(name) or self._refused("admin"):
             return None
-        got, status = signing.backup(name, q.get("route", [""])[0])
+        got, status = signing.backup(name, q.get("route", [""])[0], q.get("key", ["default"])[0] or "default")
         if status != 200:
             return self._json(got, status)
-        return self._attachment(*got, "application/octet-stream")
+        return self._attachment(*got, "application/zip" if got[0].endswith(".zip") else "application/octet-stream")
 
     def _artifacts(self, req):
         """Push an .xpi from a project's dist/ to the paired phone, install

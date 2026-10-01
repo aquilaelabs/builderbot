@@ -254,7 +254,16 @@ bb sign FILE [--for play|sideload] [--why "..."]
                    key (the default for an .apk). The project's settings say
                    whether Claude may (Sign a release): auto signs, ask waits for
                    the project's owner to allow it, with --why as the reason.
-                   Arrives in dist/ as NAME-signed.apk or .aab
+                   Arrives in dist/ as NAME-signed.apk or .aab. --key NAME signs
+                   with that key; without it, the key the build's package is
+                   mapped to, else the project's default
+bb sign keys       the project's keys by name, their fingerprints and which
+                   package each signs (never a key or a password)
+bb sign key new NAME --for play|sideload --why "..."
+bb sign map PACKAGE KEY --why "..."
+                   a new key made on the controller, or an app's package mapped
+                   to a key (KEY "" unmaps it), under Claude may: Manage signing
+                   keys: auto does it, ask waits for the project's owner
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/

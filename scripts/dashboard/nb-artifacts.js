@@ -238,6 +238,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             // certificate's whole fingerprint, which a store's metadata asks
             // for (F-Droid's AllowedAPKSigningKeys) and a person compares.
             a.prov?.signed ? `<span class="dim">signed with the ${
+              a.prov.signed.key && a.prov.signed.key !== "default" ? `${esc(a.prov.signed.key)} key's ` : ""}${
               a.prov.signed.route === "play" ? "Play upload key" : "sideload signing key"}${
               a.prov.signed.from ? ` from ${esc(a.prov.signed.from)}` : ""}${
               a.prov.signed.schemes?.length ? `, verified ${esc(a.prov.signed.schemes.join(", "))}` : ""}</span>

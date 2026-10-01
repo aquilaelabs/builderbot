@@ -109,9 +109,10 @@ function drawBell(){
           : a.kind === "rebuild" ? `${esc(askVerb(a))} in ${esc(a.project || "a project")}: needs your answer`
           : a.kind === "container" ? `container ${esc(a.name || "")} on ${esc(a.node_name || "the default node")}: needs your answer`
           : a.kind === "sign" ? `sign a build of ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "sign-key" ? `a signing key change in ${esc(a.project || "a project")}: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">${a.kind === "root" ? "#" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" ? "bb" : "adb"} ${esc(a.cmd.join(" "))}</div>${
+        <div class="bcmd">${a.kind === "root" ? "#" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" ? "bb" : "adb"} ${esc(a.cmd.join(" "))}</div>${
         // A container is approved by reading its compose file, the way root
         // is approved by reading its argv (R71): the file is the request, so
         // it is here whole, folded, with the env file's keys and never its

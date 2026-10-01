@@ -1286,7 +1286,7 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
                                               body: JSON.stringify({ project: 'alpha', action: 'list' }) });
       const pl = await plr.json().catch(() => ({}));
       ok(sl.status === 403 && /bb sign/.test(sl.error || '') && sb.status === 403
-         && plr.status === 200 && pl.keys && 'play' in pl.keys && !JSON.stringify(pl).includes('pass'),
+         && plr.status === 200 && pl.keys && typeof pl.map === 'object' && !JSON.stringify(pl).includes('pass'),
          `a session reaches no signing key, not even the list or a backup, and a person reads only which exist (${sl.status}/${sb.status}/${plr.status})`);
     }
     // bb sign (R106 step 3): a session asks only to sign its own project's
@@ -1323,7 +1323,20 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
         body: JSON.stringify({ action: 'sign', project: 'beta', file: 'x.apk', route: 'sideload', why: 'w' }) });
       ok(denied.status === 403 && /Sign a release/.test(denied.body.error || '') && other.status === 403,
          `...at Deny it is refused naming the setting, and another project's build is never its to sign (${denied.status}/${other.status})`);
-      await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask', node: '' }) });
+      // Managing keys (R106 step 6): at Ask a new key or a mapping waits on
+      // the owner too, and a session reads which keys exist but no secret.
+      const listed = await sign({ action: 'keys' });
+      const newKey = await sign({ action: 'generate', key: 'watch', route: 'sideload', why: 'the watch app' });
+      const ownerAsks2 = await (await bare('/api/phone', { headers: ownerAuth })).json();
+      const keyAsk = (ownerAsks2.asks || []).find(a => a.id === newKey.body.id);
+      await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', keys: 'deny' }) });
+      const noKeys = await sign({ action: 'map', package: 'com.example.watch', key: 'watch', why: 'w' });
+      ok(listed.status === 200 && 'default' in (listed.body.keys || {}) && !JSON.stringify(listed.body).includes('"pw"')
+         && keyAsk && keyAsk.kind === 'sign-key' && keyAsk.cmd.join(' ') === 'sign key new watch --for sideload'
+         && noKeys.status === 403 && /Manage signing keys/.test(noKeys.body.error || ''),
+         `...a session reads the keys without a secret, proposes a new one for the owner to allow, and at Deny is refused naming the setting (${keyAsk?.cmd?.join(' ')})`);
+      if (keyAsk) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: keyAsk.id }) });
+      await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask', keys: 'ask', node: '' }) });
       rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
     }
     // A project's owner and its people (membership.py, the operator, 1 Oct).

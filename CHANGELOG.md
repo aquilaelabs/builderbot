@@ -44,6 +44,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's owner offers it to someone else, who becomes its owner on accepting from their bell; BuilderBot's owner still hands a project on at once (83d43e6)
 - bb sign signs a build in dist/ with one of the project's keys on its node, behind the project's dial Claude may: Sign a release (ask by default, which waits for the project's owner in their bell); the Artifacts tab offers Sign on an .apk or .aab (00129fe)
 - A signed build's Artifacts row says which key signed it, what verified, and the certificate's whole fingerprint, with Copy for F-Droid for its AllowedAPKSigningKeys (01af12e)
+- A project keeps several named signing keys, uploaded or generated on the controller, and maps each app's package to one, so a repository of several apps signs each with its own key or a shared one; Claude may propose a key or a mapping under Manage signing keys (d32bb3d)
 
 ### Changed
 

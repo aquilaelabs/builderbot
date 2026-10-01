@@ -81,6 +81,7 @@ import time
 import traceback
 import urllib.parse
 import urllib.request
+import zipfile
 
 # WINDOW.BUILD, and the two halves answer different questions.
 #
@@ -97,7 +98,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.128"
+AGENT_VERSION = "0.7.129"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -5420,7 +5421,7 @@ class Agent:
             bt = sorted(glob.glob(os.path.join(store, "android", "build-tools", "*")),
                         key=lambda d: [int(x) if x.isdigit() else 0
                                        for x in re.split(r"[.-]", os.path.basename(d))])
-            for name in ("zipalign", "apksigner"):
+            for name in ("zipalign", "apksigner", "aapt2"):
                 hit = next((os.path.join(d, name) for d in reversed(bt)
                             if os.access(os.path.join(d, name), os.X_OK)), "")
                 if not hit:
@@ -5446,7 +5447,28 @@ class Agent:
             if st != 200:
                 job.say(f"could not fetch {rel} from the controller ({st})\n")
                 return "failed", 69
-            st, k = self.ctl.call("signing-key", {"job": job.job["id"]}, timeout=30)
+            # Which app it is, so the controller can hand the key its package
+            # is mapped to (R106 step 6): aapt2 for an .apk; a bundle's
+            # manifest is a protobuf no tool here reads, and the package name
+            # is the one string in it shaped like one after "package".
+            package = ""
+            if kind == ".apk":
+                with contextlib.suppress(OSError, subprocess.SubprocessError):
+                    p = subprocess.run([tools["aapt2"], "dump", "packagename", src], capture_output=True,
+                                       text=True, timeout=60, check=False)
+                    package = (p.stdout or "").strip().splitlines()[0] if p.returncode == 0 and p.stdout.strip() else ""
+            else:
+                with contextlib.suppress(OSError, KeyError, zipfile.BadZipFile):
+                    with zipfile.ZipFile(src) as z:
+                        man = z.read("base/manifest/AndroidManifest.xml")
+                    at = man.find(b"package")
+                    got = re.search(rb"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", man[at:at + 400]) if at >= 0 else None
+                    package = got.group(0).decode() if got else ""
+            if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+", package or ""):
+                package = ""
+            if package:
+                job.say(f"the build is {package}\n")
+            st, k = self.ctl.call("signing-key", {"job": job.job["id"], "package": package}, timeout=30)
             if st != 200 or not isinstance(k, dict) or not k.get("keystore"):
                 job.say(f"the controller did not hand over the key: {(k or {}).get('error') or st}\n")
                 return "failed", 69
@@ -5507,12 +5529,12 @@ class Agent:
             base = base.replace("-unsigned", "") if "-unsigned" in base else base
             name = f"{base}-signed{kind}"
             st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}&signed={route}"
-                                    f"&cert={cert or want}&schemes={schemes}", out)
+                                    f"&cert={cert or want}&schemes={schemes}&key={k.get('key') or 'default'}", out)
             if st != 200 or r.get("error"):
                 job.say(f"could not deliver {name}: {r.get('error') or st}\n")
                 return "failed", 1
-            job.say(f"signed {rel} for {route} with {alias} ({str(k.get('sha256') or '')[:23]}…): "
-                    f"{r['path']}\n")
+            job.say(f"signed {rel} for {route} with the {k.get('key') or 'default'} key, {alias} "
+                    f"({str(k.get('sha256') or '')[:23]}…): {r['path']}\n")
             job.outputs.append({"kind": "artifact", "path": r["path"], "size": r.get("size"),
                                 "sha256": r.get("sha256"), "signed": route,
                                 "cert": k.get("sha256") or ""})

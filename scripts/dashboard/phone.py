@@ -65,6 +65,10 @@ container_maker = None
 # signing.start(principal, project, file, route), set by the server: what
 # Allow on a session's `bb sign` runs (R106), queued as the session asked.
 signer = None
+# What Allow on a session's key change runs (R106 step 6), set by the
+# server: keymaker(action, project, args) -> (payload, status), where
+# action is generate (args: key, route) or map (args: package, key).
+keymaker = None
 container_free = None
 container_builds = None
 # ...and what verb() needs to know about the one asking, set by server.py
@@ -685,8 +689,9 @@ def _for(r, uid, admin):
     # docker-write, which a user does not have on a project they otherwise own.
     if r.get("kind") in ("root", "rebuild", "container") and not admin:
         return False
-    # A signing waits on the project's owner, whatever their role.
-    if r.get("kind") == "sign":
+    # A signing, or a key change, waits on the project's owner, whatever
+    # their role.
+    if r.get("kind") in ("sign", "sign-key"):
         return r["to"] == uid
     if r["to"] == "admins":
         return bool(admin)
@@ -797,7 +802,7 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
                   "the administrators", asker_name)
 
 
-def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principal=""):
+def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principal="", key=""):
     """A session asking to sign a build with one of its project's keys, on a
     project whose dial is `ask` (Claude may: Sign a release, R106). It goes
     to the project's owner, who reads which build and which key; Allow
@@ -807,9 +812,30 @@ def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principa
         return {"error": "say what it is for: --why \"...\" (a release for testers, the Play upload ...)"}
     if not to_uid:
         return {"error": f"{project} has no owner to ask"}
-    return _queue("sign", why, ["sign", str(file), "--for", str(route)], "", "", project, "claude",
+    cmd = ["sign", str(file), "--for", str(route)] + (["--key", str(key)] if key else [])
+    return _queue("sign", why, cmd, "", "", project, "claude",
                   to_uid, to_name, asker_name,
-                  extra={"file": str(file), "route": str(route), "principal": principal})
+                  extra={"file": str(file), "route": str(route), "principal": principal, "key": str(key or "")})
+
+
+def ask_keys(why, project, action, args, to_uid, to_name, asker_name=""):
+    """A session proposing a new key or a package's key, on a project whose
+    Manage signing keys dial is `ask` (R106 step 6). It goes to the project's
+    owner: a new sideload key is an app's identity for good, which is why a
+    person says yes to it."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\""}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    if action == "generate":
+        cmd = ["sign", "key", "new", str(args.get("key")), "--for", str(args.get("route"))]
+    elif action == "map":
+        cmd = ["sign", "map", str(args.get("package")), str(args.get("key") or "default")]
+    else:
+        return {"error": f"not a key change: {action}"}
+    return _queue("sign-key", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
+                  extra={"action": action, "args": dict(args)})
 
 
 def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
@@ -985,12 +1011,21 @@ def decide(rid, allow, uid, name="", admin=False):
     if r.get("kind") == "sign":
         # Queued as the session's own, the way the auto path does it; the
         # job's id is what the session follows next.
-        res = (signer(r.get("principal") or "", r["project"], r.get("file") or "", r.get("route") or "")
+        res = (signer(r.get("principal") or "", r["project"], r.get("file") or "", r.get("route") or "",
+                      r.get("key") or "")
                if signer is not None else ({"error": "nothing here signs"}, 400))
         got = res[0] if isinstance(res, tuple) else res
         with _lock:
             r.update(state="done", code=1 if got.get("error") else 0,
                      out=str(got.get("error") or got.get("job") or "started"))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "sign-key":
+        res = (keymaker(r.get("action") or "", r["project"], r.get("args") or {})
+               if keymaker is not None else ({"error": "nothing here makes keys"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or "done"))
         return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "container":
         # Two steps and both said: the container registered through the

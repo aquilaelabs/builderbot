@@ -1464,7 +1464,7 @@ await page.waitForFunction(() => /Sideload signing key: /.test(document.getEleme
                            null, { timeout: 15000 });
 const signErr = await page.$eval('#rnErr', e => e.textContent);
 ok(!await page.$eval('#rnmodal', e => e.hidden)
-   && (await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.sideload === null,
+   && !(await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.default?.sideload,
    `...and one the server will not keep is refused in the dialog, which stays open, with nothing kept (${signErr.slice(0, 90)})`);
 await page.click('#rnCancel');
 

@@ -14,7 +14,7 @@ class SignAsk(unittest.TestCase):
     def setUp(self):
         self.started = []
         self.was = phone.signer
-        phone.signer = lambda principal, project, file, route: (
+        phone.signer = lambda principal, project, file, route, key="": (
             self.started.append((principal, project, file, route)) or ({"ok": True, "job": "j_9"}, 200))
         self.addCleanup(setattr, phone, "signer", self.was)
 

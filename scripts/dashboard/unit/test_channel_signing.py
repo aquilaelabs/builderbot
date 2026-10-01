@@ -15,18 +15,27 @@ class SigningKey(unittest.TestCase):
                      "j_2": {"id": "j_2", "type": "exec", "node": "n_1", "state": "running",
                              "project": "app", "spec": {"route": "play"}}}
         self.audit = []
-        self.was = (channel.nodes.job, channel.signing.secret, channel.db.audit)
+        self.was = (channel.nodes.job, channel.signing.secret, channel.db.audit, channel.signing.key_for)
         channel.nodes.job = lambda jid, with_log=True: self.jobs.get(jid)
-        channel.signing.secret = lambda p, r: (b"KEY", {"alias": "upload", "store_pass": "pw", "sha256": "AB"})
+        self.asked = []
+        channel.signing.secret = lambda p, r, k="default": (self.asked.append(k) or (b"KEY", {"alias": "upload", "store_pass": "pw", "sha256": "AB"}))
+        channel.signing.key_for = lambda p, pkg: "watch" if pkg == "com.example.watch" else "default"
         channel.db.audit = lambda *a: self.audit.append(a)
         channel._keys_given.clear()
 
     def tearDown(self):
-        channel.nodes.job, channel.signing.secret, channel.db.audit = self.was
+        channel.nodes.job, channel.signing.secret, channel.db.audit, channel.signing.key_for = self.was
 
-    def ask(self, job, node="n_1"):
+    def ask(self, job, node="n_1", package=""):
         return channel.verb("signing-key", {"kind": "node", "node": node, "principal": "node:" + node},
-                            {"job": job}, "10.0.0.1")
+                            {"job": job, "package": package}, "10.0.0.1")
+
+    def test_the_package_picks_the_key_unless_the_job_names_one(self):
+        r, st = self.ask("j_1", package="com.example.watch")
+        self.assertEqual((st, r["key"], self.asked[-1]), (200, "watch", "watch"))
+        channel._keys_given.clear()
+        self.jobs["j_1"]["spec"]["key"] = "phone"
+        self.assertEqual(self.ask("j_1", package="com.example.watch")[0]["key"], "phone")
 
     def test_once_to_the_jobs_own_node(self):
         r, st = self.ask("j_1")
@@ -72,7 +81,7 @@ class SignedArtifact(unittest.TestCase):
 
     def test_a_sign_jobs_upload_says_what_signed_it(self):
         self.send("j_s", signed="sideload", cert="ab" * 32, schemes="v2,v3")
-        self.assertEqual(self.put[-1], {"signed": {"route": "sideload", "cert": "AB" * 32,
+        self.assertEqual(self.put[-1], {"signed": {"route": "sideload", "cert": "AB" * 32, "key": "default",
                                                    "schemes": ["v2", "v3"], "from": "app.apk"}})
 
     def test_nothing_else_is_taken_for_it(self):
