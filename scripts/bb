@@ -3864,6 +3864,11 @@ bb capture reel --video FILE | --url URL | --emu [PKG] | --display :N  [--second
              script, DISPLAY set) drives it with xdotool
   --threshold ffmpeg's scene score that counts as a change (0.0002 for --emu,
               where a typed letter is about 0.0004; 0.02 otherwise)
+  --fps      look at the recording N times a second rather than at every
+             frame it has; frames.json says both (fps, recorded_fps). An
+             emulator under software rendering records about 10 a second
+             and on a card several times that, and the reel says so when a
+             recording is too sparse to show a short animation
 EOT
             return 0 ;;
     esac

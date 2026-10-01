@@ -43,6 +43,30 @@ if (ff.status !== 0){
   ok(/THRESHOLD = \{"emu": 0\.0002\}/.test(readFileSync(`${REPO}/scripts/lib/reel.py`, 'utf8')),
      '...which is the default for a reel of the emulator');
   cap('prune', `${S}/dist`, 'letters', 'letters2');
+  // Every frame the recording has, not ten a second of it: a 60fps capture
+  // of a 50 ms flash reels the flash; read at --fps 10, as every reel used
+  // to be, it can fall between two looks (Shebang-DevBoard, 1 Oct: the
+  // keyboard's slide could not be seen).
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi',
+    '-i', 'color=c=navy:size=320x240:rate=60:duration=2',
+    '-vf', "drawbox=x=40:y=40:w=200:h=150:color=orange:t=fill:enable='between(t,1.02,1.07)'",
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', `${S}/flash.mp4`]);
+  const all = reel('--video', `${S}/flash.mp4`, '--name', 'flash');
+  const sparse = reel('--video', `${S}/flash.mp4`, '--name', 'flash10', '--fps', '10');
+  const flashLog = JSON.parse(readFileSync(`${S}/dist/reel/flash/frames.json`, 'utf8'));
+  const sparseLog = JSON.parse(readFileSync(`${S}/dist/reel/flash10/frames.json`, 'utf8'));
+  ok(all.status === 0 && flashLog.frames.length === 3 && Math.abs(flashLog.frames[1].t - 1.02) < 0.04
+     && Math.abs(flashLog.recorded_fps - 60) < 1 && flashLog.fps === flashLog.recorded_fps,
+     `a reel looks at every frame the recording has: a 50 ms flash at 60fps is seen on and off (${
+       JSON.stringify(flashLog.frames.map(f => f.t))}, recorded ${flashLog.recorded_fps}fps)`);
+  ok(sparse.status === 0 && sparseLog.fps === 10 && Math.abs(sparseLog.recorded_fps - 60) < 1
+     && sparseLog.frames.length < flashLog.frames.length,
+     `...while --fps 10 looks ten times a second and says both rates (${sparseLog.frames.length} frames)`);
+  const slow = reel('--video', `${S}/letters.mp4`, '--name', 'slow', '--threshold', '0.0002');
+  ok(/about 10 frames a second, so anything shorter than 100 ms can fall between two of them/.test(slow.stderr),
+     `...and a recording as sparse as a software-rendered emulator's says what a frame is worth (${
+       (slow.stderr.match(/about [^;]*/) || ['nothing'])[0].slice(0, 90)})`);
+  cap('prune', `${S}/dist`, 'flash', 'flash10', 'slow');
   const r = reel('--video', `${S}/cut.mp4`, '--name', 'cut');
   const log = existsSync(`${S}/dist/reel/cut/frames.json`) ? JSON.parse(readFileSync(`${S}/dist/reel/cut/frames.json`, 'utf8')) : null;
   const ts = (log?.frames || []).map(f => f.t);

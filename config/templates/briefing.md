@@ -164,7 +164,9 @@ Two ways to look, and which one is the question you are asking:
   page after `goto`); `--emu [PKG] --drive FILE.sh` records the running
   emulator while a shell script drives it with `$ADB shell input ...`, and
   writes the package's `gfxinfo framestats` beside the reel, which is where
-  the timing is read, since a software-rendered capture is about 10fps;
+  the timing is read: the reel looks at every frame the recording has, and
+  frames.json says how many a second that was (`recorded_fps`), about 10
+  under software rendering and several times that on a card;
   `--display :N --drive FILE.sh` records an X display while the script
   drives it with `xdotool`, for an app with a window (start it under an
   Xvfb the node has: `Xvfb :9 -screen 0 1280x800x24 & DISPLAY=:9 the-app &`);
@@ -287,8 +289,10 @@ intact; a window that stops updating part way through a long session
 and a "System UI isn't responding" dialog over a cold boot under software
 rendering, which Wait dismisses and a finished boot does not show.
 `bb emu gpu` says whether you got hardware or software. Under software
-`screenrecord` captures about 10fps, so never judge animation timing from it.
-Use `dumpsys gfxinfo PKG framestats`.
+`screenrecord` captures about 10fps, so a 250 ms slide is two or three
+frames and its timing cannot be judged from it; on a card it records more,
+and a reel says the rate it got. Timing is `dumpsys gfxinfo PKG framestats`
+either way.
 <!-- BUILDERBOT:END -->
 
 <!-- BUILDERBOT:IF gpu node:gpu -->
