@@ -123,7 +123,20 @@ def artifact(auth, q, stream, length):
         return {"error": "not this node's job"}, 403
     if j["state"] not in nodes.JOB_ACTIVE:
         return {"error": "the job has ended"}, 409
-    r = workspace.artifact_put(j, q.get("name", [""])[0], stream, length)
+    # A signed build says what signed it (R106 step 4): the route, the
+    # certificate the node verified, and the schemes that verified. Only a
+    # sign job's, and only in the shape it can have.
+    extra = {}
+    if j.get("type") == "sign":
+        cert = q.get("cert", [""])[0].upper()
+        schemes = q.get("schemes", [""])[0]
+        route = q.get("signed", [""])[0]
+        if re.fullmatch(r"[0-9A-F]{64}", cert) and route in ("play", "sideload") \
+                and re.fullmatch(r"[a-z0-9.,]{0,40}", schemes):
+            extra = {"signed": {"route": route, "cert": cert,
+                                "schemes": [x for x in schemes.split(",") if x],
+                                "from": str((j.get("spec") or {}).get("file") or "")}}
+    r = workspace.artifact_put(j, q.get("name", [""])[0], stream, length, extra=extra)
     if not r.get("error"):
         db.audit(auth["principal"], "artifact", j["id"],
                  {"path": r["path"], "sha256": r["sha256"]})

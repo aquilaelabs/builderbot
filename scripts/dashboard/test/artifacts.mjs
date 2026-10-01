@@ -71,6 +71,14 @@ symlinkSync(`${DIR}/ws/alpha/secret.txt`, `${DIR}/ws/alpha/dist/leak.txt`);
   }
   writeFileSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-debug.apk`, 'release');
   utimesSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-debug.apk`, t0, t0);
+  // A build a sign job delivered (R106 step 4), with the provenance the
+  // controller writes for it: what signed it and the certificate.
+  writeFileSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-signed.apk`, 'signed');
+  mkdirSync(`${DIR}/ws/alpha/dist/.provenance`, { recursive: true });
+  writeFileSync(`${DIR}/ws/alpha/dist/.provenance/alpha-1.2.0-signed.apk.json`, JSON.stringify({
+    job: 'j_sign1', node: 'n_x', type: 'sign', at: t0, sha256: 'ab'.repeat(32), path: 'dist/alpha-1.2.0-signed.apk',
+    signed: { route: 'sideload', cert: '6557990CCC68E19D2F4CE5731C8D59F9845D87C9952DF09D30DFF05609488C2D',
+              schemes: ['v2', 'v3'], from: 'alpha-1.2.0-debug.apk' } }));
 }
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
@@ -81,6 +89,17 @@ await page.click(`${row('alpha')} [data-m]`);
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('.artrow', { timeout: 15000 });
+
+// ---- a signed build (R106 step 4) --------------------------------------------
+{
+  const r = await page.$eval('.artrow:has(b:text-is("alpha-1.2.0-signed.apk"))', e => ({
+    pill: !!e.querySelector('.pill.ok'), text: e.textContent.replace(/\s+/g, ' '),
+    copy: !!e.querySelector('[data-artfp]'), sign: !!e.querySelector('[data-artsign]') }));
+  ok(r.pill && /signed with the sideload signing key from alpha-1\.2\.0-debug\.apk, verified v2, v3/.test(r.text)
+     && /SHA-256 65:57:99:0C:CC:68:E1:9D:2F:4C:E5:73:1C:8D:59:F9:84:5D:87:C9:95:2D:F0:9D:30:DF:F0:56:09:48:8C:2D/.test(r.text)
+     && r.copy && !r.sign,
+     `a signed build says so, with the key, what verified and the whole fingerprint to copy, and offers no Sign again (${r.text.slice(0, 120)})`);
+}
 
 // ---- the listing -----------------------------------------------------------
 const names = await page.$$eval('.artrow b', bs => bs.map(b => b.textContent));

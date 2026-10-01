@@ -190,7 +190,7 @@ def _safe_name(name):
     return "/".join(parts)
 
 
-def artifact_put(job, name, stream, length):
+def artifact_put(job, name, stream, length, extra=None):
     """A file a job uploaded, into the project's dist/. {path, size, sha256}
     or {error}. Streamed to a temp file beside the target and renamed, so
     the tab never lists a half-written APK."""
@@ -229,6 +229,8 @@ def artifact_put(job, name, stream, length):
             "source": job.get("source") or {}, "argv": spec.get("argv") or [],
             "requested_by": job.get("requested_by", ""), "at": int(time.time()),
             "sha256": h.hexdigest(), "size": got, "path": "dist/" + rel}
+    # What the job adds about it: a sign job, what signed it (R106).
+    prov.update(extra or {})
     pdir = root / "dist" / ".provenance"
     try:
         (pdir / (rel + ".json")).parent.mkdir(parents=True, exist_ok=True)

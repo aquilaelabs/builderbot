@@ -43,6 +43,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every project has an owner, who can hand it on and make it invite only, so administrators cannot add themselves (BuilderBot's owner always can); people are invited from the project's settings and accept or decline from their bell (b8d747c)
 - A project's owner offers it to someone else, who becomes its owner on accepting from their bell; BuilderBot's owner still hands a project on at once (83d43e6)
 - bb sign signs a build in dist/ with one of the project's keys on its node, behind the project's dial Claude may: Sign a release (ask by default, which waits for the project's owner in their bell); the Artifacts tab offers Sign on an .apk or .aab (00129fe)
+- A signed build's Artifacts row says which key signed it, what verified, and the certificate's whole fingerprint, with Copy for F-Droid for its AllowedAPKSigningKeys (01af12e)
 
 ### Changed
 

@@ -223,7 +223,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
         <div class="artrow">
           <span class="grow">
             <span class="top"><span class="pill">${esc(a.kind)}</span>
-              <b>${esc(a.name)}</b>${a.pinned ? ` <span class="pill on">pinned</span>` : ""}</span>
+              <b>${esc(a.name)}</b>${a.pinned ? ` <span class="pill on">pinned</span>` : ""}${
+              a.prov?.signed ? ` <span class="pill ok">signed</span>` : ""}</span>
             <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}${
               a.path !== a.name ? ` · ${esc(a.path)}` : ""}${
               a.pinned && a.pinned_by ? ` · pinned by ${esc(a.pinned_by)}` : ""}</span>${
@@ -232,7 +233,16 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             a.prov ? `<span class="dim">built by ${esc(a.prov.job)} on ${
               esc((nodesList || []).find(n => n.id === a.prov.node)?.name || a.prov.node || "?")}${
               a.prov.source?.digest ? ` from snapshot ${esc(a.prov.source.digest.slice(7, 19))}` : ""}${
-              a.prov.sha256 ? ` · sha256 ${esc(a.prov.sha256.slice(0, 12))}` : ""}</span>` : ""}</span>
+              a.prov.sha256 ? ` · sha256 ${esc(a.prov.sha256.slice(0, 12))}` : ""}</span>` : ""}${
+            // What signed it (R106 step 4): the key, what verified, and the
+            // certificate's whole fingerprint, which a store's metadata asks
+            // for (F-Droid's AllowedAPKSigningKeys) and a person compares.
+            a.prov?.signed ? `<span class="dim">signed with the ${
+              a.prov.signed.route === "play" ? "Play upload key" : "sideload signing key"}${
+              a.prov.signed.from ? ` from ${esc(a.prov.signed.from)}` : ""}${
+              a.prov.signed.schemes?.length ? `, verified ${esc(a.prov.signed.schemes.join(", "))}` : ""}</span>
+              <span class="artfp">SHA-256 ${esc(a.prov.signed.cert.match(/../g).join(":"))}
+                <button type="button" class="link" data-artfp="${i}" title="the fingerprint as F-Droid's AllowedAPKSigningKeys takes it: lowercase, no colons">Copy for F-Droid</button></span>` : ""}</span>
           <span class="acts">
             ${a.kind === "apk" ? `<button type="button" data-artinstall="${i}"${
                 inst.running || phoneWhy ? " disabled" : ""} title="${
@@ -385,6 +395,12 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                                                        route: b.dataset.route})).json().catch(() => ({}));
       if (j.error){ b.disabled = false; return notify(j.error, true); }
       notify(`signing ${a.name} on the node: it arrives here as ${a.name.replace(/(-unsigned)?\.(apk|aab)$/, "-signed.$2")}`);
+    });
+    list.querySelectorAll("[data-artfp]").forEach(b => b.onclick = async () => {
+      const a = rows[+b.dataset.artfp];
+      const fp = String(a?.prov?.signed?.cert || "").toLowerCase();
+      try{ await navigator.clipboard.writeText(fp); notify(`copied ${a.name}'s signing fingerprint`); }
+      catch(e){ notify(`copy it by hand: ${fp}`, "warn"); }
     });
     list.querySelectorAll("[data-artpin]").forEach(b => b.onclick = async () => {
       const a = rows[+b.dataset.artpin];

@@ -3242,6 +3242,14 @@ refuses naming the setting. Either way it is the same job, and the session
 follows it to the signed file's name. A signing that could not happen (no
 such key, no such build, no node) is refused before anybody is asked.
 
+**What is signed says so.** The node reports what `apksigner verify` (or
+`jarsigner -verify` for a bundle) found: the certificate's SHA-256 and the
+signature schemes that verified. The controller keeps that in the file's
+provenance, and its Artifacts row wears a *signed* tag, says which key and
+from which build, and gives the whole fingerprint with **Copy for F-Droid**,
+which copies it the way F-Droid's `AllowedAPKSigningKeys` takes it (lowercase,
+no colons). A signed file is not offered Sign again.
+
 ### Locking a project
 
 The **padlock** on a project row is the one gate there is, and it carries the

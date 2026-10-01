@@ -97,7 +97,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.127"
+AGENT_VERSION = "0.7.128"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -5482,7 +5482,7 @@ class Agent:
                          "--ks-pass", "env:BB_KS_PASS", "--key-pass", "env:BB_KEY_PASS",
                          "--out", out, aligned], "apksigner sign") is None:
                     return "failed", 1
-                said = step([tools["apksigner"], "verify", "--print-certs", out], "apksigner verify")
+                said = step([tools["apksigner"], "verify", "--verbose", "--print-certs", out], "apksigner verify")
             else:
                 shutil.copyfile(src, out)
                 if who:
@@ -5495,6 +5495,10 @@ class Agent:
                 return "failed", 1
             got = re.search(r"SHA-256 digest:\s*([0-9a-fA-F]{64})", said)
             cert = got.group(1).upper() if got else ""
+            # Which signature schemes verified, as apksigner says it; a
+            # bundle is a jar signature (R106 step 4: the row says so).
+            schemes = ",".join(re.findall(r"Verified using (v\d(?:\.\d)?) scheme[^:]*:\s*true", said)) \
+                if kind == ".apk" else "jar"
             want = str(k.get("sha256") or "").replace(":", "").upper()
             if cert and want and cert != want:
                 job.say("the signed build carries another certificate than the key that was kept\n")
@@ -5502,7 +5506,8 @@ class Agent:
             base = os.path.basename(rel)[:-len(kind)]
             base = base.replace("-unsigned", "") if "-unsigned" in base else base
             name = f"{base}-signed{kind}"
-            st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}", out)
+            st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}&signed={route}"
+                                    f"&cert={cert or want}&schemes={schemes}", out)
             if st != 200 or r.get("error"):
                 job.say(f"could not deliver {name}: {r.get('error') or st}\n")
                 return "failed", 1

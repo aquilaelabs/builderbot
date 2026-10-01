@@ -36,7 +36,8 @@ class Ctl:
         return 200, self.key
 
     def upload(self, path, src, timeout=600):
-        self.got = path.split("name=")[1]
+        self.path = path
+        self.got = path.split("name=")[1].split("&")[0]
         return 200, {"path": "dist/" + self.got, "size": os.path.getsize(src), "sha256": "x"}
 
 
@@ -91,6 +92,9 @@ class Sign(unittest.TestCase):
         self.assertEqual(a.sign(j, {"route": "play", "file": "app-release-unsigned.aab"}), ("succeeded", 0),
                          "".join(j.lines))
         self.assertEqual(a.ctl.got, "app-release-signed.aab")
+        # ...and its upload says what signed it, for the Artifacts row.
+        self.assertIn("&signed=play&cert=", a.ctl.path)
+        self.assertTrue(a.ctl.path.endswith("&schemes=jar"), a.ctl.path)
         self.assertEqual(j.outputs[0]["signed"], "play")
         self.assertEqual(os.listdir(os.path.join(self.tmp, "data", "sign")), [])
         self.assertNotIn("pw123456", "".join(j.lines))

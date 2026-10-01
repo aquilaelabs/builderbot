@@ -45,3 +45,37 @@ class SigningKey(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SignedArtifact(unittest.TestCase):
+    """A sign job's upload says what signed it (step 4), in the shape it can
+    have; any other job's says nothing of the kind."""
+
+    def setUp(self):
+        self.put = []
+        self.was = (channel.nodes.job, channel.workspace.artifact_put, channel.db.audit)
+        self.jobs = {"j_s": {"id": "j_s", "type": "sign", "node": "n_1", "state": "running",
+                             "project": "app", "spec": {"route": "sideload", "file": "app.apk"}},
+                     "j_e": {"id": "j_e", "type": "exec", "node": "n_1", "state": "running",
+                             "project": "app", "spec": {}}}
+        channel.nodes.job = lambda jid, with_log=True: self.jobs.get(jid)
+        channel.workspace.artifact_put = lambda j, name, stream, length, extra=None: (
+            self.put.append(extra) or {"path": "dist/" + name, "sha256": "x"})
+        channel.db.audit = lambda *a: None
+
+    def tearDown(self):
+        channel.nodes.job, channel.workspace.artifact_put, channel.db.audit = self.was
+
+    def send(self, job, **q):
+        query = {"job": [job], "name": ["app-signed.apk"]} | {k: [v] for k, v in q.items()}
+        return channel.artifact({"kind": "node", "node": "n_1", "principal": "node:n_1"}, query, None, 1)
+
+    def test_a_sign_jobs_upload_says_what_signed_it(self):
+        self.send("j_s", signed="sideload", cert="ab" * 32, schemes="v2,v3")
+        self.assertEqual(self.put[-1], {"signed": {"route": "sideload", "cert": "AB" * 32,
+                                                   "schemes": ["v2", "v3"], "from": "app.apk"}})
+
+    def test_nothing_else_is_taken_for_it(self):
+        self.send("j_e", signed="sideload", cert="ab" * 32, schemes="v2")
+        self.send("j_s", signed="sideload", cert="not-a-digest", schemes="v2")
+        self.assertEqual(self.put, [{}, {}])

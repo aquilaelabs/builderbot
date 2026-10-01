@@ -1312,6 +1312,10 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 /* A project's signing keys (R106): a row per route, its form when opened,
    and its actions in one line. */
 .rnsign{padding:6px 0;border-top:1px solid var(--line)}
+/* A signed build's certificate fingerprint on its Artifacts row (R106):
+   the whole of it, wrapping on a phone rather than cut off. */
+.artfp{font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
+.artfp .link{background:none;border:0;color:var(--warn);text-decoration:underline;cursor:pointer;padding:0 0 0 8px;font:inherit}
 .rnsign:first-child{border-top:0}
 .rnsignform{display:grid;gap:6px;margin:6px 0}
 .rnsignbar{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center}
