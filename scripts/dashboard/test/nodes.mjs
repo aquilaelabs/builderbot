@@ -1815,8 +1815,15 @@ await page.fill('#ndBody #ndEnUser', 'joe');
 // Read back before the press: a run under load once minted joesbox for bb
 // (B331), and whether the field still held joe at the press is the fact
 // that says where to look.
-ok(await page.$eval('#ndBody #ndEnUser', i => i.value) === 'joe' && await page.$eval('#ndBody #ndEnName', i => i.value) === 'joesbox',
-   'the enroll dialog holds the name and the account typed into it');
+{
+  // Said with what was read (B331, 1 Oct): a sighting under load had the
+  // account right at Mint and the name apparently not, and this check
+  // printed neither.
+  const held = await page.$eval('#ndBody', b => ({ name: b.querySelector('#ndEnName')?.value,
+    user: b.querySelector('#ndEnUser')?.value, form: [...b.querySelectorAll('input')].map(i => i.id).join(',') }));
+  ok(held.user === 'joe' && held.name === 'joesbox',
+     `the enroll dialog holds the name and the account typed into it (${JSON.stringify(held)})`);
+}
 await page.click('#ndBody #ndEnGo');
 await page.waitForSelector('#ndBody .ndtoken', { timeout: 15000 });
 ok(await page.$eval('#ndBody .ndtoken', el => /--user joe/.test(el.textContent)),
