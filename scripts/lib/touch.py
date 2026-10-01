@@ -28,6 +28,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from typing import NoReturn
 
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
@@ -49,6 +50,33 @@ def adb():
 def shell(a, *words):
     r = subprocess.run([a, "shell", *words], capture_output=True, text=True, timeout=30, check=False)
     return r.stdout or ""
+
+
+def ensure_root(a):
+    """Make the device's adb shell root, which sendevent needs, or say why not.
+
+    A google_apis emulator image is a userdebug build: adbd starts as
+    `shell` and `adb root` makes it root until the next cold boot. A quick
+    boot restores whatever the snapshot held, so a session that once ran
+    `adb root` saw every later boot come up root, and the first cold boot
+    (the card arriving changed the GPU mode, 1 Oct) broke this verb with
+    "Permission denied" (reports 44 and 45, Shebang-DevBoard). A user build
+    (a phone, a Play Store image) has no root to give."""
+    uid = shell(a, "id", "-u").strip()
+    if uid == "0" or not uid.isdigit():
+        return
+    if shell(a, "getprop", "ro.debuggable").strip() != "1":
+        die("this device's adb shell is not root and its build will not make it so "
+            "(a user build: a phone, or a Play Store image), and sendevent needs root; "
+            "adb shell input tap and swipe work without it, with adb's own timing")
+    sys.stderr.write("[builderbot] adb was not root here: running adb root, as bb emu start does\n")
+    subprocess.run([a, "root"], capture_output=True, text=True, timeout=30, check=False)
+    subprocess.run([a, "wait-for-device"], capture_output=True, text=True, timeout=60, check=False)
+    for _ in range(40):
+        if shell(a, "id", "-u").strip() == "0":
+            return
+        time.sleep(0.5)
+    die("adb root did not take: the shell is still not root, and sendevent needs it")
 
 
 def _order(dev):
@@ -135,6 +163,7 @@ def main(argv):
     if verb == "hold" and not opts["ms"]:
         die("hold takes --ms N: how long the finger stays down")
     a = adb()
+    ensure_root(a)
     dev, xmax, ymax = panel(a)
     w, h, rot = screen(a)
     ev = lambda t, c, v: f"sendevent {dev} {t} {c} {v}"  # noqa: E731

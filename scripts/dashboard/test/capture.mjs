@@ -132,6 +132,10 @@ case "$1 $2 $3" in
   "shell getevent -p") printf 'add device 1: /dev/input/event3\n  name:     "qwerty2"\n  events:\n    KEY (0001): 0001\nadd device 2: /dev/input/event2\n  name:     "virtio_input_multi_touch_1"\n  events:\n    ABS (0003): 002f  : value 0, min 0, max 9, fuzz 0, flat 0, resolution 0\n                0035  : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0\n                0036  : value 0, min 0, max 32767, fuzz 0, flat 0, resolution 0\n' ;;
   "shell wm size") echo "Physical size: 1080x2400" ;;
   "shell dumpsys input") cat "${A}/rotation.txt" ;;
+  "shell id -u") cat "${A}/uid" 2>/dev/null || echo 0 ;;
+  "shell getprop ro.debuggable") echo 1 ;;
+  "root  ") echo 0 > "${A}/uid"; echo root >> "${A}/rooted" ;;
+  "wait-for-device  ") : ;;
   "shell "*) printf '%s\n' "$2" >> "${A}/log" ;;
 esac
 exit 0
@@ -157,6 +161,14 @@ exit 0
   ok(glide.r.status === 0 && moves === 20 && glide.sent[8] === 'sleep 0.15' && glide.sent.at(-4) === 'sleep 0.3'
      && /about 690 ms/.test(glide.r.stdout),
      `a glide moves in 25px steps 12 ms apart, holding first and last where asked (${moves} moves; ${glide.r.stdout.trim()})`);
+  // A fresh cold boot's adbd runs as shell; sendevent needs root, which a
+  // debuggable image grants on adb root, so touch asks for it first
+  // (reports 44 and 45: a quick boot had been restoring a root adbd).
+  writeFileSync(`${A}/uid`, '2000\n');
+  const rooted = touch('tap', '540', '1200');
+  ok(rooted.r.status === 0 && readFileSync(`${A}/rooted`, 'utf8').trim() === 'root'
+     && rooted.sent[0] === 'sendevent /dev/input/event2 3 47 0' && /running adb root/.test(rooted.r.stderr),
+     `a shell that is not root is made root first on a debuggable image, and the tap goes through (${(rooted.r.stderr || '').trim().slice(0, 80)})`);
   writeFileSync(`${A}/rotation.txt`, '  SurfaceOrientation: 1\n');
   const turned = touch('tap', '2399', '0');
   ok(turned.r.status === 0 && turned.sent.includes('sendevent /dev/input/event2 3 53 32767') && turned.sent.includes('sendevent /dev/input/event2 3 54 32767')

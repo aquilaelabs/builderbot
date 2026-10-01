@@ -58,5 +58,29 @@ class Panel(unittest.TestCase):
                 os.environ["BB_TOUCH_DEV"] = was_env
 
 
+class Root(unittest.TestCase):
+    """sendevent needs a root shell (reports 44 and 45): already root goes
+    straight on, a build that will not give it is refused with what does
+    work instead, and an answer that is not a uid is not second-guessed."""
+
+    def run_with(self, answers):
+        was = touch.shell
+        touch.shell = lambda a, *w: answers.get(" ".join(w), "")
+        try:
+            touch.ensure_root("adb")
+        finally:
+            touch.shell = was
+
+    def test_root_goes_straight_on(self):
+        self.run_with({"id -u": "0\n"})
+
+    def test_a_user_build_is_refused_with_the_way_that_works(self):
+        with self.assertRaises(SystemExit):
+            self.run_with({"id -u": "2000\n", "getprop ro.debuggable": "0\n"})
+
+    def test_no_uid_is_left_alone(self):
+        self.run_with({})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -169,6 +169,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A dialog or a document pane that scrolls shows a soft shadow on each edge with more past it, and a dialog opens at its top every time instead of where it was last left. (119b0a6)
 - bb capture reel of the emulator catches a typed letter, a key's preview and a glide trail: its change threshold was fifty times too coarse. bb emu touch lands on the display's own touch device, and bb emu status and start name an emulator another of your sessions is holding. (03fe116)
 - A node's Install system packages no longer reads as failed on its Toolchains row when it worked, and when it did fail the row says why in the package manager's own words (f76cf49)
+- bb emu start makes adb root on every boot of a debuggable emulator image, and bb emu touch asks for root itself before it sends a touch, so a cold boot no longer leaves touch failing with Permission denied (b8ba848)
 
 ### Security
 

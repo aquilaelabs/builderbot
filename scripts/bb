@@ -993,6 +993,26 @@ cmd_emu() {
             done
             emu_booted "$serial" \
                 || die "the emulator appeared as ${serial} but had not booted within ${ANDROID_BOOT_TIMEOUT:-180}s; bb emu log has what it said"
+            # Root, every boot, where the build allows it: bb emu touch's
+            # sendevent and an am start of an unexported activity need it. A
+            # quick boot restores whatever the snapshot held, so this used to
+            # be root only after a session had once run adb root itself, and
+            # a cold boot took it away (reports 44 and 45, 1 Oct). A user
+            # build (a Play Store image) has none to give, and says nothing.
+            if [ "$(adb -s "$serial" shell getprop ro.debuggable 2>/dev/null | tr -d '\r')" = 1 ] \
+                && [ "$(adb -s "$serial" shell id -u 2>/dev/null | tr -d '\r')" != 0 ]; then
+                adb -s "$serial" root >/dev/null 2>&1 || true
+                adb -s "$serial" wait-for-device >/dev/null 2>&1 || true
+                local r=0
+                while [ "$r" -lt 20 ] && [ "$(adb -s "$serial" shell id -u 2>/dev/null | tr -d '\r')" != 0 ]; do
+                    sleep 0.5; r=$((r + 1))
+                done
+                if [ "$(adb -s "$serial" shell id -u 2>/dev/null | tr -d '\r')" = 0 ]; then
+                    log "adb is root on ${serial} (a debuggable image: bb emu touch and am start of any activity work)"
+                else
+                    warn "adb root did not take on ${serial}: bb emu touch will say so"
+                fi
+            fi
             log "emulator is up as ${serial}, booted"
             adb devices
             ;;
