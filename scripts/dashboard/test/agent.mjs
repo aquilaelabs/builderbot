@@ -1209,10 +1209,20 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const get = async p => (await fetch(URL.replace(/\/$/, '') + p, { headers: auth })).json();
       const live = () => get('/api/live');
       const tok = async () => (await get('/api/revs?p=')).live;
-      const t0 = await tok();
-      await tell('◐ Reading the tests');
-      const busy = await live();
-      ok((busy.claude_with.alpha || []).includes('test') && (busy.claude_busy.alpha || []).includes('test') && await tok() !== t0,
+      // The suite's own agent is running and heartbeats its own report of
+      // this node's sessions, which can land between a tell and the reads
+      // after it (B427): idle, read, busy, read, and once more when a
+      // heartbeat came between, which leaves the token as the agent had it.
+      let busy = {}, moved = false;
+      for (let tries = 0; tries < 3 && !moved; tries++){
+        await tell('Claude Code');
+        const t0 = await tok();
+        await tell('◐ Reading the tests');
+        busy = await live();
+        moved = (busy.claude_with.alpha || []).includes('test') && (busy.claude_busy.alpha || []).includes('test')
+          && await tok() !== t0;
+      }
+      ok(moved,
          `a node says its sessions changed and /api/live shows the session working at once, the revs token moving with it (${JSON.stringify(busy).slice(0, 80)})`);
       await tell('Claude Code');
       const idle = await live();
