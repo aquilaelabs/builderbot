@@ -172,7 +172,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 ## Building locally instead of pulling
 
 ```bash
-git clone https://github.com/Stencil-Projects/BuilderBot.git && cd BuilderBot
+git clone https://github.com/aquilaelabs/BuilderBot.git && cd BuilderBot
 cp .env.example .env && nano .env
 docker compose build && docker compose up -d
 ```

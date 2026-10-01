@@ -56,7 +56,7 @@ TIMEOUT = 30
 # Some of these hosts hand a bare urllib a different answer, or none: go.dev
 # serves the plain version file happily, github's release redirect does not
 # mind, but it costs nothing to look like something that reads web pages.
-UA = {"User-Agent": "builderbot-sdk/1 (+https://github.com/Stencil-Projects/BuilderBot)"}
+UA = {"User-Agent": "builderbot-sdk/1 (+https://github.com/aquilaelabs/BuilderBot)"}
 
 
 def die(msg):

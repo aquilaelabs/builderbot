@@ -76,7 +76,7 @@ at the end before doing it.
 
 ## Shared step 2: log the Unraid host into GHCR
 
-The image auto-publishes to `ghcr.io/stencil-projects/builderbot` on every
+The image auto-publishes to `ghcr.io/aquilaelabs/builderbot` on every
 push to `main` (plus a weekly freshness rebuild). While the package is
 private the Unraid host must authenticate to pull it; a public package needs
 no login, and this step can be skipped.
@@ -138,7 +138,7 @@ curl -fsSL \
   -H "Authorization: Bearer <TOKEN_WITH_CONTENTS_READ>" \
   -H "Accept: application/vnd.github.raw" \
   -o /boot/config/plugins/dockerMan/templates-user/my-builderbot.xml \
-  https://api.github.com/repos/Stencil-Projects/BuilderBot/contents/unraid/builderbot.xml
+  https://api.github.com/repos/aquilaelabs/BuilderBot/contents/unraid/builderbot.xml
 ```
 
 **Or copy it out of a clone**, if you already cloned the repo for Option B.
@@ -359,7 +359,7 @@ metadata before it reached any code.
    STACK=/boot/config/plugins/compose.manager/projects/builderbot
    mkdir -p "$STACK"
    cd /mnt/user/appdata
-   git clone https://<YOUR_PAT>@github.com/Stencil-Projects/BuilderBot.git
+   git clone https://<YOUR_PAT>@github.com/aquilaelabs/BuilderBot.git
    cp BuilderBot/docker-compose.yml "$STACK"/
    cp BuilderBot/.env.example "$STACK"/.env
    nano "$STACK"/.env && chmod 600 "$STACK"/.env

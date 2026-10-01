@@ -95,6 +95,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Artifacts tab keeps the newest three dev builds of each kind in dist/ and removes older ones as new ones arrive; a release, or a file with no version in its name, is never removed. (98162c3)
 - Two nodes that share a toolchain store install different toolchains at the same time: only a job touching the same toolchain (the Android SDK counting as one) waits, and a check, the NVIDIA driver, the container toolkit and system packages wait for nothing on another node (ffa5c6a)
 - Changing a project's token, authentication or address no longer waits for its terminals to close; only a new name does (4b6df9c)
+- The image is published as ghcr.io/aquilaelabs/builderbot, after the organization's rename: the Unraid template and docker-compose.yml pull it from there (4b4875e)
 
 ### Removed
 

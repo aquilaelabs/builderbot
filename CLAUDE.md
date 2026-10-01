@@ -33,7 +33,7 @@ operator opens with *"it finally built"*; it exists because reconstructing that
 by hand cost four commands and still could not see the failed builds.
 
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
-  builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
+  builds and pushes `ghcr.io/aquilaelabs/builderbot` on pushes to `main`
   that touch the image's inputs (Dockerfile, `scripts/`, `config/`), plus a
   weekly cron rebuild, so the base image stays fresh. Claude Code is in
   neither the image nor the boot: a session runs on a node, which carries its
