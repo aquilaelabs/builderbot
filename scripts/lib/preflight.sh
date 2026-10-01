@@ -81,6 +81,18 @@ cmd_tests_preflight() {
             fi
         fi
     fi
+    # Only what the harness has a file for: the map counts a python unit
+    # file (test_x.py) as a test, rightly for other projects, and named
+    # unit/test_token_keep.py for a change to bbapi.py, which the harness
+    # then failed as a suite it could not find (B420). The unit tier above
+    # already runs every one of those.
+    if [ "${suites[*]:-}" != ALL ] && [ "${#suites[@]}" -gt 0 ]; then
+        local kept=() s
+        for s in "${suites[@]}"; do
+            [ -f "${BB_REPO:-$PWD}/scripts/dashboard/test/${s}.mjs" ] && kept+=("$s")
+        done
+        suites=("${kept[@]}")
+    fi
     # The checks the house rules ask for before handing back.
     # design is uniform.mjs whole, about four minutes. It runs when a file
     # that carries style changed (the stylesheet lives in index.html, the
