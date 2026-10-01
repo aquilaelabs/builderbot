@@ -426,6 +426,8 @@ function rnLoadAuth(name){
   rnAuthNow = rnAuthPick = rnAuthOpts = null;
   rnClearToken = false;
   $("rnAuthField").hidden = true;
+  $("rnAddrField").hidden = true;
+  $("rnAddr").value = "";
   if (rnMode !== "git") return;
   fetch("/api/project-auth", {method:"POST",
     headers:{"Content-Type":"application/json"},
@@ -435,6 +437,11 @@ function rnLoadAuth(name){
       if (rnFor !== name || j.error) return;   // closed, or reopened elsewhere
       rnAuthOpts = j;
       rnAuthNow = rnAuthPick = j.now || null;
+      // Any project with a remote, a read-only clone included: its owner can
+      // be renamed too, and it has nothing else here to save.
+      $("rnAddr").value = j.url || "";
+      $("rnAddrField").hidden = !j.url;
+      if (j.url) $("rnGo").hidden = false;
       rnDrawAuth();
     })
     .catch(() => {});                          // the rename itself still works
@@ -543,6 +550,10 @@ async function rnSubmit(){
   // A typed token replaces rather than clears, so the two never both go: the
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
+  // Sent only when it was changed: "" leaves the remote where it points.
+  const addrNow = $("rnAddr").value.trim();
+  const address = !$("rnAddrField").hidden && rnAuthOpts?.url && addrNow && addrNow !== rnAuthOpts.url
+    ? addrNow : "";
   const model = rnModelPick(), effort = $("rnEffort").value;
   const node = $("rnNode").value;
   const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
@@ -639,7 +650,7 @@ async function rnSubmit(){
   // refused outright while a terminal is open, so a settings-only save must
   // not make one: it would fail on a project you were sitting in.
   const renaming = to.trim() !== name;
-  const needRename = renaming || !!token || !!auth || clear_token;
+  const needRename = renaming || !!token || !!auth || clear_token || !!address;
   $("rnGo").disabled = true; $("rnGo").textContent = "Saving…";
   const stop = m => { $("rnGo").disabled = false; $("rnGo").textContent = "Save";
                       rnAskReset(); return fail(m); };
@@ -679,7 +690,7 @@ async function rnSubmit(){
       refresh();
       return;
     }
-    const r = await postJSON("/api/rename", {name, to, token, auth, clear_token});
+    const r = await postJSON("/api/rename", {name, to, token, auth, clear_token, address});
     const j = await r.json();
     if (j.error) return stop(j.error);
     closeRename();
@@ -688,7 +699,9 @@ async function rnSubmit(){
     notify(j.failed?.length
       ? `${name} is now ${j.name}, but ${j.failed.length} thing(s) did not `
         + `move: ${j.failed.join("; ")}`
-      : renaming ? `${name} is now ${j.name}` : `${name} saved`,
+      : renaming ? `${name} is now ${j.name}`
+      : address ? `${name}: ${(j.moved || []).find(m => /points at/.test(m)) || "saved"}`
+      : `${name} saved`,
       !!j.failed?.length);
   }catch(e){ return stop("save failed: " + e); }
   refresh();

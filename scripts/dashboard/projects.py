@@ -415,6 +415,9 @@ def rename(req):
     # request that did would be asking to write a credential and delete it in
     # the same breath. The write is the intention worth honoring.
     clear = bool(req.get("clear_token")) and not token
+    # The same repository's new address, after its owner was renamed on the
+    # host (set_address); "" leaves the remote where it points.
+    address = _field(req, "address").strip()
     if not old or not PROJECT_NAME.fullmatch(old):
         return {"error": "unknown project"}, 400
     if auth and auth not in ("https", "ssh", "none"):
@@ -431,7 +434,7 @@ def rename(req):
         # Not an error when a token or an auth switch came with it: changing
         # the credential without moving the directory is a thing somebody will
         # want, and the dialog offers all three at once precisely so they can.
-        if not token and not auth and not clear:
+        if not token and not auth and not clear and not address:
             return {"error": f"{old} is already its name"}, 400
         moved, failed = [], []
         if token:
@@ -456,6 +459,14 @@ def rename(req):
             forget_token(old)
             unscope(src)
             moved.append("its access token, removed")
+        # The address before the switch: set_auth rebuilds an https remote
+        # from the path the remote has, which should be the new one.
+        if address:
+            msg, err = set_address(old, src, address)
+            if err:
+                return {"error": err}, 400
+            if msg:
+                moved.append(msg)
         # After the token, always: switching to https needs the token that the
         # same submit may have just written.
         if auth:
@@ -557,8 +568,14 @@ def rename(req):
         # token may still have a helper somebody set by hand, and a rename is
         # not the moment to take it away.
         unscope(dest)
-    # Last, and under the new name: set_auth reads and writes the push record,
-    # which only moved a few lines above.
+    # Last, and under the new name: set_address and set_auth read and write
+    # the push record, which only moved a few lines above.
+    if address:
+        msg, err = set_address(new, dest, address)
+        if err:
+            failed.append(f"the address: {err}")
+        elif msg:
+            moved.append(msg)
     if auth:
         msg, err = set_auth(new, dest, auth)
         if err:
@@ -798,12 +815,96 @@ def auth_options(project, dest):
     """
     now = remote_auth(dest, project)
     return {"now": now,
+            # As written, for the address field: a deploy key's alias shows
+            # as the alias, which is what the field will keep.
+            "url": origin_url(dest),
             "token": bool(token_helper(project)),
             # Either it is on ssh already, or it was and we kept the URL. A
             # project that has only ever been https has no alias and no key
             # picked, and offering "deploy key" would be offering to build
             # one, which is the clone dialog's job, not this one's.
             "ssh": now == "ssh" or bool(_remembered_ssh(project))}
+
+
+def _same_repository(dest, url):
+    """"" when the repository at `url` shares this project's history, else why
+    not. Its branch tips are asked for (ls-remote, under the repository's own
+    credential config) and one of them has to be a commit this project
+    already has: an owner renamed on the host keeps every commit, while a
+    typo or another repository has none of them. A fork shares them too,
+    which is why this is the operator's control and says what it checked."""
+    r = run(["git", "-C", str(dest), "ls-remote", "--heads", "--", url],
+            timeout=60, env=_git_env(), split_err=True)
+    if r["code"] != 0:
+        said = (r["err"] or r["out"]).strip().splitlines()
+        return f"could not reach {url}: " + (said[-1][:200] if said else f"git said nothing (exit {r['code']})")
+    tips = [ln.split()[0] for ln in r["out"].splitlines() if len(ln.split()) == 2]
+    if not tips:
+        return (f"{url} has no branches, so nothing shows it is this repository; "
+                "an empty repository is linked with Unlink and Link instead")
+    for sha in tips:
+        if run(["git", "-C", str(dest), "cat-file", "-e", f"{sha}^{{commit}}"], timeout=15)["code"] == 0:
+            return ""
+    return (f"the repository at {url} shares no commit with this project, so it is not "
+            "this repository at a new address; a different repository is linked with "
+            "Unlink and Link")
+
+
+def set_address(project, dest, url):
+    """Point origin at the same repository's new address. (message, error).
+
+    For an owner or an organization renamed on the host: the host redirects
+    the old address only until somebody claims the old name, and until this
+    the only way to move was Unlink, which takes the token and the push
+    rights with it, or `git remote set-url`, after which the relay refused
+    every push because the rights name the old path. So the path changes and
+    nothing else: the remote keeps its form (https, ssh, or a deploy key's
+    alias, which is named after the key and still reaches the same host),
+    the token stays filed under the host it always was, and the push grant
+    and the remembered ssh address move with the path. Refused for another
+    host, for a repository another project may push to, and for one that
+    shares no commit with this project."""
+    now = origin_url(dest)
+    if not now:
+        return "", "this project has no origin remote to point anywhere else"
+    if busy_name() == project:
+        return "", f"a job is working on {project}; let it finish first"
+    old_path = repo_path_of(now)
+    got = forges.parse(url)
+    if not got or not old_path:
+        return "", ("not a repository address; use https://host/owner/repo, "
+                    "git@host:owner/repo.git or ssh://git@host/owner/repo.git")
+    new_path = got["path"]
+    host = (forges.host_of(now) or "").lower()
+    if (forges.host_of(url) or got["host"] or "").lower() != host:
+        return "", (f"that address is on another host than {host}: a repository moved to "
+                    "another host is linked again with Unlink and Link")
+    if new_path == old_path:
+        return "", ""
+    holder = push_holder(host, new_path.lower())
+    if holder and holder != project:
+        return "", f"{holder} already pushes to {host}/{new_path}, and one project pushes to a repository"
+    # The same remote with its path replaced: the form, the user and an
+    # alias stay as they were.
+    i = now.rfind(old_path)
+    moved_to = now[:i] + new_path + now[i + len(old_path):]
+    why = _same_repository(dest, moved_to)
+    if why:
+        return "", why
+    r = run(["git", "-C", str(dest), "remote", "set-url", "origin", moved_to], timeout=15)
+    if r["code"] != 0:
+        return "", f"could not rewrite the remote: {r['out'].strip()[:200]}"
+    d = load_push()
+    rec = d.get(project)
+    if isinstance(rec, dict):
+        rec["repo"] = new_path.lower()
+        ssh = rec.get("ssh_url") or ""
+        j = ssh.rfind(old_path)
+        if j >= 0:
+            rec["ssh_url"] = ssh[:j] + new_path + ssh[j + len(old_path):]
+        save_push(d)
+    return (f"it now points at {host}/{new_path}"
+            + ("; its push rights and credentials came with it" if isinstance(rec, dict) else "")), ""
 
 
 def set_auth(project, dest, mode):

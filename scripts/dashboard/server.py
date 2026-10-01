@@ -5819,7 +5819,14 @@ class Handler(BaseHTTPRequestHandler):
         name = req.get("name", "")
         if self._refused("rename", name):
             return
-        if (busy := project_busy(name, "rename")):
+        # Only a new name moves the directory a terminal or a container
+        # holds. A token, the authentication or the address (the same
+        # submit, same name) changes .git/config and the store, which a
+        # running session reads on its next push, so it is not held up by
+        # one: the address after an owner's rename on the host is changed
+        # with sessions open.
+        moving = projects.sanitize_name(str(req.get("to") or name)) != name
+        if moving and (busy := project_busy(name, "rename")):
             return self._json({"error": busy}, 409)
         return self._json(*projects.rename(req))
 

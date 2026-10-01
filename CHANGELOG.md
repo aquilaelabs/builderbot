@@ -37,6 +37,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - An artifact can be pinned on the Artifacts tab: a pinned build is kept whatever builds come after it, and the row says who pinned it. (37366e3)
 - How many dev builds of each kind the Artifacts tab keeps is a project setting, Dev builds kept in the project's settings: 3 unless changed, and 0 keeps them all (d2405b8)
 - A node with an NVIDIA card shows two more meters under Health on the Nodes tab: gpu, how busy the card is, and vram, how much of its own memory is taken, read from the driver on every heartbeat (6179f03)
+- A project's remote dialog has a Repository address: after renaming your account or organization on the host, the new address keeps its token, deploy key and push rights; another host, or a repository without this project's commits, is refused (4b6df9c)
 
 ### Changed
 
@@ -93,6 +94,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb build on a node names what it puts in dist/ with the project and its version, as shipped output should be, and the briefing says what bb build and bb test give a session over running the command by hand. (ed92efa)
 - The Artifacts tab keeps the newest three dev builds of each kind in dist/ and removes older ones as new ones arrive; a release, or a file with no version in its name, is never removed. (98162c3)
 - Two nodes that share a toolchain store install different toolchains at the same time: only a job touching the same toolchain (the Android SDK counting as one) waits, and a check, the NVIDIA driver, the container toolkit and system packages wait for nothing on another node (ffa5c6a)
+- Changing a project's token, authentication or address no longer waits for its terminals to close; only a new name does (4b6df9c)
 
 ### Removed
 

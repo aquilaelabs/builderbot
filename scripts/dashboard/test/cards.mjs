@@ -1477,6 +1477,23 @@ ok(await page.$eval('#rnDelete', e => e.hidden), 'the chain\'s door has no Delet
 await page.waitForSelector('#rnAuthField:not([hidden])', { timeout: 8000 });
 ok(await page.$eval('#rnTokenClear', b => b.hidden),
    'a project with no token stored is offered nothing to clear');
+// The address, for the same repository after its owner is renamed on the
+// host: filled from the remote as written, sent only when changed, and a
+// refusal said in the dialog with the remote left where it was.
+const addrWas = await page.$eval('#rnAddr', e => e.value);
+ok(!await page.$eval('#rnAddrField', e => e.hidden) && /alpha/.test(addrWas),
+   `the chain's door shows where the remote points, to change after a rename on the host (${addrWas})`);
+await page.fill('#rnAddr', 'https://elsewhere.example/someone/alpha.git');
+await page.click('#rnGo');
+await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 10000 });
+const addrErr = await page.$eval('#rnErr', e => e.textContent);
+ok(/another host/.test(addrErr) && !await page.$eval('#rnmodal', e => e.hidden),
+   `...an address on another host is refused in the dialog, which stays open (${addrErr.slice(0, 80)})`);
+const addrAfter = await api('/api/project-auth', { name: 'alpha' });
+ok(addrAfter.body.url === addrWas, '...and the remote still points where it did');
+await page.fill('#rnAddr', addrWas);
+await page.evaluate(() => { document.getElementById('rnErrWrap').hidden = true; rnAskReset();
+  const g = document.getElementById('rnGo'); g.disabled = false; g.textContent = 'Save'; });
 
 // The remaining states need a project holding both credentials, which no
 // fixture here does, so the answer the dialog was given is set directly and

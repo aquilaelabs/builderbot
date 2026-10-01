@@ -830,9 +830,10 @@ lives in its body. The cards:
   Every repo wears a chain icon beside its eye, and it is the **remote**
   whichever state the project is in: for one with **no remote at all** it is
   **link**, and for one that already has a remote it opens that project's
-  remote settings: the access token, which credential git reaches for, and
-  **Unlink**, all described under
-  [An access token for one project](#an-access-token-for-one-project) and
+  remote settings: the access token, which credential git reaches for, the
+  repository's address, and **Unlink**, all described under
+  [An access token for one project](#an-access-token-for-one-project),
+  [A new address for the same repository](#a-new-address-for-the-same-repository) and
   [Unlinking](#unlinking).
   Linking asks **which host**: GitHub, Gitea, Forgejo, Codeberg, GitLab,
   Bitbucket, or another git host, because a hostname does not say what is
@@ -3162,7 +3163,35 @@ The deploy-key alias in `~/.ssh/config` stays as well. It is named after the
 
 Unlinking is also **how a project moves from one host to another**: linking
 refuses a repository that already has a remote, so this is the first half of
-the move and pointing it at the new host is the second.
+the move and pointing it at the new host is the second. The same repository
+at a new address on the same host is not a move, and needs no unlinking:
+
+### A new address for the same repository
+
+Renaming your account or an organization on the host changes every
+repository's address under it. The host redirects the old one only until
+somebody claims the old name, so the remote should follow. **Repository
+address**, in the same dialog, is where: type the new address and Save.
+
+Only the path changes. The remote keeps its form (https, ssh, or a deploy
+key's alias, which is named after the key and reaches the same host), the
+access token stays filed under the host it always was, and the push grant
+moves to the new path, so pushing carries on with nothing typed again.
+Before this the push rights still named the old path, and the relay refused
+every push to a remote pointed at the new one by hand.
+
+Saving asks the new address for its branches and needs one of them to be a
+commit this project already has: a renamed owner keeps every commit, while a
+typo or another repository has none. Refused, with the remote left where it
+was: an address on another host, a repository another project may push to,
+and one that shares no history. A fork shares history too, so this checks
+that it is the same history, not the same repository on the host's books;
+that difference is why it is the administrator's control.
+
+Changing it does not wait for the project's terminals to close: the address,
+like the token and the authentication switch, is `.git/config` and the
+store, which a running session reads on its next push. Only a new name, which
+moves the directory, still asks for them to be closed first.
 
 ### Locking a project
 

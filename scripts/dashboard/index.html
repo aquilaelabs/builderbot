@@ -3815,6 +3815,15 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint" id="rnAuthHint"></div>
     </div>
+    <!-- Where the remote points, for the same repository at a new address:
+         an owner or an organization renamed on the host. Before this the
+         way to move was Unlink, which takes the token and the push rights
+         with it (projects.set_address). -->
+    <div class="field" id="rnAddrField" hidden>
+      <label for="rnAddr">Repository address<span class="help" data-tip="the same repository's new address after its owner was renamed on the host; its token, key and push rights move with it" tabindex="0">?</span></label>
+      <input id="rnAddr" type="text" autocomplete="off" spellcheck="false" inputmode="url">
+      <div class="hint" id="rnAddrHint">Change it after renaming your account or organization on the host. Saving checks it is this repository: another one is refused.</div>
+    </div>
     <!-- The project's node: where everything it does on a node goes:
          containers, builds, tests, CI, emulation. One setting, by decision
          (docs/nodes.md §13): per-role pickers were more control than anybody
