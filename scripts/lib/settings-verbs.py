@@ -115,7 +115,10 @@ def show():
                        ("Fill in build and test", "settings"), ("Add to the design", "design")):
         print(f"    Claude may: {label:<28} {gate.get(key) or 'auto'}")
     for label, key, dflt in (("Run its container", "devbuild", "deny"),
-                             ("Report BuilderBot bugs", "report", "auto")):
+                             ("Report BuilderBot bugs", "report", "auto"),
+                             # R106: signing a build, and its keys and mapping.
+                             ("Sign a release", "sign", "ask"),
+                             ("Manage signing keys", "keys", "ask")):
         print(f"    Claude may: {label:<28} {rec.get(key) or dflt}")
 
 
