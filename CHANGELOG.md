@@ -187,6 +187,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - tools/build-image-here.sh tags the image the running builderbot container uses, asked of docker, so a renamed image name in the repository can no longer leave Apply recreating it on the old build (0384221)
 - On the Nodes tab, a VM catalog that arrives after its dialog was closed no longer replaces the Enroll form, and what was typed into it, with the VM form (9c3a0e4)
 - bb settings lists Claude may: Sign a release and Manage signing keys with the other dials (8c51217)
+- bb emu list answers in about a second and bb emu start picks its AVD without a minute and a half's pause: both read the AVDs' own files instead of avdmanager, which scanned the whole shared SDK first (7dca24a)
 
 ### Security
 

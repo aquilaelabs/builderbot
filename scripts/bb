@@ -680,7 +680,17 @@ cmd_login() {
 }
 
 
-avd_exists() { avdmanager list avd 2>/dev/null | grep -q "Name: ${1}$"; }
+# The AVDs, read from their own files rather than from avdmanager, which
+# scans the whole SDK on the shared store first: 105 s on bb-sandbox for
+# what these .ini files say outright (B425). The emulator reads the same
+# place, ANDROID_AVD_HOME or ~/.android/avd.
+avd_home() { printf '%s' "${ANDROID_AVD_HOME:-$HOME/.android/avd}"; }
+avd_names() {
+    local ini
+    for ini in "$(avd_home)"/*.ini; do [ -f "$ini" ] && basename "$ini" .ini; done
+}
+avd_path() { sed -n 's/^path=//p' "$(avd_home)/${1}.ini" 2>/dev/null; }
+avd_exists() { [ -f "$(avd_home)/${1}.ini" ]; }
 
 # emu_avd [TARGET]: resolve which AVD to act on. A bare API level (37) maps to
 # that version's AVD; anything else is taken as a literal name. With no target:
@@ -688,7 +698,14 @@ avd_exists() { avdmanager list avd 2>/dev/null | grep -q "Name: ${1}$"; }
 # unsuffixed name AVDs used before this was multi-version.
 # The API levels with a system image in the store, one per line, ascending.
 emu_apis() {
-    sdk_images 2>/dev/null | cut -f2 | sed 's/^android-//' | sort -un
+    # The API levels with an image, read from the store's directory names.
+    # Not sdk_images, which measures every image with du (gigabytes each,
+    # over the share) for a size this throws away (B425).
+    local base="${ANDROID_HOME:-/opt/android-sdk}/system-images" d
+    [ -d "$base" ] || return 0
+    find -L "$base" -mindepth 3 -maxdepth 3 -type d 2>/dev/null | while IFS= read -r d; do
+        [ -n "$(ls -A "$d" 2>/dev/null)" ] && basename "$(dirname "$(dirname "$d")")"
+    done | sed 's/^android-//' | sort -un
 }
 
 emu_avd() {
@@ -710,7 +727,7 @@ emu_avd() {
     # name and `bb emu start` said "AVD 'builderbot' not found" one minute
     # after `bb emu create 36` said its AVD was ready (B209).
     local have
-    have="$(avdmanager list avd 2>/dev/null | sed -n "s/^ *Name: \(${prefix}-[0-9][0-9.]*\)$/\1/p" | sort -V | tail -1)"
+    have="$(avd_names | grep -E "^${prefix}-[0-9][0-9.]*$" | sort -V | tail -1)"
     if [ -n "$have" ]; then
         printf '%s' "$have"
         return
@@ -889,7 +906,7 @@ cmd_emu() {
             # Where avdmanager put it, by its own word, rather than where it
             # was told to: the two have differed.
             local ini
-            ini="$(avdmanager list avd 2>/dev/null | awk -v n="$name" '$1 == "Name:" { f = ($2 == n) } f && $1 == "Path:" { print $2; exit }')"
+            ini="$(avd_path "$name")"
             ini="${ini:-${ANDROID_AVD_HOME:-$HOME/.android/avd}/${name}.avd}/config.ini"
             if [ -f "$ini" ]; then
                 sed -i "s|^image.sysdir.1=.*|image.sysdir.1=system-images/android-${api}/google_apis/x86_64/|" "$ini"
@@ -1102,10 +1119,20 @@ cmd_emu() {
         list)
             printf 'API levels with a system image here: %s\n' "$(emu_apis | paste -sd, - | sed 's/^$/none; bb emu create <api> installs one/')"
             printf 'default for `bb emu start`: %s\n\n' "$(emu_avd)"
-            avdmanager list avd 2>/dev/null \
-                | grep -E 'Name:|Based on:' \
-                | sed 's/^ */  /' \
-                || printf '  (no AVDs)\n'
+            # Read from the AVDs' own files, not avdmanager: it scans the
+            # whole SDK on the shared store first and took 105 s on
+            # bb-sandbox to print these two lines per AVD (B425).
+            local n any=""
+            while IFS= read -r n; do
+                [ -n "$n" ] || continue
+                any=1
+                local cfg; cfg="$(avd_path "$n")/config.ini"
+                printf '  Name: %s\n  Based on: %s %s %s\n' "$n" \
+                    "$(sed -n 's/^target=//p' "$(avd_home)/${n}.ini")" \
+                    "$(sed -n 's/^tag.id *= *//p' "$cfg" 2>/dev/null)" \
+                    "$(sed -n 's/^abi.type *= *//p' "$cfg" 2>/dev/null)"
+            done < <(avd_names)
+            [ -n "$any" ] || printf '  (no AVDs)\n'
             ;;
         *) usage; exit 1 ;;
     esac
