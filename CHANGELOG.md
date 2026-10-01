@@ -40,6 +40,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's remote dialog has a Repository address: after renaming your account or organization on the host, the new address keeps its token, deploy key and push rights; another host, or a repository without this project's commits, is refused (4b6df9c)
 - A project's settings keep its Android signing keys, a Play upload key and a sideload signing key: checked with keytool before they are kept, held by the controller where no session can read them, with a backup download and a warning until a sideload key has one (fcb44bf)
 - A build in dist/ is signed with a project's kept key as a job on its node: the key reaches only that job, in a directory sessions cannot read, and the signed build arrives as NAME-signed with its certificate checked (4e7eb3e)
+- Every project has an owner, who can hand it on and make it invite only, so administrators cannot add themselves (BuilderBot's owner always can); people are invited from the project's settings and accept or decline from their bell (b8d747c)
 
 ### Changed
 

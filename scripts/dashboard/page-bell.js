@@ -62,6 +62,9 @@ function drawBell(){
   const bell = $("bBell"), panel = $("bellPanel");
   if (!bell) return;
   const asks = ph?.asks || [];
+  // Invitations to a project waiting on this account (membership.py): its
+  // own answer, Accept or Decline, from the poll like the rest.
+  const invites = state?.invites || [];
   // What sessions have waiting for approval, per project (roadmap #27):
   // the server's fact like an ask, so it leaves the moment it is answered.
   const waiting = (state?.projects || []).filter(p => p.pending > 0);
@@ -77,7 +80,7 @@ function drawBell(){
               : fresh.some(n => n.lv === "warn") ? "warn"
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
-  const pendingOn = asks.length + waiting.length;
+  const pendingOn = asks.length + waiting.length + invites.length;
   const attOn = att.some(a => a.window) ? "bad" : att.length ? "warn" : "";
   dot.hidden = !(pendingOn || att.length || unread);
   // An ask outranks every level of record: one is a thing that happened, the
@@ -120,6 +123,12 @@ function drawBell(){
           : `${a.left}s left to answer`}</span>
           <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>
             <a href="#" data-ballow="${a.id}">Approve</a></span></div></div>`),
+    ...invites.map(i => `<div class="bnote ask">
+        <div class="btag">invited to ${esc(i.project)}</div>
+        <div class="bwhy">${esc(i.by || "Somebody")} invited you to work on ${esc(i.project)}</div>
+        <div class="bfoot"><span>${esc(ago(i.at))}</span>
+          <span class="acts"><a href="#" data-binvite="${i.id}" data-yes="0">Decline</a>
+            <a href="#" data-binvite="${i.id}" data-yes="1">Accept</a></span></div></div>`),
     // ...and beside them, what a session has waiting in each project's
     // notebook. One row per project, not per change: the notebook is where
     // the changes are read, so the row's only job is to take you there.
@@ -170,6 +179,14 @@ function drawBell(){
   panel.querySelectorAll("[data-bdeny]").forEach(a => a.onclick = e => {
     e.preventDefault();
     phFetch({action: "deny", id: Number(a.dataset.bdeny)});
+  });
+  panel.querySelectorAll("[data-binvite]").forEach(a => a.onclick = async e => {
+    e.preventDefault();
+    const yes = a.dataset.yes === "1";
+    const j = await (await postJSON("/api/members", {action: yes ? "accept" : "decline",
+                                                     id: Number(a.dataset.binvite)})).json().catch(() => ({}));
+    notify(j.error || (yes ? `you are on ${j.project} now` : `declined ${j.project}`), !!j.error);
+    refresh();
   });
   panel.querySelectorAll("[data-bpend]").forEach(a => a.onclick = e => {
     e.preventDefault();

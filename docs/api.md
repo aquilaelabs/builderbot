@@ -101,6 +101,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |
 | POST | `/api/signing` | exact | `_signing` | A project's Android signing keys (signing.verb, R106). | refused: admin |
+| POST | `/api/members` | exact | `_members` | A project's owner, whether it is invite only, its people and its invitations, and an invitee's answer (membership.verb). |  |
 | POST | `/api/artifacts` | prefix | `_artifacts` | Push an .xpi from a project's dist/ to the paired phone, install an .apk there, or stop a push: phone.artifact_verb, behind the gates here. |  |
 | POST | `/api/nodelog` | prefix | `_nodelog` | A machine's own log, for a session that has been granted it. |  |
 | POST | `/api/diag` | exact | `_diag` | The controller's diagnostics (diag.py). |  |

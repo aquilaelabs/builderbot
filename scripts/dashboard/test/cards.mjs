@@ -1431,6 +1431,18 @@ ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
 ok(await page.$eval('#rnTokenField', el => el.hidden)
    && await page.$eval('#rnAuthField', el => el.hidden),
    '...and holds no credential: the gear is the project, the chain is its remote');
+// Its people (membership.py): the owner, who may hand it on and make it
+// invite only, staged until Save, and an Invite that acts on the press.
+await page.waitForSelector('#rnPeopleField:not([hidden]) #rnOwner', { timeout: 10000 });
+ok(await page.$eval('#rnOwner', s => s.value) === 'test'
+   && await page.$('#rnInviteOnly:not([disabled])') !== null
+   && /Any administrator can add people/.test(await page.$eval('#rnPeople', e => e.textContent)),
+   'the gear shows the project\'s owner, to hand on, and Invite only, off, saying what that allows');
+await page.click('#rnInviteOnly');
+ok(/Administrators cannot add themselves/.test(await page.$eval('#rnPeople', e => e.textContent))
+   && (await api('/api/members', { action: 'view', project: 'alpha' })).body.invite_only === false,
+   '...ticking Invite only says what it means and changes nothing until Save');
+await page.click('#rnInviteOnly');
 // Its Android signing keys (R106), an administrator's: a row per route,
 // a picked keystore staged until Save, its password asked for before
 // anything is sent, and a key the server will not keep refused in the
@@ -1455,6 +1467,16 @@ ok(!await page.$eval('#rnmodal', e => e.hidden)
    && (await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.sideload === null,
    `...and one the server will not keep is refused in the dialog, which stays open, with nothing kept (${signErr.slice(0, 90)})`);
 await page.click('#rnCancel');
+
+// An invitation waiting on this account sits in the bell with its answer,
+// above the page's own notes, like every other thing waiting on you.
+await page.evaluate(() => { state.invites = [{ id: 7, project: 'beta', by: 'ada', at: Math.floor(Date.now() / 1000) }];
+  toggleBell(true); drawBell(); });
+ok(await page.$eval('#bellPanel', e => /invited to beta/.test(e.textContent) && /ada invited you to work on beta/.test(e.textContent))
+   && await page.$('#bellPanel [data-binvite="7"][data-yes="1"]') !== null
+   && await page.$('#bellPanel [data-binvite="7"][data-yes="0"]') !== null,
+   'an invitation to a project is in the bell with Accept and Decline');
+await page.evaluate(() => { state.invites = []; drawBell(); toggleBell(false); });
 
 // The chain, on a project that already has one. alpha can push (the
 // retroactive seeding granted it, on the deploy key its remote uses), so it

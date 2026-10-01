@@ -2183,6 +2183,8 @@ def _keytool():
 
 
 signing.configure(state=STATE, project_name=PROJECT_NAME, keytool=_keytool)
+import membership                                                # noqa: E402
+membership.configure(state=STATE, write_json=write_json)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -2969,6 +2971,9 @@ def snapshot(who):
         # the Phone tab knows when to go and fetch the real thing. Reading it
         # is a length() on a list in memory: no adb, nothing to pay for.
         "phone_asks": len(phone.requests_open(users.uid_of(who), users.is_admin(who))),
+        # The invitations to a project waiting on this account, for its bell
+        # (membership.py): Accept and Decline are answered there.
+        "invites": membership.mine(who),
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
@@ -3221,6 +3226,7 @@ POST_ROUTES = (
     ("prefix", "/api/changelog", "_changelog"),
     ("prefix", "/api/version", "_version"),
     ("exact", "/api/signing", "_signing"),
+    ("exact", "/api/members", "_members"),
     ("prefix", "/api/artifacts", "_artifacts"),
     ("prefix", "/api/nodelog", "_nodelog"),
     ("exact", "/api/diag", "_diag"),
@@ -5233,6 +5239,21 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return self._json(*version.verb(name, act, req, self._who(), self._principal()))
 
+    def _members(self, req):
+        """A project's owner, whether it is invite only, its people and its
+        invitations, and an invitee's answer (membership.verb). A session
+        is refused: who joins a project is a person's decision."""
+        me = self._who() or {}
+        if me.get("session"):
+            return self._json({"error": "who joins a project is a person's decision"}, 403)
+        if not me:
+            return self._json({"error": "not signed in"}, 401)
+        name = field(req, "project")
+        # An invitee answers about a project it may not see yet.
+        if field(req, "action") not in ("accept", "decline", "withdraw") and self._not_project(name):
+            return None
+        return self._json(*membership.verb(me, req))
+
     def _signing(self, req):
         """A project's Android signing keys (signing.verb, R106). A session
         is refused whatever it asks: it signs with bb sign, which never hands
@@ -5646,7 +5667,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*users.own_prefs(me["name"], req.get("prefs")))
         if self._refused("admin"):
             return None
-        return self._result(users.verb(act, req, lambda: {p["name"] for p in project_list(self._who())}))
+        me = self._who() or {}
+        return self._result(users.verb(act, req, lambda: {p["name"] for p in project_list(me)},
+                                       may_change=lambda p: membership.member_refusal(me, p)))
 
     def _toolchains(self, req):
         """Queue installs or removals of the toolchains the Tools card

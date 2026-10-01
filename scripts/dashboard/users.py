@@ -846,6 +846,9 @@ def remove(name):
             return {"error": "the owner cannot be deleted: rename it instead"}
         d["users"].pop(name)
         _save(d)
+    # Its invitations go, and what it owned falls back to BuilderBot's owner.
+    import membership
+    membership.forget_account(u.get("uid") or "")
     return {"ok": True, "name": name}
 
 
@@ -876,7 +879,23 @@ def own_prefs(name, want):
     return prefs_set(name, keep), 200
 
 
-def verb(act, req, seen):
+def _members_refused(name, want, may_change):
+    """Why this change to `name`'s projects may not be made, or "": each
+    project added or taken off is asked of may_change (membership's rule:
+    an invite-only project's people are its owner's to change)."""
+    if not may_change:
+        return ""
+    have = set((get(name) or {}).get("projects") or [])
+    for p in sorted(have ^ set(want)):
+        if p == "*":
+            continue
+        why = may_change(p)
+        if why:
+            return why
+    return ""
+
+
+def verb(act, req, seen, may_change=None):
     """One of the Users tab's verbs on an account, an administrator's (the
     server holds that gate): add, a password, a role, the projects, a
     rename, the modal's one Save, remove. The store's own functions above
@@ -885,6 +904,10 @@ def verb(act, req, seen):
     name = field(req, "name")
     pw = req.get("password") or ""
     if act == "add":
+        for p in req.get("projects") or []:
+            why = may_change(p) if may_change else ""
+            if why:
+                return {"error": why}
         r = add(name, pw, role=field(req, "role") or "user",
                 projects=req.get("projects") or [])
     elif act == "passwd":
@@ -895,7 +918,9 @@ def verb(act, req, seen):
         # Only projects this admin can see; otherwise the tab becomes a
         # way to learn what exists by handing it out.
         mine = seen()
-        r = set_projects(name, [p for p in (req.get("projects") or []) if p in mine])
+        want = [p for p in (req.get("projects") or []) if p in mine]
+        why = _members_refused(name, want, may_change)
+        r = {"error": why} if why else set_projects(name, want)
     elif act == "rename":
         r = rename(name, field(req, "to"))
     elif act == "edit":
@@ -910,7 +935,9 @@ def verb(act, req, seen):
             r = set_role(name, field(req, "role")) if (get(name) or {}).get("role") != field(req, "role") else r
         if not r.get("error") and isinstance(req.get("projects"), list):
             mine = seen()
-            r = set_projects(name, [p for p in req["projects"] if p in mine])
+            want = [p for p in req["projects"] if p in mine]
+            why = _members_refused(name, want, may_change)
+            r = {"error": why} if why else set_projects(name, want)
         if not r.get("error") and pw:
             r = set_password(name, pw)
         if not r.get("error") and field(req, "to").strip() and field(req, "to").strip() != name:

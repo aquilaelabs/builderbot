@@ -1289,6 +1289,36 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
          && plr.status === 200 && pl.keys && 'play' in pl.keys && !JSON.stringify(pl).includes('pass'),
          `a session reaches no signing key, not even the list or a backup, and a person reads only which exist (${sl.status}/${sb.status}/${plr.status})`);
     }
+    // A project's owner and its people (membership.py, the operator, 1 Oct).
+    // Invite only keeps an administrator from adding themselves; BuilderBot's
+    // owner is never kept out; people join by accepting an invitation.
+    {
+      const post = async (h, path, body) => {
+        const r = await bare(path, { method: 'POST', headers: h, body: JSON.stringify(body) });
+        return { status: r.status, body: await r.json().catch(() => ({})) };
+      };
+      await post(ownerAuth, '/api/users', { action: 'add', name: 'adminone', password: 'adminonepw1', role: 'admin' });
+      const adminAuth = { 'Content-Type': 'application/json',
+        Authorization: 'Basic ' + Buffer.from('adminone:adminonepw1').toString('base64') };
+      const view = await post(ownerAuth, '/api/members', { action: 'view', project: 'gamma' });
+      const set = await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', invite_only: true });
+      const self = await post(adminAuth, '/api/users', { action: 'projects', name: 'adminone', projects: ['gamma'] });
+      const notOwner = await post(adminAuth, '/api/members', { action: 'set', project: 'gamma', invite_only: false });
+      ok(view.status === 200 && view.body.owner === 'test' && set.body.invite_only === true
+         && /invite only/.test(self.body.error || '') && notOwner.status === 403,
+         `gamma belongs to the owner, who makes it invite only, and an administrator then cannot add themselves to it or lift that (${view.body.owner}; ${(self.body.error || '').slice(0, 60)})`);
+      const inv = await post(ownerAuth, '/api/members', { action: 'invite', project: 'gamma', name: 'adminone' });
+      const st = await (await bare('/api/status', { headers: adminAuth })).json();
+      const mine = (st.invites || []).find(i => i.project === 'gamma');
+      const acc = mine ? await post(adminAuth, '/api/members', { action: 'accept', id: mine.id }) : { status: 0, body: {} };
+      const after = await post(ownerAuth, '/api/members', { action: 'view', project: 'gamma' });
+      ok(inv.status === 200 && mine && mine.by === 'test' && acc.body.joined === true
+         && after.body.members.includes('adminone') && !after.body.invites.length,
+         `...the owner invites them, the invitation waits in their status for the bell, and accepting puts them on it (${after.body.members.join(', ')})`);
+      const sessM = await act(sessAuth, '/api/members', { action: 'view', project: 'alpha' });
+      ok(sessM.status === 403, `...and a session has no say in who joins a project (${sessM.status})`);
+      await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', invite_only: false });
+    }
     const lockBeta = await act(plainAuth, '/api/lock', { name: 'beta', locked: true });
     ok(lockBeta.status === 400 && /not a project/.test(lockBeta.error),
        `...nor lock a project it was not given, which it is not told exists (${lockBeta.status})`);

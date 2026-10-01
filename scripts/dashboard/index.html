@@ -1315,6 +1315,10 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .rnsign:first-child{border-top:0}
 .rnsignform{display:grid;gap:6px;margin:6px 0}
 .rnsignbar{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center}
+/* A project's people (membership.py): a pending invitation per line, and
+   the picker with its Invite. */
+.rninvite{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
+.rninvitebar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px}
 .modal a.link{display:inline-flex;align-items:center}
 @media(hover:hover){ .modal .link:hover{color:var(--accent)} }
 .modal .pseg{display:flex;gap:8px}
@@ -3890,6 +3894,13 @@ body.booting .pane>.loading{margin:auto}
           <option value="only">only in its dev instance, never on the node</option>
         </select>
       </div>
+    </div>
+    <!-- Who the project belongs to and who joins it (membership.py): the
+         owner and Invite only are staged until Save; Invite and Withdraw are
+         actions and act on the press. -->
+    <div class="field" id="rnPeopleField" hidden>
+      <label id="rnPeopleLabel">People<span class="help" data-tip="its owner, who is on it, and who is invited; an invite-only project's people are its owner's to change" tabindex="0">?</span></label>
+      <div id="rnPeople" role="group" aria-labeledby="rnPeopleLabel"></div>
     </div>
     <!-- A project's Android signing keys (R106), an administrator's: kept
          by the controller, never in the tree and never in a session's view.

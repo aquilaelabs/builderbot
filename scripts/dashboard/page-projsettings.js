@@ -395,6 +395,7 @@ function renameProject(name, mode = "all"){
   $("rnDelete").hidden = git || !p;
   rnLoadAuth(name);
   rnLoadSigning(name);
+  rnLoadPeople(name);
   rnFillPrefs(p);
   // The sessions at the foot: the gear's door, and an administrator's.
   $("rnSessField").hidden = true;
@@ -412,6 +413,72 @@ function renameProject(name, mode = "all"){
 // null until this open's /api/project-auth answers: the dialog draws without
 // them rather than waiting, so the token field is typeable before the request
 // lands and the switch appears under it when it does.
+// ---- people (membership.py) ----
+// The project's owner, whether it is invite only, who is on it and who is
+// invited. The owner and the restriction are a draft until Save; Invite and
+// Withdraw act on the press, as the actions they are.
+let rnPeople = null, rnPeopleDraft = {};
+
+function rnLoadPeople(name){
+  rnPeople = null; rnPeopleDraft = {};
+  $("rnPeopleField").hidden = true;
+  if (rnMode === "git") return;
+  postJSON("/api/members", {action: "view", project: name})
+    .then(r => r.json())
+    .then(j => { if (rnFor !== name || j.error) return; rnPeople = j; rnDrawPeople(); })
+    .catch(() => {});
+}
+
+function rnDrawPeople(){
+  if (!rnPeople) return;
+  const v = rnPeople, d = rnPeopleDraft;
+  const owner = d.owner ?? v.owner, only = d.invite_only ?? v.invite_only;
+  const invitable = v.accounts.filter(n => !v.members.includes(n) && !v.invites.some(i => i.name === n));
+  $("rnPeopleField").hidden = false;
+  $("rnPeople").innerHTML = `
+    <div class="setrow">${v.may_manage
+      ? `<label class="ndcap" for="rnOwner">Owner</label>
+         <select id="rnOwner">${v.accounts.map(n => `<option value="${esc(n)}"${n === owner ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>`
+      : `<span>Owner: ${esc(v.owner || "BuilderBot's owner")}</span>`}</div>
+    <label class="ndcap"><input type="checkbox" id="rnInviteOnly"${only ? " checked" : ""}${v.may_manage ? "" : " disabled"}>
+      Invite only</label>
+    <div class="sub dim">${only
+      ? "Administrators cannot add themselves or anybody else: people join by accepting an invitation."
+      : "Any administrator can add people, themselves included."}${v.may_manage ? "" : " Its owner decides this."}</div>
+    <div class="sub">On it: ${v.members.length ? v.members.map(esc).join(", ") : "nobody yet"}</div>
+    ${v.invites.map(i => `<div class="rninvite">${esc(i.name)} <span class="dim">invited by ${esc(i.by || "somebody")} ${esc(ago(i.at))}</span>
+      <button type="button" class="link" data-withdraw="${i.id}">Withdraw</button></div>`).join("")}
+    ${v.may_invite && invitable.length ? `<div class="rninvitebar">
+      <select id="rnInviteWho" aria-label="account to invite">${invitable.map(n => `<option>${esc(n)}</option>`).join("")}</select>
+      <button type="button" id="rnInviteGo">Invite</button></div>` : ""}`;
+  const o = $("rnOwner");
+  if (o) o.onchange = () => { d.owner = o.value; };
+  const io = $("rnInviteOnly");
+  if (io && v.may_manage) io.onchange = () => { d.invite_only = io.checked; rnDrawPeople(); };
+  const act = async body => {
+    const j = await (await postJSON("/api/members", body)).json();
+    if (j.error) return notify(j.error, true);
+    rnPeople = j; rnDrawPeople();
+  };
+  const go = $("rnInviteGo");
+  if (go) go.onclick = () => act({action: "invite", project: rnFor, name: $("rnInviteWho").value})
+    .then(() => notify(`invited to ${rnFor}: they say yes or no from their bell`));
+  $("rnPeople").querySelectorAll("[data-withdraw]").forEach(b =>
+    b.onclick = () => act({action: "withdraw", id: Number(b.dataset.withdraw)}));
+}
+
+// The staged owner and restriction, sent by Save; "" when they landed.
+async function rnSavePeople(name){
+  const d = rnPeopleDraft, v = rnPeople;
+  if (!v) return "";
+  const owner = d.owner && d.owner !== v.owner ? d.owner : "";
+  const only = d.invite_only !== undefined && d.invite_only !== v.invite_only ? d.invite_only : undefined;
+  if (!owner && only === undefined) return "";
+  const j = await (await postJSON("/api/members", {action: "set", project: name, owner,
+                                                   ...(only !== undefined ? {invite_only: only} : {})})).json();
+  return j.error || "";
+}
+
 // ---- signing keys (R106) ----
 // A project's Android keys, an administrator's: a Play upload key and a
 // sideload app signing key, either or both. The controller keeps them and
@@ -797,6 +864,12 @@ async function rnSubmit(){
         notify(`${name}: saved, and its session ended: press Claude to start `
                + `one on it, resuming the conversation`);
     }
+    const peopleChanged = !!rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
+      || (rnPeopleDraft.invite_only !== undefined && rnPeopleDraft.invite_only !== rnPeople.invite_only));
+    if (peopleChanged){
+      const why = await rnSavePeople(name);
+      if (why) return stop(why);
+    }
     if (signDraft.length){
       const why = await rnSaveSigning(name);
       if (why) return stop(why);
@@ -804,7 +877,7 @@ async function rnSubmit(){
     }
     if (!needRename){
       closeRename();
-      if (!prefChanged && !nodeChanged && !signDraft.length) return;   // nothing changed
+      if (!prefChanged && !nodeChanged && !signDraft.length && !peopleChanged) return;   // nothing changed
       refresh();
       return;
     }

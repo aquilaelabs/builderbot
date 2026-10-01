@@ -275,6 +275,10 @@ _KEYED = {
     "briefs.json":        [None],
     # A project's design language and pages (design.py).
     "designs.json":       [None],
+    # Who owns it, whether it is invite only, and who is invited
+    # (membership.py).
+    "project-owners.json": ["projects"],
+    "invites.json":       ["projects"],
 }
 
 # Files holding a flat list of project names.
@@ -2053,6 +2057,9 @@ def create_from_dialog(req, *, env, account, may_node):
     # matches nothing.
     if account:
         take_on(account, name)
+        # ...and owns it (membership.py).
+        import membership
+        membership.on_create(name, account)
     # The node it was made for, when the dialog offered one: the same
     # write the settings dialog makes, so a project is born able to
     # build and start a session rather than needing a second dialog

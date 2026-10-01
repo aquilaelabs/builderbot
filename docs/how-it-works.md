@@ -3392,6 +3392,20 @@ to their own list themselves. A user is shown only what you give them, and
 cannot grant themselves anything. So for an admin the list is a seatbelt
 against working on the wrong project; for a user it is the boundary.
 
+**Every project has an owner, and an owner can close it to administrators.**
+Whoever made a project owns it; one from before there were owners belongs to
+BuilderBot's owner. Under **People** in the project's settings (the gear) the
+owner, or BuilderBot's owner, hands it to another account and can make it
+**invite only**: then nobody else changes who is on it, so an administrator
+can still see it but cannot add themselves, or anybody, on the Users tab or
+anywhere, and people join by invitation. BuilderBot's owner is never kept
+out. **Invite** there picks an existing account, user or admin; the
+invitation waits in that person's bell with **Accept** and **Decline**, and
+accepting puts the project on their list. Whoever invited, the owner, or
+BuilderBot's owner can **Withdraw** one still waiting. On a project that is
+not invite only any administrator may invite too, as they could always add
+people. A session has no say in any of it.
+
 Each account works as itself:
 
 - **its own home**: own shell history, own Claude login, own memories. The
