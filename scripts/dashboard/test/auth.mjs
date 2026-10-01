@@ -853,6 +853,11 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.fill('#uNewName', 'tabmade');
   await page.fill('#uNewPw', 'tabmadepw1');
   await page.selectOption('#uNewRole', 'user');
+  // A reload landing between typing and Add repaints the tab; what was
+  // typed survives it (B422: it emptied the form, and Add sent nothing).
+  await page.evaluate(async () => { await loadUsers(); });
+  ok(await page.$eval('#uNewName', e => e.value) === 'tabmade' && await page.$eval('#uNewPw', e => e.value) === 'tabmadepw1',
+     'what is typed into Add somebody survives the list being drawn again');
   await page.click('#uAdd');
   await page.waitForFunction(() => !!document.querySelector(
     '.userstab .urow[data-user="tabmade"]'), null, { timeout: 15000 });

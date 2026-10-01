@@ -15,6 +15,11 @@ let usersList = null;            // last answer, or null before the first
 let usersRev = 0;                // bumped when it changes, so panes repaint
 let usersErr = "";
 let usersMeta = {owner: "", me: "", roles: [], projects: []};
+// What is typed into Add somebody, kept across the repaints a reload brings:
+// the form is drawn afresh each time, and a reload landing between typing
+// and Add emptied it, so Add said only "a name and a password" and sent
+// nothing (B422). Cleared once an add lands.
+let usersAddDraft = {name: "", pw: "", role: "user"};
 
 function openUsersTab(){
   // The kind's open hook loads; a second load here asked twice for one press.
@@ -42,6 +47,7 @@ async function usersAct(body){
       headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) return notify(j.error || `failed (HTTP ${r.status})`, true);
+    if (body.action === "add") usersAddDraft = {name: "", pw: "", role: "user"};
     notify(body.action === "remove" ? `${body.name} removed`
          : body.action === "add" ? `${body.name} added`
          : `${body.name} updated`);
@@ -122,7 +128,7 @@ function renderUsersInto(i){
               // `user` selected, not merely first: the roles run owner, admin,
               // user, so the browser's own default would be the MOST privileged
               // of the two on offer. Adding somebody should start at the least.
-              `<option value="${esc(r)}"${r === "user" ? " selected" : ""}
+              `<option value="${esc(r)}"${r === (usersAddDraft.role || "user") ? " selected" : ""}
                 >${esc(r)}</option>`).join("")}</select></div>
         </div>
         <div class="actbar"><button type="button" class="primary" id="uAdd">Add</button></div>`)}`;
@@ -142,6 +148,12 @@ function wireUsers(el){
   // and the button is the answer (docs/design-language.md, Settings).
   el.querySelectorAll("[data-uedit]").forEach(b => b.onclick = () => usersEditOpen(b.dataset.uedit));
   const add = el.querySelector("#uAdd");
+  for (const [id, key] of [["#uNewName", "name"], ["#uNewPw", "pw"], ["#uNewRole", "role"]]){
+    const f = el.querySelector(id);
+    if (!f) continue;
+    if (key !== "role") f.value = usersAddDraft[key] || "";
+    f.oninput = f.onchange = () => { usersAddDraft[key] = f.value; };
+  }
   if (add) add.onclick = () => {
     const name = el.querySelector("#uNewName").value.trim();
     const pw = el.querySelector("#uNewPw").value;
