@@ -38,6 +38,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - How many dev builds of each kind the Artifacts tab keeps is a project setting, Dev builds kept in the project's settings: 3 unless changed, and 0 keeps them all (d2405b8)
 - A node with an NVIDIA card shows two more meters under Health on the Nodes tab: gpu, how busy the card is, and vram, how much of its own memory is taken, read from the driver on every heartbeat (6179f03)
 - A project's remote dialog has a Repository address: after renaming your account or organization on the host, the new address keeps its token, deploy key and push rights; another host, or a repository without this project's commits, is refused (4b6df9c)
+- A project's settings keep its Android signing keys, a Play upload key and a sideload signing key: checked with keytool before they are kept, held by the controller where no session can read them, with a backup download and a warning until a sideload key has one (fcb44bf)
 
 ### Changed
 

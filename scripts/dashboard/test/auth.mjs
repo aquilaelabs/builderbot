@@ -1258,7 +1258,8 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
         ['/api/pin', { name: 'status', pinned: true }, /administrator's/],
         ['/api/project-auth', { name: 'alpha' }, /administrator's|rename/],
         ['/api/version', { project: 'alpha', action: 'bump', part: 'patch' }, /administrator's/],
-        ['/api/version', { project: 'alpha', action: 'policy', policy: 'any' }, /administrator's/]]) {
+        ['/api/version', { project: 'alpha', action: 'policy', policy: 'any' }, /administrator's/],
+        ['/api/signing', { project: 'alpha', action: 'put', route: 'sideload', keystore: 'eA==', password: 'p' }, /administrator's/]]) {
       const r = await act(plainAuth, path, body);
       ok(r.status === 403 && why.test(r.error), `a plain account cannot ${path} ${body.action || ''} (${r.status}: ${r.error.slice(0, 50)})`);
     }
@@ -1274,6 +1275,19 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
       const sess = await act(sessAuth, '/api/project-pin', { name: 'alpha', pinned: true });
       ok(sess.status === 403 && /a session has no sidebar/.test(sess.error || ''), `...and a session pins for nobody (${sess.status})`);
       await act(plainAuth, '/api/project-pin', { name: 'alpha', pinned: true });
+    }
+    // A project's signing keys (R106): a session never reaches them, not
+    // even the listing, and never downloads one; a person who sees the
+    // project reads which keys exist and nothing secret.
+    {
+      const sl = await act(sessAuth, '/api/signing', { project: 'alpha', action: 'list' });
+      const sb = await bare('/api/signing-backup?project=alpha&route=play', { headers: sessAuth });
+      const plr = await bare('/api/signing', { method: 'POST', headers: plainAuth,
+                                              body: JSON.stringify({ project: 'alpha', action: 'list' }) });
+      const pl = await plr.json().catch(() => ({}));
+      ok(sl.status === 403 && /bb sign/.test(sl.error || '') && sb.status === 403
+         && plr.status === 200 && pl.keys && 'play' in pl.keys && !JSON.stringify(pl).includes('pass'),
+         `a session reaches no signing key, not even the list or a backup, and a person reads only which exist (${sl.status}/${sb.status}/${plr.status})`);
     }
     const lockBeta = await act(plainAuth, '/api/lock', { name: 'beta', locked: true });
     ok(lockBeta.status === 400 && /not a project/.test(lockBeta.error),

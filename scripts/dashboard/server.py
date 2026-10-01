@@ -2171,6 +2171,18 @@ import workspace                                                 # noqa: E402
 # session_dir). The Git view and the Artifacts tab both read them.
 WORKTREES = Path(os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees"))
 artifacts.configure(workspace=WORKSPACE, worktrees=WORKTREES, state=STATE, write_json=write_json)
+import signing                                                   # noqa: E402
+
+
+def _keytool():
+    """The store's keytool, which checks a keystore before it is kept
+    (signing.inspect), or None while no jdk is installed."""
+    root = toolchains.sdk_root_path()
+    p = os.path.join(root, "jdk", "bin", "keytool") if root else ""
+    return p if p and os.access(p, os.X_OK) else None
+
+
+signing.configure(state=STATE, project_name=PROJECT_NAME, keytool=_keytool)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -3115,6 +3127,7 @@ GET_ROUTES = (
     ("prefix", "/api/version", "_get_version"),
     ("prefix", "/api/artifacts", "_get_artifacts"),
     ("prefix", "/api/artifact?", "_get_artifact"),
+    ("prefix", "/api/signing-backup?", "_get_signing_backup"),
     ("prefix", "/api/meta", "_get_meta"),
     ("prefix", "/api/welcome", "_get_welcome"),
     ("prefix", "/api/source?", "_get_source"),
@@ -3203,6 +3216,7 @@ POST_ROUTES = (
     ("prefix", "/api/devapp", "_devapp"),
     ("prefix", "/api/changelog", "_changelog"),
     ("prefix", "/api/version", "_version"),
+    ("exact", "/api/signing", "_signing"),
     ("prefix", "/api/artifacts", "_artifacts"),
     ("prefix", "/api/nodelog", "_nodelog"),
     ("exact", "/api/diag", "_diag"),
@@ -5214,6 +5228,37 @@ class Handler(BaseHTTPRequestHandler):
         if act != "ask" and self._refused("version", name):
             return None
         return self._json(*version.verb(name, act, req, self._who(), self._principal()))
+
+    def _signing(self, req):
+        """A project's Android signing keys (signing.verb, R106). A session
+        is refused whatever it asks: it signs with bb sign, which never hands
+        it the key, and has no reason to learn which keys exist from here.
+        Listing is for whoever sees the project (no secret is in it); adding,
+        replacing and removing a key are an administrator's."""
+        name = field(req, "project")
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "a session signs with bb sign, which never hands it the key; "
+                                        "the keys are a person's to manage"}, 403)
+        if self._not_project(name):
+            return None
+        if field(req, "action") != "list" and self._refused("admin"):
+            return None
+        return self._json(*signing.verb(req, by=str(who.get("name") or "")))
+
+    def _get_signing_backup(self):
+        """GET /api/signing-backup: a project's keystore for an administrator's
+        own copy (signing.backup), which marks it backed up. Never a session's."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "a session never receives a signing key"}, 403)
+        if self._not_project(name) or self._refused("admin"):
+            return None
+        got, status = signing.backup(name, q.get("route", [""])[0])
+        if status != 200:
+            return self._json(got, status)
+        return self._attachment(*got, "application/octet-stream")
 
     def _artifacts(self, req):
         """Push an .xpi from a project's dist/ to the paired phone, install

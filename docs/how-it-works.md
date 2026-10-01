@@ -3193,6 +3193,33 @@ like the token and the authentication switch, is `.git/config` and the
 store, which a running session reads on its next push. Only a new name, which
 moves the directory, still asks for them to be closed first.
 
+### Android signing keys
+
+A project keeps up to two keys, set by an administrator under **Signing keys**
+in its settings (the gear):
+
+- **Play upload key**, for Google Play with Play App Signing. Google holds the
+  key the app is really signed with; this one only proves an upload is yours,
+  and Play Console resets it when it is lost or leaks.
+- **Sideload signing key**, for a build handed out directly or through another
+  store. It is the app's identity for good: lose it and no update can reach an
+  existing install, leak it and anybody can ship one that installs over yours.
+  The row says so in red until it has been downloaded once with **Download
+  backup**, a copy to keep offline.
+
+The keystore (`.jks` or `.p12`) and its passwords are kept by the controller
+under `/config/signing/PROJECT/`, owner-only, beside the git tokens and like
+them outside every session's view. A key is checked before it is kept: the
+store's own `keytool` (the jdk toolchain) has to open it with the password
+given, find the alias (or the only key in it) and see a private key, and its
+certificate's SHA-256 fingerprint is what the dialog shows. A session never
+receives the key or a password, and is refused even the list of which keys
+exist: it signs with `bb sign`, which runs on the project's node as a job the
+session cannot look inside. Renaming the project carries its keys with it.
+
+Picking a keystore, typing its password and marking one for removal are staged
+like everything else in the dialog: nothing is sent until Save.
+
 ### Locking a project
 
 The **padlock** on a project row is the one gate there is, and it carries the

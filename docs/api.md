@@ -24,6 +24,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/version` | prefix | `_get_version` | GET /api/version. |  |
 | GET | `/api/artifacts` | prefix | `_get_artifacts` | GET /api/artifacts: artifacts.tab_view, for a project this account sees. |  |
 | GET | `/api/artifact?` | prefix | `_get_artifact` | GET /api/artifact: one file of a project's, as a download (artifacts.download). |  |
+| GET | `/api/signing-backup?` | prefix | `_get_signing_backup` | GET /api/signing-backup: a project's keystore for an administrator's own copy (signing.backup), which marks it backed up. | refused: admin |
 | GET | `/api/meta` | prefix | `_get_meta` | GET /api/meta. |  |
 | GET | `/api/welcome` | prefix | `_get_welcome` | GET /api/welcome: BuilderBot's own changelog for the welcome panel (changelog.welcome), and where this account last looked. |  |
 | GET | `/api/source?` | prefix | `_get_source` | GET /api/source: the code base as a zip, from the Artifacts tab (artifacts.source_download). |  |
@@ -99,6 +100,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/devapp` | prefix | `_devapp` | The dev-instance controls: the Docker tab's buttons, and `bb devapp` from a session. | refused: docker-write |
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |
+| POST | `/api/signing` | exact | `_signing` | A project's Android signing keys (signing.verb, R106). | refused: admin |
 | POST | `/api/artifacts` | prefix | `_artifacts` | Push an .xpi from a project's dist/ to the paired phone, install an .apk there, or stop a push: phone.artifact_verb, behind the gates here. |  |
 | POST | `/api/nodelog` | prefix | `_nodelog` | A machine's own log, for a session that has been granted it. |  |
 | POST | `/api/diag` | exact | `_diag` | The controller's diagnostics (diag.py). |  |

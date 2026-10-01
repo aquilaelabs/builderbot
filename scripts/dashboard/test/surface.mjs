@@ -92,7 +92,7 @@ const SURFACE = [
   'wireGlobalRules', 'openGlobalRules', 'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderToolchainsInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',
-  'rnDrawPrefs', 'rnFillColor', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadModelNow', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnShow', 'rnSubmit',
+  'rnDrawPrefs', 'rnDrawSigning', 'rnFillColor', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadSigning', 'rnLoadModelNow', 'rnSaveSigning', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
   'setProjectPinned', 'setView', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',

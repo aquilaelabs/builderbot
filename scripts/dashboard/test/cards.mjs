@@ -1431,6 +1431,29 @@ ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
 ok(await page.$eval('#rnTokenField', el => el.hidden)
    && await page.$eval('#rnAuthField', el => el.hidden),
    '...and holds no credential: the gear is the project, the chain is its remote');
+// Its Android signing keys (R106), an administrator's: a row per route,
+// a picked keystore staged until Save, its password asked for before
+// anything is sent, and a key the server will not keep refused in the
+// dialog, which stays open.
+await page.waitForSelector('#rnSignField:not([hidden]) .rnsign[data-route="sideload"]', { timeout: 10000 });
+const signRows = await page.$$eval('#rnSignRows .rnsign', rs => rs.map(r => r.firstElementChild.textContent.trim()));
+ok(signRows.length === 2 && /^Play upload key: none$/.test(signRows[0]) && /^Sideload signing key: none$/.test(signRows[1]),
+   `the gear shows the project's two signing keys, none yet (${signRows.join(' / ')})`);
+await page.click('#rnSignRows .rnsign[data-route="sideload"] [data-signopen]');
+writeFileSync(`${DIR}/not-a-keystore.p12`, 'not a keystore');
+await page.setInputFiles('#rnSignRows .rnsign[data-route="sideload"] [data-signfile]', `${DIR}/not-a-keystore.p12`);
+await page.click('#rnGo');
+await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 5000 });
+ok(/type the keystore's password/.test(await page.$eval('#rnErr', e => e.textContent)),
+   '...a picked keystore with no password is stopped before anything is sent');
+await page.fill('#rnSignRows .rnsign[data-route="sideload"] [data-signpass]', 'p');
+await page.click('#rnGo');
+await page.waitForFunction(() => /Sideload signing key: /.test(document.getElementById('rnErr').textContent),
+                           null, { timeout: 15000 });
+const signErr = await page.$eval('#rnErr', e => e.textContent);
+ok(!await page.$eval('#rnmodal', e => e.hidden)
+   && (await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.sideload === null,
+   `...and one the server will not keep is refused in the dialog, which stays open, with nothing kept (${signErr.slice(0, 90)})`);
 await page.click('#rnCancel');
 
 // The chain, on a project that already has one. alpha can push (the

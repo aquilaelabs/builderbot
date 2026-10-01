@@ -394,6 +394,7 @@ function renameProject(name, mode = "all"){
   // The bin, on the gear's door only: the chain's is about the remote.
   $("rnDelete").hidden = git || !p;
   rnLoadAuth(name);
+  rnLoadSigning(name);
   rnFillPrefs(p);
   // The sessions at the foot: the gear's door, and an administrator's.
   $("rnSessField").hidden = true;
@@ -411,6 +412,113 @@ function renameProject(name, mode = "all"){
 // null until this open's /api/project-auth answers: the dialog draws without
 // them rather than waiting, so the token field is typeable before the request
 // lands and the switch appears under it when it does.
+// ---- signing keys (R106) ----
+// A project's Android keys, an administrator's: a Play upload key and a
+// sideload app signing key, either or both. The controller keeps them and
+// bb sign uses them on the node; the dialog only ever sees the alias and
+// the fingerprint. A picked keystore, its password and a removal are a
+// draft until Save, like every other field here.
+const RN_SIGN = [
+  ["play", "Play upload key",
+   "For Google Play with Play App Signing, which can reset a lost upload key."],
+  ["sideload", "Sideload signing key",
+   "Signs a build handed out directly. Lose it and no update reaches an existing install: keep a copy offline."]];
+let rnSignKeys = null, rnSignTool = false, rnSignDraft = {};
+
+function rnLoadSigning(name){
+  rnSignKeys = null; rnSignDraft = {};
+  $("rnSignField").hidden = true;
+  if (rnMode === "git" || !state?.admin) return;
+  postJSON("/api/signing", {action: "list", project: name})
+    .then(r => r.json())
+    .then(j => {
+      if (rnFor !== name || j.error) return;
+      rnSignKeys = j.keys || {}; rnSignTool = !!j.keytool;
+      rnDrawSigning();
+    })
+    .catch(() => {});
+}
+
+const rnFp = sha => sha ? `${sha.slice(0, 8)}…${sha.slice(-8)}` : "";
+
+function rnDrawSigning(){
+  if (!rnSignKeys) return;
+  $("rnSignField").hidden = false;
+  const name = rnFor;
+  $("rnSignRows").innerHTML = RN_SIGN.map(([route, word, about]) => {
+    const k = rnSignKeys[route], d = rnSignDraft[route] || {};
+    const now = d.remove ? `${word}: removed when you Save`
+      : d.file ? `${word}: ${esc(d.file.name)}, kept when you Save`
+      : k ? `${word}: ${esc(k.alias)} <span class="dim">${esc(rnFp(k.sha256))}</span>`
+      : `${word}: none`;
+    const never = k && !d.remove && !d.file && route === "sideload" && !k.backed_up;
+    return `<div class="rnsign" data-route="${route}">
+      <div>${now}</div>
+      <div class="sub dim">${esc(about)}${k && !d.remove && !d.file
+        ? ` ${k.backed_up ? `Backed up ${esc(ago(k.backed_up))}.` : "Not backed up yet."}` : ""}</div>
+      ${never ? `<div class="sub bad">Never backed up: download a copy and keep it offline, since losing it is final.</div>` : ""}
+      ${d.open ? `<div class="rnsignform">
+        <input type="file" data-signfile accept=".jks,.p12,.pfx,.keystore" aria-label="${esc(word)} keystore">
+        <input type="password" data-signpass autocomplete="new-password" placeholder="keystore password" aria-label="keystore password">
+        <input data-signalias autocomplete="off" spellcheck="false" placeholder="alias, when it holds several" aria-label="key alias">
+        <input type="password" data-signkeypass autocomplete="new-password" placeholder="key password, if not the same" aria-label="key password">
+      </div>` : ""}
+      <div class="rnsignbar">
+        <button type="button" class="link" data-signopen>${d.open ? "Never mind" : k ? "Replace" : "Add a key"}</button>
+        ${k ? `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&route=${route}" download>Download backup</a>
+        <button type="button" class="link" data-signremove>${d.remove ? "Keep it after all" : "Remove"}</button>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+  $("rnSignHint").textContent = rnSignTool ? ""
+    : "No keytool here to check a key with: install the jdk toolchain, then add one.";
+  for (const row of $("rnSignRows").querySelectorAll(".rnsign")){
+    const route = row.dataset.route;
+    const d = rnSignDraft[route] = rnSignDraft[route] || {};
+    row.querySelector("[data-signopen]").onclick = () => {
+      d.open = !d.open;
+      if (!d.open){ delete d.file; d.pass = d.alias = d.keypass = ""; }
+      else d.remove = false;
+      rnDrawSigning();
+    };
+    const rm = row.querySelector("[data-signremove]");
+    if (rm) rm.onclick = () => { d.remove = !d.remove; if (d.remove){ d.open = false; delete d.file; } rnDrawSigning(); };
+    const bk = row.querySelector("[data-signbackup]");
+    if (bk) bk.onclick = () => setTimeout(() => rnLoadSigning(name), 1500);
+    const f = row.querySelector("[data-signfile]");
+    if (f){
+      f.onchange = () => { d.file = f.files[0] || null; };
+      for (const [sel, key] of [["[data-signpass]", "pass"], ["[data-signalias]", "alias"], ["[data-signkeypass]", "keypass"]]){
+        const el = row.querySelector(sel);
+        el.value = d[key] || "";
+        el.oninput = () => { d[key] = el.value; };
+      }
+    }
+  }
+}
+
+const fileB64 = f => new Promise((ok, bad) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result).split(",")[1] || "");
+  r.onerror = () => bad(r.error);
+  r.readAsDataURL(f);
+});
+
+// The draft's writes, in Save's order; "" when they all landed, else why.
+async function rnSaveSigning(name){
+  for (const [route, word] of RN_SIGN){
+    const d = rnSignDraft[route] || {};
+    let body = null;
+    if (d.remove) body = {action: "remove", project: name, route};
+    else if (d.file) body = {action: "put", project: name, route, keystore: await fileB64(d.file),
+                             password: d.pass || "", alias: (d.alias || "").trim(), key_password: d.keypass || ""};
+    if (!body) continue;
+    const j = await (await postJSON("/api/signing", body)).json();
+    if (j.error) return `${word}: ${j.error}`;
+  }
+  return "";
+}
+
 let rnAuthNow = null, rnAuthPick = null, rnAuthOpts = null;
 // Staged, like the name and the token: pressing Clear changes what the dialog
 // says and nothing on disk. Rename is the only verb here that touches the
@@ -609,6 +717,11 @@ async function rnSubmit(){
   const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
+  const signDraft = Object.values(rnSignDraft).filter(d => d.remove || d.file);
+  if (Object.values(rnSignDraft).some(d => d.open && !d.file && (d.pass || d.alias)))
+    return fail("pick the keystore file for the key whose password you typed");
+  if (Object.values(rnSignDraft).some(d => d.file && !d.pass))
+    return fail("type the keystore's password: a key is checked with it before it is kept");
   if (capture_days !== "" && !/^\d{1,3}$/.test(capture_days))
     return fail("captures kept is a number of days, 0 to 365");
   if (dev_keep !== "" && !/^\d{1,2}$/.test(dev_keep))
@@ -684,9 +797,14 @@ async function rnSubmit(){
         notify(`${name}: saved, and its session ended: press Claude to start `
                + `one on it, resuming the conversation`);
     }
+    if (signDraft.length){
+      const why = await rnSaveSigning(name);
+      if (why) return stop(why);
+      notify(`${name}: signing keys saved`);
+    }
     if (!needRename){
       closeRename();
-      if (!prefChanged && !nodeChanged) return;   // nothing changed
+      if (!prefChanged && !nodeChanged && !signDraft.length) return;   // nothing changed
       refresh();
       return;
     }

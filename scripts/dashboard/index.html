@@ -1309,6 +1309,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
   font:12px/1.4 system-ui,sans-serif;min-height:var(--tap);text-align:left;
   text-decoration:underline;cursor:pointer}
 .modal .link[hidden]{display:none}
+/* A project's signing keys (R106): a row per route, its form when opened,
+   and its actions in one line. */
+.rnsign{padding:6px 0;border-top:1px solid var(--line)}
+.rnsign:first-child{border-top:0}
+.rnsignform{display:grid;gap:6px;margin:6px 0}
+.rnsignbar{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center}
+.modal a.link{display:inline-flex;align-items:center}
 @media(hover:hover){ .modal .link:hover{color:var(--accent)} }
 .modal .pseg{display:flex;gap:8px}
 .modal .pseg button{flex:1;min-height:var(--tap)}
@@ -3883,6 +3890,15 @@ body.booting .pane>.loading{margin:auto}
           <option value="only">only in its dev instance, never on the node</option>
         </select>
       </div>
+    </div>
+    <!-- A project's Android signing keys (R106), an administrator's: kept
+         by the controller, never in the tree and never in a session's view.
+         Staged like the rest of this dialog: a picked keystore or a removal
+         is sent when Save is pressed. Download backup is an action. -->
+    <div class="field" id="rnSignField" hidden>
+      <label id="rnSignLabel">Signing keys<span class="help" data-tip="kept by the controller and used by bb sign on the project's node; a session never receives the key or its password" tabindex="0">?</span></label>
+      <div id="rnSignRows" role="group" aria-labeledby="rnSignLabel"></div>
+      <div class="hint" id="rnSignHint"></div>
     </div>
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is

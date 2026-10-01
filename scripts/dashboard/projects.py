@@ -532,6 +532,10 @@ def rename(req):
     # rename leaves a repo pointing at a file that is no longer there.
     _mv(STATE / "gitcreds" / old, STATE / "gitcreds" / new,
         "its access token", moved, failed)
+    # Its Android signing keys (signing.py, R106): left behind, the renamed
+    # project could not sign, with nothing saying why.
+    _mv(STATE / "signing" / old, STATE / "signing" / new,
+        "its signing keys", moved, failed)
     # Push rights follow the project, not the name: renaming is not a way to
     # get a second pushing copy of one repository.
     rights = load_push()
