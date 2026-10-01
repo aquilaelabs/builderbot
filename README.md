@@ -492,6 +492,26 @@ bb toolchains             SDKs kept outside the image: status, check, install X,
 
 The dashboard's Commands flyout carries this same list in this same order.
 
+## Signing Android releases
+
+A project keeps its Android keys on the controller, set by an administrator
+under **Signing keys** in its settings, and a build is signed on its node as a
+job no session can look inside: from the Artifacts tab, or by a session with
+`bb sign`, under the project's **Claude may: Sign a release**.
+
+| Key | For | If it is lost or leaks |
+|---|---|---|
+| Play upload key | Google Play with Play App Signing: you sign the `.aab` with it, Google re-signs what users download with the key it holds | Play Console resets it |
+| Sideload signing key | an APK you hand out yourself, or that F-Droid publishes from a reproducible build | gone for good: no update reaches an existing install, or anybody can ship one over it |
+
+So a sideload key is downloaded once with **Download backup** and kept
+offline; its row says so in red until it has been. A signed build's Artifacts
+row gives the certificate's whole fingerprint, with **Copy for F-Droid** for
+its metadata. Using one key on Play, F-Droid and your own downloads (so users
+can move between them) means giving Play that key when the app is first set
+up there. [docs/how-it-works.md](docs/how-it-works.md#android-signing-keys)
+has the rest.
+
 ## Documentation
 
 - [docs/start-here.md](docs/start-here.md): given an account on somebody else's BuilderBot rather than setting one up: the first five minutes, what is shared, and what the refusals mean
