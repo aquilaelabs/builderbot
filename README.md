@@ -246,6 +246,15 @@ bb devapp log NAME one of those containers' log
 bb devapp start|stop|restart NAME [--why "..."]
                    one of those, under the same setting; --container NAME on the
                    other verbs reaches one written for this project
+bb sign FILE [--for play|sideload] [--why "..."]
+                   sign a build in dist/ with one of the project's keys, on its
+                   node, as a job this session cannot look inside: the key and
+                   its password never reach the session. --for play is the Play
+                   upload key (the default for an .aab), sideload the app signing
+                   key (the default for an .apk). The project's settings say
+                   whether Claude may (Sign a release): auto signs, ask waits for
+                   the project's owner to allow it, with --why as the reason.
+                   Arrives in dist/ as NAME-signed.apk or .aab
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/

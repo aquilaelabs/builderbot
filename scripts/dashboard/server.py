@@ -2536,6 +2536,8 @@ channel.configure(home_for=home_for)
 signing.node_of = lambda name: prefs.get(name)["node"]
 signing.job_add = nodes.job_add
 signing.file_path = workspace.file_path
+phone.signer = signing.start
+artifacts.sign_routes = lambda name: [r for r, k in (signing.listing(name)[0].get("keys") or {}).items() if k]
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
 vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
@@ -5263,8 +5265,29 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         who = self._who() or {}
         if who.get("session"):
-            return self._json({"error": "a session signs with bb sign, which never hands it the key; "
-                                        "the keys are a person's to manage"}, 403)
+            # bb sign: its own project's build, under its dial (Claude may:
+            # Sign a release). It never receives the key, the list, or a
+            # backup; asking to sign is all a session does here.
+            if field(req, "action") != "sign" or name != who["session"]:
+                return self._json({"error": "a session signs with bb sign, which never hands it the key; "
+                                            "the keys are a person's to manage"}, 403)
+            mode = (prefs.get(name) or {}).get("sign") or "ask"
+            if mode == "deny":
+                return self._json({"error": f"{name}'s settings say Claude does not sign its builds "
+                                            "(Claude may: Sign a release); a person signs from the "
+                                            "Artifacts tab"}, 403)
+            file, route = field(req, "file"), field(req, "route")
+            no = signing.refusal(name, file, route)
+            if no:
+                return self._json(*no)
+            if mode == "auto":
+                return self._json(*signing.start(self._principal(), name, file, route))
+            owner = membership.owner_of(name)
+            acct = users.account_of(who) or {}
+            r = phone.ask_sign(field(req, "why"), name, file, route, owner,
+                               membership.owner_name(name) or "the project's owner",
+                               asker_name=str(acct.get("name") or ""), principal=self._principal())
+            return self._json(r, 400 if r.get("error") else 200)
         if self._not_project(name):
             return None
         if field(req, "action") == "sign":

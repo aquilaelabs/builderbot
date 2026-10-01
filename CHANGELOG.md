@@ -42,6 +42,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A build in dist/ is signed with a project's kept key as a job on its node: the key reaches only that job, in a directory sessions cannot read, and the signed build arrives as NAME-signed with its certificate checked (4e7eb3e)
 - Every project has an owner, who can hand it on and make it invite only, so administrators cannot add themselves (BuilderBot's owner always can); people are invited from the project's settings and accept or decline from their bell (b8d747c)
 - A project's owner offers it to someone else, who becomes its owner on accepting from their bell; BuilderBot's owner still hands a project on at once (83d43e6)
+- bb sign signs a build in dist/ with one of the project's keys on its node, behind the project's dial Claude may: Sign a release (ask by default, which waits for the project's owner in their bell); the Artifacts tab offers Sign on an .apk or .aab (00129fe)
 
 ### Changed
 

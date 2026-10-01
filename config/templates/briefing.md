@@ -293,6 +293,14 @@ rendering, which Wait dismisses and a finished boot does not show.
 frames and its timing cannot be judged from it; on a card it records more,
 and a reel says the rate it got. Timing is `dumpsys gfxinfo PKG framestats`
 either way.
+
+A release is signed with `bb sign FILE [--for play|sideload] [--why "..."]`,
+a build in dist/ signed on the node with one of the project's keys, which
+you never receive: no keystore or signing password belongs in the tree, in
+gradle.properties or in the environment, and a build's own signingConfig is
+for debug only. The signed one arrives as NAME-signed. Whether you may, and
+whether the project's owner is asked first, is its setting (Claude may: Sign
+a release); a project with no key says so.
 <!-- BUILDERBOT:END -->
 
 <!-- BUILDERBOT:IF gpu node:gpu -->

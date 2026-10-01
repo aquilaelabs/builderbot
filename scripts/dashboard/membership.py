@@ -94,6 +94,11 @@ def owner_of(project):
     return rec.get("owner") or users.owner_uid()
 
 
+def owner_name(project):
+    """The owning account's name, for a sentence or a row."""
+    return _name_of(owner_of(project))
+
+
 def invite_only(project):
     return bool((_owners()["projects"].get(project) or {}).get("invite_only"))
 

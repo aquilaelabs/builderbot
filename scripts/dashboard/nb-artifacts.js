@@ -246,6 +246,10 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                 : !art.webext ? `web-ext is not on ${esc(art.node_name || "the node")}: install it there first`
                 : job.running ? "one push at a time"
                 : "install it on the phone, temporarily"}">Push</button>` : ""}
+            ${(a.kind === "apk" || a.kind === "aab") && !/-signed\.(apk|aab)$/.test(a.name)
+              ? (art.sign_routes || []).map(r => `<button type="button" data-artsign="${i}" data-route="${r}"
+                title="sign it on the project's node with its ${r === "play" ? "Play upload key" : "sideload signing key"}; it arrives beside it as -signed">Sign${
+                  (art.sign_routes || []).length > 1 ? (r === "play" ? " for Play" : " to sideload") : ""}</button>`).join("") : ""}
             ${a.view ? `<button type="button" data-artview="${i}"
                 title="read it here, without downloading it">View</button>` : ""}
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
@@ -370,6 +374,18 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // A shipped script is a thing people read before they run it, and on a
     // phone a download is the end of that. Over the panel like a History, the
     // text as it is; nothing here runs it, and the tab has no way to.
+    // Sign (R106): a job on the project's node with the project's key,
+    // which never comes near the page either; the signed build arrives in
+    // dist/ beside this one, and the list picks it up when it lands.
+    list.querySelectorAll("[data-artsign]").forEach(b => b.onclick = async () => {
+      const a = rows[+b.dataset.artsign];
+      if (!a) return;
+      b.disabled = true;
+      const j = await (await postJSON("/api/signing", {action: "sign", project, file: a.path,
+                                                       route: b.dataset.route})).json().catch(() => ({}));
+      if (j.error){ b.disabled = false; return notify(j.error, true); }
+      notify(`signing ${a.name} on the node: it arrives here as ${a.name.replace(/(-unsigned)?\.(apk|aab)$/, "-signed.$2")}`);
+    });
     list.querySelectorAll("[data-artpin]").forEach(b => b.onclick = async () => {
       const a = rows[+b.dataset.artpin];
       if (!a) return;

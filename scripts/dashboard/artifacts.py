@@ -62,6 +62,9 @@ UID_RE = re.compile(r"^u_[0-9a-f]{8}$")
 capture_days = None
 # ...and how many dev builds of each kind it keeps (R105), from prefs too.
 dev_keep = None
+# The routes this project has a signing key for (signing.py, R106), set by
+# the server: what Sign on an .apk or .aab row may offer.
+sign_routes = None
 # scripts/lib/capture.py, loaded by path: captures(dist) and prune(dist, days, names).
 _capture = None
 
@@ -446,6 +449,7 @@ def tab_view(name, uid):
     return ({"artifacts": [a | ({"pinned": True, "pinned_by": held[a["path"]].get("by", "")}
                                 if a.get("path") in held else {}) for a in listing_of(name)],
              "dev_keep": keep,
+             "sign_routes": sign_routes(name) if sign_routes else [],
              "branches": [g | {"who": account_names().get(g["uid"], g["uid"])}
                           for g in branches(name)],
              "build": build_state(name)}

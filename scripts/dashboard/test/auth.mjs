@@ -1289,6 +1289,43 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
          && plr.status === 200 && pl.keys && 'play' in pl.keys && !JSON.stringify(pl).includes('pass'),
          `a session reaches no signing key, not even the list or a backup, and a person reads only which exist (${sl.status}/${sb.status}/${plr.status})`);
     }
+    // bb sign (R106 step 3): a session asks only to sign its own project's
+    // build, under its dial. A key and a build are put in place for it; the
+    // session never reads either back. Ask (the default) waits on the
+    // project's owner, Deny names the setting, and nothing it cannot sign
+    // is put in front of anybody.
+    {
+      mkdirSync(`${DIR}/state/signing/alpha`, { recursive: true });
+      writeFileSync(`${DIR}/state/signing/alpha/sideload.ks`, 'k');
+      writeFileSync(`${DIR}/state/signing/alpha/sideload.json`, JSON.stringify({ alias: 'upload', store_pass: 'pw' }));
+      mkdirSync(`${DIR}/ws/alpha/dist`, { recursive: true });
+      writeFileSync(`${DIR}/ws/alpha/dist/alpha-release.apk`, 'apk');
+      const sign = (body) => bare('/api/signing', { method: 'POST', headers: sessAuth,
+        body: JSON.stringify({ action: 'sign', project: 'alpha', ...body }) }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+      const noNode = await sign({ file: 'alpha-release.apk', route: 'sideload', why: 'for testers' });
+      // A node named, for the ask: nothing is queued before it is answered.
+      const setNode = await (await bare('/api/prefs', { method: 'POST', headers: ownerAuth,
+        body: JSON.stringify({ project: 'alpha', node: 'n_signtest' }) })).json().catch(() => ({}));
+      const noKey = await sign({ file: 'alpha-release.apk', route: 'play', why: 'for Play' });
+      const noFile = await sign({ file: 'nope.apk', route: 'sideload', why: 'for testers' });
+      const asked = await sign({ file: 'alpha-release.apk', route: 'sideload', why: 'for testers' });
+      const ownerAsks = await (await bare('/api/phone', { headers: ownerAuth })).json();
+      const ask = (ownerAsks.asks || []).find(a => a.id === asked.body.id);
+      ok(/no node to sign on/.test(noNode.body.error || '') && !setNode.error
+         && /no Play upload key/.test(noKey.body.error || '') && /bb build/.test(noFile.body.error || '')
+         && asked.status === 200 && asked.body.id && ask && ask.kind === 'sign'
+         && ask.cmd.join(' ') === 'sign alpha-release.apk --for sideload',
+         `a session's bb sign waits on the project's owner, and what it could not sign is refused before anybody is asked (${asked.body.to || JSON.stringify(asked.body)}; ${JSON.stringify(setNode).slice(0, 80)})`);
+      await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: asked.body.id }) });
+      await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'deny' }) });
+      const denied = await sign({ file: 'alpha-release.apk', route: 'sideload', why: 'for testers' });
+      const other = await bare('/api/signing', { method: 'POST', headers: sessAuth,
+        body: JSON.stringify({ action: 'sign', project: 'beta', file: 'x.apk', route: 'sideload', why: 'w' }) });
+      ok(denied.status === 403 && /Sign a release/.test(denied.body.error || '') && other.status === 403,
+         `...at Deny it is refused naming the setting, and another project's build is never its to sign (${denied.status}/${other.status})`);
+      await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask', node: '' }) });
+      rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
+    }
     // A project's owner and its people (membership.py, the operator, 1 Oct).
     // Invite only keeps an administrator from adding themselves; BuilderBot's
     // owner is never kept out; people join by accepting an invitation.

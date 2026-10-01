@@ -3951,6 +3951,11 @@ body.booting .pane>.loading{margin:auto}
         <!-- bb report, which sends BuilderBot's own problems to its
              maintainers rather than this project's tracker. Off for the
              project that IS BuilderBot, whose tracker they belong in. -->
+        <!-- bb sign (R106): a build signed with one of the project's keys,
+             which the session never receives. Ask by default; Ask waits for
+             the project's owner. -->
+        <label class="pick">Sign a release <select id="rnGateSign"
+          aria-label="signing a build with this project's keys, from a session"></select></label>
         <label class="pick">Report BuilderBot bugs <select id="rnGateReport"
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>

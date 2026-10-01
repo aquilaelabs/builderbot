@@ -117,6 +117,7 @@ function rnFillPrefs(p){
                reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
                devbuild: devClaudeMode(rnFor),
                report: p?.prefs?.report || "auto",
+               sign: p?.prefs?.sign || "ask",
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
   $("rnGitName").value = rnPrefWas.git_name;
@@ -234,6 +235,14 @@ function rnFillPrefsRest(p){
       el.dataset.built = "1";
     }
     el.value = p?.prefs?.report || "auto";
+  }
+  {
+    const el = $("rnGateSign");
+    if (el.dataset.built !== "1"){
+      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = p?.prefs?.sign || "ask";
   }
   {
     const el = $("rnGateDocker");
@@ -752,6 +761,7 @@ async function rnSubmit(){
   const reply = $("rnReply").value || "", asks = $("rnAsks").value || "";
   const devbuild = $("rnGateDocker").value || "deny";
   const report = $("rnGateReport").value || "auto";
+  const sign = $("rnGateSign").value || "ask";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
@@ -760,7 +770,8 @@ async function rnSubmit(){
     || tests_in !== rnPrefWas.tests_in || test_change !== rnPrefWas.test_change
     || gpu !== rnPrefWas.gpu
     || devbuild !== rnPrefWas.devbuild
-    || report !== rnPrefWas.report;
+    || report !== rnPrefWas.report
+    || sign !== rnPrefWas.sign;
   const git_name = $("rnGitName").value.trim(), git_email = $("rnGitEmail").value.trim();
   // Yours, so they travel with the model and the effort rather than with the
   // project's group: the same request, a different store on the server.
@@ -845,7 +856,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, nodes, reads, sees, build, test, gate, color,
-                              tests_in, test_change, gpu, reply, asks, devbuild, report,
+                              tests_in, test_change, gpu, reply, asks, devbuild, report, sign,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),
                               ...(dev_keep !== "" ? {dev_keep: +dev_keep} : {}),

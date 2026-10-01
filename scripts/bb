@@ -184,6 +184,15 @@ bb devapp log NAME one of those containers' log
 bb devapp start|stop|restart NAME [--why "..."]
                    one of those, under the same setting; --container NAME on the
                    other verbs reaches one written for this project
+bb sign FILE [--for play|sideload] [--why "..."]
+                   sign a build in dist/ with one of the project's keys, on its
+                   node, as a job this session cannot look inside: the key and
+                   its password never reach the session. --for play is the Play
+                   upload key (the default for an .aab), sideload the app signing
+                   key (the default for an .apk). The project's settings say
+                   whether Claude may (Sign a release): auto signs, ask waits for
+                   the project's owner to allow it, with --why as the reason.
+                   Arrives in dist/ as NAME-signed.apk or .aab
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -2310,6 +2319,31 @@ cmd_container() {
 #
 # The daemon is the controller's connection to the node, so this goes through
 # the API like `bb root` and `bb phone` rather than running docker anywhere.
+# bb sign (R106): a build in dist/ signed on the project's node with one of
+# its keys, which the session never receives. sign-verbs.py asks, follows an
+# ask to its answer and the job to its verdict.
+cmd_sign() {
+    local file="" route="" why="" a
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h|--help) sed -n '/^bb sign FILE/,/NAME-signed/p' "$0"; return 0 ;;
+            --for) [ $# -ge 2 ] || die "--for needs play or sideload after it"; route="$2"; shift 2 ;;
+            --for=*) route="${1#--for=}"; shift ;;
+            --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+            -*) die "bb sign FILE [--for play|sideload] [--why \"...\"]: no option $1" ;;
+            *) [ -z "$file" ] || die "one build at a time: bb sign FILE"; file="$1"; shift ;;
+        esac
+    done
+    [ -n "$file" ] || die "usage: bb sign FILE [--for play|sideload] [--why \"...\"] (a build in dist/)"
+    if [ -z "$route" ]; then
+        case "$file" in *.aab) route=play ;; *) route=sideload ;; esac
+    fi
+    case "$route" in play|sideload) ;; *) die "--for is play or sideload, not $route" ;; esac
+    local auth; auth="$(bb_auth_or_die)"
+    BB_SIGN_AUTH="$auth" BB_SIGN_PROJECT="${BB_PROJECT:-$(project_here 2>/dev/null || true)}" \
+        python3 "$BB_LIB/sign-verbs.py" "${file#dist/}" "$route" "$why"
+}
+
 cmd_devapp() {
     # --instance NAME before or after the verb, for a project with several;
     # with none named the controller answers for the project's only one.
@@ -4851,6 +4885,7 @@ case "${1:-help}" in
     run)   shift; cmd_run "$@" ;;
     git)   shift; cmd_git "$@" ;;
     devapp) shift; cmd_devapp "$@" ;;
+    sign)   shift; cmd_sign "$@" ;;
     ci-labels) shift; cmd_ci_labels "$@" ;;
     build) shift; cmd_build_or_test build "$@" ;;
     test)  shift; cmd_build_or_test test "$@" ;;

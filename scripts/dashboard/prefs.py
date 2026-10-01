@@ -50,6 +50,9 @@ GATE_MODES = ("auto", "ask", "deny")
 # project's dev instance. One vocabulary: a person who has set a notebook
 # tab to "ask me" knows what this one does without being told twice.
 DEVBUILD_MODES = ("deny", "ask", "auto")
+# Claude may: Sign a release (R106). Ask by default: a signed build is
+# something that leaves, and a person reads which build and which key.
+SIGN_MODES = ("deny", "ask", "auto")
 # Where `bb test` runs a project's tests (roadmap R48, B241): on the node and
 # never in its dev instance, which is the default; inside the instance when
 # it is up and on the node otherwise; or inside it and nowhere else.
@@ -300,6 +303,8 @@ def _clean(rec):
             # Claude may: Report BuilderBot bugs. Off takes `bb report` and
             # the rule that points at it away from this project's sessions.
             "report": "deny" if rec.get("report") == "deny" else "auto",
+            # Claude may: Sign a release, one of SIGN_MODES (bb sign, R106).
+            "sign": rec.get("sign") if rec.get("sign") in SIGN_MODES else "ask",
             # How long a capture (a reel's sheet, an emulator shot) stays in
             # dist/ before the Artifacts tab's sweep removes it (R96). By
             # age and never by need: two sessions on one project may each
@@ -451,7 +456,7 @@ def _sees_of(rec):
 
 def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
-              devbuild=None, tests_in=None, report=None, color=None, workspace=None,
+              devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
@@ -516,6 +521,10 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 return {"error": f"devbuild is one of {', '.join(DEVBUILD_MODES)}, "
                                  f"not {devbuild}"}
             cur["devbuild"] = mode
+        if sign is not None:
+            if sign not in SIGN_MODES:
+                return {"error": f"sign is one of {', '.join(SIGN_MODES)}, not {sign}"}
+            cur["sign"] = sign
         if report is not None:
             if report not in REPORT_MODES:
                 return {"error": f"report is one of {', '.join(REPORT_MODES)}, not {report}"}
@@ -557,6 +566,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
                 or cur["test_change"] != "wait" or cur["gpu"] != "on"
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
+                or cur["sign"] != "ask"
                 or cur["dev_keep"] != DEV_KEEP
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
@@ -573,6 +583,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("tests_in", None)
             if cur["report"] == "auto":
                 rec.pop("report", None)
+            if cur["sign"] == "ask":
+                rec.pop("sign", None)
             if cur["gpu"] == "on":
                 rec.pop("gpu", None)
             if cur["capture_days"] == CAPTURE_DAYS:
@@ -672,7 +684,7 @@ def dialog_save(name, req, uid):
                   tests_in=req.get("tests_in"),
                   test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
-                  dev_keep=req.get("dev_keep"),
+                  dev_keep=req.get("dev_keep"), sign=req.get("sign"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   workspace=WORKSPACE)
     # ...and what is the ASKING ACCOUNT's rather than the project's: the

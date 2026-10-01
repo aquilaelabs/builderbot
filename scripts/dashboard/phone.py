@@ -62,6 +62,9 @@ remover = None
 # container_builds whether the file would build from an empty directory
 # (B329), asked at the same moment.
 container_maker = None
+# signing.start(principal, project, file, route), set by the server: what
+# Allow on a session's `bb sign` runs (R106), queued as the session asked.
+signer = None
 container_free = None
 container_builds = None
 # ...and what verb() needs to know about the one asking, set by server.py
@@ -682,6 +685,9 @@ def _for(r, uid, admin):
     # docker-write, which a user does not have on a project they otherwise own.
     if r.get("kind") in ("root", "rebuild", "container") and not admin:
         return False
+    # A signing waits on the project's owner, whatever their role.
+    if r.get("kind") == "sign":
+        return r["to"] == uid
     if r["to"] == "admins":
         return bool(admin)
     return r["to"] == uid
@@ -789,6 +795,21 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
                       asker_name)
     return _queue("root", why, argv, nid, node_name, project, by, "admins",
                   "the administrators", asker_name)
+
+
+def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principal=""):
+    """A session asking to sign a build with one of its project's keys, on a
+    project whose dial is `ask` (Claude may: Sign a release, R106). It goes
+    to the project's owner, who reads which build and which key; Allow
+    queues the signing as the session's own."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\" (a release for testers, the Play upload ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    return _queue("sign", why, ["sign", str(file), "--for", str(route)], "", "", project, "claude",
+                  to_uid, to_name, asker_name,
+                  extra={"file": str(file), "route": str(route), "principal": principal})
 
 
 def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
@@ -961,6 +982,16 @@ def decide(rid, allow, uid, name="", admin=False):
         if res.get("error"):
             return {"error": res["error"]}
         return {"ok": True}
+    if r.get("kind") == "sign":
+        # Queued as the session's own, the way the auto path does it; the
+        # job's id is what the session follows next.
+        res = (signer(r.get("principal") or "", r["project"], r.get("file") or "", r.get("route") or "")
+               if signer is not None else ({"error": "nothing here signs"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or got.get("job") or "started"))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "container":
         # Two steps and both said: the container registered through the
         # Docker tab's own path, which refuses a file compose cannot read,

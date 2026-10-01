@@ -222,11 +222,10 @@ def secret(project, route):
     return (blob, rec) if rec else None
 
 
-def start(principal, project, rel, route):
-    """Queue the signing of one build in dist/ with one of the project's
-    keys, on the project's node (step 2). Refused before anything is queued
-    when there is no such key, no such build, or nowhere to sign it.
-    (payload, status)."""
+def refusal(project, rel, route):
+    """(error payload, status) when this signing cannot happen, else None:
+    asked before a person is asked to allow one (step 3) as well as before
+    one is queued."""
     if not _ok_project(project):
         return {"error": "unknown project"}, 400
     if route not in ROUTES:
@@ -240,10 +239,22 @@ def start(principal, project, rel, route):
         return {"error": "an Android build is an .apk or an .aab"}, 400
     if file_path(project, rel) is None:
         return {"error": f"no {rel} in {project}'s dist/: bb build puts a build there"}, 404
-    nid = node_of(project) or ""
-    if not nid:
+    if not (node_of(project) or ""):
         return {"error": f"{project} has no node to sign on: its settings choose one"}, 400
-    r = job_add(principal, {"node": nid}, "sign", {"route": route, "file": rel, "timeout": 900},
+    return None
+
+
+def start(principal, project, rel, route):
+    """Queue the signing of one build in dist/ with one of the project's
+    keys, on the project's node (step 2). Refused before anything is queued
+    when there is no such key, no such build, or nowhere to sign it.
+    (payload, status)."""
+    no = refusal(project, rel, route)
+    if no:
+        return no
+    rel = str(rel or "").replace("\\", "/").strip()
+    rel = rel[len("dist/"):] if rel.startswith("dist/") else rel
+    r = job_add(principal, {"node": node_of(project)}, "sign", {"route": route, "file": rel, "timeout": 900},
                 project=project)
     return r, (400 if r.get("error") else 200)
 
