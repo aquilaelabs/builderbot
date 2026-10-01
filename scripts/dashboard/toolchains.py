@@ -1228,27 +1228,75 @@ def _store_job_on(node_id):
     return any(nodes.jobs_for(node_id=node_id, type=t, active=True, n=1) for t in STORE_JOBS)
 
 
-def store_busy(nid):
-    """Why this node's toolchain store cannot take another job now, or "".
+def store_areas(names, action="install", plat=""):
+    """The parts of a toolchain store these names write, as (platform, area).
 
-    One at a time across every node that shares the store, not just this
-    one. docs/nodes.md section 6 names the trap: two agents unpacking into
-    one NFS directory, or one upgrading a toolchain under another mid-build,
-    is version skew nobody can debug. The rule is enforced across a shared
-    store or it is not enforced at all."""
+    Each toolchain unpacks into a directory of its own under its machine's
+    <os>-<arch> scope, so two installs collide only on the same toolchain,
+    except the Android family, which sdkmanager keeps in one SDK tree. The
+    driver, the container toolkit, system packages and a check write no
+    store at all: they are each machine's own, or only read."""
+    if action in ("check", "sysdeps"):
+        return set()
+    out = set()
+    for x in names:
+        x = str(x)
+        if x == TOOLKIT or x == DRIVER or x.startswith(DRIVER + ":"):
+            continue
+        out.add((plat, "android" if x == "android-tools" or x.startswith("android:") else x))
+    return out
+
+
+def _image_areas(plat):
+    # The SDK tree an image job's sdkmanager runs in, and the system images,
+    # which every platform on the store shares (one directory, no scope).
+    return {(plat, "android"), ("", "android system images")}
+
+
+def _job_areas(j, plat):
+    sp = j.get("spec") or {}
+    if j.get("type") == "image":
+        return _image_areas(plat)
+    return store_areas(sp.get("names") or [], sp.get("action") or "install", plat)
+
+
+def store_busy(nid, names=None, action="install"):
+    """Why this node's toolchain store cannot take this job now, or "".
+
+    On the node itself, one toolchain or image job at a time: its tab shows
+    one job. Across nodes that share the store, only a job touching the same
+    toolchain (the Android SDK counting as one) waits: docs/nodes.md section
+    6 names the trap, two agents unpacking into one NFS directory, and it is
+    the directory that clashes, not the share. Two installs of different
+    toolchains on two nodes used to be refused for sharing a store at all.
+    `names` None is any write to the store (an image job: the Android SDK)."""
     n = nodes.node(nid)
-    sharers = store_sharers(nid)
-    for other in [n] + sharers:
-        if _store_job_on(other["id"]):
-            where = ("" if other["id"] == nid
-                     else f"; it shares this toolchain store with {n['name']}")
-            return f"a toolchain or image job is already running on {other['name']}{where}. One at a time."
+    if _store_job_on(nid):
+        return f"a toolchain or image job is already running on {n['name']}. One at a time on a node."
+    mine = (store_areas(names, action, platform_of(n)) if names is not None
+            else _image_areas(platform_of(n)))
+    if not mine:
+        return ""
+    for other in store_sharers(nid):
+        plat = platform_of(other)
+        for t in STORE_JOBS:
+            for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
+                both = sorted(a for _, a in mine & _job_areas(j, plat))
+                if both:
+                    return (f"{other['name']} is installing {', '.join(both)} into the toolchain store "
+                            f"it shares with {n['name']}; this waits for it, since two machines "
+                            "unpacking one toolchain into one directory is a broken install")
     # ...and this container's own installer, which is not a job and so is
-    # invisible to the loop above. It is the sharer that matters most here:
-    # the toolchain store is mounted by the controller and by the sandbox at once.
-    if _tc_job["running"] and any(o["id"] == nodes.LOCAL for o in sharers):
-        return ("this container is installing into the same toolchain store "
-                f"right now; it shares it with {n['name']}. One at a time.")
+    # invisible to the loop above. The store is mounted by the controller and
+    # by the sandbox at once.
+    if _tc_job["running"] and any(o["id"] == nodes.LOCAL for o in store_sharers(nid)):
+        local = nodes.node(nodes.LOCAL)
+        theirs = store_areas(list(_tc_job["queue"]) + [_tc_job["current"]] if _tc_job["current"]
+                             else list(_tc_job["queue"]), _tc_job["action"], platform_of(local))
+        both = sorted(a for _, a in mine & theirs)
+        if both:
+            return (f"this container is installing {', '.join(both)} into the toolchain store "
+                    f"it shares with {n['name']}; this waits for it")
     return ""
 
 
@@ -1411,7 +1459,7 @@ def node_job(principal, nid, action, names, driver=""):
             return {"error": f"{n['name']}'s toolchain store has {human_kb(free * 1024)} free "
                              f"and this needs about {human_kb(int(need_kb * 1.2))}: "
                              "point the store somewhere bigger first"}
-    busy = store_busy(nid)
+    busy = store_busy(nid, names + [x for x in (drv, ctk) if x], action)
     if busy:
         return {"error": busy}
     # Two architectures on one store used to be refused here, because a flat
@@ -1481,9 +1529,13 @@ def start_job(action, names, auto=False):
         # from the other side.
         if nodes:
             try:
+                me = nodes.node(nodes.LOCAL)
+                mine = store_areas(list(names), action, platform_of(me))
                 for other in store_sharers(nodes.LOCAL):
-                    if _store_job_on(other["id"]):
-                        return False
+                    for t in STORE_JOBS:
+                        for j in nodes.jobs_for(node_id=other["id"], type=t, active=True, n=4):
+                            if mine & _job_areas(j, platform_of(other)):
+                                return False
             except sqlite3.Error as e:
                 print(f"dashboard: toolchains: store sharers unread, going ahead: {e}",
                       file=sys.stderr, flush=True)

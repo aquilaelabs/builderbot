@@ -6,7 +6,7 @@ adds or removes one.
 An image is not a toolchain. A toolchain is one thing at one version; a system
 image exists at every API level at once, and which one to have is a question
 about what is being tested. It lives on the toolchain store all the same, so
-an image job and a toolchain job take turns on a store (toolchains.store_busy)
+an image job waits for an Android toolchain job on a store (toolchains.store_busy)
 and run through the same bundle on the node.
 
 The controller runs no emulator, so this is about nodes only. Which images a

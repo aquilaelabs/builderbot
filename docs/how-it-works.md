@@ -1352,18 +1352,22 @@ driving a browser through Playwright, which declares it.
 
 **Two machines may share one toolchain store, and BuilderBot recognizes the
 pair.** An NFS export mounted by the controller and by a node is one
-directory, and installing into it from both at once is version skew nobody
-can debug, so a toolchain job waits for any other on a machine that shares
-the store, in both directions. What identifies the pair is a marker file
+directory, and two machines unpacking one toolchain into it at once is a
+broken install nobody can debug, so a job waits for one on a machine that
+shares the store only when both touch the same toolchain (the Android SDK,
+one tree that sdkmanager keeps, counting as one), in both directions; two
+different toolchains install on two machines side by side, and a check, the
+NVIDIA driver, the container toolkit and system packages, which write no
+store, wait for nothing there. One machine still runs one toolchain job at a
+time. What identifies the pair is a marker file
 inside the store itself, not the mount: this container reaches the toolchain store
 through Unraid's FUSE layer while a node reaches the same bytes over NFS,
 and neither mount string can be derived from the other. Nothing
 machine-specific is written into a shared store: the generated
 `sdk-env.sh`, whose every line is an absolute path, lives on the home volume
-for that reason. **A store is never shared across architectures**: the path
-carries no arch, so an arm64 machine pointed at an x86-64 store would get
-binaries that cannot run, and the install is refused with the reason rather
-than failing later.
+for that reason. Two architectures may share one: each machine installs under
+its own `<os>-<arch>` scope in the store (R19), so an arm64 machine never
+runs an x86-64 binary another put there.
 
 **A project's node does not decide where its CI runs, and nothing can make
 it.** That setting governs BuilderBot's own queue: `bb build`, `bb test`,

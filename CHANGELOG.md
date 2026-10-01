@@ -92,6 +92,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The darkened edge that says a box scrolls is on the lists and logs that scroll too: a project's Reads and nodes in its settings, the notebook's lists, a job's log, the chat. (c4685ca)
 - bb build on a node names what it puts in dist/ with the project and its version, as shipped output should be, and the briefing says what bb build and bb test give a session over running the command by hand. (ed92efa)
 - The Artifacts tab keeps the newest three dev builds of each kind in dist/ and removes older ones as new ones arrive; a release, or a file with no version in its name, is never removed. (98162c3)
+- Two nodes that share a toolchain store install different toolchains at the same time: only a job touching the same toolchain (the Android SDK counting as one) waits, and a check, the NVIDIA driver, the container toolkit and system packages wait for nothing on another node (ffa5c6a)
 
 ### Removed
 

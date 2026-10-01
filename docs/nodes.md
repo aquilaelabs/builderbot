@@ -685,8 +685,10 @@ the Tools card is ghosted until some node has the tools and the emulator.
   identifies the nodes that share a store, by the census's mount SOURCE
   under the store path, never by the path string, since
   `/var/lib/builderbot/toolchains` is every node's default and a different disk
-  on each, and a toolchain job is refused while one is running on any of them,
-  naming the node that holds it. The Toolchains tab says a store is shared, and
+  on each, and a toolchain job is refused while one touching the same
+  toolchain (the Android SDK counting as one) is running on any of them,
+  naming the node and the toolchain (1 Oct: it used to be any job at all,
+  which held a second node's unrelated install). The Toolchains tab says a store is shared, and
   with whom, before anybody presses Install.
 - **Disk is checked before, not discovered after.** The catalog already knows
   each toolchain's size; the census reports each store's headroom. A

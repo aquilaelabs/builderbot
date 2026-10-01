@@ -1178,10 +1178,30 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
         version: shipped.version, digest: shipped.digest }) });
     const first = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: minted.id });
     const second = await napi('/api/toolchains', { action: 'install', names: ['jdk'], node: other.id });
-    ok(first.job && /shares this toolchain store/.test(second.error || ''),
-       `...and one install at a time across the pair, naming why (${
+    ok(first.job && /installing jdk into the toolchain store it shares/.test(second.error || ''),
+       `...and the same toolchain is not unpacked by both at once, naming why (${
          (second.error || 'no error').slice(0, 90)})`);
+    // It is the directory that clashes, not the share: another toolchain on
+    // the other node goes ahead, and so does a check, which writes nothing.
+    // Two installs on two nodes used to be refused for sharing a store at all.
+    const beside = await napi('/api/toolchains', { action: 'install', names: ['go'], node: other.id });
+    ok(beside.job && !beside.error,
+       `...while another toolchain installs on the other node at the same time (${beside.job || beside.error})`);
+    const again = await napi('/api/toolchains', { action: 'install', names: ['node'], node: minted.id });
+    ok(/already running on .*One at a time on a node/.test(again.error || ''),
+       `...and one node still runs one toolchain job at a time (${(again.error || 'no error').slice(0, 80)})`);
+    if (beside.job) await napi('/api/v1/jobs', { action: 'cancel', id: beside.job });
+    const look = await napi('/api/toolchains', { action: 'check', node: other.id });
+    ok(look.job && !look.error, `...and a check, which writes no store, is not held by it (${look.job || look.error})`);
+    if (look.job) await napi('/api/v1/jobs', { action: 'cancel', id: look.job });
     if (first.job) await napi('/api/v1/jobs', { action: 'cancel', id: first.job });
+    // The Android SDK is one tree, whatever part of it each job adds.
+    const sdk1 = await napi('/api/toolchains', { action: 'install', names: ['android:ndk'], node: minted.id });
+    const sdk2 = await napi('/api/toolchains', { action: 'install', names: ['android:cmake'], node: other.id });
+    ok(sdk1.job && /installing [^;]*\bandroid\b[^;]* into the toolchain store/.test(sdk2.error || ''),
+       `...and two parts of the Android SDK wait for each other, being one tree (${(sdk2.error || 'no error').slice(0, 80)})`);
+    if (sdk1.job) await napi('/api/v1/jobs', { action: 'cancel', id: sdk1.job });
+    if (sdk2.job) await napi('/api/v1/jobs', { action: 'cancel', id: sdk2.job });
     await napi('/api/v1/nodes', { action: 'retire', id: other.id });
     await withId('x86_64', en.token);
     // A toolchain that needs another pulls it in, ahead of itself. Before
