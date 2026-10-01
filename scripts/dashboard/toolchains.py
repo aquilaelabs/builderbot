@@ -699,13 +699,19 @@ def _node_errors(job_id, failed, verb):
     key = (job_id, tuple(failed))
     if key in _node_errors_seen:
         return _node_errors_seen[key]
-    parts, cur = {}, None
+    parts, cur, refused = {}, None, ""
     for line in (nodes.job_tail(job_id, 20000) or "").splitlines():
-        m = re.match(r"== bb toolchains \S+ (\S+)", line)
+        # An install's section is bb's header; a system-packages job's is the
+        # agent's own (sysdeps), which this did not read, so that row said
+        # only that it failed.
+        m = (re.match(r"== bb toolchains \S+ (\S+)", line)
+             or re.match(r"== system packages for (\S+?):", line))
         if m:
             cur = m.group(1)
             parts[cur] = []
             continue
+        if line.startswith("refused:") and not refused:
+            refused = line.strip()
         if line.startswith("== "):
             cur = None
             continue
@@ -748,10 +754,29 @@ def _node_errors(job_id, failed, verb):
             if ln.strip() and not ln.strip().strip("#=O- "):
                 continue
             lines.append(ln)
-        said = _job_tail("\n".join(lines), keep=4)
+        said = _job_tail("\n".join(lines), keep=4) or ([refused] if refused else [])
         out[name] = " · ".join(said + [f"{verb} failed on the node"])[-400:]
     _node_errors_seen[key] = out
     return out
+
+
+def finished(act, names, here, rep, state):
+    """(done, failed) for a node's last toolchain job, from what is true now.
+
+    An install is done where the toolchain is in the store, a removal where
+    it is not. A system-packages job is neither: the recipe is in the store
+    before and after, so that test called every one failed, the ones that
+    worked too. What the census still finds unmet is its answer (the agent
+    reports again as the job ends), and no names is every held recipe."""
+    if act == "sysdeps":
+        unmet = (rep.get("sysdeps") or {}).get("unmet") or {}
+        names = names or sorted(unmet)
+        failed = [x for x in names if x in unmet]
+        if state != "succeeded" and not failed:
+            failed = names or ["system packages"]
+        return [x for x in names if x not in failed], failed
+    done = [x for x in names if (x in here) == (act == "install")]
+    return done, [x for x in names if x not in done]
 
 
 def _check_rows(job_id):
@@ -909,8 +934,7 @@ def payload_for_node(nid):
                 act = sp.get("action") or "install"
                 here = {i["name"] for i in items if i["installed"]}
                 here |= {r["name"] for r in (driver_row(n), container_row(n)) if r and r["here"]}
-                done = [x for x in names if (x in here) == (act == "install")]
-                failed = [x for x in names if x not in done]
+                done, failed = finished(act, names, here, rep, j.get("state"))
                 job = {"running": False, "action": act, "queue": [], "current": "",
                        "done": done, "failed": failed,
                        "errors": _node_errors(j["id"], failed, act),
