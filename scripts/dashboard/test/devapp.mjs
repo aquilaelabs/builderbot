@@ -169,15 +169,28 @@ const pillIs = async (want) => {
 // that came and went with each one blinked through every build.
 {
   await dmRefresh();
-  const seen = await page.evaluate(async () => {
-    let said = 0;
-    const mo = new MutationObserver(() => { if (document.querySelector('.dmfresh')) said++; });
+  // Per reload: whether the word came, and how long the fetch took. It is
+  // right to show on one slower than DM_SLOW_MS, which a busy box makes,
+  // so that is not counted against it; one that came on a quick fetch is
+  // (B421: the check counted every showing and failed under load).
+  const runs = await page.evaluate(async () => {
+    const out = [];
+    let said = false;
+    const mo = new MutationObserver(() => { if (document.querySelector('.dmfresh')) said = true; });
     mo.observe(document.querySelector('.dmtab').parentElement, { childList: true, subtree: true });
-    for (let i = 0; i < 4; i++){ dockerList = null; dockerRev++; await loadDocker(); }
+    for (let i = 0; i < 4; i++){
+      said = false;
+      const t0 = performance.now();
+      dockerList = null; dockerRev++; await loadDocker();
+      out.push({ ms: Math.round(performance.now() - t0), said });
+    }
     mo.disconnect();
-    return said;
+    return { out, slow: DM_SLOW_MS };
   });
-  ok(seen === 0, `four quick reloads in a row never show "refreshing" (shown ${seen} times)`);
+  const quickSaid = runs.out.filter(r => r.said && r.ms < runs.slow);
+  ok(quickSaid.length === 0,
+     `four quick reloads in a row never show "refreshing" on a fetch quicker than ${runs.slow} ms (${
+       runs.out.map(r => `${r.ms}ms${r.said ? ' shown' : ''}`).join(', ')})`);
   const slow = await page.evaluate(async () => {
     const f = window.fetch;
     window.fetch = (...a) => String(a[0]).startsWith('/api/docker')
