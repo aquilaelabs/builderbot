@@ -2084,6 +2084,15 @@ def create_from_dialog(req, *, env, account, may_node):
         r = set_prefs(name, devbuild=str(devbuild))
         if r.get("error"):
             body["note"] = f"{body.get('note') or 'ready'}; Run its container not set: {r['error']}"
+    # ...and the rest of Claude may, each only where it differs from the
+    # default a project gets anyway.
+    for key, dflt, label in (("sign", "ask", "Sign a release"), ("keys", "ask", "Manage signing keys"),
+                             ("report", "auto", "Report BuilderBot bugs")):
+        v = req.get(key)
+        if v and v != dflt:
+            r = set_prefs(name, **{key: str(v)})
+            if r.get("error"):
+                body["note"] = f"{body.get('note') or 'ready'}; {label} not set: {r['error']}"
     # Pinned on arrival, once anything has ever been pinned. Without this a
     # project made while a pins file exists is absent from it, so it lands
     # on disk and never reaches the sidebar: created, and apparently gone.

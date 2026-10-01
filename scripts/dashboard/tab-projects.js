@@ -372,17 +372,26 @@ const P_GATE_IDS = {roadmap: "pGateRoadmap", bugs: "pGateBugs", rules: "pGateRul
                     design: "pGateDesign"};
 const pGateNow = () => Object.fromEntries(
   Object.entries(P_GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
+// What a new project starts on (the operator, 1 Oct). Auto where what a
+// session does lands in the notebook or the settings with its history and
+// is undone in a press: the roadmap, bugs, rules, build and test, the
+// design, and a report to BuilderBot's own tracker. Ask where it reaches
+// past that: its container, which runs the project's code on a shared
+// machine and publishes ports (ask rather than the deny a project has
+// without a choice, so a session can propose a rebuild at all, having no
+// docker of its own), a signed build, which leaves, and a signing key,
+// which is an app's identity for good.
+const P_GATE_DEFAULT = {pGateDocker: "ask", pGateSign: "ask", pGateKeys: "ask", pGateReport: "auto"};
 function pFillGates(){
-  for (const id of [...Object.values(P_GATE_IDS), "pGateDocker"]){
+  for (const id of [...Object.values(P_GATE_IDS), "pGateDocker", "pGateSign", "pGateKeys", "pGateReport"]){
     const el = $(id);
     if (el.dataset.built !== "1"){
-      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      // A report has nothing to hold for approval: auto or deny.
+      el.innerHTML = GATE_MODES.filter(([v]) => id !== "pGateReport" || v !== "ask")
+        .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
       el.dataset.built = "1";
     }
-    // Running its container starts at deny, the setting's own default: it
-    // runs the project's code on a shared machine, which the notebook's
-    // four do not.
-    el.value = id === "pGateDocker" ? "deny" : "auto";
+    el.value = P_GATE_DEFAULT[id] || "auto";
   }
 }
 
@@ -582,6 +591,9 @@ async function createProject() {
                                 version: mode === "init" ? $("pVersion").value.trim() : "",
                                 gate: $("pGateField").hidden ? null : pGateNow(),
                                 devbuild: $("pGateField").hidden ? null : ($("pGateDocker").value || "deny"),
+                                sign: $("pGateField").hidden ? null : ($("pGateSign").value || "ask"),
+                                keys: $("pGateField").hidden ? null : ($("pGateKeys").value || "ask"),
+                                report: $("pGateField").hidden ? null : ($("pGateReport").value || "auto"),
                                 key: mode === "clone" ? key : "",
                                 // Only ever consulted for a host that does not
                                 // name itself: the server prefers the host.

@@ -1311,6 +1311,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .modal .link[hidden]{display:none}
 /* A project's signing keys (R106): a row per route, its form when opened,
    and its actions in one line. */
+/* The project settings' sections: a heading over each, the heading's rule
+   the divide, and a section with no field showing gone with its heading. */
+.rngroup:not(:has(> .field:not([hidden]):not(.rnhead))){display:none}
+/* The heading is a label in a band, as a dialog heads a group of fields
+   (design: a-dialog/layout), drawn as the section's divide. */
+.rnhead > label{display:block;margin-top:10px;padding-bottom:4px;border-bottom:1px solid var(--line);
+  font:var(--f-tag);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
 .rnsign{padding:6px 0;border-top:1px solid var(--line)}
 /* A signed build's certificate fingerprint on its Artifacts row (R106):
    the whole of it, wrapping on a phone rather than cut off. */
@@ -3346,6 +3353,11 @@ body.booting .pane>.loading{margin:auto}
 .fx .cve{display:inline-block;font:11px/1 var(--mono);padding:3px 7px;
   border-radius:99px;border:1px solid var(--red2-edge);color:var(--bad);
   text-decoration:none;margin:0 4px 4px 0}
+/* A reason line in red wherever it is drawn (B426). Last, so it outranks
+   each surface's plain .sub color, which it ties on specificity: it was red
+   in a project row and a toolchain row only, and the dialog's "never backed
+   up", the Claude chooser's reasons and a sign-in's refusals were not. */
+.sub.bad{color:var(--bad)}
 </style>
 </head>
 <body data-view="dash" class="booting">
@@ -3789,6 +3801,13 @@ body.booting .pane>.loading{margin:auto}
 <div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="rnTitle">
   <div class="box">
     <h3 id="rnTitle">Project settings</h3>
+    <!-- In sections, each titled and each hiding itself when none of its
+         fields is shown (the chain's door shows the remote alone): what
+         the project is and who it belongs to, where it runs, what a
+         session sees, how it builds, its signing keys, what Claude may
+         do, what is yours, and who is in it now (the operator, 1 Oct). -->
+    <section class="rngroup">
+      <div class="field rnhead"><label>The project</label></div>
     <div class="field" id="rnNameField">
       <label for="rnName">New name</label>
       <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
@@ -3801,6 +3820,15 @@ body.booting .pane>.loading{margin:auto}
       <label id="rnColorLabel">Color<span class="help" data-tip="worn by this project's notebook tab and its row; none is the default" tabindex="0">?</span></label>
       <div class="pcpick" id="rnColor" role="radiogroup" aria-labeledby="rnColorLabel"></div>
     </div>
+    <!-- Who the project belongs to and who joins it (membership.py): the
+         owner and Invite only are staged until Save; Invite and Withdraw are
+         actions and act on the press. -->
+    <div class="field" id="rnPeopleField" hidden>
+      <label id="rnPeopleLabel">People<span class="help" data-tip="its owner, who is on it, and who is invited; an invite-only project's people are its owner's to change" tabindex="0">?</span></label>
+      <div id="rnPeople" role="group" aria-labeledby="rnPeopleLabel"></div>
+    </div>
+    </section>
+    <section class="rngroup">
     <!-- What this project pushes with. Reached by the chain on its row, which
          is where the remote lives for a project that has one and for a
          project that has not: the gear is the project's own settings, and a
@@ -3842,6 +3870,9 @@ body.booting .pane>.loading{margin:auto}
       <input id="rnAddr" type="text" autocomplete="off" spellcheck="false" inputmode="url">
       <div class="hint" id="rnAddrHint">Change it after renaming your account or organization on the host. Saving checks it is this repository: another one is refused.</div>
     </div>
+    </section>
+    <section class="rngroup">
+      <div class="field rnhead"><label>Where it runs</label></div>
     <!-- The project's node: where everything it does on a node goes:
          containers, builds, tests, CI, emulation. One setting, by decision
          (docs/nodes.md §13): per-role pickers were more control than anybody
@@ -3854,7 +3885,31 @@ body.booting .pane>.loading{margin:auto}
       <label id="rnNodesLabel" hidden>Also works on</label>
       <div class="lbox" id="rnNodesMore" role="group" aria-labeledby="rnNodesLabel" hidden></div>
       <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them.</div>
+      <!-- What the project may use there (R102): the card, and where its
+           tests run when it has a dev instance. -->
+      <div class="prefrow">
+        <label class="pick wide">The node's GPU <select id="rnGpu"
+          aria-label="whether this project's sessions, builds and tests may compute on its node's NVIDIA card">
+          <option value="on">may be computed on, where the node has one and allows it</option>
+          <option value="off">is not for this project: it runs as if the machine had none</option>
+        </select></label>
+      </div>
+      <!-- Where the tests run, which is this project's business and used to
+           be set on the Docker tab, a machine surface it has no other reason
+           to visit (R68 step 6). Only for a project that HAS a container to
+           run in: rnFill hides it otherwise. -->
+      <div id="rnTestWhere" hidden>
+        <label for="rnDevTest">Tests run<span class="help" data-tip="inside the dev instance only when its image carries the tests" tabindex="0">?</span></label>
+        <select id="rnDevTest">
+          <option value="node">on the node, never in its dev instance</option>
+          <option value="up">in its dev instance when it is up, else on the node</option>
+          <option value="only">only in its dev instance, never on the node</option>
+        </select>
+      </div>
     </div>
+    </section>
+    <section class="rngroup">
+      <div class="field rnhead"><label>What a session sees</label></div>
     <!-- The projects a session here may read (prefs.reads): their trees
          bound read-only into its view on a node, their notebooks answering
          to bb from inside them, every write refused. The operator's to
@@ -3872,8 +3927,11 @@ body.booting .pane>.loading{margin:auto}
       <label for="rnSees">Also sees<span class="help" data-tip="a share or a disk mounted on the node that a session here works with, by its path there. A session sees no other; one started after the save sees these" tabindex="0">?</span></label>
       <input id="rnSees" autocomplete="off" spellcheck="false" placeholder="/mnt/media, /mnt/samples">
     </div>
+    </section>
+    <section class="rngroup">
+      <div class="field rnhead"><label>Build and test</label></div>
     <div class="field" id="rnBuildField">
-      <label for="rnBuildCmd">Build and test<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
+      <label for="rnBuildCmd">Commands<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
       <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
              placeholder="build, e.g. ./gradlew assembleDebug">
       <input id="rnTestCmd" autocomplete="off" spellcheck="false"
@@ -3889,35 +3947,22 @@ body.booting .pane>.loading{margin:auto}
         <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
       <div class="logdays setrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-tip="of each kind of dev build in dist/ (the same file at another dev version), the newest this many stay and the older are removed; a release and anything pinned always stay; 0 keeps them all" tabindex="0">?</span></label>
         <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each kind"> <span class="dim">of each</span></div>
-      <!-- Where the tests run, which is this project's business and used to
-           be set on the Docker tab, a machine surface it has no other reason
-           to visit (R68 step 6). Only for a project that HAS a container to
-           run in: rnFill hides it otherwise. -->
-      <div id="rnTestWhere" hidden>
-        <label for="rnDevTest">Tests run<span class="help" data-tip="inside the dev instance only when its image carries the tests" tabindex="0">?</span></label>
-        <select id="rnDevTest">
-          <option value="node">on the node, never in its dev instance</option>
-          <option value="up">in its dev instance when it is up, else on the node</option>
-          <option value="only">only in its dev instance, never on the node</option>
-        </select>
-      </div>
     </div>
-    <!-- Who the project belongs to and who joins it (membership.py): the
-         owner and Invite only are staged until Save; Invite and Withdraw are
-         actions and act on the press. -->
-    <div class="field" id="rnPeopleField" hidden>
-      <label id="rnPeopleLabel">People<span class="help" data-tip="its owner, who is on it, and who is invited; an invite-only project's people are its owner's to change" tabindex="0">?</span></label>
-      <div id="rnPeople" role="group" aria-labeledby="rnPeopleLabel"></div>
-    </div>
+    </section>
+    <section class="rngroup">
+      <div class="field rnhead"><label>Android signing</label></div>
     <!-- A project's Android signing keys (R106), an administrator's: kept
          by the controller, never in the tree and never in a session's view.
          Staged like the rest of this dialog: a picked keystore or a removal
          is sent when Save is pressed. Download backup is an action. -->
     <div class="field" id="rnSignField" hidden>
-      <label id="rnSignLabel">Signing keys<span class="help" data-tip="kept by the controller and used by bb sign on the project's node; a session never receives the key or its password" tabindex="0">?</span></label>
+      <label id="rnSignLabel">Keys<span class="help" data-tip="kept by the controller and used by bb sign on the project's node; a session never receives the key or its password" tabindex="0">?</span></label>
       <div id="rnSignRows" role="group" aria-labeledby="rnSignLabel"></div>
       <div class="hint" id="rnSignHint"></div>
     </div>
+    </section>
+    <section class="rngroup">
+      <div class="field rnhead"><label>Claude may</label></div>
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is
          already on a list a session may still tick, note and reword. -->
@@ -3925,20 +3970,15 @@ body.booting .pane>.loading{margin:auto}
          (the operator, 25 Sep): what a session enters, what it runs, and
          what a change asked for does while a test run is going. -->
     <div class="field" id="rnGateField">
-      <label id="rnGateLabel">Claude settings</label>
+      <label id="rnGateLabel">While a test runs</label>
       <div class="prefrow" role="group" aria-labeledby="rnGateLabel">
-        <label class="pick wide">During a test run, a change asked for <select id="rnTestChange"
+        <label class="pick wide">A change asked for <select id="rnTestChange"
           aria-label="what a change asked for during a test run does">
           <option value="wait">waits: the ask in hand is finished and tested first</option>
           <option value="restart">interrupts any test run for the new ask</option>
         </select></label>
-        <label class="pick wide">The node's GPU <select id="rnGpu"
-          aria-label="whether this project's sessions, builds and tests may compute on its node's NVIDIA card">
-          <option value="on">may be computed on, where the node has one and allows it</option>
-          <option value="off">is not for this project: it runs as if the machine had none</option>
-        </select></label>
       </div>
-      <label id="rnGateMayLabel" class="sub dim">Claude may</label>
+      <label id="rnGateMayLabel">Permissions</label>
       <div class="prefrow" role="group" aria-labeledby="rnGateMayLabel">
         <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
@@ -3946,10 +3986,10 @@ body.booting .pane>.loading{margin:auto}
           aria-label="new bug reports from a session"></select></label>
         <label class="pick">Add rules <select id="rnGateRules"
           aria-label="new house rules from a session"></select></label>
-        <label class="pick">Fill in build and test <select id="rnGateSettings"
-          aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Add to the design <select id="rnGateDesign"
           aria-label="the design language and pages saved from a session"></select></label>
+        <label class="pick">Fill in build and test <select id="rnGateSettings"
+          aria-label="the build, test and outputs fields from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
              when there is none, remove it (devbuild; the Docker row says
              what it is set to). Deny by default. -->
@@ -3973,6 +4013,9 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
+    </section>
+    <section class="rngroup">
+      <div class="field rnhead"><label>Yours on this project</label></div>
     <!-- YOURS, not the project's, and last so that is legible from the
          shape of the dialog rather than only from the words. Everything
          above changes what the project does for everybody; nothing here
@@ -3980,7 +4023,7 @@ body.booting .pane>.loading{margin:auto}
          uid in claude-prefs.json, applied as launch flags by bb-tty for the
          model and as git's environment for the author. -->
     <div class="field" id="rnMineField">
-      <label id="rnMineLabel">Yours on this project<span class="help" data-tip="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
+      <label id="rnMineLabel">Your sessions and commits<span class="help" data-tip="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
       <div class="hint">Yours alone; everything above is the project's.</div>
       <div class="prefrow" role="group" aria-labeledby="rnMineLabel">
         <label class="pick">Model <select id="rnModel"
@@ -4011,13 +4054,17 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint" id="rnGitHint"></div>
     </div>
+    </section>
+    <section class="rngroup">
+      <div class="field rnhead"><label>Sessions on this project</label></div>
     <!-- Every account's sessions on the project, for an administrator, each
          with End (page-projsessions.js). At the foot because the operator
          asked for it there, and apart from the settings: End acts at once. -->
     <div class="field" id="rnSessField" hidden>
-      <label>Sessions on this project</label>
+      <label>Running now</label>
       <div id="rnSessList"></div>
     </div>
+    </section>
     <!-- Save pressed with a change a running session takes only when it
          starts (its model and effort, its author, the projects it reads
          and the places it sees, its node, what its briefing says): named
@@ -4335,12 +4382,20 @@ body.booting .pane>.loading{margin:auto}
           aria-label="new bug reports from a session"></select></label>
         <label class="pick">Add rules <select id="pGateRules"
           aria-label="new house rules from a session"></select></label>
-        <label class="pick">Fill in build and test <select id="pGateSettings"
-          aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Add to the design <select id="pGateDesign"
           aria-label="the design language and pages saved from a session"></select></label>
+        <label class="pick">Fill in build and test <select id="pGateSettings"
+          aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Run its container <select id="pGateDocker"
           aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
+        <!-- The rest of the project settings' Claude may, so a project is
+             born with every one of them chosen rather than found later. -->
+        <label class="pick">Sign a release <select id="pGateSign"
+          aria-label="signing a build with this project's keys, from a session"></select></label>
+        <label class="pick">Manage signing keys <select id="pGateKeys"
+          aria-label="making a signing key or mapping an app to one, from a session"></select></label>
+        <label class="pick">Report BuilderBot bugs <select id="pGateReport"
+          aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>

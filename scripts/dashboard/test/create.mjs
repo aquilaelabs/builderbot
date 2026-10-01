@@ -60,11 +60,18 @@ ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
 // The four gates are on the dialog (R78): what a session may enter into
 // the notebook, auto on every open, so it is a choice made rather than a
 // default found later in the settings dialog.
-ok(await page.$$eval('#pGateField select', s => s.length === 6 && s.some(x => x.id === 'pGateDesign') && s.every(x => x.options.length === 3)
-                                              && s.filter(x => x.id !== 'pGateDocker').every(x => x.value === 'auto')
-                                              && s.find(x => x.id === 'pGateDocker')?.value === 'deny')
-   && await page.$eval('#pGateField', el => !el.hidden),
-   'the six Claude gates are offered on a new local repo: the notebook five at auto, the design among them, Run its container at deny');
+// All nine, as the project settings have them (1 Oct), each at what a new
+// project starts on: auto where it lands in the notebook or the settings,
+// ask where it reaches past them (its container, a signed build, a key).
+{
+  const g = await page.$$eval('#pGateField select', s => Object.fromEntries(s.map(x => [x.id, [x.value, x.options.length]])));
+  const want = { pGateRoadmap: 'auto', pGateBugs: 'auto', pGateRules: 'auto', pGateDesign: 'auto', pGateSettings: 'auto',
+                 pGateDocker: 'ask', pGateSign: 'ask', pGateKeys: 'ask', pGateReport: 'auto' };
+  ok(Object.keys(g).length === 9 && Object.entries(want).every(([id, v]) => g[id]?.[0] === v)
+     && g.pGateReport[1] === 2 && Object.entries(g).filter(([id]) => id !== 'pGateReport').every(([, [, n]]) => n === 3)
+     && await page.$eval('#pGateField', el => !el.hidden),
+     `the nine Claude gates are offered on a new local repo, at what a new project starts on (${JSON.stringify(g)})`);
+}
 const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    '...with the cursor in none of its fields');
@@ -453,6 +460,13 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
   const docked = await postJson({ name: 'Docked App', mode: 'init', devbuild: 'ask' });
   await refreshUntil(page, () => state?.projects?.some(p => p.name === 'Docked-App' && p.prefs?.devbuild === 'ask'), { timeout: 15000 });
   ok(docked.status === 200, 'a project is created with Run its container set, and carries it');
+  // ...and the signing and reporting dials, when one differs from the
+  // default a project gets anyway.
+  const signed = await postJson({ name: 'Signed App', mode: 'init', sign: 'auto', keys: 'deny', report: 'deny' });
+  await refreshUntil(page, () => state?.projects?.some(p => p.name === 'Signed-App' && p.prefs?.sign === 'auto'), { timeout: 15000 });
+  const sp = await page.evaluate(() => (state?.projects || []).find(p => p.name === 'Signed-App')?.prefs || {});
+  ok(signed.status === 200 && sp.sign === 'auto' && sp.keys === 'deny' && sp.report === 'deny',
+     `Sign a release, Manage signing keys and Report BuilderBot bugs from the dialog land on the new project (${sp.sign}/${sp.keys}/${sp.report})`);
   const bad = await postJson({ name: 'Gated Bad', mode: 'init', gate: { roadmap: 'maybe' } });
   ok(bad.status === 200 && /gates not set/.test(bad.body.note || ''),
      `a gate value that is not auto, ask or deny is refused in the note, and the project still exists (${bad.body.note})`);

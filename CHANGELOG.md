@@ -105,6 +105,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Changing a project's token, authentication or address no longer waits for its terminals to close; only a new name does (4b6df9c)
 - The image is published as ghcr.io/aquilaelabs/builderbot, after the organization's rename: the Unraid template and docker-compose.yml pull it from there (4b4875e)
 - BuilderBot's licensor is aquilaeLabs: LICENSE and the dashboard's About say so (03c6c20)
+- A project's settings are in titled sections: the project and its people, where it runs, what a session sees, build and test, Android signing, Claude may, yours, and its sessions (d0e52bf)
+- The new project dialog offers all nine Claude may settings, Sign a release, Manage signing keys and Report BuilderBot bugs among them, and Run its container starts at ask rather than deny (d0e52bf)
 
 ### Removed
 
@@ -188,6 +190,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On the Nodes tab, a VM catalog that arrives after its dialog was closed no longer replaces the Enroll form, and what was typed into it, with the VM form (9c3a0e4)
 - bb settings lists Claude may: Sign a release and Manage signing keys with the other dials (8c51217)
 - bb emu list answers in about a second and bb emu start picks its AVD without a minute and a half's pause: both read the AVDs' own files instead of avdmanager, which scanned the whole shared SDK first (7dca24a)
+- A red reason line is red wherever it is drawn: a key never backed up, the Claude chooser's reasons and a sign-in's refusals were in the plain color (d0e52bf)
 
 ### Security
 
