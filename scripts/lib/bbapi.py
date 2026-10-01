@@ -39,12 +39,14 @@ def keep_token(tok):
     never runs out (users.renewal). The project comes from the token itself
     rather than the environment, because bb runs with BB_PROJECT set and a
     hook may not. Best effort: a token that could not be kept is a token
-    that expires on schedule, which is what happened before."""
+    that expires on schedule, which is what happened before. Returns "" when
+    it was kept and why not otherwise, so `bb token keep` (the agent's idle
+    refresh) can say so rather than succeed at nothing."""
     try:
         raw = tok[len("bbs_"):]
         project = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode().split("|")[0]
         if not project or "/" in project:
-            return
+            return "the token names no project"
         home = os.environ.get("HOME", "")
         d = os.environ.get("XDG_CACHE_HOME") or (home and os.path.join(home, ".cache")) \
             or f"/tmp/bb-scope-{os.getuid()}"
@@ -61,8 +63,9 @@ def keep_token(tok):
         with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
             f.write(tok + "\n")
         os.replace(tmp, os.path.join(d, "token"))
-    except (OSError, ValueError, UnicodeDecodeError):
-        pass
+    except (OSError, ValueError, UnicodeDecodeError) as e:
+        return f"{type(e).__name__}: {e}"
+    return ""
 
 
 def url():

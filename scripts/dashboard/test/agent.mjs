@@ -710,6 +710,35 @@ print(json.dumps(open(seen).read().splitlines() if os.path.exists(seen) else [])
       ok(rows.length === 1 && rows[0] === 'token keep alpha u_12345678 bbs_fresh',
          `the agent hands each live session's fresh token to the bundle's own bb, found where the bundle keeps it (${said})`);
     }
+    // ...and a keep that fails is said in the agent's log, once an hour per
+    // session: it was silent, so a token ran out with nothing saying why
+    // (B419).
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+logged = []
+m.log = lambda msg, *a, **k: logged.append(msg)
+store = tempfile.mkdtemp()
+os.makedirs(os.path.join(store, '.bb', 'current', 'scripts'))
+bb = os.path.join(store, '.bb', 'current', 'scripts', 'bb')
+with open(bb, 'w') as f:
+    f.write('#!/bin/sh\\necho "[builderbot] ERROR: the session token was not kept under /nowhere: PermissionError" >&2\\nexit 1\\n')
+os.chmod(bb, 0o755)
+m.tc_root = lambda st: store
+a = object.__new__(m.Agent)
+a.state = {}
+a.session_account = lambda: 'whoever'
+rows = [{'project': 'alpha', 'uid': 'u_12345678', 'token': 'bbs_fresh'}]
+a.keep_session_tokens(rows)
+a.keep_session_tokens(rows)
+print(json.dumps(logged))
+`], { encoding: 'utf8' }).trim();
+      const logged = JSON.parse(said);
+      ok(logged.length === 1 && /session tokens: bb token keep failed \(exit 1\): .*not kept under \/nowhere/.test(logged[0]),
+         `...and one it could not keep is said in the agent's log with bb's reason, once, not on every hello (${said.slice(0, 160)})`);
+    }
     // The session's view (R35): the helper travels in the bundle, and what
     // the agent writes for it is one rule for one command, the layout, and a
     // respawn that runs again only a launcher it recognizes.

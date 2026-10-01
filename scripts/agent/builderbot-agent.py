@@ -96,7 +96,7 @@ import urllib.request
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.125"
+AGENT_VERSION = "0.7.126"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3744,11 +3744,14 @@ class Agent:
         store = tc_root(self.state)
         bb = os.path.join(store, ".bb", "current", "scripts", "bb") if store else ""
         if not bb or not os.access(bb, os.X_OK):
+            self.keep_said("bundle", f"no bundle bb at {bb or '(no toolchain store)'}, so no idle "
+                                     "session's token is refreshed")
             return
         env0 = dict(os.environ)
         try:
             who = self.as_user(env0, who_name)
-        except RuntimeError:
+        except RuntimeError as e:
+            self.keep_said("account", str(e))
             return
         for row in rows[:64]:
             project = str((row or {}).get("project") or "")
@@ -3761,12 +3764,28 @@ class Agent:
                         "BB_PROJECT": project, "BB_TOKEN": token,
                         "BUILDERBOT_ROLE": "node"})
             try:
-                subprocess.run([bb, "token", "keep"],
-                               env=env, capture_output=True, timeout=20, check=False,
-                               **({"user": who["user"], "group": who["group"],
-                                   "extra_groups": who["extra_groups"]} if who else {}))
-            except (OSError, subprocess.SubprocessError):
+                p = subprocess.run([bb, "token", "keep"],
+                                   env=env, capture_output=True, text=True, timeout=20, check=False,
+                                   **({"user": who["user"], "group": who["group"],
+                                       "extra_groups": who["extra_groups"]} if who else {}))
+            except (OSError, subprocess.SubprocessError) as e:
+                self.keep_said(f"{uid}/{project}", f"bb token keep did not run: {e}")
                 return
+            if p.returncode:
+                said = ((p.stderr or "") + (p.stdout or "")).strip().splitlines()
+                self.keep_said(f"{uid}/{project}", f"bb token keep failed (exit {p.returncode}): "
+                                                    + (said[-1][-300:] if said else "it said nothing"))
+
+    def keep_said(self, key, msg):
+        """Log why an idle session's token was not refreshed, once an hour per
+        session: this was silent, and a session's token then ran out twelve
+        hours after its last call with nothing on the node saying why (B419)."""
+        now = time.monotonic()
+        seen = self.__dict__.setdefault("_keep_said", {})
+        if now - seen.get(key, -1e9) < 3600:
+            return
+        seen[key] = now
+        log(f"session tokens: {msg}")
 
     # -- the channel -------------------------------------------------------
     def census_take(self):
