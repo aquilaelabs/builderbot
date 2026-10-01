@@ -96,6 +96,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Two nodes that share a toolchain store install different toolchains at the same time: only a job touching the same toolchain (the Android SDK counting as one) waits, and a check, the NVIDIA driver, the container toolkit and system packages wait for nothing on another node (ffa5c6a)
 - Changing a project's token, authentication or address no longer waits for its terminals to close; only a new name does (4b6df9c)
 - The image is published as ghcr.io/aquilaelabs/builderbot, after the organization's rename: the Unraid template and docker-compose.yml pull it from there (4b4875e)
+- BuilderBot's licensor is aquilaeLabs: LICENSE and the dashboard's About say so (03c6c20)
 
 ### Removed
 
