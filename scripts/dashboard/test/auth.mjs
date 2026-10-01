@@ -1315,6 +1315,18 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
       ok(inv.status === 200 && mine && mine.by === 'test' && acc.body.joined === true
          && after.body.members.includes('adminone') && !after.body.invites.length,
          `...the owner invites them, the invitation waits in their status for the bell, and accepting puts them on it (${after.body.members.join(', ')})`);
+      // Handing it on: BuilderBot's owner moves it at once; its own owner
+      // offers it, and it changes hands when the other accepts.
+      const moved = await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'adminone' });
+      const offer = await post(adminAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'plainone' });
+      const pst = await (await bare('/api/status', { headers: plainAuth })).json();
+      const off = (pst.invites || []).find(i => i.project === 'gamma' && i.kind === 'owner');
+      const took = off ? await post(plainAuth, '/api/members', { action: 'accept', id: off.id }) : { body: {} };
+      const now = await post(ownerAuth, '/api/members', { action: 'view', project: 'gamma' });
+      ok(moved.body.owner === 'adminone' && offer.body.owner === 'adminone' && offer.body.offered === 'plainone'
+         && off && off.by === 'adminone' && took.body.owner === true && now.body.owner === 'plainone',
+         `BuilderBot's owner hands a project on at once; its own owner offers it, and it moves when accepted (${moved.body.owner} -> offered ${offer.body.offered} -> ${now.body.owner})`);
+      await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'test' });
       const sessM = await act(sessAuth, '/api/members', { action: 'view', project: 'alpha' });
       ok(sessM.status === 403, `...and a session has no say in who joins a project (${sessM.status})`);
       await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', invite_only: false });

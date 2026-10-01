@@ -3394,8 +3394,11 @@ against working on the wrong project; for a user it is the boundary.
 
 **Every project has an owner, and an owner can close it to administrators.**
 Whoever made a project owns it; one from before there were owners belongs to
-BuilderBot's owner. Under **People** in the project's settings (the gear) the
-owner, or BuilderBot's owner, hands it to another account and can make it
+BuilderBot's owner. Under **People** in the project's settings (the gear)
+BuilderBot's owner hands it to another account at once, and the project's own
+owner offers it: the offer waits in the other person's bell like an
+invitation, and the project changes hands when they accept (and only if the
+one who offered still owns it then). Either can make it
 **invite only**: then nobody else changes who is on it, so an administrator
 can still see it but cannot add themselves, or anybody, on the Users tab or
 anywhere, and people join by invitation. BuilderBot's owner is never kept

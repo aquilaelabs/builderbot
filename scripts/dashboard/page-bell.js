@@ -124,8 +124,10 @@ function drawBell(){
           <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>
             <a href="#" data-ballow="${a.id}">Approve</a></span></div></div>`),
     ...invites.map(i => `<div class="bnote ask">
-        <div class="btag">invited to ${esc(i.project)}</div>
-        <div class="bwhy">${esc(i.by || "Somebody")} invited you to work on ${esc(i.project)}</div>
+        <div class="btag">${i.kind === "owner" ? `${esc(i.project)} offered to you` : `invited to ${esc(i.project)}`}</div>
+        <div class="bwhy">${i.kind === "owner"
+          ? `${esc(i.by || "Somebody")} offers you ownership of ${esc(i.project)}`
+          : `${esc(i.by || "Somebody")} invited you to work on ${esc(i.project)}`}</div>
         <div class="bfoot"><span>${esc(ago(i.at))}</span>
           <span class="acts"><a href="#" data-binvite="${i.id}" data-yes="0">Decline</a>
             <a href="#" data-binvite="${i.id}" data-yes="1">Accept</a></span></div></div>`),
@@ -185,7 +187,8 @@ function drawBell(){
     const yes = a.dataset.yes === "1";
     const j = await (await postJSON("/api/members", {action: yes ? "accept" : "decline",
                                                      id: Number(a.dataset.binvite)})).json().catch(() => ({}));
-    notify(j.error || (yes ? `you are on ${j.project} now` : `declined ${j.project}`), !!j.error);
+    notify(j.error || (yes ? (j.owner ? `you own ${j.project} now` : `you are on ${j.project} now`)
+                           : `declined ${j.project}`), !!j.error);
     refresh();
   });
   panel.querySelectorAll("[data-bpend]").forEach(a => a.onclick = e => {

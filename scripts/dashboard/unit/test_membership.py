@@ -59,10 +59,37 @@ class Membership(unittest.TestCase):
 
     def test_only_the_owner_or_builderbots_restricts_or_hands_it_on(self):
         self.assertEqual(membership.set_owner(self.me("bob"), "app", restrict=True)[1], 403)
+        self.assertEqual(membership.set_owner(self.me("bob"), "app", owner="bob")[1], 403)
+
+    def test_builderbots_owner_hands_it_on_at_once(self):
         r, st = membership.set_owner(self.me("sean"), "app", owner="bob")
         self.assertEqual(st, 200, r)
         self.assertEqual(r["owner"], "bob")
+        self.assertIsNone(r["offer"])
         self.assertIn("app", users.get("bob")["projects"])
+
+    def test_the_projects_owner_offers_it_and_it_moves_on_acceptance(self):
+        r, st = membership.set_owner(self.me("ada"), "app", owner="cy")
+        self.assertEqual((st, r["owner"], r["offered"], r["offer"]["name"]), (200, "ada", "cy", "cy"))
+        mine = membership.mine(self.me("cy"))
+        self.assertEqual([(i["project"], i["kind"], i["by"]) for i in mine], [("app", "owner", "ada")])
+        r, st = membership.answer(self.me("cy"), mine[0]["id"], True)
+        self.assertEqual((st, r["owner"]), (200, True))
+        self.assertEqual(membership.owner_of("app"), "u_00000004")
+        self.assertIn("app", users.get("cy")["projects"])
+
+    def test_a_declined_offer_leaves_it_where_it_was(self):
+        membership.set_owner(self.me("ada"), "app", owner="cy")
+        iid = membership.mine(self.me("cy"))[0]["id"]
+        membership.answer(self.me("cy"), iid, False)
+        self.assertEqual(membership.owner_of("app"), "u_00000002")
+
+    def test_an_offer_from_somebody_who_no_longer_owns_it_cannot_be_taken(self):
+        membership.set_owner(self.me("ada"), "app", owner="cy")
+        iid = membership.mine(self.me("cy"))[0]["id"]
+        membership.set_owner(self.me("sean"), "app", owner="bob")
+        self.assertEqual(membership.answer(self.me("cy"), iid, True)[1], 409)
+        self.assertEqual(membership.owner_of("app"), "u_00000003")
 
     def test_an_invitation_is_accepted_from_the_bell(self):
         membership.set_owner(self.me("ada"), "app", restrict=True)

@@ -12,6 +12,12 @@ owner and BuilderBot's owner change who is on it, and everybody else comes
 in by accepting an invitation. BuilderBot's owner is never kept out: it can
 add itself to any project (the operator, 1 Oct).
 
+HANDING IT ON: BuilderBot's owner moves a project to another account at
+once. The project's own owner OFFERS it instead (the operator, 1 Oct): the
+offer waits in the other person's bell like an invitation, and the project
+changes hands only when they accept, and only if the one who offered still
+owns it then. One offer per project at a time; a new one replaces it.
+
 An INVITATION names an existing account, user or administrator. It waits in
 the invitee's bell with Accept and Decline: accepting puts the project on
 their list (users.take_on), declining drops it, and the one who invited, the
@@ -170,13 +176,20 @@ def view(me, project):
     """The project dialog's People: who owns it, whether it is invite only,
     who is on it, who is invited, and what `me` may do about any of it."""
     o = owner_of(project)
-    rows = _invites()["projects"].get(project) or []
+    every = _invites()["projects"].get(project) or []
+    rows = [r for r in every if r.get("kind") != "owner"]
+    offer = next((r for r in every if r.get("kind") == "owner"), None)
     manage = may_manage(me, project)
     on = set(members(project))
     return {"project": project, "owner": _name_of(o), "invite_only": invite_only(project),
             "may_manage": manage,
             "may_invite": manage or (users.is_admin(me) and not invite_only(project)),
-            "members": sorted(on), "invites": [
+            "members": sorted(on),
+            # Ownership offered and not yet accepted (the project's owner
+            # hands it on; BuilderBot's owner moves it at once).
+            "offer": {"id": offer["id"], "name": _name_of(offer["uid"]), "at": offer.get("at", 0)} if offer else None,
+            "bb_owner": _is_bb_owner(me),
+            "invites": [
                 {"id": r["id"], "name": _name_of(r["uid"]), "by": _name_of(r.get("by") or ""),
                  "at": r.get("at", 0)} for r in rows],
             # Who could be invited or made owner: every account, named.
@@ -189,6 +202,7 @@ def set_owner(me, project, owner="", restrict=None):
     if not may_manage(me, project):
         return {"error": f"only {project}'s owner, or BuilderBot's, changes who owns it "
                          "and whether it is invite only"}, 403
+    offered = ""
     with _lock:
         d = _owners()
         rec = d["projects"].setdefault(project, {})
@@ -196,13 +210,27 @@ def set_owner(me, project, owner="", restrict=None):
             u = users.get(owner)
             if not u or not u.get("uid"):
                 return {"error": f"no account called {owner}"}, 400
-            rec["owner"] = u["uid"]
-            # The owner works on what it owns.
-            users.take_on(owner, project)
+            if u["uid"] == owner_of(project):
+                pass
+            elif _is_bb_owner(me):
+                rec["owner"] = u["uid"]
+                # The owner works on what it owns.
+                users.take_on(owner, project)
+            else:
+                # The project's own owner offers it: it changes hands when
+                # the other person accepts, from their bell.
+                i = _invites()
+                rows = [r for r in i["projects"].get(project) or [] if r.get("kind") != "owner"]
+                rows.append({"id": int(i["next"]), "uid": u["uid"], "by": users.uid_of(me),
+                             "at": int(time.time()), "kind": "owner"})
+                i["projects"][project] = rows
+                i["next"] = int(i["next"]) + 1
+                _write("invites.json", i)
+                offered = owner
         if restrict is not None:
             rec["invite_only"] = bool(restrict)
         _write("project-owners.json", d)
-    return view(me, project), 200
+    return view(me, project) | ({"offered": offered} if offered else {}), 200
 
 
 def invite(me, project, name):
@@ -259,11 +287,21 @@ def answer(me, iid, accept):
             return {"error": "no such invitation for you"}, 404
         d["projects"][p] = [x for x in d["projects"][p] if x.get("id") != iid]
         _write("invites.json", d)
+    if accept and r.get("kind") == "owner":
+        # Only from whoever still owns it: an offer made before the project
+        # changed hands another way is no longer theirs to make.
+        if r.get("by") != owner_of(p):
+            return {"error": f"{p} changed hands since that was offered, so it is not theirs to give"}, 409
+        with _lock:
+            d = _owners()
+            d["projects"].setdefault(p, {})["owner"] = users.uid_of(me)
+            _write("project-owners.json", d)
     if accept:
         got = users.take_on(me.get("name") or "", p)
         if got.get("error"):
             return got, 400
-    return {"ok": True, "project": p, "joined": bool(accept)}, 200
+    return {"ok": True, "project": p, "joined": bool(accept),
+            "owner": bool(accept) and r.get("kind") == "owner"}, 200
 
 
 def mine(me):
@@ -276,7 +314,7 @@ def mine(me):
         for r in rows:
             if r.get("uid") == uid:
                 out.append({"id": r["id"], "project": p, "by": _name_of(r.get("by") or ""),
-                            "at": r.get("at", 0)})
+                            "at": r.get("at", 0), "kind": r.get("kind") or "join"})
     return out
 
 

@@ -440,6 +440,10 @@ function rnDrawPeople(){
       ? `<label class="ndcap" for="rnOwner">Owner</label>
          <select id="rnOwner">${v.accounts.map(n => `<option value="${esc(n)}"${n === owner ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>`
       : `<span>Owner: ${esc(v.owner || "BuilderBot's owner")}</span>`}</div>
+    ${v.may_manage && !v.bb_owner && d.owner && d.owner !== v.owner
+      ? `<div class="sub">Saving offers it to ${esc(d.owner)}, who becomes its owner on accepting from their bell.</div>` : ""}
+    ${v.offer ? `<div class="rninvite">Ownership offered to ${esc(v.offer.name)} <span class="dim">${esc(ago(v.offer.at))}, waiting for them to accept</span>
+      ${v.may_manage ? `<button type="button" class="link" data-withdraw="${v.offer.id}">Withdraw</button>` : ""}</div>` : ""}
     <label class="ndcap"><input type="checkbox" id="rnInviteOnly"${only ? " checked" : ""}${v.may_manage ? "" : " disabled"}>
       Invite only</label>
     <div class="sub dim">${only
@@ -452,7 +456,7 @@ function rnDrawPeople(){
       <select id="rnInviteWho" aria-label="account to invite">${invitable.map(n => `<option>${esc(n)}</option>`).join("")}</select>
       <button type="button" id="rnInviteGo">Invite</button></div>` : ""}`;
   const o = $("rnOwner");
-  if (o) o.onchange = () => { d.owner = o.value; };
+  if (o) o.onchange = () => { d.owner = o.value; rnDrawPeople(); };
   const io = $("rnInviteOnly");
   if (io && v.may_manage) io.onchange = () => { d.invite_only = io.checked; rnDrawPeople(); };
   const act = async body => {
@@ -476,6 +480,7 @@ async function rnSavePeople(name){
   if (!owner && only === undefined) return "";
   const j = await (await postJSON("/api/members", {action: "set", project: name, owner,
                                                    ...(only !== undefined ? {invite_only: only} : {})})).json();
+  if (j.offered) notify(`${name}: offered to ${j.offered}, who becomes its owner on accepting from their bell`);
   return j.error || "";
 }
 
