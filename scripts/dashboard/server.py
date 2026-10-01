@@ -5354,7 +5354,12 @@ class Handler(BaseHTTPRequestHandler):
                                              field(req, "key")))
         if field(req, "action") != "list" and self._refused("admin"):
             return None
-        return self._json(*signing.verb(req, by=str(who.get("name") or "")))
+        got, status = signing.verb(req, by=str(who.get("name") or ""))
+        # Whether this person may take a backup, so the dialog offers it only
+        # where it would be handed over.
+        if field(req, "action") == "list" and status == 200:
+            got["may_backup"] = users.is_admin(who) and users.may_work(who, name)
+        return self._json(got, status)
 
     def _get_node_busy(self):
         """GET /api/node-busy: whether one of a project's nodes is quiet
@@ -5393,6 +5398,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "a session never receives a signing key"}, 403)
         if self._not_project(name) or self._refused("admin"):
             return None
+        # ...and one who has the project on their own list (the operator,
+        # 1 Oct): an administrator sees every project, and a key is the one
+        # thing there that should not leave with somebody who only sees it.
+        if not users.may_work(self._who(), name):
+            return self._json({"error": f"a signing key's backup goes to an administrator on {name}: "
+                                        "add it to your own projects first"}, 403)
         got, status = signing.backup(name, q.get("route", [""])[0], q.get("key", ["default"])[0] or "default")
         if status != 200:
             return self._json(got, status)

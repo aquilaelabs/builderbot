@@ -108,6 +108,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - BuilderBot's licensor is aquilaeLabs: LICENSE and the dashboard's About say so (03c6c20)
 - A project's settings are in titled sections: the project and its people, where it runs, what a session sees, build and test, Android signing, Claude may, yours, and its sessions (d0e52bf)
 - The new project dialog offers all nine Claude may settings, Sign a release, Manage signing keys and Report BuilderBot bugs among them, and Run its container starts at ask rather than deny (d0e52bf)
+- A signing key's Download backup is offered to, and served to, an administrator who has the project on their own list, not every administrator who can see it (7e38643)
 
 ### Removed
 

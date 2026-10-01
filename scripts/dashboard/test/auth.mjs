@@ -1356,6 +1356,22 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
       await post(ownerAuth, '/api/users', { action: 'add', name: 'adminone', password: 'adminonepw1', role: 'admin' });
       const adminAuth = { 'Content-Type': 'application/json',
         Authorization: 'Basic ' + Buffer.from('adminone:adminonepw1').toString('base64') };
+      // A key's backup goes to an administrator ON the project (the
+      // operator, 1 Oct): adminone sees alpha and is not on it.
+      {
+        mkdirSync(`${DIR}/state/signing/alpha/default`, { recursive: true });
+        writeFileSync(`${DIR}/state/signing/alpha/default/sideload.ks`, 'k');
+        writeFileSync(`${DIR}/state/signing/alpha/default/sideload.json`, JSON.stringify({ alias: 'a', store_pass: 'pw', sha256: 'AB' }));
+        const off = await bare('/api/signing-backup?project=alpha&route=sideload', { headers: adminAuth });
+        const offMsg = await off.json().catch(() => ({}));
+        const on = await bare('/api/signing-backup?project=alpha&route=sideload', { headers: ownerAuth });
+        const listOff = await post(adminAuth, '/api/signing', { action: 'list', project: 'alpha' });
+        const listOn = await post(ownerAuth, '/api/signing', { action: 'list', project: 'alpha' });
+        ok(off.status === 403 && /add it to your own projects/.test(offMsg.error || '') && on.status === 200
+           && listOff.body.may_backup === false && listOn.body.may_backup === true,
+           `a signing key's backup is an administrator's on the project only, and the dialog offers it only to them (${off.status}/${on.status})`);
+        rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
+      }
       const view = await post(ownerAuth, '/api/members', { action: 'view', project: 'gamma' });
       const set = await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', invite_only: true });
       const self = await post(adminAuth, '/api/users', { action: 'projects', name: 'adminone', projects: ['gamma'] });

@@ -514,7 +514,8 @@ const RN_SIGN = [
    "For Google Play with Play App Signing, which can reset a lost upload key."],
   ["sideload", "Sideload signing key",
    "Signs a build handed out directly. Lose it and no update reaches an existing install: keep a copy offline."]];
-let rnSignKeys = null, rnSignTool = false, rnSignDraft = {}, rnSignMap = {}, rnSignMapDraft = {}, rnSignNew = [];
+let rnSignKeys = null, rnSignTool = false, rnSignDraft = {}, rnSignMap = {}, rnSignMapDraft = {}, rnSignNew = [],
+    rnSignBackup = false;
 
 function rnLoadSigning(name){
   rnSignKeys = null; rnSignDraft = {}; rnSignMapDraft = {}; rnSignNew = [];
@@ -525,6 +526,7 @@ function rnLoadSigning(name){
     .then(j => {
       if (rnFor !== name || j.error) return;
       rnSignKeys = j.keys || {}; rnSignMap = j.map || {}; rnSignTool = !!j.keytool;
+      rnSignBackup = !!j.may_backup;
       rnDrawSigning();
     })
     .catch(() => {});
@@ -554,7 +556,8 @@ function rnDrawSigning(){
       <div>${now}</div>
       <div class="sub dim">${esc(about)}${k && !d.remove && !d.file
         ? ` ${k.backed_up ? `Backed up ${esc(ago(k.backed_up))}.` : "Not backed up yet."}` : ""}</div>
-      ${never ? `<div class="sub bad">Never backed up: download a copy and keep it offline, since losing it is final.</div>` : ""}
+      ${never ? `<div class="sub bad">Never backed up: ${rnSignBackup ? "download a copy and keep it offline"
+        : "an administrator on this project downloads a copy to keep offline"}, since losing it is final.</div>` : ""}
       ${retired ? `<div class="sub">Retired: rotated to ${esc(k.retired_for)}. Kept, since the proof and every device before Android 9 still need it.</div>` : ""}
       ${rotated ? `<div class="sub">Rotated from ${esc(k.rotated_from)}: Android 9 and newer see this key, older devices still see ${esc(k.rotated_from)}.</div>` : ""}
       ${d.open ? `<div class="rnsignform">
@@ -566,7 +569,8 @@ function rnDrawSigning(){
       <div class="rnsignbar">
         <button type="button" class="link" data-signopen>${d.open ? "Never mind" : k ? "Replace" : "Upload one"}</button>
         ${!k && !d.open && rnSignTool ? `<button type="button" class="link" data-signgen>Generate</button>` : ""}
-        ${k ? `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&route=${route}" download>Download backup</a>
+        ${k && rnSignBackup ? `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&route=${route}" download>Download backup</a>` : ""}
+        ${k ? `
         ${retired ? "" : `<button type="button" class="link" data-signremove>${d.remove ? "Keep it after all" : "Remove"}</button>`}` : ""}
         ${targets.length ? `<select data-rotateto aria-label="the key to rotate ${esc(key)} to">${
           targets.map(n => `<option>${esc(n)}</option>`).join("")}</select>

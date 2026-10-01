@@ -3221,7 +3221,8 @@ in its settings (the gear):
   store. It is the app's identity for good: lose it and no update can reach an
   existing install, leak it and anybody can ship one that installs over yours.
   The row says so in red until it has been downloaded once with **Download
-  backup**, a copy to keep offline.
+  backup**, a copy to keep offline. A backup goes to an administrator who has
+  the project on their own list, not to every administrator who can see it.
 
 The keystore (`.jks` or `.p12`) and its passwords are kept by the controller
 under `/config/signing/PROJECT/`, owner-only, beside the git tokens and like
