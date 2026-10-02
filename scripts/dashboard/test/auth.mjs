@@ -753,13 +753,15 @@ ${code}`], { encoding: 'utf8' }).trim();
   const post = (path, body) => as(path, { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-  // Controller settings, and the global rules on it, are an administrator's
-  // (R63): a global rule reaches every project, including ones this account
-  // cannot see. The card carrying the button is not drawn for them either,
-  // which `can.admin` is what decides.
+  // Controller settings are an administrator's, and so is changing a global
+  // rule (R63), which reaches every project, including ones this account
+  // cannot see: a project's Briefing offers it only where may_global says.
   const asUser = await (await as('/api/status')).json();
   ok(asUser.can?.admin === false,
      'an ordinary account is told it is not an administrator, so the page draws no Administration card');
+  const theirRules = await (await as('/api/rules?project=alpha')).json();
+  ok(theirRules.may_global === false && (theirRules.global || []).length > 0,
+     '...and its project\'s Briefing lists the global rules with no way to change them for every project');
   const wrote = await post('/api/global-rules',
     { action: 'save', rules: [{ name: 'sneak', text: 'every project, please' }] });
   ok(wrote.status === 403, `...and cannot write a rule for every project (${wrote.status})`);

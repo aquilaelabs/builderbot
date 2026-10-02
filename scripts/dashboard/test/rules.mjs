@@ -34,7 +34,7 @@ await ready(page);
 
 // The listing's name column is as wide as its longest name (B233): the
 // shipped no-credentials-in-the-repo ran straight into its own text.
-ok(/no-credentials-in-the-repo\s+Never write/.test(bb()),
+ok(/ask-do-not-install\s+Never install/.test(bb()),
    'bb rules pads the name column past its longest name');
 
 // ---- the tab ---------------------------------------------------------------

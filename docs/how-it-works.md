@@ -3637,6 +3637,18 @@ then the house rules in effect, then the open roadmap and the open bugs. The
 Briefing tab shows a person exactly that string, byte for byte, because it is
 the same assembly rather than another rendering of it.
 
+What a session is told is split by one question: is there value in turning
+it off? An obligation somebody might reasonably not want (sessions filing
+what they notice, chasing a bug they meet, installing nothing, walking a
+change in the app before calling it done) is a **global rule**, and what
+nobody would switch off (no credential in a repository, a true report,
+another person's branch left alone, the project's own files) is a line of
+the briefing. The global rules are listed in every project's notebook,
+under the project's own rules on the Briefing view: anybody who works on
+the project can switch one off for that project alone, staged behind the
+notebook's Save, and an administrator also adds, edits and removes them,
+or turns a shipped one off, for every project from the same place.
+
 None of it is copied into the project. There is no file to render, push, or
 keep in step, and nothing to go stale: the briefing is one file in the image
 (`config/templates/briefing.md`), the rules live in `/config`, and a project

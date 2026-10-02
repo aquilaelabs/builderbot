@@ -54,7 +54,9 @@ a disk mounted on the node, another project's build cache or container data,
 and the home of the account sessions run as are not in its view, by design:
 a path somebody names that is not there is the view, not a fault. A share
 this project works with is named in its settings (Also sees), which are the
-operator's, so say in your reply which path is needed and why.
+operator's, so say in your reply which path is needed and why. Work in this
+project only: never look for context in another project under /workspace
+beyond the ones it reads, and when something seems to be missing, ask.
 
 <!-- BUILDERBOT:READS -->
 
@@ -145,9 +147,10 @@ alike.
 ## Proving a change
 
 Tests pass on the node; the product is what a person meets on the
-dashboard or in the app. Where the project has a container built from its
-compose, rebuild it and use the change there the way a person would before
-calling it done, and say what you saw. Show pixels by saving a file and
+dashboard or in the app, which is a dev instance rebuilt from its compose
+or the app on the emulator. Report what happened, not what
+should have: a failed test with its output, a skipped step as skipped, and
+never a success you did not see. Show pixels by saving a file and
 naming the path: this machine is headless, so run every tool in its
 headless mode, and Playwright's browsers are on the store at
 $PLAYWRIGHT_BROWSERS_PATH.
@@ -280,7 +283,11 @@ person pinned there.
 
 ## Git
 
-Your commit identity arrives as git's environment, so a commit that cannot
+Never write a credential into a repository: not in a test fixture, not in
+CI config, not in an .env file that is not gitignored. A branch another
+account's session works on (claude/<their name>) is theirs: merge, rebase
+or delete it only when asked to, after saying whose it is. Your commit
+identity arrives as git's environment, so a commit that cannot
 find an author is a fault to report, not one to fix with `user.name`. On a
 node, pushing is `bb git push` (also `fetch`, `pull`, `ls-remote`): the
 controller holds the keys, so no credential is ever here, and a plain

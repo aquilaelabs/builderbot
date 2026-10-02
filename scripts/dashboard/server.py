@@ -4377,7 +4377,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         # With the number a Save is checked against (B195): read in the same
         # answer as the rules, so the two cannot describe different moments.
-        return self._json(rules.payload(name) | {"rev": rules.rev(name)})
+        who = self._who() or {}
+        # Whether this person may change the global rules themselves, which
+        # the notebook offers beside the project's own switch for each.
+        admin = users.is_admin(who) and not who.get("session")
+        return self._json(rules.payload(name) | {"rev": rules.rev(name), "may_global": admin})
 
     def _get_global_rules(self):
         """GET /api/global-rules."""

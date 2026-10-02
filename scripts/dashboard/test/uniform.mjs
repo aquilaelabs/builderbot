@@ -1310,7 +1310,7 @@ for (const kind of kinds){
 // price of adding one.
 const DIALOGS = {
   about: () => openAbout(), newproject: () => openNewProject(), trash: () => openTrash(),
-  globalrules: () => openGlobalRules(), pending: () => openPending('alpha'),
+  pending: () => openPending('alpha'),
   newcontainer: () => openNewContainer(), custom: () => editCustom(),
   // A new project's first session: opened for a project with no brief, which
   // draws the same dialog with an empty text box.
@@ -1453,9 +1453,9 @@ for (const [name, open] of Object.entries(DIALOGS)) {
     .filter(e => { const r = e.getBoundingClientRect(); return r.height < 30 || r.width < 30; })
     .map(e => `${e.className || e.tagName} "${e.textContent.trim().slice(0, 12)}" ${Math.round(e.getBoundingClientRect().width)}x${Math.round(e.getBoundingClientRect().height)}`));
   ok(small.length === 0, `on a touch phone the tab strip, the notebook and the bar are a thumb's size${small.length ? ': ' + small.slice(0, 4).join(', ') : ''}`);
-  await phone.evaluate(() => openGlobalRules());
-  await phone.waitForSelector('#grmodal:not([hidden]) .foot button', { timeout: 10000 });
-  const shortFoot = await phone.$$eval('#grmodal .foot button', bs => bs.filter(b => b.getBoundingClientRect().height < 36).length);
+  await phone.evaluate(() => openNewProject());
+  await phone.waitForSelector('.modal:not([hidden]) .foot button', { timeout: 10000 });
+  const shortFoot = await phone.$$eval('.modal:not([hidden]) .foot button', bs => bs.filter(b => b.getBoundingClientRect().height < 36).length);
   ok(shortFoot === 0, `...and a dialog's buttons are the tap height (${shortFoot} short)`);
   await phone.setViewportSize({ width: 344, height: 882 });
   await phone.evaluate(() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; }));

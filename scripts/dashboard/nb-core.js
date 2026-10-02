@@ -69,6 +69,9 @@ function makeNotebook(project){
                      nbUnsaved, noteBatch, syncSave});
   nb.loaded = false;
   nb.ruleData = null; nb.rulePending = null; nb.rulesRev = null;
+  // Global rules switched off for this project, staged (nb-rules.js), and
+  // the one an administrator is editing.
+  nb.globalOffPending = null; nb.globalEditing = null;
   // Which rules are open for editing, by row. A rule is READ by default:
   // its name, its text, its triggers, and shows its fields only after Edit,
   // the way a bug report does; every row opening as a form read as a tab

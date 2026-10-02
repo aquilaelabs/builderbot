@@ -865,6 +865,12 @@ head row fits a phone. Why Push is dead (no push rights) is said in red under th
 only in a tooltip. New page is
 the band under the head row, the first page offered as Home. Under Claude may: Write the wiki hidden the view is unchanged for a person; only a session is kept out.
 
+The Briefing's rules section lists the global rules under the project's own, each a row that
+opens to read with an On for this project switch, staged behind the notebook's Save like the
+rules above it. An administrator's rows also carry Edit and Remove, or Off everywhere for a
+shipped one, each written at once for every project, and Add a global rule is the band over
+them; nowhere else on the dashboard edits a global rule.
+
 ### the dashboard on a phone (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.

@@ -144,53 +144,35 @@ GLOBAL = "*"
 # image would bring an edited one back, and a change nobody can see reverted
 # is worse than no change, so the operator turns one off instead.
 #
-# THE LINE BETWEEN THESE AND THE BRIEFING, which is the question worth being
-# able to answer: the briefing states what is TRUE of this machine (there is
-# no display, the toolchain is the store, you have no sudo), and none of it
-# has an on and an off. A rule is an OBLIGATION, so it is a thing the operator
-# might scope differently, disagree with, or want to see and turn off, and it
-# belongs where they can. Nothing is said in both places, because a session
-# that reads it twice pays twice and the two copies drift.
+# THE LINE BETWEEN THESE AND THE BRIEFING (the operator, 2 Oct): a rule is a
+# global rule when there is value in turning it off, and otherwise it is said
+# in the briefing. So each of these is a way of working an operator might
+# reasonably not want (let a session install with root asks, keep the tracker
+# quiet, chase what it meets, skip the walk in the app for speed), and what no
+# operator would ever switch off (no credential in a repository, a true
+# report, another person's branch left alone, the project's own files) is in
+# config/templates/briefing.md, where it costs nothing to keep and cannot be
+# turned off by a press or by a session's request. Nothing is said in both
+# places, because a session that reads it twice pays twice and the two copies
+# drift.
 BUILTIN = [
-    {"name": "stay-in-project",
-     "text": "Work in this project only, and read the projects its settings say it"
-             " reads (the briefing names them): never read, write or look for"
-             " context in any other project under /workspace, and never change"
-             " one it reads. If something seems to be missing, ask."},
     {"name": "ask-do-not-install",
      "text": "Never install a tool with a system package manager: it is invisible"
              " to `bb toolchains` and gone when the node is rebuilt. Say what is"
              " missing; installing is the operator's."},
-    {"name": "no-credentials-in-the-repo", "fixed": True,
-     "text": "Never write a credential into a repository: not in a test fixture,"
-             " not in CI config, not in an .env file that is not gitignored."},
-    {"name": "say-what-you-observed", "fixed": True,
-     "text": "Report what happened, not what should have: a failed test with its"
-             " output, a skipped step as skipped. Never claim a success you did"
-             " not see, and never route around a refusal with a local"
-             " workaround."},
     {"name": "file-what-you-find",
      "text": "What you notice goes on the record, not only in a reply: a bug"
              " with `bb bug add`, work worth doing with `bb roadmap add`. Tick"
              " items off as you finish them."},
-    # Where a problem with BuilderBot goes when it is met on another project
-    # (the operator, 24 Sep): its maintainers read reports in the
-    # diagnostics, and a project's tracker is for that project.
     {"name": "side-quests",
      "text": "A bug met mid-task is fixed only when your own change caused it"
              " or it blocks the work: the smallest fix, in its own commit, said"
              " in the reply. Anything else is filed and left. One level deep:"
              " a bug found while fixing one of those is filed, not chased."},
-    {"name": "own-branches",
-     "text": "A branch another account's session works on (claude/<their"
-             " name>) is theirs: merge, rebase or delete it only when asked"
-             " to, after saying whose it is."},
-    {"name": "stay-responsive",
-     "text": "A test run never holds a reply. Start it in the background and"
-             " answer questions while it runs. What a change asked for"
-             " meanwhile does is the project's setting (Claude may, \"While a"
-             " test runs: a change asked for\"), said in the briefing's While"
-             " tests run section: follow that."},
+    {"name": "prove-in-the-app",
+     "text": "Tests passing is not done: where the project has a dev instance or"
+             " an app on the emulator, use the change there the way a person"
+             " would before calling it done, and say what you saw."},
 ]
 
 # What the standing block costs before it is worth saying out loud on the tab.
@@ -226,29 +208,58 @@ def _off():
     return {str(n) for n in (got.get("disabled") or [])}
 
 
+def project_off(project):
+    """The names of the global rules turned off for this project alone (the
+    operator, 2 Oct): a rule worth having everywhere can still be wrong for
+    one project, and turning it off there is the project's own choice."""
+    with _lock:
+        d = load()
+    got = (d.get("projects") or {}).get(project) or {}
+    return {str(n) for n in (got.get("globals_off") or [])}
+
+
+def set_project_off(project, names, by="you"):
+    """Which global rules are off for this project: the whole set, as the
+    Briefing's Save sends it. A name that is not a global rule is dropped."""
+    if project == GLOBAL:
+        return
+    known = {r["name"] for r in globals_now()}
+    want = {str(n).strip().lower() for n in (names or [])} & known
+    with _lock:
+        d = load()
+        p = _project(d, project)
+        was = {str(n) for n in (p.get("globals_off") or [])}
+        if want == was:
+            return
+        for n in sorted(want - was):
+            _log(d, project, by, {"act": "disable-here", "name": n})
+        for n in sorted(was - want):
+            _log(d, project, by, {"act": "enable-here", "name": n})
+        if want:
+            p["globals_off"] = sorted(want)
+        else:
+            p.pop("globals_off", None)
+        save(d)
+
+
 def builtins():
     """The global rules BuilderBot ships, each marked as read-only and
     carrying whether it is currently off."""
     off = _off()
     out = []
     for i, r in enumerate(BUILTIN):
-        fixed = bool(r.get("fixed"))
         r = _clean(dict(r), i)
         r["scope"], r["builtin"], r["by"] = "global", True, "builderbot"
-        # A fixed rule has no switch: it is not a preference about how work is
-        # done but what makes the rest of the record worth reading (a report
-        # that is true, a repository with no secret in it). The tab does not
-        # list it and a save that names it is ignored, so a session cannot
-        # talk anyone into turning it off either.
-        r["fixed"] = fixed
-        r["disabled"] = (not fixed) and r["name"] in off
+        # Every one has a switch: what nobody would turn off is said in the
+        # briefing instead (see BUILTIN).
+        r["disabled"] = r["name"] in off
         out.append(r)
     return out
 
 
 def globals_now():
     """Every rule that applies to every project: the shipped ones, then the
-    operator's own. What the Controller settings list shows."""
+    operator's own. What every project's Briefing lists under its own rules."""
     own = [dict(r, scope="global", builtin=False) for r in rules(GLOBAL)]
     return builtins() + own
 
@@ -260,7 +271,8 @@ def effective(project):
     marks already say that."""
     if project == GLOBAL:
         return globals_now()
-    on = [r for r in globals_now() if not r.get("disabled")]
+    here = project_off(project)
+    on = [r for r in globals_now() if not r.get("disabled") and r["name"] not in here]
     return on + rules(project) + _design_rules(project)
 
 
@@ -510,7 +522,7 @@ def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
 # like a fault.
 _NOT_YOURS = ("a global rule reaches every project on this BuilderBot, so only "
               "the operator adds or changes one. Say in your reply what you "
-              "would add and why, and they add it in Controller settings")
+              "would add and why, and they add it from a project's Briefing")
 
 
 def _builtin_names():
@@ -518,7 +530,7 @@ def _builtin_names():
 
 
 def _switchable_names():
-    return {r["name"] for r in builtins() if not r.get("fixed")}
+    return {r["name"] for r in builtins()}
 
 
 def save_global(rule_list, disabled=None, by="you"):
@@ -574,7 +586,7 @@ def edit(project, name, *, text=None, paths=None, words=None, by="claude",
         return {"error": _NOT_YOURS}
     if project == GLOBAL and str(name or "").strip().lower() in _builtin_names():
         return {"error": "that rule ships with BuilderBot and is read-only: turn "
-                         "it off in Controller settings rather than editing it"}
+                         "it off for a project, or for every project, from a project's Briefing"}
     with _lock:
         d = load()
         p = _project(d, project)
@@ -602,7 +614,7 @@ def remove(project, name, why="", by="claude"):
         return {"error": _NOT_YOURS}
     if project == GLOBAL and str(name or "").strip().lower() in _builtin_names():
         return {"error": "that rule ships with BuilderBot and is read-only: turn "
-                         "it off in Controller settings rather than editing it"}
+                         "it off for a project, or for every project, from a project's Briefing"}
     with _lock:
         d = load()
         p = _project(d, project)
@@ -841,13 +853,18 @@ def payload(project):
     eff = effective(project)
     b = block(project)
     glob = [r for r in eff if r.get("scope") == "global"]
+    # Every global rule that is on everywhere, each saying whether it is off
+    # here, so the tab can offer the switch; what a session is handed is
+    # `eff`, which leaves the ones off here out.
+    here = project_off(project) if project != GLOBAL else set()
+    every = [dict(r, off_here=r["name"] in here) for r in globals_now()]
     # Each of the project's rules with the global ones it shares ground with,
     # for the row. Decoration on the way out only: _clean keeps a fixed set
     # of fields, so this never comes back in on a save.
     if project != GLOBAL:
         own = [dict(r, overlaps=overlaps(r, glob)) for r in own]
     return {"project": project, "rules": own,
-            "global": glob,
+            "global": every if project != GLOBAL else glob,
             "standing": sum(1 for r in eff if not conditional(r)),
             "conditional": sum(1 for r in eff if conditional(r)),
             "chars": len(b), "loud": len(b) > LOUD_CHARS, "max": MAX_RULES}
@@ -871,7 +888,10 @@ def revisions():
         d = load()
     out = {}
     for p, v in (d.get("projects") or {}).items():
-        out[p] = _rev_of(v.get("rules") or [])
+        # The rules and which global ones are off here: a switch flipped in
+        # another window is news for this tab too.
+        out[p] = _rev_of((v.get("rules") or [])
+                         + ([{"globals_off": v["globals_off"]}] if v.get("globals_off") else []))
     return out
 
 
@@ -896,6 +916,9 @@ def verb(name, act, req):
                 "current": payload(name) | {"rev": rev(name)}}, 200
     if r.get("error"):
         return r, 400
+    # Which global rules are off here, saved with the list: one Save.
+    if isinstance(req.get("globals_off"), list):
+        set_project_off(name, req["globals_off"])
     return payload(name) | {"rev": rev(name)}, 200
 
 
