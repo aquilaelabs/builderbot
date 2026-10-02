@@ -793,6 +793,15 @@ start() {
     # on the session this creates, and -A ignores it on an attach, which is
     # right: the session that exists already has its own.
     local -a envs=() v
+    # Gradle's cache per project (B438). Gradle hands a cache lock over by
+    # asking its owner on localhost, and each session has a network of its
+    # own (R79), so the ask never arrived: one project's idle daemon held the
+    # account's ~/.gradle and another project's build timed out on it. A
+    # home per project keeps two projects' builds out of each other's locks;
+    # a project's first build there fetches its own dependencies once.
+    if on_node && [ -n "${GRADLE_USER_HOME:-}" ] && [ -n "${BB_PROJECT:-}" ]; then
+        GRADLE_USER_HOME="$HOME/.gradle-projects/$(printf '%s' "$BB_PROJECT" | tr -c 'A-Za-z0-9._-' '_')"
+    fi
     for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE \
              GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME \
              GRADLE_USER_HOME ANDROID_USER_HOME XDG_DATA_HOME \
