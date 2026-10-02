@@ -4703,7 +4703,6 @@ body.booting .pane>.loading{margin:auto}
         <button id="bEmulator" onclick="openEmulator()">Emulator</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
-        <button id="bPhone" onclick="openPhoneTab()">Phone</button>
         <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
         <button id="bToolchains" onclick="openToolchains()">Toolchains</button>
       </div>
@@ -5451,7 +5450,7 @@ const ICON_BASE = ICON ? ICON.getAttribute("href") : "";
 // exactly the shape that used to go stale.
 onRev("prefs", () => refresh());
 // A lent phone, live (R113): a session's screenshot reaches the Phone tab.
-onRev("phone.lease", () => { if (tabs.some(t => t.kind === "phone")) phFetch(); });
+onRev("phone.lease", () => { if (tabs.some(t => t.kind === "nodes")) phFetch(); });
 // Who has a session where, and whether it is working: the light fetch, so
 // the dot beside a name follows a session within seconds.
 onRev("live", () => liveRefresh());
@@ -5495,7 +5494,7 @@ onRev("phone.asks", () => phFetch());
 // The badge follows the count directly rather than waiting for the fetch, so
 // the tab strip is right even if the page is throttled too hard to redraw.
 onRev("phone.asks", k => setBadge(revs[k] || 0));
-onRev("phone.dev", () => { if (tabs.some(t => t.kind === "phone")) phFetch(); });
+onRev("phone.dev", () => { if (tabs.some(t => t.kind === "nodes")) phFetch(); });
 phFetch();
 
 // ---- the Analysis tab ----------------------------------------------------

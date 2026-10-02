@@ -238,7 +238,7 @@ const TOOL_ICONS = {
 // Which button on the Tools card opens which kind, so the card can be
 // stamped with the icons once at load and the tab strip can look them up.
 const TOOL_BUTTONS = {bToolchains: "toolchains", bDocker: "docker", bEmulator: "emulator", bJobs: "jobs",
-                      bNodes: "nodes", bPhone: "phone", bFindings: "findings"};
+                      bNodes: "nodes", bFindings: "findings"};
 
 const TABKINDS = {
   term:     { multi: true },
@@ -277,16 +277,12 @@ const TABKINDS = {
                             if (nodesList === null) loadNodes(); } },
   nodes:    { multi: false, label: () => "Nodes",
               icon: TOOL_ICONS.nodes,
-              render: (i) => renderNodesInto(i), live: () => `${nodesRev}/${signinRev()}`,
+              render: (i) => renderNodesInto(i), live: () => `${nodesRev}/${signinRev()}/${phRev}`,
               open: () => loadNodes() },
   jobs:     { multi: false, label: () => "Jobs",
               icon: TOOL_ICONS.jobs,
               render: (i) => renderJobsInto(i), live: () => jobsRev,
               open: () => loadJobs() },
-  phone:    { multi: false, label: () => "Phone",
-              icon: TOOL_ICONS.phone,
-              render: (i) => renderPhoneInto(i), live: () => phRev,
-              open: () => phFetch(null, true) },
   settings: { multi: false, label: () => "Controller settings",
               render: (i) => renderSettingsInto(i), live: settingsLive },
   users:    { multi: false, label: () => "Users",

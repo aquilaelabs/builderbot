@@ -116,8 +116,11 @@ function adoptLayout(v){
   // `popped` (R8) survives only where this window holds the popped window's
   // handle: another browser's pop-out is not one this page can see or close,
   // and a placeholder nobody can reattach would be a dead pane.
-  tabs = v.tabs.map(t => ({id:t.id, kind:t.kind, arg:t.arg, label:t.label,
-                           popped: !!t.popped && popWins.has(t.id)}));
+  // A tab of a kind this page no longer has (the Phone tab became a section
+  // of the Nodes tab, 2 Oct) is left out rather than drawn as nothing.
+  tabs = v.tabs.filter(t => t.kind === "term" || TABKINDS[t.kind])
+    .map(t => ({id:t.id, kind:t.kind, arg:t.arg, label:t.label,
+                popped: !!t.popped && popWins.has(t.id)}));
   // Ids come back from another browser's counter; keep ours ahead of them so a
   // tab opened here cannot collide with one opened there.
   for (const t of tabs){

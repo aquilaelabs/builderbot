@@ -39,10 +39,12 @@ await api('/api/prefs', { project: 'alpha', node: sandbox.id });
 
 await page.evaluate(() => openPhoneTab());
 await page.waitForSelector('.phonetab .row', { timeout: 20000 });
-ok(await page.$eval('.phonetab #phPick', s => [...s.options].some(o => o.textContent.includes('sandbox'))),
-   'the tab opens with a node picker naming the node that carries adb');
-ok(await page.$('.card[data-card="phone"]') === null && await page.$('#bPhone') !== null,
-   'the phone is a tab reached from Tools, not a card in the sidebar');
+// A phone is its node's (the operator, 2 Oct): a Phone section on the Nodes
+// tab under the node that carries adb, rather than a tab of its own.
+ok(await page.$eval('details.sect[data-sect="nodes:phone"]', d => d.open && !!d.querySelector('.phonetab')),
+   'the phone is a section of the node that carries adb, on the Nodes tab, opened there');
+ok(await page.$('#bPhone') === null && !(await page.evaluate(() => tabs.some(t => t.kind === 'phone'))),
+   '...and there is no Phone tab or Tools button any more');
 
 // ---- what the server refuses ----------------------------------------------
 for (const [what, body] of [

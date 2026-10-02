@@ -326,9 +326,9 @@ page.errors = [];
 // the reason: the phone is driven from a node, and this project has none.
 // The install and the push themselves, and the signature clash said in
 // words, are phone.mjs's, where a fixture node holds the phone.
-ok(await page.$eval('[data-artinstall]', b => b.disabled && /Phone tab/.test(b.title)),
+ok(await page.$eval('[data-artinstall]', b => b.disabled && /Phone section/.test(b.title)),
    'with no phone on the project\'s node, Install is ghosted and says where to connect one');
-ok(await page.$eval('[data-artpush]', b => b.disabled && /Phone tab/.test(b.title)),
+ok(await page.$eval('[data-artpush]', b => b.disabled && /Phone section/.test(b.title)),
    'Push is there for the extension, ghosted for the same reason');
 const pushed = await page.evaluate(async () => {
   const r = await fetch('/api/artifacts', { method: 'POST',

@@ -1,12 +1,12 @@
-// The Phone tab: a handset on wireless adb, driven from a node. Its own
-// classic script beside index.html, per the new-surface rule: same page,
-// same global scope, one file per surface. Chrome comes from docSurface()
-// and the hard rules are held by uniform.mjs; this file only fills slots.
+// A node's Phone section: a handset on wireless adb, driven from that node.
+// It lives on the Nodes tab, under the node it belongs to (the operator,
+// 2 Oct: several nodes can each have their own adb and their own phone),
+// rather than on a tab of its own with a node picker. Its own classic script
+// beside index.html; tab-nodes.js draws the section and calls in here.
 //
 // The controller has no adb and holds no phone. Every node whose census
 // reports adb is a place a phone can be paired and connected, each holding
-// its own; the picker in the bar says which one this tab is about, and every
-// press below it is a job on that node, waited for.
+// its own, and every press in its section is a job on that node, waited for.
 //
 // One owner per connection. Whoever connects a phone is the only account
 // that can disconnect it, and the only one asked when a session wants to
@@ -20,7 +20,7 @@
 
 "use strict";
 
-let ph = null, phBusy = "", phRev = 0;
+let ph = null, phBusy = "", phRev = 0, phFetching = false;
 let phNode = "";                 // the picked node's id; "" until the first answer
 // Held outside the render, because the tab is rebuilt whole on every draw and
 // a field that emptied itself mid-sentence would be unusable.
@@ -28,8 +28,16 @@ let phIp = "", phPort = "", phCode = "";
 // The lend controls' picks, kept across a redraw (R113).
 let phLendTo = "", phLendFor = "1";
 
+// The Nodes tab, on the node that holds a phone (or the first that can),
+// with its Phone section open: where the phone is now.
 function openPhoneTab(){
-  openTab({kind: "phone", arg: "__phone", label: "Phone"});   // the kind's open hook probes
+  const go = () => {
+    const n = (ph?.nodes || []).find(x => x.phone) || (ph?.nodes || [])[0];
+    if (n){ nodesPick = n.id; phNode = n.id; }
+    sectOpen["nodes:phone"] = true;
+    openNodesTab();
+  };
+  if (ph) go(); else phFetch(null, true).then(go);
 }
 
 // Connecting, pairing and disconnecting are any account's: a phone is its
@@ -60,44 +68,27 @@ async function phFetch(body, probe){
   phRev++;
   // The Nodes tab draws the root asks from the same answer, and the Docker
   // tab the rebuild ones.
-  if (tabs.some(t => ["phone", "nodes", "docker"].includes(t.kind))) drawPanes();
+  if (tabs.some(t => ["nodes", "docker"].includes(t.kind))) drawPanes();
   drawBell();          // the same asks, in the header
 }
 
-function renderPhoneInto(i){
-  const d = docSurface(i, "phone");
-  if (!d) return;
-  if (!ph){
-    d.list.innerHTML = `<div class="loading">loading…</div>`;
-    return;
-  }
-  // The root asks share the list (one bell, one fetch) and are the Nodes
-  // tab's to show: they are about a machine, not a handset.
-  const nodes = ph.nodes || [], asks = (ph.asks || []).filter(a => a.kind !== "root");
-  const n = nodes.find(x => x.id === phNode) || nodes[0];
+// The section's body for one node: its phone, connecting and pairing, the
+// lease, the phones it remembers, and what a session waits on. `n` is that
+// node's row in the phone answer (ph.nodes).
+function phonePanel(n){
+  if (!ph) return `<div class="loading">loading…</div>`;
+  phNode = n.id;
   const dev = n?.phone;
+  const asks = (ph.asks || []).filter(a => a.kind !== "root" && (!a.node || a.node === n.id));
   // This browser's own address wins when it is the phone: viewing the
   // dashboard ON the device is the one case where the number is not something
   // anybody has to go and read. The node's remembered IP is the fallback.
   if (!phIp) phIp = ph.you || n?.ip || "";
-  if (!nodes.length){
-    d.setBar(`<span class="sp"></span>
-      <button type="button" id="phRefresh" title="ask again now">Refresh</button>`);
-    d.list.innerHTML = `<div class="hint">No node has adb yet: install android-tools on one from the Tools tab.</div>`;
-    wirePhoneTab(d.el);
-    return;
-  }
   const held = n && n.owner && !n.mine;   // somebody else's connection
   const off = held || !n.live || !mayPhone();
   const offWhy = held ? `connected by ${esc(n.owner.name)}: only they can change it`
     : !n.live ? "the node is not dialing in"
     : "";
-  d.setBar(`${nodes.length ? `<label class="pick">Node <select id="phPick" aria-label="node">${
-      nodes.map(x => `<option value="${esc(x.id)}"${x.id === n?.id ? " selected" : ""}>${
-        esc(x.name)}${x.phone ? `: ${esc(x.phone.model || "phone")}` : ""}${
-        x.live ? "" : ", quiet"}</option>`).join("")}</select></label>` : ""}
-    <span class="sp"></span>
-    <button type="button" id="phRefresh" title="ask the node's adb again now">Refresh</button>`);
   // A word and an animated ellipsis, never a bar: nothing here knows a
   // percentage, and inventing one would be a lie about progress.
   const state = phBusy
@@ -221,12 +212,13 @@ function renderPhoneInto(i){
         <button type="button" data-deny="${a.id}">Deny</button>
         <button type="button" class="primary" data-allow="${a.id}">Allow</button>
       </span></div>`);
-  d.list.innerHTML = rows.join("");
-  d.setFoot(L ? `Lent to ${L.project}: its sessions drive its own app without asking; anything else still asks here.`
-    : `A session reaches this phone only by asking; the request lands here, with its reason.`);
-  if (!tcDotsTimer && d.list.querySelector(".dots"))
-    tcDotsTimer = setInterval(tcTickDots, 400);
-  wirePhoneTab(d.el);
+  const L2 = n.lease;
+  rows.push(`<div class="actbar phbar"><span class="state">${L2
+      ? `Lent to ${esc(L2.project)}: its sessions drive its own app without asking; anything else still asks here.`
+      : "A session reaches this phone only by asking; the request lands here, with its reason."}</span>
+    <button type="button" id="phRefresh" title="ask the node's adb again now">Refresh</button></div>`);
+  if (!tcDotsTimer && rows.join("").includes('class="dots"')) tcDotsTimer = setInterval(tcTickDots, 400);
+  return `<div class="phonetab">${rows.join("")}</div>`;
 }
 
 function wirePhoneTab(root){

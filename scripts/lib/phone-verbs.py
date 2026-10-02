@@ -41,7 +41,7 @@ def run():
         print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
     rid = r["id"]
     print(f"[builderbot] asked {r.get('to') or 'the operator'} (#{rid}), waiting up to 15 minutes "
-          "for Allow on the dashboard's Phone tab", file=sys.stderr)
+          "for Allow in the bell, or the node's Phone section on the Nodes tab", file=sys.stderr)
     # Polled rather than pushed: this is a shell command waiting on a person, and
     # a person is slow in a way no callback improves.
     o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "the operator said no")

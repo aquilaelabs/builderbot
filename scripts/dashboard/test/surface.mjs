@@ -63,7 +63,7 @@ const SURFACE = [
   'openDevEnv', 'openDocker', 'openEditContainer', 'openLinkProject',
   'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
-  'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbDesignView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'nbWikiView', 'wikiMarkdown', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',
+  'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbDesignView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'nbWikiView', 'wikiMarkdown', 'wikiSlug', 'wikiToc', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',
   'pFillGates', 'pFillNode', 'rnFillReads', 'rnAskReset', 'pJobAct', 'pJobPoll', 'pJobSeen', 'pJobWire', 'pNameShow', 'pOpen',
   // A terminal in its own window (R8).
   'popOut', 'reattachTab',
@@ -77,7 +77,7 @@ const SURFACE = [
   'claudeNodeFacts', 'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
-  'openPhoneTab', 'renderPhoneInto', 'wirePhoneTab',
+  'openPhoneTab', 'phonePanel', 'nodePhoneSection', 'wirePhoneTab',
   // The welcome panel (the About popup grown a guide and the changelog). The
   // guides are top-level consts, which are not window properties.
   'abShow', 'abLoadLog', 'abDrawLog', 'openAbout', 'closeAbout', 'welcomeOnce',

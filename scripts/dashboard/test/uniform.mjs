@@ -74,11 +74,6 @@ const DRIVERS = {
     open: () => page.evaluate(() => openJobsTab()),
     readyWhen: '.jobstab .jbrow, .jobstab .empty',
   },
-  phone: {
-    // The fixture's sandbox node carries adb, so the tab draws its rows.
-    open: () => page.evaluate(() => openPhoneTab()),
-    readyWhen: '.phonetab .row, .phonetab .hint',
-  },
   users: {
     // There is always at least one row: the owner, seeded on the first boot,
     // which cannot be deleted and so cannot be absent.

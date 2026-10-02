@@ -58,7 +58,7 @@ const api = async (page, path, body) => {
 const ALL = ['alpha', 'beta', 'delta', 'ep.silon', 'gamma', 'vendored-junk'];
 const VIEWS = ['roadmap', 'bugs', 'briefing', 'tests', 'git', 'artifacts', 'analysis', 'docker'];
 const ADMIN_TABS = { settings: 'openSettingsTab', users: 'openUsersTab', nodes: 'openNodesTab', jobs: 'openJobsTab',
-                     docker: 'openDocker', toolchains: 'openToolchains', findings: 'openFindingsTab', phone: 'openPhoneTab' };
+                     docker: 'openDocker', toolchains: 'openToolchains', findings: 'openFindingsTab' };
 
 for (const who of CAST) {
   const page = await pageFor(who);

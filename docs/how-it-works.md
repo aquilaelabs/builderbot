@@ -693,7 +693,7 @@ because it is a state light first and a control second: a red dot means
 something unread, an **amber** one means a session is blocked on an answer.
 That second case is the reason it exists: a request to reach the phone shows
 up there with **Approve** and **Deny** on it, for the account that connected
-that phone and nobody else, so answering does not depend on the Phone tab
+that phone and nobody else, so answering does not depend on the Nodes tab
 being open. Clearing empties the page's own log and never an ask: a
 question somebody is still waiting on is not this button's to dismiss. The log
 is this tab's, so a reload draws a line under it; the asks are the server's and
@@ -2805,9 +2805,9 @@ dashboard's own process.
 ### A phone, and asking before touching it
 
 The container carries no adb and holds no phone. A handset is driven from a
-**node** (whichever one has adb in its toolchain store) and the **Phone**
-tab (from the Tools card) picks the node, pairs and connects there over
-Android's wireless debugging, and lists what a session is waiting to do.
+**node** (whichever one has adb in its toolchain store), and that node's
+**Phone** section on the Nodes tab pairs and connects it over Android's
+wireless debugging and lists what a session is waiting to do there.
 Several nodes can each hold their own phone; a project's sessions reach the
 phone on the project's node and no other.
 
@@ -2829,7 +2829,7 @@ says so, and says the thing worth saying first: try Connect, you are probably
 already paired.
 
 **A phone it has met is remembered.** Every pairing and every connection
-puts the handset on the node's remembered list on the Phone tab: its
+puts the handset on the node's remembered list in its Phone section: its
 model, its address, when it was last seen, and Connect on that row is the
 whole reconnect: the address goes back in the field and the node finds the
 port. Forget drops the row and nothing else; the pairing key stays on the
@@ -2843,7 +2843,7 @@ anyway. The node scans for it, on its own network.
 **A connection has one owner.** The account that connects a phone is the
 only one that can disconnect it; everybody else sees the connection with
 its controls grayed and the owner named. Every command a session asks for
-goes to that account (on their Phone tab and their bell, nobody else's),
+goes to that account (in the node's Phone section and their bell, nobody else's),
 because the phone is on their desk and they are the one who said yes to it.
 
 **A session never touches the phone itself.** It is kept on an adb server of
@@ -2855,14 +2855,14 @@ output. The reason is required, not optional: approving a command you did
 not write, with no sentence saying what it is for, is a guess.
 
 **Lent to a project, a phone is driven without asking, and only for that
-project's app.** Its owner lends it on the Phone tab to one project on its
+project's app.** Its owner lends it from the node's Phone section to one project on its
 node, for an hour, four hours or until taken back. That project's sessions
 then install one of its own builds (`bb phone install dist/APP.apk`, whose
 package the lease learns), start, stop or pick it as the keyboard, read its
 logcat, take screenshots and recordings into `dist/phone/`, read the
 screen's layout, and tap, swipe, glide and type, the last two only while one
 of the lease's apps is in front or is the keyboard. Everything else, another
-app, Settings, a shell, still goes through `bb phone run --why`. The tab
+app, Settings, a shell, still goes through `bb phone run --why`. The section
 shows the lease, the newest screenshot a session took (it updates on the
 next poll as a session works), Look now and Take back; a lease also ends
 when its time is up or the phone disconnects. All of it is adb from the node,
@@ -2909,7 +2909,7 @@ on that node, which the button says when it is missing.
 
 Every view shows facts it does not own. The roadmap's arrows depend on a Claude
 session existing; the Artifacts tab's Install depends on a phone being
-connected on a node; the Phone tab's questions arrive from a terminal. In
+connected on a node; the Phone section's questions arrive from a terminal. In
 one week, four of them went stale in exactly the same way: each had invented
 its own rule for when to re-read, out of knowledge it did not have. The worst
 was self-defeating: the phone view polled only while it already knew of a

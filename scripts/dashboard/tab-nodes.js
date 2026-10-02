@@ -1091,6 +1091,7 @@ function renderNodesInto(i){
         ${health}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodePhoneSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
@@ -1115,6 +1116,20 @@ function renderNodesInto(i){
   nodesReadOnly(d.el);
 }
 
+// The node's phone (tab-phone.js), where the phone is: a node with adb is a
+// place a phone is paired, connected and lent, each node its own (the
+// operator, 2 Oct). Only on a node the phone answer lists, which is a node
+// carrying adb; the answer is fetched the first time the section is drawn.
+function nodePhoneSection(n){
+  if (ph === null){ if (!phFetching){ phFetching = true; phFetch(null, true).finally(() => { phFetching = false; }); }
+                    return ""; }
+  const r = (ph.nodes || []).find(x => x.id === n.id);
+  if (!r) return "";
+  const status = r.lease ? `lent to ${r.lease.project}` : r.phone ? (r.phone.model || "connected") : "no phone";
+  return docSection("nodes", "phone", "Phone", status, phonePanel(r),
+                    {cls: r.phone ? "ok" : "", open: false});
+}
+
 // An account that does not administer sees a node's settings and changes
 // none of them: every control on the tab is dead for it but the picker and
 // its own Claude sign-in, and the row says why (the operator, 30 Sep). Once,
@@ -1123,12 +1138,15 @@ function renderNodesInto(i){
 function nodesReadOnly(root){
   if (state?.can?.admin !== false) return;
   root.querySelectorAll("button, input, select, textarea").forEach(c => {
-    if (c.id !== "ndPick" && !c.closest("[data-signin]")) c.disabled = true;
+    // A phone is its owner's, any account's (tab-phone.js): its section
+    // stays live, and the server holds who may press what there.
+    if (c.id !== "ndPick" && !c.closest("[data-signin]") && !c.closest(".phonetab")) c.disabled = true;
   });
 }
 
 function wireNodesTab(root){
   wireSignin(root);
+  if (root.querySelector(".phonetab")) wirePhoneTab(root);
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };
