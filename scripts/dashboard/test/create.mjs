@@ -67,10 +67,12 @@ ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
   const g = await page.$$eval('#pGateField select', s => Object.fromEntries(s.map(x => [x.id, [x.value, x.options.length]])));
   const want = { pGateRoadmap: 'auto', pGateBugs: 'auto', pGateRules: 'auto', pGateDesign: 'auto', pGateWiki: 'auto', pGateSettings: 'auto',
                  pGateDocker: 'ask', pGateSign: 'ask', pGateKeys: 'ask', pGateReport: 'auto' };
-  ok(Object.keys(g).length === 9 && Object.entries(want).every(([id, v]) => g[id]?.[0] === v)
-     && g.pGateReport[1] === 2 && Object.entries(g).filter(([id]) => id !== 'pGateReport').every(([, [, n]]) => n === 3)
+  // The wiki's dial has a fourth choice, hidden (2 Oct).
+  ok(Object.keys(g).length === 10 && Object.entries(want).every(([id, v]) => g[id]?.[0] === v)
+     && g.pGateReport[1] === 2 && g.pGateWiki[1] === 4
+     && Object.entries(g).filter(([id]) => !['pGateReport', 'pGateWiki'].includes(id)).every(([, [, n]]) => n === 3)
      && await page.$eval('#pGateField', el => !el.hidden),
-     `the nine Claude gates are offered on a new local repo, at what a new project starts on (${JSON.stringify(g)})`);
+     `the ten Claude gates are offered on a new local repo, at what a new project starts on (${JSON.stringify(g)})`);
 }
 const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',

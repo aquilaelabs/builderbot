@@ -29,7 +29,7 @@ ok(!(await page.$eval(`${NB} #nbFoot`, e => e.checkVisibility()))
    'the wiki opens empty, with no notebook foot (it writes through) and Export dead until there is a page');
 // alpha's fixture has push rights on github.com/owner/alpha: the head names
 // where the wiki would go, and Push waits for a page.
-ok(/github\.com\/owner\/alpha/.test(await page.$eval(`${NB} #wkHint`, e => e.textContent))
+ok(/github\.com\/owner\/alpha/.test(await page.$eval(`${NB} #wkNetState`, e => e.textContent))
    && await page.$eval(`${NB} #wkPush`, e => !e.hidden && e.disabled),
    'with push rights the head row names the forge\'s wiki, and Push waits for a page');
 await page.click(`${NB} #wkNew`);

@@ -3701,6 +3701,13 @@ body.booting .pane>.loading{margin:auto}
            the repository's own wiki. -->
       <div class="field nbhead vbar"><span id="wkHint">loading…</span><span class="sp"></span>
         <button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button>
+      </div>
+      <!-- Where the wiki goes, an action bar of its own as the Git view's is,
+           so the head row keeps its one control and fits a phone: Export for
+           every project, Pull and Push where there is a forge, and why Push
+           is dead when it is, said under the bar rather than in a tooltip. -->
+      <div class="field actbar" id="wkNet">
+        <span class="state" id="wkNetState"></span>
         <button type="button" id="wkExport" title="every page as Markdown in a zip, with or without a remote">Export</button>
         <button type="button" id="wkPull" hidden title="take in what changed on the forge's wiki">Pull</button>
         <button type="button" id="wkPush" class="primary" hidden title="send the wiki to the repository's own wiki">Push</button>

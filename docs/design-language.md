@@ -859,8 +859,10 @@ field, prose in a proseline.
 
 The Wiki view is the project's pages as rows you open to read, each drawn from its Markdown
 with a `[[link]]` opening another row; Edit swaps the editor in and Save writes the page through.
-Its head row carries History, Export, and Pull and Push when the project has a remote; why Push
-is dead (no push rights) is said in red under the head row, never only in a tooltip. New page is
+Its head row carries History alone; under it an action bar says where the wiki goes and holds
+Export, with Pull and Push when the project has a remote, as the Git view's bar does, so the
+head row fits a phone. Why Push is dead (no push rights) is said in red under that bar, never
+only in a tooltip. New page is
 the band under the head row, the first page offered as Home. Under Claude may: Write the wiki hidden the view is unchanged for a person; only a session is kept out.
 
 ### the dashboard on a phone (Web app)

@@ -125,11 +125,10 @@ function nbWikiView({$, nb, project}){
     const d = nb.wkData || {};
     const n = (d.pages || []).length;
     const rem = d.remote;
-    const where = rem?.label ? ` · ${rem.label}` : " · no remote, so Export is how it leaves";
-    $("wkHint").textContent = d.error ? "the wiki could not be read" : `${n} page${n === 1 ? "" : "s"}${where}`;
+    $("wkHint").textContent = d.error ? "the wiki could not be read" : `${n} page${n === 1 ? "" : "s"}`;
     $("wkExport").disabled = !n;
-    $("wkPull").hidden = !rem?.label;
-    $("wkPush").hidden = !rem?.label;
+    $("wkPull").hidden = $("wkPush").hidden = !rem?.label;
+    $("wkNetState").textContent = rem?.label ? `${rem.label}'s wiki` : "no remote: Export is how it leaves";
     $("wkPush").disabled = !rem?.auth || !n;
     // Why Push is dead, on the row and not in a tooltip (the operator, 23
     // Sep): a phone has no hover.
@@ -152,7 +151,7 @@ function nbWikiView({$, nb, project}){
           <button type="button" class="stop wkCancel">Cancel</button>
           <button type="button" class="primary wkSave">Save</button></div>`;
     } else if (!pg){
-      body = `<div class="hint">loading…</div>`;
+      body = `<div class="loading">loading…</div>`;
     } else if (pg.error){
       body = `<div class="hint bad">${esc(pg.error)}</div>`;
     } else {
