@@ -2146,6 +2146,21 @@ def hello(nid, census, addr, version="", digest="", running=None):
             "session_net": session_net_for(nid)}
 
 
+def store_merge(census, free, totals):
+    """The heartbeat's store readings onto the census's rows, the free space
+    and, when the agent sent it, the size with it. Free alone against the
+    census's size read a grown disk as empty for up to ten minutes: more
+    free than the old total, so nothing used (B434)."""
+    for role, mb in free.items():
+        row = census.get(role)
+        if row is None:
+            continue
+        row["free_mb"] = mb
+        if totals.get(role):
+            row["total_mb"] = totals[role]
+    return census
+
+
 def heartbeat(nid, sample, addr, running=0):
     """One sample per poll: the numbers the operator actually wants to see,
     riding the channel that exists anyway. Written to the row (current
@@ -2180,6 +2195,8 @@ def heartbeat(nid, sample, addr, running=0):
     stores = s.get("stores") if isinstance(s.get("stores"), dict) else {}
     clean["stores"] = {str(r)[:20]: _mb((v or {}).get("free_mb"))
                        for r, v in list(stores.items())[:8]}
+    totals = {str(r)[:20]: _mb((v or {}).get("total_mb"))
+              for r, v in list(stores.items())[:8]}
     ag = n.get("agent") or {}
     ag["last_seen"] = clean["at"]
     if addr:
@@ -2206,9 +2223,7 @@ def heartbeat(nid, sample, addr, running=0):
     # like everything a node says; absent when the agent did not send it.
     if isinstance(s.get("sessions"), list):
         rep["sessions"] = _session_rows(s["sessions"])
-    for role, free in clean["stores"].items():
-        if role in rep.get("stores", {}):
-            rep["stores"][role]["free_mb"] = free
+    store_merge(rep.get("stores") or {}, clean["stores"], totals)
     _exec("UPDATE nodes SET agent = ?, reported = ? WHERE id = ?",
           (json.dumps(ag), json.dumps(rep), nid))
     ring = _samples.setdefault(nid, [])
