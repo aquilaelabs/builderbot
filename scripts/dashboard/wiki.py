@@ -376,9 +376,12 @@ def pull(project, who=None):
         return {"ok": True, "took": "merged", "pages": len(pages(project))}
 
 
-def push(project):
+def push(project, replace=False):
     """Send the wiki to the forge's: refused when the forge has a change
-    this side has not taken in, which a pull settles first."""
+    this side has not taken in, which a pull settles first, unless
+    `replace`, which a person chooses knowing it overwrites the forge's: the
+    one page a forge makes a person save before its wiki exists is the case
+    (GitHub names it Home, so a pull meets this wiki's Home head on)."""
     rem = remote(project)
     if not rem:
         raise Refused(f"{project} has no remote: export the wiki instead")
@@ -390,12 +393,13 @@ def push(project):
     with _locked(project):
         env = _net_env(project, rem)
         branch = _branch(project, rem, env) or "master"
-        r = _git(project, "push", "--porcelain", rem["url"], f"HEAD:refs/heads/{branch}",
-                 check=False, env=env, timeout=180)
+        r = _git(project, "push", "--porcelain", *(["--force"] if replace else []), rem["url"],
+                 f"HEAD:refs/heads/{branch}", check=False, env=env, timeout=180)
         if r.returncode:
             err = (r.stderr + r.stdout).lower()
             if "non-fast-forward" in err or "fetch first" in err or "rejected" in err:
-                raise Refused(f"{rem['label']}'s wiki has changes this one has not taken in: Pull, then push")
+                raise Refused(f"{rem['label']}'s wiki has changes this one has not taken in: Pull, then "
+                              "push, or replace it with this one")
             if "403" in err or "denied" in err or "permission" in err or "authentication" in err:
                 raise Refused(f"{rem['label']} refused the push: the project's token may not reach its "
                               "wiki. GitHub's fine-grained tokens cannot write a wiki; a classic token "
@@ -467,7 +471,7 @@ def verb(project, req, who, session):
         if act in ("push", "pull"):
             if session:
                 return {"error": f"a {act} reaches the forge, which is a person's: the Wiki view's {act.title()}"}, 403
-            return (push(project) if act == "push" else pull(project, who)), 200
+            return (push(project, replace=bool(req.get("replace"))) if act == "push" else pull(project, who)), 200
     except Refused as e:
         return {"error": str(e)}, 409 if "changed since" in str(e) or "already a page" in str(e) else 400
     return {"error": f"unknown action: {act}"}, 400

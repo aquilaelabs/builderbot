@@ -130,6 +130,17 @@ class Wiki(unittest.TestCase):
         with self.assertRaises(wiki.Refused) as e:
             wiki.push("app")
         self.assertIn("Pull", str(e.exception))
+        # Replacing overwrites the forge's, which a person chooses knowingly.
+        self.assertTrue(wiki.push("app", replace=True)["ok"])
+        out = subprocess.run(["git", "--git-dir", str(self.forge), "ls-tree", "--name-only", "master"],
+                             capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual(out, ["Home.md"])
+        subprocess.run(["git", "-C", str(web), "fetch", "--quiet"], check=True)
+        subprocess.run(["git", "-C", str(web), "reset", "--quiet", "--hard", "origin/master"], check=True)
+        (web / "Faq.md").write_text("asked\n")
+        subprocess.run(["git", "-C", str(web), "add", "."], check=True)
+        subprocess.run(["git", "-C", str(web), "commit", "--quiet", "-m", "web again"], check=True, env=env)
+        subprocess.run(["git", "-C", str(web), "push", "--quiet"], check=True)
         self.assertEqual(wiki.pull("app", ME)["took"], "merged")
         self.assertEqual(sorted(x["name"] for x in wiki.pages("app")), ["Faq", "Home"])
         self.assertTrue(wiki.push("app")["ok"])

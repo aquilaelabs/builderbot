@@ -339,9 +339,18 @@ function nbWikiView({$, nb, project}){
   $("wkPush").onclick = async ev => {
     if (wikiDirty() && !confirm("A page is being edited and is not saved: push what is saved?")) return;
     busy(ev.target, "Pushing");
-    const j = await post({action: "push"});
+    const r = await postJSON("/api/wiki", {project, action: "push"});
+    let j = await r.json().catch(() => ({}));
+    // The forge has something this wiki has not: most often the one page
+    // GitHub makes you save before a wiki exists. Replacing it is offered,
+    // said for what it is.
+    if (j.error && /has not taken in/.test(j.error)
+        && confirm(`${j.error}.\n\nReplace the forge's wiki with this one? Pages there that are not here are removed from it (its own history keeps them). Cancel, then Pull, to merge instead.`)){
+      const r2 = await postJSON("/api/wiki", {project, action: "push", replace: true});
+      j = await r2.json().catch(() => ({}));
+    }
     unbusy(ev.target, "Push");
-    if (j) notify(`pushed the wiki to ${j.to}`);
+    if (j.error) failed(j.error); else if (j.to) notify(`pushed the wiki to ${j.to}`);
   };
 
   // Another window's save, a session's bb wiki or a pull is news when it

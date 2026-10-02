@@ -1977,11 +1977,20 @@ pre.diff .d-ctx{color:var(--dim)}
 .phshot{display:block;max-width:min(260px,60vw);height:auto;margin:8px 0 4px;
   border:1px solid var(--line);border-radius:var(--r-small)}
 
-/* Pull to refresh's word at the top (page-pull.js): it follows the finger
-   down and fades in as the pull nears the point where letting go counts. */
-#pullHint{position:fixed;top:6px;left:50%;transform:translate(-50%,0);z-index:60;opacity:0;
-  pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-control);
-  padding:4px 12px;font:var(--f-ui);color:var(--dim)}
+/* Pull to refresh (page-pull.js), drawn as a browser draws its own: a round
+   button with a circular arrow that comes down from under the header as the
+   finger pulls, turning with it, goes the accent once letting go would
+   count, spins while the refresh runs and rises back out of sight. */
+#pullHint{position:fixed;top:58px;left:50%;width:38px;height:38px;margin-top:-38px;z-index:60;opacity:0;
+  transform:translate(-50%,0);pointer-events:none;border-radius:50%;background:var(--panel);
+  border:1px solid var(--line);box-shadow:0 2px 8px rgba(0,0,0,.35);display:grid;place-items:center;color:var(--dim)}
+#pullHint svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#pullHint.ready{color:var(--accent)}
+#pullHint.back{transition:transform .25s ease,opacity .25s ease}
+#pullHint.spin{color:var(--accent);transition:transform .15s ease}
+#pullHint.spin svg{animation:pullspin .7s linear infinite}
+@keyframes pullspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){ #pullHint.spin svg{animation:none} #pullHint.back{transition:none} }
 
 /* ---- the Wiki view (nb-wiki.js) ------------------------------------------
    Read like an encyclopedia (the operator, 2 Oct): the pages listed in a
@@ -2978,7 +2987,7 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 /* The header's icon buttons, the gear (settings) and the sign-out door,
    drawn to the same box as the ↻ glyph, same stroke voice as the eye and
    chain icons. */
-#bOut svg.out,#bCards svg.out{width:15px;height:15px;display:block;margin:auto;
+#bOut svg.out,#bCards svg.out,#bReport svg.out{width:15px;height:15px;display:block;margin:auto;
   fill:none;stroke:currentColor;stroke-width:1.4;
   stroke-linecap:round;stroke-linejoin:round}
 /* The same drawing for About's ?, but WITHOUT display: whether it is shown is
@@ -4676,7 +4685,7 @@ body.booting .pane>.loading{margin:auto}
        page-report.js, with no project. -->
   <button id="bReport" onclick="openReport('')" aria-label="report a bug"
           title="report a bug in BuilderBot: it goes to the diagnostics">
-    <svg viewBox="0 0 16 16" aria-hidden="true">
+    <svg class="out" viewBox="0 0 16 16" aria-hidden="true">
       <ellipse cx="8" cy="9.4" rx="3.3" ry="4"/><path d="M6.3 5.7a1.7 1.7 0 0 1 3.4 0"/>
       <path d="M8 6.1v7.2M4.7 8.2 2.4 7.3M4.7 10.6H2.2M5.1 12.6l-1.8 1.4M11.3 8.2l2.3-.9M11.3 10.6h2.5M10.9 12.6l1.8 1.4M6.6 4.3 5.4 2.8M9.4 4.3l1.2-1.5"/>
     </svg>

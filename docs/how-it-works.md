@@ -1817,7 +1817,9 @@ with the project's credentials, and **Pull**, which takes in what was
 changed there (a page changed on both sides is named and nothing is taken
 until one side matches). A forge makes a wiki's repository only when its
 first page is saved on the web, so a first push to a repository with no
-wiki says to make one page there. GitHub's fine-grained tokens cannot write
+wiki says to make one page there; that page (GitHub calls it Home) is then
+the forge's own, and Push offers to replace the forge's wiki with this one,
+which is what a first push wants, or Pull to merge the two. GitHub's fine-grained tokens cannot write
 a wiki; a classic token with the repo scope can. Pushing and pulling are a
 person's: they reach outside BuilderBot.
 
