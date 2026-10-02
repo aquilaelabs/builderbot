@@ -149,9 +149,17 @@ if [ -z "${BB_TEST_COPY:-}" ] && [ -z "${BB_TEST_INPLACE:-}" ] \
     echo $$ > "$_dst/.bb-run-pid"
     # tar exits 1 for a file that changed under it (a CHANGELOG.md write, a
     # session's edit) and the copy is still whole: that is not a failed copy.
+    # What git ignores stays behind too, but for the map the plan reads
+    # (.bb-map): an ignored folder is a build's output or somebody's scratch,
+    # and /tmp is memory on a node. An 11 GB trial install ignored at the
+    # root was being copied into it when the run was cut (B433).
+    _skip="$_dst/.bb-copy-skip"
+    git -C "$_src" -c safe.directory="$_src" ls-files -oi --exclude-standard --directory 2>/dev/null \
+        | sed -n 's#/$##; /^\.bb-map$/d; s#^#./#p' > "$_skip" || : > "$_skip"
     { tar -C "$_src" -cf - --warning=no-file-changed --exclude=./.git --exclude=./dist \
-        --exclude=./android/app/build --exclude=./android/build . || [ $? -eq 1 ]; } \
+        --exclude=./android/app/build --exclude=./android/build -X "$_skip" . || [ $? -eq 1 ]; } \
         | tar -C "$_dst" -xf - || { rm -rf "$_dst"; die "could not copy the tree to $_dst"; }
+    rm -f "$_skip"
     printf '[dashboard-test] running from %s: this tree is on NFS, which fails the suite own waits (B124)\n' "$_dst" >&2
     BB_TEST_COPY="$_dst" BB_TEST_ORIGIN="$_src" exec bash "$_dst/scripts/dashboard/test/run.sh" "$@"
 fi
