@@ -237,8 +237,8 @@ function projectRow(p, live, cls, inTab){
                  : "notebook: roadmap, memory and bugs for this project"}">${BOOK}</button>`}
       <button class="eye" data-rn="${esc(p.name)}" aria-label="settings"
         title="settings: name, node, and what Claude runs on here">${GEAR}</button>
-      <button class="eye" data-bug="${esc(p.name)}" aria-label="report a bug"
-        title="report a bug in BuilderBot, from this project: it goes to the diagnostics">${BUG}</button>
+      ${p.mine === false ? "" : `<button class="eye" data-bug="${esc(p.name)}" aria-label="report a bug"
+        title="report a bug in BuilderBot, from this project: it goes to the diagnostics">${BUG}</button>`}
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
         data-on="${p.locked ? "0" : "1"}"${state?.admin === false ? " disabled" : ""}
         aria-label="${p.locked ? "unlock" : "lock"}"

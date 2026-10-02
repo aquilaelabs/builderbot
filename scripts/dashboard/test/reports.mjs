@@ -209,6 +209,33 @@ ok(page.dialogs.length === 0, '...and with none kept, it says so rather than ask
      `...and Send puts it in the diagnostics under alpha, with its category, marked as from the dashboard (${JSON.stringify(mine || diag).slice(0, 200)})`);
 }
 
+// ...and only from a project the person works on (the operator, 2 Oct): an
+// administrator shown every project but not on this one cannot start a
+// session there, so has nothing of its to report.
+{
+  execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'repadmin', '--role', 'admin'],
+    { input: 'repadminpass1\nrepadminpass1\n', encoding: 'utf8',
+      env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } });
+  const as = { Authorization: 'Basic ' + Buffer.from('repadmin:repadminpass1').toString('base64'), 'Content-Type': 'application/json' };
+  const send = async p => { const r = await fetch(URL.replace(/\/$/, '') + '/api/reports', { method: 'POST', headers: as,
+    body: JSON.stringify({ action: 'add', project: p, text: 'seen from outside', area: 'Something else' }) }); return { status: r.status, body: await r.json() }; };
+  await page.evaluate(() => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'projects', name: 'repadmin', projects: ['beta'] }) }));
+  const refused = await send('alpha');
+  ok(refused.status === 403 && /not on alpha/.test(refused.body.error || ''),
+     `an administrator not on a project is refused a report from it (${refused.status} ${refused.body.error})`);
+  const fine = await send('beta');
+  ok(fine.status === 200 && fine.body.ok, '...and sends one from a project it is on');
+  // The row draws its bug button from the project's `mine`, which says the
+  // same thing to the page.
+  const st = await (await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: as })).json();
+  const row = n => (st.projects || []).find(p => p.name === n);
+  ok(row('alpha')?.mine === false && row('beta')?.mine === true,
+     `...and the page is told which rows are its own, so a row it is not on draws no bug button (alpha ${row('alpha')?.mine}, beta ${row('beta')?.mine})`);
+  await page.evaluate(() => fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'remove', name: 'repadmin' }) }));
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 
 await done(browser);

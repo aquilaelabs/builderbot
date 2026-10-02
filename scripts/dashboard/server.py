@@ -6016,6 +6016,12 @@ class Handler(BaseHTTPRequestHandler):
             proj = sess or field(req, "project")
             if not sess and self._not_project(proj):
                 return None
+            # A person reports from a project they work on (the operator,
+            # 2 Oct): an administrator shown every project but not on this
+            # one cannot start a session here, so has nothing of its to report.
+            if act == "add" and not sess and not users.may_work(me, proj):
+                return self._json({"error": f"you are not on {proj}, so a bug from there is not yours to "
+                                            "report: ask to be added, or report from a project you work on"}, 403)
             # The dial is Claude's (Claude may: Report BuilderBot bugs): a
             # person reporting from a project's row is always heard.
             if act == "add" and sess and prefs.get(proj)["report"] == "deny":

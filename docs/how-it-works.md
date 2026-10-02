@@ -1718,7 +1718,9 @@ project's row: the bug button opens **Report a bug**, with a category to
 pick, what happened and how to make it happen, and **Send** puts it in the
 diagnostics under that project with its node and the build it was seen on,
 marked as from the dashboard. A person's report is heard whatever that
-project's Claude dial says.
+project's Claude dial says, from a project they are on: an administrator
+shown every project but not on this one cannot start a session there, so
+the row has no bug button for them and the server refuses one.
 
 ### The notebook
 
