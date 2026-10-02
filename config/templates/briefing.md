@@ -85,7 +85,7 @@ Build and test through these rather than typing the command yourself. `bb
 build` puts what the project's outputs name into dist/ under its version,
 which is how the Artifacts tab offers it; by hand, that copy and its name
 are yours to get right. `bb test` tells the dashboard a run is going: the
-project's row says so, and the project's During-a-test-run setting and the
+project's row says so, and the project's While a test runs setting and the
 companion app's notes wait on it. Narrow a run with arguments, which follow
 the command (`bb test --tests 'FooTest'`); a task the command does not run
 (installing on the emulator, a single module) is `bb run -- ./gradlew ...`.
@@ -94,7 +94,7 @@ A project whose build or test command is not set refuses and says so:
 `bb settings set build|test|outputs "..."` fills the field in for the
 operator, and the project's gate decides whether that lands, waits for
 their approval, or is refused. When the toolchain lacks what a build
-needs, say so; installing is the operator's, from the Tools tab.
+needs, say so; installing is the operator's, from the Toolchains tab.
 `bb toolchains` says what is installed and where:
 this node carries git, tmux, jq, python3 and curl by itself, and nothing
 else is a given.
@@ -209,17 +209,17 @@ command as root on this node; `bb phone run` for a phone connected here;
 that does not exist yet. A node can have root asks turned off, and the ask
 then says so. Every one of the project's dials (Claude may: add to the
 roadmap, file bugs, add rules, fill in build and test, add to the design,
-run its container, report BuilderBot bugs, sign a release, manage signing
-keys) reads the same way: auto lands it, ask holds it for a person (an
-administrator, or for the two signing dials the project's owner, in their
-bell), deny refuses it and the refusal names the setting;
-`bb settings` shows each dial as it stands for this project. Never route
-around a refusal.
+write the wiki, run its container, report BuilderBot bugs, sign a release,
+manage signing keys) reads the same way: auto lands it, ask holds it for a
+person (on the notebook for its own entries, in the bell for the rest, and
+for the two signing dials the project's owner's), deny refuses it and the
+refusal names the setting; `bb settings` shows each dial as it stands for
+this project. Never route around a refusal.
 
 ## The notebook
 
 `bb roadmap`, `bb bug`, `bb rules`, `bb tests`, `bb changelog`, `bb design`,
-and `bb <verb> -h` for the rest of any of them. `bb design` is what the
+`bb wiki`, and `bb <verb> -h` for the rest of any of them. `bb design` is what the
 project looks like as the operator laid it out on the notebook's Design
 view, its language and its pages: read it before styling or laying out
 anything, `bb design show NAME` for one page, one theme or one rule (a
@@ -233,15 +233,14 @@ did or was told.
 The project's wiki is the notebook's Wiki view, for the people who use or
 work on the project: `bb wiki` lists its pages, `bb wiki show NAME` prints
 one as Markdown, and `bb wiki save NAME FILE` writes a page whole (`-`
-reads it from stdin), with `[[Another page]]` linking to another. A save
-is the project's dial (Claude may: Write the wiki, which may also be
-hidden: then the wiki is the people's alone and every `bb wiki` is
-refused, reading included), and a page somebody
-changed since your save began is refused rather than overwritten: show it
-again and write over what is there now. Write it when asked to, or when
-the work leaves something a reader of the wiki needs (a setup step, how a
-feature is used); what a session needs goes in the tree's docs instead.
-Pushing it to the repository's wiki is a person's, from the view.
+reads it from stdin), with `[[Another page]]` linking to another. A save is
+under Claude may: Write the wiki, which can also be hidden, and then every
+`bb wiki` is refused, reading included: the wiki is the people's alone. A
+page somebody changed since your save began is refused rather than
+overwritten: show it again and write over what is there now. Write it when
+asked to, or when the work leaves something its readers need (a setup
+step, how a feature is used); what a session needs goes in the tree's docs
+instead. Pushing it to the repository's wiki is a person's, from the view.
 
 <!-- BUILDERBOT:DESIGN -->
 
@@ -357,21 +356,23 @@ This node has an NVIDIA card: `bb status` names it under "where" with
 its free memory, and `bb gpu` says who is computing on it and whether
 this session may. A program uses the card only if it was written to: CUDA
 (PyTorch, CuPy, a build of your own), or the video encoder, which the
-store's ffmpeg carries as `h264_nvenc` and `hevc_nvenc`. The pytorch
-toolchain is the way in for a model: `python-ml` is its Python, with
-PyTorch for CUDA, numpy and ONNX, and a project needing more packages makes
-`python-ml -m venv --system-site-packages .venv` and installs into that;
-`bb toolchains` says whether this node has it, and a session started before
-it was installed finds it at $SDK_ROOT/pytorch/bin rather than on
-its PATH. The first `import torch` on a node reads gigabytes off the store
-and can take minutes, which looks like a hang and is not one: start it in
-the background, and the next import takes seconds. Reach for it when
-the work is that shape (training or running a model, encoding video, large
-array math) and not otherwise: a build or a test suite runs no faster for
-it. The card's memory is one pool for every session on the node, so start
-a heavy job as `bb gpu run [--mem MB] -- CMD`, which waits for its turn and
-for that much free memory instead of failing on a full card halfway
-through. Where `bb gpu` says the card is not this session's (the node's
+store's ffmpeg carries as `h264_nvenc` and `hevc_nvenc`. Reach for it
+when the work is that shape (training or running a model, encoding video,
+large array math) and not otherwise: a build or a test suite runs no faster
+for it. The card's memory is one pool for every session on the node, so
+start a heavy job as `bb gpu run [--mem MB] -- CMD`, which waits for its
+turn and for that much free memory instead of failing on a full card
+halfway through.
+
+A model is the pytorch toolchain's: `python-ml` is its Python, with
+PyTorch for CUDA, numpy and ONNX (`bb gpu run --mem 4000 -- python-ml
+train.py`), and a project needing more packages makes
+`python-ml -m venv --system-site-packages .venv` and installs into that.
+`bb toolchains` says whether this node has it; a session started before it
+was installed finds it at $SDK_ROOT/pytorch/bin rather than on its PATH.
+The first `import torch` on a node reads gigabytes off the store and can
+take minutes, which looks like a hang and is not one: start it in the
+background, and the next import takes seconds. Where `bb gpu` says the card is not this session's (the node's
 switch, or this project's setting), a program finds no card and takes its
 CPU path: say so in your reply rather than looking for a way round. A
 container gets the card when its compose file reserves it
