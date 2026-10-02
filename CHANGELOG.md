@@ -120,6 +120,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Wiki view reads like an encyclopedia: one article at a time with its title over a rule, a Contents box, serif prose at a reading width, and the pages listed beside it (a picker on a phone), with Read and Edit tabs (ea7dfa2)
 - The companion app catches up: signing asks and project invitations on Approvals and in notifications, the Wiki view, global rules on the Briefing, signed builds on Artifacts, and node load and GPU on Nodes (fd2b7e2)
 - A phone is set up from its node: the Phone tab and its Tools button are now a Phone section on each node's page of the Nodes tab, since every node with adb holds its own (32c0cd2)
+- Pull down from the top of a tab refreshes the dashboard on a phone, and the header's refresh button is gone; the app's Refresh buttons go too, since pulling down does the same (b083add)
 
 ### Removed
 

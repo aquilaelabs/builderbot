@@ -113,9 +113,9 @@ fun <T> load(key: Any?, fetch: suspend () -> T): Pair<Loaded<T>, () -> Unit> {
     return state to { tick++ }
 }
 
-// Pull down to re-read, on every list: the gesture a phone expects, beside
-// the Refresh button each screen keeps for a thumb that is already at the
-// top. `reload` is a load()'s second half; the indicator shows while the
+// Pull down to re-read, on every list: the gesture a phone expects, and the
+// only way to (the operator, 2 Oct: a Refresh button beside it said the same
+// thing twice). `reload` is a load()'s second half; the indicator shows while the
 // pull is held and goes when the fetch it started has landed.
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -206,7 +206,6 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
                     if (s != null) Text("${s.str("me")} · ${s.obj("image").str("version").ifBlank { "unstamped" }} on ${s.str("host")}",
                         color = Dim, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
-                TextButton(onClick = reload) { Text("Refresh") }
             }
         }
         if (st.error != null) item { Problem(st.error) }
@@ -311,7 +310,6 @@ fun ApprovalsScreen(store: Store) {
                 Mark(26.dp)
                 Spacer(Modifier.width(10.dp))
                 Text("Approvals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = { reloadPh(); reloadSt() }) { Text("Refresh") }
             }
             if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Note)
         }
@@ -409,7 +407,6 @@ fun NodesScreen(store: Store) {
         item {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Nodes", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = reload) { Text("Refresh") }
             }
             if (said.isNotBlank()) Text(said, modifier = Modifier.padding(16.dp, 0.dp), color = Note)
             if (nd.error != null) Problem(nd.error)
@@ -500,7 +497,6 @@ fun UsersScreen(store: Store) {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Users", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 TextButton(onClick = { adding = !adding }) { Text(if (adding) "Cancel" else "Add") }
-                TextButton(onClick = reload) { Text("Refresh") }
             }
             if (said.isNotBlank()) Text(said, Modifier.padding(16.dp, 0.dp), color = Note)
             if (us.error != null) Problem(us.error)
@@ -919,7 +915,6 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Tools", style = MaterialTheme.typography.titleLarge,
                      fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = reload) { Text("Refresh") }
             }
             if (nodes.isNotEmpty()) Row(
                 Modifier.fillMaxWidth().padding(16.dp, 0.dp)
@@ -1047,7 +1042,6 @@ fun JobsScreen(store: Store) {
             Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Jobs", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                      color = Ink, modifier = Modifier.weight(1f))
-                TextButton(onClick = reload) { Text("Refresh") }
             }
             if (jb.error != null) Problem(jb.error)
             if (jb.value == null && jb.error == null) Loading()

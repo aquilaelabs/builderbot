@@ -1977,6 +1977,12 @@ pre.diff .d-ctx{color:var(--dim)}
 .phshot{display:block;max-width:min(260px,60vw);height:auto;margin:8px 0 4px;
   border:1px solid var(--line);border-radius:var(--r-small)}
 
+/* Pull to refresh's word at the top (page-pull.js): it follows the finger
+   down and fades in as the pull nears the point where letting go counts. */
+#pullHint{position:fixed;top:6px;left:50%;transform:translate(-50%,0);z-index:60;opacity:0;
+  pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-control);
+  padding:4px 12px;font:var(--f-ui);color:var(--dim)}
+
 /* ---- the Wiki view (nb-wiki.js) ------------------------------------------
    Read like an encyclopedia (the operator, 2 Oct): the pages listed in a
    narrow column beside one article at a time, the article's title large over
@@ -4641,7 +4647,6 @@ body.booting .pane>.loading{margin:auto}
       <path d="M7.8 12.05h.02"/>
     </svg>
   </button>
-  <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-haspopup="menu" aria-expanded="false"
           aria-label="settings"
           title="settings: the color scheme, the cards, and the logs">
@@ -4795,6 +4800,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-welcome.js"></script>  <!-- a part of the page that is no tab: same rule -->
 <script src="page-chat.js"></script>
 <script src="page-motion.js"></script>
+<script src="page-pull.js"></script>
 <script src="page-lists.js"></script>
 <script src="page-cards.js"></script>
 <script src="page-gear.js"></script>
@@ -5449,6 +5455,8 @@ const ICON_BASE = ICON ? ICON.getAttribute("href") : "";
 // Both are facts this card displays and neither is a fact it owns, which is
 // exactly the shape that used to go stale.
 onRev("prefs", () => refresh());
+// Pull to refresh on a touch screen (page-pull.js): the header's ↻ it replaced.
+wirePull();
 // A lent phone, live (R113): a session's screenshot reaches the Phone tab.
 onRev("phone.lease", () => { if (tabs.some(t => t.kind === "nodes")) phFetch(); });
 // Who has a session where, and whether it is working: the light fetch, so

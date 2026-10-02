@@ -145,4 +145,31 @@ if (!mid.over){
   ok(right.l && !right.r, '...and hard right, only the left');
 }
 
+// ---- pull to refresh (page-pull.js) ---------------------------------------
+// The page scrolls inside its panes, so a phone browser's own pull never
+// fires; the page's does: a drag down from the top re-reads the dashboard,
+// and the header has no ↻ beside it any more (the operator, 2 Oct).
+{
+  ok(!(await page.$('header button[title="refresh now"], #hdr button[title="refresh now"]')),
+     'the header carries no refresh button');
+  // Counted at the pull itself: the poll calls refresh() on its own clock.
+  const before = await page.evaluate(() => { window.__pulls = 0; const r = window.pullRefresh;
+    window.pullRefresh = (...a) => { window.__pulls++; return r(...a); }; return true; });
+  // From the top of a document tab in front (a terminal is the terminal's
+  // own to scroll), where a list is read from.
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.doctab.nodestab .doclist', { timeout: 15000 });
+  await sleep(400);
+  const top = await page.evaluate(() => { const r = document.querySelector('.doctab.nodestab .doclist')?.getBoundingClientRect();
+    return r ? Math.round(r.top + 20) : 200; });
+  await finger(page, 200, top, 200, top + 140);
+  const pulled = await page.evaluate(() => window.__pulls);
+  const where = await page.evaluate(y => { const el = document.elementFromPoint(200, y); const sc = pullScroller(el);
+    return `${el?.tagName}.${el?.className} in ${sc ? sc.className + ' at ' + sc.scrollTop : 'no scroller'}`; }, top);
+  ok(before && pulled >= 1, `a drag down from the top refreshes (${pulled}; ${where})`);
+  await page.evaluate(() => { window.__pulls = 0; });
+  await finger(page, 200, top, 200, top + 30);
+  ok(await page.evaluate(() => window.__pulls) === 0, '...and a short one does not');
+}
+
 await done(browser);
