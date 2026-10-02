@@ -26,6 +26,12 @@ class Verdict(unittest.TestCase):
     def test_quiet(self):
         self.assertEqual(busy.verdict(sample(), [], 1), ("quiet", []))
 
+    def test_idle_processes_alone_leave_it_quiet(self):
+        # Two Gradle daemons idling after a build, at 2.7% CPU (2 Oct).
+        word, why = busy.verdict(sample(cpu_pct=2.7, load1=0.7, kinds={"gradle": 2}), [], 1)
+        self.assertEqual(word, "quiet")
+        self.assertEqual(why, ["running: 2 gradle, idle"])
+
     def test_busy_says_why_without_naming_another_project(self):
         word, why = busy.verdict(sample(load1=2.4, kinds={"emulator": 1, "gradle": 2, "claude": 3}),
                                  [{"type": "exec", "mine": False}, {"type": "sign", "mine": True}], 3)

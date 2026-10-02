@@ -54,13 +54,22 @@ def verdict(sample, jobs, sessions_working, now=None):
         why.append(f"CPU {cpu:g}%")
     if float(sample.get("gpu_pct") or 0) >= 30:
         why.append(f"the card at {sample.get('gpu_pct'):g}%")
-    if kinds:
-        why.append("running: " + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items())))
     if others:
         why.append(f"{len(others)} job{'s' if len(others) != 1 else ''} of other projects")
+    # What is merely THERE decides nothing on its own: Gradle leaves its
+    # daemons idling after a build, an emulator sits at its home screen, and
+    # a session can be working with nothing running here. The machine said
+    # busy over two idle daemons at 2.7% CPU (2 Oct). They are named as the
+    # cause when the numbers say the machine is busy, and as what is there
+    # when it is quiet.
+    there = []
+    if kinds:
+        there.append("running: " + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items())))
     if sessions_working > 1:
-        why.append(f"{sessions_working - 1} other Claude session{'s' if sessions_working != 2 else ''} working")
-    return ("busy", why) if why else ("quiet", [])
+        there.append(f"{sessions_working - 1} other Claude session{'s' if sessions_working != 2 else ''} working")
+    if why:
+        return "busy", why + there
+    return "quiet", [f"{t}, idle" if t.startswith("running") else t for t in there]
 
 
 def report(node, jobs, sessions_working, project=""):
