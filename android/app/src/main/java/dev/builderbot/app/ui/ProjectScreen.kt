@@ -61,7 +61,7 @@ import dev.builderbot.app.str
 import dev.builderbot.app.strs
 import kotlinx.coroutines.launch
 
-private val VIEWS = listOf("Claude", "Roadmap", "Bugs", "Briefing", "Design", "Artifacts", "Docker", "Tests", "Git", "Settings")
+private val VIEWS = listOf("Claude", "Roadmap", "Bugs", "Briefing", "Wiki", "Design", "Artifacts", "Docker", "Tests", "Git", "Settings")
 
 // What the settings view offers, in the dashboard's own order and words. The
 // lists are the server's (prefs.MODELS, prefs.EFFORTS, prefs.EDIT_MODES) and
@@ -122,6 +122,7 @@ fun ProjectScreen(store: Store, name: String) {
             "Roadmap" -> Roadmap(api, name)
             "Bugs" -> Bugs(api, name)
             "Briefing" -> Briefing(api, name)
+            "Wiki" -> WikiView(api, name)
             "Design" -> DesignView(api, name)
             "Artifacts" -> Artifacts(api, name)
             "Docker" -> DockerView(api, name)
@@ -282,6 +283,26 @@ private fun Briefing(api: dev.builderbot.app.Api, project: String) {
             }
             Hairline()
         }
+        // The global rules every project's sessions are handed, each saying
+        // whether it is off here; switched on the dashboard's Briefing.
+        val globals = rl.value?.arr("global") ?: emptyList()
+        if (globals.isNotEmpty()) item {
+            Column(Modifier.padding(16.dp, 12.dp)) {
+                Text("Global rules", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Dim("handed to every project's sessions; switched off for this project on the dashboard's Briefing")
+            }
+        }
+        items(globals) { g ->
+            Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(g.str("name"), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    if (g.bool("disabled")) Pill("off everywhere", Warn)
+                    else if (g.bool("off_here")) Pill("off here", Warn)
+                }
+                Text(g.str("text"), color = if (g.bool("disabled") || g.bool("off_here")) Dim else Ink)
+            }
+            Hairline()
+        }
         item {
             Column(Modifier.padding(16.dp, 12.dp)) {
                 Text("Memory", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -354,8 +375,13 @@ private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
             }
         }
         items(rows) { a ->
+            // A build signed by BuilderBot (R106) says with which key.
+            val signed = a.obj("prov").obj("signed")
+            val how = if (signed.length() == 0) "" else "signed with the " +
+                (if (signed.str("key").isNotBlank() && signed.str("key") != "default") "${signed.str("key")} key's " else "") +
+                (if (signed.str("route") == "play") "Play upload key" else "sideload signing key")
             FileRow(a.str("name").ifBlank { a.str("path") }, a.str("path"),
-                    listOf(a.str("path"), if (a.int("size") > 0) "${a.int("size") / 1024} KB" else "").filter { it.isNotBlank() }.joinToString(" · "))
+                    listOf(a.str("path"), if (a.int("size") > 0) "${a.int("size") / 1024} KB" else "", how).filter { it.isNotBlank() }.joinToString(" · "))
         }
         if (shots.isNotEmpty()) item { SectionHead("Captures") }
         items(shots) { c ->

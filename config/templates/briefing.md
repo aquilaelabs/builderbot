@@ -83,7 +83,9 @@ bug in the map to file with `bb bug add`, not a reason to grep instead.
     bb test [ARGS]     its test command, with ARGS after it
     bb run -- CMD      anything else, here
 
-Build and test through these rather than typing the command yourself. `bb
+Build and test through these rather than typing the command yourself.
+Gradle's cache is this project's own (`$GRADLE_USER_HOME`), so another
+project's daemon never holds a lock this build waits on. `bb
 build` puts what the project's outputs name into dist/ under its version,
 which is how the Artifacts tab offers it; by hand, that copy and its name
 are yours to get right. `bb test` tells the dashboard a run is going: the

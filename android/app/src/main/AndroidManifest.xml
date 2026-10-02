@@ -68,6 +68,12 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- The six pairing digits typed into a notification's reply box,
+             over Android's own pairing screen (R114, PhonePair.kt). -->
+        <receiver
+            android:name=".PairReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">

@@ -51,6 +51,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A pytorch toolchain: python-ml, a Python with PyTorch for CUDA, numpy and ONNX, so a session can train or run a model on a node's NVIDIA card under bb gpu run (efad898)
 - A Wiki view in every project's notebook: pages a person or Claude writes (bb wiki, under Claude may: Write the wiki), exported as a zip whatever the remote, and pushed to or pulled from the repository's own wiki on GitHub, Gitea or GitLab (6fdba5b)
 - A phone can be lent to a project from the Phone tab: that project's sessions install, run, see and touch its own app on the real phone without asking, and the tab shows the screen as they work, with Take back (ce16874)
+- The companion app pairs and connects the phone it runs on (More, This phone): it finds the ports itself and takes the six-digit code in a notification, and lends the phone to a project (fd2b7e2)
 
 ### Changed
 
@@ -117,6 +118,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The session briefing covers what landed lately: named signing keys, mapping and rotation, the backup password a key waits on, the signing dials and who they ask, what busy means for a timing, and that a release is tagged from the Artifacts tab (5f9eda2)
 - Global rules live in each project's notebook (Briefing, under the project's rules): anybody on the project switches one off for it, and an administrator changes them for every project. The settings dialog is gone, and rules nobody would turn off moved into the briefing (dfea7c8)
 - The Wiki view reads like an encyclopedia: one article at a time with its title over a rule, a Contents box, serif prose at a reading width, and the pages listed beside it (a picker on a phone), with Read and Edit tabs (ea7dfa2)
+- The companion app catches up: signing asks and project invitations on Approvals and in notifications, the Wiki view, global rules on the Briefing, signed builds on Artifacts, and node load and GPU on Nodes (fd2b7e2)
 
 ### Removed
 
@@ -201,6 +203,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb settings lists Claude may: Sign a release and Manage signing keys with the other dials (8c51217)
 - bb emu list answers in about a second and bb emu start picks its AVD without a minute and a half's pause: both read the AVDs' own files instead of avdmanager, which scanned the whole shared SDK first (7dca24a)
 - A red reason line is red wherever it is drawn: a key never backed up, the Claude chooser's reasons and a sign-in's refusals were in the plain color (d0e52bf)
+- Two sessions' Gradle builds no longer deadlock on a shared cache: each project has its own (fd2b7e2)
 
 ### Security
 

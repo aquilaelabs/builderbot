@@ -34,6 +34,7 @@ import org.json.JSONObject
 object Watch {
     const val ID_PENDING = 2
     const val ID_ATTENTION = 3
+    const val ID_INVITES = 4
     const val ID_TURN_BASE = 5000
     const val ID_ASK_BASE = 1000
     // In the background, no oftener than this: an inexact alarm is batched
@@ -74,6 +75,21 @@ object Watch {
                 .setAutoCancel(true)
                 .build())
             store.lastPending = pendKey
+        }
+        // An invitation to a project, or a project offered to this account:
+        // Accept and Decline are on the Approvals screen, as in the bell.
+        val invites = st.arr("invites")
+        val invKey = invites.joinToString(",") { it.str("id") }
+        if (invKey != store.lastInvites) {
+            if (invites.isEmpty()) nm.cancel(ID_INVITES)
+            else nm.notify(ID_INVITES, NotificationCompat.Builder(context, App.CH_NOTE)
+                .setSmallIcon(R.drawable.ic_stat_bb)
+                .setContentTitle(if (invites.size == 1) inviteLine(invites[0]) else "${invites.size} invitations to projects")
+                .setContentText("Accept or Decline on Approvals")
+                .setContentIntent(openApp(context, "approvals"))
+                .setAutoCancel(true)
+                .build())
+            store.lastInvites = invKey
         }
         // A turn finished: a session of the account's own that was busy at
         // the last look and can take a message now. Told once, on the
@@ -228,15 +244,22 @@ object Watch {
     // four kinds: the phone, root on a node, a rebuild of a dev instance,
     // and a container to be made. Shared with the Approvals screen so the
     // notification and the row agree.
+    fun inviteLine(i: JSONObject): String =
+        if (i.str("kind") == "owner") "${i.str("by").ifBlank { "Somebody" }} offers you ${i.str("project")}"
+        else "${i.str("by").ifBlank { "Somebody" }} invited you to ${i.str("project")}"
+
     fun askTitle(a: JSONObject): String = when (a.str("kind")) {
         "root" -> "Root on ${a.str("node_name")}"
         "rebuild" -> "Rebuild in ${a.str("project").ifBlank { "a project" }}"
         "container" -> "Container ${a.str("name")} on ${a.str("node_name").ifBlank { "the default node" }}"
+        // Signing (R106): asked of the project's owner.
+        "sign" -> "Sign a build of ${a.str("project").ifBlank { "a project" }}"
+        "sign-key" -> "A signing key change in ${a.str("project").ifBlank { "a project" }}"
         else -> "The phone on ${a.str("node_name")}"
     }
     fun askCommand(a: JSONObject): String = when (a.str("kind")) {
         "root" -> "# "
-        "rebuild", "container" -> "bb "
+        "rebuild", "container", "sign", "sign-key" -> "bb "
         else -> "adb "
     } + a.strs("cmd").joinToString(" ")
 }

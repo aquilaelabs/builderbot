@@ -317,7 +317,7 @@ fun ApprovalsScreen(store: Store) {
         }
         val asks = ph.value?.arr("asks") ?: emptyList()
         if (ph.error != null) item { Problem(ph.error) }
-        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, for root on a node, for a rebuild or for a container appears here") } }
+        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, for root on a node, for a rebuild, for a container or to sign a build appears here") } }
         items(asks) { a ->
             val kind = a.str("kind")
             Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = if (kind == "root") Bad else Warn) {
@@ -342,6 +342,26 @@ fun ApprovalsScreen(store: Store) {
                         OutlinedButton(onClick = { scope.launch { said = answer(api, a.int("id"), false); reloadPh() } }) { Text("Deny") }
                         Spacer(Modifier.width(8.dp))
                         Button(onClick = { scope.launch { said = answer(api, a.int("id"), true); reloadPh() } }) { Text("Allow") }
+                    }
+                }
+            }
+        }
+        val invites = st.value?.arr("invites") ?: emptyList()
+        if (invites.isNotEmpty()) item { Section("Invitations") {} }
+        items(invites) { i ->
+            Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = Note) {
+                Column {
+                    Text(Watch.inviteLine(i), color = Ink, fontWeight = FontWeight.SemiBold)
+                    Dim(if (i.str("kind") == "owner") "accepting makes you its owner" else "accepting puts you on it")
+                    Row(Modifier.padding(top = 8.dp)) {
+                        Spacer(Modifier.weight(1f))
+                        OutlinedButton(onClick = { scope.launch {
+                            said = try { api.invite(i.int("id"), false); "declined ${i.str("project")}" } catch (e: Exception) { e.message ?: "it did not go" }
+                            reloadSt() } }) { Text("Decline") }
+                        Spacer(Modifier.width(8.dp))
+                        Button(onClick = { scope.launch {
+                            said = try { api.invite(i.int("id"), true); "you are on ${i.str("project")} now" } catch (e: Exception) { e.message ?: "it did not go" }
+                            reloadSt() } }) { Text("Accept") }
                     }
                 }
             }
@@ -412,6 +432,17 @@ fun NodesScreen(store: Store) {
                                rep.obj("distro").str("pretty")).filter { it.isNotBlank() }.joinToString(" · "))
                     val dist = rep.obj("distro")
                     if (dist.str("pkg").isNotBlank()) Dim("packages: ${dist.str("pkg")} · network: ${dist.str("network").ifBlank { "none" }} · init: ${dist.str("init")}")
+                    // The heartbeat's numbers, the card's included where there
+                    // is one: the Nodes tab's meters, as a line.
+                    val smp = rep.obj("sample")
+                    if (live && smp.length() > 0) {
+                        val gb = { mb: Int -> "%.1f".format(mb / 1024f) }
+                        Dim(listOfNotNull(
+                            "cpu ${smp.optDouble("cpu_pct", 0.0).toInt()}%",
+                            if (smp.int("mem_mb") > 0) "memory ${gb(smp.int("mem_used_mb"))}/${gb(smp.int("mem_mb"))} GB" else null,
+                            if (smp.int("gpu_mem_mb") > 0) "gpu ${smp.optDouble("gpu_pct", 0.0).toInt()}% · vram ${gb(smp.int("gpu_mem_used_mb"))}/${gb(smp.int("gpu_mem_mb"))} GB" else null,
+                        ).joinToString(" · "))
+                    }
                     Row(Modifier.padding(top = 8.dp)) {
                         OutlinedButton(onClick = { scope.launch { said = act(api, n.str("id"), if (locked) "unlock" else "lock"); reload() } }) {
                             Text(if (locked) "Unlock" else "Lock system changes")
@@ -741,7 +772,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
         // Tools is not gated on isAdmin: the listing is what a build can
         // use, which is everybody's question, and the server refuses the
         // two buttons.
-        val pages = listOf("Profile" to "profile", "Tools" to "tools", "Jobs" to "jobs") +
+        val pages = listOf("This phone" to "phone", "Profile" to "profile", "Tools" to "tools", "Jobs" to "jobs") +
             (if (isAdmin) listOf("Users" to "users") else emptyList()) + listOf("What's new" to "whatsnew")
         Panel(Modifier.fillMaxWidth()) {
             pages.forEachIndexed { i, (label, route) ->

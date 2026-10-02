@@ -1695,7 +1695,7 @@ def uptime():
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
 # field listed there bumps all three together: the app, the file, this.
-APP_API = 4
+APP_API = 5
 
 
 def app_apk():

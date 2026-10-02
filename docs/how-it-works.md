@@ -2867,7 +2867,18 @@ shows the lease, the newest screenshot a session took (it updates on the
 next poll as a session works), Look now and Take back; a lease also ends
 when its time is up or the phone disconnects. All of it is adb from the node,
 nothing on the phone's side, so the companion app gains no permission for it
-and looks to Play Protect as it did. Over a VPN it is the same: pair and
+and looks to Play Protect as it did.
+
+**The companion app connects the phone it runs on.** Its *This phone*
+screen (under More) picks the node and the address the node reaches the
+phone on, its VPN address first when a VPN is up, and offers Open Developer
+options, Connect and Pair. Pair waits for Android's *Pair device with
+pairing code* screen to announce its port on the phone's own network,
+then posts a notification whose reply box takes the six digits over that
+screen, since leaving it cancels it; the controller pairs the node and
+connects it on the port debugging announces. The same screen lends the
+phone to a project and takes it back. Android still wants Wireless
+debugging switched on by hand: no app can read the code or turn it on. Over a VPN it is the same: pair and
 connect by the phone's VPN address, and the node finds the port; Android
 still wants the phone on Wi-Fi for wireless debugging.
 

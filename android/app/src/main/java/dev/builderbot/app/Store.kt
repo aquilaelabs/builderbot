@@ -53,6 +53,9 @@ class Store(context: Context) {
     var lastPending: String
         get() = plain.getString("pending", "") ?: ""
         set(v) { plain.edit().putString("pending", v).apply() }
+    var lastInvites: String
+        get() = plain.getString("invites", "") ?: ""
+        set(v) { plain.edit().putString("invites", v).apply() }
 
     // The color scheme, by the dashboard's name for it, on this device.
     var scheme: String

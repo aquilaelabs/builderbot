@@ -67,6 +67,7 @@ import dev.builderbot.app.ui.WhatsNewScreen
 import dev.builderbot.app.ui.LoginScreen
 import dev.builderbot.app.ui.MoreScreen
 import dev.builderbot.app.ui.NodesScreen
+import dev.builderbot.app.ui.PhoneScreen
 import dev.builderbot.app.ui.ProfileScreen
 import dev.builderbot.app.ui.ProjectScreen
 import dev.builderbot.app.ui.ToolsScreen
@@ -181,7 +182,7 @@ fun BuilderBotApp(openOn: String) {
                         unselectedIconColor = Dim, unselectedTextColor = Dim))
             }
         }) { pad ->
-            NavHost(nav, startDestination = if (openOn in setOf("approvals", "nodes")) openOn else "home",
+            NavHost(nav, startDestination = if (openOn in setOf("approvals", "nodes", "phone")) openOn else "home",
                     modifier = Modifier.padding(pad)) {
                 composable("home") { HomeScreen(store, onAdmin = { isAdmin = it }, onWaiting = { waiting = it }, openProject = { nav.navigate("project/$it") }) }
                 composable("project/{name}") { e -> ProjectScreen(store, e.arguments?.getString("name") ?: "") }
@@ -193,6 +194,7 @@ fun BuilderBotApp(openOn: String) {
                 composable("profile") { ProfileScreen(store) }
                 composable("jobs") { JobsScreen(store) }
                 composable("whatsnew") { WhatsNewScreen(store) }
+                composable("phone") { PhoneScreen(store) }
             }
         }
     }
