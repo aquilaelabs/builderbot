@@ -2848,9 +2848,25 @@ its own on the node, so a plain `adb devices` in a session shows the emulator
 and nothing else. To reach the handset a session runs `bb phone run --why
 "..." -- …`, which puts the reason and the exact command in front of the
 phone's owner and waits; on **Allow** the node runs it and hands back the
-output. There is no setting that skips the question. The reason is required,
-not optional: approving a command you did not write, with no sentence saying
-what it is for, is a guess.
+output. The reason is required, not optional: approving a command you did
+not write, with no sentence saying what it is for, is a guess.
+
+**Lent to a project, a phone is driven without asking, and only for that
+project's app.** Its owner lends it on the Phone tab to one project on its
+node, for an hour, four hours or until taken back. That project's sessions
+then install one of its own builds (`bb phone install dist/APP.apk`, whose
+package the lease learns), start, stop or pick it as the keyboard, read its
+logcat, take screenshots and recordings into `dist/phone/`, read the
+screen's layout, and tap, swipe, glide and type, the last two only while one
+of the lease's apps is in front or is the keyboard. Everything else, another
+app, Settings, a shell, still goes through `bb phone run --why`. The tab
+shows the lease, the newest screenshot a session took (it updates on the
+next poll as a session works), Look now and Take back; a lease also ends
+when its time is up or the phone disconnects. All of it is adb from the node,
+nothing on the phone's side, so the companion app gains no permission for it
+and looks to Play Protect as it did. Over a VPN it is the same: pair and
+connect by the phone's VPN address, and the node finds the port; Android
+still wants the phone on Wi-Fi for wireless debugging.
 
 **Root on a node has the same shape.** A session has no sudo there and gets
 none; what it can do is `bb root run --why "..." -- CMD`, which puts the

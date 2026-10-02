@@ -284,6 +284,40 @@ const asPhone = !lan ? { you: 'no LAN address on this box: nothing to ask with' 
 ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPhone.you)),
    `from an Android browser it offers that browser's own address (${asPhone.you})`);
 
+// ---- lent to a project (R113) ----------------------------------------------
+// The owner lends the phone to alpha; alpha's sessions then see and touch its
+// own app with no ask per command, and nothing else; Take back ends it.
+{
+  const token = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+  const session = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
+  const use = (op, args) => api('/api/phone', { action: 'use', op, args }, session);
+  ok((await use('shot')).status === 403, 'before a lease a session gets nothing without asking');
+  const bad = await api('/api/phone', { action: 'lend', node: sandbox.id, project: 'alpha', hours: 1 }, other);
+  ok(bad.status === 400 && /only the account that connected/.test(bad.body.error), `only the owner lends it (${bad.body.error})`);
+  const lent = await api('/api/phone', { action: 'lend', node: sandbox.id, project: 'alpha', hours: 1 });
+  ok(lent.status === 200, `the owner lends it to a project on its node (${lent.status} ${lent.body.error || ''})`);
+  await page.evaluate(() => phFetch());
+  await page.waitForSelector('.phonetab .phlease', { timeout: 15000 });
+  ok(/Lent to alpha/.test(await page.$eval('.phonetab .phlease', e => e.textContent)) && !!(await page.$('.phonetab #phTakeBack')),
+     'the tab says whom it is lent to, for how long, with Take back');
+  const shot = await use('shot');
+  ok(shot.status === 200 && /^dist\/phone\/shot-.*\.png$/.test(shot.body.path || ''),
+     `a session takes a screenshot with no ask, into dist/phone/ (${shot.body.path || shot.body.error})`);
+  await page.waitForSelector('.phonetab .phlease img.phshot', { timeout: 15000 });
+  ok(true, '...and the owner\'s tab shows it on the next poll');
+  const other_app = await use('start', { pkg: 'com.android.settings' });
+  ok(other_app.status === 403 && /not one of this lease's apps/.test(other_app.body.error),
+     `another app on the phone is refused (${other_app.body.error})`);
+  const sneaky = await use('touch', { kind: 'tap', x: '1;reboot', y: '2' });
+  ok(sneaky.status === 400, 'a touch takes numbers only');
+  const asks = (await api('/api/phone?node=' + sandbox.id)).body.asks || [];
+  ok(!asks.length, '...and none of it put a question in the owner\'s bell');
+  await page.click('.phonetab #phTakeBack');
+  await page.waitForFunction(() => !document.querySelector('.phonetab .phlease'), null, { timeout: 15000 });
+  ok((await use('shot')).status === 403, 'Take back ends it: the session is back to asking');
+}
+
 // ---- the owner ends it ------------------------------------------------------
 await page.click('.phonetab #phDisconnect');
 await page.waitForFunction(() => !document.querySelector('.phonetab #phDisconnect'), null, { timeout: 20000 });

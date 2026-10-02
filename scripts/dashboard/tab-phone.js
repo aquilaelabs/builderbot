@@ -25,6 +25,8 @@ let phNode = "";                 // the picked node's id; "" until the first ans
 // Held outside the render, because the tab is rebuilt whole on every draw and
 // a field that emptied itself mid-sentence would be unusable.
 let phIp = "", phPort = "", phCode = "";
+// The lend controls' picks, kept across a redraw (R113).
+let phLendTo = "", phLendFor = "1";
 
 function openPhoneTab(){
   openTab({kind: "phone", arg: "__phone", label: "Phone"});   // the kind's open hook probes
@@ -145,6 +147,44 @@ function renderPhoneInto(i){
             Keep that dialog open.`}</div>
      </div>`,
   ];
+  // Lent to a project (R113): its sessions drive that project's own app on
+  // the phone with no ask per command, and the owner watches and takes it
+  // back here. The lend controls are the owner's; everybody sees the lease.
+  const L = n.lease;
+  if (dev && L){
+    const left = L.left === null || L.left === undefined ? "until taken back"
+      : L.left > 3600 ? `${Math.floor(L.left / 3600)} h ${Math.round((L.left % 3600) / 60)} min left`
+      : `${Math.max(1, Math.round(L.left / 60))} min left`;
+    rows.push(`<div class="row phlease">
+       <div class="grow"><div class="name">Lent to ${esc(L.project)} <span class="pill go">${esc(left)}</span></div>
+         <div class="sub">${(L.pkgs || []).length
+           ? `its sessions drive ${esc(L.pkgs.join(", "))}, and nothing else, without asking`
+           : "its sessions may install one of its builds; then that app, and nothing else, without asking"}</div>${
+         L.shot ? `<img class="phshot" alt="the phone's screen, as last seen" src="/api/artifact?project=${
+           encodeURIComponent(L.project)}&path=${encodeURIComponent(L.shot)}">
+           <div class="sub">${esc(L.shot.split("/").pop())}</div>` : ""}
+         ${n.mine ? `<div class="actbar"><span class="state">the screen updates as a session takes shots</span>
+           <button type="button" id="phLook">Look now</button>
+           <button type="button" class="danger" id="phTakeBack">Take back</button></div>` : ""}</div>
+     </div>`);
+  } else if (dev && n.mine && mayPhone()){
+    const ps = n.lendable || [];
+    rows.push(`<div class="row phlend">
+       <div class="grow">
+         <div class="name">Lend to a project</div>
+         <div class="prefrow">
+           <label class="pick">Project <select id="phLendTo" aria-label="the project to lend the phone to"${ps.length ? "" : " disabled"}>${
+             ps.map(p => `<option value="${esc(p)}"${p === phLendTo ? " selected" : ""}>${esc(p)}</option>`).join("")}</select></label>
+           <label class="pick">For <select id="phLendFor" aria-label="how long">
+             <option value="1"${phLendFor === "1" ? " selected" : ""}>1 hour</option>
+             <option value="4"${phLendFor === "4" ? " selected" : ""}>4 hours</option>
+             <option value="0"${phLendFor === "0" ? " selected" : ""}>until taken back</option></select></label>
+         </div>
+         <div class="actbar"><span class="state">its sessions then install, run, see and touch its own app here without asking; anything else still asks you</span>
+           <button type="button" id="phLend"${ps.length ? "" : " disabled"}>Lend</button></div>
+         ${ps.length ? "" : `<div class="sub bad">No project of yours runs on ${esc(n.name)}, so there is none to lend it to.</div>`}
+       </div></div>`);
+  }
   // The phones this node has paired or connected, newest first. The pairing
   // outlives everything (the key is in the node account's ~/.android), so a
   // remembered phone is one press: its address goes in the field above and
@@ -182,7 +222,8 @@ function renderPhoneInto(i){
         <button type="button" class="primary" data-allow="${a.id}">Allow</button>
       </span></div>`);
   d.list.innerHTML = rows.join("");
-  d.setFoot(`A session reaches this phone only by asking; the request lands here, with its reason.`);
+  d.setFoot(L ? `Lent to ${L.project}: its sessions drive its own app without asking; anything else still asks here.`
+    : `A session reaches this phone only by asking; the request lands here, with its reason.`);
   if (!tcDotsTimer && d.list.querySelector(".dots"))
     tcDotsTimer = setInterval(tcTickDots, 400);
   wirePhoneTab(d.el);
@@ -224,4 +265,15 @@ function wirePhoneTab(root){
   });
   root.querySelectorAll("[data-deny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.deny)}));
+  const lt = $$("phLendTo"), lf = $$("phLendFor");
+  if (lt) lt.onchange = () => { phLendTo = lt.value; };
+  if (lf) lf.onchange = () => { phLendFor = lf.value; };
+  on("phLend", () => {
+    const project = lt?.value || "";
+    if (!project) return notify("pick the project to lend it to", true);
+    phBusy = "lending"; phRev++; drawPanes();
+    phFetch({action: "lend", project, hours: Number(lf?.value || 1)});
+  });
+  on("phTakeBack", () => { phBusy = "taking it back"; phRev++; drawPanes(); phFetch({action: "take-back"}); });
+  on("phLook", () => { phBusy = "looking"; phRev++; drawPanes(); phFetch({action: "look"}); });
 }

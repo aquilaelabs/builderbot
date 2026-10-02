@@ -2479,6 +2479,11 @@ phone.project_names = lambda who: {p["name"] for p in project_list(who)}
 phone.project_node = lambda p: prefs.get(p)["node"]
 phone.dial = lambda p: prefs.get(p)["devbuild"]
 phone.on_project_node = devapp.on_project_node
+# A phone lent to a project (R113): its sessions drive the project's own app.
+import phonelease                                                # noqa: E402
+phonelease.configure(workspace=WORKSPACE, project_node_fn=lambda p: prefs.get(p)["node"],
+                     may_see_fn=users.may_see)
+phone.leasing = phonelease
 phone.run_denied = devapp.RUN_DENIED
 phone.net_nudge = net_nudge
 phone.resolve_artifact = artifacts.resolve
@@ -2898,6 +2903,8 @@ def revisions(who=None, projects=None):
         # In memory, free to read.
         "phone.asks": len(phone.requests_open()),
         "phone.dev": phone.device_rev(),
+        # A phone lent to a project (R113): the lease and its newest shot.
+        "phone.lease": phonelease.rev(),
         "toolchains": toolchains.job_rev(),
         # Google's image index landing; the images themselves ride the node
         # and job tokens, which the Emulator tab watches as well.
@@ -5099,7 +5106,8 @@ class Handler(BaseHTTPRequestHandler):
                               project=(self._who() or {}).get("session") or "",
                               node=node, probe=probe, scope=self._node_scope(),
                               ua=self.headers.get("User-Agent", ""),
-                              addr=self.client_address[0] if self.client_address else "")
+                              addr=self.client_address[0] if self.client_address else "",
+                              who=self._who())
 
     def _docker_ctl(self, req):
         """Start, stop, restart or read the log of ONE container on a node.
@@ -5560,7 +5568,7 @@ class Handler(BaseHTTPRequestHandler):
         # account that connected one can disconnect it or answer for it,
         # and root on a shared sandbox is an administrator's whoever asks).
         # A session's token may reach none of them.
-        if field(req, "action") not in ("ask", "outcome") and (self._who() or {}).get("session"):
+        if field(req, "action") not in ("ask", "outcome", "use") and (self._who() or {}).get("session"):
             return self._json({"error": "a session asks; a person answers"}, 403)
         # The outcome of a request is the asking session's to read (scoped
         # to its project below) and an administrator's; not any account's

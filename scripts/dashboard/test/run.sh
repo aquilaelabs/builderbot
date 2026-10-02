@@ -957,6 +957,14 @@ if [ "$3" = install ]; then
         *) printf 'Performing Streamed Install\nSuccess\n'; exit 0 ;;
     esac
 fi
+# adb -s SERIAL shell "a line": a lent phone's (R113). A screenshot is a
+# one-pixel PNG in base64, and a guarded touch or a start answers quietly.
+if [ "$3" = shell ]; then
+    case "$4" in
+        *"screencap -p"*) printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='; exit 0 ;;
+        *mCurrentFocus*|*"monkey -p"*|*"am force-stop"*) exit 0 ;;
+    esac
+fi
 # adb -s SERIAL shell pm list packages
 if [ "$4 $5 $6" = "pm list packages" ]; then
     printf 'package:org.mozilla.firefox_beta

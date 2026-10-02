@@ -317,6 +317,14 @@ a long-press from a slide. Two things an emulator does to a keyboard under
 test: its AVD reports a hardware keyboard, so an IME shows only after
 `settings put secure show_ime_with_hard_keyboard 1`; and a force-stop of an
 IME's package deselects it, so `ime set` again after one.
+A real phone is the Phone tab's: one lent to this project by its owner is
+yours to drive with no ask, for this project's own app only. `bb phone
+lease` says whether it is lent and which apps the lease covers; `bb phone
+install dist/APP.apk` installs a build and adds its package; then `bb phone
+start|stop|ime|log PKG`, `bb phone shot` and `bb phone record [SECONDS]`
+(into dist/phone/), `bb phone ui`, and `bb phone touch tap|hold|glide|text|key`,
+which acts only while a lease app is in front or is the keyboard. Anything
+else on the phone is `bb phone run --why`, one asked command at a time.
 An API level exists here where the store holds a system image for it:
 `bb emu images` lists them and `bb emu create <api>` fetches one on demand.
 Adding or removing one deliberately is the operator's, from the Emulator tab.

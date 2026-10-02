@@ -395,6 +395,17 @@ bb phone run --why "..." -- adb args...
                    ask to reach it: the operator allows it on the dashboard
                    and the dashboard runs it, so a session never touches the
                    handset itself
+bb phone lease     whether the phone is lent to this project, for how long, and
+                   which of its apps the lease covers. While lent, with no ask:
+bb phone install dist/APP.apk   install one of this project's builds; its
+                   package joins the lease
+bb phone start|stop|ime|log PKG   run, stop, pick as keyboard, or read the
+                   logcat of a lease app
+bb phone shot      the screen, into dist/phone/ (bb phone record [SECONDS] a video)
+bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--ms N] |
+                   text "..." | key back|enter|del|tab|space|up|down|left|right
+                   only while a lease app is in front or is the keyboard;
+                   bb phone ui prints the screen's layout under the same rule
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,

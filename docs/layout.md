@@ -135,6 +135,7 @@ scripts/
     devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
     phone.py                     a paired handset on a node: install, push, and the asking
+    phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
     db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
     nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md); the Nodes tab's verbs; a build job from the controller
     channel.py                   the node agent's verbs behind /api/v1/agent/: enroll, hello, work, a job's files, log and result

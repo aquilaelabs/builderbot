@@ -1968,6 +1968,11 @@ pre.diff .d-ctx{color:var(--dim)}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
+/* The lent phone's screen as a session last saw it (tab-phone.js, R113): a
+   picture at a phone's proportions, never wider than a row wants. */
+.phshot{display:block;max-width:min(260px,60vw);height:auto;margin:8px 0 4px;
+  border:1px solid var(--line);border-radius:var(--r-small)}
+
 /* ---- the Wiki view (nb-wiki.js) ------------------------------------------
    A page read in the row it opens from: the Markdown drawn as prose in the
    tab's own type and colors, its code in the mono, its tables hairlined,
@@ -5405,6 +5410,8 @@ const ICON_BASE = ICON ? ICON.getAttribute("href") : "";
 // Both are facts this card displays and neither is a fact it owns, which is
 // exactly the shape that used to go stale.
 onRev("prefs", () => refresh());
+// A lent phone, live (R113): a session's screenshot reaches the Phone tab.
+onRev("phone.lease", () => { if (tabs.some(t => t.kind === "phone")) phFetch(); });
 // Who has a session where, and whether it is working: the light fetch, so
 // the dot beside a name follows a session within seconds.
 onRev("live", () => liveRefresh());

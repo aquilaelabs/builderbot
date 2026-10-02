@@ -49,7 +49,81 @@ def run():
     sys.exit(o.get("code") or 0)
 
 
-VERBS = {"status": status, "run": run}
+# ---- a phone lent to this project (R113) -------------------------------------
+# No ask per command: the owner lent the phone to this project, and the
+# controller allows only the project's own app on it (phonelease.py).
+
+def use(op, args=None, quiet=False):
+    r = bbapi.call("/api/phone", {"action": "use", "op": op, "args": args or {},
+                                  "project": os.environ.get("BB_PHONE_PROJECT", "")},
+                   auth=os.environ["BB_PHONE_AUTH"], timeout=900)
+    if r.get("error"):
+        print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr)
+        sys.exit(1)
+    if not quiet and r.get("out"):
+        sys.stdout.write(r["out"] if r["out"].endswith("\n") else r["out"] + "\n")
+    if r.get("code"):
+        sys.exit(r["code"])
+    return r
+
+
+def flag(argv, name, default=None):
+    if name in argv:
+        i = argv.index(name)
+        if i + 1 >= len(argv):
+            sys.exit(f"[builderbot] ERROR: {name} takes a value")
+        v = argv[i + 1]
+        del argv[i:i + 2]
+        return v
+    return default
+
+
+def lent():
+    argv = sys.argv[1:]
+    op = argv[0]
+    rest = argv[1:]
+    if op == "lease":
+        r = use("status", quiet=True)
+        left = r.get("left")
+        print(f"{r['model']}, lent to {os.environ.get('BB_PHONE_PROJECT')} by {r.get('by') or 'its owner'}"
+              + (f", {left // 60} min left" if left is not None else ", until taken back"))
+        print("apps: " + (", ".join(r.get("pkgs") or []) or "none yet: bb phone install dist/APP.apk"))
+    elif op == "shot":
+        print(use("shot", quiet=True)["path"])
+    elif op == "record":
+        print(use("record", {"seconds": rest[0] if rest else 10}, quiet=True)["path"])
+    elif op == "install":
+        if not rest:
+            sys.exit("usage: bb phone install dist/APP.apk")
+        print(f"installed {use('install', {'file': rest[0]}, quiet=True)['pkg']}")
+    elif op in ("start", "stop", "ime"):
+        use(op, {"pkg": rest[0] if rest else ""})
+    elif op == "log":
+        lines = flag(rest, "--lines", 500)
+        use("log", {"pkg": rest[0] if rest else "", "lines": lines})
+    elif op == "ui":
+        use("ui")
+    elif op == "touch":
+        if not rest:
+            sys.exit("usage: bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--ms N] | text \"...\" | key NAME")
+        kind = rest[0]
+        ms = flag(rest, "--ms")
+        a = {"kind": kind}
+        if kind in ("tap", "hold"):
+            a.update(x=rest[1] if len(rest) > 1 else None, y=rest[2] if len(rest) > 2 else None)
+            if ms:
+                a["ms"] = ms
+        elif kind == "glide":
+            a.update(points=rest[1:], ms=ms or 40)
+        elif kind == "text":
+            a["text"] = " ".join(rest[1:])
+        elif kind == "key":
+            a["key"] = rest[1] if len(rest) > 1 else ""
+        use("touch", a)
+
+
+VERBS = {"status": status, "run": run, "lease": lent, "shot": lent, "record": lent, "install": lent,
+         "start": lent, "stop": lent, "ime": lent, "log": lent, "ui": lent, "touch": lent}
 
 if __name__ == "__main__":
     VERBS[sys.argv[1]]()

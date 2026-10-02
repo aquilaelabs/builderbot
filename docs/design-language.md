@@ -1033,7 +1033,7 @@ Layout of the Phone tab on a desktop frame (12 columns by 8 rows), from the Blan
   5. Card (a box holding one thing): an ask: its reason, its command, Allow and Deny, across the middle, row 7 of 8, inside block 4 (List: what sessions have asked of the phone)
   6. Footer (the band at the foot): a session reaches the phone only by asking, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface).
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). Under the connected phone, its owner's Lend to a project row: a project picker (only projects on the phone's node), For (1 hour, 4 hours, until taken back) and Lend, with why it cannot be lent in red under it when no project fits. Once lent, a row says Lent to PROJECT with the time left as a pill, which apps its sessions drive, and the newest screenshot a session took at a phone's proportions (updated on the next poll), with Look now and Take back on the owner's action bar; the foot says the lease's terms.
 
 ### Controller settings (Web app)
 

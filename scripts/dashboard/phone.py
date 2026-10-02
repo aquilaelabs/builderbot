@@ -77,6 +77,7 @@ container_builds = None
 # node held to its project's (R79), the dial's refusal, and the sessions'
 # networks told when a container is made (R79).
 users = None
+leasing = None        # phonelease, set by server.py: a phone lent to a project (R113)
 project_names = None
 project_node = None
 dial = None
@@ -455,7 +456,7 @@ def disconnect(nid, uid, name):
 
 # ---- what the tab and the Artifacts view read ------------------------------
 
-def _node_row(n, uid, probe):
+def _node_row(n, uid, probe, who=None):
     rec = _rec(n["id"])
     dev = phone_on(n["id"], force=probe) if n["live"] else None
     return {"id": n["id"], "name": n["name"], "live": n["live"],
@@ -463,17 +464,23 @@ def _node_row(n, uid, probe):
             "known": known(n["id"]),
             "owner": owner_of(n["id"]) if rec else None,
             "mine": bool(rec and rec.get("owner") == uid),
-            "may_drive": may_drive(n["id"], uid)}
+            "may_drive": may_drive(n["id"], uid),
+            # R113: who the phone is lent to, and (for its owner) which
+            # projects on this node it could be.
+            "lease": leasing.view(n["id"]) if leasing is not None else None,
+            "lendable": (sorted(p for p in project_names(who) if project_node(p) == n["id"])
+                         if rec and rec.get("owner") == uid and who is not None
+                         and project_names and project_node else [])}
 
 
-def payload(uid, node="", probe=False, admin=False, project=""):
+def payload(uid, node="", probe=False, admin=False, project="", who=None):
     """The tab's data for one account: every node a phone can be driven
     from, which of them holds one and whose it is, and the requests waiting
     on THIS account: phone requests on the phone's owner, root requests on
     an administrator. `probe` asks the picked node's adb again now."""
     rows = []
     for n in (nodes.phone_nodes() if nodes is not None else []):
-        rows.append(_node_row(n, uid, probe and n["id"] == node))
+        rows.append(_node_row(n, uid, probe and n["id"] == node, who))
     return {"nodes": rows, "asks": requests_open(uid, admin, project)}
 
 
@@ -1159,6 +1166,16 @@ def _install_worker(nid, serial, rel, size, project, dest, by):
         _install.update(running=False, state="done" if ok else "failed", error=err)
 
 
+def install_dest(node, project, rel):
+    """Where the agent fetches a dist/ file for an install on this node: its
+    artifacts store for the project, or its data store without one."""
+    stores = node.get("stores") or {}
+    root = (stores.get("artifacts") or {}).get("path") or (stores.get("data") or {}).get("path") or "/tmp"
+    if (stores.get("artifacts") or {}).get("path"):
+        root = f"{root}/{re.sub(r'[^A-Za-z0-9._-]', '_', str(project or '')) or '_'}"
+    return f"{root}/{Path(rel).name}"
+
+
 def install_apk(nid, node, rel, size, project, label="", by="phone"):
     """Install (or update) one APK from the project's dist/ on the phone
     connected to its node. The agent fetches the file into the node's
@@ -1170,11 +1187,7 @@ def install_apk(nid, node, rel, size, project, label="", by="phone"):
     dev = phone_on(nid)
     if not dev:
         return {"error": "no phone is connected on this project's node"}
-    stores = node.get("stores") or {}
-    root = (stores.get("artifacts") or {}).get("path") or (stores.get("data") or {}).get("path") or "/tmp"
-    if (stores.get("artifacts") or {}).get("path"):
-        root = f"{root}/{re.sub(r'[^A-Za-z0-9._-]', '_', str(project or '')) or '_'}"
-    dest = f"{root}/{Path(rel).name}"
+    dest = install_dest(node, project, rel)
     with _lock:
         _install.update(running=True, what=label or Path(rel).name,
                         state="installing", error="", at=int(time.time()))
@@ -1187,7 +1200,7 @@ def install_apk(nid, node, rel, size, project, label="", by="phone"):
 # ---------------------------------------------------------------------------
 # the Phone tab's verbs and the asking, one call from the dashboard
 
-def tab_view(uid, *, admin, project, node="", probe=False, scope=None, ua="", addr=""):
+def tab_view(uid, *, admin, project, node="", probe=False, scope=None, ua="", addr="", who=None):
     """The tab's data for this account, plus this browser's own address when
     it is a phone.
 
@@ -1201,7 +1214,7 @@ def tab_view(uid, *, admin, project, node="", probe=False, scope=None, ua="", ad
     is the desktop's, which is emphatically not the phone, and filling the
     field with it would be a confident wrong answer, the worst kind.
     """
-    out = payload(uid, node=node, probe=probe, admin=admin, project=project)
+    out = payload(uid, node=node, probe=probe, admin=admin, project=project, who=who)
     # The rows are the nodes this account's projects build on, as every
     # node-shaped surface is (the server's _node_scope, handed in as scope):
     # the list carried every phone node's name, address and handset to a
@@ -1342,6 +1355,28 @@ def verb(action, req, who, fresh):
         else:
             r = ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
                     pn["name"] if pn else "", proj, asker=asker_name)
+    elif act == "lend":
+        if not nid or not _rec(nid):
+            return {"error": "no phone is connected on that node"}, 400
+        r = leasing.lend(nid, who, field(req, "project"), req.get("hours"))
+    elif act == "take-back":
+        r = leasing.take_back(nid, who, admin=users.is_admin(who))
+    elif act == "look":
+        # The owner watching what a session does: a screenshot of the lent
+        # phone now, into the project's dist/phone/ beside the session's.
+        got = leasing.lease(nid) if nid else None
+        if not got or (_rec(nid) or {}).get("owner") != uid:
+            return {"error": "only the owner looks at a lent phone from here"}, 403
+        r, st = leasing.use(got["project"], "shot", {})
+        if st != 200:
+            return r, st
+    elif act == "use":
+        # A session's verb on the phone lent to its project (R113): its own
+        # project only, and phonelease says what a lease allows.
+        proj = who.get("session") or field(req, "project")
+        if not proj or (not who.get("session") and not users.may_see(who, proj)):
+            return {"error": "which project's phone?"}, 400
+        return leasing.use(proj, field(req, "op"), req.get("args"))
     elif act == "allow" or act == "deny":
         r = decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who))
     elif act == "outcome":
