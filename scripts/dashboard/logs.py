@@ -28,12 +28,14 @@ import re
 import tarfile
 import threading
 import time
+import zipfile
 from pathlib import Path
 
 # What download() needs for the diagnostics, set by server.py: the report
 # bb diag prints (diag.report), and the audit row a read of it writes.
 diag_report = None
 audit = None
+conversation_text = None    # reports.conversation: a report's conversation, for the download
 
 STATE = None
 write_json = None
@@ -313,8 +315,21 @@ def download(what, principal):
         # as they always are, and on the audit trail as a read of them
         # through the API is.
         audit(principal, "diag-download", "diagnostics", {})
-        data = (json.dumps(diag_report(), indent=2) + "\n").encode()
-        return (time.strftime("builderbot-diagnostics-%Y%m%d-%H%M.json"), data, "application/json"), 200
+        # A zip: the report as diagnostics.json, and each conversation a
+        # report carries as its own file under conversations/, named on the
+        # report, so one with a long conversation does not make the JSON a
+        # file nobody can open (the operator, 2 Oct).
+        rep = diag_report()
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("diagnostics.json", json.dumps(rep, indent=2) + "\n")
+            for r in rep.get("reports") or [] if isinstance(rep.get("reports"), list) else []:
+                f = (r.get("conversation") or {}).get("file") if isinstance(r, dict) else None
+                if f and conversation_text:
+                    text = conversation_text(r.get("id"))
+                    if text:
+                        z.writestr(f, text)
+        return (time.strftime("builderbot-diagnostics-%Y%m%d-%H%M.zip"), buf.getvalue(), "application/zip"), 200
     if what == "archive":
         data, err = archive_bytes()
         if data is None:

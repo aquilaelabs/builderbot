@@ -31,6 +31,17 @@ function openReport(project){
   $("reportText").value = "";
   $("reportRepro").value = "";
   $("reportErrWrap").hidden = true;
+  // The conversation it could carry: this account's newest on the project.
+  $("reportConv").checked = false;
+  $("reportConvField").hidden = true;
+  if (project) fetch("/api/transcripts?project=" + encodeURIComponent(project))
+    .then(r => r.json()).then(j => {
+      const c = (j.rows || [])[0];
+      if (!c || reportProject !== project) return;
+      $("reportConvWhich").textContent = `${ago(c.at)}: "${String(c.first || "").slice(0, 90)}". `
+        + "Its last part goes with the report, with secrets taken out, to whoever reads the diagnostics.";
+      $("reportConvField").hidden = false;
+    }).catch(() => {});
   m.hidden = false;
   m.onclick = e => { if (e.target === m) m.hidden = true; };
   $("reportCancel").onclick = () => { m.hidden = true; };
@@ -46,7 +57,8 @@ async function sendReport(){
   busy(btn, "Sending");
   try{
     const r = await postJSON("/api/reports", {action: "add", project: reportProject, text,
-      area: $("reportCat").value, repro: $("reportRepro").value.trim()});
+      area: $("reportCat").value, repro: $("reportRepro").value.trim(),
+      include_conversation: !!reportProject && $("reportConv").checked});
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) return fail(j.error || `the controller answered ${r.status}`);
     $("reportModal").hidden = true;

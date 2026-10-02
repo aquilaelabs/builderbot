@@ -6,7 +6,7 @@
 // made it reads what became of it. No browser: it is an API and a verb.
 import { launch, newPage, ready, ok, done, saveDialog, URL, DIR } from './lib.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const base = URL.replace(/\/$/, '');
@@ -207,6 +207,45 @@ ok(page.dialogs.length === 0, '...and with none kept, it says so rather than ask
   ok(mine && mine.project === 'alpha' && mine.area === 'The notebook' && /from the dashboard/.test(mine.by)
      && mine.repro === 'edit, switch tabs, come back',
      `...and Send puts it in the diagnostics under alpha, with its category, marked as from the dashboard (${JSON.stringify(mine || diag).slice(0, 200)})`);
+}
+
+// A project's report can carry the reporter's latest conversation on it
+// (the operator, 2 Oct), ticked in the dialog, redacted, and carried by the
+// diagnostics and their download.
+{
+  const dir = `${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}`;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(`${dir}/feedface-0000.jsonl`, [
+    { type: 'user', message: { role: 'user', content: 'make the wiki keep my edit' }, timestamp: '2026-10-02T10:00:00Z' },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Saving it now. token=ghp_abcdefghijklmnopqrstuvwxyz0123456789' }] }, timestamp: '2026-10-02T10:00:05Z' },
+  ].map(x => JSON.stringify(x)).join('\n') + '\n');
+  await page.click('[data-bug="alpha"]');
+  await page.waitForSelector('#reportConvField:not([hidden])', { timeout: 10000 });
+  ok(/make the wiki keep my edit/.test(await page.$eval('#reportConvWhich', e => e.textContent))
+     && !(await page.$eval('#reportConv', e => e.checked)),
+     'a project\'s report offers the latest conversation, named, and off until ticked');
+  await page.check('#reportConv');
+  await page.fill('#reportText', 'the session lost the edit');
+  await page.click('#reportSend');
+  await page.waitForFunction(() => document.getElementById('reportModal').hidden, null, { timeout: 15000 });
+  // The download is a zip: diagnostics.json names the file, and the file
+  // is beside it, so a long conversation never swells the report.
+  const zip = await page.evaluate(async () => {
+    const b = new Uint8Array(await (await fetch('/logs/download?what=diag')).arrayBuffer());
+    let s = ''; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192));
+    return btoa(s);
+  });
+  const got = JSON.parse(execFileSync('python3', ['-c', `
+import base64, io, json, sys, zipfile
+z = zipfile.ZipFile(io.BytesIO(base64.b64decode(sys.stdin.read())))
+d = json.loads(z.read("diagnostics.json"))
+r = next((x for x in d.get("reports") or [] if x.get("text") == "the session lost the edit"), None)
+f = (r or {}).get("conversation", {}).get("file")
+print(json.dumps({"r": r, "text": z.read(f).decode() if f and f in z.namelist() else ""}))`], { input: zip, encoding: 'utf8' }));
+  const r = got.r;
+  ok(r && r.conversation?.id === 'feedface-0000' && !('conversation_text' in r)
+     && /make the wiki keep my edit/.test(got.text) && /Saving it now/.test(got.text) && !/ghp_abcdefghijklmnop/.test(got.text),
+     `...ticked, it goes with the report: the diagnostics name its file and the download carries it beside them, the token taken out (${JSON.stringify(r?.conversation || null)})`);
 }
 
 // The header's bug is the same dialog about no project in particular (the

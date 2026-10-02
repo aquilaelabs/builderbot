@@ -70,6 +70,12 @@ elif sub == "mine":
                  else f"closed: {r.get('why') or ''}" if r.get("state") == "closed" else "open")
         print(f"  #{r['id']}  {when}  {state}")
         print(f"      {r.get('text')}")
+elif sub == "conversation":
+    if not args:
+        sys.exit("usage: bb report conversation N")
+    d = post({"action": "conversation", "id": args[0]})
+    fail(d)
+    sys.stdout.write(d.get("text") or "")
 elif sub == "close":
     if len(args) < 2:
         sys.exit('usage: bb report close N "why"')

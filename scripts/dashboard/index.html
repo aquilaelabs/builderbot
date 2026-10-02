@@ -4411,6 +4411,13 @@ body.booting .pane>.loading{margin:auto}
       <textarea id="reportRepro" maxlength="2000" placeholder="the steps, if you know them"></textarea>
       <div class="hint" id="reportHint">It goes to the diagnostics with this project, its node and the build it was seen on, where whoever maintains BuilderBot reads it.</div>
     </div>
+    <!-- A project's report can carry the reporter's latest conversation on
+         it (the operator, 2 Oct): what Claude was doing is usually the
+         bug. Off unless ticked; the line under says which one it is. -->
+    <div class="field" id="reportConvField" hidden>
+      <label class="ndcap"><input type="checkbox" id="reportConv"> Include my latest conversation on this project</label>
+      <div class="sub" id="reportConvWhich"></div>
+    </div>
     <div class="field" id="reportErrWrap" hidden><div class="hint bad" id="reportErr"></div></div>
     <div class="foot">
       <button id="reportSend" class="primary">Send</button>

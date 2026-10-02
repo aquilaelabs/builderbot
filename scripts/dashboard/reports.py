@@ -73,12 +73,30 @@ def _clean(text, n):
     return redact(" ".join(str(text or "").split()))[:n]
 
 
+# How much of a reporter's conversation a report keeps: its end, where the
+# problem is (the operator, 2 Oct). A whole one is often tens of megabytes.
+CONVERSATION_MAX = 400 * 1024
+
+
+def _files():
+    return FILE.parent / "report-files"
+
+
+def conversation(rid):
+    """The conversation a report carries, as stored (redacted), or ""."""
+    try:
+        return (_files() / f"{int(rid)}.txt").read_text(encoding="utf-8", errors="replace")
+    except (OSError, ValueError, TypeError):
+        return ""
+
+
 def _view(r):
     return {k: r.get(k) for k in ("id", "at", "project", "by", "node", "build", "text",
-                                  "area", "repro", "state", "bug", "why", "done_at", "done_by")}
+                                  "area", "repro", "state", "bug", "why", "done_at", "done_by",
+                                  "conversation")}
 
 
-def add(project, text, *, by="", node="", area="", repro=""):
+def add(project, text, *, by="", node="", area="", repro="", conversation=None):
     """A new report from `project`'s session, or from a person on it; a
     person's about no project in particular has `project` "" (the header's
     Report a bug). {"ok", "id"} or {"error"}."""
@@ -104,6 +122,22 @@ def add(project, text, *, by="", node="", area="", repro=""):
                              "build": str(made or "")[:80], "text": text,
                              "area": _clean(area, MAX_AREA), "repro": _clean(repro, MAX_TEXT),
                              "state": "open"})
+        # The reporter's latest conversation on the project, when they chose
+        # to send it: its end, redacted like everything else here, kept
+        # beside the store and named on the report.
+        if isinstance(conversation, dict) and conversation.get("text"):
+            body = conversation["text"]
+            cut = len(body) > CONVERSATION_MAX
+            body = redact(body[-CONVERSATION_MAX:])
+            if cut:
+                body = "[the start is cut: this is the conversation's last part]\n" + body
+            try:
+                _files().mkdir(parents=True, exist_ok=True)
+                (_files() / f"{rid}.txt").write_text(body, encoding="utf-8")
+                d["reports"][-1]["conversation"] = {"id": str(conversation.get("id") or "")[:80],
+                                                    "bytes": len(body.encode("utf-8")), "cut": cut}
+            except OSError as e:
+                print(f"dashboard: reports: #{rid}'s conversation was not kept: {e}", file=sys.stderr, flush=True)
         # Room is made from what is finished, oldest first.
         while len(d["reports"]) > MAX_KEPT:
             done = next((i for i, r in enumerate(d["reports"]) if r.get("state") != "open"), None)
@@ -223,7 +257,8 @@ def own_verb(act, proj, req, *, by):
                 # so an emptied list is not read as one that never filled.
                 "cleared": gone if isinstance(gone, dict) and gone.get("n") else None}, 200
     return _answer(add(proj, req.get("text"), by=by, node=node_name(proj) if proj else "",
-                       area=req.get("area"), repro=req.get("repro")))
+                       area=req.get("area"), repro=req.get("repro"),
+                       conversation=req.get("_conversation")))
 
 
 def diag_verb(act, req, *, by, principal):
@@ -237,6 +272,11 @@ def diag_verb(act, req, *, by, principal):
     if act == "get":
         r = get(req.get("id"))
         return (r, 200) if r else ({"error": "no such report"}, 400)
+    if act == "conversation":
+        # The reporter's conversation a report carries (the operator, 2 Oct):
+        # bb report conversation N, behind the diagnostics' gate like get.
+        text = conversation(req.get("id"))
+        return ({"text": text}, 200) if text else ({"error": "that report carries no conversation"}, 400)
     if act == "filed":
         return _answer(filed(req.get("id"), field(req, "bug"), by=by))
     if act == "close":

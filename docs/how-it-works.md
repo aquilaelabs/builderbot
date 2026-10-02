@@ -1720,7 +1720,12 @@ diagnostics under that project with its node and the build it was seen on,
 marked as from the dashboard. A person's report is heard whatever that
 project's Claude dial says, from a project they are on: an administrator
 shown every project but not on this one cannot start a session there, so
-the row has no bug button for them and the server refuses one. The bug in
+the row has no bug button for them and the server refuses one. A
+project's report can carry the reporter's latest conversation on it,
+ticked in the dialog: its last 400 KB, redacted, kept as a file of its own
+beside the report. The diagnostics name that file, the download beside the
+logs is a zip of `diagnostics.json` with a `conversations/` folder holding
+each one, and `bb report conversation N` prints it for a session. The bug in
 the header is the same dialog about no project in particular, for anybody
 signed in, and the diagnostics list it as general.
 

@@ -478,6 +478,8 @@ bb report file N [--sev S] [--as BUG] | close N "why"
                    bug in this project's tracker through `bb bug add` (or mark
                    it as one already there), or close it with the reason its
                    session will read
+bb report conversation N   the conversation a person sent with a report (the
+                   end of it, redacted), behind the same gate
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it

@@ -54,6 +54,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The companion app pairs and connects the phone it runs on (More, This phone): it finds the ports itself and takes the six-digit code in a notification, and lends the phone to a project (fd2b7e2)
 - Each project's row has a Report a bug button: a category, what happened and how to make it happen, sent to the diagnostics with the project, its node and the build (dae282f)
 - A Report a bug button in the header, for a problem with BuilderBot that is not about one project (177cb32)
+- A project's bug report can carry your latest conversation on it (its end, redacted, as a file of its own), and the diagnostics download is a zip with each conversation beside diagnostics.json (abb2190)
 
 ### Changed
 

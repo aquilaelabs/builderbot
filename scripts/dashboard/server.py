@@ -2334,6 +2334,7 @@ import idle                                                      # noqa: E402
 logs.configure(state=STATE, write_json=write_json)
 logs.diag_report = lambda: diag.report()
 logs.audit = lambda *row: db.audit(*row)
+logs.conversation_text = lambda rid: reports.conversation(rid)
 idle.configure(state=STATE, write_json=write_json,
                # A changed rule reaches every node on its next poll rather
                # than its next ten-minute hello.
@@ -6013,6 +6014,8 @@ class Handler(BaseHTTPRequestHandler):
         act = field(req, "action")
         name = str((users.account_of(me) or {}).get("name") or "")
         if act in ("add", "mine"):
+            # Only the server attaches a conversation, never the caller.
+            req.pop("_conversation", None)
             proj = sess or field(req, "project")
             # A person's report about no project in particular (the header's
             # Report a bug, the operator, 2 Oct): heard from any account, with
@@ -6033,6 +6036,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": f"reporting BuilderBot bugs is off for {proj}: its "
                                             "settings, Claude may: Report BuilderBot bugs. A "
                                             "problem goes into this project's tracker"}, 403)
+            # The person's latest conversation on the project, when they
+            # ticked Include it (the operator, 2 Oct): theirs only, found and
+            # rendered here, never named by the page.
+            if act == "add" and not sess and req.get("include_conversation"):
+                uid = users.uid_of(me)
+                rows = transcripts.mine(uid, [proj])
+                if rows:
+                    text, _ = transcripts.render(uid, proj, rows[0]["id"])
+                    if text:
+                        req["_conversation"] = {"id": rows[0]["id"], "text": text}
             # A person's report says it came from the dashboard, so the
             # diagnostics tell it from a session's `bb report`.
             return self._json(*reports.own_verb(act, proj, req, by=name if sess else f"{name} (from the dashboard)"))

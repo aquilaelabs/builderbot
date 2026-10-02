@@ -78,6 +78,10 @@ for name, v in d.items():
                   + (f" on {r['node']}" if r.get("node") else "")
                   + (f", build {r['build']}" if r.get("build") else ""))
             print(f"      {r.get('text')}")
+            if r.get("conversation"):
+                c = r["conversation"]
+                print(f"      with the reporter's conversation, {round((c.get('bytes') or 0) / 1024)} KB"
+                      + (" (its last part)" if c.get("cut") else "") + ": in bb diag --json reports, and the download")
             if r.get("area"):
                 print(f"      area: {r['area']}")
             if r.get("repro"):
