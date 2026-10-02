@@ -798,9 +798,12 @@ start() {
     # own (R79), so the ask never arrived: one project's idle daemon held the
     # account's ~/.gradle and another project's build timed out on it. A
     # home per project keeps two projects' builds out of each other's locks;
-    # a project's first build there fetches its own dependencies once.
-    if on_node && [ -n "${GRADLE_USER_HOME:-}" ] && [ -n "${BB_PROJECT:-}" ]; then
-        GRADLE_USER_HOME="$HOME/.gradle-projects/$(printf '%s' "$BB_PROJECT" | tr -c 'A-Za-z0-9._-' '_')"
+    # a project's first build there fetches its own dependencies once. It is
+    # the project's folder in the account's BuilderBot cache, which the
+    # session's view trims to this project (bb-session), so one project's
+    # session cannot read another's Gradle cache or its daemon's logs.
+    if on_node && [ -n "${GRADLE_USER_HOME:-}" ] && [ -n "${BB_PROJECT:-}" ] && [ -n "$account" ]; then
+        GRADLE_USER_HOME="$HOME/.cache/builderbot/u/$account/project/$BB_PROJECT/gradle-home"
     fi
     for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE \
              GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME \
