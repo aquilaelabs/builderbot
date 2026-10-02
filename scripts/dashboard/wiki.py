@@ -57,6 +57,17 @@ class Refused(Exception):
     pass
 
 
+# What a session is told under Claude may: Write the wiki is hidden, for a
+# read as for a write: the wiki is the people's alone on this project.
+HIDDEN = ("this project's wiki is hidden from Claude (Claude may: Write the wiki is hidden), "
+          "so it can be neither read nor written from a session; ask the person if you need what is in it")
+
+
+def hidden_for(project, session):
+    """The refusal for a session's read of a hidden wiki, else ""."""
+    return HIDDEN if session and pending.mode(project, "wiki") == "hidden" else ""
+
+
 def configure(*, state, workspace, write_json, push_record_fn=None, token_helper_fn=None,
               parse_fn=None, config_fn=None, env_fn=None):
     globals().update(STATE=Path(state), WORKSPACE=Path(workspace), push_record=push_record_fn,
@@ -416,6 +427,8 @@ def verb(project, req, who, session):
     try:
         if act in ("save", "remove", "rename") and session and not pending.replaying():
             g = pending.mode(project, "wiki")
+            if g == "hidden":
+                return {"error": HIDDEN}, 403
             if g == "deny":
                 return {"error": pending.refusal("wiki")}, 403
             if g == "ask":
@@ -443,6 +456,8 @@ def verb(project, req, who, session):
             return remove(project, name, str(req.get("base") or ""), who, why), 200
         if act == "rename":
             return rename(project, name, req.get("to"), who), 200
+        if session and pending.mode(project, "wiki") == "hidden":
+            return {"error": HIDDEN}, 403
         if act in ("push", "pull"):
             if session:
                 return {"error": f"a {act} reaches the forge, which is a person's: the Wiki view's {act.title()}"}, 403

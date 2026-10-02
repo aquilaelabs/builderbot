@@ -93,6 +93,11 @@ function rnFillColor(cur){
 }
 // The gate's three pickers, one per notebook tab (roadmap #27).
 const GATE_MODES = [["auto", "auto"], ["ask", "ask me"], ["deny", "deny"]];
+// A dial's choices beyond those three, by the kind it gates: the wiki may
+// also be hidden, kept from a session altogether, reading included
+// (prefs.GATE_EXTRA; the operator, 2 Oct).
+const GATE_EXTRA = {wiki: [["hidden", "hidden"]]};
+const gateChoices = k => [...GATE_MODES, ...(GATE_EXTRA[k] || [])];
 const GATE_IDS = {roadmap: "rnGateRoadmap", bugs: "rnGateBugs", rules: "rnGateRules", settings: "rnGateSettings",
                   design: "rnGateDesign", wiki: "rnGateWiki"};
 const rnGateNow = () => Object.fromEntries(
@@ -222,7 +227,7 @@ function rnFillPrefsRest(p){
   for (const [k, id] of Object.entries(GATE_IDS)){
     const el = $(id);
     if (el.dataset.built !== "1"){
-      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.innerHTML = gateChoices(k).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
       el.dataset.built = "1";
     }
     el.value = p?.prefs?.gate?.[k] || "auto";

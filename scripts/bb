@@ -309,7 +309,8 @@ bb wiki            the project's wiki, from the notebook's Wiki view: its pages,
 bb wiki show NAME [--rev]   one page's Markdown (--rev: the revision a save checks)
 bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
                    under Claude may: Write the wiki: auto lands it, ask holds it
-                   for the operator, deny refuses it. A page changed since the
+                   for the operator, deny refuses it, hidden keeps the whole
+                   wiki from a session, reading included. A page changed since the
                    save began is refused rather than overwritten
 bb wiki rm NAME [--why "..."]   take a page out, under the same setting
 bb wiki mv OLD NEW   rename one; bb wiki history: the last changes

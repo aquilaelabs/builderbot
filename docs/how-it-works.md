@@ -1777,7 +1777,8 @@ The **Wiki** is the project's wiki, for whoever uses or works on it: pages
 of Markdown that a person writes on the view or a session writes with
 `bb wiki save`, under the project's dial Claude may: Write the wiki (auto
 lands a page, ask holds it on the notebook for approval with its text, deny
-refuses it). Each page is a row that opens to be read, drawn from its
+refuses it, and hidden keeps the wiki from sessions altogether, reading
+included, for notes that are the people's alone). Each page is a row that opens to be read, drawn from its
 Markdown, with `[[Another page]]` a link to another row; Edit swaps an
 editor in, Save writes it through, and a page somebody changed since it was
 opened is refused rather than overwritten. The controller keeps it as a git

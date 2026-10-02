@@ -92,6 +92,16 @@ class Wiki(unittest.TestCase):
         r, st = wiki.verb("app", {"action": "save", "name": "Home", "text": "x"}, ME, True)
         self.assertEqual(st, 403)
         self.assertIn("Write the wiki", r["error"])
+        # Hidden: a session can neither write nor read it; a person still can.
+        write_json(self.tmp / "state" / "claude-prefs.json", {"projects": {"app": {"gate": {"wiki": "hidden"}}}})
+        r, st = wiki.verb("app", {"action": "save", "name": "New", "text": "x"}, ME, True)
+        self.assertEqual(st, 403)
+        self.assertIn("hidden", r["error"])
+        self.assertTrue(wiki.hidden_for("app", True))
+        self.assertEqual(wiki.hidden_for("app", False), "")
+        self.assertEqual(wiki.verb("app", {"action": "save", "name": "New", "text": "x"}, ME, False)[1], 200)
+        self.assertTrue(prefs.gate_ok("wiki", "hidden"))
+        self.assertFalse(prefs.gate_ok("bugs", "hidden"))
         # A session never pushes.
         r, st = wiki.verb("app", {"action": "push"}, ME, True)
         self.assertEqual(st, 403)

@@ -4463,6 +4463,9 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
+        no = wiki.hidden_for(name, bool((self._who() or {}).get("session")))
+        if no:
+            return self._json({"error": no}, 403)
         pg = q.get("page", [""])[0]
         if pg:
             try:
@@ -4478,6 +4481,9 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
+        no = wiki.hidden_for(name, bool((self._who() or {}).get("session")))
+        if no:
+            return self._json({"error": no}, 403)
         try:
             fname, data = wiki.export_zip(name)
         except wiki.Refused as e:

@@ -46,6 +46,14 @@ GITPOL_KEYS = ("push", "main")
 GITPOL_MODES = ("allow", "deny")
 GITPOL_DEFAULT = {"push": "allow", "main": "deny"}
 GATE_MODES = ("auto", "ask", "deny")
+# The modes a gate takes beyond those three, by kind: the wiki may also be
+# hidden, which keeps it from a session altogether, reading included
+# (wiki.py; the operator, 2 Oct).
+GATE_EXTRA = {"wiki": ("hidden",)}
+
+
+def gate_ok(kind, mode):
+    return mode in GATE_MODES or mode in GATE_EXTRA.get(kind, ())
 # ...and the same three words for whether a SESSION may rebuild this
 # project's dev instance. One vocabulary: a person who has set a notebook
 # tab to "ask me" knows what this one does without being told twice.
@@ -277,7 +285,7 @@ def _clean(rec):
                        for k in GITPOL_KEYS},
             "gate": {k: ((rec.get("gate") or {}).get(k)
                          if isinstance(rec.get("gate"), dict)
-                         and (rec.get("gate") or {}).get(k) in GATE_MODES else "auto")
+                         and gate_ok(k, (rec.get("gate") or {}).get(k)) else "auto")
                      for k in GATE_KINDS},
             "color": rec.get("color") if rec.get("color") in COLORS else "",
             # Whether a SESSION may rebuild this project's dev instance,
@@ -515,8 +523,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             for k, v in gate.items():
                 if k not in GATE_KINDS:
                     return {"error": f"not a gate: {k}; one of {', '.join(GATE_KINDS)}"}
-                if v not in GATE_MODES:
-                    return {"error": f"{k}: one of {', '.join(GATE_MODES)}, not {v}"}
+                if not gate_ok(k, v):
+                    return {"error": f"{k}: one of {', '.join(GATE_MODES + GATE_EXTRA.get(k, ()))}, not {v}"}
                 cur["gate"][k] = v
         if devbuild is not None:
             mode = devbuild

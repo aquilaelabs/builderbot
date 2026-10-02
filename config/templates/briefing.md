@@ -234,7 +234,9 @@ The project's wiki is the notebook's Wiki view, for the people who use or
 work on the project: `bb wiki` lists its pages, `bb wiki show NAME` prints
 one as Markdown, and `bb wiki save NAME FILE` writes a page whole (`-`
 reads it from stdin), with `[[Another page]]` linking to another. A save
-is the project's dial (Claude may: Write the wiki), and a page somebody
+is the project's dial (Claude may: Write the wiki, which may also be
+hidden: then the wiki is the people's alone and every `bb wiki` is
+refused, reading included), and a page somebody
 changed since your save began is refused rather than overwritten: show it
 again and write over what is there now. Write it when asked to, or when
 the work leaves something a reader of the wiki needs (a setup step, how a

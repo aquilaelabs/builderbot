@@ -388,7 +388,7 @@ function pFillGates(){
     const el = $(id);
     if (el.dataset.built !== "1"){
       // A report has nothing to hold for approval: auto or deny.
-      el.innerHTML = GATE_MODES.filter(([v]) => id !== "pGateReport" || v !== "ask")
+      el.innerHTML = (id === "pGateWiki" ? gateChoices("wiki") : GATE_MODES).filter(([v]) => id !== "pGateReport" || v !== "ask")
         .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
       el.dataset.built = "1";
     }

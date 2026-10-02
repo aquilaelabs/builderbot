@@ -88,6 +88,18 @@ const ap = await api('/api/pending', { project: P, action: 'approve', ids: held.
 ok(ap.status === 200 && /How to build/.test(bb('show', 'Faq')), `approved, it lands (${ap.status})`);
 await api('/api/prefs', { project: P, gate: { wiki: 'deny' } });
 ok(/Write the wiki is deny/.test(bbErr('rm', 'Faq')), 'under deny a session is refused by the setting\'s name');
+ok(await page.evaluate(() => gateChoices('wiki').map(c => c[0]).join() === 'auto,ask,deny,hidden'
+                        && gateChoices('bugs').map(c => c[0]).join() === 'auto,ask,deny'),
+   'the settings offer hidden on the wiki\'s dial and on no other');
+const hid = await api('/api/prefs', { project: P, gate: { wiki: 'hidden' } });
+ok(hid.status === 200 && hid.gate?.wiki === 'hidden', `the dial takes hidden for the wiki (${hid.status} ${JSON.stringify(hid.gate || hid.error)})`);
+const nope = await api('/api/prefs', { project: P, gate: { bugs: 'hidden' } });
+ok(nope.status >= 400, `...and for nothing else (${nope.error})`);
+ok(/hidden from Claude/.test(bbErr()) && /hidden from Claude/.test(bbErr('show', 'Home'))
+   && /hidden from Claude/.test(bbErr('save', 'Other', src)),
+   'hidden keeps the wiki from a session: no list, no page, no save');
+ok((await api(`/api/wiki?project=${P}`)).pages?.length >= 2, '...while a person still reads it');
+await api('/api/prefs', { project: P, gate: { wiki: 'auto' } });
 const push = await api('/api/wiki', { project: 'beta', action: 'push' });
 ok(push.status >= 400 && /no remote|no push rights|no pages/.test(push.error || ''),
    `a push with nothing to reach is refused with the reason, and the harness never reaches a forge (${push.error})`);
