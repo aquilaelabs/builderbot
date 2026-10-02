@@ -209,6 +209,24 @@ ok(page.dialogs.length === 0, '...and with none kept, it says so rather than ask
      `...and Send puts it in the diagnostics under alpha, with its category, marked as from the dashboard (${JSON.stringify(mine || diag).slice(0, 200)})`);
 }
 
+// The header's bug is the same dialog about no project in particular (the
+// operator, 2 Oct): any account sends one, and the diagnostics say general.
+{
+  await page.click('#bReport');
+  await page.waitForSelector('#reportModal:not([hidden]) #reportCat', { timeout: 10000 });
+  ok(await page.$eval('#reportTitle', e => e.textContent) === 'Report a bug',
+     'the header\'s bug opens Report a bug for no project');
+  await page.selectOption('#reportCat', 'The dashboard');
+  await page.fill('#reportText', 'the header is crowded on a phone');
+  await page.click('#reportSend');
+  await page.waitForFunction(() => document.getElementById('reportModal').hidden, null, { timeout: 10000 });
+  const all = await page.evaluate(async () => (await (await fetch('/api/reports', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list', state: 'open' }) })).json()));
+  const gen = (all.reports || []).find(r => r.text === 'the header is crowded on a phone');
+  ok(gen && gen.project === '' && gen.area === 'The dashboard' && /from the dashboard/.test(gen.by),
+     `...and Send puts it in the diagnostics with no project, marked as from the dashboard (${JSON.stringify(gen || {}).slice(0, 160)})`);
+}
+
 // ...and only from a project the person works on (the operator, 2 Oct): an
 // administrator shown every project but not on this one cannot start a
 // session there, so has nothing of its to report.

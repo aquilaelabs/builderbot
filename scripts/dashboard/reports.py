@@ -79,12 +79,12 @@ def _view(r):
 
 
 def add(project, text, *, by="", node="", area="", repro=""):
-    """A new report from `project`'s session. {"ok", "id"} or {"error"}."""
+    """A new report from `project`'s session, or from a person on it; a
+    person's about no project in particular has `project` "" (the header's
+    Report a bug). {"ok", "id"} or {"error"}."""
     text = _clean(text, MAX_TEXT)
     if not text:
         return {"error": "say what happened: a report with no words is nothing to act on"}
-    if not project:
-        return {"error": "a report comes from a project's session"}
     with _lock:
         d = _load()
         mine = [r for r in d["reports"] if r.get("project") == project and r.get("state") == "open"]
@@ -222,7 +222,7 @@ def own_verb(act, proj, req, *, by):
                 # ...and the ones the operator cleared, as a count and when,
                 # so an emptied list is not read as one that never filled.
                 "cleared": gone if isinstance(gone, dict) and gone.get("n") else None}, 200
-    return _answer(add(proj, req.get("text"), by=by, node=node_name(proj),
+    return _answer(add(proj, req.get("text"), by=by, node=node_name(proj) if proj else "",
                        area=req.get("area"), repro=req.get("repro")))
 
 

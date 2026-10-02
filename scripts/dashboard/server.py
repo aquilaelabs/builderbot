@@ -6014,6 +6014,11 @@ class Handler(BaseHTTPRequestHandler):
         name = str((users.account_of(me) or {}).get("name") or "")
         if act in ("add", "mine"):
             proj = sess or field(req, "project")
+            # A person's report about no project in particular (the header's
+            # Report a bug, the operator, 2 Oct): heard from any account, with
+            # no project to check.
+            if act == "add" and not sess and not proj:
+                return self._json(*reports.own_verb(act, "", req, by=f"{name} (from the dashboard)"))
             if not sess and self._not_project(proj):
                 return None
             # A person reports from a project they work on (the operator,

@@ -53,6 +53,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A phone can be lent to a project from the Phone tab: that project's sessions install, run, see and touch its own app on the real phone without asking, and the tab shows the screen as they work, with Take back (ce16874)
 - The companion app pairs and connects the phone it runs on (More, This phone): it finds the ports itself and takes the six-digit code in a notification, and lends the phone to a project (fd2b7e2)
 - Each project's row has a Report a bug button: a category, what happened and how to make it happen, sent to the diagnostics with the project, its node and the build (dae282f)
+- A Report a bug button in the header, for a problem with BuilderBot that is not about one project (177cb32)
 
 ### Changed
 

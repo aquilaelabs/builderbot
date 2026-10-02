@@ -88,7 +88,10 @@ else:
         # operator where this project's settings say so, so a report filed
         # is exactly a bug somebody added.
         when = time.strftime("%d %b %Y", time.localtime(r.get("at") or 0))
-        where = (f"{r['by']}'s session on {r['project']}" if r.get("by") else f"a session on {r['project']}")
+        # A person's about no project (the header's Report a bug) has none.
+        on = r.get("project") or ""
+        where = (f"{r['by']}" + (f", on {on}" if on else ", about no project in particular") if r.get("by")
+                 else f"a session on {on or 'no project'}")
         repro = " ".join(x for x in [
             r.get("repro") or "",
             f"Reported by {where}" + (f" ({r['node']})" if r.get("node") else "")
@@ -98,7 +101,7 @@ else:
         # so bug add is not to ask whether it belongs in bb report.
         p = subprocess.run([os.environ["BB_R_SELF"], "bug", "add", r.get("text") or "", "--here",
                             "--sev", got.get("sev", "medium"),
-                            "--area", r.get("area") or f"reported from {r['project']}",
+                            "--area", r.get("area") or (f"reported from {on}" if on else "reported from the dashboard"),
                             "--repro", repro], capture_output=True, text=True)
         out = (p.stdout or "") + (p.stderr or "")
         sys.stdout.write(out)

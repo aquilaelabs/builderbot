@@ -73,7 +73,7 @@ for name, v in d.items():
         if not v:
             print("  none open")
         for r in v:
-            print(f"  #{r['id']}  {r.get('when') or ''}  {r.get('project')}"
+            print(f"  #{r['id']}  {r.get('when') or ''}  {r.get('project') or 'general (no project)'}"
                   + (f", {r['by']}'s session" if r.get("by") else "")
                   + (f" on {r['node']}" if r.get("node") else "")
                   + (f", build {r['build']}" if r.get("build") else ""))
