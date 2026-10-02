@@ -188,10 +188,9 @@ BUILTIN = [
     {"name": "stay-responsive",
      "text": "A test run never holds a reply. Start it in the background and"
              " answer questions while it runs. What a change asked for"
-             " meanwhile does is the project's setting (Claude settings, \"During"
-             " a test run, a change asked for\"), said in the briefing's While tests"
-             " run section:"
-             " follow that."},
+             " meanwhile does is the project's setting (Claude may, \"While a"
+             " test runs: a change asked for\"), said in the briefing's While"
+             " tests run section: follow that."},
 ]
 
 # What the standing block costs before it is worth saying out loud on the tab.
