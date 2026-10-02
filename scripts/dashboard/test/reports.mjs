@@ -180,6 +180,35 @@ await call('/api/reports', { action: 'clear' });
 await page.click('#setReportsClear');
 await page.waitForFunction(() => /no reports to clear/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
 ok(page.dialogs.length === 0, '...and with none kept, it says so rather than asking');
+// ---- a person's report, from a project's row (the operator, 2 Oct) -------------
+// The bug on the row opens a dialog: a category, what happened, how to make
+// it happen; Send puts it in the diagnostics under that project, marked as
+// from the dashboard, whatever the project's Claude dial says.
+{
+  await page.evaluate(() => openProjectsTab?.());
+  await page.waitForSelector('[data-bug="alpha"]', { timeout: 15000 });
+  await page.click('[data-bug="alpha"]');
+  await page.waitForSelector('#reportModal:not([hidden]) #reportCat', { timeout: 10000 });
+  ok(/alpha/.test(await page.$eval('#reportTitle', e => e.textContent))
+     && (await page.$$eval('#reportCat option', os => os.length)) >= 8,
+     'the bug on a project\'s row opens Report a bug, for that project, with a category to pick');
+  await page.click('#reportSend');
+  ok(await page.$eval('#reportErrWrap', e => !e.hidden), '...and Send with nothing said is refused in the dialog');
+  await page.selectOption('#reportCat', 'The notebook');
+  await page.fill('#reportText', 'the wiki tab lost my edit');
+  await page.fill('#reportRepro', 'edit, switch tabs, come back');
+  await page.click('#reportSend');
+  await page.waitForFunction(() => document.getElementById('reportModal').hidden, null, { timeout: 10000 });
+  // What the diagnostics hold, read as they read it (bb diag reports).
+  const diag = await page.evaluate(async () => (await (await fetch('/api/reports', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'list', state: 'open' }) })).json()));
+  const rows = diag.reports || [];
+  const mine = (Array.isArray(rows) ? rows : []).find(r => r.text === 'the wiki tab lost my edit');
+  ok(mine && mine.project === 'alpha' && mine.area === 'The notebook' && /from the dashboard/.test(mine.by)
+     && mine.repro === 'edit, switch tabs, come back',
+     `...and Send puts it in the diagnostics under alpha, with its category, marked as from the dashboard (${JSON.stringify(mine || diag).slice(0, 200)})`);
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 
 await done(browser);

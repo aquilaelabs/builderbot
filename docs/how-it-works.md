@@ -1708,6 +1708,18 @@ own address, so closing the dashboard leaves it working.
 - **✕ appears on document tabs**, the notebook and Analysis, because a document
   has no session to keep. The notebook asks first if anything in it is unsaved;
   nothing else does.
+### Reporting a problem with BuilderBot
+
+A problem with BuilderBot itself goes to the **diagnostics**, where whoever
+maintains BuilderBot reads it (`bb diag reports`), files it as a bug or
+answers it. A session sends one with `bb report "what happened"`, under the
+project's **Claude may: Report BuilderBot bugs**. A person sends one from a
+project's row: the bug button opens **Report a bug**, with a category to
+pick, what happened and how to make it happen, and **Send** puts it in the
+diagnostics under that project with its node and the build it was seen on,
+marked as from the dashboard. A person's report is heard whatever that
+project's Claude dial says.
+
 ### The notebook
 
 Every project has one, reachable from the **Notebook** button on its row: a tab

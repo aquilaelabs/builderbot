@@ -4392,6 +4392,32 @@ body.booting .pane>.loading{margin:auto}
     <div id="setdbgBody"></div>
   </div>
 </div>
+<!-- Report a bug in BuilderBot, from a project's row (page-report.js): a
+     category, what happened and how to make it happen, sent to the
+     diagnostics with the project and the build attached. -->
+<div id="reportModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="reportTitle">
+  <div class="box">
+    <h3 id="reportTitle">Report a bug</h3>
+    <div class="field">
+      <label for="reportCat">Category</label>
+      <select id="reportCat"></select>
+    </div>
+    <div class="field">
+      <label for="reportText">What happened</label>
+      <textarea id="reportText" maxlength="2000" placeholder="what you did, what you expected, and what happened instead"></textarea>
+    </div>
+    <div class="field">
+      <label for="reportRepro">How to make it happen <span class="dim">(optional)</span></label>
+      <textarea id="reportRepro" maxlength="2000" placeholder="the steps, if you know them"></textarea>
+      <div class="hint" id="reportHint">It goes to the diagnostics with this project, its node and the build it was seen on, where whoever maintains BuilderBot reads it.</div>
+    </div>
+    <div class="field" id="reportErrWrap" hidden><div class="hint bad" id="reportErr"></div></div>
+    <div class="foot">
+      <button id="reportSend" class="primary">Send</button>
+      <button id="reportCancel">Cancel</button>
+    </div>
+  </div>
+</div>
 <!-- A new project's first Claude session: its brief, editable, and the
      model and effort that session starts on, since nothing has started yet.
      Its declarations are page-claude.js. -->
@@ -4801,6 +4827,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="page-chat.js"></script>
 <script src="page-motion.js"></script>
 <script src="page-pull.js"></script>
+<script src="page-report.js"></script>
 <script src="page-lists.js"></script>
 <script src="page-cards.js"></script>
 <script src="page-gear.js"></script>

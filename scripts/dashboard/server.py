@@ -6016,11 +6016,15 @@ class Handler(BaseHTTPRequestHandler):
             proj = sess or field(req, "project")
             if not sess and self._not_project(proj):
                 return None
-            if act == "add" and prefs.get(proj)["report"] == "deny":
+            # The dial is Claude's (Claude may: Report BuilderBot bugs): a
+            # person reporting from a project's row is always heard.
+            if act == "add" and sess and prefs.get(proj)["report"] == "deny":
                 return self._json({"error": f"reporting BuilderBot bugs is off for {proj}: its "
                                             "settings, Claude may: Report BuilderBot bugs. A "
                                             "problem goes into this project's tracker"}, 403)
-            return self._json(*reports.own_verb(act, proj, req, by=name))
+            # A person's report says it came from the dashboard, so the
+            # diagnostics tell it from a session's `bb report`.
+            return self._json(*reports.own_verb(act, proj, req, by=name if sess else f"{name} (from the dashboard)"))
         # Clearing is a person's, from Controller settings, whatever a
         # session may otherwise read here: a session answers reports one at
         # a time, and clearing throws away what other projects' sessions are

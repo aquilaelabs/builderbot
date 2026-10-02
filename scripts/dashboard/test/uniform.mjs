@@ -1305,7 +1305,7 @@ for (const kind of kinds){
 // price of adding one.
 const DIALOGS = {
   about: () => openAbout(), newproject: () => openNewProject(), trash: () => openTrash(),
-  pending: () => openPending('alpha'),
+  pending: () => openPending('alpha'), report: () => openReport('alpha'),
   newcontainer: () => openNewContainer(), custom: () => editCustom(),
   // A new project's first session: opened for a project with no brief, which
   // draws the same dialog with an empty text box.
