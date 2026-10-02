@@ -133,10 +133,14 @@ the load you can read says it is busy and never why. Before a timing means
 anything (a latency, a build's length, a benchmark, a suite's seconds),
 `bb node busy` says how busy the node is and what is running there (other
 sessions working, emulators, Gradle, compilers, other projects' jobs,
-counted by kind) with a verdict: quiet, busy or saturated. Measure when it
-is quiet, or `bb node wait-quiet` first; when you cannot wait, say the load
-with the number, and never compare two timings taken under different loads
-as if they were alike.
+counted by kind) with a verdict: quiet, busy or saturated. The verdict is
+the numbers' (load, CPU, memory, the card) and other projects' jobs: an
+idle Gradle daemon or an emulator at its home screen is named as there,
+idle, and leaves the node quiet. Measure when it is quiet, or
+`bb node wait-quiet [--timeout SECONDS]` first, which exits 1 saying how
+busy if it never was; when you cannot wait, say the load with the number,
+and never compare two timings taken under different loads as if they were
+alike.
 
 ## Proving a change
 
@@ -205,9 +209,10 @@ command as root on this node; `bb phone run` for a phone connected here;
 that does not exist yet. A node can have root asks turned off, and the ask
 then says so. Every one of the project's dials (Claude may: add to the
 roadmap, file bugs, add rules, fill in build and test, add to the design,
-run its container, report BuilderBot bugs) reads the same way: auto lands
-it, ask holds it for the operator, deny refuses it and the refusal names
-the setting;
+run its container, report BuilderBot bugs, sign a release, manage signing
+keys) reads the same way: auto lands it, ask holds it for a person (an
+administrator, or for the two signing dials the project's owner, in their
+bell), deny refuses it and the refusal names the setting;
 `bb settings` shows each dial as it stands for this project. Never route
 around a refusal.
 
@@ -250,7 +255,10 @@ own tree, whose tracker it is), the verb refuses and names it, and
 may move, which is usually nothing. `bb changelog add "..." --cat NAME`
 records what a change means for the person using the product, under Added,
 Changed, Deprecated, Removed, Fixed or Security; run it with no category
-and it says when each applies. Shippable build output goes in this
+and it says when each applies. A release is the operator's: a session
+moves the version with `bb version bump` where the policy lets it and
+writes the changelog, and Release on the Artifacts tab is what tags that
+version and pushes the tag. Shippable build output goes in this
 project's dist/, named with `bb version --file` and gitignored (`bb
 build` names it so), and the Artifacts tab lists it; nothing else goes
 there, and scratch goes anywhere else. Of each kind of dev build the tab
@@ -293,6 +301,8 @@ IME's package deselects it, so `ime set` again after one.
 An API level exists here where the store holds a system image for it:
 `bb emu images` lists them and `bb emu create <api>` fetches one on demand.
 Adding or removing one deliberately is the operator's, from the Emulator tab.
+On a debuggable image `bb emu start` leaves adb root, so `am start` of an
+unexported activity and `bb emu touch` work without your own `adb root`.
 
 Four failures here are the emulator's rather than your code's, and all four
 look like a bug you just wrote: every frame blank with the view hierarchy
@@ -306,13 +316,25 @@ frames and its timing cannot be judged from it; on a card it records more,
 and a reel says the rate it got. Timing is `dumpsys gfxinfo PKG framestats`
 either way.
 
-A release is signed with `bb sign FILE [--for play|sideload] [--why "..."]`,
-a build in dist/ signed on the node with one of the project's keys, which
-you never receive: no keystore or signing password belongs in the tree, in
-gradle.properties or in the environment, and a build's own signingConfig is
-for debug only. The signed one arrives as NAME-signed. Whether you may, and
-whether the project's owner is asked first, is its setting (Claude may: Sign
-a release); a project with no key says so.
+A release is signed with `bb sign FILE [--for play|sideload] [--key NAME]
+[--why "..."]`, a build in dist/ signed on the node with one of the
+project's keys, which you never receive: no keystore or signing password
+belongs in the tree, in gradle.properties or in the environment, and a
+build's own signingConfig is for debug only. `--for play` is the upload
+key Play re-signs from (the default for an .aab), sideload the key the app
+ships with, which F-Droid and a direct install see (the default for an
+.apk). The signed one arrives as NAME-signed with its certificate's
+fingerprint on the Artifacts tab. A project keeps several named keys:
+`bb sign keys` lists them, their fingerprints and the package each signs,
+and a build is signed with the key its package is mapped to unless
+`--key` names one. `bb sign key new NAME --for ...`, `bb sign map PACKAGE
+KEY` and `bb sign rotate OLD NEW` (an app moving to another sideload key,
+signed with both and a proof so Android 9 and newer update across it)
+change them. Whether you may, and whether the project's owner is asked
+first, is the project's setting (Claude may: Sign a release; Manage
+signing keys). No key is made until the owner has set the project's
+backup password, and a new key waits on that whatever the dial says; a
+project with no key says so.
 <!-- BUILDERBOT:END -->
 
 <!-- BUILDERBOT:IF gpu node:gpu -->

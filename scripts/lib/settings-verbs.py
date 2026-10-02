@@ -101,7 +101,7 @@ def show():
     # its own dials (the review of 26 Sep: the briefing said the refusal
     # names the setting, and nothing here showed it).
     print("  Claude settings:")
-    print(f"    During a test run, a change asked for   {rec.get('test_change') or 'wait'}")
+    print(f"    While a test runs: a change asked for   {rec.get('test_change') or 'wait'}")
     print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
     print(f"    Captures kept (days; 0 keeps them)      {rec.get('capture_days', 7)}")
     print(f"    Dev builds kept of each (0 keeps all)   {rec.get('dev_keep', 3)}")
