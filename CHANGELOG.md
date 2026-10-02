@@ -116,6 +116,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's signing keys need a backup password before the first one: no key is uploaded, generated or proposed until its owner sets one; a new owner changes it only with it (81c9831)
 - The session briefing covers what landed lately: named signing keys, mapping and rotation, the backup password a key waits on, the signing dials and who they ask, what busy means for a timing, and that a release is tagged from the Artifacts tab (5f9eda2)
 - Global rules live in each project's notebook (Briefing, under the project's rules): anybody on the project switches one off for it, and an administrator changes them for every project. The settings dialog is gone, and rules nobody would turn off moved into the briefing (dfea7c8)
+- The Wiki view reads like an encyclopedia: one article at a time with its title over a rule, a Contents box, serif prose at a reading width, and the pages listed beside it (a picker on a phone), with Read and Edit tabs (ea7dfa2)
 
 ### Removed
 

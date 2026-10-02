@@ -1778,10 +1778,13 @@ of Markdown that a person writes on the view or a session writes with
 `bb wiki save`, under the project's dial Claude may: Write the wiki (auto
 lands a page, ask holds it on the notebook for approval with its text, deny
 refuses it, and hidden keeps the wiki from sessions altogether, reading
-included, for notes that are the people's alone). Each page is a row that opens to be read, drawn from its
-Markdown, with `[[Another page]]` a link to another row; Edit swaps an
-editor in, Save writes it through, and a page somebody changed since it was
-opened is refused rather than overwritten. The controller keeps it as a git
+included, for notes that are the people's alone). It reads like an encyclopedia: one article at a time, its title over a
+rule, a Contents box for a page with three or more sections, the prose in a
+serif at a reading width, and the pages listed beside it (the wiki's own
+`_Sidebar` when it has one, a picker above the article on a phone), with
+`[[Another page]]` opening that page in place. Read and Edit are tabs over
+the article, Save writes it through, and a page somebody changed since it
+was opened is refused rather than overwritten. The controller keeps it as a git
 repository of its own (`/config/wiki/PROJECT`) in the shape a forge's wiki
 has, one `Page-Name.md` per page with `Home`, `_Sidebar` and `_Footer` as
 GitHub reads them, so every change has a history and the wiki is never in

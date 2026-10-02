@@ -857,13 +857,15 @@ row's prose field growing only to the width the other tabs give a field so
 what follows it stays beside it, colors as a chip beside a seven-character
 field, prose in a proseline.
 
-The Wiki view is the project's pages as rows you open to read, each drawn from its Markdown
-with a `[[link]]` opening another row; Edit swaps the editor in and Save writes the page through.
-Its head row carries History alone; under it an action bar says where the wiki goes and holds
-Export, with Pull and Push when the project has a remote, as the Git view's bar does, so the
-head row fits a phone. Why Push is dead (no push rights) is said in red under that bar, never
-only in a tooltip. New page is
-the band under the head row, the first page offered as Home. Under Claude may: Write the wiki hidden the view is unchanged for a person; only a session is kept out.
+The Wiki view reads like an encyclopedia (the operator, 2 Oct), not as rows: the pages listed in a
+narrow column (the wiki's own _Sidebar when it has one) beside one article at a time, its title large in
+the serif over a hairline, its sections headed the same way, a Contents box for three or more, and the
+prose in --serif at a reading width, the one place the dashboard sets text to be read at length. Read and
+Edit are tabs over the article, with Rename and Remove at their right. Its head row carries History alone;
+under it an action bar says where the wiki goes and holds Export, with Pull and Push when the project has
+a remote, so the head row fits a phone, where the column gives way to a picker above the article. Why
+Push is dead (no push rights) is said in red under that bar, never only in a tooltip. New page is the
+band under the head row, the first page offered as Home. Under Claude may: Write the wiki hidden the view is unchanged for a person; only a session is kept out.
 
 The Briefing's rules section lists the global rules under the project's own, each a row that
 opens to read with an On for this project switch, staged behind the notebook's Save like the

@@ -537,10 +537,13 @@ The dashboard's Commands flyout carries this same list in this same order.
 
 ## Signing Android releases
 
-A project keeps its Android keys on the controller, set by an administrator
-under **Signing keys** in its settings, and a build is signed on its node as a
-job no session can look inside: from the Artifacts tab, or by a session with
-`bb sign`, under the project's **Claude may: Sign a release**.
+A project keeps its Android keys on the controller, under **Signing keys** in
+its settings, and a build is signed on its node as a job no session can look
+inside: from the Artifacts tab, or by a session with `bb sign`, under the
+project's **Claude may: Sign a release**. No key is made or added until the
+project's owner has set its **backup password**, which every download of a
+key's backup asks for, BuilderBot's owner included; a backup goes only to an
+administrator who works on the project.
 
 | Key | For | If it is lost or leaks |
 |---|---|---|
@@ -548,7 +551,10 @@ job no session can look inside: from the Artifacts tab, or by a session with
 | Sideload signing key | an APK you hand out yourself, or that F-Droid publishes from a reproducible build | gone for good: no update reaches an existing install, or anybody can ship one over it |
 
 So a sideload key is downloaded once with **Download backup** and kept
-offline; its row says so in red until it has been. A signed build's Artifacts
+offline, with its password somewhere apart from it; its row says so in red
+until it has been. A lost backup password is not reset from the dashboard:
+signing goes on, and only somebody with a shell on the controller can clear
+it, so keep it as carefully as the key. A signed build's Artifacts
 row gives the certificate's whole fingerprint, with **Copy for F-Droid** for
 its metadata. Using one key on Play, F-Droid and your own downloads (so users
 can move between them) means giving Play that key when the app is first set
@@ -564,7 +570,8 @@ has the rest.
 - [docs/start-here.md](docs/start-here.md): given an account on somebody else's BuilderBot rather than setting one up: the first five minutes, what is shared, and what the refusals mean
 - [docs/install.md](docs/install.md): setup, start to finish: the complete checklist with the decisions you need to make
 - [docs/unraid.md](docs/unraid.md): step-by-step Unraid walkthrough
-- [docs/how-it-works.md](docs/how-it-works.md): the controller, the nodes, the sessions, the dashboard, the notebook, builds, tests, CI, containers and the phone
+- [docs/architecture.md](docs/architecture.md): one page: what the parts are, how they reach each other, and where each is explained
+- [docs/how-it-works.md](docs/how-it-works.md): the controller, the nodes, the sessions, the dashboard, the notebook and its wiki, builds, tests, CI, containers, signing, and a real phone lent to a project
 - [docs/decisions.md](docs/decisions.md): the design decisions, with their dates and reasons
 - [docs/layout.md](docs/layout.md): the file-by-file layout
 - [docs/nodes.md](docs/nodes.md): design: controller + nodes, homelab-default and enterprise-scalable
@@ -572,6 +579,9 @@ has the rest.
 - [docs/users.md](docs/users.md): accounts, roles, and what each one may reach
 - [docs/design-language.md](docs/design-language.md): what the dashboard's surfaces owe each other
 - [docs/journeys.md](docs/journeys.md): what a person does with BuilderBot, walked for real rather than reasoned about
+- [docs/api.md](docs/api.md): every dashboard endpoint and who may call it, generated from the server
+- [CONTRIBUTING.md](CONTRIBUTING.md): working on BuilderBot itself
+- BuilderBot's own wiki, in its notebook's Wiki view (and its Export, as Markdown): the same ground a page at a time, for people using it
 
 ## License
 

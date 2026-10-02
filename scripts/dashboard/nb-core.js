@@ -569,7 +569,7 @@ function makeNotebook(project){
     nb.verClearStaged();
     nb.ruleClearStaged();
     nb.designClearStaged();
-    nb.wkEdit.clear(); nb.wkAdding = null;
+    nb.wikiClear();
     nb.roadmapOrdering = false;
     redrawRoadmap();
     nb.memEditing.clear();

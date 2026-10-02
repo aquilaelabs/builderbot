@@ -34,23 +34,35 @@ ok(/github\.com\/owner\/alpha/.test(await page.$eval(`${NB} #wkNetState`, e => e
    'with push rights the head row names the forge\'s wiki, and Push waits for a page');
 await page.click(`${NB} #wkNew`);
 ok(await page.$eval(`${NB} #wkNewName`, e => e.value) === 'Home', 'the first New page is Home');
-await page.fill(`${NB} #wkNewText`, '# Welcome\n\nSee [[Build and test]] and **this**.\n\n- one\n- two\n\n<script>bad()</script>');
+await page.fill(`${NB} #wkNewText`, '# Home\n\n## Welcome\n\nSee [[Build and test]] and **this**.\n\n- one\n- two\n\n## Install\n\ntext\n\n### Detail\n\nmore\n\n<script>bad()</script>');
 await page.click(`${NB} #wkNewSave`);
-await page.waitForSelector(`${NB} .wkrow[data-name="Home"] .wkpage`, { timeout: 15000 });
-const html = await page.$eval(`${NB} .wkrow[data-name="Home"] .wkpage`, e => e.innerHTML);
-ok(/<h3>Welcome<\/h3>/.test(html) && /<strong>this<\/strong>/.test(html) && /<li>one<\/li>/.test(html)
+await page.waitForSelector(`${NB} .wkarticle[data-name="Home"] .wkpage`, { timeout: 15000 });
+const html = await page.$eval(`${NB} .wkarticle[data-name="Home"] .wkpage`, e => e.innerHTML);
+ok(/<h3 id="wk-welcome">Welcome<\/h3>/.test(html) && /<strong>this<\/strong>/.test(html) && /<li>one<\/li>/.test(html)
    && /class="wklink" data-page="Build and test"/.test(html) && !/<script>/.test(html) && /&lt;script&gt;/.test(html),
    `the page opens drawn from its Markdown, a [[link]] a link, and markup in it shown as text (${html.slice(0, 160)})`);
 ok(/1 page/.test(await page.$eval(`${NB} #wkHint`, e => e.textContent)), 'the head row counts it');
+// Read like an encyclopedia (the operator, 2 Oct): the title over a rule,
+// said once though the page opens with it, a Contents box for its
+// sections, and the pages listed beside the article.
+const art = await page.$eval(`${NB} .wkarticle`, a => ({
+  title: a.querySelector('.wktitle')?.textContent, h1s: a.querySelectorAll('.wkpage h3').length,
+  toc: [...a.querySelectorAll('.wktoc li')].map(l => l.textContent),
+  read: a.querySelector('#wkRead')?.classList.contains('on'),
+  serif: getComputedStyle(a.querySelector('.wkpage')).fontFamily }));
+ok(art.title === 'Home' && art.h1s === 2 && art.toc.join('|') === 'Welcome|Install|Detail' && art.read && /serif/i.test(art.serif),
+   `an article: its title once, its sections in a Contents box, Read on, set in the serif (${JSON.stringify(art)})`);
+ok(await page.$eval(`${NB} .wknav`, n => /Home/.test(n.textContent) && getComputedStyle(n).display !== 'none'),
+   'the pages are listed beside it on a desktop');
 
 // ---- Edit, and a stale save refused --------------------------------------------
 const home = await api(`/api/wiki?project=${P}&page=Home`);
-await page.click(`${NB} .wkrow[data-name="Home"] .wkEdit`);
-await page.fill(`${NB} .wkrow[data-name="Home"] .wkText`, '# Welcome back');
-await page.click(`${NB} .wkrow[data-name="Home"] .wkSave`);
-await page.waitForFunction(() => /Welcome back/.test(document.querySelector('.nb .wkrow[data-name="Home"] .wkpage')?.textContent || ''),
+await page.click(`${NB} #wkEditTab`);
+await page.fill(`${NB} #wkText`, '# Welcome back');
+await page.click(`${NB} #wkSave`);
+await page.waitForFunction(() => /Welcome back/.test(document.querySelector('.nb .wkarticle[data-name="Home"] .wkpage')?.textContent || ''),
   null, { timeout: 15000 });
-ok(true, 'Edit swaps the editor in and Save writes the page');
+ok(true, 'the Edit tab swaps the editor in and Save writes the page');
 const stale = await api('/api/wiki', { project: P, action: 'save', name: 'Home', text: 'old', base: home.rev });
 ok(stale.status === 409 && /changed since/.test(stale.error), `a save against an old read is refused (${stale.status} ${stale.error})`);
 
@@ -76,8 +88,18 @@ ok(/saved Build-and-test/.test(bb('save', 'Build and test', src, '--why', 'how t
    'bb wiki save writes a page under auto');
 ok(/Build-and-test/.test(bb()) && bb('show', 'Build and test') === 'How to build: `bb build`.\n',
    'bb wiki lists it and shows it as kept');
-await page.waitForSelector(`${NB} .wkrow[data-name="Build-and-test"]`, { timeout: 15000 });
+await page.waitForFunction(() => /Build and test/.test(document.querySelector('.nb .wknav')?.textContent || ''), null, { timeout: 15000 });
 ok(true, 'the open view picks up a session\'s page on the poll');
+// A page in the list opens in place of the one on screen.
+await page.click(`${NB} .wknav .wklink[data-page="Build-and-test"]`);
+await page.waitForSelector(`${NB} .wkarticle[data-name="Build-and-test"] .wkpage`, { timeout: 15000 });
+ok(/How to build/.test(await page.$eval(`${NB} .wkarticle .wkpage`, e => e.textContent)), 'a page in the list opens in place');
+// On a phone the list gives way to a picker above the article.
+await page.setViewportSize({ width: 393, height: 851 });
+ok(await page.$eval(`${NB} .wknav`, n => getComputedStyle(n).display === 'none')
+   && await page.$eval(`${NB} .wkpick`, n => getComputedStyle(n).display !== 'none'),
+   'on a phone the pages are a picker over the article');
+await page.setViewportSize({ width: 1280, height: 1000 });
 await api('/api/prefs', { project: P, gate: { wiki: 'ask' } });
 ok(/held for the operator's approval/.test(bb('save', 'Faq', src)) && /no page called/.test(bbErr('show', 'Faq')),
    'under ask a session\'s page is held, not written');

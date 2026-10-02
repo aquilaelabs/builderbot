@@ -89,6 +89,10 @@
      Android devices actually carry. */
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",
          "Noto Sans Mono","Droid Sans Mono",monospace;
+  /* Prose read at length, the wiki's articles and nothing else (the
+     operator, 2 Oct: read like an encyclopedia). The same Android care as
+     the mono: Noto Serif is what those devices carry. */
+  --serif:"Linux Libertine","Georgia","Times New Roman","Noto Serif","Droid Serif",serif;
   color-scheme:dark;
   --tap:38px;
   /* One height for every control a person types into or presses beside
@@ -1974,26 +1978,62 @@ pre.diff .d-ctx{color:var(--dim)}
   border:1px solid var(--line);border-radius:var(--r-small)}
 
 /* ---- the Wiki view (nb-wiki.js) ------------------------------------------
-   A page read in the row it opens from: the Markdown drawn as prose in the
-   tab's own type and colors, its code in the mono, its tables hairlined,
-   and the editor a textarea as tall as a page wants. */
-.wkpage{font-size:var(--f-field);line-height:1.55;color:var(--ink);overflow-wrap:anywhere;padding:2px 0 6px}
-.wkpage h3,.wkpage h4,.wkpage h5,.wkpage h6{margin:14px 0 6px;font-size:inherit;color:var(--ink)}
-.wkpage h3{font-size:1.15em}
-.wkpage p,.wkpage ul,.wkpage ol,.wkpage blockquote,.wkpage pre,.wkpage table{margin:0 0 10px}
-.wkpage ul,.wkpage ol{padding-left:1.4em}
-.wkpage blockquote{border-left:2px solid var(--line);padding-left:10px;color:var(--dim)}
-.wkpage code{font-family:var(--mono);font-size:.92em}
-.wkpage pre{font-family:var(--mono);background:var(--sunk);padding:8px 10px;border-radius:var(--r-small);
-  overflow-x:auto;white-space:pre}
-.wkpage table{border-collapse:collapse;display:block;overflow-x:auto}
-.wkpage th,.wkpage td{border:1px solid var(--line);padding:4px 8px;text-align:left}
-.wkpage hr{border:0;border-top:1px solid var(--line);margin:12px 0}
-.wkpage a{color:var(--accent)}
-.wkrow .wkText,.wkadd .wkText{min-height:16em;font-family:var(--mono);width:100%;box-sizing:border-box}
-.wkfacts{margin-left:auto;font-size:var(--f-note)}
+   Read like an encyclopedia (the operator, 2 Oct): the pages listed in a
+   narrow column beside one article at a time, the article's title large over
+   a hairline, its sections headed the same way, a Contents box for a page
+   with three or more, and prose at a reading width in a serif, the one place
+   the dashboard sets text to be read at length. On a phone the column gives
+   way to a picker above the article. */
+.wkreader{display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);gap:22px;align-items:start}
+.wknav{position:sticky;top:0;font-size:var(--f-row);border-right:1px solid var(--line);padding-right:14px}
+.wknav ul{list-style:none;margin:0;padding:0}
+.wknav li{margin:0 0 6px}
+.wknav p,.wknav h2,.wknav h3{margin:0 0 6px;font-size:inherit}
+.wknav strong{display:block;color:var(--dim);font-weight:600;margin-bottom:8px}
+.wkpick{display:none}
+.wkarticle{min-width:0;max-width:820px}
+.wktabs{display:flex;gap:4px;align-items:flex-end;border-bottom:1px solid var(--line);margin-bottom:12px}
+.wktabs .sp{flex:1}
+.wktabs .wktab{background:none;border:1px solid transparent;border-bottom:0;border-radius:var(--r-small) var(--r-small) 0 0;
+  padding:6px 12px;color:var(--dim);margin-bottom:-1px}
+.wktabs .wktab.on{color:var(--ink);border-color:var(--line);background:var(--bg)}
+.wktabs .wktab.danger{color:var(--bad)}
+.wktitle{font:400 1.75em/1.25 var(--serif);color:var(--ink);margin:4px 0 2px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.wkmeta{color:var(--dim);font-size:var(--f-note);margin:4px 0 14px}
+.wktoc{display:inline-block;min-width:180px;max-width:100%;border:1px solid var(--line);border-radius:var(--r-small);
+  background:var(--panel);padding:8px 14px 8px 12px;margin:0 0 16px;font-size:var(--f-row)}
+.wktochead{font-weight:600;text-align:center;margin-bottom:4px;color:var(--ink)}
+.wktoc ol{margin:0;padding-left:1.4em}
+.wktoc li.l2{margin-left:1em}
+.wktoc li.l3{margin-left:2em}
+.wkpage{font:1.02rem/1.65 var(--serif);color:var(--ink);overflow-wrap:anywhere;max-width:72ch}
+.wkpage h2,.wkpage h3,.wkpage h4,.wkpage h5,.wkpage h6{font-family:var(--serif);font-weight:400;color:var(--ink);margin:22px 0 8px}
+.wkpage h2{font-size:1.45em;padding-bottom:3px;border-bottom:1px solid var(--line)}
+.wkpage h3{font-size:1.2em;font-weight:600}
+.wkpage h4{font-size:1.05em;font-weight:600}
+.wkpage p,.wkpage ul,.wkpage ol,.wkpage blockquote,.wkpage pre,.wkpage table{margin:0 0 12px}
+.wkpage ul,.wkpage ol{padding-left:1.6em}
+.wkpage blockquote{border-left:2px solid var(--line);padding-left:12px;color:var(--dim)}
+.wkpage code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:1px 4px;border-radius:var(--r-small)}
+.wkpage pre{font-family:var(--mono);font-size:.86em;line-height:1.5;background:var(--sunk);padding:9px 12px;
+  border-radius:var(--r-small);overflow-x:auto;white-space:pre}
+.wkpage pre code{background:none;padding:0}
+.wkpage table{border-collapse:collapse;display:block;overflow-x:auto;font-family:system-ui,sans-serif;font-size:.92em}
+.wkpage th,.wkpage td{border:1px solid var(--line);padding:5px 9px;text-align:left;vertical-align:top}
+.wkpage th{background:var(--panel)}
+.wkpage hr{border:0;border-top:1px solid var(--line);margin:16px 0}
+.wkpage a,.wknav a,.wktoc a,.wkfooter a{color:var(--accent);text-decoration:none}
+.wkpage a:hover,.wknav a:hover,.wktoc a:hover{text-decoration:underline}
+.wkfooter{border-top:1px solid var(--line);margin-top:20px;padding-top:8px;color:var(--dim);font-size:var(--f-note)}
+.wkarticle .wkText,.wkadd .wkText{min-height:22em;font-family:var(--mono);width:100%;box-sizing:border-box}
 .wklogrow{padding:3px 0;font-size:var(--f-note)}
 #wkWhy{color:var(--bad)}
+@media(max-width:620px){
+  .wkreader{display:block}
+  .wknav{display:none}
+  .wkpick{display:flex;margin-bottom:10px}
+  .wktitle{font-size:1.5em}
+}
 
 /* ---- the Design view (nb-design.js) --------------------------------------
    A language's choices in labeled controls, its colors as chips beside

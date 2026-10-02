@@ -48,8 +48,11 @@ function wikiMarkdown(src){
       i++;
       out.push(`<pre><code>${esc(body.join("\n"))}</code></pre>`);
     } else if ((m = l.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/))){
-      const n = Math.min(6, m[1].length + 2);         // h1 in a page is a section, not the view's title
-      out.push(`<h${n}>${inline(m[2])}</h${n}>`);
+      // A page's # is a section under the article's own title, the way an
+      // encyclopedia article's headings sit under its name; each carries an
+      // id the contents box links to.
+      const n = Math.min(6, m[1].length + 1);
+      out.push(`<h${n} id="${wikiSlug(m[2])}">${inline(m[2])}</h${n}>`);
       i++;
     } else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(l)){
       out.push("<hr>");
@@ -80,19 +83,47 @@ function wikiMarkdown(src){
   return out.join("");
 }
 
+// A heading's anchor, the same from the renderer and the contents box.
+function wikiSlug(t){
+  return "wk-" + String(t).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+// The page's headings, for its contents box: [{level, text, id}], outside
+// fenced code, in order.
+function wikiToc(src){
+  const out = [];
+  let fence = false;
+  for (const l of String(src || "").split(/\r?\n/)){
+    if (/^\s*```/.test(l)){ fence = !fence; continue; }
+    const m = !fence && l.match(/^(#{1,3})\s+(.*?)\s*#*\s*$/);
+    if (m) out.push({level: m[1].length, text: m[2].replace(/[*_`]/g, ""), id: wikiSlug(m[2])});
+  }
+  return out;
+}
+
 function nbWikiView({$, nb, project}){
+  // Read like an encyclopedia (the operator, 2 Oct): one article at a time,
+  // its title over a rule, a contents box for a page with sections, and
+  // the pages listed beside it (the wiki's own _Sidebar when it has one),
+  // a picker above it on a phone. Read and Edit are tabs over the article.
   nb.wkData = null;
   nb.wkRev = null;
   nb.wkPages = {};          // name -> the page as last read
-  nb.wkOpen = new Set();    // rows open to read
-  nb.wkEdit = new Map();    // name -> what is typed into its editor
+  nb.wkCur = "";            // the article on screen
+  nb.wkEdit = null;         // {name, text} while its editor is open
   nb.wkAdding = null;       // {name, text} while New page is unrolled
   nb.wkLog = false;
   const q = "?project=" + encodeURIComponent(project);
+  const SPECIAL = ["_Sidebar", "_Footer"];
 
   // Whether something typed would be lost by a redraw from the server.
-  const wikiDirty = () => nb.wkEdit.size > 0 || !!(nb.wkAdding && (nb.wkAdding.name || nb.wkAdding.text));
+  const wikiDirty = () => !!nb.wkEdit || !!(nb.wkAdding && (nb.wkAdding.name || nb.wkAdding.text));
   nb.wikiDirty = wikiDirty;
+  nb.wikiClear = () => { nb.wkEdit = null; nb.wkAdding = null; };
+
+  const pages = () => nb.wkData?.pages || [];
+  const articles = () => pages().filter(p => !SPECIAL.includes(p.name));
+  const byName = n => pages().find(p => p.name.toLowerCase() === String(n).replace(/ /g, "-").toLowerCase());
 
   let inFlight = null;
   function loadWiki(){
@@ -101,13 +132,15 @@ function nbWikiView({$, nb, project}){
       try{ nb.wkData = await (await fetch("/api/wiki" + q)).json(); }
       catch(e){ nb.wkData = {error: String(e), pages: []}; }
       nb.wkRev = nb.wkData.rev ?? nb.wkRev;
-      // A page that moved is read again when it is next open.
-      const now = new Map((nb.wkData.pages || []).map(p => [p.name, p.rev]));
+      // A page that moved is read again.
+      const now = new Map(pages().map(p => [p.name, p.rev]));
       for (const name of Object.keys(nb.wkPages))
         if (now.get(name) !== nb.wkPages[name].rev) delete nb.wkPages[name];
-      for (const name of nb.wkOpen) if (!now.has(name)) nb.wkOpen.delete(name);
+      if (!nb.wkCur || !now.has(nb.wkCur))
+        nb.wkCur = (byName("Home") || articles()[0])?.name || "";
       drawWiki();
-      await Promise.all([...nb.wkOpen].filter(n => !nb.wkPages[n]).map(readPage));
+      const want = [nb.wkCur, ...SPECIAL.filter(n => now.has(n))].filter(n => n && !nb.wkPages[n]);
+      await Promise.all(want.map(readPage));
     })().finally(() => { inFlight = null; });
     return inFlight;
   }
@@ -115,21 +148,30 @@ function nbWikiView({$, nb, project}){
   async function readPage(name){
     try{
       const r = await (await fetch("/api/wiki" + q + "&page=" + encodeURIComponent(name))).json();
-      if (!r.error) nb.wkPages[name] = r;
-      else nb.wkPages[name] = {error: r.error};
+      nb.wkPages[name] = r.error ? {error: r.error} : r;
     }catch(e){ nb.wkPages[name] = {error: String(e)}; }
     drawWiki();
   }
 
+  function go(name){
+    const p = byName(name);
+    if (!p){ notify(`no page called ${name} yet: New page makes it`); return; }
+    if (wikiDirty() && !confirm("Leave the page you are editing? What you typed is not saved.")) return;
+    nb.wikiClear();
+    nb.wkCur = p.name;
+    if (!nb.wkPages[p.name]) readPage(p.name); else drawWiki();
+    $("wkBody")?.querySelector(".wkarticle")?.scrollIntoView({block: "nearest"});
+  }
+
   function head(){
     const d = nb.wkData || {};
-    const n = (d.pages || []).length;
+    const n = articles().length;
     const rem = d.remote;
     $("wkHint").textContent = d.error ? "the wiki could not be read" : `${n} page${n === 1 ? "" : "s"}`;
-    $("wkExport").disabled = !n;
+    $("wkExport").disabled = !pages().length;
     $("wkPull").hidden = $("wkPush").hidden = !rem?.label;
     $("wkNetState").textContent = rem?.label ? `${rem.label}'s wiki` : "no remote: Export is how it leaves";
-    $("wkPush").disabled = !rem?.auth || !n;
+    $("wkPush").disabled = !rem?.auth || !pages().length;
     // Why Push is dead, on the row and not in a tooltip (the operator, 23
     // Sep): a phone has no hover.
     const why = rem?.label && !rem.auth
@@ -138,32 +180,58 @@ function nbWikiView({$, nb, project}){
     $("wkWhy").hidden = !why;
   }
 
-  function row(p){
-    const open = nb.wkOpen.has(p.name) || nb.wkEdit.has(p.name);
-    const editing = nb.wkEdit.has(p.name);
-    const pg = nb.wkPages[p.name];
-    const facts = [`${p.size} B`, p.by ? `by ${p.by}` : "", p.at ? ago(p.at) : ""].filter(Boolean).join(" · ");
+  // The list beside the article: the wiki's own _Sidebar when it has one,
+  // drawn from its Markdown like any page, else every article by name.
+  function nav(){
+    const sb = nb.wkPages._Sidebar;
+    const list = sb && !sb.error
+      ? wikiMarkdown(sb.text)
+      : `<ul>${articles().map(p => `<li><a href="#" class="wklink" data-page="${esc(p.name)}">${esc(p.title)}</a></li>`).join("")}</ul>`;
+    const pick = `<label class="pick wkpick">Page <select id="wkPick" aria-label="the page to read">${
+      articles().map(p => `<option value="${esc(p.name)}"${p.name === nb.wkCur ? " selected" : ""}>${esc(p.title)}</option>`).join("")}</select></label>`;
+    return `<nav class="wknav" aria-label="the wiki's pages">${list}</nav>${pick}`;
+  }
+
+  function article(){
+    const meta = byName(nb.wkCur);
+    if (!meta) return `<article class="wkarticle"><div class="hint">No pages yet. Start with Home, the page a wiki opens on; a session adds pages with bb wiki save${
+      nb.wkData?.gate === "deny" ? ", though this project's Claude may: Write the wiki is deny" : ""}.</div></article>`;
+    const pg = nb.wkPages[meta.name];
+    const editing = nb.wkEdit && nb.wkEdit.name === meta.name;
+    const tabs = `<div class="wktabs" role="tablist">
+        <button type="button" class="wktab${editing ? "" : " on"}" id="wkRead" role="tab" aria-selected="${!editing}">Read</button>
+        <button type="button" class="wktab${editing ? " on" : ""}" id="wkEditTab" role="tab" aria-selected="${!!editing}"${pg && !pg.error ? "" : " disabled"}>Edit</button>
+        <span class="sp"></span>
+        <button type="button" class="wktab" id="wkRename">Rename</button>
+        <button type="button" class="wktab danger" id="wkRm">Remove</button></div>`;
     let body;
     if (editing){
-      body = `${lbl("", "Markdown", "GitHub's wiki Markdown: [[Another page]] links to a page here")}
-        <textarea class="wkText" spellcheck="true">${esc(nb.wkEdit.get(p.name))}</textarea>
+      body = `${lbl("wkText", "Markdown", "GitHub's wiki Markdown: [[Another page]] links to a page here")}
+        <textarea class="wkText" id="wkText" spellcheck="true">${esc(nb.wkEdit.text)}</textarea>
         <div class="actbar macts"><span class="state">Save writes the page now</span>
-          <button type="button" class="stop wkCancel">Cancel</button>
-          <button type="button" class="primary wkSave">Save</button></div>`;
+          <button type="button" class="stop" id="wkCancel">Cancel</button>
+          <button type="button" class="primary" id="wkSave">Save</button></div>`;
     } else if (!pg){
       body = `<div class="loading">loading…</div>`;
     } else if (pg.error){
       body = `<div class="hint bad">${esc(pg.error)}</div>`;
     } else {
-      body = `<div class="wkpage">${wikiMarkdown(pg.text) || `<span class="dim">an empty page</span>`}</div>
-        <div class="actbar macts"><span class="state">${esc(p.file)}</span>
-          <button type="button" class="wkRename">Rename</button>
-          <button type="button" class="danger wkRm">Remove</button>
-          <button type="button" class="wkEdit">Edit</button></div>`;
+      // A page that opens with its own title as a # heading says it once.
+      let text = pg.text;
+      const first = text.match(/^\s*#\s+(.*?)\s*\n/);
+      if (first && first[1].trim().toLowerCase() === meta.title.toLowerCase()) text = text.slice(first[0].length);
+      const toc = wikiToc(text);
+      const box = toc.length >= 3 ? `<div class="wktoc"><div class="wktochead">Contents</div><ol>${
+        toc.map(h => `<li class="l${h.level}"><a href="#${esc(h.id)}" data-anchor="${esc(h.id)}">${esc(h.text)}</a></li>`).join("")}</ol></div>` : "";
+      const foot = nb.wkPages._Footer && !nb.wkPages._Footer.error
+        ? `<footer class="wkfooter">${wikiMarkdown(nb.wkPages._Footer.text)}</footer>` : "";
+      body = `${box}<div class="wkpage">${wikiMarkdown(text) || `<span class="dim">an empty page</span>`}</div>${foot}`;
     }
-    return `<details class="bug wkrow${editing ? " editing" : ""}" data-name="${esc(p.name)}"${open ? " open" : ""}>
-      <summary><span class="btitle">${esc(p.title)}</span><span class="dim wkfacts">${esc(facts)}</span></summary>
-      <div class="body">${body}</div></details>`;
+    return `<article class="wkarticle" data-name="${esc(meta.name)}">${tabs}
+      <h2 class="wktitle">${esc(meta.title)}</h2>
+      <div class="wkmeta">${[meta.by ? `last edited by ${esc(meta.by)}` : "", meta.at ? esc(ago(meta.at)) : "",
+        `<span class="mono">${esc(meta.file)}</span>`].filter(Boolean).join(" · ")}</div>
+      ${body}</article>`;
   }
 
   function drawWiki(){
@@ -175,9 +243,9 @@ function nbWikiView({$, nb, project}){
     if (d.error){ box.innerHTML = `<div class="field"><div class="hint bad">${esc(d.error)}</div></div>`; return; }
     const a = nb.wkAdding;
     const add = a
-      ? `<div class="field wkadd">${lbl("wkNewName", "Page name", "Home is the page a forge opens first; _Sidebar and _Footer frame every page")}
-          <input id="wkNewName" maxlength="100" autocomplete="off" placeholder="${(d.pages || []).length ? "Getting started" : "Home"}" value="${esc(a.name)}">
-          ${lbl("", "Markdown")}
+      ? `<div class="field wkadd">${lbl("wkNewName", "Page name", "Home is the page a wiki opens on; _Sidebar and _Footer frame every page")}
+          <input id="wkNewName" maxlength="100" autocomplete="off" placeholder="${articles().length ? "Getting started" : "Home"}" value="${esc(a.name)}">
+          ${lbl("wkNewText", "Markdown")}
           <textarea class="wkText" id="wkNewText" spellcheck="true">${esc(a.text)}</textarea>
           <div class="actbar macts"><span class="state">Create writes the page now</span>
             <button type="button" class="stop" id="wkNewCancel">Cancel</button>
@@ -186,11 +254,7 @@ function nbWikiView({$, nb, project}){
     const log = !nb.wkLog ? "" : `<div class="field wklog">${(d.history || []).length
         ? (d.history || []).map(h => `<div class="wklogrow"><span class="mono">${esc(h.commit)}</span> ${esc(h.what)} <span class="dim">· ${esc(h.by)} · ${esc(ago(h.at))}</span></div>`).join("")
         : `<span class="dim">nothing yet</span>`}</div>`;
-    const pages = d.pages || [];
-    box.innerHTML = log + add + (pages.length
-      ? `<div class="field wklist">${pages.map(row).join("")}</div>`
-      : `<div class="field"><div class="hint">No pages yet. Start with Home, the page a wiki opens on; a session adds pages with bb wiki save${
-          d.gate === "deny" ? ", though this project's Claude may: Write the wiki is deny" : ""}.</div></div>`);
+    box.innerHTML = log + add + `<div class="field wkreader">${articles().length ? nav() : ""}${article()}</div>`;
     wire(box);
   }
 
@@ -205,71 +269,61 @@ function nbWikiView({$, nb, project}){
   }
 
   function wire(box){
-    box.querySelectorAll(".wkrow").forEach(el => {
-      const name = el.dataset.name;
-      el.querySelector("summary").onclick = ev => {
-        ev.preventDefault();
-        if (nb.wkEdit.has(name)) return;            // an editor is put away with Cancel or Save
-        if (nb.wkOpen.has(name)) nb.wkOpen.delete(name);
-        else { nb.wkOpen.add(name); if (!nb.wkPages[name]) readPage(name); }
-        drawWiki();
-      };
-      const ta = el.querySelector(".wkText");
-      if (ta) ta.oninput = () => nb.wkEdit.set(name, ta.value);
-      const on = (cls, fn) => { const b = el.querySelector(cls); if (b) b.onclick = fn; };
-      on(".wkEdit", () => { nb.wkEdit.set(name, nb.wkPages[name]?.text || ""); drawWiki(); });
-      on(".wkCancel", () => { nb.wkEdit.delete(name); drawWiki(); });
-      on(".wkSave", async ev => {
-        busy(ev.target, "Saving");
-        const j = await post({action: "save", name, text: nb.wkEdit.get(name), base: nb.wkPages[name]?.rev || ""});
-        unbusy(ev.target, "Save");
-        if (!j) return;
-        nb.wkEdit.delete(name);
-        delete nb.wkPages[name];
-        loadWiki();
-      });
-      on(".wkRm", async () => {
-        if (!confirm(`Remove ${nb.wkPages[name]?.title || name} from the wiki? Its history keeps it, and a push takes it off the forge's wiki too.`)) return;
-        if (await post({action: "remove", name, base: nb.wkPages[name]?.rev || ""})){
-          nb.wkOpen.delete(name); loadWiki();
-        }
-      });
-      on(".wkRename", async () => {
-        const to = prompt("Rename the page to:", nb.wkPages[name]?.title || name);
-        if (!to || !to.trim()) return;
-        const j = await post({action: "rename", name, to});
-        if (j){ nb.wkOpen.delete(name); nb.wkOpen.add(j.name); loadWiki(); }
-      });
-    });
-    // A [[link]] opens that page's row and brings it into view.
-    box.querySelectorAll(".wklink").forEach(a => a.onclick = ev => {
+    const on = (id, fn) => { const b = box.querySelector("#" + id); if (b) b.onclick = fn; };
+    const name = nb.wkCur;
+    // A [[link]], the nav's and the sidebar's: that page, in place.
+    box.querySelectorAll(".wklink").forEach(a => a.onclick = ev => { ev.preventDefault(); go(a.dataset.page); });
+    box.querySelectorAll("[data-anchor]").forEach(a => a.onclick = ev => {
       ev.preventDefault();
-      const target = (nb.wkData?.pages || []).find(p => p.name.toLowerCase() === a.dataset.page.replace(/ /g, "-").toLowerCase());
-      if (!target){ notify(`no page called ${a.dataset.page} yet: New page makes it`); return; }
-      nb.wkOpen.add(target.name);
-      if (!nb.wkPages[target.name]) readPage(target.name); else drawWiki();
-      requestAnimationFrame(() => $("wkBody").querySelector(`.wkrow[data-name="${CSS.escape(target.name)}"]`)
-        ?.scrollIntoView({block: "nearest"}));
+      box.querySelector("#" + CSS.escape(a.dataset.anchor))?.scrollIntoView({block: "start"});
     });
-    const nw = box.querySelector("#wkNew");
-    if (nw) nw.onclick = () => { nb.wkAdding = {name: (nb.wkData?.pages || []).length ? "" : "Home", text: ""}; drawWiki(); box.querySelector("#wkNewName")?.focus(); };
+    const pick = box.querySelector("#wkPick");
+    if (pick) pick.onchange = () => go(pick.value);
+    on("wkRead", () => { if (nb.wkEdit && !confirm("Stop editing? What you typed is not saved.")) return; nb.wkEdit = null; drawWiki(); });
+    on("wkEditTab", () => { nb.wkEdit = {name, text: nb.wkPages[name]?.text || ""}; drawWiki(); box.querySelector("#wkText")?.focus(); });
+    const ta = box.querySelector("#wkText");
+    if (ta) ta.oninput = () => { nb.wkEdit.text = ta.value; };
+    on("wkCancel", () => { nb.wkEdit = null; drawWiki(); });
+    on("wkSave", async ev => {
+      busy(ev.target, "Saving");
+      const j = await post({action: "save", name, text: nb.wkEdit.text, base: nb.wkPages[name]?.rev || ""});
+      if (ev.target.isConnected) unbusy(ev.target, "Save");
+      if (!j) return;
+      nb.wkEdit = null;
+      delete nb.wkPages[name];
+      loadWiki();
+    });
+    on("wkRm", async () => {
+      if (!confirm(`Remove ${byName(name)?.title || name} from the wiki? Its history keeps it, and a push takes it off the forge's wiki too.`)) return;
+      if (await post({action: "remove", name, base: nb.wkPages[name]?.rev || ""})){
+        nb.wkCur = ""; loadWiki();
+      }
+    });
+    on("wkRename", async () => {
+      const to = prompt("Rename the page to:", byName(name)?.title || name);
+      if (!to || !to.trim()) return;
+      const j = await post({action: "rename", name, to});
+      if (j){ nb.wkCur = j.name; loadWiki(); }
+    });
+    on("wkNew", () => {
+      nb.wkAdding = {name: articles().length ? "" : "Home", text: ""};
+      drawWiki(); box.querySelector("#wkNewName")?.focus();
+    });
     const nn = box.querySelector("#wkNewName"), nt = box.querySelector("#wkNewText");
     if (nn) nn.oninput = () => { nb.wkAdding.name = nn.value; };
     if (nt) nt.oninput = () => { nb.wkAdding.text = nt.value; };
-    const nc = box.querySelector("#wkNewCancel");
-    if (nc) nc.onclick = () => { nb.wkAdding = null; drawWiki(); };
-    const ns = box.querySelector("#wkNewSave");
-    if (ns) ns.onclick = async () => {
-      const name = (nb.wkAdding?.name || "").trim();
-      if (!name){ failed("a page needs a name"); return; }
-      busy(ns, "Creating");
-      const j = await post({action: "save", name, text: nb.wkAdding.text, base: ""});
-      unbusy(ns, "Create");
+    on("wkNewCancel", () => { nb.wkAdding = null; drawWiki(); });
+    on("wkNewSave", async ev => {
+      const n = (nb.wkAdding?.name || "").trim();
+      if (!n){ failed("a page needs a name"); return; }
+      busy(ev.target, "Creating");
+      const j = await post({action: "save", name: n, text: nb.wkAdding.text, base: ""});
+      if (ev.target.isConnected) unbusy(ev.target, "Create");
       if (!j) return;
       nb.wkAdding = null;
-      nb.wkOpen.add(j.name);
+      nb.wkCur = j.name;
       loadWiki();
-    };
+    });
   }
 
   // The head row's controls: wired once, they live in the markup.
