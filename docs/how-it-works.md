@@ -3650,7 +3650,7 @@ an agent from another window, and the Nodes tab's Update is what clears it.
   **kotlin-lsp** (JetBrains' server, for kotlin-lsp). rust-analyzer and clangd
   already come with the rust and swift toolchains.
 - **Training or running a model on the card**: the **pytorch** toolchain is a
-  Python of its own, run as `python-ml`, with PyTorch built for CUDA 12,
+  Python of its own, run as `python-ml`, with PyTorch built for CUDA (13 today, so a driver of 580 or newer),
   numpy and ONNX. PyTorch's wheels carry the CUDA libraries, so a node needs
   only its NVIDIA driver; a heavy job runs as `bb gpu run --mem MB --
   python-ml train.py`. A project wanting more packages makes its own
