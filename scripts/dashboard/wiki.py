@@ -329,8 +329,14 @@ def _branch(project, rem, env):
     if r.returncode:
         err = (r.stderr or "").strip()
         if "not found" in err.lower() or "not exist" in err.lower():
-            raise Refused(f"{rem['label']} has no wiki yet: a forge makes the wiki's repository when its "
-                          "first page is saved on the web, so make one page there (any text), then push")
+            # Two causes look alike from here: a wiki never started, and one
+            # the plan does not allow (on GitHub's free plan a private
+            # repository has no wiki at all). Both are said, so nobody goes
+            # looking for a button their plan does not have.
+            raise Refused(f"{rem['label']} has no wiki to push to. A forge makes it when its first page is "
+                          "saved on the web, so make one page there (any text) and push again; but on "
+                          "GitHub's free plan a private repository has no wiki at all (that needs Pro, Team "
+                          "or Enterprise), so keep it here and use Export")
         raise Refused(f"could not reach {rem['label']}'s wiki: {err.splitlines()[-1][:200] if err else 'no answer'}")
     m = re.search(r"ref: refs/heads/(\S+)\s+HEAD", r.stdout)
     return m.group(1) if m else ""
