@@ -3942,6 +3942,13 @@ class Handler(BaseHTTPRequestHandler):
                 return fn()
             finally:
                 trace_note(self, (time.monotonic() - t0) * 1000)
+        except (BrokenPipeError, ConnectionResetError):
+            # The other end went away mid-answer: a download cancelled, a tab
+            # closed. Nothing failed here and nobody is left to answer, so it
+            # is one quiet line, not a traceback that bb diag lists as a fault
+            # (B429).
+            print(f"[dashboard] {self.command} {self.path.partition('?')[0]}: the client left "
+                  "before the answer was sent", flush=True)
         except Exception as e:                          # noqa: BLE001 (last resort)
             # Broad by definition: this is the one place a handler's bug is
             # turned into an answer. The log gets the traceback the answer
