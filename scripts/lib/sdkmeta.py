@@ -43,7 +43,10 @@ import urllib.request
 # Google's own CDN to serve a hostile index. Adding defusedxml would put a
 # dependency in an otherwise stdlib-only tree to defend against that. If this
 # ever parses XML from a source the catalog does not control, revisit it.
-import xml.etree.ElementTree as ET  # nosemgrep: use-defused-xml (the index comes from Google's CDN over TLS; ElementTree resolves no external entities; see above)
+# The index comes from Google's CDN over TLS, and ElementTree resolves no
+# external entities (see above). The rule's full id, which is what a
+# suppression has to name to be honored.
+import xml.etree.ElementTree as ET  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # BB_TOOLCHAINS_JSON points this at another catalog. It exists so the install
@@ -193,7 +196,7 @@ def _web(url):
 def get(url, decode=True):
     def fetch():
         req = urllib.request.Request(_web(url), headers=UA)
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             return r.read()
 
     body = _cached("GET " + url, fetch)
@@ -207,7 +210,7 @@ def final_url(url):
     API for it instead would be rate-limited by IP for anonymous callers.
     """
     req = urllib.request.Request(_web(url), headers=UA, method="HEAD")
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         return r.url
 
 
@@ -274,7 +277,7 @@ def resolve(tc):
 
 def content_length(url):
     req = urllib.request.Request(_web(url), headers=UA, method="HEAD")
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         n = r.headers.get("Content-Length")
     return int(n) if n and n.isdigit() else 0
 

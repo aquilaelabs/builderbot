@@ -1036,8 +1036,8 @@ def check_token_push(token, repo):
                  "Accept": "application/vnd.github+json",
                  "User-Agent": "BuilderBot"})
     try:
-        # nosemgrep: dynamic-urllib-use-detected (the host is the literal above; only the repo path varies, and it is quoted)
-        with urllib.request.urlopen(req, timeout=20) as r:
+        # The host is the literal above; only the repo path varies, and it is quoted.
+        with urllib.request.urlopen(req, timeout=20) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             data = json.loads(r.read(200000))
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):

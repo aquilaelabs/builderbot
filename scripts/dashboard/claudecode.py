@@ -68,7 +68,7 @@ def check():
         _latest["checking"] = True
     version, error = "", ""
     try:
-        with urllib.request.urlopen(LATEST_URL, timeout=15) as r:   # noqa: S310 (a fixed https URL, or a test's file://)
+        with urllib.request.urlopen(LATEST_URL, timeout=15) as r:   # noqa: S310 (a fixed https URL, or a test's file://)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             text = r.read(200).decode("utf-8", "replace").strip()
         m = VER.match(text)
         if m:

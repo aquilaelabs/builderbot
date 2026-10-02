@@ -54,7 +54,9 @@ for r in due:
     print(f"== {r['name']}: {r['check']}")
     sys.stdout.flush()
     try:
-        res = subprocess.run(r["check"], shell=True, cwd=tree, timeout=3600)
+        # A rule's check is a shell line its author wrote, run in the session's
+        # own tree as the session: a shell is what it asks for.
+        res = subprocess.run(r["check"], shell=True, cwd=tree, timeout=3600)  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true
         code = res.returncode
     except subprocess.TimeoutExpired:
         print("  timed out after an hour"); code = 124

@@ -156,4 +156,5 @@ def live_token():
     faster (the operator, 25 Sep)."""
     rows = sorted((s["name"], (s.get("claude") or {}).get("state") or "")
                   for s in SESSIONS())
-    return hashlib.sha1(json.dumps(rows).encode()).hexdigest()[:12]
+    # A change token for the poll, not a secret: said so to hashlib.
+    return hashlib.sha1(json.dumps(rows).encode(), usedforsecurity=False).hexdigest()[:12]

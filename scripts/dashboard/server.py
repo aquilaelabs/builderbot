@@ -1888,7 +1888,7 @@ def _seen_now(project, who):
     edits = edits if isinstance(edits, dict) else {}
     return {"bug": str(r.get(f"bug:{project}") or ""), "rules": str(r.get(f"rules:{project}") or ""),
             "mem": str(edits.get(project) or 0),
-            "prefs": hashlib.sha1(pf.encode()).hexdigest()[:12] if pf else ""}
+            "prefs": hashlib.sha1(pf.encode(), usedforsecurity=False).hexdigest()[:12] if pf else ""}
 
 
 def _memory_written(req, held):

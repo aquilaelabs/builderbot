@@ -12,9 +12,11 @@ import os
 import pathlib
 import re
 import sys
-import xml.dom.minidom
-import xml.etree.ElementTree as ET
-import xml.parsers.expat
+# The XML read here is this repository's own (the Unraid template, the
+# workflows): no input from outside, so defusedxml would guard nothing.
+import xml.dom.minidom  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+import xml.etree.ElementTree as ET  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+import xml.parsers.expat  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
 
 import dash
 
