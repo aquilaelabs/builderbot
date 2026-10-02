@@ -93,7 +93,9 @@ await page.waitForFunction(() => !document.getElementById('rnSessField').hidden
 const drawn = await page.$$eval('#rnSessList .rnsess', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ').trim()));
 ok(drawn.some(t => /w\.sess/.test(t) && /Claude/.test(t)) && drawn.some(t => /w\.sess/.test(t) && /shell/.test(t)),
    `the project's settings list its sessions, whose and what (${drawn.join(' | ')})`);
-const last = await page.$eval('#rnmodal .box', b => [...b.querySelectorAll(':scope > .field:not([hidden])')].pop()?.id);
+// The last field showing, in the dialog's sections since they came (1 Oct).
+const last = await page.$eval('#rnmodal .box', b => [...b.querySelectorAll('.field:not([hidden]):not(.rnhead)')]
+  .filter(f => f.offsetParent).pop()?.id);
 ok(last === 'rnSessField', `...at the foot of the dialog (${last})`);
 await page.evaluate(() => [...document.querySelectorAll('#rnSessList .rnsess')]
   .find(r => /w\.sess/.test(r.textContent) && /Claude/.test(r.textContent))
