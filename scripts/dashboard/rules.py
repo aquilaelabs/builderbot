@@ -687,12 +687,12 @@ def _block(rs, triggers):
            + "\n"]
     # A rule with a framework behind it says where it is defined and how it
     # is checked, so the session reads the one and runs the other.
-    def frame(r):
+    def frame(r, short=False):
         bits = []
         if r.get("scope") == "global":
             bits.append("global")
         if r.get("design"):
-            bits.append("the design's: bb design show reads it")
+            bits.append("the design's" if short else "the design's: bb design show reads it")
         if r.get("doc"):
             bits.append(f"defined in full in {r['doc']}, read first")
         if r.get("check"):
@@ -711,13 +711,16 @@ def _block(rs, triggers):
         # conversation and read on none.
         out.append("Named, not quoted: `bb rules show <name>` reads one, and "
                    "its text arrives on the turn you edit a file or are asked "
-                   "about a word it names.")
+                   "about a word it names."
+                   + (" One marked the design's is the notebook's Design view's, "
+                      "and `bb design show <name>` reads it too."
+                      if any(r.get("design") for r in named) else ""))
         if triggers:
             for r in named:
                 on = "; ".join(x for x in [", ".join(r.get("paths") or []),
                                            ", ".join(r.get("words") or [])] if x)
                 mine = "*" if r.get("by") == "claude" else ""
-                out.append(f"  {mine}{r['name']}: {on}{frame(r)}")
+                out.append(f"  {mine}{r['name']}: {on}{frame(r, short=True)}")
         else:
             # The names alone, and the two things about one that a session
             # acts on without being called: which it must check before it

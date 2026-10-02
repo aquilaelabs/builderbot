@@ -473,7 +473,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   ok(eff.some(r => r.name === 'lists' && r.design && r.words.join() === 'list,paging'),
      'a design rule is among the rules a session works under, marked as the design\'s, with its triggers');
   const pre = await api(`/api/preamble?project=${P}`);
-  ok(/  lists: list, paging \(the design's: bb design show reads it/.test(pre.text) && /One sentence that tells the person what to do\. \(the design's/.test(pre.text)
+  ok(/  lists: list, paging \(the design's\)/.test(pre.text) && /One marked the design's is the notebook's Design view's, and `bb design show <name>` reads it too/.test(pre.text) && /One sentence that tells the person what to do\. \(the design's/.test(pre.text)
      && !/Every list pages at fifty/.test(pre.text),
      'the briefing names the triggered rule and how to read it, carries the standing one whole, and never the triggered one\'s text');
   ok(/^lists \(applies to: list, paging\)\n\nEvery list pages at fifty\./.test(bb('show', 'lists')),
@@ -743,7 +743,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   ok(/^Night \(dark\), the default of 2:\n  bg #/.test(bb('show', 'Night')) && /\n  Type: /.test(bb('show', 'Night')),
      "...and the default theme is said as such, with its choices");
   const pre2 = await api(`/api/preamble?project=${P}`);
-  ok(/  day\/hull: texture, hull \(the design's: bb design show reads it/.test(pre2.text)
+  ok(/  day\/hull: texture, hull \(the design's\)/.test(pre2.text)
      && /This project's notebook holds a design already: 2 themes \(Night, Day\); 1 page: the home dashboard; \d+ design rules and 2 of a theme's or a page's own\./.test(pre2.text)
      && /Read `bb design show` before laying out or styling anything/.test(pre2.text),
      "the briefing names the theme's rule under it, and says the notebook holds a design, what is in it, and to read it before building");
