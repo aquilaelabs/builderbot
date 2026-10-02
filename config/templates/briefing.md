@@ -359,7 +359,11 @@ store's ffmpeg carries as `h264_nvenc` and `hevc_nvenc`. The pytorch
 toolchain is the way in for a model: `python-ml` is its Python, with
 PyTorch for CUDA, numpy and ONNX, and a project needing more packages makes
 `python-ml -m venv --system-site-packages .venv` and installs into that;
-`bb toolchains` says whether this node has it. Reach for it when
+`bb toolchains` says whether this node has it, and a session started before
+it was installed finds it at $SDK_ROOT/pytorch/bin rather than on
+its PATH. The first `import torch` on a node reads gigabytes off the store
+and can take minutes, which looks like a hang and is not one: start it in
+the background, and the next import takes seconds. Reach for it when
 the work is that shape (training or running a model, encoding video, large
 array math) and not otherwise: a build or a test suite runs no faster for
 it. The card's memory is one pool for every session on the node, so start

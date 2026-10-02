@@ -349,6 +349,29 @@ sdk_status_local() {
             printf '  %-11s not installed (bb toolchains install %s)\n' "$t" "$t"
         fi
     done
+    # ...and every other toolchain of the catalog this store holds, with the
+    # program it is used through. The list above is the build toolchains
+    # by name; ffmpeg, the document readers or pytorch installed from the
+    # Toolchains tab were on PATH and in the store and missing from here,
+    # so a session asking what this machine has was told they were not
+    # (B435, a session that went looking for PyTorch).
+    local meta; meta="$(sdk_meta_file)"
+    if [ -f "$meta" ]; then
+        SDK_ROOT_NOW="$root" SDK_LISTED="$SDK_TOOLCHAINS android-tools" python3 - "$meta" <<'PY' 2>/dev/null || true
+import json, os, sys
+root, listed = os.environ["SDK_ROOT_NOW"], set(os.environ["SDK_LISTED"].split())
+for t in json.load(open(sys.argv[1])).get("toolchains", []):
+    name = t.get("name", "")
+    if not name or ":" in name or name in listed:
+        continue
+    d = os.path.join(root, name)
+    if not os.path.isdir(d):
+        continue
+    tool = (t.get("layout") or {}).get("tool") or ""
+    run = os.path.basename(tool) if tool else ""
+    print(f"  {name:<11} {d}" + (f"  (run as {run})" if run else ""))
+PY
+    fi
     printf '\n== android packages ==\n'
     if command -v sdkmanager >/dev/null 2>&1; then
         sdkmgr --list_installed 2>/dev/null | sed -n '/^  /p' | head -20 \
