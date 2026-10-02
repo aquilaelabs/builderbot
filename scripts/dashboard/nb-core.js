@@ -108,6 +108,7 @@ function makeNotebook(project){
   const {loadArtifacts, loadVersion, drawVersion, postArtifacts, postVersion} = Object.assign(nb, nbArtifactsView({$, nb, project, root, sheet}));
   const {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection, loadBrief, briefSection} = Object.assign(nb, nbAnalysisView({$, nb, project}));
   const {loadDesign} = Object.assign(nb, nbDesignView({$, nb, project, root}));
+  const {loadWiki, wikiDirty, wikiNews} = Object.assign(nb, nbWikiView({$, nb, project}));
   const {loadRules, drawRules, saveRules, ruleDirty} = Object.assign(nb, nbRulesView({$, nb, project}));
   const {loadTests} = Object.assign(nb, nbTestsView({$, nb, project}));
   const {loadBugs, drawBugs, postBug} = Object.assign(nb, nbBugsView({$, nb, project}));
@@ -376,7 +377,7 @@ function makeNotebook(project){
   // identify; the whole value of this line is knowing WHO, and on a phone the
   // names are shorter than the sentence explaining there are two of them.
   const WHERE_IS = {memory: "Memory", roadmap: "Roadmap", bugs: "Bugs",
-                    analysis: "Analysis", artifacts: "Artifacts", design: "Design"};
+                    analysis: "Analysis", artifacts: "Artifacts", design: "Design", wiki: "Wiki"};
 
   function drawHere(){
     const el = $("nbHere");
@@ -404,6 +405,7 @@ function makeNotebook(project){
             memDirty() ? "an edited memory" : "",
             nb.ruleStagedCount() ? "an edited rule" : "",
             nb.designStagedCount() ? "an unsaved design" : "",
+            wikiDirty() ? "a wiki page being edited" : "",
             v ? `${v} staged version bump${v === 1 ? "" : "s"}` : ""]
       .filter(Boolean).join(" and ");
   }
@@ -519,12 +521,13 @@ function makeNotebook(project){
     // Save and Revert belong to the views that stage: roadmap, briefing and
     // the version on Artifacts. Bugs, tests and findings write through, and
     // a Save under a list nothing stages read as a button that did nothing.
-    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git", "docker"].includes(v);
+    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git", "docker", "wiki"].includes(v);
     if (v === "git") loadGit();
     if (v === "docker") loadNbDocker();
     if (v === "bugs" && !nb.bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "design") loadDesign();
+    if (v === "wiki") loadWiki();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
     if (v === "tests" && !nb.tests) loadTests();
     // The rules once; the code base every time the view is shown, since a
@@ -563,6 +566,7 @@ function makeNotebook(project){
     nb.verClearStaged();
     nb.ruleClearStaged();
     nb.designClearStaged();
+    nb.wkEdit.clear(); nb.wkAdding = null;
     nb.roadmapOrdering = false;
     redrawRoadmap();
     nb.memEditing.clear();
@@ -620,6 +624,7 @@ function makeNotebook(project){
   });
   watch("phone.dev", () => { if (showing("artifacts")) loadArtifacts(); });
   watch("reports", () => { if (showing("analysis")) loadAnalysis(); });
+  watch(() => `wiki:${project}`, k => { if (showing("wiki") && wikiNews(k)) loadWiki(); });
   watch("findings", () => { if (showing("analysis")) loadAnalysis(); });
 
   // ---- the notebook's own six halves ---------------------------------------

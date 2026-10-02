@@ -230,6 +230,17 @@ first, and `bb transcripts show ID` prints one whole, every command and its
 answer included: how to pick up what an earlier session of the same person
 did or was told.
 
+The project's wiki is the notebook's Wiki view, for the people who use or
+work on the project: `bb wiki` lists its pages, `bb wiki show NAME` prints
+one as Markdown, and `bb wiki save NAME FILE` writes a page whole (`-`
+reads it from stdin), with `[[Another page]]` linking to another. A save
+is the project's dial (Claude may: Write the wiki), and a page somebody
+changed since your save began is refused rather than overwritten: show it
+again and write over what is there now. Write it when asked to, or when
+the work leaves something a reader of the wiki needs (a setup step, how a
+feature is used); what a session needs goes in the tree's docs instead.
+Pushing it to the repository's wiki is a person's, from the view.
+
 <!-- BUILDERBOT:DESIGN -->
 
 The record's verbs, as you meet things:

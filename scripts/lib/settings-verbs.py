@@ -112,7 +112,8 @@ def show():
     # reports from other projects, 29 Sep).
     gate = rec.get("gate") if isinstance(rec.get("gate"), dict) else {}
     for label, key in (("Add to roadmap", "roadmap"), ("File bugs", "bugs"), ("Add rules", "rules"),
-                       ("Fill in build and test", "settings"), ("Add to the design", "design")):
+                       ("Fill in build and test", "settings"), ("Add to the design", "design"),
+                       ("Write the wiki", "wiki")):
         print(f"    Claude may: {label:<28} {gate.get(key) or 'auto'}")
     for label, key, dflt in (("Run its container", "devbuild", "deny"),
                              ("Report BuilderBot bugs", "report", "auto"),

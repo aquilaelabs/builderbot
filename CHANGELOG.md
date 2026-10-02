@@ -49,6 +49,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb node busy says whether a node is quiet enough to time anything on and why not, bb node wait-quiet waits for quiet, and a test run records the load it ran under (1544fb5)
 - A project's owner can put a password on its signing keys' backups, which every download then asks for, BuilderBot's owner's included; five wrong in a row hold downloads for fifteen minutes (81c9831)
 - A pytorch toolchain: python-ml, a Python with PyTorch for CUDA, numpy and ONNX, so a session can train or run a model on a node's NVIDIA card under bb gpu run (efad898)
+- A Wiki view in every project's notebook: pages a person or Claude writes (bb wiki, under Claude may: Write the wiki), exported as a zip whatever the remote, and pushed to or pulled from the repository's own wiki on GitHub, Gitea or GitLab (6fdba5b)
 
 ### Changed
 

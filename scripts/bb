@@ -304,6 +304,15 @@ bb design json     the record: the language, the pages, and the presets by key
 bb design schema   the record's shape with every limit, for a save that lands first time
 bb design save FILE   write a record of that shape back, whole: how a session
                    puts a design language it was given into the notebook
+bb wiki            the project's wiki, from the notebook's Wiki view: its pages,
+                   who changed each last, and where it is pushed
+bb wiki show NAME [--rev]   one page's Markdown (--rev: the revision a save checks)
+bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
+                   under Claude may: Write the wiki: auto lands it, ask holds it
+                   for the operator, deny refuses it. A page changed since the
+                   save began is refused rather than overwritten
+bb wiki rm NAME [--why "..."]   take a page out, under the same setting
+bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
 bb transcripts     your own conversations with Claude on this project, newest
                    first, as the Profile tab lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
@@ -1822,6 +1831,14 @@ cmd_design() {
 # project, as the Profile tab lists them; `bb -p NAME transcripts` for a
 # project this one reads (the operator, 29 Sep). Only the account's own:
 # the controller looks under its transcripts and nowhere else.
+cmd_wiki() {
+    local auth proj
+    case "${1:-}" in -h|--help) usage | sed -n '/^bb wiki /,/^bb [^w]/p' | sed '$d'; return 0 ;; esac
+    proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
+    auth="$(bb_auth_or_die)"
+    BB_WIKI_AUTH="$auth" BB_WIKI_PROJECT="$proj" python3 "$BB_LIB/wiki-verbs.py" "$@"
+}
+
 cmd_transcripts() {
     local verb="${1:-list}" auth proj
     case "$verb" in list|show) ;; -h|--help)
@@ -4971,6 +4988,7 @@ case "${1:-help}" in
     brief) shift; cmd_brief "$@" ;;
     transcripts) shift; cmd_transcripts "$@" ;;
     design) shift; cmd_design "$@" ;;
+    wiki) shift; cmd_wiki "$@" ;;
     rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;

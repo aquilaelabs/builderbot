@@ -369,13 +369,14 @@ let pFetch = null;                       // this open's /api/pubkeys, parsed
 // dialog draws from, and auto on every open: what a session may enter is
 // asked once here so it is a choice made rather than a default found later.
 const P_GATE_IDS = {roadmap: "pGateRoadmap", bugs: "pGateBugs", rules: "pGateRules", settings: "pGateSettings",
-                    design: "pGateDesign"};
+                    design: "pGateDesign", wiki: "pGateWiki"};
 const pGateNow = () => Object.fromEntries(
   Object.entries(P_GATE_IDS).map(([k, id]) => [k, $(id).value || "auto"]));
 // What a new project starts on (the operator, 1 Oct). Auto where what a
 // session does lands in the notebook or the settings with its history and
 // is undone in a press: the roadmap, bugs, rules, build and test, the
-// design, and a report to BuilderBot's own tracker. Ask where it reaches
+// design, the wiki (each page's history is kept), and a report to
+// BuilderBot's own tracker. Ask where it reaches
 // past that: its container, which runs the project's code on a shared
 // machine and publishes ports (ask rather than the deny a project has
 // without a choice, so a session can propose a rebuild at all, having no

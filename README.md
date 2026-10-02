@@ -366,6 +366,15 @@ bb design json     the record: the language, the pages, and the presets by key
 bb design schema   the record's shape with every limit, for a save that lands first time
 bb design save FILE   write a record of that shape back, whole: how a session
                    puts a design language it was given into the notebook
+bb wiki            the project's wiki, from the notebook's Wiki view: its pages,
+                   who changed each last, and where it is pushed
+bb wiki show NAME [--rev]   one page's Markdown (--rev: the revision a save checks)
+bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
+                   under Claude may: Write the wiki: auto lands it, ask holds it
+                   for the operator, deny refuses it. A page changed since the
+                   save began is refused rather than overwritten
+bb wiki rm NAME [--why "..."]   take a page out, under the same setting
+bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
 bb transcripts     your own conversations with Claude on this project, newest
                    first, as the Profile tab lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every

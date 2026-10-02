@@ -1765,13 +1765,36 @@ the notebook writes the same record with `bb design save`, which keeps a
 record as it was sent or refuses it whole with everything wrong with it
 listed, never moving a block to fit or dropping a layout; and Write the
 file puts `docs/design-language.md` into the tree for every session to
-read), the
+read), **Wiki** (the project's wiki, described below), the
 **Roadmap** (the shared list of design work and ordered plans), **Bugs**,
 **Git**, **Artifacts**, **Docker** (every container that belongs to this
 project, with the manager's rows and controls, so a dev radarr for a media
 project is found beside that project rather than among every project's on
 the Docker tab),
 **Tests**, and **Analysis** (the scanner's findings for this project alone).
+
+The **Wiki** is the project's wiki, for whoever uses or works on it: pages
+of Markdown that a person writes on the view or a session writes with
+`bb wiki save`, under the project's dial Claude may: Write the wiki (auto
+lands a page, ask holds it on the notebook for approval with its text, deny
+refuses it). Each page is a row that opens to be read, drawn from its
+Markdown, with `[[Another page]]` a link to another row; Edit swaps an
+editor in, Save writes it through, and a page somebody changed since it was
+opened is refused rather than overwritten. The controller keeps it as a git
+repository of its own (`/config/wiki/PROJECT`) in the shape a forge's wiki
+has, one `Page-Name.md` per page with `Home`, `_Sidebar` and `_Footer` as
+GitHub reads them, so every change has a history and the wiki is never in
+the project's tree, where a session could rewrite what the controller then
+pushes. **Export** is a zip of the pages, which works for any project, with
+a remote or without. A project with push rights on GitHub, Gitea or GitLab
+gets **Push**, which sends the wiki to the repository's own `.wiki.git`
+with the project's credentials, and **Pull**, which takes in what was
+changed there (a page changed on both sides is named and nothing is taken
+until one side matches). A forge makes a wiki's repository only when its
+first page is saved on the web, so a first push to a repository with no
+wiki says to make one page there. GitHub's fine-grained tokens cannot write
+a wiki; a classic token with the repo scope can. Pushing and pulling are a
+person's: they reach outside BuilderBot.
 
 **Unsaved work does not cross those views.** Leaving a view asks, and answering
 yes throws the change away rather than carrying it to the next tab.

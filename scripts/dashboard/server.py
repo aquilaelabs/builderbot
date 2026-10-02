@@ -254,7 +254,7 @@ MAX_BODY = 64 * 1024
 # limits let run to megabytes (forty pages, sixty rules of twenty thousand
 # characters). At 64 kB a design of forty pages and thirteen themes was
 # refused as "body too large" with every part of it inside its limit.
-MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024}
+MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024, "/api/wiki": 1024 * 1024}
 
 # One field out of a request body, read the one way here and in every
 # module a handler calls into (fields.py).
@@ -2318,6 +2318,13 @@ brief.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
 import design                                                    # noqa: E402
 
 design.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
+# The notebook's wiki (R112): a repository of the controller's own per
+# project, pushed with the project's granted rights and nothing the tree says.
+import wiki                                                      # noqa: E402
+wiki.configure(state=STATE, workspace=WORKSPACE, write_json=write_json,
+               push_record_fn=lambda p: projects.load_push().get(p),
+               token_helper_fn=projects.token_helper, parse_fn=forges.parse,
+               config_fn=lambda d: gitrelay.config(d), env_fn=projects._git_env)
 
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card; see the module docstring
@@ -2941,6 +2948,8 @@ def revisions(who=None, projects=None):
         revs[f"tests:{n}"] = test_revs.get(n, 0)
         revs[f"rules:{n}"] = rule_revs.get(n, rules.EMPTY_REV)
         revs[f"pending:{n}"] = pend_revs.get(n, 0)
+        # The wiki's reflog, which every commit and pull moves: a stat.
+        revs[f"wiki:{n}"] = wiki.rev(n)
         if who is not None:
             revs[f"mem:{n}"] = memory.census(
                 n, home=home_for(users.uid_of(who)))["rev"]
@@ -3195,6 +3204,8 @@ GET_ROUTES = (
     ("prefix", "/api/preamble", "_get_preamble"),
     ("prefix", "/api/brief", "_get_brief"),
     ("prefix", "/api/design", "_get_design"),
+    ("prefix", "/api/wiki-export", "_get_wiki_export"),
+    ("prefix", "/api/wiki", "_get_wiki"),
     ("prefix", "/api/codebase", "_get_codebase"),
     ("prefix", "/api/pending", "_get_pending"),
     ("prefix", "/api/memory", "_get_memory"),
@@ -3259,6 +3270,7 @@ POST_ROUTES = (
     ("prefix", "/api/prefs", "_prefs_post"),
     ("prefix", "/api/brief", "_brief"),
     ("prefix", "/api/design", "_design"),
+    ("exact", "/api/wiki", "_wiki"),
     ("prefix", "/api/devapp", "_devapp"),
     ("prefix", "/api/changelog", "_changelog"),
     ("prefix", "/api/version", "_version"),
@@ -4442,6 +4454,48 @@ class Handler(BaseHTTPRequestHandler):
         req["mine"] = users.tmux_prefix(who)
         return self._json(*design.verb(name, req, who.get("name") or "somebody",
                                        bool(who.get("session"))))
+
+    def _get_wiki(self):
+        """GET /api/wiki: the project's wiki (wiki.view), or one page of it
+        with ?page=, for an account that sees the project; a session reads
+        it too, through bb wiki."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        pg = q.get("page", [""])[0]
+        if pg:
+            try:
+                return self._json(wiki.page(name, pg))
+            except wiki.Refused as e:
+                return self._json({"error": str(e)}, 404)
+        return self._json(wiki.view(name))
+
+    def _get_wiki_export(self):
+        """GET /api/wiki-export: the wiki as a zip of its Markdown pages,
+        whether or not the project has a remote."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        try:
+            fname, data = wiki.export_zip(name)
+        except wiki.Refused as e:
+            return self._json({"error": str(e)}, 404)
+        return self._attachment(fname, data, "application/zip")
+
+    def _wiki(self, req):
+        """POST /api/wiki: a page saved, removed or renamed, and the wiki
+        pushed to or pulled from the forge's (wiki.verb), for an account
+        that works on the project. A session's writes go through the
+        project's dial, Claude may: Write the wiki."""
+        name = field(req, "project")
+        if self._not_project(name) or self._readonly(name):
+            return
+        who = self._who() or {}
+        ident = users.git_identity(who, name) or {}
+        author = {"name": ident.get("name") or who.get("name") or "somebody", "email": ident.get("email") or ""}
+        return self._json(*wiki.verb(name, req, author, bool(who.get("session"))))
 
     def _get_codebase(self):
         """GET /api/codebase."""

@@ -39,7 +39,7 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # into each notebook tab (roadmap #27): auto lands it, ask holds it for
 # approval, deny refuses it. Creation only; see pending.py. Kept here
 # because it is a project setting, edited in the same dialog as the rest.
-GATE_KINDS = ("roadmap", "bugs", "rules", "settings", "design")
+GATE_KINDS = ("roadmap", "bugs", "rules", "settings", "design", "wiki")
 # The git policy's two questions, and what they read as when nothing is set:
 # a session may push the branch it works on, and may not push to main.
 GITPOL_KEYS = ("push", "main")

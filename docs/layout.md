@@ -59,6 +59,7 @@ scripts/
   lib/bug-verbs.py               `bb bug`
   lib/brief-verbs.py             `bb brief`: a new project's brief, and bb-tty's take of it for a first session
   lib/design-verbs.py            `bb design`: a project's design language and pages, as the notebook's Design view keeps them
+  lib/wiki-verbs.py              `bb wiki`: a project's wiki pages, listed, shown, saved and removed under Claude may: Write the wiki
   lib/transcripts-verbs.py       `bb transcripts`: the account's own conversations with Claude on a project, listed and printed
   lib/nb-history.py              `bb history`: the notebook's logs merged
   lib/rules-verbs.py             `bb rules`, except check
@@ -109,6 +110,7 @@ scripts/
     preamble.py                  what every session on a project starts with, assembled once
     brief.py                     a new project's brief: kept out of CLAUDE.md, handed to its first session through a dialog
     design.py                    the notebook's Design view: a project's design language and pages, the prompts a session is pointed at, and docs/design-language.md written from them
+    wiki.py                      the notebook's Wiki view: a project's wiki kept as a forge-shaped git repository of its own, exported as a zip and pushed to or pulled from the repository's wiki
     names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot

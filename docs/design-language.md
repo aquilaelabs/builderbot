@@ -800,10 +800,10 @@ Applies to: scripts/dashboard/nb-*.js; notebook, view, head, row, strip
 
 Every view opens with the same head row: its one-line summary on the left
 and its controls, History where it has one, on the right. That row is the
-first band of the view and sits at one height on all nine views.
+first band of the view and sits at one height on all ten views.
 
 The view strip is one row on a desktop. On a phone it wraps into rows of
-equal-width tabs rather than scrolling sideways: nine labels do not fit
+equal-width tabs rather than scrolling sideways: ten labels do not fit
 393px, and a strip that hides its last two behind an edge is a strip whose
 last two views nobody opens. Every tab stays visible at every width. The
 view a notebook is on comes back with a reload, the way the tab strip and
@@ -817,7 +817,7 @@ list to add to it.
 
 Save and Revert at the notebook's foot show only on the views that stage
 something behind them (Roadmap, Briefing, Design, the version on
-Artifacts). A view that writes through or only reads (Bugs, Tests,
+Artifacts). A view that writes through or only reads (Bugs, Wiki, Tests,
 Analysis, Git) has no foot.
 
 The Design view is two folds under its head row: Pages and Themes, in
@@ -856,6 +856,12 @@ choices in labeled selects on a `.dsrow` that lines up at the bottom, the
 row's prose field growing only to the width the other tabs give a field so
 what follows it stays beside it, colors as a chip beside a seven-character
 field, prose in a proseline.
+
+The Wiki view is the project's pages as rows you open to read, each drawn from its Markdown
+with a `[[link]]` opening another row; Edit swaps the editor in and Save writes the page through.
+Its head row carries History, Export, and Pull and Push when the project has a remote; why Push
+is dead (no push rights) is said in red under the head row, never only in a tooltip. New page is
+the band under the head row, the first page offered as Home.
 
 ### the dashboard on a phone (Web app)
 
@@ -1206,7 +1212,7 @@ Layout of a project's settings on a desktop frame (12 columns by 8 rows), from t
   3. Form (fields a person fills in): groups headed by a label: name and color, the remote, the node and Also sees, build and test, Claude may, yours here, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8, inside block 1 (Overlay: Project settings)
   4. Footer (the band at the foot): the foot: Unlink and Delete apart from Save; Save lists what takes a restart and asks: end the session now, or keep it, in the middle, columns 4 to 9 of 12, row 8 of 8, inside block 1 (Overlay: Project settings)
 Notes:
-  In sections, each headed by a label band drawn as a divide (small, dim, uppercase, a rule under it), and a section with no field showing hidden with its heading: The project (name, color, People), the remote (its own door, no heading), Where it runs (node, other nodes, the node's GPU, where tests run), What a session sees (Reads, Also sees), Build and test (commands, outputs, captures kept, dev builds kept), Android signing, Claude may (a change asked for while a test runs, then the permissions: the notebook's four, build and test and the container, the two signing ones, reports), Yours on this project, Sessions on this project. Groups headed by a label, every line a field band, one foot. Claude may is nine dials (Sign a release and Manage signing keys the newest), each auto, ask or deny. Also sees names the shares on the node a session may see, an allow-list since 29 Sep. During a test run says what a new ask does to a run going: wait for it, or interrupt it. Yours on this project is the person's own: model, effort, replies, questions. A saved change that takes a session restart (the model, the node, what it sees, the test setting) is listed at Save, which asks whether to end the running session now or keep it going (30 Sep). Unlink and Delete project are apart from Save, and each asks once, saying what goes and what stays. The node's GPU, with the Claude settings, says whether the project may compute on its node's NVIDIA card; off runs it as if the machine had none. People names the owner (a picker for the owner and BuilderBot's owner; the owner's pick is an offer, said under the picker, that waits for acceptance and shows with Withdraw) and Invite only, both staged until Save, who is on it, each invitation waiting with Withdraw, and Invite with its account picker, which acts on the press. Signing keys is a block per named key, Default key first, each a row per route (Play upload key, sideload signing key): the alias and fingerprint (made here for a generated key), Upload one or Replace opening its file and password fields, Generate on an empty slot (asking first for a sideload key), Download backup and Remove, and on a sideload row a key picker with Rotate to it; a retired sideload row says it is kept and why and has no Remove, a rotated-to row says who still sees the old key; a name field with New key under them, and Apps, each package with the key it signs with and Remove, then a package field, a key picker and Map it; a sideload key never backed up says so in red under its row.
+  In sections, each headed by a label band drawn as a divide (small, dim, uppercase, a rule under it), and a section with no field showing hidden with its heading: The project (name, color, People), the remote (its own door, no heading), Where it runs (node, other nodes, the node's GPU, where tests run), What a session sees (Reads, Also sees), Build and test (commands, outputs, captures kept, dev builds kept), Android signing, Claude may (a change asked for while a test runs, then the permissions: the notebook's four and the wiki, build and test and the container, the two signing ones, reports), Yours on this project, Sessions on this project. Groups headed by a label, every line a field band, one foot. Claude may is ten dials (Write the wiki the newest), each auto, ask or deny. Also sees names the shares on the node a session may see, an allow-list since 29 Sep. During a test run says what a new ask does to a run going: wait for it, or interrupt it. Yours on this project is the person's own: model, effort, replies, questions. A saved change that takes a session restart (the model, the node, what it sees, the test setting) is listed at Save, which asks whether to end the running session now or keep it going (30 Sep). Unlink and Delete project are apart from Save, and each asks once, saying what goes and what stays. The node's GPU, with the Claude settings, says whether the project may compute on its node's NVIDIA card; off runs it as if the machine had none. People names the owner (a picker for the owner and BuilderBot's owner; the owner's pick is an offer, said under the picker, that waits for acceptance and shows with Withdraw) and Invite only, both staged until Save, who is on it, each invitation waiting with Withdraw, and Invite with its account picker, which acts on the press. Signing keys is a block per named key, Default key first, each a row per route (Play upload key, sideload signing key): the alias and fingerprint (made here for a generated key), Upload one or Replace opening its file and password fields, Generate on an empty slot (asking first for a sideload key), Download backup and Remove, and on a sideload row a key picker with Rotate to it; a retired sideload row says it is kept and why and has no Remove, a rotated-to row says who still sees the old key; a name field with New key under them, and Apps, each package with the key it signs with and Remove, then a package field, a key picker and Map it; a sideload key never backed up says so in red under its row.
 
 ### a new project (Web app)
 

@@ -1968,6 +1968,28 @@ pre.diff .d-ctx{color:var(--dim)}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
+/* ---- the Wiki view (nb-wiki.js) ------------------------------------------
+   A page read in the row it opens from: the Markdown drawn as prose in the
+   tab's own type and colors, its code in the mono, its tables hairlined,
+   and the editor a textarea as tall as a page wants. */
+.wkpage{font-size:var(--f-field);line-height:1.55;color:var(--ink);overflow-wrap:anywhere;padding:2px 0 6px}
+.wkpage h3,.wkpage h4,.wkpage h5,.wkpage h6{margin:14px 0 6px;font-size:inherit;color:var(--ink)}
+.wkpage h3{font-size:1.15em}
+.wkpage p,.wkpage ul,.wkpage ol,.wkpage blockquote,.wkpage pre,.wkpage table{margin:0 0 10px}
+.wkpage ul,.wkpage ol{padding-left:1.4em}
+.wkpage blockquote{border-left:2px solid var(--line);padding-left:10px;color:var(--dim)}
+.wkpage code{font-family:var(--mono);font-size:.92em}
+.wkpage pre{font-family:var(--mono);background:var(--sunk);padding:8px 10px;border-radius:var(--r-small);
+  overflow-x:auto;white-space:pre}
+.wkpage table{border-collapse:collapse;display:block;overflow-x:auto}
+.wkpage th,.wkpage td{border:1px solid var(--line);padding:4px 8px;text-align:left}
+.wkpage hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+.wkpage a{color:var(--accent)}
+.wkrow .wkText,.wkadd .wkText{min-height:16em;font-family:var(--mono);width:100%;box-sizing:border-box}
+.wkfacts{margin-left:auto;font-size:var(--f-note)}
+.wklogrow{padding:3px 0;font-size:var(--f-note)}
+#wkWhy{color:var(--bad)}
+
 /* ---- the Design view (nb-design.js) --------------------------------------
    A language's choices in labeled controls, its colors as chips beside
    their hex, and a page's layout as blocks on a frame the finger moves
@@ -3414,6 +3436,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="nbtabs" role="tablist">
       <button type="button" data-v="briefing">Briefing</button>
       <button type="button" data-v="design">Design</button>
+      <button type="button" data-v="wiki">Wiki</button>
       <button type="button" data-v="roadmap">Roadmap</button>
       <button type="button" data-v="bugs">Bugs</button>
       <button type="button" data-v="git">Git</button>
@@ -3670,6 +3693,20 @@ body.booting .pane>.loading{margin:auto}
       <!-- Add page is the Pages section's own (the operator, 29 Sep):
            nb-design.js draws it at the top of that section. -->
       <div id="dsBody"></div>
+    </div>
+    <div class="nbview" data-view="wiki" hidden>
+      <!-- The project's wiki (wiki.py, nb-wiki.js): pages as rows that open
+           to be read, written through like Bugs, kept by the controller as a
+           forge-shaped repository so Export is a zip of Markdown and Push is
+           the repository's own wiki. -->
+      <div class="field nbhead vbar"><span id="wkHint">loading…</span><span class="sp"></span>
+        <button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button>
+        <button type="button" id="wkExport" title="every page as Markdown in a zip, with or without a remote">Export</button>
+        <button type="button" id="wkPull" hidden title="take in what changed on the forge's wiki">Pull</button>
+        <button type="button" id="wkPush" class="primary" hidden title="send the wiki to the repository's own wiki">Push</button>
+      </div>
+      <div class="field" id="wkWhy" hidden></div>
+      <div id="wkBody"></div>
     </div>
     <div class="nbview" data-view="analysis" hidden>
       <div class="field nbhead vbar"><span id="anaHint">loading…</span>
@@ -3988,6 +4025,8 @@ body.booting .pane>.loading{margin:auto}
           aria-label="new house rules from a session"></select></label>
         <label class="pick">Add to the design <select id="rnGateDesign"
           aria-label="the design language and pages saved from a session"></select></label>
+        <label class="pick">Write the wiki <select id="rnGateWiki"
+          aria-label="wiki pages written or removed by a session"></select></label>
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
@@ -4384,6 +4423,8 @@ body.booting .pane>.loading{margin:auto}
           aria-label="new house rules from a session"></select></label>
         <label class="pick">Add to the design <select id="pGateDesign"
           aria-label="the design language and pages saved from a session"></select></label>
+        <label class="pick">Write the wiki <select id="pGateWiki"
+          aria-label="wiki pages written or removed by a session"></select></label>
         <label class="pick">Fill in build and test <select id="pGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Run its container <select id="pGateDocker"
@@ -4721,6 +4762,7 @@ body.booting .pane>.loading{margin:auto}
 <script src="nb-artifacts.js"></script>
 <script src="nb-analysis.js"></script>
 <script src="nb-design.js"></script>
+<script src="nb-wiki.js"></script>
 <script src="nb-rules.js"></script>
 <script src="nb-tests.js"></script>
 <script src="nb-bugs.js"></script>

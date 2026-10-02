@@ -540,6 +540,8 @@ def rename(req):
     # project could not sign, with nothing saying why.
     _mv(STATE / "signing" / old, STATE / "signing" / new,
         "its signing keys", moved, failed)
+    # Its wiki (wiki.py, R112), a repository of the controller's own.
+    _mv(STATE / "wiki" / old, STATE / "wiki" / new, "its wiki", moved, failed)
     # Push rights follow the project, not the name: renaming is not a way to
     # get a second pushing copy of one repository.
     rights = load_push()
