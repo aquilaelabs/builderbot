@@ -3725,7 +3725,7 @@ def run_job(name, req, principal):
         when = (f", as of what it reported {age // 60}m ago; it has been "
                 "asked for a fresh answer, so a retry shortly may differ"
                 if age and age > 90 else "")
-        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Tools tab "
+        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Toolchains tab "
                          f"with {n['name']} picked, "
                          + ("or push and let CI build it."
                             if may_push(name)

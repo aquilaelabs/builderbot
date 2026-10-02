@@ -2284,7 +2284,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         argv: ['sh', '-c', 'flutter build apk'] });
       // alpha can push in the fixtures, so the refusal names CI as the way
       // out; the no-push-rights branch says so instead.
-      ok(/has no flutter/.test(gap.error || '') && /Tools tab/.test(gap.error || '')
+      ok(/has no flutter/.test(gap.error || '') && /Toolchains tab/.test(gap.error || '')
          && /let CI build it/.test(gap.error || ''),
          `a build needing a toolchain the node lacks is refused up front (${gap.error})`);
       const have = await api('/api/v1/jobs', { action: 'run', project: 'alpha',

@@ -3403,7 +3403,7 @@ cmd_lint() {
     need() { # need TOOL: false (and say so) when it is not installed
         command -v "$1" >/dev/null 2>&1 && return 0
         if on_node; then
-            printf '  [skip] %s is not in this node'"'"'s store; the Tools tab installs lint-tools, with this node picked\n' "$1"
+            printf '  [skip] %s is not in this node'"'"'s store; the Toolchains tab installs lint-tools, with this node picked\n' "$1"
             return 1
         fi
         printf '  [skip] %s is not in this image (predates it? update the container)\n' "$1"

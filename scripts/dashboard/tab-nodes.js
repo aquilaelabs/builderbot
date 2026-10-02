@@ -192,14 +192,14 @@ function nodeTools(n){
   const names = Object.keys(tc);
   if (n.kind !== "agent") return "";
   if (!names.length)
-    return `<div class="sub ndtools dim">no toolchains yet: install them from the Tools tab</div>`;
+    return `<div class="sub ndtools dim">no toolchains yet: install them from the Toolchains tab</div>`;
   // Held recipes whose system libraries this machine lacks (roadmap R51),
   // said here rather than left for a build to fail on: the store is shared,
   // the libraries are each machine's own, and the Tools tab installs them.
   const unmet = Object.entries(n.reported?.sysdeps?.unmet || {});
   const sys = unmet.length
     ? `<div class="sub ndsys warn">System packages missing for ${unmet.map(([r, ps]) =>
-        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: install them from the Tools tab</div>` : "";
+        `${esc(r)} (${esc(ps.join(" "))})`).join(", ")}: install them from the Toolchains tab</div>` : "";
   return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
     `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
       esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>${sys}`;
