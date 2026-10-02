@@ -95,7 +95,7 @@ def save_cards(v):
 # "findings" is the Analysis tab the Static analysis button opens, the
 # report as a document tab beside the notebook's own view of it.
 TAB_KINDS = {"term", "toolchains", "emulator", "notebook", "projects", "docker", "findings",
-             "nodes", "settings", "jobs", "users", "phone", "profile"}
+             "nodes", "settings", "jobs", "users", "profile"}
 
 
 def _layouts():

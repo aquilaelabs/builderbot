@@ -1402,7 +1402,7 @@ ok(await page.$$eval('.dmtab .row', rs =>
 // Each button on the Tools card carries an icon, and the tab it opens wears
 // the same one: a button and its tab are one thing in two places.
 ok(await page.$$eval('[data-card="tools"] .macros button', bs =>
-     bs.length === 7 && bs.every(b => b.querySelector('svg'))),
+     bs.length === 6 && bs.every(b => b.querySelector('svg'))),
    'every Tools button carries an icon');
 ok(await page.evaluate(() => {
      const btn = document.getElementById('bDocker').querySelector('svg').outerHTML;
