@@ -3943,7 +3943,7 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 trace_note(self, (time.monotonic() - t0) * 1000)
         except (BrokenPipeError, ConnectionResetError):
-            # The other end went away mid-answer: a download cancelled, a tab
+            # The other end went away mid-answer: a download canceled, a tab
             # closed. Nothing failed here and nobody is left to answer, so it
             # is one quiet line, not a traceback that bb diag lists as a fault
             # (B429).
