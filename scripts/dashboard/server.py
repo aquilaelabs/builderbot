@@ -3264,6 +3264,7 @@ POST_ROUTES = (
     ("prefix", "/api/version", "_version"),
     ("exact", "/api/signing", "_signing"),
     ("exact", "/api/members", "_members"),
+    ("exact", "/api/signing-backup", "_post_signing_backup"),
     ("prefix", "/api/artifacts", "_artifacts"),
     ("prefix", "/api/nodelog", "_nodelog"),
     ("exact", "/api/diag", "_diag"),
@@ -5319,6 +5320,10 @@ class Handler(BaseHTTPRequestHandler):
                                                 "keys (Claude may: Manage signing keys)"}, 403)
                 if act == "keys":
                     return self._json(*signing.listing(name))
+                # Said before anybody is asked to allow a key that could not
+                # be made: no backup password yet.
+                if act == "generate" and (no := signing.needs_lock(name)):
+                    return self._json(*no)
                 args = ({"key": field(req, "key") or "default", "route": field(req, "route")} if act == "generate"
                         else {"from": field(req, "from"), "to": field(req, "to")} if act == "rotate"
                         else {"package": field(req, "package"), "key": field(req, "key")})
@@ -5352,6 +5357,15 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             return self._json(*signing.start(self._principal(), name, field(req, "file"), field(req, "route"),
                                              field(req, "key")))
+        if field(req, "action") == "backup-password":
+            # The project's owner's alone, BuilderBot's owner included only
+            # when it owns the project: the point is that the dashboard's
+            # accounts are not enough by themselves.
+            if users.uid_of(who) != membership.owner_of(name):
+                return self._json({"error": f"only {name}'s owner ({membership.owner_name(name) or 'its owner'}) "
+                                            "sets its backup password"}, 403)
+            return self._json(*signing.set_backup_password(name, str(req.get("current") or ""),
+                                                           str(req.get("new") or ""), by=str(who.get("name") or "")))
         if field(req, "action") != "list" and self._refused("admin"):
             return None
         got, status = signing.verb(req, by=str(who.get("name") or ""))
@@ -5359,6 +5373,7 @@ class Handler(BaseHTTPRequestHandler):
         # where it would be handed over.
         if field(req, "action") == "list" and status == 200:
             got["may_backup"] = users.is_admin(who) and users.may_work(who, name)
+            got["may_lock"] = users.uid_of(who) == membership.owner_of(name)
         return self._json(got, status)
 
     def _get_node_busy(self):
@@ -5391,9 +5406,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_signing_backup(self):
         """GET /api/signing-backup: a project's keystore for an administrator's
-        own copy (signing.backup), which marks it backed up. Never a session's."""
+        own copy (signing.backup), which marks it backed up. Never a session's.
+        A project whose owner set a backup password is refused here and
+        downloads through the POST, which carries it in the body."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
-        name = q.get("project", [""])[0]
+        return self._signing_backup(q.get("project", [""])[0], q.get("route", [""])[0],
+                                    q.get("key", ["default"])[0] or "default", None)
+
+    def _post_signing_backup(self, req):
+        """POST /api/signing-backup: the same, with the project's backup
+        password in the body, never in a URL that lands in a log."""
+        return self._signing_backup(field(req, "project"), field(req, "route"),
+                                    field(req, "key") or "default", str(req.get("password") or ""))
+
+    def _signing_backup(self, name, route, key, password):
         if (self._who() or {}).get("session"):
             return self._json({"error": "a session never receives a signing key"}, 403)
         if self._not_project(name) or self._refused("admin"):
@@ -5404,7 +5430,13 @@ class Handler(BaseHTTPRequestHandler):
         if not users.may_work(self._who(), name):
             return self._json({"error": f"a signing key's backup goes to an administrator on {name}: "
                                         "add it to your own projects first"}, 403)
-        got, status = signing.backup(name, q.get("route", [""])[0], q.get("key", ["default"])[0] or "default")
+        if password is None and signing.backup_locked(name):
+            return self._json({"error": f"{name}'s key backups need their password: Download backup in its "
+                                        "settings asks for it"}, 403)
+        no = signing.backup_refusal(name, password or "")
+        if no:
+            return self._json(*no)
+        got, status = signing.backup(name, route, key)
         if status != 200:
             return self._json(got, status)
         return self._attachment(*got, "application/zip" if got[0].endswith(".zip") else "application/octet-stream")

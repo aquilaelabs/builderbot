@@ -1448,7 +1448,21 @@ await page.click('#rnInviteOnly');
 // anything is sent, and a key the server will not keep refused in the
 // dialog, which stays open.
 await page.waitForSelector('#rnSignField:not([hidden]) .rnsign[data-route="sideload"]', { timeout: 10000 });
-const signRows = await page.$$eval('#rnSignRows .rnsign', rs => rs.map(r => r.firstElementChild.textContent.trim()));
+const signRows = await page.$$eval('#rnSignRows .rnsign[data-key]', rs => rs.map(r => r.firstElementChild.textContent.trim()));
+// ...under the backup password's line, the project's owner's to set (the
+// fixture's owner owns alpha).
+ok(/Backup password: none/.test(await page.$eval('#rnSignRows .rnsignlock', e => e.textContent))
+   && /No key can be added or made until it has one: set it first/.test(await page.$eval('#rnSignRows .rnsignlock .sub.bad', e => e.textContent))
+   && await page.$('#rnLockOpen') !== null && await page.$('#rnSignRows [data-signopen]') === null,
+   'the signing keys open on whether their backups have a password, and with none no key can be added, the owner told to set it first');
+// Set, as the owner does it, and the keys can be added.
+await page.click('#rnLockOpen');
+await page.fill('#rnLockNew', 'a-backup-password');
+await page.fill('#rnLockAgain', 'a-backup-password');
+await page.click('#rnLockGo');
+await page.waitForFunction(() => /Backup password: set/.test(document.querySelector('#rnSignRows .rnsignlock')?.textContent || ''), null, { timeout: 10000 });
+await page.waitForSelector('#rnSignRows .rnsign[data-route="sideload"] [data-signopen]', { timeout: 10000 });
+ok(true, '...and once the owner sets one, Upload one is offered');
 ok(signRows.length === 2 && /^Play upload key: none$/.test(signRows[0]) && /^Sideload signing key: none$/.test(signRows[1]),
    `the gear shows the project's two signing keys, none yet (${signRows.join(' / ')})`);
 await page.click('#rnSignRows .rnsign[data-route="sideload"] [data-signopen]');
@@ -1466,6 +1480,7 @@ const signErr = await page.$eval('#rnErr', e => e.textContent);
 ok(!await page.$eval('#rnmodal', e => e.hidden)
    && !(await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.default?.sideload,
    `...and one the server will not keep is refused in the dialog, which stays open, with nothing kept (${signErr.slice(0, 90)})`);
+await api('/api/signing', { action: 'backup-password', project: 'alpha', current: 'a-backup-password', new: '' });
 // A rotated key (R106 step 7): the retired one says why it is kept and
 // offers no Remove; the one it went to says who still sees the old.
 {

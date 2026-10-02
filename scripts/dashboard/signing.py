@@ -163,7 +163,8 @@ def listing(project):
     for k in key_names(project):
         keys[k] = {r: (_public(rec) if (rec := _record(project, r, k)) else None) for r in ROUTES}
     return {"project": project, "keys": keys, "map": mapping(project),
-            "keytool": bool(keytool_path and keytool_path())}, 200
+            "keytool": bool(keytool_path and keytool_path()),
+            "backup_locked": bool(backup_locked(project))}, 200
 
 
 def routes_held(project):
@@ -230,6 +231,16 @@ def _keep(project, route, key, blob, alias, kind, sha, store_pass, key_pass, by,
     return {"ok": True, "project": project, "key": _public(rec)}, 200
 
 
+def needs_lock(project):
+    """(error, 409) while a project has no backup password, else None: a key
+    is only kept once its backups have one (the operator, 2 Oct), so no key
+    can leave the dashboard without it from the first one on."""
+    if backup_locked(project):
+        return None
+    return {"error": f"{project} has no backup password yet: its owner sets one under Signing keys first, "
+                     "and every key's backup asks for it from then on"}, 409
+
+
 def _check(project, route, key):
     if not _ok_project(project):
         return {"error": "unknown project"}, 400
@@ -243,7 +254,7 @@ def _check(project, route, key):
 def put(project, route, blob_b64, store_pass, alias="", key_pass="", by="", key=DEFAULT):
     """Keep a keystore for one key's route, once keytool has read it with the
     password given. (payload, status)."""
-    if (no := _check(project, route, key)):
+    if (no := _check(project, route, key)) or (no := needs_lock(project)):
         return no
     try:
         blob = base64.b64decode(blob_b64 or "", validate=True)
@@ -266,7 +277,7 @@ def generate(project, route, key=DEFAULT, by="", name=""):
     good for ten thousand days, behind a random password kept in its record,
     so nobody types or sees one. Refused where the slot holds a key already:
     replacing a key is an upload, said on purpose. (payload, status)."""
-    if (no := _check(project, route, key)):
+    if (no := _check(project, route, key)) or (no := needs_lock(project)):
         return no
     if _record(project, route, key):
         return {"error": f"{key} has a {WORDS[route]} already: replacing one is an upload, "
@@ -445,6 +456,72 @@ def backup(project, route, key=DEFAULT):
                                        f"alias: {rec.get('alias')}\nSHA-256: {rec.get('sha256')}\n")
         return (f"{base}.zip", buf.getvalue()), 200
     return (f"{base}.{ext}", blob), 200
+
+
+# ---- the backup password (the operator, 1 Oct) ----------------------------
+# A project's owner may put a password on its keys' backups, which every
+# download then needs, BuilderBot's owner's included: the dashboard's own
+# accounts stop being enough to walk off with a key. Kept as a PBKDF2 hash
+# (users.hash_password), never readable back; changed or removed only with
+# the current one; five wrong in a row hold the downloads for fifteen
+# minutes. It guards the dashboard's door, not the disk: somebody with a
+# shell on the controller reads /config either way, which the docs say.
+LOCK_TRIES, LOCK_HOLD = 5, 900
+_tries = {}
+
+
+def _lock_path(project):
+    return _root(project) / "backup-lock.json"
+
+
+def backup_locked(project):
+    try:
+        with open(_lock_path(project), encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) and d.get("hash") else None
+    except (OSError, ValueError):
+        return None
+
+
+def set_backup_password(project, current, new, by=""):
+    """Set, change or (new "") remove the backup password; the current one is
+    asked for whenever there is one. (payload, status)."""
+    import users
+    if not _ok_project(project):
+        return {"error": "unknown project"}, 400
+    was = backup_locked(project)
+    if was and not users.check_password(was["hash"], current or ""):
+        return {"error": "that is not the backup password now"}, 403
+    if not new:
+        if was:
+            _lock_path(project).unlink()
+        return {"ok": True, "backup_locked": False}, 200
+    if len(new) < 10:
+        return {"error": "a backup password is at least ten characters"}, 400
+    _write_private(_lock_path(project), json.dumps({"hash": users.hash_password(new), "by": by,
+                                                    "at": int(time.time())}).encode())
+    _tries.pop(project, None)
+    return {"ok": True, "backup_locked": True}, 200
+
+
+def backup_refusal(project, password):
+    """(error payload, status) when a backup may not be handed over for this
+    password, else None. Counts the misses."""
+    import users
+    lock = backup_locked(project)
+    if not lock:
+        return None
+    n, since = _tries.get(project, (0, 0.0))
+    if n >= LOCK_TRIES and time.time() - since < LOCK_HOLD:
+        return {"error": f"{LOCK_TRIES} wrong backup passwords in a row: downloads of {project}'s keys "
+                         f"wait {int((LOCK_HOLD - (time.time() - since)) // 60) + 1} more minutes"}, 429
+    if not password:
+        return {"error": f"{project}'s key backups need their password"}, 403
+    if not users.check_password(lock["hash"], password):
+        _tries[project] = (n + 1 if time.time() - since < LOCK_HOLD else 1, time.time())
+        return {"error": "that is not the backup password"}, 403
+    _tries.pop(project, None)
+    return None
 
 
 def secret(project, route, key=DEFAULT):

@@ -1325,6 +1325,12 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
          `...at Deny it is refused naming the setting, and another project's build is never its to sign (${denied.status}/${other.status})`);
       // Managing keys (R106 step 6): at Ask a new key or a mapping waits on
       // the owner too, and a session reads which keys exist but no secret.
+      // A key is made only once the backups have a password (2 Oct).
+      const unlocked = await sign({ action: 'generate', key: 'watch', route: 'sideload', why: 'too early' });
+      await bare('/api/signing', { method: 'POST', headers: ownerAuth,
+        body: JSON.stringify({ action: 'backup-password', project: 'alpha', new: 'a-backup-password' }) });
+      ok(unlocked.status === 409 && /backup password/.test(unlocked.body.error || ''),
+         `...and no key is proposed before the project's backups have a password (${unlocked.status})`);
       const listed = await sign({ action: 'keys' });
       const newKey = await sign({ action: 'generate', key: 'watch', route: 'sideload', why: 'the watch app' });
       const rot = await sign({ action: 'rotate', from: 'default', to: 'watch', why: 'move the app to the new key' });
@@ -1340,6 +1346,8 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
          `...a session reads the keys without a secret, proposes a new one for the owner to allow, and at Deny is refused naming the setting (${keyAsk?.cmd?.join(' ')})`);
       for (const a of [keyAsk, rotAsk]) if (a) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: a.id }) });
       await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask', keys: 'ask', node: '' }) });
+      await bare('/api/signing', { method: 'POST', headers: ownerAuth,
+        body: JSON.stringify({ action: 'backup-password', project: 'alpha', current: 'a-backup-password', new: '' }) });
       rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
       // ...and how busy a node is (R108), for its own project only.
       const nb = await bare('/api/node-busy?project=beta', { headers: sessAuth });
@@ -1370,6 +1378,35 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
         ok(off.status === 403 && /add it to your own projects/.test(offMsg.error || '') && on.status === 200
            && listOff.body.may_backup === false && listOn.body.may_backup === true,
            `a signing key's backup is an administrator's on the project only, and the dialog offers it only to them (${off.status}/${on.status})`);
+        // A backup password, the project's owner's (the operator, 1 Oct):
+        // then every download needs it, BuilderBot's owner's included,
+        // carried in a POST body and never a URL; five misses hold them.
+        const notOwner = await post(adminAuth, '/api/signing', { action: 'backup-password', project: 'alpha', new: 'a-long-password' });
+        const short = await post(ownerAuth, '/api/signing', { action: 'backup-password', project: 'alpha', new: 'short' });
+        const set = await post(ownerAuth, '/api/signing', { action: 'backup-password', project: 'alpha', new: 'a-long-password' });
+        const plain = await bare('/api/signing-backup?project=alpha&route=sideload', { headers: ownerAuth });
+        const dl = pw => bare('/api/signing-backup', { method: 'POST', headers: ownerAuth,
+          body: JSON.stringify({ project: 'alpha', route: 'sideload', password: pw }) });
+        const wrong = await dl('nope');
+        const right = await dl('a-long-password');
+        const change = await post(ownerAuth, '/api/signing', { action: 'backup-password', project: 'alpha', current: 'nope', new: '' });
+        ok(notOwner.status === 403 && short.status === 400 && set.body.backup_locked === true && plain.status === 403
+           && wrong.status === 403 && right.status === 200 && change.status === 403,
+           `a backup password is the project owner's to set, and then every download asks for it, a plain link and a wrong one refused (${plain.status}/${wrong.status}/${right.status})`);
+        for (let i = 0; i < 5; i++) await dl('nope');
+        const held = await dl('a-long-password');
+        ok(held.status === 429, `...and five wrong in a row hold the downloads, even for the right one (${held.status})`);
+        // Handing the project on leaves the password where it is (the
+        // operator, 2 Oct): the new owner changes it only with it.
+        await post(ownerAuth, '/api/users', { action: 'projects', name: 'adminone', projects: ['alpha'] });
+        await post(ownerAuth, '/api/members', { action: 'set', project: 'alpha', owner: 'adminone' });
+        const blind = await post(adminAuth, '/api/signing', { action: 'backup-password', project: 'alpha', new: 'taken-over-pw' });
+        const told = await post(adminAuth, '/api/signing', { action: 'backup-password', project: 'alpha',
+                                                             current: 'a-long-password', new: 'handed-on-pw' });
+        ok(blind.status === 403 && told.status === 200,
+           `a new owner changes the backup password only with the one it already has (${blind.status}/${told.status})`);
+        await post(ownerAuth, '/api/members', { action: 'set', project: 'alpha', owner: 'test' });
+        rmSync(`${DIR}/state/signing/alpha/backup-lock.json`, { force: true });
         rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
       }
       const view = await post(ownerAuth, '/api/members', { action: 'view', project: 'gamma' });

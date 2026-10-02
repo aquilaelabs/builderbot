@@ -47,6 +47,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project keeps several named signing keys, uploaded or generated on the controller, and maps each app's package to one, so a repository of several apps signs each with its own key or a shared one; Claude may propose a key or a mapping under Manage signing keys (d32bb3d)
 - A sideload key can be rotated to another of the project's keys: builds then carry both and a proof, Android 9 and newer move to the new key, older devices keep the old, which is retired and kept (a7c3d31)
 - bb node busy says whether a node is quiet enough to time anything on and why not, bb node wait-quiet waits for quiet, and a test run records the load it ran under (1544fb5)
+- A project's owner can put a password on its signing keys' backups, which every download then asks for, BuilderBot's owner's included; five wrong in a row hold downloads for fifteen minutes (81c9831)
 
 ### Changed
 
@@ -109,6 +110,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's settings are in titled sections: the project and its people, where it runs, what a session sees, build and test, Android signing, Claude may, yours, and its sessions (d0e52bf)
 - The new project dialog offers all nine Claude may settings, Sign a release, Manage signing keys and Report BuilderBot bugs among them, and Run its container starts at ask rather than deny (d0e52bf)
 - A signing key's Download backup is offered to, and served to, an administrator who has the project on their own list, not every administrator who can see it (7e38643)
+- A project's signing keys need a backup password before the first one: no key is uploaded, generated or proposed until its owner sets one; a new owner changes it only with it (81c9831)
 
 ### Removed
 

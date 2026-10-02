@@ -3223,6 +3223,17 @@ in its settings (the gear):
   The row says so in red until it has been downloaded once with **Download
   backup**, a copy to keep offline. A backup goes to an administrator who has
   the project on their own list, not to every administrator who can see it.
+  The project's owner puts a **backup password** on its keys before the
+  first one: until there is one, no key is uploaded, generated or proposed,
+  and a key from before the rule goes on signing. Every download then asks
+  for it, BuilderBot's owner's included. Handing the project to another
+  owner leaves it as it is, and the new owner changes it only with it; one
+  nobody passed on leaves the keys' backups out of the dashboard's reach,
+  which for a sideload key means a new key and a new app. It is kept as a hash,
+  changed or removed only with the current one, carried in a request's body
+  and never a URL, and five wrong in a row hold the downloads for fifteen
+  minutes. It closes the dashboard's door, not the disk's: somebody with a
+  shell on the controller can read `/config/signing/` either way.
 
 The keystore (`.jks` or `.p12`) and its passwords are kept by the controller
 under `/config/signing/PROJECT/`, owner-only, beside the git tokens and like

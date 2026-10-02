@@ -36,6 +36,8 @@ class Signing(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, True)
         signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"),
                           keytool=lambda: KT)
+        # A key is kept only once its backups have a password (2 Oct).
+        signing.set_backup_password("app", "", "a-backup-password")
         self.ks = self.tmp / "k.p12"
         subprocess.run([KT, "-genkeypair", "-keystore", str(self.ks), "-storetype", "PKCS12",
                         "-storepass", "s3cret-pass", "-alias", "upload", "-keyalg", "RSA",
@@ -115,6 +117,13 @@ class Signing(unittest.TestCase):
         signing.remove("app", "sideload", "watch")
         self.assertEqual(signing.mapping("app"), {})
 
+    def test_no_key_until_the_backups_have_a_password(self):
+        signing.set_backup_password("app2", "", "")
+        r, st = signing.put("app2", "play", self.b64, "s3cret-pass")
+        self.assertEqual(st, 409)
+        self.assertIn("backup password", r["error"])
+        self.assertEqual(signing.generate("app2", "sideload")[1], 409)
+
     def test_only_the_two_routes_and_a_real_project(self):
         self.assertEqual(signing.put("app", "other", self.b64, "s3cret-pass")[1], 400)
         self.assertEqual(signing.put("../x", "play", self.b64, "s3cret-pass")[1], 400)
@@ -124,6 +133,7 @@ class NoKeytool(unittest.TestCase):
     def test_without_one_it_says_what_to_install(self):
         signing.configure(state=tempfile.mkdtemp(), project_name=re.compile(r"[A-Za-z0-9._-]+"),
                           keytool=lambda: None)
+        signing.set_backup_password("app", "", "a-backup-password")
         r, st = signing.put("app", "play", base64.b64encode(b"x").decode(), "p")
         self.assertEqual(st, 400)
         self.assertIn("jdk toolchain", r["error"])
@@ -185,6 +195,7 @@ class Rotate(unittest.TestCase):
         jdk = os.path.join(STORE, "jdk")
         signing.apksigner_path = lambda: (tool, {"JAVA_HOME": jdk, "PATH": jdk + "/bin:" + os.environ["PATH"]})
         self.addCleanup(setattr, signing, "apksigner_path", None)
+        signing.set_backup_password("app", "", "a-backup-password")
         signing.generate("app", "sideload", "default")
         signing.generate("app", "sideload", "watch2")
         signing.set_map("app", "com.example.phone", "default")
@@ -199,3 +210,32 @@ class Rotate(unittest.TestCase):
         self.assertEqual(signing.successor("app", "default"), "watch2")
         self.assertEqual(signing.remove("app", "sideload", "default")[1], 409)
         self.assertEqual(signing.rotate("app", "default", "watch2")[1], 409)
+
+
+class BackupPassword(unittest.TestCase):
+    """A project's backup password (the operator, 1 Oct): set, changed only
+    with the current one, needed for every download, held after five misses."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"), keytool=lambda: None)
+        signing._tries.clear()
+
+    def test_set_needed_changed_and_removed(self):
+        self.assertIsNone(signing.backup_refusal("app", ""))
+        self.assertEqual(signing.set_backup_password("app", "", "short")[1], 400)
+        self.assertEqual(signing.set_backup_password("app", "", "a-long-password")[1], 200)
+        self.assertNotIn("a-long-password", (self.tmp / "signing" / "app" / "backup-lock.json").read_text())
+        self.assertEqual(signing.backup_refusal("app", "")[1], 403)
+        self.assertEqual(signing.backup_refusal("app", "nope")[1], 403)
+        self.assertIsNone(signing.backup_refusal("app", "a-long-password"))
+        self.assertEqual(signing.set_backup_password("app", "wrong", "")[1], 403)
+        self.assertEqual(signing.set_backup_password("app", "a-long-password", "")[0]["backup_locked"], False)
+        self.assertIsNone(signing.backup_refusal("app", ""))
+
+    def test_five_misses_hold_even_the_right_one(self):
+        signing.set_backup_password("app", "", "a-long-password")
+        for _ in range(5):
+            signing.backup_refusal("app", "nope")
+        self.assertEqual(signing.backup_refusal("app", "a-long-password")[1], 429)

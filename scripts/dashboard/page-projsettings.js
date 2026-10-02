@@ -515,7 +515,7 @@ const RN_SIGN = [
   ["sideload", "Sideload signing key",
    "Signs a build handed out directly. Lose it and no update reaches an existing install: keep a copy offline."]];
 let rnSignKeys = null, rnSignTool = false, rnSignDraft = {}, rnSignMap = {}, rnSignMapDraft = {}, rnSignNew = [],
-    rnSignBackup = false;
+    rnSignBackup = false, rnSignLocked = false, rnSignMayLock = false, rnSignLockOpen = false, rnSignPw = {};
 
 function rnLoadSigning(name){
   rnSignKeys = null; rnSignDraft = {}; rnSignMapDraft = {}; rnSignNew = [];
@@ -527,6 +527,7 @@ function rnLoadSigning(name){
       if (rnFor !== name || j.error) return;
       rnSignKeys = j.keys || {}; rnSignMap = j.map || {}; rnSignTool = !!j.keytool;
       rnSignBackup = !!j.may_backup;
+      rnSignLocked = !!j.backup_locked; rnSignMayLock = !!j.may_lock;
       rnDrawSigning();
     })
     .catch(() => {});
@@ -560,6 +561,9 @@ function rnDrawSigning(){
         : "an administrator on this project downloads a copy to keep offline"}, since losing it is final.</div>` : ""}
       ${retired ? `<div class="sub">Retired: rotated to ${esc(k.retired_for)}. Kept, since the proof and every device before Android 9 still need it.</div>` : ""}
       ${rotated ? `<div class="sub">Rotated from ${esc(k.rotated_from)}: Android 9 and newer see this key, older devices still see ${esc(k.rotated_from)}.</div>` : ""}
+      ${rnSignPw[`${key}:${route}`] ? `<div class="rnsignbar">
+        <input type="password" data-signbackuppass autocomplete="current-password" placeholder="the backup password" aria-label="the backup password">
+        <button type="button" class="link" data-signbackupgo>Download</button></div>` : ""}
       ${d.open ? `<div class="rnsignform">
         <input type="file" data-signfile accept=".jks,.p12,.pfx,.keystore" aria-label="${esc(word)} keystore">
         <input type="password" data-signpass autocomplete="new-password" placeholder="keystore password" aria-label="keystore password">
@@ -567,9 +571,11 @@ function rnDrawSigning(){
         <input type="password" data-signkeypass autocomplete="new-password" placeholder="key password, if not the same" aria-label="key password">
       </div>` : ""}
       <div class="rnsignbar">
-        <button type="button" class="link" data-signopen>${d.open ? "Never mind" : k ? "Replace" : "Upload one"}</button>
-        ${!k && !d.open && rnSignTool ? `<button type="button" class="link" data-signgen>Generate</button>` : ""}
-        ${k && rnSignBackup ? `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&route=${route}" download>Download backup</a>` : ""}
+        ${rnSignLocked || d.open ? `<button type="button" class="link" data-signopen>${d.open ? "Never mind" : k ? "Replace" : "Upload one"}</button>` : ""}
+        ${!k && !d.open && rnSignTool && rnSignLocked ? `<button type="button" class="link" data-signgen>Generate</button>` : ""}
+        ${k && rnSignBackup ? (rnSignLocked
+          ? `<button type="button" class="link" data-signbackuppw>Download backup</button>`
+          : `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&route=${route}" download>Download backup</a>`) : ""}
         ${k ? `
         ${retired ? "" : `<button type="button" class="link" data-signremove>${d.remove ? "Keep it after all" : "Remove"}</button>`}` : ""}
         ${targets.length ? `<select data-rotateto aria-label="the key to rotate ${esc(key)} to">${
@@ -579,7 +585,23 @@ function rnDrawSigning(){
     </div>`;
   };
   const maps = {...rnSignMap, ...rnSignMapDraft};
-  $("rnSignRows").innerHTML = names.map(key => `<div class="rnsignkey">
+  // The backup password (the operator, 1 Oct): the project's owner's to set,
+  // and every download's to give, BuilderBot's owner's included.
+  const lockRow = `<div class="rnsign rnsignlock">
+      <div>Backup password: ${rnSignLocked ? "set" : "none"}</div>
+      <div class="sub dim">${rnSignLocked ? "Every key backup asks for it, whoever downloads it."
+        : "Every key backup will ask for it, whoever downloads it."}${rnSignMayLock ? "" : " The project's owner sets it."}</div>
+      ${rnSignLocked ? "" : `<div class="sub bad">No key can be added or made until it has one${rnSignMayLock ? ": set it first" : ""}.</div>`}
+      ${rnSignMayLock && rnSignLockOpen ? `<div class="rnsignform">
+        ${rnSignLocked ? `<input type="password" id="rnLockCur" autocomplete="current-password" placeholder="the backup password now" aria-label="the backup password now">` : ""}
+        <input type="password" id="rnLockNew" autocomplete="new-password" placeholder="${rnSignLocked ? "a new one, or empty to remove it" : "at least ten characters"}" aria-label="the new backup password">
+        <input type="password" id="rnLockAgain" autocomplete="new-password" placeholder="the new one again" aria-label="the new backup password again">
+        <div class="rnsignbar"><button type="button" class="link" id="rnLockGo">${rnSignLocked ? "Change it" : "Set it"}</button></div>
+      </div>` : ""}
+      ${rnSignMayLock ? `<div class="rnsignbar"><button type="button" class="link" id="rnLockOpen">${
+        rnSignLockOpen ? "Never mind" : rnSignLocked ? "Change or remove" : "Set a backup password"}</button></div>` : ""}
+    </div>`;
+  $("rnSignRows").innerHTML = lockRow + names.map(key => `<div class="rnsignkey">
       <div class="rnsignname">${key === "default" ? "Default key" : `Key: ${esc(key)}`}</div>
       ${RN_SIGN.map(([route, word, about]) => slot(key, route, word, about)).join("")}</div>`).join("")
     + `<div class="rnsignbar"><input id="rnSignNewName" autocomplete="off" spellcheck="false" placeholder="name, e.g. watch"
@@ -595,10 +617,11 @@ function rnDrawSigning(){
       <button type="button" class="link" id="rnMapGo">Map it</button></div>`;
   $("rnSignHint").textContent = rnSignTool ? ""
     : "No keytool here to check or make a key with: install the jdk toolchain, then add one.";
-  for (const row of $("rnSignRows").querySelectorAll(".rnsign")){
+  for (const row of $("rnSignRows").querySelectorAll(".rnsign[data-key]")){
     const key = row.dataset.key, route = row.dataset.route;
     const d = rnSignDraft[`${key}:${route}`] = rnSignDraft[`${key}:${route}`] || {key, route};
-    row.querySelector("[data-signopen]").onclick = () => {
+    const op = row.querySelector("[data-signopen]");
+    if (op) op.onclick = () => {
       d.open = !d.open;
       if (!d.open){ delete d.file; d.pass = d.alias = d.keypass = ""; }
       else d.remove = false;
@@ -629,6 +652,22 @@ function rnDrawSigning(){
     };
     const rm = row.querySelector("[data-signremove]");
     if (rm) rm.onclick = () => { d.remove = !d.remove; if (d.remove){ d.open = false; delete d.file; } rnDrawSigning(); };
+    const bp = row.querySelector("[data-signbackuppw]");
+    if (bp) bp.onclick = () => { rnSignPw[`${key}:${route}`] = !rnSignPw[`${key}:${route}`]; rnDrawSigning(); };
+    const bg = row.querySelector("[data-signbackupgo]");
+    if (bg) bg.onclick = async () => {
+      const pw = row.querySelector("[data-signbackuppass]").value;
+      bg.disabled = true;
+      const r = await postJSON("/api/signing-backup", {project: name, key, route, password: pw});
+      if (!r.ok){ bg.disabled = false; return notify((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`, true); }
+      const fname = (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || `${name}-${key}-${route}`;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(await r.blob()); a.download = fname;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      delete rnSignPw[`${key}:${route}`];
+      rnLoadSigning(name);
+    };
     const bk = row.querySelector("[data-signbackup]");
     if (bk) bk.onclick = () => setTimeout(() => rnLoadSigning(name), 1500);
     const f = row.querySelector("[data-signfile]");
@@ -641,6 +680,20 @@ function rnDrawSigning(){
       }
     }
   }
+  const lo = $("rnLockOpen");
+  if (lo) lo.onclick = () => { rnSignLockOpen = !rnSignLockOpen; rnDrawSigning(); };
+  const lg = $("rnLockGo");
+  if (lg) lg.onclick = async () => {
+    const cur = $("rnLockCur")?.value || "", nw = $("rnLockNew").value, again = $("rnLockAgain").value;
+    if (nw !== again) return notify("the two new passwords differ", true);
+    if (!nw && !rnSignLocked) return notify("type a password to set", true);
+    lg.disabled = true;
+    const j = await (await postJSON("/api/signing", {action: "backup-password", project: name, current: cur, new: nw})).json();
+    if (j.error){ lg.disabled = false; return notify(j.error, true); }
+    notify(j.backup_locked ? `${name}'s key backups now ask for the password` : `${name}'s key backups no longer ask for a password`);
+    rnSignLockOpen = false;
+    rnLoadSigning(name);
+  };
   $("rnSignNewGo").onclick = () => {
     const n = $("rnSignNewName").value.trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(n)) return notify("a key's name is lowercase letters, digits and dashes", true);
