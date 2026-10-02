@@ -189,8 +189,8 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
 // ---- the briefing names them ------------------------------------------------------------
 const pre = await api('/api/preamble?project=alpha');
 ok(/This project reads beta: each is at \/workspace\/NAME, read-only, and `bb -p NAME` in front/.test(pre.text)
-   && /its containers answer from here on this project's nodes/.test(pre.text) && /Nothing there is yours to change/.test(pre.text) && /read the projects its settings say it reads/.test(pre.text),
-   'the briefing says which projects the session reads and that nothing there is its to change, and the shipped rule carries the exception');
+   && /its containers answer from here on this project's nodes/.test(pre.text) && /Nothing there is yours to change/.test(pre.text) && /beyond the ones it reads/.test(pre.text),
+   'the briefing says which projects the session reads, that nothing there is its to change, and to look for context nowhere else');
 await api('/api/prefs', { project: 'alpha', reads: [] });
 ok(!/This project reads/.test((await api('/api/preamble?project=alpha')).text),
    '...and says nothing about reads when there are none');

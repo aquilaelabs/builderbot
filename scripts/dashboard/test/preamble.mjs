@@ -81,8 +81,12 @@ ok(/Questions to the person: more/.test(more.text) && /before a judgment call/.t
    '...and more, for a person who wants the judgment calls put to them (the operator, 25 Sep)');
 await setPref({ asks: '' });
 await setChange('wait');
-ok(p.text.split('never holds a reply').length === 2 && p.text.split('unshelve N WHY').length <= 2,
-   'an obligation reaches a session once, as a rule, and not again from the briefing; the shelf is said by the roadmap\'s own note');
+// Answering while a run goes is the briefing's (While tests run): what nobody
+// would switch off is not a global rule (the operator, 2 Oct), so it is said
+// there once and nowhere else.
+ok(p.text.split('answer while it runs').length === 2 && !/never holds a reply/.test(p.text)
+   && p.text.split('unshelve N WHY').length <= 2,
+   'an obligation reaches a session once, from the briefing and not again as a rule; the shelf is said by the roadmap\'s own note');
 
 // ---- the order, which is the operator's rules first -------------------------
 // How they want this worked on comes before what there is to work on. Asserted
