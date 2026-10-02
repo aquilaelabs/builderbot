@@ -858,6 +858,46 @@
       }
     },
     {
+      "name": "pytorch",
+      "label": "PyTorch with CUDA (python-ml, numpy, ONNX)",
+      "probe": "pytorch",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/python-ml",
+        "reports": "python-ml"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "A Python 3.12 of its own, run as python-ml, with PyTorch built for CUDA 12, numpy, onnx, onnxscript and onnxruntime: what training or running a model on a node's NVIDIA card needs, under bb gpu run. The CUDA libraries come inside PyTorch's wheels, so the node needs only its driver; there is no nvcc, which only a custom CUDA kernel would want. On a node without a card it runs on the CPU. A project that needs more packages makes its own environment over it: python-ml -m venv --system-site-packages .venv, then .venv/bin/pip install what it needs, which keeps this one as it was installed. torchrun is beside it. About 6 GB, nearly all of it the CUDA libraries.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 3000000000
+        },
+        "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; mkdir -p \"$dst/bin\" \"$dst/libexec\"; t=\"$(mktemp -d \"$dst/.work.XXXXXX\")\"; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1 UV_LINK_MODE=copy; \"$dst/libexec/uv\" python install -q 3.12; py=\"$(find \"$dst/python\" -path '*/bin/python3.12' -type f | head -1)\"; test -x \"$py\"; \"$dst/libexec/uv\" pip install -q --python \"$py\" --break-system-packages torch numpy onnx onnxscript onnxruntime; rel=\"${py#\"$dst\"/}\"; for n in python-ml torchrun; do if [ \"$n\" = torchrun ]; then a='-m torch.distributed.run'; else a=''; fi; printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"$here/../%s\" %s \"$@\"\\n' \"$rel\" \"$a\" > \"$dst/bin/$n\"; chmod +x \"$dst/bin/$n\"; done; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/python-ml",
+          "-c",
+          "import torch, numpy, onnx; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+        ]
+      }
+    },
+    {
       "name": "graphics",
       "label": "Graphics tools (ImageMagick, resvg, oxipng, pngquant, cwebp)",
       "probe": "graphics",

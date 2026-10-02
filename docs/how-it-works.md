@@ -3649,10 +3649,20 @@ an agent from another window, and the Nodes tab's Update is what clears it.
   and typescript-language-server, for pyright-lsp and typescript-lsp) and
   **kotlin-lsp** (JetBrains' server, for kotlin-lsp). rust-analyzer and clangd
   already come with the rust and swift toolchains.
+- **Training or running a model on the card**: the **pytorch** toolchain is a
+  Python of its own, run as `python-ml`, with PyTorch built for CUDA 12,
+  numpy and ONNX. PyTorch's wheels carry the CUDA libraries, so a node needs
+  only its NVIDIA driver; a heavy job runs as `bb gpu run --mem MB --
+  python-ml train.py`. A project wanting more packages makes its own
+  environment over it (`python-ml -m venv --system-site-packages .venv`), so
+  the store's copy stays as installed. Its install works in a folder beside
+  itself on the store rather than in the node's `/tmp`, since the download is
+  gigabytes and a node's own disk may not have them.
 - **Publishing**: from a session, whatever the project's own credentials
   allow on its node (`gh release create`, Gradle publish tasks); from a shell
-  on the controller, `npm publish` with `NPM_TOKEN`. Signing keys belong in CI
-  secrets, never the image.
+  on the controller, `npm publish` with `NPM_TOKEN`. An Android build is
+  signed with `bb sign`, on the node, with a key the session never sees;
+  any other signing key belongs in CI secrets, never the image.
 
 ## Logs
 

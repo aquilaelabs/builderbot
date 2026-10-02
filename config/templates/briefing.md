@@ -344,7 +344,11 @@ This node has an NVIDIA card: `bb status` names it under "where" with
 its free memory, and `bb gpu` says who is computing on it and whether
 this session may. A program uses the card only if it was written to: CUDA
 (PyTorch, CuPy, a build of your own), or the video encoder, which the
-store's ffmpeg carries as `h264_nvenc` and `hevc_nvenc`. Reach for it when
+store's ffmpeg carries as `h264_nvenc` and `hevc_nvenc`. The pytorch
+toolchain is the way in for a model: `python-ml` is its Python, with
+PyTorch for CUDA, numpy and ONNX, and a project needing more packages makes
+`python-ml -m venv --system-site-packages .venv` and installs into that;
+`bb toolchains` says whether this node has it. Reach for it when
 the work is that shape (training or running a model, encoding video, large
 array math) and not otherwise: a build or a test suite runs no faster for
 it. The card's memory is one pool for every session on the node, so start
