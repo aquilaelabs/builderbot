@@ -37,7 +37,7 @@ by hand cost four commands and still could not see the failed builds.
   that touch the image's inputs (Dockerfile, `scripts/`, `config/`), plus a
   weekly cron rebuild, so the base image stays fresh. Claude Code is in
   neither the image nor the boot: a session runs on a node, which carries its
-  own. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
+  own. It runs on a hosted `ubuntu-24.04`, deliberately (pinned, since `bb lint` fails on a moving `-latest` label here, R116): hosted minutes cost more,
   but building the image on the box that runs the image is circular: a bad
   image would take down the runner that has to build the fix. **A pull request
   does not build it.** That used to be two hosted builds for one answer, the

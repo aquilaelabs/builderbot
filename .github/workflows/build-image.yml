@@ -52,7 +52,10 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # A pinned image, never ubuntu-latest: GitHub repoints that label at a new
+    # release on its own date (Ubuntu 26 from 19 Oct 2026), and bb lint fails
+    # on it here so the pin moves only in a commit (R116).
+    runs-on: ubuntu-24.04
     # Two merges in quick succession queue two builds of the same branch, and
     # only the newest result means anything, so cancel the superseded one
     # rather than pay for an image already out of date when it lands.

@@ -128,6 +128,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A phone is set up from its node: the Phone tab and its Tools button are now a Phone section on each node's page of the Nodes tab, since every node with adb holds its own (32c0cd2)
 - Pull down from the top of a tab refreshes the dashboard on a phone, and the header's refresh button is gone; the app's Refresh buttons go too, since pulling down does the same (b083add)
 - Pull to refresh draws a browser's spinning arrow; the header's bug icon is drawn like the others; a wiki's first push to GitHub can replace the page GitHub made you create (5a2ff38)
+- bb lint names a workflow job on a moving hosted label (ubuntu-latest, windows-latest, macos-latest) with the pinned image to use instead, and fails on one in BuilderBot itself, whose image build now runs on ubuntu-24.04. (cb9d96b)
 
 ### Removed
 
