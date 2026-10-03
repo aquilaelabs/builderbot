@@ -220,6 +220,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A red reason line is red wherever it is drawn: a key never backed up, the Claude chooser's reasons and a sign-in's refusals were in the plain color (d0e52bf)
 - Two sessions' Gradle builds no longer deadlock on a shared cache: each project has its own (fd2b7e2)
 - bb catchup and bb ci-log say a project's CI runs on GitHub's own runners, whose logs stay on GitHub, instead of sending a session to its node for logs that were never kept. (836cc02)
+- bb version set from a version that was never released moves that version's changelog notes to the new number, so 0.2.0 then 0.5.0 leaves one 0.5.0 section rather than notes under a 0.2.0 nobody shipped. (57fc2e7)
 
 ### Security
 

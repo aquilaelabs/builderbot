@@ -920,10 +920,10 @@ def jump(project, value, by="claude", comp="", env=None):
         return {"error": f"{value} is not after {tgt}: a version only moves forward "
                          "(bb version unbump takes the last bump back)"}
     part = PARTS[next(i for i in range(3) if a[i] != b[i])]
-    return bump(project, part, by=by, comp=comp, env=env, to=value)
+    return bump(project, part, by=by, comp=comp, env=env, to=value, fold=True)
 
 
-def bump(project, part, by="claude", comp="", env=None, to=None):
+def bump(project, part, by="claude", comp="", env=None, to=None, fold=False):
     """Move the target and commit that one file.
 
     Committing rather than leaving the tree dirty is the whole reason this is
@@ -975,6 +975,21 @@ def bump(project, part, by="claude", comp="", env=None, to=None):
     if why:
         return {"error": why}
     new = to or next_version(tgt, part)
+    # A set (jump) renumbers: "it is 0.5.0, not 0.2.0". When the number being
+    # left was never released (no tag, unbump's own test), its dated section
+    # is notes for a release that will not happen under that number, so they
+    # go back into Unreleased and are dated with this one. Otherwise 0.1.0 to
+    # 0.2.0 to 0.5.0 left every entry under a 0.2.0 nobody shipped, and
+    # 0.5.0's notes held only what came after (report #49, 3 Oct). A bump is
+    # a step and keeps the section it leaves: a project that never tags still
+    # shipped what each bump dated (version.mjs holds that).
+    folded, cl_was = False, None
+    if fold and changelog is not None and not _release_tag_exists(project, tgt, comp):
+        try:
+            cl_was = (where / changelog.FILE).read_text(encoding="utf-8")
+        except OSError:
+            cl_was = None
+        folded = changelog.unroll(where, tgt)
     p = where / VERSION_FILE
     try:
         p.write_text(new + "\n", encoding="utf-8")
@@ -999,12 +1014,20 @@ def bump(project, part, by="claude", comp="", env=None, to=None):
         if why:
             try:
                 p.write_text(tgt + "\n", encoding="utf-8")
+                # ...and the section the fold dissolved, put back as it was.
+                if folded and cl_was is not None:
+                    (where / changelog.FILE).write_text(cl_was, encoding="utf-8")
             except OSError:
                 pass
             return {"error": why}
+    if folded:
+        msg += f"\n\n{tgt} was never released: its changelog section is dated {new} with the rest."
     r = _seal(project, where, rel, new, msg, env=env, extra=extra)
     if r.get("ok"):
         r.update(was=tgt, part=part, component=comp, stamped=extra)
+        if folded:
+            r["note"] = ((r.get("note") or "") + "; " if r.get("note") else "") + \
+                f"{tgt} was never released, so its changelog notes moved to {new}"
     return r
 
 

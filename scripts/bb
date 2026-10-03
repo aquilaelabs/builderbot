@@ -59,7 +59,9 @@ bb version bump major|minor|patch    move the target, if the policy allows it.
                    behind. A repo without one is unaffected
 bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
 bb version set X.Y.Z   straight to a later version in one commit, allowed
-                   when the policy allows the largest part it moves
+                   when the policy allows the largest part it moves; from a
+                   number never released (no tag), its changelog section is
+                   dated as the new one
 bb version unbump      take an unreleased bump back; its changelog section
                    dissolves into Unreleased, the code stays
 bb version --list  every version this repo carries: its own, and any component

@@ -101,6 +101,8 @@ if argv and argv[0] == "set":
         fail(r["error"])
     print(f"{proj}{'/' + comp if comp else ''} {r['was']} -> {r['target']}  "
           f"({r['part']}, committed {r['commit']}, not pushed)")
+    if r.get("note"):
+        print(f"note: {r['note']}")
     lands_line()
     raise SystemExit(0)
 

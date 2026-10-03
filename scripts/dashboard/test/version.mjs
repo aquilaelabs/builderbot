@@ -739,6 +739,38 @@ const reopened = cl().out;
 ok(reopened.indexOf('## Unreleased') !== -1
    && reopened.indexOf('## Unreleased') < reopened.indexOf('## 0.4.1'),
    'the next entry reopens Unreleased above the dated history');
+// ---- set renumbers a version nobody released (report #49) ---------------
+// 0.1.0, bumped to 0.2.0 (which dated every entry under 0.2.0), then set to
+// 0.5.0 before anything was released: 0.2.0's notes are 0.5.0's. A tagged
+// number keeps its section, and a plain bump keeps the one it leaves.
+{
+  const R = `${WS}/renumber`;
+  rmSync(R, { recursive: true, force: true });
+  mkdirSync(R, { recursive: true });
+  execFileSync('git', ['-C', R, 'init', '-q', '.'], { env });
+  writeFileSync(`${R}/VERSION`, '0.1.0\n');
+  execFileSync('git', ['-C', R, 'add', '-A'], { env });
+  execFileSync('git', ['-C', R, 'commit', '-qm', 'init'], { env });
+  setPolicyFor('renumber', 'open');
+  const rb = (...a) => { try {
+      return { out: execFileSync('bash', [BB, ...a], { cwd: R, env }).toString(), code: 0 };
+    } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; } };
+  const file = () => readFileSync(`${R}/CHANGELOG.md`, 'utf8');
+  rb('changelog', 'add', 'First feature', '--cat', 'Added');
+  rb('version', 'bump', 'minor');
+  ok(/## 0\.2\.0/.test(file()), 'a bump dates the section as ever');
+  rb('changelog', 'add', 'Second feature', '--cat', 'Added');
+  const set = rb('version', 'set', '0.5.0');
+  const f = file();
+  ok(set.code === 0 && !/## 0\.2\.0/.test(f) && /## 0\.5\.0: [\d-]+\n\n### Added\n\n- First feature[^\n]*\n- Second feature/.test(f),
+     `set to 0.5.0 from an unreleased 0.2.0 dates 0.2.0's notes as 0.5.0's, with what came after (${JSON.stringify(f.slice(0, 400))})`);
+  ok(/never released/.test(set.out), '...and says so');
+  execFileSync('git', ['-C', R, 'tag', '-a', 'v0.5.0', '-m', 'r'], { env });
+  rb('changelog', 'add', 'Third feature', '--cat', 'Added');
+  rb('version', 'set', '0.6.0');
+  ok(/## 0\.5\.0/.test(file()) && /## 0\.6\.0/.test(file()), 'a released number keeps its section when the version is set past it');
+}
+
 // ---- what a review pass caught, kept caught ------------------------------
 // A project release tag must not stamp a component: the repo-wide vX.Y.Z
 // says nothing about the extension, even when the numbers coincide.
