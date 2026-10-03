@@ -25,7 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: android-actions/setup-android@v3
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v7, pinned by commit
       - uses: ./local-action
   smoke:
     runs-on: [self-hosted, ${{ inputs.node }}]
@@ -52,6 +52,10 @@ class Forge(BaseHTTPRequestHandler):
                                              "actions/upload-artifact": "v7.0.1"}.get(p.split("/")[2] + "/" + p.split("/")[3], "")})
         if p.startswith("/repos/o/app/actions/runs?"):
             return self.answer({"workflow_runs": [
+                {"id": 13, "name": "Android CI", "head_branch": "main", "status": "completed",
+                 "conclusion": "cancelled", "created_at": "2026-10-03T02:00:00Z"},
+                {"id": 10, "name": "lint", "head_branch": "main", "status": "completed",
+                 "conclusion": "success", "created_at": "2026-10-02T23:00:00Z"},
                 {"id": 12, "name": "Android CI", "head_branch": "claude/x", "status": "completed",
                  "conclusion": "success", "created_at": "2026-10-03T01:00:00Z"},
                 {"id": 11, "name": "Android CI", "head_branch": "main", "status": "completed",
@@ -104,7 +108,10 @@ class Look(unittest.TestCase):
         self.assertIn("actions/checkout@v4: v7 is out", acts)
         self.assertIn("android-actions/setup-android@v3: v4 is out", acts)
         self.assertNotIn("upload-artifact", acts)            # its commit pin says v7: current
-        self.assertEqual(rec["run"]["id"], 11)                # main's, not the newer branch run
+        # main's newest verdict: not the newer branch run, not the run a
+        # successor cancelled, and the passing lint workflow is no finding.
+        self.assertEqual(rec["run"]["id"], 11)
+        self.assertEqual([f["where"] for f in rec["findings"] if f["kind"] == "run"], ["run 11"])
         self.assertTrue(any("Ubuntu 26" in f["text"] for f in rec["findings"]))
         self.assertEqual(ciwatch.read("app")["run"]["id"], 11)
         self.assertEqual([r["project"] for r in ciwatch.red(["app"])], ["app"])

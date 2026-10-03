@@ -60,7 +60,9 @@ def read(project):
 
 # ---- the tree ------------------------------------------------------------------
 
-USES = re.compile(r"^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:/[^@\s]*)?@([^\s#]+)\s*(?:#\s*(\S+))?")
+# The comment beside a commit pin says its version ("# v4, pinned by commit"):
+# the v and the number, never the comma after them.
+USES = re.compile(r"^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:/[^@\s]*)?@([^\s#]+)\s*(?:#\s*(v?\d[\w.]*))?")
 
 
 def workflows(project):
@@ -139,18 +141,31 @@ def look(project):
     repo = cilogs.repo_of(project)
     if repo and flows:
         try:
-            runs = cilogs.runs(project, 20)["runs"]
+            runs = cilogs.runs(project, 30)["runs"]
             main = _main_branch(project)
-            done = [r for r in runs if r["status"] == "completed" and (not main or r["branch"] == main)]
-            if done:
-                r = done[0]
-                run = {k: r[k] for k in ("id", "name", "branch", "conclusion", "at")}
-                run["ended"] = ended(r["conclusion"])
-                if r["conclusion"] not in ("success", "skipped", "neutral"):
+            # Each workflow by its newest run on main that came to a verdict:
+            # a run stopped because a newer one superseded it, or skipped,
+            # says nothing about the code (BuilderBot's android app run,
+            # cancelled by its successor, read as red on the first look).
+            verdict = {}
+            for r in runs:
+                if r["status"] != "completed" or (main and r["branch"] != main):
+                    continue
+                if r["conclusion"] in ("cancelled", "skipped", "neutral") or r["name"] in verdict:
+                    continue
+                verdict[r["name"]] = r
+            newest = None
+            for r in verdict.values():
+                if newest is None or r["at"] > newest["at"]:
+                    newest = r
+                if r["conclusion"] != "success":
                     found.append({"kind": "run", "sev": "bad", "where": f"run {r['id']}",
                                   "text": f"the newest {r['name']} run on {r['branch']} {ended(r['conclusion'])}: "
                                           f"bb ci-log {r['id']} reads it"})
-                found += _notices(repo, token, r["id"])
+            if newest:
+                run = {k: newest[k] for k in ("id", "name", "branch", "conclusion", "at")}
+                run["ended"] = ended(newest["conclusion"])
+                found += _notices(repo, token, newest["id"])
         except cilogs.Refused as e:
             err = str(e)
     rec = {"at": int(time.time()), "repo": repo, "workflows": len({w.split(':')[0] for w, _, _ in flows}),
