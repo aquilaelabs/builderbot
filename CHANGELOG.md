@@ -58,6 +58,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb tool sound makes sound effects for an app: sfxr's presets (blip, pickup, jump, laser, hit, powerup, explosion, bloop) with a seed for variations, or a plain tone or sweep, into dist/sound/ as OGG with a waveform and spectrogram beside it. (40d8d4b)
 - An audio toolchain on the Toolchains tab: bb tool sound say "TEXT" makes speech (piper) to feed an app's microphone, and bb tool sound hear FILE writes down what a recording says with its times (whisper). (324272a)
 - A node's row on the Nodes tab says what sound it has: its sound card or a virtual one, or none, and the sound server installed, which is what an emulator's audio would need. (560e137)
+- bb ci-log reads a run on GitHub's own runners: the controller asks GitHub with the project's token, and a session gets the runs, the step that failed and the end of each failed job's log, instead of asking the person to paste it. (a60fdd5)
 
 ### Changed
 

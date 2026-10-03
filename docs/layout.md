@@ -39,6 +39,7 @@ scripts/
   lib/reel.py                    `bb capture reel`: the frames of a recording that changed, stamped and tiled
   lib/touch.py                   `bb emu touch` and a drive script's $BB_TOUCH: a tap, hold or glide with its timing kept, through sendevent
   lib/sound.py                   `bb tool sound`: sound effects from sfxr's presets and plain tones, into dist/sound/ as OGG with a waveform and a spectrogram (ffmpeg)
+  lib/cilog-hosted.py            `bb ci-log` for a project on GitHub's own runners: the runs and a run's failed jobs, from the controller
   lib/docs.py                    `bb tool docs`: a document as Markdown (markitdown) or its pages as pictures (PyMuPDF), run with the documents toolchain's Python
   lib/poppler.py                 the pdftoppm and pdfinfo Claude Code's PDF reader asks for, drawn with PyMuPDF; the documents toolchain installs them
   lib/gpu.py                     `bb gpu`: the node's NVIDIA card from where a session stands, and a turn on it for a heavy job
@@ -111,6 +112,7 @@ scripts/
     preamble.py                  what every session on a project starts with, assembled once
     brief.py                     a new project's brief: kept out of CLAUDE.md, handed to its first session through a dialog
     design.py                    the notebook's Design view: a project's design language and pages, the prompts a session is pointed at, and docs/design-language.md written from them
+    cilogs.py                    a project's CI on GitHub's own runners: its runs and the end of a failed job's log, read with the controller's token for `bb ci-log`
     wiki.py                      the notebook's Wiki view: a project's wiki kept as a forge-shaped git repository of its own, exported as a zip and pushed to or pulled from the repository's wiki
     names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins

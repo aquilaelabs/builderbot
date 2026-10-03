@@ -165,6 +165,16 @@ who pinned it) are never removed, and a pinned build is not one of those
 kept beside it. One day of a session building a keyboard left seven debug
 APKs, 133 MB, before this.
 
+**CI on GitHub's own runners.** A job on a hosted runner keeps no log
+anywhere BuilderBot reaches, and GitHub hands a run's log only to a token,
+even on a public repository. So when every workflow of a project names a
+hosted label rather than `self-hosted`, `bb ci-log` asks the controller
+(`/api/ci-runs`, `cilogs.py`), which asks GitHub with the project's own
+token or the shared PAT: `--list` is the newest runs, and a run (the newest
+finished one when none is named) is its jobs, the step that failed, and the
+last 400 lines of each failed job's log. The log answers with a redirect to
+GitHub's storage, and the token is not sent on to it. R115.
+
 **Sound effects a session can make.** `bb tool sound make PRESET [--seed N]`
 is a port of sfxr's synthesizer (stdlib python, nothing to install): blip,
 pickup, jump, laser, hit, powerup, explosion and bloop, each a family a seed

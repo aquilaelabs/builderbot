@@ -2326,6 +2326,12 @@ wiki.configure(state=STATE, workspace=WORKSPACE, write_json=write_json,
                token_helper_fn=projects.token_helper, parse_fn=forges.parse,
                config_fn=lambda d: gitrelay.config(d), env_fn=projects._git_env)
 
+# A project's CI on GitHub's own runners (R115): its runs and a failed job's
+# log, read with the controller's credential for a session that has none.
+import cilogs                                                    # noqa: E402
+cilogs.configure(state=STATE, workspace=WORKSPACE, push_record_fn=lambda p: projects.load_push().get(p),
+                 config_fn=lambda d: gitrelay.config(d), parse_fn=forges.parse)
+
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card; see the module docstring
 # for why it stopped being a question inside each send box.
@@ -3214,6 +3220,7 @@ GET_ROUTES = (
     ("prefix", "/api/design", "_get_design"),
     ("prefix", "/api/wiki-export", "_get_wiki_export"),
     ("prefix", "/api/wiki", "_get_wiki"),
+    ("prefix", "/api/ci-runs", "_get_ci_runs"),
     ("prefix", "/api/codebase", "_get_codebase"),
     ("prefix", "/api/pending", "_get_pending"),
     ("prefix", "/api/memory", "_get_memory"),
@@ -4485,6 +4492,23 @@ class Handler(BaseHTTPRequestHandler):
             except wiki.Refused as e:
                 return self._json({"error": str(e)}, 404)
         return self._json(wiki.view(name))
+
+    def _get_ci_runs(self):
+        """GET /api/ci-runs: a project's runs on GitHub's own runners, or
+        with ?run=N (0 the newest finished) that run's jobs and the end of
+        each failed job's log (cilogs), for an account that sees the
+        project; a session reads it through bb ci-log."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        run = q.get("run", [""])[0]
+        if run and not run.isdigit():
+            return self._json({"error": "a run is named by its number"}, 400)
+        try:
+            return self._json(cilogs.log(name, int(run)) if run else cilogs.runs(name))
+        except cilogs.Refused as e:
+            return self._json({"error": str(e)}, 409)
 
     def _get_wiki_export(self):
         """GET /api/wiki-export: the wiki as a zip of its Markdown pages,

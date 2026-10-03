@@ -304,7 +304,10 @@ node, pushing is `bb git push` (also `fetch`, `pull`, `ls-remote`): the
 controller holds the keys, so no credential is ever here, and a plain
 `git push` says so and names these instead. `bb git policy` prints what
 you may push, which is your own branches and not a tag, a deletion or a
-branch only the host has.
+branch only the host has. What CI printed is `bb ci-log` (`--list` for the
+runs): a self-hosted run's log as its runner kept it, and a run on
+GitHub's own runners read from GitHub by the controller, failed jobs'
+ends first, so a red run is read here rather than pasted by the person.
 
 <!-- BUILDERBOT:IF android *.gradle *.gradle.kts android AndroidManifest.xml -->
 ## Android

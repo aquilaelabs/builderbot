@@ -49,6 +49,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/design` | prefix | `_get_design` | GET /api/design: design.view, a project's design language, its pages and the vocabulary they are drawn from, for a project this account sees; a session reads it too, through bb design. |  |
 | GET | `/api/wiki-export` | prefix | `_get_wiki_export` | GET /api/wiki-export: the wiki as a zip of its Markdown pages, whether or not the project has a remote. |  |
 | GET | `/api/wiki` | prefix | `_get_wiki` | GET /api/wiki: the project's wiki (wiki.view), or one page of it with ?page=, for an account that sees the project; a session reads it too, through bb wiki. |  |
+| GET | `/api/ci-runs` | prefix | `_get_ci_runs` | GET /api/ci-runs: a project's runs on GitHub's own runners, or with ?run=N (0 the newest finished) that run's jobs and the end of each failed job's log (cilogs), for an account that sees the project; a session reads it t |  |
 | GET | `/api/codebase` | prefix | `_get_codebase` | GET /api/codebase. |  |
 | GET | `/api/pending` | prefix | `_get_pending` | GET /api/pending. |  |
 | GET | `/api/memory` | prefix | `_get_memory` | GET /api/memory. |  |

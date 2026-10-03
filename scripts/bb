@@ -369,7 +369,9 @@ bb catchup         what has happened here lately: commits with the first line
                    box archived, and which image it is actually running
                    (`--since 7d`, `-n COMMITS`)
 bb ci-log          what CI printed on its last run here (`--list` for the runs
-                   kept, a run id for one, `--project NAME` from elsewhere)
+                   kept, a run id for one, `--project NAME` from elsewhere);
+                   for a project on GitHub's own runners, its runs and the end
+                   of each failed job's log, read by the controller from GitHub
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -1231,9 +1233,12 @@ cmd_ci_log() {
         # and the way to reach a node is the job channel (audited, scoped,
         # already built) rather than a share or a second credential.
         if ci_hosted_only "$proj"; then
-            log "no CI logs kept for ${proj}: its workflows run on GitHub's own runners,"
-            log "which keep their logs on GitHub; a person reads one on the run's page there"
-            return 0
+            # GitHub keeps these, and hands a log only to a token: the
+            # controller asks with its own, for this project (R115).
+            local auth; auth="$(bb_auth_or_die)"
+            local a=(); [ "$list" = 1 ] && a+=(--list); [ -n "$want" ] && a+=("$want")
+            BB_CI_AUTH="$auth" BB_CI_PROJECT="$proj" python3 "$BB_LIB/cilog-hosted.py" "${a[@]}"
+            return
         fi
         if [ -n "$(project_node 2>/dev/null)" ]; then
             log "nothing kept here; asking ${proj}'s node"
@@ -1597,8 +1602,8 @@ cmd_catchup() {
             # GitHub's machines, which keep the log on GitHub: saying it is on
             # the node sent Shebang-DevBoard's session to bb ci-log for a run
             # it never kept (B443).
-            echo "  none: this project's workflows run on GitHub's own runners,"
-            echo "  which keep their logs on GitHub, not here or on a node"
+            echo "  none here: this project's workflows run on GitHub's own runners,"
+            echo "  which keep the logs; 'bb ci-log --list' asks GitHub for them"
         elif [ -n "$(project_node 2>/dev/null)" ]; then
             # CI runs on the project's node now, so the records are there.
             # Not fetched here: catchup is read often and a job per read is

@@ -431,7 +431,9 @@ bb catchup         what has happened here lately: commits with the first line
                    box archived, and which image it is actually running
                    (`--since 7d`, `-n COMMITS`)
 bb ci-log          what CI printed on its last run here (`--list` for the runs
-                   kept, a run id for one, `--project NAME` from elsewhere)
+                   kept, a run id for one, `--project NAME` from elsewhere);
+                   for a project on GitHub's own runners, its runs and the end
+                   of each failed job's log, read by the controller from GitHub
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
