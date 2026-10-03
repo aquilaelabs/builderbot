@@ -213,6 +213,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb emu list answers in about a second and bb emu start picks its AVD without a minute and a half's pause: both read the AVDs' own files instead of avdmanager, which scanned the whole shared SDK first (7dca24a)
 - A red reason line is red wherever it is drawn: a key never backed up, the Claude chooser's reasons and a sign-in's refusals were in the plain color (d0e52bf)
 - Two sessions' Gradle builds no longer deadlock on a shared cache: each project has its own (fd2b7e2)
+- bb catchup and bb ci-log say a project's CI runs on GitHub's own runners, whose logs stay on GitHub, instead of sending a session to its node for logs that were never kept. (836cc02)
 
 ### Security
 
