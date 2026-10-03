@@ -86,6 +86,12 @@ class Verbs(unittest.TestCase):
         self.assertIn("letters", self.refused("make", "blip", "--name", "../x"))
         self.assertIn("no verb", self.refused("sing"))
 
+    def test_say_and_hear_without_the_audio_toolchain_name_it(self):
+        os.environ.pop("SDK_ROOT", None)
+        self.assertIn("audio toolchain", self.refused("say", "hello"))
+        open("x.wav", "wb").close()
+        self.assertIn("audio toolchain", self.refused("hear", "x.wav"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -117,7 +117,9 @@ A sound effect for an app (a blip, a pickup, a bloop, a laser) is
 and a beep or a sweep is `bb tool sound tone HZ [--ms N] [--to HZ]`; each
 lands in dist/sound/ as OGG with its waveform and spectrogram beside it.
 You cannot hear it: read the pictures for its length and its pitch's
-direction, and leave whether it sounds right to the person.
+direction, and leave whether it sounds right to the person. With the audio
+toolchain, `bb tool sound say "TEXT"` makes speech to feed an app and
+`bb tool sound hear FILE` writes down what a recording says, with times.
 
 A test run finds `BB_TEST_WORKERS` in its environment, on the node and
 inside a dev instance alike: how many workers this node lets a run use, set

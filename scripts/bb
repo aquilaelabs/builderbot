@@ -475,7 +475,10 @@ bb tool sound make PRESET [--seed N] [--name N] [--wav]  a sound effect for an
                    powerup, explosion, bloop), into dist/sound/ as OGG, with a
                    waveform and a spectrogram beside it to check it by; tone
                    HZ [--ms N] [--to HZ] makes a beep or a sweep, look FILE
-                   draws any sound, presets lists them
+                   draws any sound, presets lists them; say "TEXT" speaks it
+                   into a WAV (piper) and hear FILE writes down what a
+                   recording says with its times (whisper), which need the
+                   audio toolchain
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 EOF
 }
@@ -4290,7 +4293,8 @@ cmd_tool() {
             printf '  bb tool diagrams render FILE... [--out DIR]\n'
             printf '  bb tool docs read FILE... | pages FILE [--pages N-M] [--dpi N] [--out DIR]\n'
             printf '  bb tool office convert FILE... [--to pdf|docx|xlsx|pptx|odt|txt] [--out DIR]\n'
-            printf '  bb tool sound make PRESET [--seed N] | tone HZ [--ms N] [--to HZ] | look FILE | presets\n' ;;
+            printf '  bb tool sound make PRESET [--seed N] | tone HZ [--ms N] [--to HZ] | look FILE | presets\n'
+            printf '  bb tool sound say "TEXT" | hear FILE   (the audio toolchain)\n' ;;
         *) die "no tool called ${tool}: bb tool lists them" ;;
     esac
 }

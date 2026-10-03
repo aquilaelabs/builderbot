@@ -11,6 +11,10 @@ the pictures that let it check one it cannot hear.
         a waveform and a spectrogram of any sound file, as PNGs beside it
     bb tool sound presets
         the presets, in a line each
+    bb tool sound say "TEXT" [--name NAME] [--ogg]
+        speech, from piper, as a WAV to feed an app's microphone
+    bb tool sound hear FILE
+        what is said in a recording, as text with its times, from whisper
 
 sfxr is Tomas Pettersson's generator for game sounds (public domain); this is
 a port of its synthesizer, stdlib only: the parameters a preset picks, the
@@ -22,6 +26,10 @@ A session cannot listen to what it made. Each file comes with its waveform
 and its spectrogram beside it, which a session reads with its image reader:
 the length, the attack and decay, the pitch going up or down. Whether it
 sounds right is the person's to say.
+
+say and hear are the audio toolchain's (piper, and faster-whisper with the
+base.en model), run with that toolchain's own Python; hear takes anything
+ffmpeg reads, brought to the 16 kHz mono whisper wants.
 """
 import math
 import os
@@ -338,6 +346,81 @@ def save(samples, name, as_wav):
         print("  (no ffmpeg on this node: WAV only and no pictures; the Toolchains tab installs ffmpeg)")
 
 
+def audio_tc():
+    """The audio toolchain's directory, or a refusal that says how to get it."""
+    root = os.environ.get("SDK_ROOT", "")
+    d = os.path.join(root, "audio") if root else ""
+    if not (d and os.access(os.path.join(d, "bin", "python-audio"), os.X_OK)):
+        fail("say and hear need the audio toolchain on this node (piper and whisper); "
+             "installing it is the operator's, from the Toolchains tab")
+    return d
+
+
+# What hear runs inside the toolchain's Python: 16 kHz mono floats on stdin,
+# one line per segment out. Half a second of silence goes first: speech that
+# starts on the first sample lost its first word without it ("Set a timer"
+# heard as "at a timer", 3 Oct), and the times are given back without it.
+HEAR = """
+import sys, numpy
+from faster_whisper import WhisperModel
+audio = numpy.frombuffer(sys.stdin.buffer.read(), dtype=numpy.float32)
+audio = numpy.concatenate([numpy.zeros(8000, numpy.float32), audio])
+m = WhisperModel(sys.argv[1], device="cpu", compute_type="int8")
+segs, _ = m.transcribe(audio, language="en")
+for s in segs:
+    print(f"{max(0, s.start - 0.5):6.2f} to {max(0, s.end - 0.5):6.2f}  {s.text.strip()}")
+"""
+
+
+def say(text, name, as_ogg):
+    d = audio_tc()
+    if not text.strip():
+        fail('bb tool sound say "TEXT": something to say')
+    os.makedirs("dist/sound", exist_ok=True)
+    stem = name or "say-" + (re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "speech")
+    wav = f"dist/sound/{stem}.wav"
+    r = subprocess.run([os.path.join(d, "bin", "piper"), "-m",
+                        os.path.join(d, "models", "voices", "en_US-lessac-medium.onnx"), "-f", wav],
+                       input=text, capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.isfile(wav):
+        fail("piper could not say it: " + (r.stderr.strip().splitlines() or ["no reason given"])[-1])
+    final = wav
+    ff = ffmpeg()
+    if as_ogg and ff:
+        ogg = f"dist/sound/{stem}.ogg"
+        if subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-i", wav, "-c:a", "libvorbis",
+                           "-q:a", "5", ogg]).returncode == 0:
+            os.remove(wav)
+            final = ogg
+    with_ms = ""
+    if final == wav:
+        with wave.open(wav) as w:
+            with_ms = f"  ({int(w.getnframes() * 1000 / w.getframerate())} ms)"
+    print(f"{final}{with_ms}")
+    for p in look(final):
+        print(f"  {p}")
+
+
+def hear(path):
+    d = audio_tc()
+    ff = ffmpeg()
+    if not ff:
+        fail("hear needs ffmpeg to read the recording: the Toolchains tab installs it")
+    pcm = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", "16000",
+                          "-f", "f32le", "-"], capture_output=True)
+    if pcm.returncode != 0:
+        fail("ffmpeg could not read it: " + pcm.stderr.decode(errors="replace").strip()[-300:])
+    if not pcm.stdout:
+        fail("there is no sound in it")
+    r = subprocess.run([os.path.join(d, "bin", "python-audio"), "-c", HEAR,
+                        os.path.join(d, "models", "whisper", "base.en")],
+                       input=pcm.stdout, capture_output=True)
+    if r.returncode != 0:
+        fail("whisper could not hear it: " + r.stderr.decode(errors="replace").strip()[-300:])
+    out = r.stdout.decode().strip()
+    print(out or "(nothing said that whisper could make out)")
+
+
 def opt(args, name, default=None):
     if name in args:
         i = args.index(name)
@@ -354,8 +437,8 @@ def main(argv):
         print(__doc__.split("\n\n")[1])
         return
     verb, args = argv[0], argv[1:]
-    as_wav = "--wav" in args
-    args = [a for a in args if a != "--wav"]
+    as_wav, as_ogg = "--wav" in args, "--ogg" in args
+    args = [a for a in args if a not in ("--wav", "--ogg")]
     name = opt(args, "--name")
     if name and not re.fullmatch(r"[A-Za-z0-9._-]{1,60}", name):
         fail("--name is letters, digits, dots, dashes and underscores")
@@ -388,6 +471,12 @@ def main(argv):
         if kind not in ("sine", "square", "saw", "noise") or not (20 <= hz <= 20000) or not (5 <= ms <= 10000):
             fail("a tone is 20 to 20000 Hz, 5 to 10000 ms, and a sine, square, saw or noise")
         save(tone(hz, ms, to, kind), name or f"tone-{int(hz)}{f'-{int(to)}' if to else ''}-{ms}ms", as_wav)
+    elif verb == "say":
+        say(" ".join(args), name, as_ogg)
+    elif verb == "hear":
+        if not args or not os.path.isfile(args[0]):
+            fail("bb tool sound hear FILE: a recording that is there")
+        hear(args[0])
     elif verb == "look":
         if not args or not os.path.isfile(args[0]):
             fail("bb tool sound look FILE: a sound file that is there")
@@ -396,7 +485,7 @@ def main(argv):
             fail("no ffmpeg here to draw it: the Toolchains tab installs ffmpeg")
         print("\n".join(made))
     else:
-        fail(f"no verb {verb}: make, tone, look or presets")
+        fail(f"no verb {verb}: make, tone, say, hear, look or presets")
 
 
 if __name__ == "__main__":

@@ -56,6 +56,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A Report a bug button in the header, for a problem with BuilderBot that is not about one project (177cb32)
 - A project's bug report can carry your latest conversation on it (its end, redacted, as a file of its own), and the diagnostics download is a zip with each conversation beside diagnostics.json (abb2190)
 - bb tool sound makes sound effects for an app: sfxr's presets (blip, pickup, jump, laser, hit, powerup, explosion, bloop) with a seed for variations, or a plain tone or sweep, into dist/sound/ as OGG with a waveform and spectrogram beside it. (40d8d4b)
+- An audio toolchain on the Toolchains tab: bb tool sound say "TEXT" makes speech (piper) to feed an app's microphone, and bb tool sound hear FILE writes down what a recording says with its times (whisper). (324272a)
 
 ### Changed
 

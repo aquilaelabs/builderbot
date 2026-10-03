@@ -174,7 +174,12 @@ tone HZ [--ms N] [--to HZ]` is a plain beep or sweep. Each lands in
 spectrogram beside it, since a session cannot listen to what it made; with no
 ffmpeg on the node it is a WAV and no pictures, and says so. It is a verb of
 bb's rather than a toolchain of its own because there is nothing to fetch.
-R107.
+Speech is the **audio** toolchain's, which is a download (about 800 MB):
+`bb tool sound say "TEXT"` is piper with one English voice, a WAV ready for
+an app's microphone, and `bb tool sound hear FILE` is faster-whisper's
+base.en on the CPU, the words with their times, for a session to check what
+an app said. hear puts half a second of silence before the recording, since
+speech starting on the first sample lost its first word without it. R107.
 
 **Documents a session can read.** `bb tool docs read FILE...` prints a PDF,
 a Word document, a slide deck or a spreadsheet as Markdown, through

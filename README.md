@@ -537,7 +537,10 @@ bb tool sound make PRESET [--seed N] [--name N] [--wav]  a sound effect for an
                    powerup, explosion, bloop), into dist/sound/ as OGG, with a
                    waveform and a spectrogram beside it to check it by; tone
                    HZ [--ms N] [--to HZ] makes a beep or a sweep, look FILE
-                   draws any sound, presets lists them
+                   draws any sound, presets lists them; say "TEXT" speaks it
+                   into a WAV (piper) and hear FILE writes down what a
+                   recording says with its times (whisper), which need the
+                   audio toolchain
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
