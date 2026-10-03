@@ -81,6 +81,24 @@ cmd_tests_preflight() {
             fi
         fi
     fi
+    # ...and a suite that names a changed file outright, by its name in the
+    # suite's own source: the map indexes code, so a file a suite reads
+    # (config/toolchains.json, which toolchains.mjs holds bb's tool case
+    # against) or a bb library it drives (scripts/lib/sdk.sh) placed no
+    # suite, and a change to either went out on a gate that never ran the
+    # one suite that checks it (B442: the audio recipe's B441).
+    if [ "${suites[*]:-}" != ALL ]; then
+        local named
+        for f in "${files[@]}"; do
+            case "$f" in scripts/dashboard/test/*|scripts/dashboard/unit/*) continue ;; esac
+            while IFS= read -r named; do
+                [ -n "$named" ] || continue
+                named="$(basename "$named" .mjs)"
+                case "$named" in lab-*|_*) continue ;; esac
+                case " ${suites[*]:-} " in *" $named "*) ;; *) suites+=("$named") ;; esac
+            done < <(grep -lF -- "$(basename "$f")" "${BB_REPO:-$PWD}"/scripts/dashboard/test/*.mjs 2>/dev/null || true)
+        done
+    fi
     # Only what the harness has a file for: the map counts a python unit
     # file (test_x.py) as a test, rightly for other projects, and named
     # unit/test_token_keep.py for a change to bbapi.py, which the harness
