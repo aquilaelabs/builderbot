@@ -45,9 +45,14 @@ USAGE = ("bb version [--for DIR] "
          "[--semver|--code|--quad|--win|--msi|--pep440|--file|--json]\n"
          "bb version --list                 every version this repo carries\n"
          "bb version [--for DIR] bump major|minor|patch\n"
-         "bb version [--for DIR] set X.Y.Z     straight to a later version, as one bump\n"
+         "bb version [--for DIR] set X.Y.Z     straight to a later version, as one bump; from a\n"
+         "                                     number never released, its changelog notes come along\n"
+         "bb version [--for DIR] unbump        take the last bump or set back, while unreleased: its\n"
+         "                                     changelog section returns to Unreleased (once: the one\n"
+         "                                     before it stays)\n"
          "bb version [--for DIR] init X.Y.Z    give one its first VERSION\n"
-         "bb version policy")
+         "bb version policy                    what a session may move here\n"
+         "A section dated under the wrong number: unbump, then set the number you meant.")
 
 
 def fail(msg):

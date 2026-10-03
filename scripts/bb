@@ -62,8 +62,11 @@ bb version set X.Y.Z   straight to a later version in one commit, allowed
                    when the policy allows the largest part it moves; from a
                    number never released (no tag), its changelog section is
                    dated as the new one
-bb version unbump      take an unreleased bump back; its changelog section
-                   dissolves into Unreleased, the code stays
+bb version unbump      take the last unreleased bump or set back; its
+                   changelog section dissolves into Unreleased, the code
+                   stays. Once: the bump before it is not taken back too.
+                   A section dated under the wrong number is fixed with
+                   unbump, then set to the number meant
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
 bb version policy  what a session may move here, and who decides. A
