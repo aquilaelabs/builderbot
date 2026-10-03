@@ -347,6 +347,11 @@ else on the phone is `bb phone run --why`, one asked command at a time.
 An API level exists here where the store holds a system image for it:
 `bb emu images` lists them and `bb emu create <api>` fetches one on demand.
 Adding or removing one deliberately is the operator's, from the Emulator tab.
+The platform a build compiles against is separate: `bb toolchains` lists
+the store's `platforms/` and `build-tools/`, Gradle cannot fetch a missing
+one (the store is read-only to you), and the newest level is the
+Toolchains tab's "Android SDK Platform" row, ticked by the operator. Say
+which level the build needs rather than pinning dependencies down to fit.
 On a debuggable image `bb emu start` leaves adb root, so `am start` of an
 unexported activity and `bb emu touch` work without your own `adb root`.
 

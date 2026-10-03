@@ -267,7 +267,7 @@ directory.
 ```bash
 bb toolchains                     # what is installed, where, and how much room is left
 bb toolchains install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
-bb toolchains install android:ndk        # or cmake · emulator · platform-tools
+bb toolchains install android:ndk        # or cmake · emulator · platform-tools · platforms · build-tools
 bb toolchains list                # every toolchain the catalog offers
 bb toolchains plan swift          # what installing it would fetch and run, exactly
 bb toolchains versions            # what is installed, asking nobody
@@ -276,6 +276,17 @@ bb toolchains update flutter      # each the way its own tooling expects
 bb toolchains remove flutter
 bb toolchains env                 # the PATH lines; new shells get them automatically
 ```
+
+The NDK, CMake, the SDK platform and build-tools are versioned rows: each
+is a family of packages side by side, so the check asks whether the newest
+the repository offers is on the store, and Update installs it beside the
+older ones rather than in their place. The platform row's newest is the
+newest level's base (`platforms;android-37.0`, what `compileSdk = 37`
+names), not a quarterly minor or an extension level. A session cannot
+write the store, so the Android Gradle plugin cannot fetch a missing
+platform itself: a project wanting a level the store lacks names it, and
+the operator ticks the row. Before these two rows, a platform arrived only
+with an emulator image of its level, and platform 37 never arrived at all.
 
 **The NVIDIA driver is the machine's, not the store's.** On a node whose
 census names an NVIDIA card, the Toolchains tab shows the driver as a row of

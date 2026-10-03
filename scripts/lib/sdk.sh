@@ -531,10 +531,16 @@ sdk_android_list_forget() { rm -f "${TMPDIR:-/tmp}/bb-sdk-list.cache"; }
 # without ever saying so.
 sdk_android_newest() {
     local pkg="$1" all stable
+    # A platform is named by its level, and the newest level's base is what
+    # a compileSdk names: platforms;android-37.0 for compileSdk 37 (Google
+    # spells a level with its minor since 37). Its later minors (37.1, a
+    # quarterly release) and the extension levels (36-ext19) are left to
+    # be asked for by id, so "the newest platform" is one a build can use.
     all="$(sdk_android_list | sed -n '/Available Packages/,$p' \
            | awk -F'|' -v p="$pkg" '
                { id=$1; v=$2; gsub(/^ +| +$/,"",id); gsub(/^ +| +$/,"",v) }
-               id ~ ("^" p "(;[0-9][^;]*)?$") { print id "\t" v }' | sort -V)"
+               p == "platforms;android" && id ~ /^platforms;android-[0-9]+(\.0)?$/ { print id "\t" v; next }
+               p != "platforms;android" && id ~ ("^" p "(;[0-9][^;]*)?$") { print id "\t" v }' | sort -V)"
     stable="$(printf '%s\n' "$all" | grep -viE '(rc|beta|alpha|preview)[0-9]*$' || true)"
     if [ -n "$stable" ]; then all="$stable"; fi
     printf '%s\n' "$all" | tail -1
@@ -707,6 +713,27 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
             ;;
         android:*)
             local pkg="${what#android:}"
+            # A versioned row (the NDK, CMake, build-tools, the SDK platform)
+            # is a family of packages side by side, and a newer one is a new
+            # package rather than an update to the one installed: so the
+            # question is whether the newest the repository offers is on
+            # the store, not whether sdkmanager lists a revision update
+            # (which never showed platform 37 to a store holding 36).
+            local vpkg; vpkg="$(sdk_meta field "$what" source.package 2>/dev/null)"
+            if [ -n "$(sdk_meta field "$what" source.versioned 2>/dev/null)" ] && [ -n "$vpkg" ]; then
+                local fam="${ANDROID_HOME:-/opt/android-sdk}/${vpkg%%;*}" newest nid
+                inst="$(find "$fam/" -mindepth 1 -maxdepth 1 -type d ! -name '.*' -printf '%f\n' 2>/dev/null | sort -V | tail -1)"
+                [ -n "$inst" ] || inst="-"
+                if [ -z "$local_only" ]; then
+                    newest="$(sdk_android_newest "$vpkg")"; nid="${newest%%	*}"
+                    if [ -n "$nid" ]; then
+                        latest="${nid#*;}"
+                        if [ "$inst" = "-" ]; then status=absent
+                        elif [ -d "$fam/${nid#*;}" ]; then status=current
+                        else status=update; fi
+                    fi
+                fi
+            else
             # Non-empty, not merely present: every one of these is a
             # symlink onto the store, and the store has a directory per
             # package kind whether or not anything was installed into it.
@@ -736,6 +763,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
                 # same way the installer asks.
                 latest="$(sdk_android_newest "$pkg" | cut -f2)"
                 [ -n "$latest" ] || latest="-"
+            fi
             fi
             ;;
         *) printf '%s\t-\t-\tunknown\n' "$what"; return 0 ;;
@@ -820,6 +848,13 @@ sdk_update() {
    Android command-line tools on the Tools tab with that node picked; an android:*
    toolchain should bring it along, and if it did not then this store has a
    cmdline-tools directory with nothing in it, which is not the same thing."
+            # A versioned row updates by installing the newest beside what is
+            # there: a project pinned to the older one keeps building.
+            if [ -n "$(sdk_meta field "$what" source.versioned 2>/dev/null)" ]; then
+                sdk_install_android "$what"
+                sdk_relink_android
+                return 0
+            fi
             log "updating ${what#android:}"
             sdkmgr --update
             ;;

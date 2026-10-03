@@ -350,6 +350,62 @@
       "updatable": true
     },
     {
+      "name": "android:platforms",
+      "label": "Android SDK Platform (newest level)",
+      "probe": "android:platforms",
+      "layout": {
+        "bin": [],
+        "env": {}
+      },
+      "platforms": [
+        "linux/*"
+      ],
+      "requires": [
+        "android-tools"
+      ],
+      "about": "The android.jar a build compiles against: what compileSdk names. This installs the newest level Google publishes (platforms;android-37.0 as of October 2026), and Update installs the next one beside it, so a project still on an older level keeps building. Older levels arrive with an emulator image of that level. Removing this row removes every platform on the store.",
+      "source": {
+        "kind": "sdkmanager",
+        "package": "platforms;android",
+        "versioned": true,
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/repository2-3.xml"
+          ]
+        }
+      },
+      "updatable": true
+    },
+    {
+      "name": "android:build-tools",
+      "label": "Android SDK Build-Tools (newest)",
+      "probe": "android:build-tools",
+      "layout": {
+        "bin": [],
+        "env": {}
+      },
+      "platforms": [
+        "linux/*"
+      ],
+      "requires": [
+        "android-tools"
+      ],
+      "about": "aapt2, d8, zipalign and apksigner at the newest stable version; Update installs the next beside it. The Android Gradle plugin picks the version it was made for, and fetches nothing itself on a store a session cannot write.",
+      "source": {
+        "kind": "sdkmanager",
+        "package": "build-tools",
+        "versioned": true,
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/repository2-3.xml"
+          ]
+        }
+      },
+      "updatable": true
+    },
+    {
       "name": "android:ndk",
       "label": "Android NDK",
       "probe": "android:ndk",

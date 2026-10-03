@@ -60,6 +60,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node's row on the Nodes tab says what sound it has: its sound card or a virtual one, or none, and the sound server installed, which is what an emulator's audio would need. (560e137)
 - bb ci-log reads a run on GitHub's own runners: the controller asks GitHub with the project's token, and a session gets the runs, the step that failed and the end of each failed job's log, instead of asking the person to paste it. (a60fdd5)
 - The controller watches every project's CI once a day and when a project is linked: a moving runner label, an action a major version behind, a red main branch and GitHub's own deprecation notices, on the Git view's CI section, in bb catchup and in the bell. (63811c4)
+- The Toolchains tab offers the newest Android SDK platform (android-37.0 now) and build-tools as rows of their own, and the NDK, CMake, platform and build-tools rows say when a newer one is out and install it beside the old. A platform used to arrive only with an emulator image. (dbe386f)
 
 ### Changed
 
