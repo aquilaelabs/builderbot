@@ -90,7 +90,10 @@ cmd_tests_preflight() {
     if [ "${suites[*]:-}" != ALL ]; then
         local named
         for f in "${files[@]}"; do
-            case "$f" in scripts/dashboard/test/*|scripts/dashboard/unit/*) continue ;; esac
+            # Prose is named everywhere and checked by lint and voice; a file
+            # a unit test names is the unit tier's, which runs first anyway.
+            case "$f" in scripts/dashboard/test/*|scripts/dashboard/unit/*|*.md|*.txt) continue ;; esac
+            ! grep -qlF -- "$(basename "$f")" "${BB_REPO:-$PWD}"/scripts/dashboard/unit/test_*.py 2>/dev/null || continue
             while IFS= read -r named; do
                 [ -n "$named" ] || continue
                 named="$(basename "$named" .mjs)"
