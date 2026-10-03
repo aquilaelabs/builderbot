@@ -165,6 +165,17 @@ who pinned it) are never removed, and a pinned build is not one of those
 kept beside it. One day of a session building a keyboard left seven debug
 APKs, 133 MB, before this.
 
+**Sound effects a session can make.** `bb tool sound make PRESET [--seed N]`
+is a port of sfxr's synthesizer (stdlib python, nothing to install): blip,
+pickup, jump, laser, hit, powerup, explosion and bloop, each a family a seed
+picks one from, so the same seed makes the same sound again. `bb tool sound
+tone HZ [--ms N] [--to HZ]` is a plain beep or sweep. Each lands in
+`dist/sound/` as OGG, made by the ffmpeg toolchain, with a waveform and a
+spectrogram beside it, since a session cannot listen to what it made; with no
+ffmpeg on the node it is a WAV and no pictures, and says so. It is a verb of
+bb's rather than a toolchain of its own because there is nothing to fetch.
+R107.
+
 **Documents a session can read.** `bb tool docs read FILE...` prints a PDF,
 a Word document, a slide deck or a spreadsheet as Markdown, through
 markitdown; `bb tool docs pages FILE [--pages N-M] [--dpi N]` draws its pages

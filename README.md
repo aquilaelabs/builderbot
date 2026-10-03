@@ -532,6 +532,12 @@ bb tool docs pages FILE [--pages N-M] [--dpi N]  its pages as pictures in
                    is not a PDF is made one by the office toolchain first
 bb tool office convert FILE... [--to FORMAT]  LibreOffice with no window: a
                    document into pdf (the default), docx, xlsx, pptx or odt
+bb tool sound make PRESET [--seed N] [--name N] [--wav]  a sound effect for an
+                   app from sfxr's presets (blip, pickup, jump, laser, hit,
+                   powerup, explosion, bloop), into dist/sound/ as OGG, with a
+                   waveform and a spectrogram beside it to check it by; tone
+                   HZ [--ms N] [--to HZ] makes a beep or a sweep, look FILE
+                   draws any sound, presets lists them
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 

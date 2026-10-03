@@ -112,6 +112,13 @@ format. With the documents toolchain here your own Read tool reads a PDF's
 pages too. They need the documents and office toolchains on this node; where
 one is missing the verb says so, and installing it is the operator's.
 
+A sound effect for an app (a blip, a pickup, a bloop, a laser) is
+`bb tool sound make PRESET [--seed N]`, a fresh variation for each seed,
+and a beep or a sweep is `bb tool sound tone HZ [--ms N] [--to HZ]`; each
+lands in dist/sound/ as OGG with its waveform and spectrogram beside it.
+You cannot hear it: read the pictures for its length and its pitch's
+direction, and leave whether it sounds right to the person.
+
 A test run finds `BB_TEST_WORKERS` in its environment, on the node and
 inside a dev instance alike: how many workers this node lets a run use, set
 on its row. When you write tests or set the test command, have the runner
