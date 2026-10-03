@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.131"
+AGENT_VERSION = "0.7.132"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2027,6 +2027,33 @@ def _gpu_display():
         return ""
 
 
+ASOUND_CARDS = "/proc/asound/cards"
+# ALSA's own stand-ins: a card that plays to nothing (snd-dummy) or back to
+# itself (snd-aloop) is a virtual device, not a sound card in the machine.
+_VIRTUAL_CARDS = ("Dummy", "Loopback")
+
+
+def _sound():
+    """What sound this machine has (R107): the cards ALSA lists, real and
+    virtual apart, and which sound server is installed, which is what an
+    emulator's audio and a virtual sink would go through. No /proc/asound at
+    all is a kernel with no sound loaded, which is a VM's usual state."""
+    cards, virtual = [], []
+    try:
+        with open(ASOUND_CARDS, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                m = re.match(r"\s*\d+\s+\[(\S+)\s*\]:\s*(.*)", line)
+                if not m:
+                    continue
+                kind = m.group(2).split(" - ")[0].strip()
+                name = (m.group(2).split(" - ", 1)[-1].strip() or m.group(1))[:80]
+                (virtual if kind in _VIRTUAL_CARDS or m.group(1) in _VIRTUAL_CARDS else cards).append(name)
+    except OSError:
+        pass
+    server = next((s for s in ("pipewire", "pulseaudio") if shutil.which(s)), "")
+    return {"cards": cards[:8], "virtual": virtual[:8], "server": server}
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -2063,6 +2090,7 @@ def census(state):
         "gpu_driver": _gpu_driver(),
         "gpu_container": _gpu_container(),
         "gpu_display": _gpu_display(),
+        "sound": _sound(),
         "sshd": _sshd_listening(),
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,

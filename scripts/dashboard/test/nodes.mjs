@@ -2237,6 +2237,27 @@ ok(page.errors.length === 0,
     ok(!/## The GPU/.test(without) && /## The GPU/.test(withCard) && /bb gpu run \[--mem MB\] -- CMD/.test(withCard),
        'the briefing carries its GPU section for a project whose node has a card, and for no other');
   }
+  // The sound a node has (R107): the census's cards and server, cleaned on
+  // the way in, and a line on the row in words.
+  {
+    const hello = census => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + shed.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', ...census },
+                             version: shipped.version, digest: shipped.digest }) });
+    await hello({ sound: { cards: ['HDA Intel PCH<b>'], virtual: [], server: 'jack; rm' } });
+    const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === shed.id);
+    ok(rec?.reported?.sound?.cards?.[0] === 'HDA Intel PCHb' && rec.reported.sound.server === '',
+       `the census's sound is kept cleaned: a card's name, and only a server it knows (${JSON.stringify(rec?.reported?.sound)})`);
+    const words = await page.evaluate(() => [
+      nodeSound({ kind: 'agent', reported: { sound: { cards: [], virtual: [], server: '' } } }),
+      nodeSound({ kind: 'agent', reported: { sound: { cards: ['HDA Intel PCH'], virtual: [], server: 'pipewire' } } }),
+      nodeSound({ kind: 'agent', reported: { sound: { cards: [], virtual: ['Dummy'], server: '' } } }),
+      nodeSound({ kind: 'agent', reported: {} })].map(h => h.replace(/<[^>]+>/g, '').trim()));
+    ok(words[0] === 'sound: none: no sound card and no sound server'
+       && words[1] === 'sound: HDA Intel PCH through pipewire'
+       && /Dummy \(virtual\), with no sound server/.test(words[2]) && words[3] === '',
+       `the row says the sound in words, and nothing for an agent too old to say (${words.join(' | ')})`);
+  }
   // The NVIDIA driver as a row of the Toolchains tab (R102): a row like the
   // store's, ticked into the same Install selected and asked by the same
   // check, with a pulldown of the branches apt offers that is live only

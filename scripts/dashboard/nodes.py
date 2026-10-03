@@ -957,6 +957,14 @@ def _census(c):
         ver = lambda v: re.sub(r"[^A-Za-z0-9._~+:-]", "", str(v or ""))[:60]  # noqa: E731
         out["gpu_container"] = {"installed": ver(gc.get("installed")), "candidate": ver(gc.get("candidate")),
                                 "runtime": bool(gc.get("runtime"))}
+    # The sound it has (R107): ALSA's cards, real and virtual apart, and the
+    # sound server installed. Absent from an agent too old to say.
+    snd = c.get("sound")
+    if isinstance(snd, dict):
+        word = lambda v: re.sub(r"[^A-Za-z0-9 ._()/:+-]", "", str(v or ""))[:80]  # noqa: E731
+        out["sound"] = {"cards": [word(x) for x in (snd.get("cards") or [])[:8]],
+                        "virtual": [word(x) for x in (snd.get("virtual") or [])[:8]],
+                        "server": snd.get("server") if snd.get("server") in ("pipewire", "pulseaudio") else ""}
     # Whether the agent may install system packages there: the stamp and
     # root.
     out["administers"] = bool(c.get("administers"))

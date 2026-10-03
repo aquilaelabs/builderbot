@@ -125,6 +125,20 @@ function nodeGpu(n){
       title="the driver is installed from this node's Toolchains tab">Install the driver</button>` : ""}
   </div>`;
 }
+// The sound this node has (R107), in a line: the card ALSA sees, or a
+// virtual one, and the sound server an emulator's audio would go through.
+// Today an emulator here runs with -no-audio whatever this says; the line is
+// what the steps after it need, said before anybody reaches for them.
+function nodeSound(n){
+  const s = n.reported?.sound;
+  if (!s || n.kind !== "agent") return "";
+  const card = s.cards?.[0] || (s.virtual?.[0] ? `${s.virtual[0]} (virtual)` : "");
+  const word = card && s.server ? `${card} through ${s.server}`
+    : card ? `${card}, with no sound server installed`
+    : s.server ? `no sound card; ${s.server} is installed`
+    : "none: no sound card and no sound server";
+  return `<div class="actbar ndsound"><span class="state ${card && s.server ? "ok" : ""}">sound: ${esc(word)}</span></div>`;
+}
 // What this node's NVIDIA card is for (R102): two switches and one Apply.
 // The emulator renders on it or does not, which is the headless X server
 // the display needs; and sessions and jobs may compute on it or not, which
@@ -1073,6 +1087,7 @@ function renderNodesInto(i){
         ${nodeTools(n)}
         ${nodeGit(n)}
         ${nodeGpu(n)}
+        ${nodeSound(n)}
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}`,
       {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
     // Every live agent node gets the plane: the runner needs no stamp. What
