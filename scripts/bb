@@ -1630,6 +1630,11 @@ import sys
 import time
 
 r = json.load(open(sys.argv[1]))
+# A look kept by older code (ciwatch.FORMAT) is no look: the dashboard looks
+# again within the hour.
+if r.get("format") != 3:
+    print("  not looked at since BuilderBot was updated; the next look is within the hour")
+    sys.exit(0)
 age = int((time.time() - r.get("at", 0)) / 3600)
 run = r.get("run") or {}
 print(f"  looked {age} h ago" + (f" at {r['repo']} on GitHub" if r.get("repo") else "")

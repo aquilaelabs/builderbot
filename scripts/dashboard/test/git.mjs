@@ -1158,10 +1158,11 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
 {
   mkdirSync(`${DIR}/state/ciwatch`, { recursive: true });
   writeFileSync(`${DIR}/state/ciwatch/beta.json`, JSON.stringify({
-    at: Math.floor(Date.now() / 1000) - 3600, repo: 'o/beta', workflows: 1,
+    format: 3, at: Math.floor(Date.now() / 1000) - 3600, repo: 'o/beta', workflows: 1,
     run: { id: 11, name: 'Android CI', branch: 'main', conclusion: 'failure', at: '2026-10-03T00:44:51Z' },
     findings: [
-      { kind: 'run', sev: 'bad', where: 'run 11', text: 'the newest Android CI run on main failed: bb ci-log 11 reads it' },
+      { kind: 'run', sev: 'bad', where: 'run 11', url: 'https://github.com/o/beta/actions/runs/11',
+        text: 'The Android CI check failed on main (3 Oct, 00:44 UTC). A Claude session can read why with bb ci-log 11.' },
       { kind: 'label', sev: 'warn', where: 'android.yml:10', text: 'runs on ubuntu-latest, which GitHub moves to a new release on its own date' },
       { kind: 'action', sev: 'note', where: 'android.yml:14', text: 'android-actions/setup-android@v3: v4 is out' }],
     error: '' }));
@@ -1175,16 +1176,18 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
     status: d.querySelector('.sst')?.textContent, bad: d.querySelector('.sst')?.classList.contains('bad'),
     open: d.open, rows: [...d.querySelectorAll('.body .actbar .state')].map(e => e.textContent.replace(/\s+/g, ' ').trim()) }));
   ok(sect.status === 'failing' && sect.bad && sect.open, `a red main branch opens the CI section, marked failing (${sect.status})`);
-  ok(sect.rows.some(r => /^run: the newest Android CI run on main failed/.test(r))
-     && sect.rows.some(r => /^runner: runs on ubuntu-latest.*android\.yml:10/.test(r))
-     && sect.rows.some(r => /^action: android-actions\/setup-android@v3: v4 is out/.test(r)),
+  ok(sect.rows.some(r => /^Check: The Android CI check failed on main/.test(r))
+     && sect.rows.some(r => /^Runner: .*ubuntu-latest.*android\.yml:10/.test(r))
+     && sect.rows.some(r => /^Action: .*setup-android.*v4 is out/.test(r)),
      `...each finding a row in words, with where it is (${JSON.stringify(sect.rows)})`);
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => (state?.ci_red || []).some(c => c.project === 'beta'), null, { timeout: 15000 });
   await page.evaluate(() => toggleBell(true));
   const bell = await page.$eval('#bellPanel', p => [...p.querySelectorAll('.bnote')].map(n => n.textContent.replace(/\s+/g, ' ').trim())
     .find(t => /CI failing in beta/.test(t)) || '');
-  ok(/the newest Android CI run on main failed/.test(bell) && /Git view/.test(bell),
+  const link = await page.$eval('#bellPanel', p => [...p.querySelectorAll('.bnote a[target="_blank"]')].map(a => a.href).join());
+  ok(/The Android CI check failed on main/.test(bell) && /Git view/.test(bell) && /On GitHub/.test(bell)
+     && link === 'https://github.com/o/beta/actions/runs/11',
      `the bell carries a row while main is red, with the way to the Git view (${bell.slice(0, 80)})`);
   await page.evaluate(() => toggleBell(false));
   await page.click(`${NB} #gitCiLook`);

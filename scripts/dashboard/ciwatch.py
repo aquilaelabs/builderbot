@@ -34,6 +34,11 @@ write_json = None
 projects_fn = None      # () -> every project name
 
 EVERY = 24 * 3600
+# What a kept look was made by. A look kept by older code is no look at all:
+# after an update fixed how a stopped run was judged, the bell went on
+# showing the old verdict for up to a day, since nothing was due again
+# (3 Oct). Moved whenever what a look finds changes meaning.
+FORMAT = 3
 DELAY = int(os.environ.get("BB_CIWATCH_DELAY", "600"))
 RELEASE_TTL = 24 * 3600
 PINNED = {"ubuntu": "ubuntu-24.04", "windows": "windows-2025", "macos": "macos-15"}
@@ -51,11 +56,13 @@ def _file(project):
 
 
 def read(project):
-    """What the last look found, or {} before the first."""
+    """What the last look found, or {} before the first, or when it was
+    made by a BuilderBot that judged differently (FORMAT)."""
     try:
-        return json.loads(_file(project).read_text())
+        rec = json.loads(_file(project).read_text())
     except (OSError, ValueError):
         return {}
+    return rec if isinstance(rec, dict) and rec.get("format") == FORMAT else {}
 
 
 # ---- the tree ------------------------------------------------------------------
@@ -128,16 +135,19 @@ def look(project):
         if kind == "runs-on":
             for os_ in re.findall(r"\b(ubuntu|windows|macos)-latest\b", val):
                 found.append({"kind": "label", "sev": "warn", "where": where,
-                              "text": f"runs on {os_}-latest, which GitHub moves to a new release on its own date: "
-                                      f"runs-on: {PINNED[os_]} moves only in a commit"})
+                              "text": f"Asks GitHub for {os_}-latest, which GitHub switches to a newer "
+                                      f"{os_.capitalize() if os_ != 'macos' else 'macOS'} on its own schedule, so the "
+                                      f"build can break with no change of yours. Naming {PINNED[os_]} "
+                                      "instead keeps it where it is until you move it."})
         elif kind == "uses":
             action, _, ref = val.partition("@")
             have = _major(ref)
             new = _newest_major(action, token) if have is not None else None
             if have is not None and new is not None and new > have:
                 found.append({"kind": "action", "sev": "note", "where": where,
-                              "text": f"{action}@{ref}: v{new} is out. An action a major behind is where a "
-                                      "retired Node or a retired package breaks a run"})
+                              "text": f"Uses {action} {ref}, and v{new} is out. Old versions stop working "
+                                      "when GitHub retires what they run on, which is how a build that "
+                                      "passed for months suddenly fails."})
     repo = cilogs.repo_of(project)
     if repo and flows:
         try:
@@ -162,15 +172,17 @@ def look(project):
                     newest = r
                 if r["conclusion"] != "success":
                     found.append({"kind": "run", "sev": "bad", "where": f"run {r['id']}",
-                                  "text": f"the newest {r['name']} run on {r['branch']} {ended(r['conclusion'])}: "
-                                          f"bb ci-log {r['id']} reads it"})
+                                  "text": f"The {r['name']} check {ended(r['conclusion'])} on {r['branch']}"
+                                          f" ({_when(r['at'])}). A Claude session can read why with "
+                                          f"bb ci-log {r['id']}.",
+                                  "url": r.get("url", "")})
             if newest:
                 run = {k: newest[k] for k in ("id", "name", "branch", "conclusion", "at")}
                 run["ended"] = ended(newest["conclusion"])
                 found += _notices(repo, token, newest["id"])
         except cilogs.Refused as e:
             err = str(e)
-    rec = {"at": int(time.time()), "repo": repo, "workflows": len({w.split(':')[0] for w, _, _ in flows}),
+    rec = {"format": FORMAT, "at": int(time.time()), "repo": repo, "workflows": len({w.split(':')[0] for w, _, _ in flows}),
            "run": run, "findings": found[:40], "error": err}
     if write_json:
         write_json(_file(project), rec)
@@ -182,6 +194,15 @@ def ended(conclusion):
     return {"success": "passed", "failure": "failed", "timed_out": "timed out", "skipped": "was skipped",
             "action_required": "is waiting on an approval", "startup_failure": "failed to start"}.get(
         conclusion, "was stopped" if conclusion and conclusion.startswith("cancel") else conclusion or "ended")
+
+
+def _when(at):
+    """GitHub's 2026-10-03T00:44:51Z as 3 Oct, 00:44 UTC."""
+    m = re.match(r"\d{4}-(\d\d)-(\d\d)T(\d\d:\d\d)", at or "")
+    if not m:
+        return "at an unknown time"
+    months = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+    return f"{int(m.group(2))} {months[int(m.group(1)) - 1]}, {m.group(3)} UTC"
 
 
 def _main_branch(project):
@@ -292,5 +313,5 @@ def red(projects):
     for p in projects:
         for f in _cached(p).get("findings") or []:
             if f.get("sev") == "bad":
-                out.append({"project": p, "text": f["text"], "id": f.get("where", "")})
+                out.append({"project": p, "text": f["text"], "id": f.get("where", ""), "url": f.get("url", "")})
     return out

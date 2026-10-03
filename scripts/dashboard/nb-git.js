@@ -135,7 +135,7 @@ function nbGitView({$, nb, project}){
     const red = fs.some(f => f.sev === "bad");
     const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : "nothing drifting";
     const cls = red ? "bad" : fs.length ? "note" : ci.at ? "ok" : "";
-    const word = {run: "run", label: "runner", action: "action", notice: "GitHub says"};
+    const word = {run: "Check", label: "Runner", action: "Action", notice: "GitHub says"};
     const rows = fs.map(f => `<div class="actbar"><span class="state ${f.sev === "bad" ? "bad" : f.sev === "warn" ? "warn" : ""}">${
         esc(word[f.kind] || f.kind)}: ${esc(f.text)} <code>${esc(f.where || "")}</code></span></div>`).join("");
     const run = ci.run?.id ? ` The newest run on ${esc(ci.run.branch)} ${esc(ci.run.ended || "ended " + ci.run.conclusion)}.` : "";

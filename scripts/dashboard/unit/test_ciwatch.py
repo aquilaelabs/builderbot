@@ -106,8 +106,8 @@ class Look(unittest.TestCase):
         kinds = sorted(f["kind"] for f in rec["findings"])
         self.assertEqual(kinds, ["action", "action", "label", "notice", "notice", "run"])
         acts = " ".join(f["text"] for f in rec["findings"] if f["kind"] == "action")
-        self.assertIn("actions/checkout@v4: v7 is out", acts)
-        self.assertIn("android-actions/setup-android@v3: v4 is out", acts)
+        self.assertIn("Uses actions/checkout v4, and v7 is out", acts)
+        self.assertIn("Uses android-actions/setup-android v3, and v4 is out", acts)
         self.assertNotIn("upload-artifact", acts)            # its commit pin says v7: current
         # main's newest verdict: not the newer branch run, not the run a
         # successor stopped, and the passing lint workflow is no finding.
@@ -130,6 +130,16 @@ class Look(unittest.TestCase):
         self.assertEqual(rec["repo"], "")
         self.assertIn("label", [f["kind"] for f in rec["findings"]])
         self.assertNotIn("run", [f["kind"] for f in rec["findings"]])
+
+    def test_a_look_kept_by_older_code_is_no_look(self):
+        ciwatch.look("app")
+        f = self.tmp / "ciwatch" / "app.json"
+        rec = json.loads(f.read_text())
+        rec.pop("format")
+        f.write_text(json.dumps(rec))
+        self.assertEqual(ciwatch.read("app"), {})
+        self.assertEqual(ciwatch.red(["app"]), [])
+        self.assertTrue(ciwatch.due("app"))
 
     def test_a_project_with_no_workflows_is_never_due(self):
         (self.tmp / "ws" / "bare").mkdir()

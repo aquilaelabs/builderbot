@@ -170,8 +170,9 @@ function drawBell(){
     ...ciRed.map(c => `<div class="bnote ask bad">
         <div class="btag">CI failing in ${esc(c.project)}</div>
         <div class="bwhy">${esc(c.text)}</div>
-        <div class="bfoot"><span>until a run on the main branch passes</span>
-          <span class="acts"><a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
+        <div class="bfoot"><span>this stays until the check passes again</span>
+          <span class="acts">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
+            <a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
     ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
         <div class="bwhy">${esc(n.msg)}</div>
         <div class="bfoot"><span>${when(n.at)}</span></div></div>`),

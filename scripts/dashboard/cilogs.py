@@ -123,7 +123,8 @@ def runs(project, n=10):
                     "name": str(r.get("name") or "")[:80], "branch": str(r.get("head_branch") or "")[:80],
                     "event": str(r.get("event") or "")[:30], "status": str(r.get("status") or "")[:20],
                     "conclusion": str(r.get("conclusion") or "")[:20], "at": str(r.get("created_at") or "")[:20],
-                    "sha": str(r.get("head_sha") or "")[:12]})
+                    "sha": str(r.get("head_sha") or "")[:12],
+                    "url": str(r.get("html_url") or "")[:200] if str(r.get("html_url") or "").startswith("https://github.com/") else ""})
     return {"repo": repo, "runs": out}
 
 
