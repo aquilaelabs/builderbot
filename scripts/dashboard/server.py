@@ -902,6 +902,9 @@ def _project_columns(who, facts):
                     # test run, the gates. NOT the model, the effort or the
                     # commit author, which are whoever is asking's.
                     "prefs": project_prefs.get(d.name, {}),
+                    # Who may move its version (version.py's policy), for the
+                    # settings panel's Move the version dial.
+                    "version_policy": version.policy(d.name),
                     # ...and this account's own, on this project. On the row
                     # because the settings dialog draws from the poll like
                     # every other field it shows, and per account because two

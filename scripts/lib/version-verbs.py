@@ -45,6 +45,7 @@ USAGE = ("bb version [--for DIR] "
          "[--semver|--code|--quad|--win|--msi|--pep440|--file|--json]\n"
          "bb version --list                 every version this repo carries\n"
          "bb version [--for DIR] bump major|minor|patch\n"
+         "bb version [--for DIR] set X.Y.Z     straight to a later version, as one bump\n"
          "bb version [--for DIR] init X.Y.Z    give one its first VERSION\n"
          "bb version policy")
 
@@ -92,6 +93,17 @@ if argv and argv[0] == "bump":
     lands_line()
     raise SystemExit(0)
 
+if argv and argv[0] == "set":
+    if len(argv) < 2:
+        fail("bb version set X.Y.Z: a later version, moved to in one commit")
+    r = version.jump(proj, argv[1], by="claude", comp=comp)
+    if r.get("error"):
+        fail(r["error"])
+    print(f"{proj}{'/' + comp if comp else ''} {r['was']} -> {r['target']}  "
+          f"({r['part']}, committed {r['commit']}, not pushed)")
+    lands_line()
+    raise SystemExit(0)
+
 if argv and argv[0] == "unbump":
     r = version.unbump(proj, by="claude", comp=comp)
     if r.get("error"):
@@ -117,7 +129,8 @@ if argv and argv[0] == "policy":
     # Read-only on purpose: a session should be able to see the limit it is
     # held to and never to move it.
     print(f"{proj}: {policy_line()}")
-    print("the operator changes this on the project's Artifacts tab")
+    print("a person changes this with Claude may: Move the version in the project's settings,"
+          " or on its Artifacts tab; bb version set X.Y.Z moves to a later version in one step")
     raise SystemExit(0)
 
 if argv and argv[0] == "--list":

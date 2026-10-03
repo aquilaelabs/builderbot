@@ -101,6 +101,18 @@ setPolicyFor(PROJ, 'minor');
 r = bb('bump', 'major');
 ok(r.code !== 0 && /not major/.test(r.out),
    'a policy of minor still keeps major with the operator');
+// bb version set: straight to a later version in one commit, asked of the
+// policy as the largest part it moves (report #48: 0.1.0 to 0.5.0 took four
+// minor bumps or the operator).
+r = bb('set', '1.0.0');
+ok(r.code !== 0 && /not major/.test(r.out), `set is held to the policy by the part it moves: 1.0.0 is a major (${r.out.trim().slice(0, 80)})`);
+r = bb('set', '0.3.0');
+ok(r.code !== 0 && /not after/.test(r.out), '...and only moves forward');
+r = bb('set', '0.7.0');
+ok(r.code === 0 && readFileSync(`${ROOT}/VERSION`, 'utf8').trim() === '0.7.0' && /0\.4\.0 -> 0\.7\.0 +\(minor/.test(r.out),
+   `a minor jump lands in one step, as one commit (${r.out.trim().slice(0, 80)})`);
+r = bb('unbump');
+ok(r.code === 0 && readFileSync(`${ROOT}/VERSION`, 'utf8').trim() === '0.4.0', '...and unbump takes it back as it takes a bump back');
 
 // ---- the release: the second gesture, and the outward-facing one -----------
 // A bump decides the number and closes the changelog under it. The tag says

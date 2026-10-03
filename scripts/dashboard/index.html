@@ -4114,6 +4114,13 @@ body.booting .pane>.loading{margin:auto}
              app's identity for good. -->
         <label class="pick">Manage signing keys <select id="rnGateKeys"
           aria-label="making a signing key or mapping an app to one, from a session"></select></label>
+        <!-- Who may move the version: version.py's policy, the same setting
+             the Artifacts tab's version row writes. Here too, because an
+             owner who set every dial on this panel to auto still found the
+             version locked (report #48, 3 Oct). Its own words, not
+             Auto/Ask/Deny: a policy says how far, not whether to ask. -->
+        <label class="pick">Move the version <select id="rnGateVersion"
+          aria-label="moving the project's version, from a session"></select></label>
         <label class="pick">Report BuilderBot bugs <select id="rnGateReport"
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>

@@ -278,7 +278,9 @@ own tree, whose tracker it is), the verb refuses and names it, and
 ## Versions and the changelog
 
 `bb version` is this project's identity; `bb version policy` says what you
-may move, which is usually nothing. `bb changelog add "..." --cat NAME`
+may move, which is usually nothing (the project's Claude may: Move the
+version), and `bb version set X.Y.Z` moves to a later version in one step
+where that allows the part it changes. `bb changelog add "..." --cat NAME`
 records what a change means for the person using the product, under Added,
 Changed, Deprecated, Removed, Fixed or Security; run it with no category
 and it says when each applies. A release is the operator's: a session

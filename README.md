@@ -120,12 +120,15 @@ bb version bump major|minor|patch    move the target, if the policy allows it.
                    the bump rather than leaving the number moved and its twin
                    behind. A repo without one is unaffected
 bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
+bb version set X.Y.Z   straight to a later version in one commit, allowed
+                   when the policy allows the largest part it moves
 bb version unbump      take an unreleased bump back; its changelog section
                    dissolves into Unreleased, the code stays
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
-bb version policy  what a session may move here, and who decides. The
-                   operator picks it on the Artifacts tab, before or after
+bb version policy  what a session may move here, and who decides. A
+                   person picks it in the project's settings (Claude may:
+                   Move the version) or on the Artifacts tab, before or after
                    there is a version: locked (theirs entirely), may start
                    one (a session writes the FIRST version and moves nothing
                    after), patch, patch and minor, or anything

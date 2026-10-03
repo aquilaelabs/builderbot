@@ -900,7 +900,30 @@ def candidates(project):
     return out
 
 
-def bump(project, part, by="claude", comp="", env=None):
+def jump(project, value, by="claude", comp="", env=None):
+    """Move the target straight to `value`, forward only, and commit it the
+    way a bump is. The part it moves is the largest that changes (0.1.0 to
+    0.5.0 is a minor), and the policy is asked about that part, so a session
+    allowed minors may go to 0.5.0 in one step rather than four (report #48,
+    Shebang-DevBoard, 3 Oct)."""
+    value = str(value or "").strip()
+    if not TARGET_RE.match(value):
+        return {"error": f"a version is MAJOR.MINOR.PATCH, like 0.5.0, not {value[:40]!r}"}
+    tgt, err = target(project, comp)
+    if err:
+        return {"error": err}
+    if tgt is None:
+        return bump(project, "patch", by=by, comp=comp, env=env)     # its own sentence
+    a = [int(x) for x in tgt.split("-")[0].split("+")[0].split(".")[:3]]
+    b = [int(x) for x in value.split("-")[0].split("+")[0].split(".")[:3]]
+    if b <= a:
+        return {"error": f"{value} is not after {tgt}: a version only moves forward "
+                         "(bb version unbump takes the last bump back)"}
+    part = PARTS[next(i for i in range(3) if a[i] != b[i])]
+    return bump(project, part, by=by, comp=comp, env=env, to=value)
+
+
+def bump(project, part, by="claude", comp="", env=None, to=None):
     """Move the target and commit that one file.
 
     Committing rather than leaving the tree dirty is the whole reason this is
@@ -951,7 +974,7 @@ def bump(project, part, by="claude", comp="", env=None):
     why = _cl_guard(project, where)
     if why:
         return {"error": why}
-    new = next_version(tgt, part)
+    new = to or next_version(tgt, part)
     p = where / VERSION_FILE
     try:
         p.write_text(new + "\n", encoding="utf-8")

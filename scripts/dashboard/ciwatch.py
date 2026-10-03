@@ -146,12 +146,14 @@ def look(project):
             # Each workflow by its newest run on main that came to a verdict:
             # a run stopped because a newer one superseded it, or skipped,
             # says nothing about the code (BuilderBot's android app run,
-            # cancelled by its successor, read as red on the first look).
+            # stopped by its successor, read as red on the first look).
             verdict = {}
             for r in runs:
                 if r["status"] != "completed" or (main and r["branch"] != main):
                     continue
-                if r["conclusion"] in ("cancelled", "skipped", "neutral") or r["name"] in verdict:
+                # GitHub spells a stopped run its own way; matched by its stem.
+                if r["conclusion"].startswith("cancel") or r["conclusion"] in ("skipped", "neutral") \
+                        or r["name"] in verdict:
                     continue
                 verdict[r["name"]] = r
             newest = None

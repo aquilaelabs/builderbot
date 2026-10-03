@@ -124,6 +124,7 @@ function rnFillPrefs(p){
                report: p?.prefs?.report || "auto",
                sign: p?.prefs?.sign || "ask",
                keys: p?.prefs?.keys || "ask",
+               version: p?.version_policy || "locked",
                color: p?.prefs?.color || ""};
   rnFillColor(rnPrefWas.color);
   $("rnGitName").value = rnPrefWas.git_name;
@@ -257,6 +258,14 @@ function rnFillPrefsRest(p){
       el.dataset.built = "1";
     }
     el.value = p?.prefs?.keys || "ask";
+  }
+  {
+    const el = $("rnGateVersion");
+    if (el.dataset.built !== "1"){
+      el.innerHTML = Object.entries(POLICY_LABEL).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = p?.version_policy || "locked";
   }
   {
     const el = $("rnGateDocker");
@@ -911,6 +920,7 @@ async function rnSubmit(){
   const report = $("rnGateReport").value || "auto";
   const sign = $("rnGateSign").value || "ask";
   const keys = $("rnGateKeys").value || "ask";
+  const verPol = $("rnGateVersion").value || "locked";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
@@ -1036,6 +1046,12 @@ async function rnSubmit(){
       const why = await rnSavePeople(name);
       if (why) return stop(why);
     }
+    // Move the version is version.py's policy: written where the Artifacts
+    // tab writes it, so the two never disagree.
+    if (verPol !== rnPrefWas.version){
+      const j = await (await postJSON("/api/version", {project: name, action: "policy", policy: verPol})).json();
+      if (j.error) return stop(j.error);
+    }
     if (signDraft.length){
       const why = await rnSaveSigning(name);
       if (why) return stop(why);
@@ -1043,7 +1059,8 @@ async function rnSubmit(){
     }
     if (!needRename){
       closeRename();
-      if (!prefChanged && !nodeChanged && !signDraft.length && !peopleChanged) return;   // nothing changed
+      if (!prefChanged && !nodeChanged && !signDraft.length && !peopleChanged
+          && verPol === rnPrefWas.version) return;   // nothing changed
       refresh();
       return;
     }

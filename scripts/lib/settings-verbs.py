@@ -121,6 +121,16 @@ def show():
                              ("Sign a release", "sign", "ask"),
                              ("Manage signing keys", "keys", "ask")):
         print(f"    Claude may: {label:<28} {rec.get(key) or dflt}")
+    # Who may move the version is version.py's policy rather than a prefs
+    # dial, and an owner who set every dial above to auto still found it
+    # locked (report #48): printed with them, in the dial's own words.
+    try:
+        version = dash.load("version", here)
+        version.configure(workspace=os.environ.get("WORKSPACE", "/workspace"), state=state,
+                          write_json=lambda *a: None)
+        print(f"    Claude may: {'Move the version':<28} {version.policy(proj)}")
+    except Exception as e:  # noqa: BLE001 (an unreadable policy is said, not a crash)
+        print(f"    Claude may: {'Move the version':<28} unknown ({str(e)[:60]})")
 
 
 {"set": set_field, "show": show}[verb]()

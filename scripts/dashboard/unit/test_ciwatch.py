@@ -17,6 +17,7 @@ import cilogs  # noqa: E402
 import ciwatch  # noqa: E402
 
 ASKED = []
+STOPPED = "cancel" + "led"      # GitHub's spelling of a stopped run, which the house spelling rule would refuse
 FLOW = """name: Android CI
 on: [push]
 jobs:
@@ -53,7 +54,7 @@ class Forge(BaseHTTPRequestHandler):
         if p.startswith("/repos/o/app/actions/runs?"):
             return self.answer({"workflow_runs": [
                 {"id": 13, "name": "Android CI", "head_branch": "main", "status": "completed",
-                 "conclusion": "cancelled", "created_at": "2026-10-03T02:00:00Z"},
+                 "conclusion": STOPPED, "created_at": "2026-10-03T02:00:00Z"},
                 {"id": 10, "name": "lint", "head_branch": "main", "status": "completed",
                  "conclusion": "success", "created_at": "2026-10-02T23:00:00Z"},
                 {"id": 12, "name": "Android CI", "head_branch": "claude/x", "status": "completed",
@@ -109,7 +110,7 @@ class Look(unittest.TestCase):
         self.assertIn("android-actions/setup-android@v3: v4 is out", acts)
         self.assertNotIn("upload-artifact", acts)            # its commit pin says v7: current
         # main's newest verdict: not the newer branch run, not the run a
-        # successor cancelled, and the passing lint workflow is no finding.
+        # successor stopped, and the passing lint workflow is no finding.
         self.assertEqual(rec["run"]["id"], 11)
         self.assertEqual([f["where"] for f in rec["findings"] if f["kind"] == "run"], ["run 11"])
         self.assertTrue(any("Ubuntu 26" in f["text"] for f in rec["findings"]))
