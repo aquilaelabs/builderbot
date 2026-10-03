@@ -4279,7 +4279,7 @@ cmd_tool() {
         # Sound effects (R107): the generator is bb's own python, nothing to
         # install; the ffmpeg toolchain turns its WAV into OGG and draws the
         # pictures a session checks it by.
-        sound)     SDK_ROOT="$(sdk_root 2>/dev/null || true)" python3 "$BB_LIB/sound.py" "$@" ;;
+        sound)     tool_sound "$@" ;;
         "")
             local t d
             for t in graphics diagrams documents office; do
@@ -4528,6 +4528,12 @@ tool_docs() {
 # LibreOffice with no window: a document into another format, into dist/docs/
 # by default. A profile of its own per run, since two runs sharing one wait
 # on each other's lock and the second converts nothing without a word.
+# bb tool sound (R107): sound.py with the store's root, where it finds the
+# ffmpeg and audio toolchains.
+tool_sound() {
+    SDK_ROOT="$(sdk_root 2>/dev/null || true)" python3 "$BB_LIB/sound.py" "$@"
+}
+
 tool_office() {
     local cmd="${1:-}"; [ $# -gt 0 ] && shift
     case "$cmd" in
