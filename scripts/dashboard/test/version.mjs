@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1668,4 +1668,23 @@ execFileSync('git', ['-C', A, 'init', '-q', '.'], { env });
 execFileSync('git', ['-C', B, 'init', '-q', '.'], { env });
 execFileSync('git', ['-C', A, 'remote', 'add', 'origin',
                      'git@github.com:owner/alpha.git'], { env });
+// ---- Move the version, with the other Claude may dials (B448) ---------------
+// An owner who set every dial on the settings panel to auto still found the
+// version locked, since the policy lived on the Artifacts tab alone. The
+// panel carries it now and writes the same policy.
+{
+  await page.evaluate(() => { document.querySelectorAll('.modal:not([hidden])').forEach(m => { m.hidden = true; }); renameProject('alpha'); });
+  await page.waitForSelector('#rnmodal:not([hidden]) #rnGateVersion', { timeout: 15000 });
+  const was = await page.$eval('#rnGateVersion', e => ({ v: e.value, opts: [...e.options].map(o => o.value).join() }));
+  ok(was.opts === 'locked,start,patch,minor,open', `the settings carry Move the version with the policy's five choices (${was.opts}, now ${was.v})`);
+  await page.selectOption('#rnGateVersion', 'minor');
+  await saveDialog(page);
+  await page.waitForFunction(async () => {
+    const j = await (await fetch('/api/status')).json();
+    return (j.projects || []).find(p => p.name === 'alpha')?.version_policy === 'minor';
+  }, null, { timeout: 20000, polling: 500 });
+  ok(true, '...and saving the dialog sets the policy the Artifacts tab shows');
+  await page.evaluate(() => postJSON('/api/version', { project: 'alpha', action: 'policy', policy: 'locked' }));
+}
+
 await done(browser);
