@@ -175,6 +175,20 @@ finished one when none is named) is its jobs, the step that failed, and the
 last 400 lines of each failed job's log. The log answers with a redirect to
 GitHub's storage, and the token is not sent on to it. R115.
 
+**CI watched without anybody asking.** A project's CI drifts on GitHub's
+schedule, not the project's: a runner label is repointed, an action's old
+major stops working when GitHub retires the Node it runs on. Shebang-DevBoard
+failed for weeks that way. The controller looks at every project with
+workflows once a day, and at once when one is linked (`ciwatch.py`): the
+tree's workflows for a hosted job on a moving `-latest` label and for each
+action against its newest release, and on GitHub, with the token `bb ci-log`
+uses, whether the newest run on the main branch passed and what GitHub wrote
+on it (its warnings about a retired Node or a label about to move). What it
+finds is kept under `ciwatch/` in the state, shown as the Git view's CI
+section (with Look now), printed by `bb catchup`, and, while main is red,
+a bell row. It reads and never changes anything; nothing in a repository
+needs setting up, so every BuilderBot and every project gets it. R117.
+
 **Sound effects a session can make.** `bb tool sound make PRESET [--seed N]`
 is a port of sfxr's synthesizer (stdlib python, nothing to install): blip,
 pickup, jump, laser, hit, powerup, explosion and bloop, each a family a seed

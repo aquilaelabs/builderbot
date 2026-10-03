@@ -71,6 +71,9 @@ function drawBell(){
   // What the nodes need: an agent behind, or from another window. From the
   // poll, never stored here, so a row leaves the moment it stops being true.
   const att = state?.attention || [];
+  // A project whose main branch's newest CI run failed (R117): from the
+  // poll, so it leaves when a run passes.
+  const ciRed = state?.ci_red || [];
   const unread = Math.max(0, notes.length - notesSeen);
   // The WORST of what is unread, not the newest. notes are unshifted, so the
   // first `unread` of them are the new ones. A failure followed by three
@@ -81,18 +84,18 @@ function drawBell(){
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
   const pendingOn = asks.length + waiting.length + invites.length;
-  const attOn = att.some(a => a.window) ? "bad" : att.length ? "warn" : "";
-  dot.hidden = !(pendingOn || att.length || unread);
+  const attOn = att.some(a => a.window) || ciRed.length ? "bad" : att.length ? "warn" : "";
+  dot.hidden = !(pendingOn || att.length || ciRed.length || unread);
   // An ask outranks every level of record: one is a thing that happened, the
   // other is a thing that has not happened yet because it is waiting on you.
   // A node alert sits between: red when work is stopped, amber when an
   // update merely waits.
   dot.className = "dot" + (pendingOn ? " ask" : attOn ? " " + attOn : worst ? " " + worst : "");
-  bell.classList.toggle("has", !!(pendingOn || att.length || unread));
+  bell.classList.toggle("has", !!(pendingOn || att.length || ciRed.length || unread));
   bell.classList.toggle("waiting", pendingOn > 0);
   bell.title = pendingOn
     ? `${pendingOn} waiting on an answer`
-    : att.length ? `${att.length} need${att.length === 1 ? "s" : ""} attention`
+    : att.length + ciRed.length ? `${att.length + ciRed.length} need${att.length + ciRed.length === 1 ? "s" : ""} attention`
     : unread ? `${unread} new` : "notifications";
   // Drawn whenever it is ON SCREEN, which is the question that matters, and
   // not when a flag says it is open; those two disagreed and the panel a
@@ -164,6 +167,11 @@ function drawBell(){
             : ""}</div>
         <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
           <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`),
+    ...ciRed.map(c => `<div class="bnote ask bad">
+        <div class="btag">CI failing in ${esc(c.project)}</div>
+        <div class="bwhy">${esc(c.text)}</div>
+        <div class="bfoot"><span>until a run on the main branch passes</span>
+          <span class="acts"><a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
     ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
         <div class="bwhy">${esc(n.msg)}</div>
         <div class="bfoot"><span>${when(n.at)}</span></div></div>`),
@@ -198,6 +206,12 @@ function drawBell(){
     toggleBell(false);
     openNotebook(a.dataset.bpend);
     openPending(a.dataset.bpend);
+  });
+  panel.querySelectorAll("[data-bci]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    sectOpen["git:ci"] = true;
+    openNotebook(a.dataset.bci, "git");
   });
   // To the node's row, where Update agent is: the press itself stays there,
   // beside the state line that says what it does.

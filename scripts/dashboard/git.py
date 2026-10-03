@@ -53,6 +53,7 @@ MAY_PUSH = None           # project -> whether it was cloned with push rights
 EXCLUDE = None            # tree -> the code map kept out of a new repository
 AUDIT = None              # (principal, action, project, detail) -> the audit row
 HOST_OF = None            # a remote's URL -> {name, kind} of the git host it is on
+CI_OF = None              # project -> what the last look at its CI found (ciwatch.read)
 
 LOG_MAX = 100             # commits the graph shows
 DIFF_MAX = 200_000        # bytes of diff the page is handed
@@ -65,13 +66,13 @@ EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 def configure(*, workspace, worktrees=None, tell=None, tmux_name=None, state=None,
               accounts=None, owner_uid=None, working=None, owner_name=None, session_open=None,
               sessions=None, git_env=None, may_push=None, exclude=None, audit=None,
-              host_of=None):
+              host_of=None, ci_of=None):
     globals().update(WORKSPACE=Path(workspace),
                      WORKTREES=Path(worktrees) if worktrees else Path(workspace) / ".worktrees",
                      TELL=tell, TMUX_NAME=tmux_name, ACCOUNTS=accounts, OWNER_UID=owner_uid,
                      WORKING=working, OWNER_NAME=owner_name, SESSION_OPEN=session_open,
                      SESSIONS=sessions, GIT_ENV=git_env, MAY_PUSH=may_push, EXCLUDE=exclude,
-                     AUDIT=audit, HOST_OF=host_of,
+                     AUDIT=audit, HOST_OF=host_of, CI_OF=ci_of,
                      STATE=Path(state) if state else None)
 
 
@@ -1414,4 +1415,6 @@ def view(name, what, sha="", path="", n=0, branch=""):
         # The host by its name (GitHub, Gitea, or the machine's own),
         # so the view can say "in step with GitHub" and not "origin".
         r["host"] = HOST_OF(remote_url(WORKSPACE / name))
+        # What the CI watch last found (R117), for the CI section.
+        r["ci"] = CI_OF(name) if CI_OF else {}
     return r

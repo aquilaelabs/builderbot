@@ -124,6 +124,28 @@ function nbGitView({$, nb, project}){
   $("gitNet")?.querySelectorAll("[data-gitact]").forEach(b => b.onclick = () =>
     gitAct(b.dataset.gitact, {}, gitBusy(b), {fetch: "Fetching", pull: "Pulling", push: "Pushing"}[b.dataset.gitact]));
 
+  // The project's CI as the watch last found it (R117): looked at once a
+  // day and when the project is linked, from the workflows in the tree and,
+  // for a project on GitHub, its newest run on the main branch and the
+  // notices GitHub wrote on it. Shown only where there are workflows.
+  function ciSection(){
+    const ci = git.ci || {};
+    if (!ci.at && !ci.workflows && !git.remote) return "";
+    const fs = ci.findings || [];
+    const red = fs.some(f => f.sev === "bad");
+    const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : "nothing drifting";
+    const cls = red ? "bad" : fs.length ? "note" : ci.at ? "ok" : "";
+    const word = {run: "run", label: "runner", action: "action", notice: "GitHub says"};
+    const rows = fs.map(f => `<div class="actbar"><span class="state ${f.sev === "bad" ? "bad" : f.sev === "warn" ? "warn" : ""}">${
+        esc(word[f.kind] || f.kind)}: ${esc(f.text)} <code>${esc(f.where || "")}</code></span></div>`).join("");
+    const run = ci.run?.id ? ` The newest run on ${esc(ci.run.branch)} ${esc(ci.run.ended || "ended " + ci.run.conclusion)}.` : "";
+    const body = `<div class="sub dim">${ci.at ? `Looked ${esc(ago(ci.at))}${ci.repo ? ` at ${esc(ci.repo)} on GitHub` : ""}.${run}` :
+        "Not looked at yet."} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
+      ci.error ? `<div class="sub bad">${esc(ci.error)}</div>` : ""}${rows}
+      <div class="actbar"><button type="button" id="gitCiLook">Look now</button></div>`;
+    return docSection("git", "ci", "CI", status, body, {cls, open: red});
+  }
+
   function drawGit(){
     const body = $("gitBody");
     if (!git || git.error) return;
@@ -283,8 +305,19 @@ function nbGitView({$, nb, project}){
       + docSection("git", "history", "History", commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
       + docSection("git", "branches", "Branches", String(local.length), branchBar + (branchRows || `<div class="empty">no branches</div>`))
+      + ciSection()
       + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}`, policy, {open: false}) : "");
     wireSections(body);
+    const cl = $("gitCiLook");
+    if (cl) cl.onclick = async () => {
+      busy(cl, "Looking");
+      try{
+        const j = await (await postJSON("/api/ci-watch", {project})).json();
+        if (j.error) notify(j.error, true);
+        else { git.ci = j; drawGit(); }
+      }catch(e){ notify("could not reach the controller: " + e, true); }
+      finally{ if (cl.isConnected) unbusy(cl, "Look now"); }
+    };
     body.querySelectorAll("[data-gitpol]").forEach(sel => sel.onchange = () => {
       const saved = (state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {};
       if (sel.value === (saved[sel.dataset.gitpol] || (sel.dataset.gitpol === "push" ? "allow" : "deny"))) delete gitPolDraft[sel.dataset.gitpol];

@@ -1151,4 +1151,51 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
      `with no main or master, the merge refusal says so rather than naming an empty branch (${r.error})`);
 }
 
+// ---- the CI watch (R117) ------------------------------------------------------
+// What the daily look found, planted where ciwatch keeps it: a CI section on
+// the Git view saying it in rows, a bell row while main is red, and Look now
+// replacing it with a fresh look (beta has no workflows: nothing drifting).
+{
+  mkdirSync(`${DIR}/state/ciwatch`, { recursive: true });
+  writeFileSync(`${DIR}/state/ciwatch/beta.json`, JSON.stringify({
+    at: Math.floor(Date.now() / 1000) - 3600, repo: 'o/beta', workflows: 1,
+    run: { id: 11, name: 'Android CI', branch: 'main', conclusion: 'failure', at: '2026-10-03T00:44:51Z' },
+    findings: [
+      { kind: 'run', sev: 'bad', where: 'run 11', text: 'the newest Android CI run on main failed: bb ci-log 11 reads it' },
+      { kind: 'label', sev: 'warn', where: 'android.yml:10', text: 'runs on ubuntu-latest, which GitHub moves to a new release on its own date' },
+      { kind: 'action', sev: 'note', where: 'android.yml:14', text: 'android-actions/setup-android@v3: v4 is out' }],
+    error: '' }));
+  const ci = await api('what=all').then(j => j.ci || {});
+  ok(ci.run?.id === 11 && ci.findings?.length === 3, `the Git view's payload carries what the watch found (${ci.findings?.length})`);
+  // Opening the view reads it again.
+  await page.evaluate(() => openNotebook('beta', 'git'));
+  await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'failing',
+                             `${NB} details.sect[data-sect="git:ci"] .sst`, { timeout: 20000 }).catch(() => {});
+  const sect = await page.$eval(`${NB} details.sect[data-sect="git:ci"]`, d => ({
+    status: d.querySelector('.sst')?.textContent, bad: d.querySelector('.sst')?.classList.contains('bad'),
+    open: d.open, rows: [...d.querySelectorAll('.body .actbar .state')].map(e => e.textContent.replace(/\s+/g, ' ').trim()) }));
+  ok(sect.status === 'failing' && sect.bad && sect.open, `a red main branch opens the CI section, marked failing (${sect.status})`);
+  ok(sect.rows.some(r => /^run: the newest Android CI run on main failed/.test(r))
+     && sect.rows.some(r => /^runner: runs on ubuntu-latest.*android\.yml:10/.test(r))
+     && sect.rows.some(r => /^action: android-actions\/setup-android@v3: v4 is out/.test(r)),
+     `...each finding a row in words, with where it is (${JSON.stringify(sect.rows)})`);
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => (state?.ci_red || []).some(c => c.project === 'beta'), null, { timeout: 15000 });
+  await page.evaluate(() => toggleBell(true));
+  const bell = await page.$eval('#bellPanel', p => [...p.querySelectorAll('.bnote')].map(n => n.textContent.replace(/\s+/g, ' ').trim())
+    .find(t => /CI failing in beta/.test(t)) || '');
+  ok(/the newest Android CI run on main failed/.test(bell) && /Git view/.test(bell),
+     `the bell carries a row while main is red, with the way to the Git view (${bell.slice(0, 80)})`);
+  await page.evaluate(() => toggleBell(false));
+  await page.click(`${NB} #gitCiLook`);
+  await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'nothing drifting',
+                             `${NB} details.sect[data-sect="git:ci"] .sst`, { timeout: 20000 });
+  const fresh = JSON.parse(readFileSync(`${DIR}/state/ciwatch/beta.json`, 'utf8'));
+  ok(fresh.findings.length === 0 && fresh.workflows === 0, 'Look now looks again and keeps it: beta has no workflows, so nothing drifts');
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => !(state?.ci_red || []).length, null, { timeout: 15000 });
+  ok(true, '...and the bell row leaves with the red run');
+  rmSync(`${DIR}/state/ciwatch/beta.json`, { force: true });
+}
+
 await done(browser);

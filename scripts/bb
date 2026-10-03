@@ -1613,6 +1613,32 @@ cmd_catchup() {
         else
             echo "  none kept; only a job that runs on this box archives one"
         fi
+
+        # What the CI watch last found (R117), kept by the dashboard beside
+        # its state: a red main branch, a moving runner label, an action a
+        # major behind, a notice GitHub wrote on the newest run.
+        local cw; cw="${DASHBOARD_STATE:-/config}/ciwatch/$proj.json"
+        if [ -r "$cw" ]; then
+            echo
+            echo "== CI, as the daily look found it =="
+            python3 - "$cw" <<'EOF' || true
+import json
+import sys
+import time
+
+r = json.load(open(sys.argv[1]))
+age = int((time.time() - r.get("at", 0)) / 3600)
+run = r.get("run") or {}
+print(f"  looked {age} h ago" + (f" at {r['repo']} on GitHub" if r.get("repo") else "")
+      + (f"; the newest run on {run.get('branch')} {run.get('ended') or 'ended ' + str(run.get('conclusion'))}" if run else ""))
+for f in r.get("findings") or []:
+    print(f"  {f.get('kind', ''):<7} {f.get('where', '')}: {f.get('text', '')[:300]}")
+if not r.get("findings"):
+    print("  nothing drifting")
+if r.get("error"):
+    print(f"  (GitHub: {r['error']})")
+EOF
+        fi
     fi
 }
 

@@ -308,6 +308,10 @@ branch only the host has. What CI printed is `bb ci-log` (`--list` for the
 runs): a self-hosted run's log as its runner kept it, and a run on
 GitHub's own runners read from GitHub by the controller, failed jobs'
 ends first, so a red run is read here rather than pasted by the person.
+The controller also looks at a project's CI once a day (a moving runner
+label, an action a major behind, a red main branch, GitHub's own notices),
+and `bb catchup` prints what it found: drift there is worth a roadmap item
+or a fix on your branch before it becomes a red run.
 
 <!-- BUILDERBOT:IF android *.gradle *.gradle.kts android AndroidManifest.xml -->
 ## Android

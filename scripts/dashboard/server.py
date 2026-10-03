@@ -2216,7 +2216,7 @@ gitview.configure(workspace=WORKSPACE,
                                             if k != "DASHBOARD_AUTH"},
                   may_push=projects.may_push, exclude=mapping.exclude,
                   audit=lambda *row: None if NODES_OK else db.audit(*row),
-                  host_of=forges.host_label)
+                  host_of=forges.host_label, ci_of=lambda n: ciwatch.read(n))
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
@@ -2331,6 +2331,12 @@ wiki.configure(state=STATE, workspace=WORKSPACE, write_json=write_json,
 import cilogs                                                    # noqa: E402
 cilogs.configure(state=STATE, workspace=WORKSPACE, push_record_fn=lambda p: projects.load_push().get(p),
                  config_fn=lambda d: gitrelay.config(d), parse_fn=forges.parse)
+# ...and watched (R117): once a day per project with workflows, and at once
+# when a project is linked; the Git view, bb catchup and the bell read it.
+import ciwatch                                                   # noqa: E402
+ciwatch.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json,
+                  projects=lambda: sorted(d.name for d in WORKSPACE.iterdir()
+                                          if d.is_dir() and not d.name.startswith(".")))
 
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card; see the module docstring
@@ -3033,6 +3039,9 @@ def snapshot(who):
         # The invitations to a project waiting on this account, for its bell
         # (membership.py): Accept and Decline are answered there.
         "invites": membership.mine(who),
+        # A project this account sees whose main branch's newest CI run
+        # failed (ciwatch.red, R117): a bell row while it is true.
+        "ci_red": ciwatch.red([p["name"] for p in ps]),
         # What is pinned in the bell about nodes (an agent behind, or from
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
@@ -3221,6 +3230,7 @@ GET_ROUTES = (
     ("prefix", "/api/wiki-export", "_get_wiki_export"),
     ("prefix", "/api/wiki", "_get_wiki"),
     ("prefix", "/api/ci-runs", "_get_ci_runs"),
+    ("prefix", "/api/ci-watch", "_get_ci_watch"),
     ("prefix", "/api/codebase", "_get_codebase"),
     ("prefix", "/api/pending", "_get_pending"),
     ("prefix", "/api/memory", "_get_memory"),
@@ -3286,6 +3296,7 @@ POST_ROUTES = (
     ("prefix", "/api/brief", "_brief"),
     ("prefix", "/api/design", "_design"),
     ("exact", "/api/wiki", "_wiki"),
+    ("exact", "/api/ci-watch", "_ci_watch"),
     ("prefix", "/api/devapp", "_devapp"),
     ("prefix", "/api/changelog", "_changelog"),
     ("prefix", "/api/version", "_version"),
@@ -4509,6 +4520,28 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(cilogs.log(name, int(run)) if run else cilogs.runs(name))
         except cilogs.Refused as e:
             return self._json({"error": str(e)}, 409)
+
+    def _get_ci_watch(self):
+        """GET /api/ci-watch: what the last look at a project's CI found
+        (ciwatch.read), for an account that sees the project."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        name = q.get("project", [""])[0]
+        if self._not_project(name):
+            return
+        return self._json(ciwatch.read(name))
+
+    def _ci_watch(self, req):
+        """POST /api/ci-watch: look at a project's CI now (ciwatch.look),
+        for an account that sees the project; the answer is what it found."""
+        name = field(req, "project")
+        if self._not_project(name):
+            return
+        if not ciwatch.claim(name):
+            return self._json({"error": "a look at this project's CI is already running"}, 409)
+        try:
+            return self._json(ciwatch.look(name))
+        finally:
+            ciwatch.release(name)
 
     def _get_wiki_export(self):
         """GET /api/wiki-export: the wiki as a zip of its Markdown pages,
@@ -5878,6 +5911,10 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("create"):
             return None
         body, code = projects.link(req)
+        # A project linked is a project whose CI is worth a first look now,
+        # not at the next round (R117).
+        if code == 200:
+            ciwatch.look_soon(field(req, "name").strip())
         return self._json(body, code)
 
     def _unlink(self, req):
@@ -6454,6 +6491,7 @@ def main():
     if not NODES_OK:
         claudecode.start()        # the first check soon after the start, then every six hours
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
+    ciwatch.start()           # a project's CI, once a day (R117)
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()
     Server(("0.0.0.0", PORT), Handler).serve_forever()

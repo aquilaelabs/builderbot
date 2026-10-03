@@ -50,6 +50,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/wiki-export` | prefix | `_get_wiki_export` | GET /api/wiki-export: the wiki as a zip of its Markdown pages, whether or not the project has a remote. |  |
 | GET | `/api/wiki` | prefix | `_get_wiki` | GET /api/wiki: the project's wiki (wiki.view), or one page of it with ?page=, for an account that sees the project; a session reads it too, through bb wiki. |  |
 | GET | `/api/ci-runs` | prefix | `_get_ci_runs` | GET /api/ci-runs: a project's runs on GitHub's own runners, or with ?run=N (0 the newest finished) that run's jobs and the end of each failed job's log (cilogs), for an account that sees the project; a session reads it t |  |
+| GET | `/api/ci-watch` | prefix | `_get_ci_watch` | GET /api/ci-watch: what the last look at a project's CI found (ciwatch.read), for an account that sees the project. |  |
 | GET | `/api/codebase` | prefix | `_get_codebase` | GET /api/codebase. |  |
 | GET | `/api/pending` | prefix | `_get_pending` | GET /api/pending. |  |
 | GET | `/api/memory` | prefix | `_get_memory` | GET /api/memory. |  |
@@ -102,6 +103,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/brief` | prefix | `_brief` | POST /api/brief: the first Claude press's Build it and Start without it, and a session's take as it starts: brief.verb, behind the gates here. |  |
 | POST | `/api/design` | prefix | `_design` | POST /api/design: the notebook's Save of the language and the pages, and the file written into the tree: design.verb, for an account that works on the project. |  |
 | POST | `/api/wiki` | exact | `_wiki` | POST /api/wiki: a page saved, removed or renamed, and the wiki pushed to or pulled from the forge's (wiki.verb), for an account that works on the project. |  |
+| POST | `/api/ci-watch` | exact | `_ci_watch` | POST /api/ci-watch: look at a project's CI now (ciwatch.look), for an account that sees the project; the answer is what it found. |  |
 | POST | `/api/devapp` | prefix | `_devapp` | The dev-instance controls: the Docker tab's buttons, and `bb devapp` from a session. | refused: docker-write |
 | POST | `/api/changelog` | prefix | `_changelog` | Write back the Unreleased section a person rearranged: changelog.editor_verb. |  |
 | POST | `/api/version` | prefix | `_version` | Move a project's version, or change who is allowed to: version.verb, behind the gates here. | refused: version |

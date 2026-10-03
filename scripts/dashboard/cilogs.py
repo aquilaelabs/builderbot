@@ -74,7 +74,10 @@ def _token(project):
 
 
 def _get(path, token, raw=False):
-    if not re.fullmatch(r"/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/[A-Za-z0-9_/?=&.-]+", path):
+    # A run's, a job's annotations, and a repository's newest release (the
+    # watcher's, ciwatch.py): nothing else is asked of GitHub with the token.
+    if not re.fullmatch(r"/repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(?:actions/[A-Za-z0-9_/?=&.-]+"
+                        r"|check-runs/\d+/annotations|releases/latest)", path):
         raise Refused("not a path this asks GitHub for")
     req = urllib.request.Request(API + path, headers={"User-Agent": "BuilderBot",
                                                       "Accept": "application/vnd.github+json"})

@@ -69,6 +69,7 @@ class CiLogs(unittest.TestCase):
         SEEN.clear()
         self.srv = ThreadingHTTPServer(("127.0.0.1", 0), Forge)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.addCleanup(self.srv.server_close)
         self.addCleanup(self.srv.shutdown)
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
