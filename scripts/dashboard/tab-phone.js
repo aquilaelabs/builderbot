@@ -1,8 +1,8 @@
-// A node's Phone section: a handset on wireless adb, driven from that node.
-// It lives on the Nodes tab, under the node it belongs to (the operator,
-// 2 Oct: several nodes can each have their own adb and their own phone),
-// rather than on a tab of its own with a node picker. Its own classic script
-// beside index.html; tab-nodes.js draws the section and calls in here.
+// The Phone tab: a handset on wireless adb, driven from a node picked in its
+// bar (R121, the operator 4 Oct: inside a node's page it was hard to find,
+// and the Nodes tab is a machine's configuration). Several nodes may each
+// carry adb and hold a phone; the picker lists those, and the panel below is
+// the picked one's. Its own classic script beside index.html.
 //
 // The controller has no adb and holds no phone. Every node whose census
 // reports adb is a place a phone can be paired and connected, each holding
@@ -28,16 +28,25 @@ let phIp = "", phPort = "", phCode = "";
 // The lend controls' picks, kept across a redraw (R113).
 let phLendTo = "", phLendFor = "1";
 
-// The Nodes tab, on the node that holds a phone (or the first that can),
-// with its Phone section open: where the phone is now.
+// The Phone tab, on the node that holds a phone (or the first that can).
 function openPhoneTab(){
-  const go = () => {
-    const n = (ph?.nodes || []).find(x => x.phone) || (ph?.nodes || [])[0];
-    if (n){ nodesPick = n.id; phNode = n.id; }
-    sectOpen["nodes:phone"] = true;
-    openNodesTab();
-  };
-  if (ph) go(); else phFetch(null, true).then(go);
+  const n = (ph?.nodes || []).find(x => x.phone);
+  if (n && !phNode) phNode = n.id;
+  openTab({kind: "phone", arg: "__phone", label: "Phone"});   // the kind's open hook probes
+}
+
+function renderPhoneInto(i){
+  const d = docSurface(i, "phone");
+  if (!d) return;
+  if (!ph){ d.list.innerHTML = `<div class="loading">loading…</div>`; return; }
+  const nodes = ph.nodes || [];
+  const n = nodes.find(x => x.id === phNode) || nodes[0];
+  d.setBar(`${nodePick("phPick", nodes, n?.id)}<span class="sp"></span>
+    <button type="button" id="phRefresh" title="ask the node's adb again now">Refresh</button>`);
+  d.list.innerHTML = n ? phonePanel(n)
+    : `<div class="hint">No node carries adb yet: install Android platform tools on one from the Toolchains tab.</div>`;
+  if (!tcDotsTimer && d.list.querySelector(".dots")) tcDotsTimer = setInterval(tcTickDots, 400);
+  wirePhoneTab(d.el);
 }
 
 // Connecting, pairing and disconnecting are any account's: a phone is its
@@ -68,7 +77,7 @@ async function phFetch(body, probe){
   phRev++;
   // The Nodes tab draws the root asks from the same answer, and the Docker
   // tab the rebuild ones.
-  if (tabs.some(t => ["nodes", "docker"].includes(t.kind))) drawPanes();
+  if (tabs.some(t => ["phone", "nodes", "docker"].includes(t.kind))) drawPanes();
   drawBell();          // the same asks, in the header
 }
 
@@ -214,10 +223,10 @@ function phonePanel(n){
         <button type="button" class="primary" data-allow="${a.id}">Allow</button>
       </span></div>`);
   const L2 = n.lease;
-  rows.push(`<div class="actbar phbar"><span class="state">${L2
-      ? `Lent to ${esc(L2.project)}: its sessions drive its own app without asking; anything else still asks here.`
-      : "A session reaches this phone only by asking; the request lands here, with its reason."}</span>
-    <button type="button" id="phRefresh" title="ask the node's adb again now">Refresh</button></div>`);
+  // Refresh is the tab's bar's (R121); this says how a session gets in.
+  rows.push(`<div class="field phbar"><div class="hint">${L2
+      ? `Lent to ${esc(L2.project)}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first.`
+      : "A session reaches this phone only by asking; the request lands with its owner, with its reason."}</div></div>`);
   if (!tcDotsTimer && rows.join("").includes('class="dots"')) tcDotsTimer = setInterval(tcTickDots, 400);
   return `<div class="phonetab">${rows.join("")}</div>`;
 }

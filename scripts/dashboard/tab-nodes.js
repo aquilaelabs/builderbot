@@ -916,7 +916,6 @@ function nodeConfSections(n){
   // offering buttons the agent refuses.
   const managed = !!rep.sandbox;
   return `<div class="ndconf"><div class="ndconfbody">
-    ${nodeRunnerSection(n, c)}
     ${managed
       ? docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})
         + docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})
@@ -1106,7 +1105,7 @@ function renderNodesInto(i){
         ${health}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
-        ${n.kind === "agent" && !pending ? nodePhoneSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeToolsLine(n) : ""}
         ${n.kind === "agent" && !pending ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
@@ -1135,14 +1134,41 @@ function renderNodesInto(i){
 // place a phone is paired, connected and lent, each node its own (the
 // operator, 2 Oct). Only on a node the phone answer lists, which is a node
 // carrying adb; the answer is fetched the first time the section is drawn.
-function nodePhoneSection(n){
-  if (ph === null){ if (!phFetching){ phFetching = true; phFetch(null, true).finally(() => { phFetching = false; }); }
-                    return ""; }
-  const r = (ph.nodes || []).find(x => x.id === n.id);
-  if (!r) return "";
-  const status = r.lease ? `lent to ${r.lease.project}` : r.phone ? (r.phone.model || "connected") : "no phone";
-  return docSection("nodes", "phone", "Phone", status, phonePanel(r),
-                    {cls: r.phone ? "ok" : "", open: false});
+// The node's phone and CI runner are tools of their own now (R121): a line
+// here says so and opens them on this node, so somebody who looks for them
+// where they were is sent where they are.
+function nodeToolsLine(n){
+  return `<div class="actbar ndtoolsline"><span class="state">This node's phone and CI runner are on their own tabs.</span>
+    <button type="button" data-ndphone="${esc(n.id)}">Phone</button>
+    <button type="button" data-ndrunner="${esc(n.id)}">CI runner</button></div>`;
+}
+
+// The CI runner tab (R121): a node picked in its bar, and that node's runners
+// below, drawn and wired exactly as the Nodes tab drew them (nodeRunnerSection
+// and wireNodeConf, one draft per node), so the two cannot disagree.
+let runnerNode = "";
+function openRunnerTab(nid){
+  if (nid) runnerNode = nid;
+  openTab({kind: "runner", arg: "__runner", label: "CI runner"});
+}
+function renderRunnerInto(i){
+  const d = docSurface(i, "runner");
+  if (!d) return;
+  if (nodesList === null){ d.list.innerHTML = `<div class="loading">loading…</div>`; return; }
+  const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  const has = n => (n.reported?.services?.runners || []).length || Object.keys(n.services?.runners || {}).length;
+  if (!ns.some(n => n.id === runnerNode)) runnerNode = (ns.find(has) || ns[0])?.id || "";
+  const n = ns.find(x => x.id === runnerNode);
+  d.setBar(`${nodePick("rnrPick", ns, runnerNode)}<span class="sp"></span>
+    <button type="button" id="rnrRefresh" title="read the nodes again">Refresh</button>`);
+  d.list.innerHTML = n
+    ? `<div class="row ndrow" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
+    : `<div class="hint">No node is enrolled yet: the Nodes tab enrolls one, and its runner is added here.</div>`;
+  if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
+  const pick = d.el.querySelector("#rnrPick");
+  if (pick) pick.onchange = () => { runnerNode = pick.value; nodesRev++; drawPanes(); };
+  const rf = d.el.querySelector("#rnrRefresh");
+  if (rf) rf.onclick = () => { busy(rf, "Reading"); loadNodes(); };
 }
 
 // An account that does not administer sees a node's settings and changes
@@ -1161,7 +1187,8 @@ function nodesReadOnly(root){
 
 function wireNodesTab(root){
   wireSignin(root);
-  if (root.querySelector(".phonetab")) wirePhoneTab(root);
+  root.querySelectorAll("[data-ndphone]").forEach(b => b.onclick = () => { phNode = b.dataset.ndphone; openPhoneTab(); });
+  root.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };

@@ -1556,11 +1556,11 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
         return {"error": "a system job is already in flight on this node; one at a time"}
     ar = dict(runners_of(n).get(slot) or {})
     if not ar:
-        return {"error": "no such runner on this node: add one in the runner section first"}
+        return {"error": "no such runner on this node: add one on the CI runner tab first"}
     url = ar.get("url") or ""
     forge = ar.get("forge") or "github"
     if want and not token:
-        return {"error": "no token stored for this runner: add it in the runner section "
+        return {"error": "no token stored for this runner: add it on the CI runner tab "
                          "first, with the address it registers with"}
     if want and forge not in ("github", "gitea"):
         return {"error": "runners register with GitHub, Gitea or Forgejo: pick one of those "

@@ -729,6 +729,19 @@ Applies to: scripts/dashboard/index.html, scripts/dashboard/page-panes.js, scrip
 
 A project may carry a color, one of the nine swatches in its settings, and the page says whose a thing is with it in four places and no others: its tab in the strip (a 3px stripe on the left, a tint of 10% at rest and 28% when it is the one in front), its row in the sidebar (the stripe and a 6% tint, on the card), the bar of the pane showing it (the stripe only), and the heading of its group in the Docker manager (a 4px stripe and a 16% tint, as `--gc`, the line color for containers that belong to no project). The bar keeps the ground every bar has: a tint there sat over the pane's black and made a notebook's bar the one bar that looked like no other (the operator, 29 Sep). The color arrives as `--pc` on the element; the swatches are circles of their own size, never the control height.
 
+### node-switcher
+
+Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/page-docs.js; node, picker, switcher, select
+
+A tab about one node at a time (Toolchains, the Emulator, the Phone, the CI runner)
+picks it with `nodePick()` (page-docs.js): one `label.pick` reading **Node**, at the
+left of the tab's bar with its verbs at the right, listing the agent nodes by name; a
+node that cannot be picked for this tab is in the list, disabled, its reason after its
+name (`sandbox: no adb`), and a quiet one says so. The Phone and the CI runner draw the
+picked node's thing as one section with its state line and controls; the Emulator is
+laid out like Toolchains. A new node-scoped tab starts from this, never from a picker
+of its own (R121, the operator 4 Oct).
+
 ## Pages
 
 Each page is a layout of labeled blocks on a frame, named for what it is for, on the platform it is built for.

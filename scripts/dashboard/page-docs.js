@@ -27,6 +27,20 @@
 //
 // Returns null when the pane is gone (a tab closed under a slow fetch), so
 // callers bail with `if (!d) return;` instead of drawing into nothing.
+// The node switcher every node-scoped tab wears (R121, the operator 4 Oct):
+// the same label, the same place (the bar's left, verbs at its right) and the
+// same list on Toolchains, the Emulator, the Phone and the CI runner. A node
+// that cannot be picked for this tab says why in its option, and a quiet one
+// says so. `why(n)` is "" for one that can.
+function nodePick(id, nodes, cur, why = () => ""){
+  if (!nodes.length) return "";
+  return `<label class="pick">Node <select id="${esc(id)}" aria-label="node">${nodes.map(n => {
+    const w = why(n);
+    return `<option value="${esc(n.id)}"${n.id === cur ? " selected" : ""}${w ? " disabled" : ""}>${esc(n.name)}${
+      w ? `: ${esc(w)}` : n.live === false ? " (quiet)" : ""}</option>`;
+  }).join("")}</select></label>`;
+}
+
 function docSurface(i, kind){
   const el = $("doc" + i);
   if (!el) return null;

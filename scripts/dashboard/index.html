@@ -4843,10 +4843,12 @@ body.booting .pane>.loading{margin:auto}
       <h2>Tools</h2>
       <div class="macros">
         <!-- Alphabetical, so a new one has one place to go. -->
+        <button id="bRunner" onclick="openRunnerTab()">CI runner</button>
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
         <button id="bEmulator" onclick="openEmulator()">Emulator</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
+        <button id="bPhone" onclick="openPhoneTab()">Phone</button>
         <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
         <button id="bToolchains" onclick="openToolchains()">Toolchains</button>
       </div>
@@ -5594,7 +5596,7 @@ onRev("prefs", () => refresh());
 // Pull to refresh on a touch screen (page-pull.js): the header's ↻ it replaced.
 wirePull();
 // A lent phone, live (R113): a session's screenshot reaches the Phone tab.
-onRev("phone.lease", () => { if (tabs.some(t => t.kind === "nodes")) phFetch(); });
+onRev("phone.lease", () => { if (tabs.some(t => t.kind === "phone")) phFetch(); });
 // Who has a session where, and whether it is working: the light fetch, so
 // the dot beside a name follows a session within seconds.
 onRev("live", () => liveRefresh());
@@ -5638,7 +5640,7 @@ onRev("phone.asks", () => phFetch());
 // The badge follows the count directly rather than waiting for the fetch, so
 // the tab strip is right even if the page is throttled too hard to redraw.
 onRev("phone.asks", k => setBadge(revs[k] || 0));
-onRev("phone.dev", () => { if (tabs.some(t => t.kind === "nodes")) phFetch(); });
+onRev("phone.dev", () => { if (tabs.some(t => t.kind === "phone")) phFetch(); });
 phFetch();
 
 // ---- the Analysis tab ----------------------------------------------------

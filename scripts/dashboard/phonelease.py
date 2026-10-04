@@ -189,7 +189,7 @@ def use(project, op, args):
     args = args if isinstance(args, dict) else {}
     nid, got = leased_to(project)
     if not got:
-        return {"error": f"no phone is lent to {project}: its owner lends one from its node's Phone section on the Nodes tab, "
+        return {"error": f"no phone is lent to {project}: its owner lends one from the Phone tab, on its node, "
                          "and bb phone run --why asks for one command meanwhile"}, 403
     dev = phone.phone_on(nid)
     if not dev:

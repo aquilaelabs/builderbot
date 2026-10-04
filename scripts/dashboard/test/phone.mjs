@@ -39,12 +39,14 @@ await api('/api/prefs', { project: 'alpha', node: sandbox.id });
 
 await page.evaluate(() => openPhoneTab());
 await page.waitForSelector('.phonetab .row', { timeout: 20000 });
-// A phone is its node's (the operator, 2 Oct): a Phone section on the Nodes
-// tab under the node that carries adb, rather than a tab of its own.
-ok(await page.$eval('details.sect[data-sect="nodes:phone"]', d => d.open && !!d.querySelector('.phonetab')),
-   'the phone is a section of the node that carries adb, on the Nodes tab, opened there');
-ok(await page.$('#bPhone') === null && !(await page.evaluate(() => tabs.some(t => t.kind === 'phone'))),
-   '...and there is no Phone tab or Tools button any more');
+// A phone is a tool of its own again (R121, the operator 4 Oct): a Tools
+// button and a tab with a Node picker of the nodes that carry adb; the Nodes
+// tab, a machine's configuration, only points at it.
+ok(await page.$('#bPhone') !== null && await page.evaluate(() => tabs.some(t => t.kind === 'phone'))
+   && await page.$eval('.doc.on #phPick', s => [...s.options].some(o => o.textContent.startsWith('sandbox'))),
+   'the Tools card opens a Phone tab, its Node picker listing the node that carries adb');
+ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
+   '...and the Nodes tab carries no Phone section of its own');
 
 // ---- what the server refuses ----------------------------------------------
 for (const [what, body] of [

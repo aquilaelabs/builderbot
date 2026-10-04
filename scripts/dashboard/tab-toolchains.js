@@ -424,10 +424,8 @@ function renderToolchainsInto(i){
   // The server refuses it either way (nodes.agent_stale); this is the reason,
   // said before the press rather than after it.
   const pstale = onNode && nodeStale(pnodes.find(n => n.id === tcNode) || {});
-  surf.setBar(`${pnodes.length ? `<label class="pick">Toolchains on <select id="tcNodeSel" aria-label="node">
-        ${pnodes.map(n => `<option value="${esc(n.id)}"${n.id === tcNode ? " selected" : ""}>${
-          esc(n.name)}${n.live === false ? " (quiet)" : ""}</option>`).join("")}
-      </select></label>` : ""}
+  // The one node switcher (page-docs.js nodePick, R121).
+  surf.setBar(`${nodePick("tcNodeSel", pnodes, tcNode)}
     <span class="sp"></span>
     <button type="button" id="tcRefresh"
       title="read this store again: what is installed, and how big it is">Refresh</button>`);

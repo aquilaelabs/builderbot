@@ -139,6 +139,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A phone is the person's who connected it: only they lend it to a project, from a Phone button on the project's row, and each command a session runs on it asks them in their bell, nobody else's. An administrator may disconnect someone else's phone; nobody may connect over one. (7456dd2)
 - The sidebar's project rows show Claude, the notebook and … beside the name at every width, as on a phone; … opens the rest. The Projects tab still shows every control on a desktop. (d3593f7)
 - A project's settings are a Settings view in its notebook, the same form with Revert in place of Cancel, and the project row no longer carries a settings button. (71fb7f5)
+- Phone and CI runner are Tools of their own again, each a tab with a Node picker, and the Nodes tab keeps a machine's configuration with a line pointing at them; Toolchains and the Emulator pick their node with the same control, labeled Node. (bf97e62)
 
 ### Removed
 

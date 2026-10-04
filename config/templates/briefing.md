@@ -337,8 +337,8 @@ a long-press from a slide. Two things an emulator does to a keyboard under
 test: its AVD reports a hardware keyboard, so an IME shows only after
 `settings put secure show_ime_with_hard_keyboard 1`; and a force-stop of an
 IME's package deselects it, so `ime set` again after one.
-A real phone is the person's who connected it, in its node's Phone section
-on the Nodes tab or the companion app's This phone, and only they lend it
+A real phone is the person's who connected it, on the Phone tab or the
+companion app's This phone, and only they lend it
 to a project, from the project's row: no session connects, lends or
 disconnects one. Lent to this project, it reaches this project's own app
 only, and every command but `bb phone lease` asks its owner and runs on

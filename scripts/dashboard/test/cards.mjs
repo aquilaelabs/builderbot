@@ -1134,7 +1134,7 @@ const runnerCard = rows => page.evaluate(x => {
 }, rows);
 
 let rc = await runnerCard([]);
-ok(/no runner on any node/.test(rc.body) && /Nodes tab installs one/.test(rc.body),
+ok(/no runner on any node/.test(rc.body) && /CI runner tab adds one/.test(rc.body),
    'with no runner anywhere the card says so, and where one is installed');
 rc = await runnerCard([{ node: 'bb-sandbox', live: true, installed: true,
   listening: true, busy: false, labels: ['bb-sandbox'] }]);
@@ -1423,7 +1423,7 @@ ok(await page.$$eval('.dmtab .row', rs =>
 // Each button on the Tools card carries an icon, and the tab it opens wears
 // the same one: a button and its tab are one thing in two places.
 ok(await page.$$eval('[data-card="tools"] .macros button', bs =>
-     bs.length === 6 && bs.every(b => b.querySelector('svg'))),
+     bs.length === 8 && bs.every(b => b.querySelector('svg'))),
    'every Tools button carries an icon');
 ok(await page.evaluate(() => {
      const btn = document.getElementById('bDocker').querySelector('svg').outerHTML;

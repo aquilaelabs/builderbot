@@ -1449,7 +1449,7 @@ pinning is one word:
 runs-on: [self-hosted, alpha-vm]
 ```
 
-The node's runner section prints that line for you, and `bb lint` says when
+The CI runner tab prints that line for each node, and `bb lint` says when
 a project has a node and its workflows do not carry it: a note, not a
 failure, because the workflow file is the repo's and this is advice. A
 `runs-on` built from an expression is left alone: choosing the runner at
@@ -2903,7 +2903,7 @@ says so, and says the thing worth saying first: try Connect, you are probably
 already paired.
 
 **A phone it has met is remembered.** Every pairing and every connection
-puts the handset on the node's remembered list in its Phone section: its
+puts the handset on the node's remembered list on the Phone tab: its
 model, its address, when it was last seen, and Connect on that row is the
 whole reconnect: the address goes back in the field and the node finds the
 port. Forget drops the row and nothing else; the pairing key stays on the
@@ -2917,7 +2917,7 @@ anyway. The node scans for it, on its own network.
 **A connection has one owner.** The account that connects a phone is the
 only one that can disconnect it; everybody else sees the connection with
 its controls grayed and the owner named. Every command a session asks for
-goes to that account (in the node's Phone section and their bell, nobody else's),
+goes to that account (on the Phone tab and in their bell, nobody else's),
 because the phone is on their desk and they are the one who said yes to it.
 
 **A session never touches the phone itself.** It is kept on an adb server of
@@ -2929,7 +2929,7 @@ output. The reason is required, not optional: approving a command you did
 not write, with no sentence saying what it is for, is a guess.
 
 **Lent to a project, a phone is driven without asking, and only for that
-project's app.** Its owner lends it from the node's Phone section to one project on its
+project's app.** Its owner lends it from the project's row to one project on its
 node, for an hour, four hours or until taken back. That project's sessions
 then install one of its own builds (`bb phone install dist/APP.apk`, whose
 package the lease learns), start, stop or pick it as the keyboard, read its
@@ -2983,7 +2983,7 @@ on that node, which the button says when it is missing.
 
 Every view shows facts it does not own. The roadmap's arrows depend on a Claude
 session existing; the Artifacts tab's Install depends on a phone being
-connected on a node; the Phone section's questions arrive from a terminal. In
+connected on a node; the Phone tab's questions arrive from a terminal. In
 one week, four of them went stale in exactly the same way: each had invented
 its own rule for when to re-read, out of knowledge it did not have. The worst
 was self-defeating: the phone view polled only while it already knew of a

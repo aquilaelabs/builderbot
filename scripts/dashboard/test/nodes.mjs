@@ -653,27 +653,32 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
      'a node whose card answers shows how busy it is and how much of its memory is taken, as two more meters');
   ok(await page.$eval(`${ROW} .ndtools`, e => /flutter/.test(e.textContent) && /node/.test(e.textContent)),
      'the row shows what is installed on the node, which is what a project bound to it can build');
-  const GH = 'github.com-example-org', RUN = `${ROW} .ndrun[data-slot="${GH}"]`;
-  ok(await page.$eval(`${ROW} .ndrunnone`, e => /no runner on this node/.test(e.textContent))
-     && await page.$(`${ROW} .addbar[data-add="runner"] [data-nrunnershow]`) !== null
-     && await page.$(`${ROW} [data-k="runner:url"]`) === null,
+  // The runner is a tool of its own since R121 (the operator, 4 Oct): the same
+  // section, drawn and wired on the CI runner tab for the picked node.
+  await page.evaluate(id => openRunnerTab(id), minted.id);
+  const RROW = `.runnertab .ndrow[data-node="${minted.id}"]`;
+  await page.waitForSelector(`${RROW} .ndconf`, { timeout: 15000 });
+  const GH = 'github.com-example-org', RUN = `${RROW} .ndrun[data-slot="${GH}"]`;
+  ok(await page.$eval(`${RROW} .ndrunnone`, e => /no runner on this node/.test(e.textContent))
+     && await page.$(`${RROW} .addbar[data-add="runner"] [data-nrunnershow]`) !== null
+     && await page.$(`${RROW} [data-k="runner:url"]`) === null,
      'the CI runners section says there is none and adds one at the top, a button until pressed');
-  await page.click(`${ROW} [data-nrunnershow]`);
-  await page.waitForSelector(`${ROW} [data-k="runner:url"]`, { timeout: 10000 });
-  ok(await page.$eval(`${ROW} [data-k="runner:forge"]`, s => s.value === '' && [...s.options].some(o => o.value === 'gitea'))
-     && await page.$(`${ROW} [data-nrunnercancel]`) !== null,
+  await page.click(`${RROW} [data-nrunnershow]`);
+  await page.waitForSelector(`${RROW} [data-k="runner:url"]`, { timeout: 10000 });
+  ok(await page.$eval(`${RROW} [data-k="runner:forge"]`, s => s.value === '' && [...s.options].some(o => o.value === 'gitea'))
+     && await page.$(`${RROW} [data-nrunnercancel]`) !== null,
      '...and the form unrolls in the band with the host kind read from the address unless picked, and a Cancel');
   // Adding a runner is its own press, so the token never rides the install:
   // it goes to the root-only store, the row appears with Install awake.
-  await page.fill(`${ROW} [data-k="runner:url"]`, 'https://github.com/example-org');
-  await page.fill(`${ROW} [data-k="runner:token"]`, 'github_pat_TESTTOKEN1234');
-  await page.fill(`${ROW} [data-k="runner:labels"]`, 'gpu');
-  await page.click(`${ROW} [data-nrunneradd]`);
+  await page.fill(`${RROW} [data-k="runner:url"]`, 'https://github.com/example-org');
+  await page.fill(`${RROW} [data-k="runner:token"]`, 'github_pat_TESTTOKEN1234');
+  await page.fill(`${RROW} [data-k="runner:labels"]`, 'gpu');
+  await page.click(`${RROW} [data-nrunneradd]`);
   await page.waitForSelector(RUN, { timeout: 10000 });
   ok(await page.$eval(`${RUN} .ndrunstate`, e => /not installed/.test(e.textContent) && !/no token stored/.test(e.textContent))
      && await page.$eval(`${RUN} [data-nrunner="install"]`, b => !b.disabled && /Install runner/.test(b.textContent))
      && !!(await page.$(`${RUN} [data-nrunnerforget]`))
-     && await page.$(`${ROW} [data-k="runner:token"]`) === null && await page.$(`${ROW} [data-nrunnershow]`) !== null,
+     && await page.$(`${RROW} [data-k="runner:token"]`) === null && await page.$(`${RROW} [data-nrunnershow]`) !== null,
      'Add runner keeps the token root-only, rolls the form up, and lists the runner with Install awake and Forget token beside it');
   // Dead the moment it is pressed, not when the answer comes back. Every
   // action here awaits a POST, then loadNodes(), then a repaint: a second
@@ -686,8 +691,9 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
     return b.disabled;
   }, RUN);
   ok(pressedState === true, 'a node action goes dead the instant it is pressed, not when it answers');
-  await page.waitForFunction(sel => /applying runner/.test(
-    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  // On the CI runner tab the runner's own state line is what says it.
+  await page.waitForFunction(sel => /installing now/.test(
+    document.querySelector(sel + ' .ndrunstate')?.textContent || ''), RUN, { timeout: 10000 });
   // The runner section says so itself, in its own state line, with the
   // buttons it has taken away: the operator pressed Install, then Remove,
   // and read nothing but two dead buttons while the first job ran.
@@ -699,8 +705,12 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
      && rj.spec.config.labels.includes('shed') && rj.spec.config.labels.includes('gpu') && rj.spec.config.slot === GH,
      `Install runner queues the system job for that runner with the node's name among the labels (${rj?.spec?.config?.labels?.join(',')})`);
   await napi('/api/v1/jobs', { action: 'cancel', id: rj.id });
-  await page.waitForFunction(sel => !/applying/.test(
-    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  // The cancel reaches the runner's own state line on the CI runner tab.
+  for (let i = 0; i < 40; i++){
+    if (await page.evaluate(sel => !/installing now/.test(document.querySelector(sel + ' .ndrunstate')?.textContent || ''), RUN)) break;
+    await page.evaluate(() => loadNodes());
+    await page.waitForTimeout(500);
+  }
   // A failed install says so on the section, with the reason the server
   // took from its log. Drawn and read in one step, so a poll cannot repaint
   // the row from the real payload in between.
@@ -714,7 +724,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
     const out = { text: e?.textContent || '', bad: !!e?.classList.contains('bad') };
     n.runner_failed = keep.f; n.services = keep.s; nodesRev++; drawPanes();
     return out;
-  }, { id: minted.id, sel: ROW });
+  }, { id: minted.id, sel: RROW });
   ok(/install failed (?!: )\S/.test(failedVerdict.text) && /Libicu/.test(failedVerdict.text) && failedVerdict.bad,
      `the Nodes tab says a runner install failed, when, and why, in red (${failedVerdict.text.slice(0, 80)})`);
   const removingVerdict = await page.evaluate(({ id, sel }) => {
@@ -727,7 +737,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
     const out = e?.textContent || '';
     n.applying = keep.a; n.services = keep.s; nodesRev++; drawPanes();
     return out;
-  }, { id: minted.id, sel: ROW });
+  }, { id: minted.id, sel: RROW });
   ok(/removing now/.test(removingVerdict), `...and a remove in flight says removing now (${removingVerdict.slice(0, 60)})`);
   // Installed and listening are different states, and the difference is the
   // one that matters: a registered runner with no listener looks healthy
@@ -746,7 +756,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
     document.querySelector(sel + ' .ndrunstate')?.textContent || ''), RUN, { timeout: 10000 });
   ok(await page.$eval(`${RUN} .ndrunstate`, e => /no workflow will reach it/.test(e.textContent)
        && /registration may not have finished/.test(e.textContent) && e.classList.contains('bad'))
-     && await page.$$eval(`${ROW} .ndrun`, rows => rows.length === 1),
+     && await page.$$eval(`${RROW} .ndrun`, rows => rows.length === 1),
      'a runner that is registered but not listening says so, rather than reading as installed, on the one row');
   await runnerCensus({ runners: [{ slot: GH, installed: true, active: true, busy: true,
                                    name: 'shed', url: 'https://github.com/example-org',
@@ -759,18 +769,20 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // The label is the only thing that pins a workflow to THIS machine.
   // `self-hosted` alone matches the controller and every other node, so
   // GitHub sends the job to whichever is idle (roadmap #19).
-  ok(await page.$eval(`${ROW} .ndrunpin`, e =>
+  ok(await page.$eval(`${RROW} .ndrunpin`, e =>
        /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
      '...and the section prints the exact runs-on line that lands a job here');
   // The runner belongs above the mounts: it is the thing the operator is
   // most often here to check, and it was below three editors. The plane is
   // sections now (one fold per concern, a status on each summary), and
   // the order still holds.
-  ok(await page.$eval(`${ROW} .ndconfbody`, e => {
-       const kids = [...e.querySelectorAll(':scope > details.sect > summary .t')].map(t => t.textContent.trim());
-       return kids.indexOf('CI runners') >= 0 && kids.indexOf('Storage') >= 0
-              && kids.indexOf('CI runners') < kids.indexOf('Storage');
-     }), '...and the runner section comes before the mounts, not after the network');
+  // ...and the Nodes tab no longer carries it: a line there opens this tab.
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector(`${ROW} .ndconfbody`, { timeout: 15000 });
+  ok(await page.$eval(`${ROW} .ndconfbody`, e => ![...e.querySelectorAll(':scope > details.sect > summary .t')]
+       .some(t => t.textContent.trim() === 'CI runners'))
+     && await page.$(`${ROW} [data-ndrunner]`) !== null,
+     '...and the Nodes tab has no runner section, only a line that opens the CI runner tab on this node');
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
@@ -1525,14 +1537,18 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
      '...in amber: an update waiting is not work stopped');
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
+  // The runner is on its own tab now (R121), held by the same rule there.
+  const runnerOff = await page.evaluate(async id => { openRunnerTab(id); await new Promise(r => setTimeout(r, 400));
+    const b = document.querySelector(`.runnertab .ndrow[data-node="${id}"] [data-nrunner="install"]`);
+    const was = b?.disabled; openNodesTab(); await new Promise(r => setTimeout(r, 400)); return was; }, minted.id);
   const off = await page.evaluate(sel => ({
     storage: document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
     network: document.querySelector(sel + ' [data-napply="network"]')?.disabled,
-    runner: document.querySelector(sel + ' [data-nrunner="install"]')?.disabled,
     cache: document.querySelector(sel + ' [data-nd="cache-clear"]')?.disabled,
     update: document.querySelector(sel + ' [data-nd="update-agent"]')?.disabled,
     said: document.querySelector(sel + ' .ndconfstate')?.textContent || '',
   }), ROW);
+  off.runner = runnerOff;
   ok(off.storage && off.network && off.runner && off.cache && !off.update
      && /runs agent 3 and this controller ships/.test(off.said),
      `everything the agent runs is off while it is behind, and the state line says why (${

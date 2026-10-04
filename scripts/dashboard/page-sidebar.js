@@ -23,7 +23,7 @@ function drawRunner(){
   const el = $("runner");
   const rows = state?.node_runners || [];
   if (!rows.length){
-    paint(el, `<div class="empty">no runner on any node: the Nodes tab installs one</div>`);
+    paint(el, `<div class="empty">no runner on any node: the CI runner tab adds one</div>`);
     return;
   }
   const when = t => fmtTime((t || 0) * 1000, {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit"});
@@ -40,10 +40,12 @@ function drawRunner(){
       : n.installed ? ["installed, not listening", "bad"]
       : n.failed ? [`install failed ${when(n.failed.ended)}: ${n.failed.why || "its job on the Jobs tab says why"}`, "bad"]
       : ["install asked for; not reported yet", "warn"];
-    return `<div class="row"><span class="grow"><b>${esc(n.node)}</b>${n.url ? ` <span class="dim">${esc(n.url.replace(/^https?:\/\//, ""))}</span>` : ""}
+    return `<div class="row" data-runnode="${esc(n.id || "")}" role="button" tabindex="0" title="open the CI runner tab on ${esc(n.node)}"><span class="grow"><b>${esc(n.node)}</b>${n.url ? ` <span class="dim">${esc(n.url.replace(/^https?:\/\//, ""))}</span>` : ""}
       <span class="sub ${cls}">${esc(word)}</span>${n.labels.length
         ? `<div class="sub dim">runs-on: [self-hosted, ${esc(n.node)}]</div>` : ""}</span></div>`;
   }).join(""));
+  // A row opens the CI runner tab on its node (R121), where it is managed.
+  el.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => openRunnerTab(r.dataset.runnode));
 }
 
 // What gets folded away is what the button says: projects with an *error*, and
@@ -150,7 +152,7 @@ function wireProjectRows(root){
 function phoneWhy(p){
   const ph = p.phone;
   if (!p.node_name) return "no node: a phone is connected on a project's node, and this one has none";
-  if (!ph) return `no phone is connected on ${p.node_name}: connect yours in its Phone section on the Nodes tab`;
+  if (!ph) return `no phone is connected on ${p.node_name}: connect yours in the Phone tab, on that node`;
   if (!ph.mine) return `the phone on ${p.node_name} is ${ph.owner}'s: only they lend it`;
   if (ph.lease && ph.lease.project !== p.name) return `your phone is lent to ${ph.lease.project}: take it back there first`;
   return "";

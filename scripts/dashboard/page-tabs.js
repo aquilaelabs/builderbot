@@ -228,6 +228,9 @@ const TOOL_ICONS = {
   nodes: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="2.5" y="2.8" width="11" height="4.2" rx="1"/><rect x="2.5" y="9" width="11" height="4.2" rx="1"/>
     <path d="M5 4.9h.01"/><path d="M5 11.1h.01"/></svg>`,
+  // A play arrow in a box: CI, running workflows.
+  runner: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <rect x="2.5" y="2.5" width="11" height="11" rx="1.6"/><path d="M6.6 5.6v4.8l3.8-2.4z"/></svg>`,
   // A handset.
   phone: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="4.5" y="2" width="7" height="12" rx="1.4"/><path d="M7 11.8h2"/></svg>`,
@@ -238,7 +241,7 @@ const TOOL_ICONS = {
 // Which button on the Tools card opens which kind, so the card can be
 // stamped with the icons once at load and the tab strip can look them up.
 const TOOL_BUTTONS = {bToolchains: "toolchains", bDocker: "docker", bEmulator: "emulator", bJobs: "jobs",
-                      bNodes: "nodes", bFindings: "findings"};
+                      bNodes: "nodes", bFindings: "findings", bPhone: "phone", bRunner: "runner"};
 
 const TABKINDS = {
   term:     { multi: true },
@@ -283,6 +286,17 @@ const TABKINDS = {
               icon: TOOL_ICONS.jobs,
               render: (i) => renderJobsInto(i), live: () => jobsRev,
               open: () => loadJobs() },
+  // A phone and a CI runner are tools of their own again, each with a node
+  // picker (R121, the operator 4 Oct): inside a node's page they were hard
+  // to find, and the Nodes tab is a machine's configuration.
+  phone:    { multi: false, label: () => "Phone",
+              icon: TOOL_ICONS.phone,
+              render: (i) => renderPhoneInto(i), live: () => phRev,
+              open: () => phFetch(null, true) },
+  runner:   { multi: false, label: () => "CI runner",
+              icon: TOOL_ICONS.runner,
+              render: (i) => renderRunnerInto(i), live: () => `${nodesRev}/${(state?.node_runners || []).length}`,
+              open: () => loadNodes() },
   settings: { multi: false, label: () => "Controller settings",
               render: (i) => renderSettingsInto(i), live: settingsLive },
   users:    { multi: false, label: () => "Users",

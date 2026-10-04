@@ -148,10 +148,8 @@ function renderEmulatorInto(i){
     : job.running ? "another job is writing to this store"
     : stale ? staleWhy(pnode)
     : d.sdkmanager === false ? `${d.name} needs the Android command-line tools first` : "";
-  surf.setBar(`<label class="pick">Images on <select id="emuNodeSel" aria-label="node">
-        ${pnodes.map(n => `<option value="${esc(n.id)}"${n.id === emuNode ? " selected" : ""}>${
-          esc(n.name)}${n.live === false ? " (quiet)" : ""}</option>`).join("")}
-      </select></label>
+  // The one node switcher (page-docs.js nodePick, R121).
+  surf.setBar(`${nodePick("emuNodeSel", pnodes, emuNode)}
     <span class="sp"></span>
     <button type="button" id="emuRefresh" title="read this node's images again">Refresh</button>`);
   const free = typeof d.free_mb === "number"

@@ -4850,7 +4850,7 @@ cmd_doctor() {
     # expired token cannot keep reading [ok] here.
     runner_ids="$(sudo -n /opt/builderbot/scripts/mint-runner-token --list 2>/dev/null || true)"
     if [ -z "$runner_ids" ]; then
-        printf '  [skip] no runner token stored for any node (the runner section of a node on the Nodes tab takes one)\n'
+        printf '  [skip] no runner token stored for any node (the CI runner tab takes one)\n'
     else
         while read -r rid rslot; do
             [ -n "$rid" ] || continue

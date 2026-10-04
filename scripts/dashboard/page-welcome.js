@@ -25,8 +25,8 @@ const GUIDE_USER = `
     <li><b>The notebook</b>: Briefing, Roadmap (sent to Claude a step at a
       time), Bugs, Git, Artifacts, Tests, Analysis.</li>
     <li><b>The bell</b>: what needs your answer.</li>
-    <li><b>Your phone</b>: the Phone section of a node on the Nodes tab connects
-      a handset to that node; a session asks before it touches it.</li>
+    <li><b>Your phone</b>: the Phone tab, under Tools, connects a handset to a
+      node you pick; a session asks before it touches it.</li>
   </ul>
   <h4>When something says no</h4>
   <p>A refusal names the way out, so read it rather than retry.</p>

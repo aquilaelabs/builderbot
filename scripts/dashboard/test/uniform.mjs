@@ -68,6 +68,15 @@ const DRIVERS = {
     open: () => page.evaluate(() => openSettingsTab()),
     readyWhen: '.settingstab .logdays',
   },
+  // The Phone and the CI runner, tools of their own again (R121).
+  phone: {
+    open: () => page.evaluate(() => openPhoneTab()),
+    readyWhen: '.phonetab .row, .doc.on .hint',
+  },
+  runner: {
+    open: () => page.evaluate(() => openRunnerTab()),
+    readyWhen: '.runnertab .ndconf, .runnertab .hint',
+  },
   jobs: {
     // Whether the queue has anything in it depends on which suites ran
     // before this one; either drawing carries the bar and the foot band.

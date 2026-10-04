@@ -764,7 +764,7 @@ def ask(why, argv, nid, node_name, project, by="claude", asker=""):
     rec = _rec(nid)
     if not rec or not phone_on(nid):
         return {"error": f"no phone is connected on {node_name or nid}: somebody "
-                         "connects one in that node's Phone section on the Nodes tab"}
+                         "connects one in the Phone tab, on that node"}
     return _queue("phone", why, argv, nid, node_name, project, by, rec["owner"],
                   rec.get("owner_name") or "the owner", asker)
 
@@ -1464,8 +1464,8 @@ def artifact_verb(project, act, req, *, uid, me, by):
                              "driven from the project's node"}, 400
         if not phone_on(nid):
             return {"error": f"no phone is connected on {node['name']}: "
-                             "connect one in that node's Phone section on the "
-                             "Nodes tab"}, 400
+                             "connect one in the Phone tab, on that node"
+                             ""}, 400
         held = owner_of(nid)
         if held and held["uid"] != uid:
             return {"error": f"the phone on {node['name']} was connected "
@@ -1473,7 +1473,7 @@ def artifact_verb(project, act, req, *, uid, me, by):
                              "it or install on it"}, 400
         if not held:
             return {"error": f"the phone on {node['name']} has no owner: "
-                             "connect it in its node's Phone section on the Nodes tab first"}, 400
+                             "connect it in the Phone tab, on its node first"}, 400
     if act == "push":
         # A temporary add-on, through web-ext on the phone's node. A push
         # is a decision, made each time; nothing auto-pushes on a change.
