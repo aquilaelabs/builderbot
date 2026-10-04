@@ -297,6 +297,17 @@ command so allowed is still an ask on the record, answered at once in the
 owner's name, and the companion app keeps a note in the shade for as long
 as a grant, or a lend, lasts; tapping it ends it.
 
+**An ask reaches the app in a second, by a held request** (R125, 4 Oct).
+The app asked on Android's alarm, which an idle phone stretches to nine
+minutes or more against a fifteen-minute window to answer. A switch in the
+app (Hear asks at once) runs a foreground service holding GET
+/api/phone/wait open; the dashboard answers it the moment this account's
+phone asks, lease or grants change, or after 45 s, and the app runs its
+usual round. No Firebase: every install would need its own project and
+keys, and the phone already reaches its BuilderBot directly. Android still
+cuts a sleeping phone's network unless the app is exempt from battery
+optimisation, so the switch offers that too.
+
 ## How a view knows to re-read
 
 Requests wait **fifteen minutes**, not five, and the card counts down. Five

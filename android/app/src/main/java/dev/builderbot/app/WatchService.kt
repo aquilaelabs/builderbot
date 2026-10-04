@@ -204,7 +204,7 @@ object Watch {
 
     private fun ongoingNote(context: Context, key: String, title: String, text: String,
                             end: PendingIntent): Notification =
-        NotificationCompat.Builder(context, App.CH_WATCH)
+        NotificationCompat.Builder(context, App.CH_HELD)
             .setSmallIcon(R.drawable.ic_stat_bb)
             .setContentTitle(title)
             .setContentText(text)

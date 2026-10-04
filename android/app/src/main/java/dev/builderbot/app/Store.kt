@@ -49,6 +49,11 @@ class Store(context: Context) {
         set(v) { plain.edit().putStringSet("asks", v).apply() }
     // The ongoing notes up now (a lent phone, a session allowed), by id, so
     // one that ended elsewhere leaves the shade.
+    // Hear asks at once (R125): a foreground connection to the dashboard
+    // instead of waiting on Android's alarm. Off until chosen.
+    var live: Boolean
+        get() = plain.getBoolean("live", false)
+        set(v) { plain.edit().putBoolean("live", v).apply() }
     var ongoing: Set<String>
         get() = plain.getStringSet("ongoing", emptySet()) ?: emptySet()
         set(v) { plain.edit().putStringSet("ongoing", v).apply() }

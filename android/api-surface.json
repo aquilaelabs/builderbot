@@ -9,7 +9,7 @@
     "the app draws or acts on; the app tolerates an extra one and blanks a",
     "missing one, so this is the contract, not the whole answer."
   ],
-  "api": 6,
+  "api": 7,
   "endpoints": [
     {"method": "GET", "path": "/api/meta", "fields": ["api", "version", "apk", "apk_sha256"]},
     {"method": "GET", "path": "/api/status", "fields": ["me", "can", "image", "host", "projects", "attention", "phone_asks", "welcome",
@@ -22,6 +22,7 @@
     {"method": "GET", "path": "/api/phone", "fields": ["nodes", "asks"],
      "nodes": ["id", "name", "live", "phone", "owner", "mine", "lease", "lendable", "trust"],
      "asks": ["id", "kind", "why", "cmd", "project", "node", "node_name", "asker", "left", "detail", "env_keys", "name", "for"]},
+    {"method": "GET", "path": "/api/phone/wait", "fields": ["token"]},
     {"method": "POST", "path": "/api/phone", "actions": ["allow", "deny", "pair", "connect", "lend", "take-back", "untrust", "disconnect"]},
     {"method": "GET", "path": "/api/pending?project=", "fields": ["pending", "counts", "gate"],
      "pending": ["id", "kind", "verb", "summary", "by", "settled"]},

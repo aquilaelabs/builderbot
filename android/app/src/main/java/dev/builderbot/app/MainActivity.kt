@@ -130,7 +130,7 @@ fun BuilderBotApp(openOn: String) {
     var waiting by rememberSaveable { mutableStateOf(0) }
     BuilderBotTheme {
         if (!signedIn) {
-            LoginScreen(store) { admin -> isAdmin = admin; signedIn = true; Watch.startIfWanted(context) }
+            LoginScreen(store) { admin -> isAdmin = admin; signedIn = true; Watch.startIfWanted(context); Live.startIfWanted(context) }
             return@BuilderBotTheme
         }
         // The watch while the app is open: its own clock, on the interval
@@ -139,6 +139,9 @@ fun BuilderBotApp(openOn: String) {
         val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
         LaunchedEffect(signedIn) {
             lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                // On screen is when Android lets the live connection start
+                // (R125): it was stopped, or its start was refused, behind.
+                Live.startIfWanted(context)
                 while (true) {
                     val api = store.api()
                     if (api != null && store.watch) {

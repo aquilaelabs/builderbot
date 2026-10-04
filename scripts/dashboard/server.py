@@ -1710,7 +1710,10 @@ def uptime():
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
 # field listed there bumps all three together: the app, the file, this.
-APP_API = 6
+APP_API = 7
+# How long the app's live connection is held before an empty answer (R125):
+# under the app's 60 s read timeout, and long enough to cost little.
+PHONE_WAIT_S = 45
 
 
 def app_apk():
@@ -3238,6 +3241,7 @@ GET_ROUTES = (
     ("prefix", "/api/welcome", "_get_welcome"),
     ("prefix", "/api/source?", "_get_source"),
     ("prefix", "/logs/download", "_get_logs_download"),
+    ("prefix", "/api/phone/wait", "_get_phone_wait"),
     ("prefix", "/api/phone", "_get_phone"),
     ("prefix", "/api/toolchains", "_get_toolchains"),
     ("prefix", "/api/emulator", "_get_emulator"),
@@ -4281,6 +4285,25 @@ class Handler(BaseHTTPRequestHandler):
         # may ask the node.
         return self._json(self._phone_payload(node=(q.get("node") or [""])[0],
                                               probe=bool(q.get("probe")) and not (self._who() or {}).get("session")))
+
+    def _get_phone_wait(self):
+        """GET /api/phone/wait?since=T: the companion app's live connection
+        (R125). Answers {token} at once when this account's phone asks,
+        lease or grants differ from T, else holds the request until they
+        do or about 45 s pass, so an ask reaches the app in a second rather
+        than on Android's alarm. A person's, not a session's."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "the live connection is the companion app's"}, 403)
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        since = q.get("since", [""])[0]
+        uid, admin = users.uid_of(who), users.is_admin(who)
+        end = time.time() + PHONE_WAIT_S
+        while True:
+            tok = phone.wait_token(uid, admin)
+            if tok != since or time.time() >= end:
+                return self._json({"token": tok})
+            time.sleep(0.5)
 
     def _get_toolchains(self):
         """GET /api/toolchains."""

@@ -62,6 +62,9 @@ class Api(private val base: String, private val user: String, private val passwo
     suspend fun status() = get("/api/status")
     suspend fun meta() = get("/api/meta")
     suspend fun phone() = get("/api/phone")
+    // Held by the dashboard until this account's asks, lease or grants move,
+    // or about 45 s (R125); `since` is the last token it answered.
+    suspend fun phoneWait(since: String) = get("/api/phone/wait?since=${enc(since)}")
     // This phone, connected and lent from the phone itself (R114): the
     // Phone tab's own actions, for the node the person picks.
     suspend fun phonePair(node: String, ip: String, port: Int, code: String) =

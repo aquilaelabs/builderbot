@@ -8,7 +8,7 @@
 // a phone that is always present. That is not a shortcut: a real adb answers
 // from whatever is actually paired to the box the suite runs on, which makes
 // the result a fact about the room rather than the code.
-import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, URL, DIR } from './lib.mjs';
 import { execSync, execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -130,10 +130,19 @@ ok((await api('/api/phone', { action: 'ask', why: '', cmd: ['shell', 'ls'], proj
 const noNode = await api('/api/phone', { action: 'ask', why: 'look around', cmd: ['shell', 'ls'], project: 'beta' });
 ok(/has no node/.test(noNode.body.error || ''),
    'a project with no node has no phone to ask for, and is told so');
+// The companion app's live connection (R125): a wait held open answers the
+// moment an ask lands, rather than at the app's next alarm.
+const since = (await api('/api/phone/wait?since=')).body.token;
+const t0 = Date.now();
+const held = api('/api/phone/wait?since=' + since);
+await sleep(700);
 const asked = await api('/api/phone', { action: 'ask', why: 'read the Firefox version',
                                         cmd: ['shell', 'getprop', 'ro.build.version.release'], project: 'alpha' });
 ok(asked.body.id > 0 && asked.body.to === 'test',
    `a session can ask, and is told who was asked (${JSON.stringify(asked.body).slice(0, 80)})`);
+const woke = await held;
+ok(woke.body.token && woke.body.token !== since && Date.now() - t0 < 10000,
+   `...and the app's held wait answers as it lands, not at its next alarm (${Date.now() - t0} ms)`);
 ok((await api('/api/phone', undefined, other)).body.asks.length === 0,
    'the other account is not asked: the question goes to the connection\'s owner alone');
 await page.evaluate(() => phFetch());

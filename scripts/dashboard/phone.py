@@ -31,6 +31,7 @@ one that can disconnect it, and the only one asked when a session wants to
 touch it: a request from a session goes to the owner's bell and Phone tab and
 nobody else's. Everybody else sees the connection and cannot drive it.
 """
+import hashlib
 import json
 import ipaddress
 import re
@@ -840,6 +841,19 @@ def untrust(nid, uid, project="", asker_uid="", all_=False):
             _trust.pop(k, None)
             _trust_names.pop(k, None)
     return {"ok": True}
+
+
+def wait_token(uid, admin=False):
+    """What the companion app's live connection waits on (R125): a short
+    hash of the asks waiting on this account, the lease revision and the
+    grants. It moves exactly when the app has something new to post or to
+    take out of the shade."""
+    ids = sorted(r["id"] for r in requests_open(uid, admin))
+    with _lock:
+        held = sorted([*k, v] for k, v in _trust.items())
+    lease = leasing.rev() if leasing is not None else ""
+    raw = json.dumps([ids, lease, held], default=str)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 def _forget_trust(nid):

@@ -3,7 +3,6 @@ only to a project on the phone's node; a lease ends by itself; a session
 drives only the lease's own apps, and touches the screen only while one of
 them is in front or is the keyboard. adb is faked: what is checked is what
 would be sent to the phone, and what is refused before anything is."""
-import base64
 import os
 import shutil
 import sys
@@ -268,6 +267,19 @@ class Session(unittest.TestCase):
         self.assertTrue(phone.trusts("n1"))
         phone.verb("take-back", {"node": "n1"}, {"name": "Owner", "uid": "u1"}, lambda: {})
         self.assertEqual(phone.trusts("n1"), [])
+
+    def test_the_token_moves_with_what_the_app_posts(self):
+        # R125: what the app's live connection waits on moves when an ask
+        # arrives or is answered and when a grant is made, not otherwise.
+        t0 = phone.wait_token("u1")
+        self.assertEqual(phone.wait_token("u1"), t0)
+        first = self.shot()
+        t1 = phone.wait_token("u1")
+        self.assertNotEqual(t1, t0)
+        self.assertEqual(phone.wait_token("u2"), phone.wait_token("u2"))
+        phone.decide(first["asked"], True, "u1", "Owner", session=True)
+        self.settle(first["asked"])
+        self.assertNotEqual(phone.wait_token("u1"), t1)
 
 
 class Scope(unittest.TestCase):

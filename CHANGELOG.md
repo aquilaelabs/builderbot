@@ -66,6 +66,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Each container on the Docker tab has Start on boot: ticked and applied, Docker starts it when its node does (restart policy unless-stopped); for one BuilderBot built, the choice is kept and put back after a rebuild. (1eee73c)
 - Release makes the GitHub release too, where the token can write there: the version as its title, its changelog section as the notes, that commit's builds attached. The version row links to it or says why there is none (7e09164)
 - Phone asks can be answered Allow for this session, on the dashboard and in the companion app; the app keeps a note up while your phone is lent or a session is allowed, and tapping it takes the phone back (adb disconnected) or asks every time again (98435a1)
+- Hear asks at once, a switch in the companion app: it keeps a connection open so a phone or root question reaches you in about a second, not on Android's alarm. Also fixed: the app's notes for a lent phone and an allowed session now show (fed874b)
 
 ### Changed
 

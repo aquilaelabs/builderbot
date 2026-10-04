@@ -52,6 +52,7 @@ import androidx.navigation.NavHostController
 import dev.builderbot.app.Api
 import dev.builderbot.app.BuildConfig
 import dev.builderbot.app.Store
+import dev.builderbot.app.Live
 import dev.builderbot.app.Watch
 import dev.builderbot.app.arr
 import dev.builderbot.app.bool
@@ -742,6 +743,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
     val (meta, _) = load("meta") { api.meta() }
     var watch by remember { mutableStateOf(store.watch) }
     var turns by remember { mutableStateOf(store.turns) }
+    var live by remember { mutableStateOf(store.live) }
     var watchSaid by remember { mutableStateOf("") }
     var poll by remember { mutableStateOf(store.pollSeconds.toString()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -805,19 +807,43 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
             }
             Switch(checked = turns, enabled = watch, onCheckedChange = { turns = it; watchSaid = "" })
         }
+        // R125: an ask in seconds rather than on Android's alarm, which an
+        // idle phone stretches to nine minutes or more.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Hear asks at once")
+                Dim("keeps a connection open to your BuilderBot so a question reaches you in seconds, " +
+                    "with a quiet note in the shade while it runs; uses a little more battery")
+            }
+            Switch(checked = live, enabled = watch, onCheckedChange = { live = it; watchSaid = "" })
+        }
+        if (live && watch) {
+            val pm = context.getSystemService(android.os.PowerManager::class.java)
+            if (!pm.isIgnoringBatteryOptimizations(context.packageName)) Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Dim("Android cuts the connection while the phone sleeps unless BuilderBot may run unrestricted")
+                }
+                TextButton(onClick = {
+                    context.startActivity(android.content.Intent(
+                        android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        android.net.Uri.parse("package:" + context.packageName)))
+                }) { Text("Allow") }
+            }
+        }
         OutlinedTextField(poll, { poll = it; watchSaid = "" },
             label = { Text("Poll every (seconds, 10 to 300)") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
         val every = poll.trim().toIntOrNull()
         val pollOk = every != null && every in 10..300
-        val changed = watch != store.watch || turns != store.turns || every != store.pollSeconds
+        val changed = watch != store.watch || turns != store.turns || live != store.live || every != store.pollSeconds
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (!pollOk) "the poll is a number of seconds from 10 to 300" else watchSaid,
                  color = if (!pollOk) Bad else Note, style = MaterialTheme.typography.bodySmall,
                  modifier = Modifier.weight(1f))
             Button(enabled = changed && pollOk, onClick = {
-                store.watch = watch; store.turns = turns; store.pollSeconds = every ?: store.pollSeconds
+                store.watch = watch; store.turns = turns; store.live = live; store.pollSeconds = every ?: store.pollSeconds
                 if (watch) Watch.startIfWanted(context) else Watch.stop(context)
+                if (watch && live) Live.startIfWanted(context) else Live.stop(context)
                 watchSaid = "saved"
             }) { Text("Save") }
         }
