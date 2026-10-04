@@ -11,12 +11,12 @@
 # tree; or --files given outright; --dry only prints the plan.
 
 cmd_tests_preflight() {
-    local dry="" base="" files=() f suites=() checks=() all_dash="" own=() mapped=()
+    local dry="" base="" files=() f suites=() checks=() all_dash="" own=() mapped=() named=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --dry) dry=1; shift ;;
             --base) base="$2"; shift 2 ;;
-            --files) shift; while [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; do files+=("$1"); shift; done ;;
+            --files) shift; named=1; while [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; do files+=("$1"); shift; done ;;
             *) die "bb tests preflight [--dry] [--base REF] [--files F...]" ;;
         esac
     done
@@ -54,7 +54,9 @@ cmd_tests_preflight() {
     for f in "${files[@]}"; do
         case "$f" in
             scripts/dashboard/test/lib.mjs|scripts/dashboard/test/run.sh) all_dash=1 ;;
-            scripts/dashboard/server.py) [ -f "${BB_REPO:-$PWD}/.bb-map/coverage.json" ] && mapped+=("$f") || all_dash=1 ;;
+            # Named outright (--files), there are no changed lines to place
+            # it by, and server.py whole is every suite (B472).
+            scripts/dashboard/server.py) [ -z "$named" ] && [ -f "${BB_REPO:-$PWD}/.bb-map/coverage.json" ] && mapped+=("$f") || all_dash=1 ;;
             scripts/dashboard/test/*.mjs) own+=("$(basename "$f" .mjs)") ;;
             # The unit tier runs every one of these first, whatever changed;
             # handed to the map, a changed one came back as a browser suite
@@ -68,7 +70,11 @@ cmd_tests_preflight() {
     else
         suites=("${own[@]}")
         if [ "${#mapped[@]}" -gt 0 ]; then
-            if [ -f "${BB_REPO:-$PWD}/.bb-map/coverage.json" ]; then
+            # Files named with --files are asked of the map whole: coverage
+            # picks suites by the lines a change touched, and a file named
+            # outright may have none changed, which placed no suite at all
+            # (B471's run, page-bell.js).
+            if [ -z "$named" ] && [ -f "${BB_REPO:-$PWD}/.bb-map/coverage.json" ]; then
                 by=coverage
                 while IFS= read -r f; do
                     [ -n "$f" ] && case " ${suites[*]:-} " in *" $f "*) ;; *) suites+=("$f") ;; esac

@@ -108,6 +108,14 @@ ok(/checks:\s+lint voice design/.test(pre('scripts/dashboard/index.html'))
 ok(/suites:\s+ALL/.test(pre('scripts/dashboard/server.py')), 'a change to server.py is the whole suite, said as such');
 ok(/suites:\s+none/.test(pre('README.md')) && /checks:\s+lint voice$/m.test(pre('README.md')),
    'a change with no suite still gets the lint and voice checks');
+// A file named with --files is asked of the map whole, never by its changed
+// lines: with a covered run on record, scripts/lib/preflight.sh asked
+// coverage which suites reach the lines changed, and a named file with
+// none changed placed nothing (B472, page-bell.js). The copy here has no
+// covered run, so this holds the answer, and the dry runs on the fix hold
+// the branch.
+ok(/suites:.*\bphone\b/.test(pre('scripts/dashboard/page-bell.js')),
+   'a file named outright is placed by the suites that reach it, changed lines or none');
 
 // A file no browser suite reaches but a unit file runs (the provisioner's
 // root helper, which test_sandbox_gpu.py runs as the bash it is) is placed
