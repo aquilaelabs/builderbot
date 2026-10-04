@@ -26,6 +26,7 @@ when the phone is disconnected, and when the owner takes it back.
 """
 import base64
 import re
+import secrets
 import shlex
 import time
 from pathlib import Path
@@ -171,6 +172,33 @@ def _ours_in_front(pkgs):
             f'case "$f $i" in {pats}) ;; *) echo "bb-not-yours: $f"; exit 3;; esac; ')
 
 
+def _shot(project, nid, serial):
+    """The phone's screen, as a file the node uploads rather than as base64
+    in the job's log (report #53): a big phone's screenshot is megabytes,
+    and the log reaches the controller 40 KB at a time, so a Pixel 11 Pro
+    XL's ran out its 90 s and arrived as a timeout. Written in the node's
+    data store under a name of its own, older ones cleared first, uploaded
+    by the agent into dist/, and moved under dist/phone/ like the rest."""
+    name = f"bb-shot-{secrets.token_hex(6)}.png"
+    script = ('find . -maxdepth 1 -name "bb-shot-*.png" -mmin +10 -delete 2>/dev/null; '
+              'adb -s "$1" exec-out screencap -p > "$2" && [ -s "$2" ]')
+    r = phone.nodes.run_wait(f"session:{project}", nid, ["sh", "-c", script, "_", serial, name],
+                             env={"ANDROID_ADB_SERVER_PORT": phone.ADB_PORT}, timeout=90,
+                             project=project, outputs=[name])
+    if r.get("error"):
+        return {"error": "the phone gave no screenshot: " + r["error"]}, 502
+    got = WORKSPACE / project / "dist" / name
+    try:
+        data = got.read_bytes()
+    except OSError:
+        data = b""
+    finally:
+        got.unlink(missing_ok=True)
+    if r.get("code") or not data.startswith(b"\x89PNG"):
+        return {"error": "the phone gave no screenshot: " + " ".join((r.get("out") or "").split())[-200:]}, 502
+    return {"path": _capture(project, "shot", "png", data)}, 200
+
+
 def _capture(project, kind, ext, data):
     out = WORKSPACE / project / "dist" / "phone"
     out.mkdir(parents=True, exist_ok=True)
@@ -200,11 +228,7 @@ def use(project, op, args):
         return {"project": project, "model": dev.get("model") or "phone", "pkgs": pkgs,
                 "by": got.get("by_name"), "left": left}, 200
     if op == "shot":
-        r = _shell(nid, serial, "screencap -p | base64 -w 0", project, timeout=90)
-        data = _b64(r["out"])
-        if r["code"] or not data.startswith(b"\x89PNG"):
-            return {"error": "the phone gave no screenshot: " + r["out"][-200:]}, 502
-        return {"path": _capture(project, "shot", "png", data)}, 200
+        return _shot(project, nid, serial)
     if op == "record":
         try:
             secs = max(1, min(RECORD_MAX, int(args.get("seconds") or 10)))

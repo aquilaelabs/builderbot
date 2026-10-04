@@ -111,10 +111,25 @@ class Lease(unittest.TestCase):
     def test_a_shot_lands_in_dist_phone(self):
         pl.lend("n1", OWNER, "app", 1)
         png = b"\x89PNG\r\n\x1a\n" + b"x" * 64
-        self.answer = {"code": 0, "out": base64.b64encode(png).decode()}
+
+        # Report #53: the node uploads the file into dist/ (outputs), and
+        # it is moved under dist/phone/; nothing rides the log.
+        class Nodes:
+            @staticmethod
+            def run_wait(by, nid, argv, env=None, timeout=30, project="", outputs=None, **kw):
+                self.asked_outputs = outputs
+                d = self.tmp / project / "dist"
+                d.mkdir(parents=True, exist_ok=True)
+                (d / outputs[0]).write_bytes(png)
+                return {"code": 0, "out": f"artifact dist/{outputs[0]} ({len(png)} bytes)\n"}
+        saved = phone.nodes
+        self.addCleanup(setattr, phone, "nodes", saved)
+        phone.nodes = Nodes
         r, st = pl.use("app", "shot", {})
         self.assertEqual(st, 200, r)
         self.assertEqual((self.tmp / "app" / r["path"]).read_bytes(), png)
+        self.assertRegex(self.asked_outputs[0], r"^bb-shot-[0-9a-f]{12}\.png$")
+        self.assertFalse((self.tmp / "app" / "dist" / self.asked_outputs[0]).exists())
         self.assertTrue(pl.view("n1")["shot"].startswith("dist/phone/shot-"))
         self.assertIn("n1:app:", pl.rev())
 

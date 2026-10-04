@@ -2521,7 +2521,7 @@ def job_add(principal, placement, type, spec, project="", source=None):
 
 
 def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
-             sizes=None, project="", forget=False):
+             sizes=None, project="", forget=False, outputs=None):
     """One command on a node, waited for: queued as an exec job, picked up
     by the agent's next poll (which is held open, so at once), and its log
     and exit code handed back: the Nodes tab's Test, generalised. For the
@@ -2532,8 +2532,15 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     `docker ps` on an agent node runs this way each time a listing is
     drawn, and a row per draw on the Jobs tab would bury the jobs somebody
     queued on purpose. The record is dropped once its answer is in hand;
-    the audit line from job_add stays."""
+    the audit line from job_add stays.
+
+    `outputs` are globs, in the job's directory, of files the agent uploads
+    into the project's dist/ when the command succeeds: a file that would
+    otherwise ride the log as text (a phone's screenshot, report #53)."""
     spec = {"argv": [str(a) for a in argv], "timeout": int(timeout)}
+    if outputs:
+        spec["outputs"] = [str(o) for o in outputs][:4]
+        spec["project"] = project
     if forget:
         spec["probe"] = True
     if env:

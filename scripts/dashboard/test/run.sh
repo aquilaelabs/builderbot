@@ -974,6 +974,11 @@ if [ "$3" = shell ]; then
         *mCurrentFocus*|*"monkey -p"*|*"am force-stop"*) exit 0 ;;
     esac
 fi
+# adb -s SERIAL exec-out screencap -p: the same one-pixel PNG, as bytes, which
+# is how a lent phone's shot comes back now (report #53).
+if [ "$3 $4 $5" = "exec-out screencap -p" ]; then
+    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' | base64 -d; exit 0
+fi
 # adb -s SERIAL shell pm list packages
 if [ "$4 $5 $6" = "pm list packages" ]; then
     printf 'package:org.mozilla.firefox_beta
