@@ -1367,18 +1367,39 @@ def containers():
 # record, because a rebuild recreates its containers with the compose file's
 # policy, and the listing that finds one drifted puts the choice back.
 BOOT_ON = ("always", "unless-stopped")
+# Each container's policy by its id, so a listing inspects only containers it
+# has not seen. On a node the listing is an agent job, and a second job for
+# the inspect on every listing doubled what the Docker tab waits on: devapp.mjs
+# timed out around Up in every gate that ran it beside another suite (B470).
+# A rebuild makes new ids, read once; Start on boot writes what it set here.
+_policies = {}
+
+
+def boot_known(ids, policy):
+    """What a press of Start on boot just set, so the next listing says it
+    without asking docker again."""
+    for i in ids:
+        if i:
+            _policies[str(i)[:12]] = policy
 
 
 def _boot_read(out):
     ids = [c["id"] for c in out if c.get("id")]
     if not ids:
         return
-    r = _run([DOCKER, "inspect", "--format", "{{.Id}} {{.HostConfig.RestartPolicy.Name}}", *ids], timeout=30)
-    pol = {}
-    for ln in (r.get("out") or "").splitlines():
-        bits = ln.split()
-        if len(bits) == 2:
-            pol[bits[0][:12]] = bits[1]
+    new = [i for i in ids if i not in _policies]
+    if new:
+        r = _run([DOCKER, "inspect", "--format", "{{.Id}} {{.HostConfig.RestartPolicy.Name}}", *new], timeout=30)
+        for ln in (r.get("out") or "").splitlines():
+            bits = ln.split()
+            if len(bits) == 2:
+                _policies[bits[0][:12]] = bits[1]
+    # Bounded: past a few hundred ids, keep only the ones this list has. A
+    # node switched away from is read again once, which costs one inspect.
+    if len(_policies) > 500:
+        for i in [i for i in _policies if i not in ids]:
+            _policies.pop(i, None)
+    pol = {i: _policies.get(i, "") for i in ids}
     for c in out:
         c["restart"] = pol.get(c.get("id"), "")
         c["boot"] = c["restart"] in BOOT_ON
@@ -1395,6 +1416,7 @@ def _boot_read(out):
             if got.get("code") == 0:
                 for c in drift:
                     c["boot"], c["restart"] = on, "unless-stopped" if on else "no"
+                boot_known([c.get("id") for c in drift], "unless-stopped" if on else "no")
 
 
 def remember_boot(pname, on):

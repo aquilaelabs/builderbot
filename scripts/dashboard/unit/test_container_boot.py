@@ -15,6 +15,8 @@ import devapp  # noqa: E402
 class Boot(unittest.TestCase):
     def setUp(self):
         self.asked = []
+        devapp._policies.clear()
+        self.addCleanup(devapp._policies.clear)
         self.policy = {"aaaaaaaaaaaa": "no", "bbbbbbbbbbbb": "unless-stopped"}
         self.store = {"app": {"main": {}}}
         saved = {k: getattr(devapp, k) for k in ("_run", "_load", "_rec", "write_json", "_targets") if hasattr(devapp, k)}
@@ -59,6 +61,23 @@ class Boot(unittest.TestCase):
 
     def test_anything_else_is_refused(self):
         self.assertIn("error", containers.container_ctl("x", "boot-maybe"))
+
+
+class Seen(Boot):
+    """B470: on a node the listing is an agent job, and an inspect on every
+    listing was a second one; a container seen once is not asked again."""
+
+    def test_a_second_listing_asks_docker_nothing_new(self):
+        devapp._boot_read([dict(r) for r in self.rows])
+        n = sum(1 for a in self.asked if a[0] == "inspect")
+        rows = [dict(r) for r in self.rows]
+        devapp._boot_read(rows)
+        self.assertEqual(sum(1 for a in self.asked if a[0] == "inspect"), n)
+        self.assertEqual([r["boot"] for r in rows], [False, True])
+        # A new container (a rebuild's) is the only one inspected.
+        self.policy["cccccccccccc"] = "no"
+        devapp._boot_read([dict(r) for r in self.rows] + [{"id": "cccccccccccc", "name": "new", "project": ""}])
+        self.assertEqual(self.asked[-1][3:], ["cccccccccccc"])
 
 
 if __name__ == "__main__":

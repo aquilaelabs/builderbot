@@ -104,6 +104,7 @@ def container_ctl(name, what):
                          *[c.get("name") or c.get("id") for c in cs]], timeout=60)
         if r["code"] != 0:
             return {"error": devapp._why_not(r["out"]) or "docker update failed"}
+        devapp.boot_known([c.get("id") for c in cs], "unless-stopped" if on else "no")
         for proj in {c.get("project") for c in cs if c.get("ours")}:
             devapp.remember_boot(proj, on)
         did = ", ".join(c.get("name") or c.get("id") for c in cs)
