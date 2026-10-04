@@ -1355,8 +1355,60 @@ def containers():
             "service": labels.get(SERVICE_LABEL, ""),
             "ours": proj in mine,
         })
+    _boot_read(out)
     out.sort(key=lambda c: (not c["ours"], c["project"], c["name"]))
     return {"error": "", "containers": out, "stale": bool(r.get("stale"))}
+
+
+# Start on boot (R122, the operator 4 Oct): a container's restart policy,
+# read in one docker inspect for the whole list. unless-stopped or always is
+# on: the daemon starts it when the node (or docker) starts, unless somebody
+# stopped it. For an instance of BuilderBot's own the choice is kept on its
+# record, because a rebuild recreates its containers with the compose file's
+# policy, and the listing that finds one drifted puts the choice back.
+BOOT_ON = ("always", "unless-stopped")
+
+
+def _boot_read(out):
+    ids = [c["id"] for c in out if c.get("id")]
+    if not ids:
+        return
+    r = _run([DOCKER, "inspect", "--format", "{{.Id}} {{.HostConfig.RestartPolicy.Name}}", *ids], timeout=30)
+    pol = {}
+    for ln in (r.get("out") or "").splitlines():
+        bits = ln.split()
+        if len(bits) == 2:
+            pol[bits[0][:12]] = bits[1]
+    for c in out:
+        c["restart"] = pol.get(c.get("id"), "")
+        c["boot"] = c["restart"] in BOOT_ON
+    want = {}
+    for p, insts in _load().items():
+        for i, rec in (insts or {}).items():
+            if isinstance(rec, dict) and isinstance(rec.get("boot"), bool):
+                want[_pname(p, i)] = rec["boot"]
+    for on in (True, False):
+        drift = [c for c in out if c.get("restart") and want.get(c.get("project")) is on and c["boot"] is not on]
+        if drift:
+            got = _run([DOCKER, "update", "--restart", "unless-stopped" if on else "no",
+                        *[c["name"] or c["id"] for c in drift]], timeout=30)
+            if got.get("code") == 0:
+                for c in drift:
+                    c["boot"], c["restart"] = on, "unless-stopped" if on else "no"
+
+
+def remember_boot(pname, on):
+    """Keep an instance's Start on boot choice, so a rebuild cannot undo it;
+    a container that is not one of BuilderBot's instances has nothing to keep."""
+    with _lock:
+        d = _load()
+        for p, insts in d.items():
+            for i in (insts or {}):
+                if _pname(p, i) == pname:
+                    _rec(d, p, i)["boot"] = bool(on)
+                    write_json(FILE, d)
+                    return True
+    return False
 
 
 def _labels(raw):

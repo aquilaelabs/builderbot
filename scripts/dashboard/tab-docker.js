@@ -1038,7 +1038,8 @@ function dmRowsHtml(ins, job, blind){
         ${d.astray ? `<div class="sub bad">on this node, but ${esc(d.owner || d.project)} works on ${
           esc(d.astray)}: its sessions cannot reach it here. Remove it and Send to Docker again to build it there.</div>` : ""}
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${
-          dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}</div>
+          dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
+          ? dmBootLine(d.name, (dockerList?.containers || []).filter(c => c.project === d.name).some(c => c.boot)) : ""}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
         </details>
       </div>
@@ -1161,6 +1162,26 @@ function dmWireRows(el, list = dockerList){
     dockerList = null; loadDocker();
   });
   el.querySelectorAll("[data-logs]").forEach(b => b.onclick = () => dmLogs(b.dataset.logs, list?.node || dockerNode));
+  // Start on boot: the tick is a draft, Apply writes it (R122).
+  el.querySelectorAll("[data-dmboot]").forEach(cb => cb.onchange = () => {
+    const name = cb.dataset.dmboot, was = cb.dataset.was === "1";
+    if (cb.checked === was) delete dmBootDraft[name]; else dmBootDraft[name] = cb.checked;
+    const b = cb.closest(".dmboot").querySelector("[data-dmbootapply]");
+    if (b) b.disabled = cb.checked === was;
+  });
+  el.querySelectorAll("[data-dmbootapply]").forEach(b => b.onclick = async () => {
+    const name = b.dataset.dmbootapply, on = dmBootDraft[name];
+    if (on === undefined) return;
+    busy(b, "Applying");
+    try{
+      const j = await (await postJSON("/api/dockerctl", {action: on ? "boot-on" : "boot-off", container: name, node})).json();
+      if (j.error){ notify(j.error, true); return; }
+      delete dmBootDraft[name];
+      notify(j.out || (on ? `${name} starts on boot` : `${name} no longer starts on boot`));
+      dockerList = null; dockerRev++; loadDocker();
+    }catch(e){ notify("start on boot: " + e, true); }
+    finally{ if (b.isConnected) unbusy(b, "Apply"); }
+  });
   // Which project a row belongs to: staged on the pick, written by Apply.
   const ownSaved = key => (key.startsWith("ctr:")
     ? (list?.containers || []).find(c => (c.name || c.id) === key.slice(4))
@@ -1258,6 +1279,20 @@ function dmGroupsHtml(ins, cs, job, blind){
 
 // A container BuilderBot did not start: what the daemon says about it,
 // started, stopped and restarted by name, and put under a project on its row.
+// Start on boot (R122): a switch on a row, a draft until its Apply, as every
+// setting here is. `name` is what the server acts on (a container, or an
+// instance meaning all its containers), `on` what the daemon says now.
+let dmBootDraft = {};
+function dmBootLine(name, on){
+  if (!mayDocker()) return "";
+  const want = name in dmBootDraft ? dmBootDraft[name] : on;
+  // The Project line's shape, its Apply beside it (.dmowner's rules).
+  return `<div class="sub dmowner dmboot"><label class="ndcap"><input type="checkbox" data-dmboot="${esc(name)}"
+      data-was="${on ? "1" : ""}"${want ? " checked" : ""}> Start on boot</label>
+    <button type="button" data-dmbootapply="${esc(name)}"${want === on ? " disabled" : ""}
+      title="docker's restart policy: unless-stopped when ticked, no when not">Apply</button></div>`;
+}
+
 function dmOtherRowsHtml(cs){
   return cs.map(c => `
     <div class="row stack2 off dmother" data-ctr="${esc(c.name || c.id)}">
@@ -1268,6 +1303,7 @@ function dmOtherRowsHtml(cs){
           c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
         ${c.ports.length ? `<div class="sub">${c.ports.map(esc).join(" · ")}</div>` : ""}
         ${dmOwnerLine(c, "ctr:" + (c.name || c.id))}${dmGrantLine(c, true)}
+        ${dmBootLine(c.name || c.id, !!c.boot)}
       </div>
       <div class="actbar dmacts">
         ${!mayDocker() ? "" : `<button type="button" data-ctl="${

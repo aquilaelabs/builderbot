@@ -77,6 +77,9 @@ def _known_container(name):
     return (_targets(name) or [None])[0]
 
 
+BOOT_CTL = ("boot-on", "boot-off")
+
+
 def container_ctl(name, what):
     """Start, stop or restart one container on the picked node.
 
@@ -86,12 +89,25 @@ def container_ctl(name, what):
     the sandbox VM's, and the guard above is why the reach is one verb and
     one name rather than the docker CLI.
     """
-    if what not in devapp._CTL_OK:
-        return {"error": f"a container is started, stopped or restarted, not {what!r}"}
+    if what not in devapp._CTL_OK and what not in BOOT_CTL:
+        return {"error": f"a container is started, stopped or restarted, or set to start on boot or not, "
+                         f"not {what!r}"}
     cs = _targets(name)
     if not cs:
         return {"error": f"no container called {name} on this daemon now: the list is "
                          "read again before anything is acted on, and it has moved"}
+    if what in BOOT_CTL:
+        # Start on boot (R122): the restart policy, on every container the
+        # name means, and kept for an instance so a rebuild keeps it.
+        on = what == "boot-on"
+        r = devapp._run([devapp.DOCKER, "update", "--restart", "unless-stopped" if on else "no",
+                         *[c.get("name") or c.get("id") for c in cs]], timeout=60)
+        if r["code"] != 0:
+            return {"error": devapp._why_not(r["out"]) or "docker update failed"}
+        for proj in {c.get("project") for c in cs if c.get("ours")}:
+            devapp.remember_boot(proj, on)
+        did = ", ".join(c.get("name") or c.get("id") for c in cs)
+        return {"ok": True, "out": f"{did} {'starts' if on else 'no longer starts'} when the node starts"}
     # Every container the name means: an instance's services together.
     r = devapp._run([devapp.DOCKER, what, *[c.get("name") or c.get("id") for c in cs]], timeout=60)
     if r["code"] != 0:
@@ -471,9 +487,9 @@ def session_verb(sess, me, act, name, req):
     if act == "logs":
         with devapp.on_node(nid or None):
             return container_logs(name), 200
-    if act not in ("start", "stop", "restart"):
-        return {"error": f"a session starts, stops or restarts a "
-                         f"container, or reads its log, not {act!r}"}, 400
+    if act not in ("start", "stop", "restart", *BOOT_CTL):
+        return {"error": f"a session starts, stops or restarts a container, sets whether it "
+                         f"starts on boot, or reads its log, not {act!r}"}, 400
     mode = dial(sess)
     if mode == "deny":
         return {"error": devapp.RUN_DENIED}, 403
