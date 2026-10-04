@@ -174,7 +174,9 @@ function nbWikiView({$, nb, project}){
     $("wkPush").disabled = !rem?.auth || !pages().length;
     // Why Push is dead, on the row and not in a tooltip (the operator, 23
     // Sep): a phone has no hover.
-    const why = rem?.label && !rem.auth
+    const why = !pages().length
+      ? (rem?.label ? "Export and Push have nothing to send until there is a page." : "Export has nothing to send until there is a page.")
+      : rem?.label && !rem.auth
       ? `Push needs the project's push rights on ${rem.label}: grant them in the project's remote dialog. Pull works without them for a public wiki.` : "";
     $("wkWhy").textContent = why;
     $("wkWhy").hidden = !why;
@@ -250,12 +252,16 @@ function nbWikiView({$, nb, project}){
           <div class="actbar macts"><span class="state">Create writes the page now</span>
             <button type="button" class="stop" id="wkNewCancel">Cancel</button>
             <button type="button" class="primary" id="wkNewSave">Create</button></div></div>`
-      : `<div class="addbar" data-add="wiki"><button type="button" id="wkNew">New page</button></div>`;
+      : `<div class="field"><div class="addbar" data-add="wiki"><button type="button" id="wkNew">New page</button></div></div>`;
     const log = !nb.wkLog ? "" : `<div class="field wklog">${(d.history || []).length
         ? (d.history || []).map(h => `<div class="wklogrow"><span class="mono">${esc(h.commit)}</span> ${esc(h.what)} <span class="dim">· ${esc(h.by)} · ${esc(ago(h.at))}</span></div>`).join("")
         : `<span class="dim">nothing yet</span>`}</div>`;
-    box.innerHTML = log + add + `<div class="field wkreader">${articles().length ? nav() : ""}${article()}</div>`;
+    // The add band is the first band under the head, above where the wiki
+    // goes (B457); the rest is the body.
+    $("wkAddBox").innerHTML = add;
+    box.innerHTML = log + `<div class="field wkreader">${articles().length ? nav() : ""}${article()}</div>`;
     wire(box);
+    wire($("wkAddBox"));
   }
 
   function failed(msg){ notify(msg, true); }

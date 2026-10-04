@@ -2041,6 +2041,9 @@ pre.diff .d-ctx{color:var(--dim)}
    the dashboard sets text to be read at length. On a phone the column gives
    way to a picker above the article. */
 .wkreader{display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);gap:22px;align-items:start}
+/* No pages yet: no nav, so the empty state is the whole width, not the
+   nav's 200px column (B457's walk). */
+.wkreader:not(:has(.wknav)){grid-template-columns:minmax(0,1fr)}
 .wknav{position:sticky;top:0;font-size:var(--f-row);border-right:1px solid var(--line);padding-right:14px}
 .wknav ul{list-style:none;margin:0;padding:0}
 .wknav li{margin:0 0 6px}
@@ -2083,7 +2086,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .wkfooter{border-top:1px solid var(--line);margin-top:20px;padding-top:8px;color:var(--dim);font-size:var(--f-note)}
 .wkarticle .wkText,.wkadd .wkText{min-height:22em;font-family:var(--mono);width:100%;box-sizing:border-box}
 .wklogrow{padding:3px 0;font-size:var(--f-note)}
-#wkWhy{color:var(--bad)}
+#wkWhy{color:var(--bad);font:var(--f-note)}
 @media(max-width:620px){
   .wkreader{display:block}
   .wknav{display:none}
@@ -3852,6 +3855,8 @@ body.booting .pane>.loading{margin:auto}
            so the head row keeps its one control and fits a phone: Export for
            every project, Pull and Push where there is a forge, and why Push
            is dead when it is, said under the bar rather than in a tooltip. -->
+      <!-- Adding first, under the head, as every view adds (B457). -->
+      <div id="wkAddBox"></div>
       <div class="field actbar" id="wkNet">
         <span class="state" id="wkNetState"></span>
         <button type="button" id="wkExport" title="every page as Markdown in a zip, with or without a remote">Export</button>
