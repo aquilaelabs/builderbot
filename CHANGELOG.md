@@ -143,6 +143,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's settings are a Settings view in its notebook, the same form with Revert in place of Cancel, and the project row no longer carries a settings button. (71fb7f5)
 - Phone and CI runner are Tools of their own again, each a tab with a Node picker, and the Nodes tab keeps a machine's configuration with a line pointing at them; Toolchains and the Emulator pick their node with the same control, labeled Node. (bf97e62)
 - The Emulator tab is laid out like Toolchains: installed images as rows, images to add as ticked rows under a flavor, one Install selected for all of them. Phone and CI runner open on one state row, and Docker wears the same Node picker and Refresh (db28867)
+- BuilderBot's own CI moved to actions/checkout v7 and upload-artifact v7, the Android workflow's still pinned by commit (0af2b3c)
 
 ### Removed
 

@@ -45,7 +45,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Open a log this container can read afterwards
         # The runner streams a step's console output to GitHub and keeps none

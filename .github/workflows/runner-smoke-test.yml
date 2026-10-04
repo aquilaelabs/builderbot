@@ -22,7 +22,7 @@ jobs:
   smoke:
     runs-on: [self-hosted, "${{ inputs.runner }}"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Where am I
         run: |
