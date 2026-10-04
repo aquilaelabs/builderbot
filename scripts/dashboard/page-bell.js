@@ -158,7 +158,7 @@ function drawBell(){
         <div class="bwhy">${esc(a.node)} runs Claude Code ${esc(a.from)} and ${esc(a.to)} is out${
           a.projects.length ? `; ${a.projects.map(esc).join(", ")} run${a.projects.length === 1 ? "s" : ""} sessions there` : ""}</div>
         <div class="bfoot"><span>on the Nodes tab: Update ends the Claude sessions there first</span>
-          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`
+          <span class="acts"><a href="#" data-bnode="${esc(a.id)}" data-bwhat="claude">Nodes tab</a></span></div></div>`
       : `<div class="bnote ask${a.window ? " bad" : ""}">
         <div class="btag">${a.window ? "agent out of window" : "agent update available"}</div>
         <div class="bwhy">${esc(a.node)} runs agent ${esc(a.from)} and this controller ships ${esc(a.to)}${
@@ -167,7 +167,7 @@ function drawBell(){
                 ? ` ${a.projects.map(esc).join(", ")} cannot build, test or use the emulator there` : " Nothing works there"} until it is updated`
             : ""}</div>
         <div class="bfoot"><span>${a.window ? "work on it is stopped" : "on the Nodes tab"}</span>
-          <span class="acts"><a href="#" data-bnode="${esc(a.id)}">Nodes tab</a></span></div></div>`),
+          <span class="acts"><a href="#" data-bnode="${esc(a.id)}" data-bwhat="agent">Nodes tab</a></span></div></div>`),
     ...ciRed.map(c => `<div class="bnote ask bad">
         <div class="btag">CI failing in ${esc(c.project)}</div>
         <div class="bwhy">${esc(c.text)}</div>
@@ -215,12 +215,13 @@ function drawBell(){
     sectOpen["git:ci"] = true;
     openNotebook(a.dataset.bci, "git");
   });
-  // To the node's row, where Update agent is: the press itself stays there,
-  // beside the state line that says what it does.
+  // To the node the row is about, at the control it is about (Update agent
+  // in its head bar, or its Claude Code section, opened): the press itself
+  // stays there, beside the state line that says what it does.
   panel.querySelectorAll("[data-bnode]").forEach(a => a.onclick = e => {
     e.preventDefault();
     toggleBell(false);
-    openNodesTab();
+    openNodesTab(a.dataset.bnode, a.dataset.bwhat);
   });
 }
 

@@ -1548,8 +1548,17 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
      `the bell pins "agent update available" for the node, with a way to the Nodes tab (${bellText.slice(0, 160)})`);
   ok(await page.$eval('#bBell .dot', d => d.classList.contains('warn')),
      '...in amber: an update waiting is not work stopped');
-  await page.keyboard.press('Escape');
-  await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
+  // Its link goes to THIS node, whichever the tab was on, with Update agent
+  // brought into view (the operator, 4 Oct).
+  const other = await page.evaluate(id => nodesList.find(n => n.id !== id && n.kind === 'agent' && n.state !== 'retired')?.id, minted.id);
+  if (other) await page.evaluate(o => { nodesPick = o; nodesRev++; drawPanes(); }, other);
+  await page.click(`#bellPanel [data-bnode="${minted.id}"]`);
+  await page.waitForFunction(id => nodesPick === id && document.getElementById('bellPanel').hidden
+    && document.querySelector('.nodestab [data-nd="update-agent"]'), minted.id, { timeout: 10000 });
+  await sleep(700);
+  ok(await page.$eval('.nodestab [data-nd="update-agent"]', b => {
+       const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }),
+     `...and its link opens the Nodes tab on that node${other ? ' (from another)' : ''}, Update agent in view`);
   // The runner is on its own tab now (R121), held by the same rule there.
   const runnerOff = await page.evaluate(async id => { openRunnerTab(id); await new Promise(r => setTimeout(r, 400));
     const b = document.querySelector(`.runnertab .ndrow[data-node="${id}"] [data-nrunner="install"]`);

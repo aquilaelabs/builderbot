@@ -71,7 +71,7 @@ function renderSettingsInto(i){
   wireSettingsSections(d.el);
   settingsKeep(d.el);
   const nd = d.el.querySelector("#setNodes");
-  if (nd) nd.onclick = openNodesTab;
+  if (nd) nd.onclick = () => openNodesTab();
   const rs = d.el.querySelector("#setReset");
   if (rs) rs.onclick = () => askReset(d.el);
   const rc = d.el.querySelector("#setReportsClear");

@@ -28,9 +28,24 @@ let nodesFocus = null;           // {id, key, i}: the field to refocus after a r
 // agent comes back with the new digest (see renderNodesInto).
 const nodesUpdating = {};
 
-function openNodesTab(){
+// `nid`, when given, is the node to show, and `what` the part of it the
+// caller is about: "agent" for the head bar where Update agent is, or a
+// section's id ("claude"), opened. A bell row about a node goes straight
+// to that node's control, not to whichever node the tab was on (the
+// operator, 4 Oct).
+let nodesReveal = null;
+function openNodesTab(nid, what){
+  if (nid){
+    nodesPick = nid;
+    nodesFocus = null;
+    if (what && what !== "agent") sectOpen["nodes:" + what] = true;
+    nodesReveal = what === "agent" ? '[data-nd="update-agent"], .ndagent'
+                : what ? `[data-sect="nodes:${what}"]` : null;
+    nodesRev++;
+  }
   openTab({kind: "nodes", arg: "__nodes", label: "Nodes"});
   loadNodes();
+  if (nid) drawPanes();
 }
 
 async function loadNodes(){
@@ -1133,6 +1148,12 @@ function renderNodesInto(i){
     settings. Jobs run as the enrolled account, never root.`);
   wireNodesTab(d.el);
   nodesReadOnly(d.el);
+  // What openNodesTab was asked to show, once it is drawn.
+  const want = nodesReveal && d.el.querySelector(nodesReveal);
+  if (want){
+    nodesReveal = null;
+    requestAnimationFrame(() => want.scrollIntoView({block: "center", behavior: noMotion() ? "instant" : "smooth"}));
+  }
 }
 
 // The node's phone (tab-phone.js), where the phone is: a node with adb is a
