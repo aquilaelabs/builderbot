@@ -167,7 +167,12 @@ await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
 const theirAllow = await api('/api/phone', { action: 'allow', id: asked.body.id }, other);
 ok(theirAllow.status === 400 && /account that connected/.test(theirAllow.body.error),
    'another account cannot answer for it');
-await page.click('.phask [data-allow]');
+// Two answers that run it (the operator, 4 Oct): Allow, for this one, and
+// Allow for this session, for the rest of that session's too.
+ok(await page.$eval('.phask', r => /Allow for this session/.test(r.textContent)
+     && !!r.querySelector('[data-allow]:not([data-session])')),
+   'a phone ask offers Allow and Allow for this session');
+await page.click('.phask [data-allow]:not([data-session])');
 await page.waitForFunction(() => !document.querySelector('.phask'), null, { timeout: 20000 });
 await page.waitForFunction(() => document.title === 'BuilderBot', null, { timeout: 15000 });
 ok(true, '...and the badge clears when nothing is waiting');

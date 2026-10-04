@@ -286,6 +286,17 @@ session drives somebody's phone is theirs to say each time. An
 administrator may disconnect it, since a connected, lent phone is a
 machine-wide fact somebody has to be able to end; nobody connects over it.
 
+**Allow for this session** (the operator, 4 Oct). Answering every command
+was too much, so the owner has a second answer: this one and the rest from
+that account's sessions in that project, to that phone, run without asking
+for as long as it is lent there (an hour where it is not), until they take
+it back on the Phone tab or the companion app, take the phone back or
+disconnect it. A session token names its project and account and nothing
+finer, so "this session" is that account's sessions in that project. Each
+command so allowed is still an ask on the record, answered at once in the
+owner's name, and the companion app keeps a note in the shade for as long
+as a grant, or a lend, lasts; tapping it ends it.
+
 ## How a view knows to re-read
 
 Requests wait **fifteen minutes**, not five, and the card counts down. Five

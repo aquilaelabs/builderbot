@@ -127,7 +127,12 @@ function drawBell(){
         <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</span>
-          <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>
+          <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>${
+            // A phone's commands come one after another: the second answer
+            // lets the rest from this session run without asking (the
+            // operator, 4 Oct), taken back on the Phone tab.
+            a.kind === "phone" || a.kind === "phone-use"
+              ? `<a href="#" data-ballow="${a.id}" data-bsession="1">Approve for this session</a>` : ""}
             <a href="#" data-ballow="${a.id}">Approve</a></span></div></div>`),
     ...invites.map(i => `<div class="bnote ask">
         <div class="btag">${i.kind === "owner" ? `${esc(i.project)} offered to you` : `invited to ${esc(i.project)}`}</div>
@@ -188,7 +193,7 @@ function drawBell(){
   panel.querySelectorAll("[data-ballow]").forEach(a => a.onclick = e => {
     e.preventDefault();
     phBusy = "running it"; phRev++; drawPanes();
-    phFetch({action: "allow", id: Number(a.dataset.ballow)});
+    phFetch({action: "allow", id: Number(a.dataset.ballow), session: !!a.dataset.bsession});
   });
   panel.querySelectorAll("[data-bdeny]").forEach(a => a.onclick = e => {
     e.preventDefault();

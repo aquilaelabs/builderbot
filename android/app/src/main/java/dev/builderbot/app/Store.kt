@@ -47,6 +47,11 @@ class Store(context: Context) {
     var notifiedAsks: Set<String>
         get() = plain.getStringSet("asks", emptySet()) ?: emptySet()
         set(v) { plain.edit().putStringSet("asks", v).apply() }
+    // The ongoing notes up now (a lent phone, a session allowed), by id, so
+    // one that ended elsewhere leaves the shade.
+    var ongoing: Set<String>
+        get() = plain.getStringSet("ongoing", emptySet()) ?: emptySet()
+        set(v) { plain.edit().putStringSet("ongoing", v).apply() }
     var lastAttention: String
         get() = plain.getString("attention", "") ?: ""
         set(v) { plain.edit().putString("attention", v).apply() }

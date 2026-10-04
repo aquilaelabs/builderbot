@@ -54,6 +54,10 @@
         <receiver
             android:name=".DecideReceiver"
             android:exported="false" />
+        <!-- Ends a lent phone or a session allowed, from its ongoing note. -->
+        <receiver
+            android:name=".EndReceiver"
+            android:exported="false" />
         <!-- Hands the downloaded APK to the installer. An installer runs in
              another process, so a file:// path would be unreadable to it and
              a world-readable copy would be the wrong fix: the provider grants

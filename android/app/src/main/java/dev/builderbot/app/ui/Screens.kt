@@ -338,6 +338,13 @@ fun ApprovalsScreen(store: Store) {
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                         Spacer(Modifier.weight(1f))
                         OutlinedButton(onClick = { scope.launch { said = answer(api, a.int("id"), false); reloadPh() } }) { Text("Deny") }
+                        // A phone's commands come one after another: the rest
+                        // from this session run without asking until taken
+                        // back (the operator, 4 Oct).
+                        if (kind == "phone" || kind == "phone-use") {
+                            Spacer(Modifier.width(8.dp))
+                            OutlinedButton(onClick = { scope.launch { said = answer(api, a.int("id"), true, session = true); reloadPh() } }) { Text("This session") }
+                        }
                         Spacer(Modifier.width(8.dp))
                         Button(onClick = { scope.launch { said = answer(api, a.int("id"), true); reloadPh() } }) { Text("Allow") }
                     }
@@ -371,8 +378,9 @@ fun ApprovalsScreen(store: Store) {
     }
 }
 
-suspend fun answer(api: Api, id: Int, allow: Boolean): String = try {
-    api.decide(id, allow); if (allow) "allowed: the node is running it" else "denied"
+suspend fun answer(api: Api, id: Int, allow: Boolean, session: Boolean = false): String = try {
+    api.decide(id, allow, session)
+    if (session) "allowed for this session: the rest run without asking" else if (allow) "allowed: the node is running it" else "denied"
 } catch (e: Exception) { e.message ?: e.toString() }
 
 @Composable

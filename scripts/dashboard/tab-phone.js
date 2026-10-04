@@ -211,6 +211,17 @@ function phonePanel(n){
             <button type="button" class="danger" data-kforget="${esc(k.ip)}">Forget</button>
           </div>
         </div></div>`));
+  // What the owner allowed for a session (the operator, 4 Oct): its
+  // commands to this phone run without asking until this is taken back,
+  // the lease ends or the phone is disconnected.
+  for (const g of (n.trust || []))
+    rows.push(`<div class="row phtrust">
+      <div class="grow"><div class="name">Allowed for ${esc(g.asker || "a")}'s sessions in ${esc(g.project)}</div>
+        <div class="sub">their commands to this phone run without asking ${g.until
+          ? `until ${esc(fmtTime(g.until * 1000, {hour: "2-digit", minute: "2-digit"}))}`
+          : "while it is lent to " + esc(g.project)}</div></div>
+      <span class="acts"><button type="button" data-untrust="${esc(g.project)}" data-asker="${esc(g.asker_uid || "")}">Ask every time</button></span>
+    </div>`);
   // What a session is waiting on, above everything else it could be doing:
   // somebody is blocked on it, and that somebody asked YOU: a request only
   // ever reaches the account that connected the phone it is about.
@@ -223,12 +234,14 @@ function phonePanel(n){
           : `${a.left}s left to answer`}</div></div>
       <span class="acts">
         <button type="button" data-deny="${a.id}">Deny</button>
+        <button type="button" data-allow="${a.id}" data-session="1"
+          title="this one, and the rest this session sends to the phone, without asking">Allow for this session</button>
         <button type="button" class="primary" data-allow="${a.id}">Allow</button>
       </span></div>`);
   const L2 = n.lease;
   // Refresh is the tab's bar's (R121); this says how a session gets in.
   rows.push(`<div class="field toolfoot phbar"><div class="hint">${L2
-      ? `Lent to ${esc(L2.project)}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first.`
+      ? `Lent to ${esc(L2.project)}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first, unless allowed for the session.`
       : "A session reaches this phone only by asking; the request lands with its owner, with its reason."}</div></div>`);
   if (!tcDotsTimer && rows.join("").includes('class="dots"')) tcDotsTimer = setInterval(tcTickDots, 400);
   return `<div class="phonetab">${rows.join("")}</div>`;
@@ -272,8 +285,10 @@ function wirePhoneTab(root){
     phFetch({action: "forget", ip: b.dataset.kforget}));
   root.querySelectorAll("[data-allow]").forEach(b => b.onclick = () => {
     phBusy = "running it"; phRev++; drawPanes();
-    phFetch({action: "allow", id: Number(b.dataset.allow)});
+    phFetch({action: "allow", id: Number(b.dataset.allow), session: !!b.dataset.session});
   });
+  root.querySelectorAll("[data-untrust]").forEach(b => b.onclick = () =>
+    phFetch({action: "untrust", project: b.dataset.untrust, asker_uid: b.dataset.asker || ""}));
   root.querySelectorAll("[data-deny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.deny)}));
   const lt = $$("phLendTo"), lf = $$("phLendFor");

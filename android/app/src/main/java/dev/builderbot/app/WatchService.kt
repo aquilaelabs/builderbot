@@ -37,6 +37,7 @@ object Watch {
     const val ID_INVITES = 4
     const val ID_TURN_BASE = 5000
     const val ID_ASK_BASE = 1000
+    const val ID_ONGOING_BASE = 20000
     // In the background, no oftener than this: an inexact alarm is batched
     // by the system anyway, and a phone in a pocket is not a dashboard tab.
     const val BACKGROUND_MIN_S = 60L
@@ -60,6 +61,35 @@ object Watch {
             gone.toIntOrNull()?.let { nm.cancel(ID_ASK_BASE + it) }
         }
         store.notifiedAsks = seen.intersect(live)
+
+        // What stays on while it lasts (the operator, 4 Oct): your phone lent
+        // to a project, and a session allowed to drive it without asking.
+        // Tapping either ends it: the lend taken back and adb disconnected,
+        // or the session asking every time again.
+        val up = mutableSetOf<String>()
+        for (n in ph.arr("nodes")) {
+            if (!n.bool("mine")) continue
+            val node = n.str("id")
+            val lease = n.optJSONObject("lease")
+            if (lease != null && lease.str("project").isNotBlank()) {
+                val key = "lend|$node"
+                up.add(key)
+                nm.notify(ongoingId(key), ongoingNote(context, key,
+                    "Your phone is lent to ${lease.str("project")}",
+                    "Tap to take it back and disconnect adb on ${n.str("name")}",
+                    EndReceiver.intent(context, key, "lend", node)))
+            }
+            for (g in n.arr("trust")) {
+                val key = "trust|$node|${g.str("project")}|${g.str("asker_uid")}"
+                up.add(key)
+                nm.notify(ongoingId(key), ongoingNote(context, key,
+                    "${g.str("asker").ifBlank { "A" }}'s sessions in ${g.str("project")} drive your phone",
+                    "Allowed for the session, without asking. Tap to be asked every time again",
+                    EndReceiver.intent(context, key, "trust", node, g.str("project"), g.str("asker_uid"))))
+            }
+        }
+        for (gone in store.ongoing - up) nm.cancel(ongoingId(gone))
+        store.ongoing = up
 
         val st = api.status()
         // Changes a session has waiting, per project: one note naming them all.
@@ -170,6 +200,24 @@ object Watch {
         stop(context)
     }
 
+    fun ongoingId(key: String) = ID_ONGOING_BASE + (key.hashCode() and 0xffff)
+
+    private fun ongoingNote(context: Context, key: String, title: String, text: String,
+                            end: PendingIntent): Notification =
+        NotificationCompat.Builder(context, App.CH_WATCH)
+            .setSmallIcon(R.drawable.ic_stat_bb)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setColor(0xFFD29922.toInt())
+            .setContentIntent(end)
+            .addAction(NotificationCompat.Action.Builder(0,
+                if (key.startsWith("lend|")) "Take back" else "Ask every time", end)
+                .setAuthenticationRequired(true).build())
+            .build()
+
     private fun askNotification(context: Context, a: JSONObject): Notification {
         val id = a.int("id")
         val kind = a.str("kind")
@@ -195,6 +243,13 @@ object Watch {
                 .build())
             .addAction(NotificationCompat.Action.Builder(0, "Deny", DecideReceiver.intent(context, id, false))
                 .setAuthenticationRequired(true).build())
+            .apply {
+                // The rest of this session's phone commands without asking.
+                if (kind == "phone" || kind == "phone-use")
+                    addAction(NotificationCompat.Action.Builder(0, "This session",
+                        DecideReceiver.intent(context, id, true, session = true))
+                        .setAuthenticationRequired(true).build())
+            }
             .addAction(NotificationCompat.Action.Builder(0, "Approve", DecideReceiver.intent(context, id, true))
                 .setAuthenticationRequired(true).build())
             .setAutoCancel(true)
@@ -295,14 +350,15 @@ class DecideReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val id = intent.getIntExtra("id", 0)
         val allow = intent.getBooleanExtra("allow", false)
+        val session = intent.getBooleanExtra("session", false)
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.cancel(Watch.ID_ASK_BASE + id)
         val api = Store(context).api() ?: return
         val pending = goAsync()
         Thread {
             val said = try {
-                runBlocking { api.decide(id, allow) }
-                if (allow) "Allowed: the node is running it" else "Denied"
+                runBlocking { api.decide(id, allow, session) }
+                if (session) "Allowed for this session" else if (allow) "Allowed: the node is running it" else "Denied"
             } catch (e: Exception) {
                 "Could not answer: ${e.message}"
             }
@@ -318,11 +374,63 @@ class DecideReceiver : BroadcastReceiver() {
     }
 
     companion object {
-        fun intent(context: Context, id: Int, allow: Boolean): PendingIntent {
+        fun intent(context: Context, id: Int, allow: Boolean, session: Boolean = false): PendingIntent {
             val i = Intent(context, DecideReceiver::class.java).apply {
-                putExtra("id", id); putExtra("allow", allow)
+                putExtra("id", id); putExtra("allow", allow); putExtra("session", session)
             }
-            return PendingIntent.getBroadcast(context, id * 2 + (if (allow) 1 else 0), i,
+            return PendingIntent.getBroadcast(context, id * 3 + (if (session) 2 else if (allow) 1 else 0), i,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        }
+    }
+}
+
+// Ending what an ongoing note stands for, from the note: a lent phone taken
+// back and its adb disconnected, or a session allowed asking every time
+// again. One POST or two, the note gone, and a short note of the answer.
+class EndReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        val key = intent.getStringExtra("key") ?: return
+        val what = intent.getStringExtra("what") ?: return
+        val node = intent.getStringExtra("node") ?: return
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val api = Store(context).api() ?: return
+        val pending = goAsync()
+        Thread {
+            val said = try {
+                runBlocking {
+                    if (what == "lend") {
+                        api.phoneTakeBack(node)
+                        api.phoneDisconnect(node)
+                    } else {
+                        api.phoneUntrust(node, intent.getStringExtra("project") ?: "",
+                                         intent.getStringExtra("asker") ?: "")
+                    }
+                }
+                nm.cancel(Watch.ongoingId(key))
+                Store(context).ongoing = Store(context).ongoing - key
+                if (what == "lend") "Taken back, and adb disconnected" else "Asking every time again"
+            } catch (e: Exception) {
+                "Could not end it: ${e.message}"
+            }
+            nm.notify(Watch.ongoingId(key) + 1, NotificationCompat.Builder(context, App.CH_NOTE)
+                .setSmallIcon(R.drawable.ic_stat_bb)
+                .setContentTitle(said)
+                .setContentIntent(Watch.openApp(context))
+                .setAutoCancel(true)
+                .setTimeoutAfter(20_000)
+                .build())
+            pending.finish()
+        }.start()
+    }
+
+    companion object {
+        fun intent(context: Context, key: String, what: String, node: String,
+                   project: String = "", asker: String = ""): PendingIntent {
+            val i = Intent(context, EndReceiver::class.java).apply {
+                putExtra("key", key); putExtra("what", what); putExtra("node", node)
+                putExtra("project", project); putExtra("asker", asker)
+            }
+            return PendingIntent.getBroadcast(context, Watch.ongoingId(key), i,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
     }

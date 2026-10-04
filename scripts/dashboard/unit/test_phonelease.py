@@ -25,6 +25,14 @@ class Users:
     def uid_of(who):
         return (who or {}).get("uid", "")
 
+    @staticmethod
+    def account_of(who):
+        return None
+
+    @staticmethod
+    def is_admin(who):
+        return False
+
 
 class Lease(unittest.TestCase):
     def setUp(self):
@@ -181,6 +189,70 @@ class Owner(Lease):
             time.sleep(0.02)
         self.assertEqual(ran, [("app", "shot")])
         self.assertIn("shot-1.png", phone.outcome(rid, "app")["out"])
+
+
+class Session(unittest.TestCase):
+    """Allow for this session (the operator, 4 Oct): the owner's second
+    answer lets that account's sessions in that project drive the phone
+    without asking until it is taken back, the lease ends or the phone goes."""
+
+    def setUp(self):
+        Lease.setUp(self)               # its fakes, without its tests
+        pl.lend("n1", OWNER, "app", 1)
+        saved = (phone.leasing, phone.nodes, phone.users)
+        self.addCleanup(lambda: (setattr(phone, "leasing", saved[0]), setattr(phone, "nodes", saved[1]),
+                                 setattr(phone, "users", saved[2])))
+        phone.leasing, phone.nodes = pl, None
+
+        class U(Users):
+            account_of = staticmethod(lambda who: {"name": who.get("aname", ""), "uid": who.get("uid", "")})
+            is_admin = staticmethod(lambda who: False)
+        phone.users = U
+        phone._trust.clear()
+        self.addCleanup(phone._trust.clear)
+        self.recs["n1"]["owner_name"] = "Owner"
+        self.ran = []
+        real = pl.use
+        self.addCleanup(setattr, pl, "use", real)
+        pl.use = lambda proj, op, args: (self.ran.append(op) or ({"path": "dist/phone/shot.png"}, 200)) \
+            if op != "status" else real(proj, op, args)
+
+    def shot(self, uid="u3"):
+        sess = {"name": "session:app", "uid": uid, "aname": "Asker", "session": "app"}
+        return phone.verb("use", {"op": "shot", "args": {}, "why": "look"}, sess, False)[0]
+
+    def settle(self, rid):
+        for _ in range(100):
+            if phone.outcome(rid, "app").get("state") == "done":
+                return
+            time.sleep(0.01)
+
+    def test_allowed_for_the_session_the_next_command_does_not_ask(self):
+        first = self.shot()
+        self.assertFalse(first["allowed"])
+        self.assertTrue(phone.decide(first["asked"], True, "u1", "Owner", session=True)["ok"])
+        self.settle(first["asked"])
+        second = self.shot()
+        self.assertTrue(second["allowed"])
+        self.settle(second["asked"])
+        self.assertEqual(self.ran, ["shot", "shot"])
+        self.assertEqual([g["project"] for g in phone.trusts("n1")], ["app"])
+        # Another account's session on the same project still asks.
+        self.assertFalse(self.shot(uid="u9")["allowed"])
+
+    def test_ask_every_time_and_take_back_end_it(self):
+        first = self.shot()
+        phone.decide(first["asked"], True, "u1", "Owner", session=True)
+        self.settle(first["asked"])
+        self.assertIn("error", phone.untrust("n1", "u2", "app", "u3"))     # not the owner's
+        self.assertTrue(phone.untrust("n1", "u1", "app", "u3")["ok"])
+        self.assertFalse(self.shot()["allowed"])
+        again = self.shot()
+        phone.decide(again["asked"], True, "u1", "Owner", session=True)
+        self.settle(again["asked"])
+        self.assertTrue(phone.trusts("n1"))
+        phone.verb("take-back", {"node": "n1"}, {"name": "Owner", "uid": "u1"}, lambda: {})
+        self.assertEqual(phone.trusts("n1"), [])
 
 
 class Scope(unittest.TestCase):

@@ -65,7 +65,7 @@ android {
         targetSdk = 36
         versionCode = bbCode
         versionName = bbVersion
-        buildConfigField("int", "TARGET_API", "5")
+        buildConfigField("int", "TARGET_API", "6")
     }
     // A release is signed with the key the workflow is handed in its
     // environment (B274): without one there is no release signing config,

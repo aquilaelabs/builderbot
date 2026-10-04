@@ -343,7 +343,9 @@ to a project, from the project's row: no session connects, lends or
 disconnects one. Lent to this project, it reaches this project's own app
 only, and every command but `bb phone lease` asks its owner and runs on
 their Allow, so give each a `--why "..."` they can answer, and batch what
-you need rather than asking for one tap at a time. `bb phone
+you need rather than asking for one tap at a time. The owner may answer
+Allow for this session, and the rest of yours then run at once until they
+take it back. `bb phone
 lease` says whether it is lent and which apps the lease covers; `bb phone
 install dist/APP.apk` installs a build and adds its package; then `bb phone
 start|stop|ime|log PKG`, `bb phone shot` and `bb phone record [SECONDS]`

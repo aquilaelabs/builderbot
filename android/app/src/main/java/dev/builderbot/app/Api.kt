@@ -75,8 +75,15 @@ class Api(private val base: String, private val user: String, private val passwo
     // An invitation to a project, answered (membership.py).
     suspend fun invite(id: Int, accept: Boolean) =
         post("/api/members", json("action" to (if (accept) "accept" else "decline"), "id" to id))
-    suspend fun decide(id: Int, allow: Boolean) =
-        post("/api/phone", json("action" to (if (allow) "allow" else "deny"), "id" to id))
+    // `session`: Allow for this session, the rest of that session's phone
+    // commands run without asking until it is taken back (the operator, 4 Oct).
+    suspend fun decide(id: Int, allow: Boolean, session: Boolean = false) =
+        post("/api/phone", json("action" to (if (allow) "allow" else "deny"), "id" to id,
+                                "session" to (allow && session)))
+    suspend fun phoneUntrust(node: String, project: String, askerUid: String) =
+        post("/api/phone", json("action" to "untrust", "node" to node, "project" to project, "asker_uid" to askerUid))
+    suspend fun phoneDisconnect(node: String) =
+        post("/api/phone", json("action" to "disconnect", "node" to node))
     suspend fun pending(project: String) = get("/api/pending?project=${enc(project)}")
     suspend fun pendingAct(project: String, allow: Boolean, ids: List<String>) =
         post("/api/pending", json("project" to project, "action" to (if (allow) "approve" else "deny"),

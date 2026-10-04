@@ -471,6 +471,7 @@ def disconnect(nid, uid, name, admin=False):
     if target:
         _adb(nid, "disconnect", target, timeout=15, by=f"user:{name}")
     _put(nid, None)
+    _forget_trust(nid)              # a phone gone takes what it allowed with it
     phone_on(nid, force=True)
     return {"ok": True}
 
@@ -489,6 +490,8 @@ def _node_row(n, uid, probe, who=None):
             # R113: who the phone is lent to, and (for its owner) which
             # projects on this node it could be.
             "lease": leasing.view(n["id"]) if leasing is not None else None,
+            # Allowed for a session (the owner's to see and take back).
+            "trust": trusts(n["id"]) if rec and rec.get("owner") == uid else [],
             "lendable": (sorted(p for p in project_names(who) if project_node(p) == n["id"])
                          if rec and rec.get("owner") == uid and who is not None
                          and project_names and project_node else [])}
@@ -743,7 +746,7 @@ def requests_open(uid=None, admin=False, project=""):
                 if r["state"] == "pending" and (uid is None or _for(r, uid, admin))]
 
 
-def ask(why, argv, nid, node_name, project, by="claude", asker=""):
+def ask(why, argv, nid, node_name, project, by="claude", asker="", asker_uid=""):
     """A session asking to reach the phone on its project's node. The
     request goes to whoever connected that phone, the asker when it is
     their own. `asker` names the account whose session asks, for the row.
@@ -765,8 +768,100 @@ def ask(why, argv, nid, node_name, project, by="claude", asker=""):
     if not rec or not phone_on(nid):
         return {"error": f"no phone is connected on {node_name or nid}: somebody "
                          "connects one in the Phone tab, on that node"}
-    return _queue("phone", why, argv, nid, node_name, project, by, rec["owner"],
-                  rec.get("owner_name") or "the owner", asker)
+    return _allow_if_trusted(_queue("phone", why, argv, nid, node_name, project, by, rec["owner"],
+                                     rec.get("owner_name") or "the owner", asker,
+                                     extra={"asker_uid": asker_uid}))
+
+
+# ---- Allow for this session (the operator, 4 Oct) ----------------------------
+# Answering every command a session sends to a phone was too much: the
+# owner's second answer, "Allow for this session", lets the commands that
+# account's sessions in that project send to that phone run without asking
+# again, for as long as the phone is lent to the project (an hour where it
+# is not lent), until the owner takes it back from the Phone tab, the lease
+# ends or the phone is disconnected. Kept in memory with the asks, so a
+# controller restart asks again. A command so allowed is still an ask on
+# the record, answered at once in the owner's name, so the log and the
+# session's own wait read the same as for a press.
+TRUST_S = 3600
+_trust = {}             # (node id, project, asker uid) -> unix time it ends
+
+
+def _trust_end(nid, project):
+    got = leasing.lease(nid) if leasing is not None else None
+    if got and got.get("project") == project:
+        return got.get("until") or 0          # 0: until taken back
+    return int(time.time()) + TRUST_S
+
+
+def trusted(nid, project, asker_uid):
+    """True while the owner has allowed this account's sessions in this
+    project to drive the phone on this node without asking."""
+    key = (nid, project, asker_uid)
+    with _lock:
+        if key not in _trust:
+            return False
+        end = _trust[key]
+    got = leasing.lease(nid) if leasing is not None else None
+    lent_here = bool(got and got.get("project") == project)
+    # A grant made under a lease lasts the lease, not past it.
+    if (end == 0 and not lent_here) or (end and end < time.time()):
+        with _lock:
+            _trust.pop(key, None)
+        return False
+    return True
+
+
+def trusts(nid):
+    """What the owner has allowed for a session on this node, for the Phone
+    tab: [{project, asker, until}]."""
+    out = []
+    with _lock:
+        keys = [k for k in _trust if k[0] == nid]
+    for k in keys:
+        if trusted(*k):
+            with _lock:
+                end = _trust.get(k)
+                who = _trust_names.get(k, "")
+            out.append({"project": k[1], "asker_uid": k[2], "asker": who, "until": end})
+    return out
+
+
+_trust_names = {}
+
+
+def untrust(nid, uid, project="", asker_uid="", all_=False):
+    """The owner asking every time again: one grant, or every one on the node."""
+    rec = _rec(nid) or {}
+    if rec.get("owner") != uid:
+        return {"error": "only the account that connected the phone changes what it allows"}
+    with _lock:
+        for k in [k for k in _trust if k[0] == nid and (all_ or (k[1] == project and k[2] == asker_uid))]:
+            _trust.pop(k, None)
+            _trust_names.pop(k, None)
+    return {"ok": True}
+
+
+def _forget_trust(nid):
+    with _lock:
+        for k in [k for k in _trust if k[0] == nid]:
+            _trust.pop(k, None)
+            _trust_names.pop(k, None)
+
+
+def _allow_if_trusted(q):
+    """A request just queued, answered at once in the owner's name when they
+    allowed its session already; the request as _queue returned it."""
+    if not q.get("ok"):
+        return q
+    with _lock:
+        r = _find(q["id"])
+    if r and r.get("kind") in ("phone", "phone-use") and trusted(r["node"], r["project"], r.get("asker_uid") or ""):
+        with _lock:
+            r["auto"] = True
+        decide(r["id"], True, r["to"], "")
+        q = {**q, "allowed": True}
+    return q
 
 
 def _queue(kind, why, argv, nid, node_name, project, by, to, to_name, asker="",
@@ -953,7 +1048,7 @@ def _find(rid):
     return None
 
 
-def decide(rid, allow, uid, name="", admin=False):
+def decide(rid, allow, uid, name="", admin=False, session=False):
     """The answer. Allowing runs it on the node, so the session never
     reaches the phone (or root) itself. Anybody else is refused: a phone
     question was put to the person who connected the phone, a root one to
@@ -976,6 +1071,14 @@ def decide(rid, allow, uid, name="", admin=False):
         if r["state"] != "pending":
             return {"error": f"that one was already {r['state']}"}
         r["state"] = "running" if allow else "denied"
+    # Allow for this session: this one runs, and the next ones from the same
+    # account's sessions in this project to this phone do not ask.
+    if allow and session and r.get("kind") in ("phone", "phone-use"):
+        key = (r["node"], r["project"], r.get("asker_uid") or "")
+        end = _trust_end(r["node"], r["project"])
+        with _lock:
+            _trust[key] = end
+            _trust_names[key] = r.get("asker") or ""
     if not allow:
         return {"ok": True}
     if r.get("kind") == "rebuild":
@@ -1395,13 +1498,15 @@ def verb(action, req, who, fresh):
                          locked=(nodes.node_locked(pn) or nodes.root_refused(pn)) if pn else "")
         else:
             r = ask(field(req, "why"), req.get("cmd"), pnid if pn else "",
-                    pn["name"] if pn else "", proj, asker=asker_name)
+                    pn["name"] if pn else "", proj, asker=asker_name, asker_uid=str(asker_uid or ""))
     elif act == "lend":
         if not nid or not _rec(nid):
             return {"error": "no phone is connected on that node"}, 400
         r = leasing.lend(nid, who, field(req, "project"), req.get("hours"))
     elif act == "take-back":
         r = leasing.take_back(nid, who, admin=users.is_admin(who))
+        if r.get("ok"):
+            _forget_trust(nid)          # what was allowed for a session went with the lease
     elif act == "look":
         # The owner watching what a session does: a screenshot of the lent
         # phone now, into the project's dist/phone/ beside the session's.
@@ -1435,12 +1540,18 @@ def verb(action, req, who, fresh):
         shown = ["bb", "phone", str(op)[:20]] + [f"{k}={str(v)[:120]}" for k, v in sorted(args.items())][:8]
         why = " ".join(str(req.get("why") or "").split())[:300] or f"{op} on the phone lent to {proj}"
         nname = (nodes.node(lnid) or {}).get("name") if nodes is not None else lnid
-        r = _queue("phone-use", why, shown, lnid, nname, proj, f"session:{proj}", rec.get("owner") or "",
-                   rec.get("owner_name") or "its owner", asker=who.get("name") or "",
-                   extra={"op": str(op)[:20], "args": args})
-        return {"asked": r["id"], "to": r["to"]}, 200
+        acct = users.account_of(who) or {}
+        r = _allow_if_trusted(_queue("phone-use", why, shown, lnid, nname, proj, f"session:{proj}",
+                                     rec.get("owner") or "", rec.get("owner_name") or "its owner",
+                                     asker=acct.get("name") or who.get("name") or "",
+                                     extra={"op": str(op)[:20], "args": args,
+                                            "asker_uid": str(who.get("uid") or "")}))
+        return {"asked": r["id"], "to": r["to"], "allowed": bool(r.get("allowed"))}, 200
     elif act == "allow" or act == "deny":
-        r = decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who))
+        r = decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who),
+                   session=act == "allow" and bool(req.get("session")))
+    elif act == "untrust":
+        r = untrust(nid, uid, field(req, "project"), field(req, "asker_uid"), all_=bool(req.get("all")))
     elif act == "outcome":
         r = outcome(req.get("id"), project=who.get("session") or "")
         if not r.get("error"):

@@ -9,7 +9,7 @@
     "the app draws or acts on; the app tolerates an extra one and blanks a",
     "missing one, so this is the contract, not the whole answer."
   ],
-  "api": 5,
+  "api": 6,
   "endpoints": [
     {"method": "GET", "path": "/api/meta", "fields": ["api", "version", "apk", "apk_sha256"]},
     {"method": "GET", "path": "/api/status", "fields": ["me", "can", "image", "host", "projects", "attention", "phone_asks", "welcome",
@@ -20,9 +20,9 @@
      "attention": ["kind", "node", "id", "from", "to", "window", "projects"],
      "can": ["admin"]},
     {"method": "GET", "path": "/api/phone", "fields": ["nodes", "asks"],
-     "nodes": ["id", "name", "live", "phone", "owner", "mine", "lease", "lendable"],
+     "nodes": ["id", "name", "live", "phone", "owner", "mine", "lease", "lendable", "trust"],
      "asks": ["id", "kind", "why", "cmd", "project", "node", "node_name", "asker", "left", "detail", "env_keys", "name", "for"]},
-    {"method": "POST", "path": "/api/phone", "actions": ["allow", "deny", "pair", "connect", "lend", "take-back"]},
+    {"method": "POST", "path": "/api/phone", "actions": ["allow", "deny", "pair", "connect", "lend", "take-back", "untrust", "disconnect"]},
     {"method": "GET", "path": "/api/pending?project=", "fields": ["pending", "counts", "gate"],
      "pending": ["id", "kind", "verb", "summary", "by", "settled"]},
     {"method": "POST", "path": "/api/pending", "actions": ["approve", "deny"]},
