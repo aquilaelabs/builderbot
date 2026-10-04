@@ -304,6 +304,14 @@ in_view() {
     RUN=("$@")
     isolating || return 0
     [ $# -gt 0 ] || set -- "${SHELL:-/bin/bash}" -l
+    # The project's own Gradle home (B438), here too: an isolated session's
+    # environment is this file, which the helper loads over what tmux was
+    # handed, so start()'s per-project value never reached it and every such
+    # session built in the account's ~/.gradle, where another project's idle
+    # daemon held the journal lock (report #54).
+    if [ -n "${GRADLE_USER_HOME:-}" ] && [ -n "$account" ]; then
+        export GRADLE_USER_HOME="$HOME/.cache/builderbot/u/$account/project/$proj/gradle-home"
+    fi
     envf="$(cache_project_dir "$proj")/session.env"
     ( umask 077; env -0 > "$envf.new" && mv -f "$envf.new" "$envf" ) \
         || bad "Could not write this session's environment to $envf, so its view cannot start."

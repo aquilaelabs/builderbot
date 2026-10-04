@@ -824,6 +824,11 @@ print(uid)`);
       ok(envRaw.split('\0').includes(`BB_TOKEN=${viewTok}`) && (statSync(envf).mode & 0o777) === 0o600
          && /^check$/m.test(readFileSync(calls, 'utf8')) && new RegExp(`^plan --project ${vproj} `, 'm').test(readFileSync(calls, 'utf8')),
          '...having asked the helper whether this node builds one and planned it first, with the environment in a file only the account reads');
+      // The file is what the session runs with, so the project's own Gradle
+      // home has to be in it: tmux's -e is overridden by it (report #54).
+      const gh = envRaw.split('\0').find(l => l.startsWith('GRADLE_USER_HOME=')) || '';
+      ok(gh === `GRADLE_USER_HOME=${vhome}/.cache/builderbot/u/${ownerUid}/project/${vproj}/gradle-home`,
+         `...and in it the project's own Gradle home, not the account's ~/.gradle (${gh.slice(0, 90)})`);
       tmuxKill(`${ownerUid}~claude-${vproj}`);
       // The projects this one reads (prefs.reads) ride the grant: one
       // --reads each for the helper, and Claude's walls let it Read them

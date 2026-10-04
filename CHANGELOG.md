@@ -241,6 +241,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Static analysis tab leaves out a finding the code suppressed in place (Semgrep's # nosemgrep), which a scanner's SARIF keeps marked as suppressed. (2985e3b)
 - bb phone install works on a lent phone: adb was pointed at /tmp while the build was fetched into the node's artifacts store, and an install the lease refuses (a file outside dist/) is now refused before the phone's owner is asked, not after (cd8289e)
 - The Docker tab reads each container's Start on boot once instead of on every refresh: on a node that was a second job per listing, which slowed the tab (dc8c4a0)
+- A Claude session on a node builds with its project's own Gradle cache, as the briefing says: an isolated session got the account's shared one, where another project's idle Gradle daemon could hold the lock (3032df4)
 
 ### Security
 
