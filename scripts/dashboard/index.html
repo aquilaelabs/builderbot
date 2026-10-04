@@ -416,7 +416,7 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .logo.off{color:var(--bad)}
 @media(prefers-reduced-motion:reduce){
   .logo{transition:none}
-  .modal:not([hidden]),.modal:not([hidden])>.box,.pinmenu{animation:none}
+  .modal:not([hidden]):not(.inline),.modal:not([hidden]):not(.inline)>.box,.pinmenu{animation:none}
 }
 .spacer{flex:1}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
@@ -1106,7 +1106,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 /* The page behind a dialog holds still. Scrolling it while a detour is open
    loses your place for no reason you asked for, and on a touch screen it is
    what a flick past the end of the dialog does. */
-html:has(.modal:not([hidden])){overflow:hidden}
+html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 /* Every modal arrives rather than appearing: the room dims, and the box rises
    into it. As an animation and not a transition, because these are toggled by
    `hidden`; there is no frame in which a transition could start. One rule
@@ -1114,13 +1114,24 @@ html:has(.modal:not([hidden])){overflow:hidden}
 @keyframes modalIn{from{opacity:0} to{opacity:1}}
 @keyframes modalBoxIn{from{opacity:0;transform:translateY(10px) scale(.985)}
   to{opacity:1;transform:none}}
-.modal:not([hidden]){animation:modalIn .16s ease}
-.modal:not([hidden])>.box{animation:modalBoxIn .19s cubic-bezier(.2,.7,.3,1)}
+/* Not the in-place form (.inline, a notebook's Settings): it is a view, not
+   a dialog arriving, so it neither plays a dialog's entrance nor locks the
+   page behind it. */
+.modal:not([hidden]):not(.inline){animation:modalIn .16s ease}
+.modal:not([hidden]):not(.inline)>.box{animation:modalBoxIn .19s cubic-bezier(.2,.7,.3,1)}
 /* ...and leaves the same way (the observer beside noMotion plays it): while
    it is leaving, the arrival must not replay, and nothing under it may take
    a tap meant for the page behind. */
 .modal.leaving,.modal.leaving>.box{animation:none;pointer-events:none}
 .modal[hidden]{display:none}
+/* A dialog's box shown in place, in a notebook view (the project's Settings):
+   no overlay, no shadow, the document's width, and its own scroll is the
+   view's. Its title is the notebook's, so its h3 is not drawn. */
+.modal.inline{position:static;inset:auto;z-index:auto;background:none;display:block;
+  padding:0;height:auto;overflow:visible}
+.modal.inline .box{width:auto;max-width:var(--doc-w);max-height:none;overflow:visible;
+  border:0;border-radius:0;box-shadow:none;background:none}
+.modal.inline .box > h3{display:none}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
@@ -3535,6 +3546,7 @@ body.booting .pane>.loading{margin:auto}
       <button type="button" data-v="docker">Docker</button>
       <button type="button" data-v="tests">Tests</button>
       <button type="button" data-v="analysis">Analysis</button>
+      <button type="button" data-v="settings">Settings</button>
     </div>
     <!-- Who else is in here. Under the strip rather than above it, because
          it is about the whole notebook and not about the batch banner's
@@ -3826,6 +3838,15 @@ body.booting .pane>.loading{margin:auto}
       <div class="field" id="anaHist" hidden></div>
       <div id="anaList"></div>
     </div>
+    <!-- The project's settings (R119 step 3, the operator 4 Oct): the same
+         form the settings dialog shows, moved into this view while it is the
+         one on screen (page-projsettings.js settingsInto), so there is one
+         form and one set of handlers. .modal.inline lets every dialog rule
+         style it where it is. -->
+    <div class="nbview" data-view="settings" hidden>
+      <div class="field nbhead vbar"><span>how this project runs, and what Claude may do here</span><span class="sp"></span></div>
+      <div class="modal inline nbsettings"></div>
+    </div>
     <div class="foot" id="nbFoot">
       <!-- One. There were two, and the second one typed the change into a
            running session's input box, which was the ONLY way anything
@@ -3944,7 +3965,7 @@ body.booting .pane>.loading{margin:auto}
     <section class="rngroup">
       <div class="field rnhead"><label>The project</label></div>
     <div class="field" id="rnNameField">
-      <label for="rnName">New name</label>
+      <label for="rnName">Name</label>
       <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
       <div class="hint" id="rnHint"></div>
       <div class="hint" id="rnPreview" hidden></div>
@@ -4193,7 +4214,7 @@ body.booting .pane>.loading{margin:auto}
           autocomplete="off" spellcheck="false" maxlength="120"
           aria-label="name your commits here carry"></label>
         <label class="pick">Commit email <input id="rnGitEmail" type="text"
-          autocomplete="off" spellcheck="false" maxlength="200"
+          autocomplete="off" spellcheck="false" maxlength="120"
           aria-label="email your commits here carry"></label>
       </div>
       <div class="hint" id="rnGitHint"></div>
@@ -5084,7 +5105,7 @@ setInterval(() => {
 // its old spot to its new one. The transform tween is what the eye follows.
 // Its functions are page-motion.js now, with every height tween on the page; what runs at load stays here.
 
-document.querySelectorAll(".modal").forEach(armModal);
+document.querySelectorAll(".modal:not(.inline)").forEach(armModal);
 // Scroll hints (scrollHints): on any scroll, which does not bubble but is
 // seen on its way down, and on a slow clock for content that grows under a
 // box nobody is scrolling. Only the few hinted boxes are measured.

@@ -363,7 +363,35 @@ function rnAskReset(){
 }
 let rnMode = "all";                      // "all" from the gear, "git" from the chain
 
+// The form shown in a notebook's Settings view instead of the dialog (R119
+// step 3): one form, moved to where it is wanted. `rnHost` is the view's
+// .modal.inline while the form is there, else null and the form is the
+// dialog's.
+let rnHost = null;
+function settingsOut(){
+  if (!rnHost) return;
+  const box = rnHost.querySelector(":scope > .box");
+  if (box) $("rnmodal").appendChild(box);
+  rnHost = null;
+  $("rnCancel").textContent = "Cancel";
+}
+function settingsInto(name, host){
+  if (!host) return;
+  renameProject(name);
+  $("rnmodal").hidden = true;
+  const box = $("rnmodal").querySelector(":scope > .box");
+  if (box) host.appendChild(box);
+  // A view, never a dialog to shut: whatever hid it is undone here.
+  host.removeAttribute("hidden");
+  rnHost = host;
+  // In place there is nothing to cancel out of: Revert puts the fields back.
+  $("rnCancel").textContent = "Revert";
+}
+// A project's settings: its notebook's Settings view.
+function openProjectSettings(name){ openNotebook(name, "settings"); }
+
 function renameProject(name, mode = "all"){
+  settingsOut();
   rnFor = name;
   rnMode = mode;
   const p = (state?.projects || []).find(x => x.name === name);
@@ -885,7 +913,20 @@ function rnShow(){
     : "That leaves nothing to name a directory after";
 }
 
-function closeRename(){ $("rnmodal").hidden = true; rnFor = null; rnAskReset(); }
+function closeRename(){
+  // In place, closing is reading again: the saved values, once the poll has
+  // them (or Revert's, the ones it had).
+  if (rnHost){
+    const n = rnFor, h = rnHost;
+    settingsOut();
+    rnFor = null; rnAskReset();
+    Promise.resolve(refresh()).finally(() => {
+      if (h.isConnected && (state?.projects || []).some(p => p.name === n)) settingsInto(n, h);
+    });
+    return;
+  }
+  $("rnmodal").hidden = true; rnFor = null; rnAskReset();
+}
 
 async function rnSubmit(){
   const name = rnFor, to = $("rnName").value, token = $("rnToken").value.trim();

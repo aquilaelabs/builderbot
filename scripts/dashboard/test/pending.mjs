@@ -53,8 +53,7 @@ ok(/added R\d+/.test(first) && roadmapItems().some(r => r.text === 'a thing adde
 const firstId = first.match(/added R(\d+)/)[1];
 
 // ---- the setting, in the project's settings dialog -------------------------
-await unfold(page, 'alpha');
-await page.click('#projects [data-rn="alpha"]');
+await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 const opts = await page.$$eval('#rnGateRoadmap option', os => os.map(o => o.value));
 ok(opts.join(',') === 'auto,ask,deny'
@@ -73,8 +72,7 @@ ok(gate().roadmap === 'ask' && gate().bugs === 'ask' && gate().rules === 'deny' 
    'saving writes the four words beside the project\'s other settings');
 await page.waitForFunction(() => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gate?.rules === 'deny',
                            null, { timeout: 30000 });
-await unfold(page, 'alpha');
-await page.click('#projects [data-rn="alpha"]');
+await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnGateBugs', e => e.value) === 'ask'
    && await page.$eval('#rnGateRules', e => e.value) === 'deny',

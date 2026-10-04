@@ -63,7 +63,7 @@ function wirePull(){
     if (busy || e.touches.length !== 1) return reset();
     const t = e.target;
     // Not where a finger types, drags a block or works a terminal.
-    if (t.closest("input, textarea, select, iframe, .dsboard, .modal:not([hidden])")) return reset();
+    if (t.closest("input, textarea, select, iframe, .dsboard, .modal:not([hidden]):not(.inline)")) return reset();
     const sc = pullScroller(t);
     if (sc && sc.scrollTop > 0) return reset();
     y0 = e.touches[0].clientY; live = false; last = 0;

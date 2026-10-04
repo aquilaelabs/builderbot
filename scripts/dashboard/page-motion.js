@@ -74,7 +74,7 @@ function modalTop(el){
 // ...and the lists and logs that scroll inside a surface: a project's Reads
 // and nodes in its settings, the notebook's lists, a job's log, the chat
 // (the operator, 30 Sep).
-const SCROLL_HINTED = ".modal:not([hidden]) > .box, .modal:not([hidden]) .sheetslot, .pane .doc.on, "
+const SCROLL_HINTED = ".modal:not([hidden]):not(.inline) > .box, .modal:not([hidden]):not(.inline) .sheetslot, .pane .doc.on, "
   + ".lbox, #roadmapList, #memList, #pendList, .dllog, .dmlog, .chatlog, .mpanel.show, .abpage, .dsboardwrap";
 function scrollHint(el){
   const more = el.scrollHeight - el.clientHeight > 2;

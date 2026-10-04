@@ -524,7 +524,11 @@ function makeNotebook(project){
     // Save and Revert belong to the views that stage: roadmap, briefing and
     // the version on Artifacts. Bugs, tests and findings write through, and
     // a Save under a list nothing stages read as a button that did nothing.
-    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git", "docker", "wiki"].includes(v);
+    $("nbFoot").hidden = ["bugs", "analysis", "tests", "git", "docker", "wiki", "settings"].includes(v);
+    // The settings form comes into this view while it is on screen, and goes
+    // back to the dialog when another view is picked (page-projsettings.js).
+    if (v === "settings") settingsInto(project, root.querySelector('.nbview[data-view="settings"] .nbsettings'));
+    else if (rnHost && root.contains(rnHost)) settingsOut();
     if (v === "git") loadGit();
     if (v === "docker") loadNbDocker();
     if (v === "bugs" && !nb.bugs) loadBugs();

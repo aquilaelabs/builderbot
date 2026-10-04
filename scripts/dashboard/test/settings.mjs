@@ -177,8 +177,7 @@ ok(bare.git_name === 'T. Person', '...for a shell with no project too');
   await page.evaluate(async () => (await (await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'alpha', reads: [] }) })).json()));
 }
-await unfold(page, 'alpha');
-await page.click('#projects [data-rn="alpha"]');
+await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 // The dialog asks again (17 Sep), but for a different thing: the old field
 // was the PROJECT's identity and wrote user.name into the repository, which
@@ -298,6 +297,25 @@ ok(elsewhere.git_name === 'T. Person',
   await page.evaluate(() => { document.cookie = 'bb_tz=Not%2FAZone; path=/'; });
   ok(await page.evaluate(() => userTZ() === ''), 'a zone this browser does not know is ignored, not trusted');
   await page.evaluate(() => setUserTZ(''));
+}
+
+// ---- a project's settings live in its notebook (R119 step 3) ---------------
+// The row's gear went, and the form is the notebook's Settings view: the
+// same form, moved there while the view is on screen, Revert rather than
+// Cancel, and back to the dialog when another view is picked.
+{
+  await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); });
+  ok(!(await page.$('#projects [data-rn]')) && !(await page.$('.doc .projtab [data-rn]')),
+     'no project row carries a settings button any more');
+  await page.evaluate(() => openProjectSettings('alpha'));
+  await page.waitForSelector('.nb .nbview[data-view="settings"]:not([hidden]) .nbsettings #rnName', { timeout: 15000 });
+  const inView = await page.evaluate(() => ({ name: $('rnName').value, modal: $('rnmodal').hidden,
+    revert: $('rnCancel').textContent, shown: $('rnName').checkVisibility() }));
+  ok(inView.name === 'alpha' && inView.modal && inView.revert === 'Revert' && inView.shown,
+     `the notebook's Settings view holds the form, the dialog shut (${JSON.stringify(inView)})`);
+  await page.evaluate(() => getNotebook('alpha').view('roadmap'));
+  ok(await page.evaluate(() => !!document.querySelector('#rnmodal > .box') && $('rnmodal').hidden),
+     '...and picking another view puts the form back where the dialog keeps it');
 }
 
 await done(browser);

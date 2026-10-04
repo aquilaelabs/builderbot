@@ -3264,8 +3264,7 @@ ok(await page.$('#devSend'),
   // ...and the control is there, offered only where there is a container to
   // run in: a project with no compose file is not asked the question.
   await page.evaluate(() => { openProjectsTab(); });
-  await page.waitForSelector('.doc .projtab [data-rn="ep.silon"]', { timeout: 15000 });
-  await page.click('.doc .projtab [data-rn="ep.silon"]');
+  await page.evaluate(n => renameProject(n), 'ep.silon');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   ok(await page.$eval('#rnTestWhere', e => !e.hidden)
      && await page.$eval('#rnDevTest', e => [...e.options].map(o => o.value).join() === 'node,up,only'
@@ -3277,7 +3276,7 @@ ok(await page.$('#devSend'),
     .find(p => p.name === 'ep.silon') || {}).prefs?.tests_in === 'only', { timeout: 20000 });
   ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects['ep.silon'].tests_in === 'only',
      '...and saving it there is what writes the setting');
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
   ok(await page.$eval('#rnTestWhere', e => e.hidden),
      '...while a project with no compose file is not asked the question at all');

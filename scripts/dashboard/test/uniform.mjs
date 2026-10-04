@@ -1312,7 +1312,7 @@ const DIALOGS = {
   // draws the same dialog with an empty text box.
   firstsession: () => openBrief('alpha', ''),
   senddocker: () => openSendToDocker('ep.silon'), devenv: () => openDevEnv('ep.silon', 'main'),
-  projsettings: () => document.querySelector('[data-rn="alpha"]')?.click(),
+  projsettings: () => renameProject('alpha'),
   // The Debugging group's dialog. It draws from SETTING_GROUPS rather than
   // from what is on screen, so it opens whether or not the Settings tab is
   // the one showing, and debug mode decides the BUTTON rather than this.

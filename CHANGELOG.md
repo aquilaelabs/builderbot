@@ -138,6 +138,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Projects is the first card in the sidebar, and a new layout opens on the Projects tab with the controller's shell beside it. A sidebar nobody rearranged moves Projects to the top by itself; one somebody dragged stays as it was. (1cd2595)
 - A phone is the person's who connected it: only they lend it to a project, from a Phone button on the project's row, and each command a session runs on it asks them in their bell, nobody else's. An administrator may disconnect someone else's phone; nobody may connect over one. (7456dd2)
 - The sidebar's project rows show Claude, the notebook and … beside the name at every width, as on a phone; … opens the rest. The Projects tab still shows every control on a desktop. (d3593f7)
+- A project's settings are a Settings view in its notebook, the same form with Revert in place of Cancel, and the project row no longer carries a settings button. (71fb7f5)
 
 ### Removed
 

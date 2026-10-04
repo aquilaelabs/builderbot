@@ -1443,7 +1443,7 @@ const api = (path, body) => page.evaluate(async ([p, b]) => {
 // Renaming is a dialog now, not a prompt. One dialog, two doors: the gear is
 // the project's own settings and the chain is GitHub's half of them, so where
 // a credential is changed does not depend on whether a remote exists yet.
-await page.click('.doc .projtab [data-rn="alpha"]');
+await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnName', el => el.value) === 'alpha',
    'the rename dialog opens on the current name');
@@ -1661,7 +1661,7 @@ ok(v.onNone && !v.bad,
 // when a session starts rather than typed into a running one, so the dialog's
 // job is to say which of those two you are doing.
 await page.click('#rnCancel');
-await page.click('.doc .projtab [data-rn="alpha"]');
+await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnTitle', e => e.textContent.trim()) === 'alpha',
    'the dialog is the project\'s settings, not a rename form wearing its name');
@@ -1682,7 +1682,7 @@ ok(!await page.$eval('#rnDelete', e => e.hidden) && /Delete project/.test(await 
   page.on('dialog', auto);
   ok(/moves to \/workspace\/\.trash\/alpha/.test(asked) && existsSync(`${DIR}/ws/alpha/.git`),
      '...which asks, names the bin, and moves nothing when declined');
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
 }
 await page.selectOption('#rnModel', 'sonnet');
@@ -1720,7 +1720,7 @@ ok(true, '...and none takes it off again');
 // Back to the projects tab, which the notebook pushed out of the pane.
 await page.click('#projects #bAllProj');
 await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
-await page.click('.doc .projtab [data-rn="alpha"]');
+await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 await page.click('#rnCancel');
 
@@ -1744,7 +1744,7 @@ await page.click('#rnCancel');
   writeFileSync(`${tdir}/aaaaaaaa-0000-4000-8000-000000000001.jsonl`,
     '{"type":"user","message":{"role":"user","content":"hi"}}\n'
     + '{"type":"assistant","message":{"model":"claude-fable-5-1","role":"assistant","content":[]}}\n');
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.waitForFunction(() => document.getElementById('rnModel').value === 'fable', null, { timeout: 8000 });
   ok(/Fable is Claude's own default here/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
@@ -1757,7 +1757,7 @@ await page.click('#rnCancel');
        && !(state?.projects || []).find(p => p.name === 'alpha')?.yours?.model),
      '...restarts nothing, and stores nothing: the default is still the default');
   rmSync(tdir, { recursive: true, force: true });
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.selectOption('#rnModel', 'sonnet');
   await page.selectOption('#rnAsks', 'fewer');
@@ -1784,7 +1784,7 @@ await page.click('#rnCancel');
      '...while the session it declined to restart is still running');
   // The other answer: saved, and the session ended for the next press of
   // Claude to start on the new setting.
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   ok(await page.$eval('#rnRestartAsk', e => e.hidden) && await page.$eval('#rnGo', e => e.textContent) === 'Save',
      'opened again, the dialog has put the question away');
@@ -1802,7 +1802,7 @@ await page.click('#rnCancel');
   await refreshUntil(page, () => liveSessions().has(myClaude('alpha')), { timeout: 20000 });
   // A change a running session reads when it is used (the build command)
   // asks nothing.
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   const wasBuild = await page.$eval('#rnBuildCmd', e => e.value);
   await page.fill('#rnBuildCmd', wasBuild + ' && make all');
@@ -1811,7 +1811,7 @@ await page.click('#rnCancel');
   ok(await page.evaluate(() => liveSessions().has(myClaude('alpha'))) && page.dialogs.length === before
      && await page.$eval('#rnRestartAsk', e => e.hidden),
      'a change the session reads when it is used (the build command) asks nothing and ends nothing');
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.fill('#rnBuildCmd', wasBuild);
   await page.click('#rnGo');
@@ -1823,7 +1823,7 @@ await page.click('#rnCancel');
   tmuxKill('claude-alpha');
   await refreshUntil(page, () => !liveSessions().has(myClaude('alpha')),
                      { timeout: 20000 });
-  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.selectOption('#rnModel', '');
   await page.click('#rnGo');
