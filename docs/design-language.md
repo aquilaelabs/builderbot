@@ -733,14 +733,9 @@ A project may carry a color, one of the nine swatches in its settings, and the p
 
 Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/page-docs.js; node, picker, switcher, select
 
-A tab about one node at a time (Toolchains, the Emulator, the Phone, the CI runner)
-picks it with `nodePick()` (page-docs.js): one `label.pick` reading **Node**, at the
-left of the tab's bar with its verbs at the right, listing the agent nodes by name; a
-node that cannot be picked for this tab is in the list, disabled, its reason after its
-name (`sandbox: no adb`), and a quiet one says so. The Phone and the CI runner draw the
-picked node's thing as one section with its state line and controls; the Emulator is
-laid out like Toolchains. A new node-scoped tab starts from this, never from a picker
-of its own (R121, the operator 4 Oct).
+A tab about one node at a time (Toolchains, the Emulator, the Phone, the CI runner, the Docker manager) picks it with `nodePick()` (page-docs.js): one `label.pick` reading **Node**, at the left of the tab's bar (`.docbarrow`) with its verbs at the right, Refresh last, listing the agent nodes by name; a node that cannot be picked for this tab is in the list, disabled, its reason after its name (`sandbox: no adb`), and a quiet one says so. A tip in that bar opens under it, anchored to its right edge, so the rightmost one never hangs past a phone's pane.
+
+What is installed on the node is a list of ticked rows (`label.tc`): an installed thing is a set, dead tick with its bin at the right, a thing to add is a tick, and one **Install selected** in the action bar at the foot does them all in one job; Toolchains and the Emulator are both this, the Emulator's rows to add narrowed to one flavor picked above them. A thing the node runs (the Phone, the CI runner) opens on a state row, `.row.toolstate`: "Phone on sandbox" or "CI runners on sandbox" with its state as a pill and one sentence under it; then its controls and its add band (inset in a `.field`), and at the foot a `.field.toolfoot` hint saying how a session or a workflow reaches it. A new node-scoped tab starts from one of these two shapes, never from a picker or a layout of its own (R121, the operator 4 Oct).
 
 ## Pages
 

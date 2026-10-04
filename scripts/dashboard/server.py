@@ -5999,15 +5999,16 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*toolchains.verb(req.get("action"), req, self._principal()))
 
     def _emulator(self, req):
-        """Add or remove one system image on a node: a job there, against its
-        toolchain store. The id must be one the picker was drawn from (add)
+        """Add system images to a node, or remove one: a job there, against
+        its toolchain store. An id must be one the tab was drawn from (add)
         or one the node reported (remove): what reaches a command line is a
         string this server handed out."""
         if self._refused("admin"):
             return
         if NODES_OK:
             return self._json({"error": "the node store did not open"}, 500)
-        action, nid, iid = req.get("action"), field(req, "node"), field(req, "image")
+        action, nid = req.get("action"), field(req, "node")
+        iid = req.get("images") if isinstance(req.get("images"), list) else field(req, "image")
         if action not in ("add", "remove"):
             return self._json({"error": "an image is added or removed"}, 400)
         return self._result(emulator.node_job(self._principal(), nid, action, iid))

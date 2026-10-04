@@ -1302,9 +1302,9 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     ok(true, '...and live once one has');
 
     await page.evaluate(id => { emuNode = id; openEmulator(); }, minted.id);
-    // The rows and the picker both wait on Google's index (the size is
-    // joined from it), which is read off the request.
-    await page.waitForFunction(() => document.querySelector('.emutab #imgApi option')
+    // The rows both wait on Google's index (the size is joined from it),
+    // which is read off the request.
+    await page.waitForFunction(() => document.querySelector('.emutab .tc.emnew input')
       && /GB/.test(document.querySelector('.emutab .tc.emimg')?.textContent || ''),
       null, { timeout: 15000 });
     const imgs = await page.$$eval('.emutab .tc.emimg',
@@ -1312,9 +1312,16 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     ok(imgs.length === 1 && /android-30/.test(imgs[0]) && /1\.\d GB/.test(imgs[0])
        && /AVD: fb30-node/.test(imgs[0]),
        `a node's images are listed, with the AVD built on each and the index's size (${imgs[0]})`);
-    const apis = await page.$$eval('.emutab #imgApi option', o => o.map(x => x.value));
+    const apis = await page.$$eval('.emutab .tc.emnew input', o => o.map(x => x.value));
     ok(apis.length === 1 && apis[0] === 'system-images;android-31;google_apis;x86_64',
-       `...and the picker offers what the NODE does not have (${JSON.stringify(apis)})`);
+       `...and the rows to add are what the NODE does not have (${JSON.stringify(apis)})`);
+    // Toolchains' gesture (R121 step 5): tick, then Install selected, which
+    // with nothing ticked says so rather than sending nothing.
+    ok(await page.$eval('.emutab .tc.emimg input', b => b.checked && b.disabled),
+       '...ticked like Toolchains: an installed image is a set, dead tick');
+    await page.click('.emutab [data-emu="install"]');
+    await page.waitForFunction(() => /tick something first/.test(document.body.textContent), null, { timeout: 10000 });
+    ok(true, '...and Install selected with nothing ticked says to tick something, in Toolchains\' words');
     ok(await page.evaluate(async id => !('images' in await (await fetch('/api/toolchains?node=' + id)).json()),
                            minted.id),
        'the Toolchains tab no longer carries images: they are the Emulator tab\'s');
@@ -1322,11 +1329,15 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     // An add is an `image` job, and it holds the store the way a toolchain
     // job does: the two write into one directory tree.
     const add = await napi('/api/emulator', { action: 'add', node: minted.id,
-      image: 'system-images;android-31;google_apis;x86_64' });
+      images: ['system-images;android-31;google_apis;x86_64'] });
     const aj = add.job ? await napi(`/api/v1/jobs?id=${add.job}`) : null;
     ok(aj && aj.type === 'image' && aj.spec.action === 'add'
-       && aj.spec.image === 'system-images;android-31;google_apis;x86_64',
-       `adding an image queues an image job for exactly that id (${JSON.stringify(aj?.spec)})`);
+       && JSON.stringify(aj.spec.images) === '["system-images;android-31;google_apis;x86_64"]',
+       `adding images queues one image job for exactly those ids (${JSON.stringify(aj?.spec)})`);
+    const mixed = await napi('/api/emulator', { action: 'add', node: minted.id,
+      images: ['system-images;android-31;google_apis;x86_64', 'system-images;android-99;google_apis;x86_64'] });
+    ok(/not an image this server offered/.test(mixed.error || ''),
+       `...and a list with one id the tab never offered is refused whole (${mixed.error})`);
     const clash = await napi('/api/toolchains', { action: 'install', names: ['zig'], node: minted.id });
     ok(/image job is already running/.test(clash.error || ''),
        `...and a toolchain install waits for it on the same store (${clash.error})`);
@@ -1367,7 +1378,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
       await page.evaluate(() => { emu = null; loadEmulator(); });
       await page.waitForFunction(() => /no system image can run there/.test(
         document.querySelector('.emutab .emneed')?.textContent || ''), null, { timeout: 15000 });
-      ok(await page.$('.emutab #imgAdd') === null,
+      ok(await page.$('.emutab [data-emu="install"]') === null,
          '...and the tab offers no picker at all there, rather than a dead one');
       await hello(ANDROID);
     }

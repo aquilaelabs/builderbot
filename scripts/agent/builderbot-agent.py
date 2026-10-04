@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.132"
+AGENT_VERSION = "0.7.133"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -5649,26 +5649,35 @@ class Agent:
         node's toolchain store, or off it. Not a toolchain (it exists at
         every API level at once), but it lives on the same store and goes
         through the same bundle, account and one-at-a-time rule, so this is
-        toolchain() for one id. Nothing on PATH moves, so no session renew."""
+        toolchain() for one id, or for several in turn: the Emulator tab's
+        Install selected sends the ticked ones as `images` (R121), and the
+        first that fails ends the job, as a toolchain install does. Nothing
+        on PATH moves, so no session renew."""
         store = tc_root(self.state)
         if not store:
             job.say("refused: this node has no toolchain store, which is where images live\n")
             return "failed", 78
         action = spec.get("action")
-        iid = re.sub(r"[^A-Za-z0-9;._-]", "", str(spec.get("image") or ""))
-        if action not in ("add", "remove") or not iid:
-            job.say("refused: an image job adds or removes one named system image\n")
+        ids = [re.sub(r"[^A-Za-z0-9;._-]", "", str(i or ""))
+               for i in (spec.get("images") or [spec.get("image")])][:20]
+        ids = [i for i in ids if i]
+        if action not in ("add", "remove") or not ids:
+            job.say("refused: an image job adds or removes named system images\n")
             return "failed", 64
         who = self.drop_privileges({})
         into = self.bundle(job, who)
         if not into:
             return "failed", 69
-        job.step(iid)
-        job.say(f"== bb emu image {action} {iid}\n")
-        st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
-                                        "emu", "image", action, iid],
-                               "cwd": store, "timeout": spec.get("timeout") or 3600,
-                               "env": sdk_env(self.state)})
+        st_, code = "succeeded", 0
+        for iid in ids:
+            job.step(iid)
+            job.say(f"== bb emu image {action} {iid}\n")
+            st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
+                                            "emu", "image", action, iid],
+                                   "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                   "env": sdk_env(self.state)})
+            if st_ != "succeeded":
+                break
         self.hello()
         return st_, code
 

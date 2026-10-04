@@ -362,15 +362,20 @@ function nodeRunnerSection(n, c){
       </div></div>`
     : `<div class="addbar" data-add="runner"><button type="button" data-nrunnershow ${busyNow ? "disabled" : ""}
         title="a runner for another git host, or this one's under another address">Add runner</button></div>`;
-  const body = `
-      <div class="sub">One runner per git host; its labels decide which workflows land here.</div>
-      ${addbar}
-      ${rows || `<div class="sub dim ndrunnone">no runner on this node</div>`}
-      ${slots.length ? `<div class="sub ndrunpin">This node's name pins a job here:
-        <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div>` : ""}`;
   const status = !slots.length ? "none" : worst === "bad" ? "attention" : worst === "note" ? "working"
     : reps.some(r => r.busy) ? "busy" : reps.some(r => r.active) ? "listening" : "asked for";
-  return docSection("nodes", "runner", "CI runners", status, body, {cls: worst});
+  const pill = {attention: "bad", working: "note", busy: "ok", listening: "ok"}[status] || "";
+  // The node-scoped tool's shape, the Phone tab's too (R121 step 5): the
+  // state row first, the things below it, the add band, and at the foot
+  // what a workflow (or a session) does to reach this node.
+  return `<div class="row toolstate"><div class="grow">
+        <div class="name">CI runners on ${esc(n.name)} <span class="pill ${pill}">${esc(status)}</span></div>
+        <div class="sub">One runner per git host; its labels decide which workflows land here.</div></div></div>
+      <div class="field">${addbar}</div>
+      ${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}
+      <div class="field toolfoot ndrunpin"><div class="hint">${slots.length ? `This node's name pins a job here:
+        <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre>`
+        : "A workflow reaches this node through a runner added here."}</div></div>`;
 }
 
 // The node's sessions (roadmap #24): whether this machine runs them, what a
@@ -1162,7 +1167,7 @@ function renderRunnerInto(i){
   d.setBar(`${nodePick("rnrPick", ns, runnerNode)}<span class="sp"></span>
     <button type="button" id="rnrRefresh" title="read the nodes again">Refresh</button>`);
   d.list.innerHTML = n
-    ? `<div class="row ndrow" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
+    ? `<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n))}</div></div>`
     : `<div class="hint">No node is enrolled yet: the Nodes tab enrolls one, and its runner is added here.</div>`;
   if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
   const pick = d.el.querySelector("#rnrPick");

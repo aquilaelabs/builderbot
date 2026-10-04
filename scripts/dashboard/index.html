@@ -1017,7 +1017,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    first week it ran: two selects on one page in a different voice than every
    other control, for no reason anybody could name. */
 .imgadd select{flex:1 1 190px;min-width:0;padding:6px 8px;min-height:var(--tap)}
-#imgFlavor{flex-basis:210px}
+#imgFlavor{flex:0 1 260px}
 .imgadd button{flex:0 0 auto;min-height:var(--tap)}
 .imgadd .imgabout{flex:0 0 100%;color:var(--dim);margin:0;
   font:var(--f-ui);max-width:70ch}
@@ -1452,6 +1452,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
   .projtab > .actbar{position:relative}
   .projtab > .actbar [data-tip]{position:static}
   .projtab > .actbar [data-tip]::after{left:auto;right:10px;transform:none;
+    max-width:calc(100% - 20px);bottom:auto;top:calc(100% + 6px)}
+  /* ...and every document tab's bar the same way: Refresh is at its right
+     edge on each node-scoped tab, and on the Docker tab, which joined the
+     bar in R121, its tip hung 28px past a phone's pane. */
+  .docbarrow{position:relative}
+  .docbarrow [data-tip]{position:static}
+  .docbarrow [data-tip]::after{left:auto;right:10px;transform:none;
     max-width:calc(100% - 20px);bottom:auto;top:calc(100% + 6px)}
   /* A DEAD button's tip is the one on this page somebody actually has to
      read (it is the sentence saying why the button is dead) and it was the
@@ -2993,12 +3000,6 @@ button[aria-busy="true"]{opacity:.75}
   color:var(--ink)}
 .jbfilter input{width:15px;height:15px;flex:0 0 auto}
 .jberr.warn{color:var(--warn)}
-/* The manager's node picker select keeps the house control font wherever it
-   renders: .dmtab predates the scaffold's groups. Not inflated on a phone: a
-   select never zooms iOS, so it keeps the size of the text beside it and
-   takes the finger height instead (uniform.mjs measures both ways). */
-.dmpick select{font:var(--f-field);padding:8px 9px}
-@media(max-width:900px){ .dmpick select{min-height:var(--tap)} }
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
    starts at the same x as a roadmap item one view over. */

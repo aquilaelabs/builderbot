@@ -104,9 +104,12 @@ function phonePanel(n){
     ? `<span class="pill go">${esc(phBusy)}<span class="dots"></span></span>`
     : dev ? `<span class="pill ok">${esc(dev.model || "phone")}</span>`
           : `<span class="pill">not connected</span>`;
+  // The node-scoped tool's shape, the CI runner tab's too (R121 step 5):
+  // the state row first, then the ways in, what it is lent to and what it
+  // remembers, and at the foot how a session reaches it.
   const rows = [
-    `<div class="row">
-       <div class="grow"><div class="name">${state}${
+    `<div class="row toolstate">
+       <div class="grow"><div class="name">Phone on ${esc(n.name)} ${state}${
            n.owner ? ` <span class="dim">· connected by ${esc(n.owner.name)}${n.mine ? " (you)" : ""}</span>` : ""}</div>
          <div class="sub">${!n.live
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
@@ -224,7 +227,7 @@ function phonePanel(n){
       </span></div>`);
   const L2 = n.lease;
   // Refresh is the tab's bar's (R121); this says how a session gets in.
-  rows.push(`<div class="field phbar"><div class="hint">${L2
+  rows.push(`<div class="field toolfoot phbar"><div class="hint">${L2
       ? `Lent to ${esc(L2.project)}: each command its sessions run on its own app asks ${esc(n.owner?.name || "its owner")} first.`
       : "A session reaches this phone only by asking; the request lands with its owner, with its reason."}</div></div>`);
   if (!tcDotsTimer && rows.join("").includes('class="dots"')) tcDotsTimer = setInterval(tcTickDots, 400);

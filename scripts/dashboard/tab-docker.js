@@ -1398,18 +1398,24 @@ function renderDockerInto(i){
           ? `<br><span class="dim">${esc((src.strays || []).join(", "))} ${
               src.strays.length > 1 ? "are" : "is"} mapped but not mounted here</span>` : ""}</div>`
     : "";
+  // Slow, not merely in flight: dockerFetching alone is true for the whole
+  // of every fetch, and the timer in loadDocker is what decides it is worth
+  // saying. A listing the server itself marked stale wears the same class
+  // without the word: it is the last answer, and nothing is on its way that
+  // the next revision will not bring.
+  const slow = dockerFetching && dmSlow;
   // The picker: every node, online or not: an offline node's view is its
   // last-known list in the ghosted state the blind path draws.
   // One tab, re-rendered per pick (docs/nodes.md §13), never a tab per node.
+  // The one node switcher (page-docs.js nodePick, R121 step 5), in the bar
+  // the other node-scoped tabs wear: the picker at the left, Refresh at the
+  // right, drawn whenever there is a node so the tab says whose daemon it is.
   const dnodes = (nodesList || []).filter(n => n.kind !== "local");
   if (nodesList === null) loadNodes();
-  const picker = dnodes.length > 1 || (dnodes.length === 1 && dockerNode
-                                       && dnodes[0].id !== dockerNode)
-    ? `<div class="field histbar dmpick"><label for="dmNode">Node</label>
-        <select id="dmNode" aria-label="node">${dnodes.map(n =>
-          `<option value="${esc(n.id)}"${n.id === dockerNode ? " selected" : ""}>${
-            esc(n.name)}: ${esc(n.state)}</option>`).join("")}</select></div>`
-    : "";
+  const picker = `<div class="field histbar docbarrow dmpick">${
+      nodePick("dmNode", dnodes, dockerNode || dnodes[0]?.id)}<span class="sp"></span>
+      <button type="button" id="bDockerRe" title="ask the daemon again">Refresh</button>${
+      slow ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div>`;
   // What a session is waiting on, above everything else: somebody is blocked
   // on these, and this is the tab whose dial sent them here. The bell carries
   // them too, the way root asks sit on the Nodes tab and in the bell.
@@ -1429,13 +1435,7 @@ function renderDockerInto(i){
   // `dmstale` while the rows are the last answer and a new one is on its
   // way: what a reader waiting on a refresh looks at, and what the note
   // below says in words.
-  // Slow, not merely in flight: dockerFetching alone is true for the whole
-  // of every fetch, and the timer in loadDocker is what decides it is worth
-  // saying. A listing the server itself marked stale wears the same class
-  // without the word: it is the last answer, and nothing is on its way that
-  // the next revision will not bring.
-  const slow = dockerFetching && dmSlow;
-  el.innerHTML = `<div class="dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${askRows}${note
+  el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${askRows}${note
       ? `<div class="empty">${esc(note)}</div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the
     // daemon, and "nothing on this daemon yet" would be a claim about a
@@ -1443,10 +1443,7 @@ function renderDockerInto(i){
     rows || `<div class="empty">${blind
       ? "nothing on record here: an instance appears once it has been sent"
       : "nothing on this daemon yet"}</div>`}
-    <div class="actbar macros">${mayDocker()
-        ? `<button id="bDockerNew">New container</button>` : ""
-      }<button id="bDockerRe">Refresh</button>${
-      slow ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div></div>`;
+    ${mayDocker() ? `<div class="actbar macros"><button id="bDockerNew">New container</button></div>` : ""}</div>`;
   gateDocker(el, off);
   // The asks answer through the phone's endpoint, which holds the one list of
   // them; phFetch redraws this tab when the answer comes back.

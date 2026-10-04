@@ -191,6 +191,7 @@ def _job(nid):
     for j in nodes.jobs_for(node_id=nid, type="image", active=True, n=1):
         sp = j.get("spec") or {}
         return {"running": True, "action": sp.get("action", ""), "image": sp.get("image", ""),
+                "images": sp.get("images") or [sp.get("image", "")], "current": j.get("step") or "",
                 "aborting": bool(j.get("cancel")), "id": j["id"]}
     for j in nodes.jobs_for(node_id=nid, type="image", n=1):
         if j.get("state") in ("succeeded", "failed", "canceled"):
@@ -236,7 +237,13 @@ def payload(nid):
 def node_job(principal, nid, action, image_id):
     """Queue an image add or removal on a node. Refused, with the reason,
     when the node cannot take it: no sdkmanager there, an id this server did
-    not hand out, no room, or the store busy with another job."""
+    not hand out, no room, or the store busy with another job. An add may
+    name several (a list: the tab's Install selected, R121), one job adding
+    each in turn."""
+    ids = list(dict.fromkeys(image_id if isinstance(image_id, list) else [image_id]))
+    if not ids or len(ids) > 20 or not all(isinstance(i, str) and i for i in ids) \
+            or (action == "remove" and len(ids) != 1):
+        return {"error": "name the images: one to remove, up to twenty to add"}
     if not nodes:
         return {"error": "no node store"}
     n = nodes.node(nid)
@@ -253,12 +260,12 @@ def node_job(principal, nid, action, image_id):
                          "is what installs an image: install them from Toolchains first"}
     # What reaches a command line is a string this server handed out: an add
     # names one the picker was drawn from, a removal one THIS node reported.
-    if not ((action == "add" and is_choosable(image_id))
-            or (action == "remove" and is_node_image(n, image_id))):
+    if not ((action == "add" and all(is_choosable(i) for i in ids))
+            or (action == "remove" and is_node_image(n, ids[0]))):
         return {"error": "not an image this server offered for that"}
     store = ((n.get("reported") or {}).get("stores") or {}).get("toolchains") or {}
     if action == "add":
-        need_kb = image_kb(image_id)
+        need_kb = sum(image_kb(i) for i in ids)
         free = store.get("free_mb")
         if need_kb and free is not None and free * 1024 < need_kb * 1.2:
             return {"error": f"{n['name']}'s toolchain store has {toolchains.human_kb(free * 1024)} "
@@ -268,4 +275,4 @@ def node_job(principal, nid, action, image_id):
     if busy:
         return {"error": busy}
     return nodes.job_add(principal, {"node": nid}, "image",
-                         {"action": action, "image": image_id, "timeout": 3600})
+                         {"action": action, "image": ids[0], "images": ids, "timeout": 3600 * len(ids)})
