@@ -337,9 +337,13 @@ a long-press from a slide. Two things an emulator does to a keyboard under
 test: its AVD reports a hardware keyboard, so an IME shows only after
 `settings put secure show_ime_with_hard_keyboard 1`; and a force-stop of an
 IME's package deselects it, so `ime set` again after one.
-A real phone is its node's: the Phone section of the Nodes tab, or the
-companion app's This phone. One lent to this project by its owner is
-yours to drive with no ask, for this project's own app only. `bb phone
+A real phone is the person's who connected it, in its node's Phone section
+on the Nodes tab or the companion app's This phone, and only they lend it
+to a project, from the project's row: no session connects, lends or
+disconnects one. Lent to this project, it reaches this project's own app
+only, and every command but `bb phone lease` asks its owner and runs on
+their Allow, so give each a `--why "..."` they can answer, and batch what
+you need rather than asking for one tap at a time. `bb phone
 lease` says whether it is lent and which apps the lease covers; `bb phone
 install dist/APP.apk` installs a build and adds its package; then `bb phone
 start|stop|ime|log PKG`, `bb phone shot` and `bb phone record [SECONDS]`

@@ -404,7 +404,9 @@ bb phone run --why "..." -- adb args...
                    and the dashboard runs it, so a session never touches the
                    handset itself
 bb phone lease     whether the phone is lent to this project, for how long, and
-                   which of its apps the lease covers. While lent, with no ask:
+                   which of its apps the lease covers. While lent, each of
+                   these asks the phone's owner and runs on their Allow
+                   (--why "..." is the sentence they read):
 bb phone install dist/APP.apk   install one of this project's builds; its
                    package joins the lease
 bb phone start|stop|ime|log PKG   run, stop, pick as keyboard, or read the

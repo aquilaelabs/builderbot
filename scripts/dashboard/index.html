@@ -4430,6 +4430,24 @@ body.booting .pane>.loading{margin:auto}
 <!-- Report a bug in BuilderBot, from a project's row (page-report.js): a
      category, what happened and how to make it happen, sent to the
      diagnostics with the project and the build attached. -->
+<!-- Lending your phone to a project, from its row's Phone button (R120):
+     how long, and Lend. Only the phone's owner is offered it. -->
+<div id="phoneLendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="phoneLendTitle">
+  <div class="box">
+    <h3 id="phoneLendTitle">Lend your phone</h3>
+    <div class="field"><div class="hint" id="phoneLendHint"></div></div>
+    <div class="field"><label for="phoneLendFor">For</label>
+      <select id="phoneLendFor">
+        <option value="1">1 hour</option>
+        <option value="4">4 hours</option>
+        <option value="0">until I take it back</option>
+      </select></div>
+    <div class="foot"><span class="sp"></span>
+      <button id="phoneLendGo" class="primary">Lend</button>
+      <button id="phoneLendCancel">Cancel</button>
+    </div>
+  </div>
+</div>
 <div id="reportModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="reportTitle">
   <div class="box">
     <h3 id="reportTitle">Report a bug</h3>

@@ -276,6 +276,16 @@ nothing on one machine can be a wall. What it buys is that reaching the phone
 is a deliberate act rather than an incidental one, and that every deliberate
 one leaves a question on the owner's screen.
 
+**A phone is the person's who connected it** (R120, 4 Oct). Only they lend
+it to a project, from the project's row, and nobody else may, an
+administrator included: whose phone a session drives is not a role's to
+decide. A session never connects, lends or disconnects one. Lent, each
+command a session runs on it still asks its owner, in their bell alone,
+because a project's settings are everybody's on the project and whether a
+session drives somebody's phone is theirs to say each time. An
+administrator may disconnect it, since a connected, lent phone is a
+machine-wide fact somebody has to be able to end; nobody connects over it.
+
 ## How a view knows to re-read
 
 Requests wait **fifteen minutes**, not five, and the card counts down. Five

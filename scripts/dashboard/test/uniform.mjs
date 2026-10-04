@@ -1306,6 +1306,7 @@ for (const kind of kinds){
 const DIALOGS = {
   about: () => openAbout(), newproject: () => openNewProject(), trash: () => openTrash(),
   pending: () => openPending('alpha'), report: () => openReport('alpha'),
+  phonelend: () => openPhoneLend('alpha'),
   newcontainer: () => openNewContainer(), custom: () => editCustom(),
   // A new project's first session: opened for a project with no brief, which
   // draws the same dialog with an empty text box.

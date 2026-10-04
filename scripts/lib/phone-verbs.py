@@ -5,6 +5,7 @@ The first argument is the verb (status or run); for run the rest are the adb
 arguments. BB_PHONE_AUTH is the auth header, BB_PHONE_WHY the sentence the
 operator reads, BB_PHONE_PROJECT the project asking.
 """
+import json
 import os
 import sys
 
@@ -63,14 +64,28 @@ def run():
     sys.exit(o.get("code") or 0)
 
 
-# ---- a phone lent to this project (R113) -------------------------------------
-# No ask per command: the owner lent the phone to this project, and the
-# controller allows only the project's own app on it (phonelease.py).
+# ---- a phone lent to this project (R113, R120) -------------------------------
+# The owner lent the phone to this project, and the controller allows only the
+# project's own app on it (phonelease.py). Every command but reading the lease
+# asks the phone's owner and runs on their Allow (R120): whether a session
+# drives somebody's phone is theirs to say each time. BB_PHONE_WHY, from --why,
+# is the sentence they read.
 
 def use(op, args=None, quiet=False):
     r = bbapi.call("/api/phone", {"action": "use", "op": op, "args": args or {},
+                                  "why": os.environ.get("BB_PHONE_WHY", ""),
                                   "project": os.environ.get("BB_PHONE_PROJECT", "")},
                    auth=os.environ["BB_PHONE_AUTH"], timeout=900)
+    if r.get("asked"):
+        print(f"[builderbot] asked {r.get('to') or 'its owner'} (#{r['asked']}), waiting up to 15 minutes "
+              "for Allow in their bell", file=sys.stderr)
+        o = waits.outcome(os.environ["BB_PHONE_AUTH"], r["asked"], f"{r.get('to') or 'its owner'} said no")
+        try:
+            r = json.loads(o.get("out") or "{}")
+        except ValueError:
+            r = {"error": o.get("out") or "no answer"}
+        if o.get("code") and not r.get("error"):
+            r["error"] = "it did not run"
     if r.get("error"):
         print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr)
         sys.exit(1)

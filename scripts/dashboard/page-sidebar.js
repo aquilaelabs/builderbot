@@ -137,8 +137,68 @@ function wireProjectRows(root){
     renameProject(b.dataset.rn));
   root.querySelectorAll("[data-bug]").forEach(b => b.onclick = () =>
     openReport(b.dataset.bug));
+  root.querySelectorAll("[data-ph]").forEach(b => b.onclick = e => phoneRowPress(b, e));
   root.querySelectorAll("[data-del]").forEach(b => b.onclick = () =>
     deleteProject(b.dataset.del));
+}
+
+// ---- a phone, from a project's row (R120) -----------------------------------
+// A phone is the person's who connected it, and only they lend it to a
+// project: the row's Phone button is live for exactly them, on a project
+// whose node their phone is on. Lent here, it takes it back. Everybody else
+// sees why it is not theirs on its tip, and the lease on the row's line.
+function phoneWhy(p){
+  const ph = p.phone;
+  if (!p.node_name) return "no node: a phone is connected on a project's node, and this one has none";
+  if (!ph) return `no phone is connected on ${p.node_name}: connect yours in its Phone section on the Nodes tab`;
+  if (!ph.mine) return `the phone on ${p.node_name} is ${ph.owner}'s: only they lend it`;
+  if (ph.lease && ph.lease.project !== p.name) return `your phone is lent to ${ph.lease.project}: take it back there first`;
+  return "";
+}
+function phoneButton(p){
+  const why = phoneWhy(p), here = p.phone?.lease?.project === p.name;
+  return `<button class="eye${here ? " on acc" : ""}" data-ph="${esc(p.name)}"${why ? " disabled" : ""}
+    aria-label="${here ? "take the phone back" : "lend your phone"}"
+    title="${esc(why || (here ? "your phone is lent here: take it back" : `lend your phone on ${p.node_name} to ${p.name}: each command its session runs asks you`))}"
+    >${TOOL_ICONS.phone}</button>`;
+}
+async function phoneRowPress(b, e){
+  e.stopPropagation();
+  const p = (state?.projects || []).find(x => x.name === b.dataset.ph);
+  if (!p?.phone?.mine) return;
+  const nid = p.phone.node || "";
+  const post = async body => {
+    busy(b, "");
+    try{
+      const j = await (await postJSON("/api/phone", body)).json();
+      if (j.error) notify(j.error, true);
+      else notify(body.action === "lend" ? `your phone is lent to ${p.name}: each command asks you` : `your phone is back from ${p.name}`);
+    }catch(err){ notify("could not reach the controller: " + err, true); }
+    unbusy(b);
+    refresh();
+  };
+  if (p.phone.lease?.project === p.name){
+    if (confirm(`Take your phone back from ${p.name}? Its session stops reaching it.`))
+      post({action: "take-back", node: p.phone.node || nid});
+    return;
+  }
+  openPhoneLend(p.name, hours => post({action: "lend", node: nid, project: p.name, hours}));
+}
+// The lend dialog: how long, and Lend. #phoneLendModal is index.html's.
+function openPhoneLend(name, lend){
+  const p = (state?.projects || []).find(x => x.name === name) || {name};
+  const m = $("phoneLendModal");
+  armModal(m);
+  $("phoneLendTitle").textContent = `Lend your phone to ${p.name}`;
+  $("phoneLendHint").textContent = `${p.phone?.model || "Your phone"} on ${p.node_name || "its node"}. Each command ${p.name}'s `
+    + "session runs on it asks you in your bell first, and only its own app is reachable.";
+  m.hidden = false;
+  m.onclick = ev => { if (ev.target === m) m.hidden = true; };
+  $("phoneLendCancel").onclick = () => { m.hidden = true; };
+  $("phoneLendGo").onclick = () => {
+    m.hidden = true;
+    lend?.(Number($("phoneLendFor").value));
+  };
 }
 
 // One project's row. Extracted so the sidebar card and the Projects tab
@@ -235,6 +295,7 @@ function projectRow(p, live, cls, inTab){
                          : "notebook: readable while this project is locked, not writable")
                  : nb ? "notebook: open, go to its tab"
                  : "notebook: roadmap, memory and bugs for this project"}">${BOOK}</button>`}
+      ${isBroken(p) ? "" : phoneButton(p)}
       <button class="eye" data-rn="${esc(p.name)}" aria-label="settings"
         title="settings: name, node, and what Claude runs on here">${GEAR}</button>
       ${p.mine === false ? "" : `<button class="eye" data-bug="${esc(p.name)}" aria-label="report a bug"
@@ -261,6 +322,9 @@ function projectRow(p, live, cls, inTab){
       <button class="eye rowmore" data-more="${esc(p.name)}" aria-label="more"
         aria-expanded="false" title="the rest of this row's controls">${DOTS}</button>
       </span>
+      ${p.phone?.lease?.project === p.name ? `<div class="sub sessline">${esc(p.phone.model || "a phone")} lent here by ${
+          esc(p.phone.lease.by_name || p.phone.owner)}${p.phone.lease.left != null ? `, ${Math.max(1, Math.round(p.phone.lease.left / 60))} min left` : ""}: each command asks ${
+          p.phone.mine ? "you" : esc(p.phone.owner)}</div>` : ""}
       ${p.testing ? `<div class="sub sessline testing">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
       ${sessionRows(p.name) ? `<div class="sub sesslist">${sessionRows(p.name)}</div>`
         // WHO is here, or WHY nobody can be. Which machine they are on is

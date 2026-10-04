@@ -342,7 +342,9 @@ bb phone run --why "..." -- adb args...
                    and the dashboard runs it, so a session never touches the
                    handset itself
 bb phone lease     whether the phone is lent to this project, for how long, and
-                   which of its apps the lease covers. While lent, with no ask:
+                   which of its apps the lease covers. While lent, each of
+                   these asks the phone's owner and runs on their Allow
+                   (--why "..." is the sentence they read):
 bb phone install dist/APP.apk   install one of this project's builds; its
                    package joins the lease
 bb phone start|stop|ime|log PKG   run, stop, pick as keyboard, or read the
@@ -2382,8 +2384,18 @@ cmd_phone() {
                 python3 "$BB_LIB/phone-verbs.py" run "$@"
             ;;
         lease|shot|record|install|start|stop|ime|log|ui|touch)
-            # The phone lent to this project (R113): no ask per command.
-            BB_PHONE_AUTH="$auth" \
+            # The phone lent to this project (R113). Each command but lease
+            # asks the phone's owner, who allows it in their bell (R120); an
+            # optional --why is the sentence they read.
+            local a=()
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) [ $# -ge 2 ] || die "--why needs the sentence after it"; why="$2"; shift 2 ;;
+                    *) a+=("$1"); shift ;;
+                esac
+            done
+            set -- "${a[@]}"
+            BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
             BB_PHONE_PROJECT="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}" \
                 python3 "$BB_LIB/phone-verbs.py" "$sub" "$@"
             ;;

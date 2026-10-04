@@ -105,12 +105,19 @@ const theirs = (await api('/api/phone?node=' + sandbox.id, undefined, other)).bo
 const seen = theirs.nodes.find(n => n.id === sandbox.id);
 ok(seen.phone?.model === 'Test Phone' && !seen.mine && !seen.may_drive && seen.owner?.name === 'test',
    'another account sees the phone and who connected it, and may not drive it');
-const theirDisc = await api('/api/phone', { action: 'disconnect', node: sandbox.id }, other);
-ok(theirDisc.status === 400 && /connected by test/.test(theirDisc.body.error),
-   'only the account that connected a phone can disconnect it, and the refusal names them');
+// A plain account for the refusals: an administrator may disconnect
+// somebody else's phone since R120 (the unit tier holds that half).
+execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'plainuser', '--role', 'user'],
+  { input: 'plainpass1\nplainpass1\n', encoding: 'utf8',
+    env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+const plain = asUser('plainuser', 'plainpass1');
+await api('/api/users', { action: 'projects', name: 'plainuser', projects: ['alpha'] });
+const theirDisc = await api('/api/phone', { action: 'disconnect', node: sandbox.id }, plain);
+ok(theirDisc.status === 400 && /connected by test/.test(theirDisc.body.error) && /or an administrator/.test(theirDisc.body.error),
+   'only the account that connected a phone, or an administrator, can disconnect it, and the refusal names them');
 const theirConn = await api('/api/phone', { action: 'connect', node: sandbox.id, ip: '192.168.9.9', port: '5555' }, other);
 ok(theirConn.status === 400 && /connected by test/.test(theirConn.body.error),
-   '...nor connect over it');
+   '...nor connect over it, an administrator included');
 
 // ---- a session asking, and who is asked ------------------------------------
 // The point of the whole arrangement: a session does not touch the handset,
@@ -286,35 +293,67 @@ const asPhone = !lan ? { you: 'no LAN address on this box: nothing to ask with' 
 ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPhone.you)),
    `from an Android browser it offers that browser's own address (${asPhone.you})`);
 
-// ---- lent to a project (R113) ----------------------------------------------
-// The owner lends the phone to alpha; alpha's sessions then see and touch its
-// own app with no ask per command, and nothing else; Take back ends it.
+// ---- lent to a project (R113, R120) ------------------------------------------
+// The owner lends the phone to alpha; alpha's sessions then reach its own app
+// and nothing else, each command waiting on the owner's Allow in their bell
+// (R120: whether a session drives a phone is its owner's call each time, not
+// a project's), and an administrator's Allow is not the owner's. Take back
+// ends it.
 {
   const token = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
     { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
   const session = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
-  const use = (op, args) => api('/api/phone', { action: 'use', op, args }, session);
+  const use = (op, args) => api('/api/phone', { action: 'use', op, args, why: `${op} for the test` }, session);
+  // Asked, allowed by the owner, and what it answered, as bb phone reads it.
+  const allowed = async (op, args) => {
+    const r = await use(op, args);
+    if (!r.body.asked) return { status: r.status, body: r.body };
+    const ok_ = await api('/api/phone', { action: 'allow', id: r.body.asked });
+    if (ok_.body.error) return { status: 409, body: ok_.body };
+    for (let i = 0; i < 100; i++){
+      const o = (await api('/api/phone', { action: 'outcome', id: r.body.asked }, session)).body;
+      if (o.state === 'done') return { status: o.code ? 400 : 200, body: JSON.parse(o.out || '{}'), asked: r.body.asked };
+      await new Promise(res => setTimeout(res, 100));
+    }
+    return { status: 504, body: {} };
+  };
   ok((await use('shot')).status === 403, 'before a lease a session gets nothing without asking');
   const bad = await api('/api/phone', { action: 'lend', node: sandbox.id, project: 'alpha', hours: 1 }, other);
-  ok(bad.status === 400 && /only the account that connected/.test(bad.body.error), `only the owner lends it (${bad.body.error})`);
+  ok(bad.status === 400 && /only the account that connected/.test(bad.body.error),
+     `only the owner lends it, an administrator included (${bad.body.error})`);
   const lent = await api('/api/phone', { action: 'lend', node: sandbox.id, project: 'alpha', hours: 1 });
   ok(lent.status === 200, `the owner lends it to a project on its node (${lent.status} ${lent.body.error || ''})`);
   await page.evaluate(() => phFetch());
   await page.waitForSelector('.phonetab .phlease', { timeout: 15000 });
   ok(/Lent to alpha/.test(await page.$eval('.phonetab .phlease', e => e.textContent)) && !!(await page.$('.phonetab #phTakeBack')),
      'the tab says whom it is lent to, for how long, with Take back');
-  const shot = await use('shot');
+  // The project's row says it to everybody on it, and its Phone button is the
+  // owner's way to take it back (R120).
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => /lent here by/.test(document.querySelector('#projects .row:has([data-ph="alpha"])')?.textContent || ''),
+                             null, { timeout: 15000 });
+  ok(await page.$eval('#projects [data-ph="alpha"]', b => !b.disabled && b.classList.contains('on')),
+     'the row shows the lease, and its Phone button is live for the owner, to take it back');
+  const first = await use('shot');
+  ok(first.status === 200 && first.body.asked > 0, `a lent phone's command is an ask, not a run (${JSON.stringify(first.body)})`);
+  ok(((await api('/api/phone?node=' + sandbox.id)).body.asks || []).some(a => a.id === first.body.asked && a.kind === 'phone-use'),
+     '...in the owner\'s bell');
+  ok(!((await api('/api/phone?node=' + sandbox.id, undefined, other)).body.asks || []).length,
+     '...and nobody else\'s, an administrator\'s included');
+  const theirs_ = await api('/api/phone', { action: 'allow', id: first.body.asked }, other);
+  ok(/connected the phone/.test(theirs_.body.error || ''), `an administrator cannot allow it (${theirs_.body.error})`);
+  await api('/api/phone', { action: 'deny', id: first.body.asked });
+  const shot = await allowed('shot');
   ok(shot.status === 200 && /^dist\/phone\/shot-.*\.png$/.test(shot.body.path || ''),
-     `a session takes a screenshot with no ask, into dist/phone/ (${shot.body.path || shot.body.error})`);
+     `allowed by its owner, a screenshot lands in dist/phone/ (${shot.body.path || shot.body.error})`);
   await page.waitForSelector('.phonetab .phlease img.phshot', { timeout: 15000 });
   ok(true, '...and the owner\'s tab shows it on the next poll');
-  const other_app = await use('start', { pkg: 'com.android.settings' });
-  ok(other_app.status === 403 && /not one of this lease's apps/.test(other_app.body.error),
-     `another app on the phone is refused (${other_app.body.error})`);
-  const sneaky = await use('touch', { kind: 'tap', x: '1;reboot', y: '2' });
+  const other_app = await allowed('start', { pkg: 'com.android.settings' });
+  ok(other_app.status === 400 && /not one of this lease's apps/.test(other_app.body.error),
+     `another app on the phone is refused, even allowed (${other_app.body.error})`);
+  const sneaky = await allowed('touch', { kind: 'tap', x: '1;reboot', y: '2' });
   ok(sneaky.status === 400, 'a touch takes numbers only');
-  const asks = (await api('/api/phone?node=' + sandbox.id)).body.asks || [];
-  ok(!asks.length, '...and none of it put a question in the owner\'s bell');
+  ok((await use('status')).body.project === 'alpha', 'reading the lease is the one thing that asks nobody');
   await page.click('.phonetab #phTakeBack');
   await page.waitForFunction(() => !document.querySelector('.phonetab .phlease'), null, { timeout: 15000 });
   ok((await use('shot')).status === 403, 'Take back ends it: the session is back to asking');
@@ -406,4 +445,5 @@ if (page.errors.length) console.log(page.errors);
 // The admin account made above is not the fixture's; users.json outlives
 // this file, so it goes with it.
 await api('/api/users', { action: 'remove', name: 'visitor' });
+await api('/api/users', { action: 'remove', name: 'plainuser' });
 await done(browser);

@@ -31,6 +31,7 @@ one that can disconnect it, and the only one asked when a session wants to
 touch it: a request from a session goes to the owner's bell and Phone tab and
 nobody else's. Everybody else sees the connection and cannot drive it.
 """
+import json
 import ipaddress
 import re
 import threading
@@ -136,6 +137,24 @@ def save(d):
 
 def _rec(nid):
     return load()["nodes"].get(nid)
+
+
+def by_node(uid):
+    """{node id: {owner, mine, lease}} for every node with a phone connected,
+    from one read of the store and no adb: what a project row says about its
+    node's phone (R120). `lease` is {project, by_name, left} or None."""
+    out, now = {}, time.time()
+    for nid, rec in (load().get("nodes") or {}).items():
+        if not isinstance(rec, dict):
+            continue
+        got = rec.get("lease") if isinstance(rec.get("lease"), dict) else None
+        if got and got.get("until") and now > got["until"]:
+            got = None
+        out[nid] = {"node": nid, "owner": rec.get("owner_name") or "somebody", "mine": rec.get("owner") == uid,
+                    "model": rec.get("model") or "",
+                    "lease": ({"project": got.get("project") or "", "by_name": got.get("by_name") or "",
+                               "left": int(got["until"] - now) if got.get("until") else None} if got else None)}
+    return out
 
 
 def _put(nid, rec):
@@ -437,12 +456,14 @@ def connect(nid, ip, port, uid, name):
     return {"ok": True, "serial": f"{ip}:{n}"}
 
 
-def disconnect(nid, uid, name):
-    """The owner ends it. Nobody else: a connection somebody else made is
-    theirs to drop, and the refusal names them."""
-    held = _held_by_other(nid, uid)
+def disconnect(nid, uid, name, admin=False):
+    """The owner ends it, or an administrator (R120, the operator 4 Oct): a
+    phone left connected and lent is a machine-wide fact somebody has to be
+    able to end. Nobody else: a connection another person made is theirs to
+    drop, and the refusal names them. Its lease goes with it."""
+    held = None if admin else _held_by_other(nid, uid)
     if held:
-        return held
+        return {"error": held["error"].replace("only they can", "only they, or an administrator, can")}
     p = phone_on(nid)
     target = (p or {}).get("serial") or (_rec(nid) or {}).get("serial") or ""
     if not target and not _rec(nid):
@@ -1063,6 +1084,19 @@ def decide(rid, allow, uid, name="", admin=False):
         if res.get("error"):
             return {"error": res["error"]}
         return {"ok": True}
+    if r.get("kind") == "phone-use":
+        # A lent phone's command, allowed by its owner (R120): run as the
+        # lease would have run it, on a thread (a recording takes its
+        # seconds), its answer kept as JSON for the session's verb to read.
+        def finish_use():
+            try:
+                res, st = leasing.use(r["project"], r.get("op") or "", r.get("args") or {})
+            except Exception as e:                                     # noqa: BLE001 (said, not raised)
+                res, st = {"error": str(e)}, 500
+            with _lock:
+                r.update(state="done", out=json.dumps(res)[-8000:], code=0 if st == 200 else 1)
+        threading.Thread(target=finish_use, daemon=True, name=f"phone-use-{rid}").start()
+        return {"ok": True, "state": "running"}
     if r.get("kind") == "root":
         # Answered at once, run on a thread: a root command may take ten
         # minutes, and the browser's Allow, behind whatever proxy, must
@@ -1257,7 +1291,7 @@ def verb(action, req, who, fresh):
     elif act == "connect":
         r = connect(nid, field(req, "ip"), field(req, "port") or None, uid, me)
     elif act == "disconnect":
-        r = disconnect(nid, uid, me)
+        r = disconnect(nid, uid, me, admin=users.is_admin(who))
     elif act == "forget":
         r = forget(nid, field(req, "ip"))
     elif act == "ask":
@@ -1376,11 +1410,28 @@ def verb(action, req, who, fresh):
             return r, st
     elif act == "use":
         # A session's verb on the phone lent to its project (R113): its own
-        # project only, and phonelease says what a lease allows.
+        # project only, and phonelease says what a lease allows. Since R120
+        # (the operator, 4 Oct) every one but reading the lease ASKS the
+        # phone's owner, and runs on their Allow: whether a session drives a
+        # phone is its owner's call each time, not a project's setting.
         proj = who.get("session") or field(req, "project")
         if not proj or (not who.get("session") and not users.may_see(who, proj)):
             return {"error": "which project's phone?"}, 400
-        return leasing.use(proj, field(req, "op"), req.get("args"))
+        op = field(req, "op")
+        if op == "status" or not who.get("session"):
+            return leasing.use(proj, op, req.get("args"))
+        lnid, got = leasing.leased_to(proj)
+        if not got:
+            return leasing.use(proj, op, req.get("args"))      # its refusal, in its words
+        rec = _rec(lnid) or {}
+        args = req.get("args") if isinstance(req.get("args"), dict) else {}
+        shown = ["bb", "phone", str(op)[:20]] + [f"{k}={str(v)[:120]}" for k, v in sorted(args.items())][:8]
+        why = " ".join(str(req.get("why") or "").split())[:300] or f"{op} on the phone lent to {proj}"
+        nname = (nodes.node(lnid) or {}).get("name") if nodes is not None else lnid
+        r = _queue("phone-use", why, shown, lnid, nname, proj, f"session:{proj}", rec.get("owner") or "",
+                   rec.get("owner_name") or "its owner", asker=who.get("name") or "",
+                   extra={"op": str(op)[:20], "args": args})
+        return {"asked": r["id"], "to": r["to"]}, 200
     elif act == "allow" or act == "deny":
         r = decide(req.get("id"), act == "allow", uid, me, admin=users.is_admin(who))
     elif act == "outcome":

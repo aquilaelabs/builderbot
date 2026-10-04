@@ -37,7 +37,7 @@ class Lease(unittest.TestCase):
         self.addCleanup(lambda: [setattr(phone, k, v) for k, v in saved.items()])
         phone._rec = lambda nid: self.recs.get(nid)
         phone._put = lambda nid, rec: self.recs.__setitem__(nid, rec) if rec else self.recs.pop(nid, None)
-        phone.phone_on = lambda nid: {"serial": "10.0.0.5:4000", "model": "Pixel"} if nid in self.recs else None
+        phone.phone_on = lambda nid, **kw: {"serial": "10.0.0.5:4000", "model": "Pixel"} if nid in self.recs else None
         phone.users = Users
 
         def adb(nid, *args, **kw):
@@ -116,6 +116,43 @@ class Lease(unittest.TestCase):
             self.assertEqual(pl.use("app", "install", {"file": bad})[1], 400, bad)
         self.assertEqual(pl.use("app", "install", {"file": "dist/missing.apk"})[1], 404)
 
+
+
+class Owner(Lease):
+    """R120: a phone is its connector's. An administrator may disconnect
+    another's; nobody else may. A lent phone's command asks its owner, and
+    only the owner's answer runs it, an administrator's included."""
+
+    def test_an_administrator_disconnects_another_persons_phone(self):
+        self.assertIn("or an administrator", phone.disconnect("n1", "u2", "Other")["error"])
+        self.assertIn("n1", self.recs)
+        self.assertTrue(phone.disconnect("n1", "u2", "Admin", admin=True)["ok"])
+        self.assertNotIn("n1", self.recs)
+
+    def test_a_lent_phones_command_waits_for_its_owner(self):
+        pl.lend("n1", OWNER, "app", 1)
+        saved = (phone.leasing, phone.nodes)
+        self.addCleanup(lambda: (setattr(phone, "leasing", saved[0]), setattr(phone, "nodes", saved[1])))
+        phone.leasing, phone.nodes = pl, None
+        self.recs["n1"]["owner_name"] = "Owner"
+        ran = []
+        real = pl.use
+        self.addCleanup(setattr, pl, "use", real)
+        pl.use = lambda proj, op, args: (ran.append((proj, op)) or ({"path": "dist/phone/shot-1.png"}, 200)) \
+            if op != "status" else real(proj, op, args)
+        session = {"name": "Owner", "uid": "u1", "session": "app"}
+        r, st = phone.verb("use", {"op": "shot", "args": {}, "why": "see the settings screen"}, session, False)
+        self.assertEqual(st, 200)
+        rid = r["asked"]
+        self.assertEqual(ran, [])                                   # nothing ran yet
+        self.assertIn("error", phone.decide(rid, True, "u2", "Admin", admin=True))
+        self.assertTrue(phone.decide(rid, True, "u1", "Owner")["ok"])
+        for _ in range(50):
+            if phone.outcome(rid, "app").get("state") == "done":
+                break
+            time.sleep(0.02)
+        self.assertEqual(ran, [("app", "shot")])
+        self.assertIn("shot-1.png", phone.outcome(rid, "app")["out"])
 
 
 class Scope(unittest.TestCase):

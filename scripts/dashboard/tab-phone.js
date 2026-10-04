@@ -103,7 +103,8 @@ function phonePanel(n){
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
            : dev ? esc(dev.serial)
            : "try Connect first: a pairing outlives a restart, so it is usually already done"}</div></div>
-       ${dev && n.mine && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"
+       ${dev && (n.mine || state?.admin) && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"${
+         n.mine ? "" : ` data-other="${esc(n.owner?.name || "somebody")}"`}
          >Disconnect</button></span>` : ""}
      </div>`,
     // An IP and no port. Android hands out a new connect port every time
@@ -238,8 +239,14 @@ function wirePhoneTab(root){
     phBusy = "looking for the phone"; phRev++; drawPanes();
     phFetch({action: "connect", ip: phIp.trim()});
   });
-  on("phDisconnect", () => { phBusy = "disconnecting"; phRev++; drawPanes();
-                             phFetch({action: "disconnect"}); });
+  on("phDisconnect", () => {
+    // An administrator ending somebody else's connection is told whose it
+    // is, and that its lease goes with it (R120).
+    const other = document.getElementById("phDisconnect")?.dataset.other;
+    if (other && !confirm(`Disconnect ${other}'s phone? Its lease to a project ends too.`)) return;
+    phBusy = "disconnecting"; phRev++; drawPanes();
+    phFetch({action: "disconnect"});
+  });
   on("phPair", () => {
     phBusy = "pairing"; phRev++; drawPanes();
     phFetch({action: "pair", ip: phIp.trim(), port: phPort.trim(), code: phCode.trim()});

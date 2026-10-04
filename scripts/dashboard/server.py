@@ -836,6 +836,9 @@ def _project_columns(who, facts):
                 why = nodes.agent_stale(n)
                 if why:
                     node_gaps[n["id"]] = why
+    # ...and the phone each node has, from one read (R120): a row's Phone
+    # button and the lease line it shows everybody on the project.
+    phones = phone.by_node(users.uid_of(who))
     # ...and the sharper answer for the Claude button: a node from another
     # WINDOW holds this project's sessions; one merely behind does not.
     held_nodes = node_holds()
@@ -961,6 +964,9 @@ def _project_columns(who, facts):
                     # Which node this project's work runs on, by name, or ""
                     # for none: the row says "(node: X)" beside the name.
                     "node_name": node_names.get(project_prefs.get(d.name, {}).get("node") or "", ""),
+                    # The phone on its node: whose, whether it is this
+                    # account's, and whom it is lent to (R120).
+                    "phone": phones.get(project_prefs.get(d.name, {}).get("node") or ""),
                     # Why no Claude session may run here right now, or "":
                     # its own node's agent is from another compatibility
                     # window. The button ghosts on this and bb-tty refuses on

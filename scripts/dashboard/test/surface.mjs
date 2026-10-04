@@ -75,7 +75,7 @@ const SURFACE = [
   'signinRev', 'signinCannot', 'signinBusy', 'signinBlock', 'wireSignin', 'openNodeClaude', 'signinCancel', 'claudeSigninFirst', 'claudeNodes', 'claudeEnd', 'modalTop', 'scrollHint', 'scrollHints',
   'openToolchainsOn', 'nodeGpuSection', 'nodeSound', 'tcTickDots', 'placeCard',
   'claudeNodeFacts', 'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
-  'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
+  'postTrash', 'projectRow', 'phoneWhy', 'phoneButton', 'phoneRowPress', 'openPhoneLend', 'pushLayout', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'phonePanel', 'nodePhoneSection', 'wirePhoneTab',
   // The welcome panel (the About popup grown a guide and the changelog). The
