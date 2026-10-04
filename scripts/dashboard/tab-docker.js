@@ -1415,7 +1415,11 @@ function renderDockerInto(i){
   const picker = `<div class="field histbar docbarrow dmpick">${
       nodePick("dmNode", dnodes, dockerNode || dnodes[0]?.id)}<span class="sp"></span>
       <button type="button" id="bDockerRe" title="ask the daemon again">Refresh</button>${
-      slow ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div>`;
+      slow ? `<span class="dim dmfresh">refreshing…</span>` : ""}</div>${
+      // Adding at the top, in the add band every view adds with, where a
+      // phone finds it without scrolling past every container (R119 step 5).
+      mayDocker() ? `<div class="field"><div class="addbar" data-add="container">
+        <button type="button" id="bDockerNew">New container</button></div></div>` : ""}`;
   // What a session is waiting on, above everything else: somebody is blocked
   // on these, and this is the tab whose dial sent them here. The bell carries
   // them too, the way root asks sit on the Nodes tab and in the bell.
@@ -1443,7 +1447,7 @@ function renderDockerInto(i){
     rows || `<div class="empty">${blind
       ? "nothing on record here: an instance appears once it has been sent"
       : "nothing on this daemon yet"}</div>`}
-    ${mayDocker() ? `<div class="actbar macros"><button id="bDockerNew">New container</button></div>` : ""}</div>`;
+    </div>`;
   gateDocker(el, off);
   // The asks answer through the phone's endpoint, which holds the one list of
   // them; phFetch redraws this tab when the answer comes back.

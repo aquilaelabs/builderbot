@@ -514,8 +514,10 @@ ok(true, 'phone: New conversation opens the Claude tab and switches to the termi
 // here finds it.
 await bapi('/api/prefs', { project: 'alpha', node: '' });
 await bapi('/api/v1/nodes', { action: 'retire', id: deskbox.id });
-ok(await phone.$eval('#tabL', el => getComputedStyle(el).display !== 'none') && await phone.$eval('#tabbar', el => getComputedStyle(el).flexWrap === 'nowrap'),
-   'strip is one row with scroll arrows');
+// A picker rather than a strip to swipe (R119 step 5).
+ok(await phone.$eval('#tabPick', el => getComputedStyle(el).display !== 'none')
+   && await phone.$eval('#tabbar', el => getComputedStyle(el).display === 'none'),
+   'the tab strip is the tab picker on a phone');
 
 // Swapping one flyout for another: the outgoing one stays under the incoming
 // slide and the terminal changes size once, when the new one lands. Commands
@@ -589,20 +591,22 @@ ok(await phone.evaluate(() => !tabs.some(t => t.arg.startsWith('claude:')))
        && await phone.$eval('#mMacros', b => b.disabled)),
    '...and both are disabled over a Claude tab');
 
-// Opening a tab that sits off the end of the strip scrolls it into view, and
-// the arrows gray at the ends they cannot go past.
+// With many open, the picker names the one in front, whichever it is: no
+// tab is ever off the end of anything.
 await phone.evaluate(() => { for (let i = 0; i < 6; i++) newShell(''); });
-await phone.waitForFunction(() => { const b = document.getElementById('tabbar'); return b.scrollWidth > b.clientWidth + 50; });
-await phone.evaluate(() => { document.getElementById('tabbar').scrollTo({left: 0, behavior: 'instant'}); focusTab(tabs[0].id); });
 await phone.evaluate(() => focusTab(tabs[tabs.length - 1].id));
-await phone.waitForFunction(() => { const b = document.getElementById('tabbar'), t = b.querySelector('.tab.on');
-  return t.offsetLeft + t.offsetWidth <= b.scrollLeft + b.clientWidth + 1; }, { timeout: 5000 });
-ok(true, 'focusing a tab off the end of the strip scrolls it into view');
-await phone.waitForFunction(() => document.getElementById('tabR').disabled, { timeout: 5000 });   // the smooth scroll lands
-ok(await phone.$eval('#tabL', b => !b.disabled), 'at the right end › is grayed and ‹ is live');
-await phone.evaluate(() => { document.getElementById('tabbar').scrollTo({left: 0, behavior: 'instant'}); });
-await phone.waitForFunction(() => document.getElementById('tabL').disabled);
-ok(await phone.$eval('#tabR', b => !b.disabled), 'at the left end ‹ is grayed and › is live');
+await phone.waitForFunction(() => document.querySelector('#tabPick .nm')?.textContent === tabLabels().get(tabs[tabs.length - 1].id)
+  && document.querySelector('#tabPick .pill')?.textContent === String(tabs.length), { timeout: 5000 });
+ok(true, 'the picker names the last tab opened and counts them all');
+await phone.click('#tabPick');
+const last = await phone.evaluate(() => tabs[tabs.length - 1].id);
+await phone.click(`#tabPickList [data-pmin="${last}"]`);
+await phone.waitForFunction(id => !document.querySelector(`#tabPickList [data-pshow="${id}"]`), last, { timeout: 5000 });
+ok(await phone.$eval('#tabPickList', l => !l.hidden),
+   '...and a terminal minimized from its list leaves its row and keeps the list open for the next');
+await phone.keyboard.press('Escape');
+await phone.waitForFunction(() => document.getElementById('tabPickList').hidden, { timeout: 5000 });
+ok(true, '...which Escape closes');
 
 // The view a phone was on comes back after a reload.
 await phone.evaluate(() => setView('terminal'));

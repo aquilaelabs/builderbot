@@ -37,7 +37,7 @@ const DRIVERS = {
   },
   docker: {
     open: () => page.evaluate(() => openDocker()),
-    readyWhen: '.dmtab .macros',
+    readyWhen: '.dmtab .dmpick',
   },
   toolchains: {
     open: () => page.evaluate(() => openToolchains()),
@@ -774,7 +774,7 @@ ok(seenReds.size <= 1,
     // The page is still a page: another kind renders, the strip answers.
     const t = tabs.find(x => x.kind === 'docker');
     if (t) focusTab(t.id);
-    return !!document.querySelector('.dmtab .macros');
+    return !!document.querySelector('.dmtab .dmpick');
   });
   ok(alive, '...and the rest of the dashboard keeps working around it');
   ok(page.errors.length > errsBefore

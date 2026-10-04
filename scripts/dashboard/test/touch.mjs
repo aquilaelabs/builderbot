@@ -42,21 +42,32 @@ await finger(page, hb.x + 40, hb.y + 12, hb.x + 40, top.y + 2, 650);
 ok((await order())[0] === 'projects', `hold then move drags the card (${(await order()).join(',')})`);
 ok((await side()) === 0, '...without scrolling');
 
+// On a phone the strip is a picker (R119 step 5): the tab on show and how
+// many are open, and a list of them under it. Driven by real taps.
 await page.evaluate(() => { for (let i = 0; i < 4; i++) newShell(''); setView('terminal'); });
-await page.waitForFunction(() => { const b = document.getElementById('tabbar'); return b.scrollWidth > b.clientWidth + 50; });
-// let the view-switch slide land before measuring where anything is
 await page.waitForFunction(() => document.querySelector('.col.term').getAnimations().length === 0);
-const ids0 = await page.$$eval('.tab[data-id]', ts => ts.map(t => t.dataset.id));
-let lb = await (await page.$(`.tab[data-id="${ids0[1]}"] .lbl`)).boundingBox();
-await finger(page, lb.x + 20, lb.y + 15, lb.x - 200, lb.y + 15, 0);
-ok((await page.$eval('#tabbar', el => el.scrollLeft)) > 30, 'quick swipe on a tab label scrolls the strip');
-ok(JSON.stringify(await page.$$eval('.tab[data-id]', ts => ts.map(t => t.dataset.id))) === JSON.stringify(ids0), '...and does not reorder');
-await page.evaluate(() => document.getElementById('tabbar').scrollLeft = 0); await sleep(100);
-lb = await (await page.$(`.tab[data-id="${ids0[1]}"] .lbl`)).boundingBox();
-const first = await (await page.$(`.tab[data-id="${ids0[0]}"]`)).boundingBox();
-await finger(page, lb.x + 20, lb.y + 15, first.x + 4, first.y + 15, 650);
-ok((await page.$$eval('.tab[data-id]', ts => ts.map(t => t.dataset.id)))[0] === ids0[1], 'hold then move reorders the tabs');
-ok((await page.$eval('#tabbar', el => el.scrollLeft)) < 10, '...without scrolling the strip');
+ok(await page.evaluate(() => getComputedStyle(document.getElementById('tabbar')).display === 'none'
+     && getComputedStyle(document.getElementById('tabL')).display === 'none'
+     && getComputedStyle(document.getElementById('tabPick')).display !== 'none'),
+   'on a phone the strip and its arrows give way to the tab picker');
+const open = await page.evaluate(() => tabs.length);
+ok(new RegExp(`${open}`).test(await page.$eval('#tabPick .pill', e => e.textContent)),
+   `...which names the tab on show and counts the ${open} open`);
+let pb = await (await page.$('#tabPick')).boundingBox();
+await finger(page, pb.x + 30, pb.y + pb.height / 2, pb.x + 30, pb.y + pb.height / 2, 0);
+await page.waitForFunction(() => !document.getElementById('tabPickList').hidden, null, { timeout: 5000 });
+ok(await page.$$eval('#tabPickList [data-pshow]', r => r.length) === open,
+   'a tap lists every tab, each a row');
+const want = await page.evaluate(() => tabs[1].id);
+const rb = await (await page.$(`#tabPickList [data-pshow="${want}"]`)).boundingBox();
+await finger(page, rb.x + 20, rb.y + rb.height / 2, rb.x + 20, rb.y + rb.height / 2, 0);
+await page.waitForFunction(w => panes[active] === w && document.getElementById('tabPickList').hidden, want, { timeout: 5000 });
+ok(true, '...and a tapped row brings its tab forward and closes the list');
+await finger(page, pb.x + 30, pb.y + pb.height / 2, pb.x + 30, pb.y + pb.height / 2, 0);
+await page.waitForFunction(() => !document.getElementById('tabPickList').hidden, null, { timeout: 5000 });
+await finger(page, 200, 650, 200, 650, 0);
+await page.waitForFunction(() => document.getElementById('tabPickList').hidden, null, { timeout: 5000 });
+ok(true, '...and a tap anywhere else closes it');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 // A phone comes back to the side it left, but not across a container
@@ -83,67 +94,6 @@ await page.evaluate(() => { localStorage.setItem('bb.view.boot', 'someolderboot'
 await page.evaluate(() => viewAfterRestart());
 ok(await page.evaluate(() => document.body.dataset.view) === 'dash',
    '...while a container that came back since puts it on the Dashboard');
-
-// The tab strip's paging arrows do not ghost at the end they cannot go past.
-// Two half-there arrows on a strip too short to page read as broken rather than
-// as a limit. They stay `disabled` (pressing one still does nothing and a
-// screen reader is still told), so this asserts the LOOK and the behavior
-// separately, which is exactly the pair a previous attempt got wrong: it
-// dropped an `opacity:.35` from the .tscroll rule and handed them straight back
-// to `button:disabled{opacity:.5}`, leaving them just as faded.
-await page.evaluate(() => { const b = [...document.querySelectorAll('button')]
-  .find(x => /^Terminal$/.test(x.textContent.trim())); b && b.click(); });
-await sleep(600);
-const arrows = await page.evaluate(() => ['#tabL', '#tabR'].map(sel => {
-  const e = document.querySelector(sel);
-  return e ? { sel, disabled: e.disabled, opacity: getComputedStyle(e).opacity } : null;
-}).filter(Boolean));
-// The outline is the STRIP's, not the scroller's. A mask fades everything it
-// applies to, borders included, so masking the element that carried them broke
-// the line as it reached each arrow. Drawn by an ancestor that is not masked,
-// it runs the full width and only what scrolls fades.
-const frame = await page.evaluate(() => {
-  const strip = getComputedStyle(document.querySelector('.tabstrip'));
-  const bar = getComputedStyle(document.querySelector('#tabbar'));
-  return { strip: strip.borderTopWidth, bar: bar.borderTopWidth,
-           arrow: getComputedStyle(document.querySelector('#tabL')).borderTopWidth };
-});
-ok(frame.strip !== '0px' && frame.bar === '0px' && frame.arrow === '0px',
-   `the tab strip's outline is on the strip, so a fade cannot cut it (${
-     JSON.stringify(frame)})`);
-ok(arrows.length === 2 && arrows.every(a => a.opacity === '1'),
-   `the tab arrows are full strength whether or not they can page (${
-     arrows.map(a => a.sel + ' ' + a.opacity).join(', ')})`);
-ok(arrows.some(a => a.disabled),
-   '...and still disabled at an end, so a dead press stays dead');
-
-// A tab cut off by the edge fades out rather than being sliced, and only on
-// the edge doing the cutting: hard against one end, that side is showing a
-// whole tab and fading a complete tab is worse than the seam was.
-await page.click('#tabbar .newtab').catch(() => {});
-await sleep(500);
-await page.click('#tabbar .newtab').catch(() => {});
-await sleep(700);
-const edge = async pos => page.$eval('#tabbar', (e, p) => {
-  e.scrollLeft = p === 'L' ? 0 : p === 'R' ? e.scrollWidth : (e.scrollWidth - e.clientWidth) / 2;
-  e.dispatchEvent(new Event('scroll'));
-  return { over: e.scrollWidth > e.clientWidth + 1,
-           l: e.classList.contains('fadeL'), r: e.classList.contains('fadeR') };
-}, pos);
-await edge('M'); await sleep(300);
-const mid = await edge('M');
-if (!mid.over){
-  ok(true, 'the strip does not overflow at this width, so nothing to fade');
-} else {
-  ok(mid.l && mid.r, 'mid-scroll both edges of the tab strip fade');
-  await edge('L'); await sleep(300);
-  const left = await edge('L');
-  ok(!left.l && left.r,
-     '...hard left, only the right fades: the first tab is whole and stays crisp');
-  await edge('R'); await sleep(300);
-  const right = await edge('R');
-  ok(right.l && !right.r, '...and hard right, only the left');
-}
 
 // ---- pull to refresh (page-pull.js) ---------------------------------------
 // The page scrolls inside its panes, so a phone browser's own pull never

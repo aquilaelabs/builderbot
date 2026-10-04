@@ -145,6 +145,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Emulator tab is laid out like Toolchains: installed images as rows, images to add as ticked rows under a flavor, one Install selected for all of them. Phone and CI runner open on one state row, and Docker wears the same Node picker and Refresh (db28867)
 - BuilderBot's own CI moved to actions/checkout v7 and upload-artifact v7, the Android workflow's still pinned by commit (0af2b3c)
 - The Tools card says why Emulator is grayed out in a red line under its buttons, not only in a tooltip; Static analysis is Analysis there, as its tab and the notebook's view are called; Controller settings' log downloads sit at the right like every action bar (fe90eca)
+- On a phone the tab strip is a picker: the tab on show and how many are open, and a list of them all with their close buttons, instead of a strip to swipe and two arrows. The bell is boxed like the header's other buttons, and Docker's New container is at the top (047e1f1)
 
 ### Removed
 

@@ -918,6 +918,8 @@ rather than each taking its text's, so the last one is never cut off: at
 a small phone (360 to 375), the fold cover (344), an unfolded fold (690 to
 840, still the phone layout) and a desktop.
 
+On a phone the tab strip is a picker (`#tabPick`, R119 step 5): one button naming the tab on show, with a count of the open ones, and a list under it of every tab, each with its close or a terminal's minimize, and New terminal last; Escape or a tap elsewhere closes it. There is no strip to swipe and no paging arrows, and the pane's own caption, which only repeated the picker's name, is not drawn. A desktop keeps the strip, which wraps.
+
 ### a dialog (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.

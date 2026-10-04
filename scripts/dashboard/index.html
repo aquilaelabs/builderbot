@@ -479,13 +479,14 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    you like" and "a session is blocked until you answer" are not the same
    message and should not look alike. It stops when the request is answered or
    times out, both of which empty the list on their own. */
-#bBell{background:none;border:0;padding:0 2px;position:relative;color:var(--dim);
-  min-width:auto;min-height:var(--tap)}
+/* Boxed like the header's other buttons (R119 step 5): bare, it read as a
+   glyph beside four buttons rather than one of them. */
+#bBell{position:relative;color:var(--dim);min-height:var(--tap);min-width:var(--tap);padding:0 6px}
 #bBell.has{color:var(--ink)}
 @media(hover:hover){ #bBell:hover{color:var(--ink)} }
 #bBell svg{width:17px;height:17px;display:block;margin:auto;fill:none;
   stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
-#bBell .dot{position:absolute;top:7px;right:0;width:7px;height:7px;border-radius:50%;
+#bBell .dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;
   background:var(--note);border:2px solid var(--panel)}
 #bBell .dot.warn{background:var(--warn)}
 #bBell .dot.bad{background:var(--bad)}
@@ -1673,7 +1674,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
 /* The Tools card's buttons carry an icon, and the tab each opens carries
    the same one, so a button and its tab are one thing in two places. */
-.macros button svg,.tab .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
+.macros button svg,.tab .lbl svg,.tabpick svg,.tabpicklist .lbl svg{width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
   vertical-align:-2px;margin-right:5px}
 /* A group of picks (Claude may, Yours on this project, the new-project
@@ -3181,6 +3182,23 @@ body.dragging .tab .lbl{cursor:grabbing}
 .tabstrip{display:flex;align-items:stretch}
 .tabstrip .tabbar{flex:1;min-width:0}
 .tscroll{display:none}
+/* The phone's tab picker (R119 step 5): instead of a strip to swipe and two
+   arrows to page it, one button naming the tab on show and how many are
+   open, and a list under it of every tab, each with its close. A desktop
+   keeps the strip, which wraps. */
+.tabpick{display:none}
+.tabpicklist{position:absolute;z-index:40;left:0;right:0;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line);border-radius:0 0 var(--r-surface) var(--r-surface);
+  box-shadow:0 10px 24px rgba(0,0,0,.5);max-height:70vh;overflow-y:auto;
+  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
+.tabpicklist[hidden]{display:none}
+.tabpicklist .tprow{display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid var(--line)}
+.tabpicklist .tprow:last-child{border-bottom:0}
+.tabpicklist .tprow .lbl{flex:1;min-width:0;text-align:left;background:transparent;border:0;
+  min-height:var(--tap);padding:0 6px;color:var(--ink);font:var(--f-ui);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tabpicklist .tprow.on .lbl{color:var(--accent);font-weight:600}
+.tabpicklist .tprow .ic{flex:0 0 auto;min-height:var(--tap);min-width:var(--tap)}
 /* On a phone the strip is one row: swipe it, or page it with the arrows:
    wrapping to more rows would eat the terminal's space. */
 @media(max-width:900px){
@@ -3228,6 +3246,16 @@ body.dragging .tab .lbl{cursor:grabbing}
      a `.35` from here only handed them back to the .5 and left them looking
      exactly as ghosted, which is what happened the first time. */
   .tscroll:disabled{background:transparent;opacity:1}
+  /* The picker replaces the strip and its arrows here. */
+  .tabstrip .tabbar,.tabstrip .tscroll{display:none}
+  .tabpick{display:flex;align-items:center;gap:8px;flex:1;min-width:0;min-height:var(--tap);
+    padding:0 12px;background:transparent;border:0;border-radius:0;color:var(--ink);font:var(--f-ui);text-align:left}
+  .tabpick .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tabpick .pill,.tabpick .chev{flex:0 0 auto}
+  .tabpick .chev{color:var(--dim)}
+  /* The pane's own caption repeats the picker's name on a phone; one that
+     carries controls (a popped terminal's Reattach) stays. */
+  .pane .bar:not(:has(button)){display:none}
 }
 
 /* Built fresh each time it is opened, so the animation runs on the element
@@ -4878,10 +4906,14 @@ body.booting .pane>.loading{margin:auto}
 
   <div class="col term">
     <div class="tabstrip">
+      <!-- On a phone the strip is this: the tab on show, and the rest in a
+           list under it (R119 step 5). Drawn by drawTabPick. -->
+      <button class="tabpick" id="tabPick" type="button" aria-haspopup="true" aria-expanded="false"></button>
       <button class="tscroll" id="tabL" title="scroll the tab bar">‹</button>
       <div class="tabbar" id="tabbar"></div>
       <button class="tscroll" id="tabR" title="scroll the tab bar">›</button>
     </div>
+    <div class="tabpicklist" id="tabPickList" role="menu" hidden></div>
     <div class="panes" id="panes">
       <!-- No `active`: that outline says WHICH of two panes has the keyboard
            and belongs to a split, and drawPanes takes it off on the first
@@ -5151,6 +5183,13 @@ $("tabL").onclick = () => $("tabbar").scrollBy({left: -$("tabbar").clientWidth *
 $("tabR").onclick = () => $("tabbar").scrollBy({left:  $("tabbar").clientWidth * .7, behavior: noMotion() ? "instant" : "smooth"});
 $("tabbar").addEventListener("scroll", updateArrows, {passive: true});
 window.addEventListener("resize", updateArrows);
+// The phone's tab picker (R119 step 5): the press opens the list, a press
+// anywhere else or Escape closes it.
+$("tabPick").onclick = e => { e.stopPropagation(); tabPickShow(!tabPickOpen); };
+document.addEventListener("click", e => {
+  if (tabPickOpen && !e.target.closest("#tabPickList, #tabPick")) tabPickShow(false);
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && tabPickOpen) tabPickShow(false); });
 
 // ---- panes -----------------------------------------------------------
 // Its declarations are page-panes.js; what runs at load is below.

@@ -383,7 +383,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // watches its revision, and this is the case that proves it.
   await page.evaluate(() => { nodesList = null; hideTab((tabs.find(t => t.kind === 'docker') || {}).id); });
   await page.evaluate(() => openDocker());
-  await page.waitForSelector('.dmtab .macros', { timeout: 15000 });
+  await page.waitForSelector('.dmtab .dmpick', { timeout: 15000 });
   // Waited for AND read in one go: the tab redraws from the poll, so a list
   // read in a second round trip can land on the moment between two draws and
   // come back empty (B99's family; this file has had three).
