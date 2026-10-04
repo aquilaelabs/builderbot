@@ -1196,9 +1196,9 @@ function dmWireRows(el, list = dockerList){
   // The words on the row are a way in to where the setting lives now.
   el.querySelectorAll("[data-dmtestgo]").forEach(a => a.onclick = e => {
     e.preventDefault();
-    const row = document.querySelector(`[data-rn="${CSS.escape(a.dataset.dmtestgo)}"]`);
-    if (row) row.click();
-    else notify("open the project's settings from its row on the Projects card", true);
+    // The project's settings are its notebook's Settings view (R119 step 3):
+    // this clicked the row's settings button, which went with it.
+    openProjectSettings(a.dataset.dmtestgo);
   });
   // The route is saved on Apply, not on the pick (docs/design-language.md,
   // Settings): a pick wakes the button when it differs from what is saved.
