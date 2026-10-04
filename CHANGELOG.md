@@ -228,6 +228,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb version set from a version that was never released moves that version's changelog notes to the new number, so 0.2.0 then 0.5.0 leaves one 0.5.0 section rather than notes under a 0.2.0 nobody shipped. (57fc2e7)
 - A session sees the phone on its node again: bb phone status listed nothing for every session (it said no node carries adb), and now says what is missing: no phone connected, connected but not lent to this project, or lent elsewhere. (3ec42b6)
 - Wiki pages show their ## sections again (the notebook's own heading rule hid them), and a Contents link scrolls the pane to its section. (cba8a7b)
+- The Static analysis tab leaves out a finding the code suppressed in place (Semgrep's # nosemgrep), which a scanner's SARIF keeps marked as suppressed. (2985e3b)
 
 ### Security
 

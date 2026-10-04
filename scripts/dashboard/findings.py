@@ -391,6 +391,14 @@ def _parse_run(runinfo, known, nonproject=frozenset()):
         }
     rows = []
     for res in runinfo.get("results") or []:
+        # A finding the code itself suppressed (Semgrep's `# nosemgrep:`, a
+        # SARIF in-source suppression) stays in the report with a
+        # `suppressions` entry rather than leaving it, and was counted as if
+        # nothing had been said: every line annotated on 2 Oct still showed.
+        # Accepted unless the suppression itself says it was rejected.
+        if any(isinstance(s, dict) and s.get("status", "accepted") != "rejected"
+               for s in res.get("suppressions") or []):
+            continue
         rid = res.get("ruleId") or "unknown"
         meta = rules.get(rid, {})
         msg = ((res.get("message") or {}).get("text") or "")
