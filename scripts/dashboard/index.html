@@ -3483,7 +3483,10 @@ body.booting .pane>.loading{margin:auto}
   /* ...and they share the bar rather than each taking its text's width: on a
      344px fold cover four of them did not fit and Chat was cut off at the
      edge, inside a bar that clips. */
-  .mobar button{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  /* Shared by what each says, not in equal parts (B460): Keys and Chat are
+     short words, Commands and Sessions were cut at 390px in equal quarters. */
+  .mobar button{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .mobar button[hidden]{display:none}
   .panes{min-height:90px}
 }
 

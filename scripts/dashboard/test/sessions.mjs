@@ -575,11 +575,14 @@ await phone.waitForFunction(() => document.getElementById('sespanel').classList.
 await phone.click('#sessions [data-go="shell-7"]');
 ok(await phone.evaluate(() => !showSessions), 'picking a session closes the Sessions flyout');
 
-// Keys over a document tab: the toggle is disabled and says why.
+// Keys over a document tab: not in the bar at all, so Sessions and Chat
+// have it (B460).
 await phone.evaluate(() => openNotebook('alpha'));
 await phone.waitForFunction(() => tabOf(panes[active])?.kind === 'notebook');
-ok(await phone.$eval('#mKeys', b => b.disabled && /not one/.test(b.title)), 'Keys is disabled over a document tab');
-ok(await phone.$eval('#mMacros', b => b.disabled), '...and so is Commands');
+ok(await phone.$eval('#mKeys', b => b.hidden && getComputedStyle(b).display === 'none'), 'Keys leaves the bar over a document tab');
+ok(await phone.$eval('#mMacros', b => b.hidden), '...and so does Commands');
+ok(await phone.$$eval('#mobar button', bs => bs.filter(b => b.offsetWidth).every(b => b.scrollWidth <= b.clientWidth + 1)),
+   '...and what is left is not cut short');
 // A Claude tab is a terminal, but not one to type keys or macros into: they
 // go to a conversation with its own idea of what a keystroke means.
 await phone.evaluate(() => {
@@ -587,9 +590,9 @@ await phone.evaluate(() => {
   if (t) { panes[active] = t.id; render(); }
 });
 ok(await phone.evaluate(() => !tabs.some(t => t.arg.startsWith('claude:')))
-   || (await phone.$eval('#mKeys', b => b.disabled)
-       && await phone.$eval('#mMacros', b => b.disabled)),
-   '...and both are disabled over a Claude tab');
+   || (await phone.$eval('#mKeys', b => b.hidden)
+       && await phone.$eval('#mMacros', b => b.hidden)),
+   '...and both leave it over a Claude tab');
 
 // With many open, the picker names the one in front, whichever it is: no
 // tab is ever off the end of anything.
