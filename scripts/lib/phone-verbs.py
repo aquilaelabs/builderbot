@@ -17,14 +17,28 @@ def status():
     if d.get("error"):
         sys.exit(f"[builderbot] ERROR: could not reach the dashboard at {bbapi.url()}: {d['error']}")
     rows = d.get("nodes") or []
+    proj = os.environ.get("BB_PHONE_PROJECT", "")
     if not rows:
-        print("phone:   no node carries adb; a phone is driven from a node")
+        print("phone:   no node of this project's to drive a phone from: the project's settings name its node")
     for n in rows:
         p = n.get("phone")
         who = (n.get("owner") or {}).get("name")
         print("{:<16} {}".format(n.get("name", "?") + ":",
               "{} ({}){}".format(p.get("model") or "phone", p.get("serial"), f", connected by {who}" if who else "")
-              if p else ("not dialing in" if not n.get("live") else "no phone connected")))
+              if p else ("not dialing in" if not n.get("live") else
+                         "no phone connected: somebody connects theirs in this node's Phone section on the Nodes tab")))
+        # What is missing for a session to use it, said rather than left to
+        # the next refusal (report #51).
+        lease = n.get("lease") or {}
+        if p and who and proj:
+            if lease.get("project") == proj:
+                print(f"{'':<16} lent to {proj} by {lease.get('by_name') or who}: bb phone install, start, shot and touch work")
+            elif lease.get("project"):
+                print(f"{'':<16} lent to {lease['project']}, not {proj}")
+            else:
+                print(f"{'':<16} not lent to {proj}: {who} lends it from that Phone section; bb phone run --why asks them for one command meanwhile")
+        elif p and not who:
+            print(f"{'':<16} seen by adb but connected outside the Phone section, so nobody answers for it: connect it there")
     for a in d.get("asks") or []:
         print("waiting: #{} {} ({} on {})".format(a.get("id"), a.get("why"), a.get("project") or "a session", a.get("node_name")))
 

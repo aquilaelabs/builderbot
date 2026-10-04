@@ -1219,8 +1219,12 @@ def tab_view(uid, *, admin, project, node="", probe=False, scope=None, ua="", ad
     # node-shaped surface is (the server's _node_scope, handed in as scope):
     # the list carried every phone node's name, address and handset to a
     # session (the probe of 26 Sep).
+    # The row's node is its `id`: filtering on a `node` key no row has
+    # emptied the list for every scoped asker, so a session's bb phone status
+    # said "no node carries adb" beside a phone connected on its node
+    # (report #51, 4 Oct).
     if scope is not None and isinstance(out.get("nodes"), list):
-        out["nodes"] = [r for r in out["nodes"] if r.get("node") in scope]
+        out["nodes"] = [r for r in out["nodes"] if r.get("id") in scope]
     if "Android" in ua:
         try:
             ip = ipaddress.ip_address(addr)

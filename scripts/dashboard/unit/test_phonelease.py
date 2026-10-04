@@ -117,5 +117,21 @@ class Lease(unittest.TestCase):
         self.assertEqual(pl.use("app", "install", {"file": "dist/missing.apk"})[1], 404)
 
 
+
+class Scope(unittest.TestCase):
+    """report #51: the rows are the asker's scope, matched on the row's id.
+    Matched on a `node` key no row has, a session's list came back empty and
+    bb phone status said no node carries adb beside a connected phone."""
+
+    def test_a_scoped_asker_sees_its_own_node(self):
+        real = phone.payload
+        self.addCleanup(setattr, phone, "payload", real)
+        phone.payload = lambda *a, **k: {"nodes": [{"id": "n1", "name": "sandbox"}, {"id": "n2", "name": "other"}],
+                                         "asks": []}
+        out = phone.tab_view("u_1", admin=False, project="app", scope={"n1"})
+        self.assertEqual([r["id"] for r in out["nodes"]], ["n1"])
+        self.assertEqual(len(phone.tab_view("u_1", admin=True, project="", scope=None)["nodes"]), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
