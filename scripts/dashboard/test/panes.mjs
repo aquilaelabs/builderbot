@@ -74,8 +74,12 @@ ok(!rows.some(r => r.key?.startsWith(ids[1] + '|')),
 // per pane is what renders into it.
 await page.evaluate(() => openTab({kind: 'toolchains', arg: '__toolchains', label: 'toolchains'}));
 await page.waitForSelector('#pane0 .doc.on');
-ok(await page.$$eval('#pane0 .stack > .doc', d => d.length === 1
-     && d[0].id === 'doc0'),
+// One #docN per pane is the invariant: the element of a tab shown before is
+// kept behind, unnamed, so bringing it back is its own painted ground on the
+// first frame (uniform.mjs holds that), and a page opening on the Projects
+// tab (R119) leaves its document there.
+ok(await page.$$eval('#pane0 .stack > .doc', d => d.filter(x => x.id === 'doc0').length === 1
+     && d.find(x => x.id === 'doc0').classList.contains('on')),
    `a document tab is one per pane, and keeps the id that renders into it (${
      await page.$$eval('#pane0 .stack > .doc', d => d.map(x => x.id + ':' + x.className).join(' '))})`);
 ok(await page.$$eval('#pane0 .stack > .slot', s => s.length === 3),
