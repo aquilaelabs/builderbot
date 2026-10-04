@@ -293,11 +293,12 @@ function wireSettingsSections(el){
 function idleSection(){
   const m = state?.idle?.minutes;
   if (m === undefined) return `<div class="sub">the idle rule arrives with the first poll…</div>`;
+  // What 0 means is in the label, where a phone reads it (B459).
   return `<h4>Claude sessions</h4>
     <div class="logset">
       <div class="dim">A session idle this long is ended, on every node.</div>
       <div class="logdays setrow col">
-        ${lbl("idleMin", "Minutes idle before a session ends", "0 never ends one. Shells are left alone")}
+        ${lbl("idleMin", "Minutes idle before a session ends (0: never)", "shells are left alone")}
         <input id="idleMin" type="number" min="0" max="100000" step="1"
                value="${sdVal("idleMin", m)}" inputmode="numeric">
       </div>

@@ -552,14 +552,15 @@ function nodeTurnsRow(n){
     c.draft.workersText = tw; c.draft.workersFrom = tw;
   }
   const winp = `ndWorkers-${n.id}`;
+  // What 0 means is in each label, where a phone reads it (B459).
   return `<div class="logdays setrow col">
-      ${lbl(inp, "Claude sessions working at once", "a prompt past it waits for a turn instead of starting. 0 is no limit")}
+      ${lbl(inp, "Claude sessions working at once (0: no limit)", "a prompt past it waits for a turn instead of starting")}
       <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
         value="${esc(c.draft.turnsText)}">
     </div>
     <div class="logdays setrow col">
-      ${lbl(winp, "Test workers", `how many workers a test run here may use, as BB_TEST_WORKERS in its environment. 0 uses every core${
-        n.reported?.cpu ? ` (${n.reported.cpu} here)` : ""}`)}
+      ${lbl(winp, `Test workers (0: every core${n.reported?.cpu ? `, ${n.reported.cpu} here` : ""})`,
+        "how many workers a test run here may use, as BB_TEST_WORKERS in its environment")}
       <input id="${esc(winp)}" data-k="workers" type="number" min="0" max="256" step="1" inputmode="numeric"
         value="${esc(c.draft.workersText)}">
     </div>
