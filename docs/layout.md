@@ -113,6 +113,7 @@ scripts/
     brief.py                     a new project's brief: kept out of CLAUDE.md, handed to its first session through a dialog
     design.py                    the notebook's Design view: a project's design language and pages, the prompts a session is pointed at, and docs/design-language.md written from them
     cilogs.py                    a project's CI on GitHub's own runners: its runs and the end of a failed job's log, read with the controller's token for `bb ci-log`
+    forgerelease.py              Release's GitHub half: the release beside a pushed tag, its notes the changelog's section and its builds attached
     ciwatch.py                   a project's CI watched once a day and at link: a moving runner label, an action a major behind, a red main branch and GitHub's notices on it, for the Git view, bb catchup and the bell
     wiki.py                      the notebook's Wiki view: a project's wiki kept as a forge-shaped git repository of its own, exported as a zip and pushed to or pulled from the repository's wiki
     names.py                     what things are called: a project, a tmux session, a project's Claude session

@@ -341,7 +341,10 @@ def version_payload(name):
     here. One function so every answer the tab gets carries the same warning:
     the staged line is drawn from whichever of them came back last."""
     cost = window_cost(name)
-    return version.payload(name) | ({"window_cost": cost} if cost else {})
+    # {tag: url} of the GitHub releases Release made, for the row's link (R123).
+    rel = forgerelease.kept(name)
+    return (version.payload(name) | ({"window_cost": cost} if cost else {})
+            | ({"forge_releases": rel} if rel else {}))
 
 
 def window_cost(name):
@@ -2624,8 +2627,12 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   tell_fn=notify.tell, tmux_name_fn=tmux_name,
                   )
 changelog.component_dir = version._sub
+# Release's GitHub half (R123): the release beside a pushed tag.
+import forgerelease                                              # noqa: E402
+forgerelease.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json)
 version.configure_verbs(PANEL=version_payload, GIT_ENV=users.git_env, CREDS_ENV=projects._git_env,
                         MAY_PUSH=projects.may_push, SESSIONS=sessions_anywhere,
+                        FORGE=forgerelease.publish,
                         AUDIT=lambda *row: None if NODES_OK else db.audit(*row))
 
 

@@ -1352,7 +1352,8 @@ CREDS_ENV = None
 MAY_PUSH = None
 SESSIONS = None
 AUDIT = None
-_VERB_PARTS = ("PANEL", "GIT_ENV", "CREDS_ENV", "MAY_PUSH", "SESSIONS", "AUDIT")
+FORGE = None        # (project, tag, version, sha, comp) -> the forge's release (forgerelease.publish)
+_VERB_PARTS = ("PANEL", "GIT_ENV", "CREDS_ENV", "MAY_PUSH", "SESSIONS", "AUDIT", "FORGE")
 
 
 def configure_verbs(**parts):
@@ -1389,8 +1390,15 @@ def verb(name, act, req, who, principal):
                     may_push=MAY_PUSH(name))
         if r.get("error"):
             return r, 400
+        # A tag on GitHub gets GitHub's release beside it (R123): titled with
+        # the version, the changelog's section as its notes, the builds of
+        # that commit attached. Only once the tag is there, and a forge that
+        # says no leaves the tag as the release, with its reason.
+        if r.get("pushed") and FORGE:
+            r["forge"] = FORGE(name, r["tag"], r["target"], r["sha"], comp)
         AUDIT(principal, "version-release", name,
-              {"tag": r.get("tag"), "pushed": bool(r.get("pushed"))})
+              {"tag": r.get("tag"), "pushed": bool(r.get("pushed")),
+               "forge": (r.get("forge") or {}).get("url") or ""})
         return PANEL(name) | {"released": r}, 200
     if act == "init":
         r = init(name, field(req, "value"), by="operator", env=GIT_ENV(who, name), comp=comp)

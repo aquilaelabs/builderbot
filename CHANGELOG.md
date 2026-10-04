@@ -64,6 +64,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Who may move a project's version is a Claude may dial in its settings (Move the version), shown by bb settings show, and bb version set X.Y.Z moves to a later version in one commit under that policy, rather than one bump per step. (67a66f6)
 - Chat shows when each person was last here beside their name, in the list and a conversation's title: (here now), (3h ago) or (never signed in), kept across a controller restart. (fe52ab1)
 - Each container on the Docker tab has Start on boot: ticked and applied, Docker starts it when its node does (restart policy unless-stopped); for one BuilderBot built, the choice is kept and put back after a rebuild. (1eee73c)
+- Release makes the GitHub release too, where the token can write there: the version as its title, its changelog section as the notes, that commit's builds attached. The version row links to it or says why there is none (7e09164)
 
 ### Changed
 

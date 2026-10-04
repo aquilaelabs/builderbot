@@ -507,9 +507,15 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       busy(b, "Releasing");
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
       const j = await postVersion({action: "release", component: comp});
+      // The GitHub release beside the tag (R123), or why there is none:
+      // the tag is pushed either way, so a forge's no is a note, not a failure.
+      const fg = j?.released?.forge;
       if (j?.released?.tag)
         notify(j.released.note
-               || `${j.released.tag} tagged and pushed`);
+               || (fg?.url ? `${j.released.tag} tagged and pushed, and ${fg.made ? "released" : "already released"} on GitHub${
+                     fg.assets?.length ? ` with ${fg.assets.length} build${fg.assets.length === 1 ? "" : "s"}` : ""}`
+                   : `${j.released.tag} tagged and pushed` + (fg?.error ? `; no GitHub release: ${fg.error}` : "")),
+               !!fg?.error);
     });
     box.querySelectorAll("[data-verunbump]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verunbump || "";
@@ -856,6 +862,14 @@ this directory">Send to Claude</button>
 
   // The block for one VERSION file. Its NAME is not in here: the section
   // heading around it carries that, along with the number as its status.
+  function relOf(tag){
+    return (ver?.forge_releases || {})[tag] || {};
+  }
+  function relUrl(tag){
+    const u = relOf(tag).url || "";
+    return /^https:\/\//.test(u) ? u : "";
+  }
+
   function verSection(v){
     const f = v.forms || {};
     const staged = verPending[v.component || ""];
@@ -907,6 +921,11 @@ this directory">Send to Claude</button>
               ? line(v.released ? "released as" : "building towards", v.target)
               : line("version", "none yet: no VERSION file; Set one below"))
       + (v.released ? line("tag", v.tag) : "")
+      // The GitHub release Release made for this tag (R123).
+      + (v.released && relUrl(v.tag) ? `<div class="verln"><span>on GitHub</span><a href="${
+           esc(relUrl(v.tag))}" target="_blank" rel="noopener noreferrer">the ${esc(v.tag)} release</a></div>`
+         // ...or why there is none, the tag left pushed.
+         : v.released && relOf(v.tag).error ? mark(`no GitHub release: ${relOf(v.tag).error}`, true) : "")
       + mark(lands.now, lands.bad)
       + (staged ? `<div class="verln"><span></span><span class="vermark">
            staged: ${esc(v.next[staged] || "")} on Save: ${esc(staged)}${
