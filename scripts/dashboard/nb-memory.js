@@ -52,13 +52,28 @@ function nbMemoryView({$, nb}){
     // reads; shut on a phone, where the warnings were what you scrolled past
     // to reach a memory. The count is on the heading either way, in the warn
     // color, so a shut one still says something is wrong.
+    // Lines for memories that are gone are taken out by rewriting the index
+    // with nothing changed (save_index drops them and keeps every other line
+    // where it was), offered as its own press (B455).
+    const dangling = j.issues.filter(i => i.fix === "tidy").length;
     $("memDrift").innerHTML = j.issues.length
       ? docSection("memory", "drift", "Index",
                    `${j.issues.length} problem${j.issues.length === 1 ? "" : "s"}`,
-                   j.issues.map(i => `<div>${esc(i.text)}</div>`).join(""),
+                   j.issues.map(i => `<div>${esc(i.text)}</div>`).join("")
+                   + (dangling ? `<div class="actbar"><span class="state">${dangling === 1
+                       ? "a line for a memory that is gone" : `${dangling} lines for memories that are gone`}</span>
+                       <button type="button" id="memTidy">Take ${dangling === 1 ? "it" : "them"} out</button></div>` : ""),
                    {cls: "warn"})
       : "";
     wireSections($("memDrift"));
+    const tidy = $("memTidy");
+    if (tidy) tidy.onclick = async () => {
+      busy(tidy, "Taking out");
+      if (await postMemory({action: "index", lines: [], rev: nb.memIndexRev})){
+        notify("the index no longer names them");
+        await loadMemory(nb.memGen);
+      }else if (tidy.isConnected) unbusy(tidy, "Take out");
+    };
     // The note is offered only when there is a session to put it in, and says
     // what it will do: the text is typed, not sent. See memory.py's notify().
     $("memCount").textContent = n ? "Memories: newest first" : "Memories";

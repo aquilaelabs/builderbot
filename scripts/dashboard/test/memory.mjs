@@ -166,10 +166,21 @@ ok(!read('MEMORY.md').includes('tabs.md') && read('MEMORY.md').includes('vanishe
 ok((await page.$eval('#memWhere', el => el.textContent)).includes('1 memory'),
    'the fold redraws without it');
 
+// ---- a line for a memory that is gone, taken out with one press (B455) ----
+// The fold said "saving takes the line out" while Save had nothing staged and
+// could not be pressed. It offers the press itself now, and nothing else in
+// the index moves.
+await page.waitForSelector('#memDrift #memTidy', { timeout: 10000 });
+ok(/Take it out/.test(await page.$eval('#memDrift #memTidy', b => b.textContent))
+   && !(await page.$$eval('#memDrift div', ds => ds.some(d => /saving takes/.test(d.textContent)))),
+   'a line pointing at nothing offers Take it out, not a Save that cannot be pressed');
+await page.click('#memDrift #memTidy');
+await page.waitForFunction(() => !document.querySelector('#memDrift #memTidy'), null, { timeout: 15000 });
+ok(!read('MEMORY.md').includes('vanished.md'), '...which takes that line out of the index');
+
 // ---- the index, written from the rows -----------------------------------
-// What is left at this point: one memory (loose, unlisted) and one index line
-// pointing at a file that was never there. Filling the memory's fields in has
-// to do both halves: give it a line, and take the dead one out.
+// What is left at this point: one memory (loose, unlisted). Filling the
+// memory's fields in gives it a line.
 await openFold(page, '#memList .mem:has(.mname:text-is("loose"))');
 await page.click('#memList .mem:has(.mname:text-is("loose")) .mEdit');
 await page.waitForSelector('#memList .mem:has(.mname:text-is("loose")) .ixt');
@@ -185,8 +196,6 @@ await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
                            { timeout: 15000 });
 ok(read('MEMORY.md').includes('- [Loose ends](loose.md) \u2014 only recall ever surfaced this one'),
    'saving writes the line, in the shape Claude wrote the others in');
-ok(!read('MEMORY.md').includes('vanished.md'),
-   '...and the line pointing at a file that is not there comes out with it');
 await page.waitForFunction(() => document.querySelectorAll('#memDrift div').length === 0);
 ok(true, 'which leaves the panel with nothing to warn about');
 
