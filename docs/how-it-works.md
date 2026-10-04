@@ -972,9 +972,11 @@ lives in its body. The cards:
   PATH reaches a session when the session starts, so its row says how many
   sessions open on that node started before it was installed, and to reopen
   them. Beside it, **Docker manager…**, **Emulator** (a node's Android
-  system images: which it has, which AVDs are built on each, and adding or
-  removing one; ghosted until some node has the command-line tools and the
-  emulator), **Static analysis** and **Nodes**, each a tab of its own
+  system images: which it has, which AVDs are built on each, and ticking
+  the ones to add as on Toolchains; ghosted until some node has the
+  command-line tools and the emulator, with the reason in red under the
+  card's buttons), **Analysis** (the scanner reports) and **Nodes**, each a
+  tab of its own
 - a **checklist** per project, carrying how much is still to hand over here,
   the same number the panel shows, refreshed with every poll and again the
   moment you open it. It opens

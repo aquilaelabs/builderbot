@@ -456,7 +456,7 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   rmSync(`${DIR}/reports`, { recursive: true, force: true });
   await refreshUntil(page, () => state?.reports_ok === false, { timeout: 20000 });
   ok(await page.$eval('#bFindings', b => b.disabled),
-     'with no readable report the Static analysis button is ghosted');
+     'with no readable report the Analysis button is ghosted');
   ok(/\/reports is not mapped in/.test(await page.$eval('#bFindings', b => b.title)),
      '...carrying which of the three reasons it is');
   // The tab is open from the tests above; the gate closes it on the next load.

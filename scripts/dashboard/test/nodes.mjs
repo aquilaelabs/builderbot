@@ -1283,6 +1283,8 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     ok(/command-line tools and the emulator/.test(
          await page.$eval('#bEmulator', b => b.dataset.tip || '')),
        'the Emulator button is ghosted while no node has sdkmanager and the emulator, saying so');
+    ok(await page.$eval('#toolsWhy', w => !w.hidden && /^Emulator: .*command-line tools and the emulator/.test(w.textContent)),
+       '...and says so on the card too, in a line a phone can read (R119 step 6)');
     // No sdkmanager here yet: the tab says what is missing, and the server
     // refuses an add rather than letting it die inside the job.
     const bare = await emuApi();
@@ -1299,7 +1301,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await page.evaluate(() => refresh());
     await page.waitForFunction(() => document.getElementById('bEmulator')?.disabled === false,
                                null, { timeout: 15000 });
-    ok(true, '...and live once one has');
+    ok(await page.$eval('#toolsWhy', w => w.hidden), '...and live once one has, the line gone');
 
     await page.evaluate(id => { emuNode = id; openEmulator(); }, minted.id);
     // The rows both wait on Google's index (the size is joined from it),

@@ -595,7 +595,6 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .setrow input:not([type=checkbox]):not([type=number]){flex:1 1 12em;min-width:0;width:auto}
 .logset .setrow select{width:auto;flex:0 1 auto}
 .setrow .pill{flex:0 0 auto}
-.logacts{display:flex;flex-wrap:wrap;gap:6px}
 /* An anchor, because a download is a link and a link is what a browser knows
    how to save. Dressed as a button so the row reads as three controls. */
 .logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
@@ -938,6 +937,8 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
 button.primary{background:var(--accent-deep);border-color:var(--accent-mid)}
 button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
+/* A ghosted tool's reason, under the card's buttons and on their inset. */
+.toolwhy{padding:0 10px 9px;margin:0;font:12px/1.4 var(--mono);color:var(--bad);overflow-wrap:anywhere}
 .doctab .macros{padding:var(--row-y) var(--row-x)}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
@@ -4844,15 +4845,20 @@ body.booting .pane>.loading{margin:auto}
       <h2>Tools</h2>
       <div class="macros">
         <!-- Alphabetical, so a new one has one place to go. -->
+        <!-- Analysis, as the tab it opens and the notebook's view are called
+             (R119 step 6: one name per thing). -->
+        <button id="bFindings" onclick="openFindingsTab()">Analysis</button>
         <button id="bRunner" onclick="openRunnerTab()">CI runner</button>
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
         <button id="bEmulator" onclick="openEmulator()">Emulator</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
         <button id="bPhone" onclick="openPhoneTab()">Phone</button>
-        <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
         <button id="bToolchains" onclick="openToolchains()">Toolchains</button>
       </div>
+      <!-- Why a ghosted tool is ghosted, on the card: a tip is nothing on a
+           phone (R119 step 6). -->
+      <div class="sub bad toolwhy" id="toolsWhy" hidden></div>
     </div>
     <!-- What only an administrator touches: the controller's own settings
          and the accounts. An account that is not one does not see the card

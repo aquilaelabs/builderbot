@@ -189,12 +189,18 @@ async function refresh(){
     // not there, rather than there with dead buttons.
     drawCard(null, () => { const c = $("cardAdmin"); if (c) c.hidden = state?.can?.admin === false; });
     // The Emulator button, ghosted until some node has what the tab needs,
-    // with the reason as its tip.
+    // with the reason as its tip and, since a tip is nothing on a phone, as
+    // a red line under the card's buttons (R119 step 6).
     drawCard(null, () => {
-      const b = $("bEmulator"), e = state?.emulator;
+      const b = $("bEmulator"), e = state?.emulator, w = $("toolsWhy");
       if (!b || !e) return;
       b.disabled = !e.ready;
       if (e.ready) b.removeAttribute("data-tip"); else b.dataset.tip = e.why;
+      if (w){
+        const say = e.ready ? "" : `Emulator: ${e.why}`;
+        if (w.textContent !== say) w.textContent = say;
+        w.hidden = !say;
+      }
     });
     drawCard(null, watchSignin);
     // A scan re-ran on the host: drop the cache, and any notebook showing
@@ -253,7 +259,7 @@ async function refresh(){
 // count and the reason once it is not.
 let pollFails = 0;
 
-// The Static analysis button, and any tab already open on it. Ghosting the
+// The Analysis button, and any tab already open on it. Ghosting the
 // button is the ordinary half; closing an open tab is only done ONCE, when the
 // page first learns there is nothing to read: a layout restored from the last
 // session can carry an Analysis tab for a scanner that has since been

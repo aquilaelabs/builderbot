@@ -23,7 +23,7 @@ ok(await page.$$eval('.side .card[data-card]', cs =>
 ok(await page.$eval('.card[data-card="tools"] #bToolchains', b => !b.hidden),
    'the Tools card carries its button');
 ok(await page.$eval('.card[data-card="tools"] #bFindings',
-                    b => b.textContent.trim() === 'Static analysis'),
+                    b => b.textContent.trim() === 'Analysis'),
    '...and the scanner report is a button on it');
 
 // ---- the tab -----------------------------------------------------------

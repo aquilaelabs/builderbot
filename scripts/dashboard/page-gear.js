@@ -156,7 +156,10 @@ function logSection(){
         <button type="button" id="logApply"
           title="save it, and crop anything already past it">Apply</button>
       </div>
-      <div class="logacts">
+      <!-- An action bar like every other: what the links are on the left,
+           the verbs at the right (R119 step 6). -->
+      <div class="actbar logacts">
+        <span class="state">download the logs, or clear the old ones</span>
         <a class="btnish" href="/logs/download?what=session" download
            title="this container start: the boot, the dashboard and docker"
            >This session</a>
