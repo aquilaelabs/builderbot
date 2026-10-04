@@ -137,6 +137,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The CI watch says what it found in plain sentences (which check failed, on which branch and when, with a link to the run on GitHub), and a look kept by an older BuilderBot is looked at again after an update rather than shown for up to a day. (8d02e45)
 - Projects is the first card in the sidebar, and a new layout opens on the Projects tab with the controller's shell beside it. A sidebar nobody rearranged moves Projects to the top by itself; one somebody dragged stays as it was. (1cd2595)
 - A phone is the person's who connected it: only they lend it to a project, from a Phone button on the project's row, and each command a session runs on it asks them in their bell, nobody else's. An administrator may disconnect someone else's phone; nobody may connect over one. (7456dd2)
+- The sidebar's project rows show Claude, the notebook and … beside the name at every width, as on a phone; … opens the rest. The Projects tab still shows every control on a desktop. (d3593f7)
 
 ### Removed
 

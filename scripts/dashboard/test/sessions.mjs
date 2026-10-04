@@ -3,7 +3,7 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, ready, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage, unfold } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -269,6 +269,7 @@ const lockUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).user
 tmuxNew(`${lockUid}~claude-ep_silon`);
 await page.evaluate(() => refresh());
 const ndx = page.dialogs.length;
+await unfold(page, 'ep.silon');
 await page.click('#projects [data-k="ep.silon"]');            // lock: asks, then the server ends the sessions
 await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
 const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };

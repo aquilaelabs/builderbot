@@ -482,3 +482,15 @@ export const nbTab = async (page, v) => {
 export const nbGone = (page) =>
   page.waitForFunction(() => !document.querySelector('.pane .nb'),
                        { timeout: 20000 });
+
+// A project row on the sidebar card folds all but Claude and the notebook
+// behind … at every width (R119, 4 Oct): a check that presses one of the
+// others opens the fold first, the way a person would.
+export async function unfold(page, project){
+  await page.evaluate(name => {
+    const row = document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)?.closest('.row');
+    if (row && !row.classList.contains('moreon')) row.querySelector('[data-more]').click();
+  }, project);
+  await page.waitForFunction(name => document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)
+    ?.closest('.row')?.classList.contains('moreon') ?? true, project, { timeout: 5000 }).catch(() => {});
+}

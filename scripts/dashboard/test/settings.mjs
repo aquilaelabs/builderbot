@@ -6,7 +6,7 @@
 // identity landing in the repo's own config through /api/prefs and coming out
 // of bb settings, and bb_setting (the boot scripts' read) run as bash
 // against the same file.
-import { launch, newPage, ok, done, ready, saveDialog, openFold, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, saveDialog, openFold, URL, DIR, unfold } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -177,6 +177,7 @@ ok(bare.git_name === 'T. Person', '...for a shell with no project too');
   await page.evaluate(async () => (await (await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'alpha', reads: [] }) })).json()));
 }
+await unfold(page, 'alpha');
 await page.click('#projects [data-rn="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 // The dialog asks again (17 Sep), but for a different thing: the old field

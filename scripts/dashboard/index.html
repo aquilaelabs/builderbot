@@ -2880,13 +2880,21 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    rule below it cannot win at equal specificity, which is how the button
    showed on a desktop, and then on neither. */
 button.eye.rowmore{display:none}
+/* The sidebar card folds its rows at EVERY width since R119 (4 Oct): eight
+   icons on a 340px card were a row nobody could read, on a desktop too, so
+   it takes the phone's shape (Claude, the notebook, and … for the rest). The
+   Projects tab has the room on a desktop and keeps every icon there. */
+.card .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore){display:none}
+.card button.eye.rowmore{display:inline-flex}
+.card .row.moreon .rowmore{color:var(--accent)}
+.card .row[data-row]:not(.moreon){flex-direction:row;align-items:flex-start;flex-wrap:wrap}
+.card .row[data-row]:not(.moreon) .acts{margin-left:auto;flex-wrap:nowrap}
 @media(max-width:900px){
   :root{--row-y:8px}
   /* The hide is scoped to a row that is NOT folded out, so the two states
      cannot fight: a `.moreon` rule that merely re-showed them lost on
      specificity to this one (three :not()s outrank one class), and pressing
      … re-stacked the row without producing a single extra icon. */
-  .card .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore),
   .projtab .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore){
     display:none}
   button.eye.rowmore{display:inline-flex}
@@ -2895,10 +2903,8 @@ button.eye.rowmore{display:none}
      is where the height actually was: a stacked row spends a whole 38px line
      on its buttons. Folded out, they wrap under it again, which is what
      asking for them means. */
-  .card .row[data-row]:not(.moreon),
   .projtab .row[data-row]:not(.moreon){flex-direction:row;align-items:flex-start;
     flex-wrap:wrap}
-  .card .row[data-row]:not(.moreon) .acts,
   .projtab .row[data-row]:not(.moreon) .acts{margin-left:auto;flex-wrap:nowrap}
 }
 button[aria-busy="true"]{opacity:.75}

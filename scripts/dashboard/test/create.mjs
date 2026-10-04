@@ -4,7 +4,7 @@
 // clone path is tested up to its URL allow-list: the list is the thing under
 // test, and a real clone would need GitHub on the other end.
 import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring, tmuxNew, tmuxKill,
-         refreshUntil } from './lib.mjs';
+         refreshUntil, unfold } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, chmodSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -941,12 +941,14 @@ await page.waitForFunction(() => !document.querySelector('#projects .row.jobfail
 ok(await page.$('#projects [data-l="beta"]') !== null
    && await page.$('#projects [data-l="alpha"]') !== null,
    'the chain shows on every repo, linked or not');
+await unfold(page, 'alpha');
 await page.click('#projects [data-l="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(/GitHub/.test(await page.$eval('#rnTitle', el => el.textContent))
    && await page.$eval('#rnNameField', el => el.hidden),
    '...and on a linked one it opens that project\'s GitHub settings, not the link form');
 await page.click('#rnCancel');
+await unfold(page, 'beta');
 await page.click('#projects [data-l="beta"]');
 // The dialog draws before its catalog lands (the keys and the git hosts are
 // one fetch per open), so every assertion below about the host picker is

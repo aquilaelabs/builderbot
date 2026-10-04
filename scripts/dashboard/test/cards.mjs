@@ -2,7 +2,7 @@
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
-         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR } from './lib.mjs';
+         holdPoll, freePoll, tmuxNew, tmuxKill, tmuxFmt, nbShown, URL, DIR, unfold } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
          mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -579,14 +579,23 @@ print(json.dumps(out))
   await page.evaluate(() => document.querySelectorAll('style').forEach(st => { if (st.textContent.startsWith('#projects{max-height')) st.remove(); }));
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.waitForTimeout(400);
+  // The sidebar card folds on a desktop too (R119, 4 Oct): eight icons on a
+  // 340px card were unreadable. The Projects tab, with room, shows them all.
   const desk = await shown();
-  ok(desk > 3 && await page.$eval(`${row} [data-more]`, b => b.offsetParent === null),
-     `on a desktop every icon is there and the fold is not (${desk} icons)`);
+  ok(desk === 3 && await page.$eval(`${row} [data-more]`, b => b.offsetParent !== null),
+     `on a desktop the card's row folds as a phone's does (${desk} icons)`);
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('.doc.on .projtab .row', { timeout: 10000 });
+  const tabRow = '.doc.on .projtab .row:has(.name:text-is("alpha"))';
+  const tabShown = await page.$$eval(`${tabRow} .acts .eye`, bs => bs.filter(b => b.offsetParent !== null).length);
+  ok(tabShown > 3 && await page.$eval(`${tabRow} [data-more]`, b => b.offsetParent === null),
+     `...while the Projects tab on a desktop shows every icon and no fold (${tabShown})`);
   // The pin is on the card's rows too (the operator, 30 Sep), so a project
   // is unpinned from the sidebar without a trip to the Projects tab; the
   // Projects tab is where it is pinned back.
   ok(await page.$eval(`${row} [data-p]`, b => b.getAttribute('aria-label') === 'unpin' && b.classList.contains('on')),
      "the card's row carries the pin, lit, reading unpin");
+  await unfold(page, 'alpha');
   await page.click(`${row} [data-p]`);
   await page.waitForFunction(() => ![...document.querySelectorAll('#projects .row .name')].some(n => n.textContent.trim() === 'alpha'), null, { timeout: 15000 });
   ok(true, '...and pressing it takes the project off the card');
@@ -1157,7 +1166,7 @@ await page.evaluate(() => refresh());
 // point is being the OTHER button: excluding hides a row, this one leaves it
 // intact and takes away only the session, so that is what gets asserted.
 await page.evaluate(() => refresh());
-await page.waitForSelector('#projects [data-k="alpha"]', { timeout: 10000 });
+await page.waitForSelector('#projects [data-k="alpha"]', { timeout: 10000, state: 'attached' });
 ok(await page.$$eval('#projects [data-k]', bs => bs.length > 0),
    'every project row carries a padlock');
 await page.evaluate(() => setLocked('alpha', true));
