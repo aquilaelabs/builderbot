@@ -187,9 +187,8 @@ function nbBugsView({$, nb, project}){
     if (!force && list.querySelector(".dropbox, .bugform")) return;
     const rows = sortedBugs();
     const open = rows.filter(b => b.status === "open").length;
-    hint.textContent = rows.length
-      ? `${open} open of ${rows.length}`
-      : "Nothing reported. What goes here reaches every Claude session in this project.";
+    // Count first; what the tracker is for is its empty state (R119 step 4).
+    hint.textContent = rows.length ? `${open} open of ${rows.length}` : "nothing reported";
     // A sort over nothing is a control that does nothing: it arrives with
     // the second bug, when there is an order to choose.
     const sortBar = $("bugSortBar");
@@ -235,7 +234,9 @@ function nbBugsView({$, nb, project}){
               title="for a report that should not exist: mis-filed, a duplicate, the wrong project">Remove</button>
           </div>
         </div>
-      </details>`).join("");
+      </details>`).join("")
+      // What the tracker is for, as its empty state (R119 step 4).
+      || `<div class="hint nbempty">What goes here reaches every Claude session in this project.</div>`;
     paginate(list, ":scope > .bug", {key: "bugList", noun: "reports"});
     list.querySelectorAll(".bug").forEach(d => {
       const id = Number(d.dataset.id);

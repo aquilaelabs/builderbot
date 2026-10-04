@@ -806,9 +806,13 @@ This page's own rules:
 
 Applies to: scripts/dashboard/nb-*.js; notebook, view, head, row, strip
 
-Every view opens with the same head row: its one-line summary on the left
-and its controls, History where it has one, on the right. That row is the
-first band of the view and sits at one height on all ten views.
+Every view opens with the same head row: a count-first lowercase fragment
+on the left (`3 open of 5`, `0 pages`, `no rules · 2 memories`, `nothing
+yet`), never a sentence, and its controls, History where it has one, on the
+right. That row is the first band of the view and sits at one height on every
+view. What a view is for is its empty state: one dim hint line
+(`.hint.nbempty`, in a `.field` band) where the list would be, never in the
+head (R119 step 4).
 
 The view strip is one row on a desktop. On a phone it wraps into rows of
 equal-width tabs rather than scrolling sideways: ten labels do not fit
@@ -821,7 +825,8 @@ Adding goes at the top. The control that adds to a view is the first band
 under its head row, above the list, one shape on every view (`.addbar`, a
 button named for what it adds, `data-add`), and the form it opens unrolls
 in that band's place. Never at the foot: a phone should not scroll past the
-list to add to it.
+list to add to it. The Roadmap is no exception: Add to roadmap unrolls its
+box under the band, Reorder staying in it.
 
 Save and Revert at the notebook's foot show only on the views that stage
 something behind them (Roadmap, Briefing, Design, the version on

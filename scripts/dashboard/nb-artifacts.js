@@ -37,7 +37,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     const inst = art.install || {};
     hint.textContent = rows.length
       ? `${rows.length} in dist/: what this project ships, newest first`
-      : groups.length ? "nothing in dist/ yet; built on a branch, below" : "nothing here yet";
+      : groups.length ? "0 in dist/; built on a branch, below" : "0 in dist/";
     {
       // Where this project compiles, as a section rather than a loose band:
       // this tab is three subjects stacked, where it builds, what it is

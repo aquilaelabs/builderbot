@@ -147,9 +147,9 @@ function nbTestsView({$, nb, project}){
           j.running.cmd ? `: <code>${esc(j.running.cmd)}</code>` : ""} · `
       : "";
     if (!all.length){
-      $("tstHint").innerHTML = going;
+      $("tstHint").innerHTML = going + "no runs yet";
       $("tstStats").hidden = false;
-      $("tstStats").innerHTML = `<div class="hint">No test run recorded yet. A session records one with
+      $("tstStats").innerHTML = `<div class="hint nbempty">A session records a run with
         <pre class="ndcmd">bb tests run</pre></div>`;
       $("tstList").innerHTML = ""; $("tstBar").hidden = true;
       $("tstFolds").innerHTML = "";

@@ -3594,7 +3594,7 @@ body.booting .pane>.loading{margin:auto}
          one-line summary on the left, its History on the right. It sits above
          the add row rather than under it so all four tabs start the same way:
          the eye should not have to look in a different place per tab. -->
-    <div class="field nbhead vbar"><span class="hint" id="roadmapHint">loading…</span>
+    <div class="field nbhead vbar"><span id="roadmapHint">loading…</span>
       <span class="sp"></span>
       <button id="roadmapDone" type="button"
         title="the items ticked off, with their plans"
@@ -3604,17 +3604,25 @@ body.booting .pane>.loading{margin:auto}
         >History</button>
     </div>
     <div class="field">
-      <!-- One row: type it, add it, or rearrange what is already there. They
-           are the three things you do TO the list, as against the History
-           above, which only reads it. -->
-      <div class="roadmapadd" data-add="roadmap">
-        <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
-               placeholder="something for the roadmap"></textarea>
-        <button id="roadmapAdd" class="primary" type="button">Add</button>
+      <!-- The add band every view adds with (R119 step 4): a button named for
+           what it adds, beside Reorder, the other thing done TO the list; it
+           unrolls the box in its place, which stays open for the next line
+           until Cancel or Escape. -->
+      <div class="addbar" data-add="roadmap" id="roadmapAddBar">
+        <button id="roadmapShow" type="button">Add to roadmap</button>
         <button id="roadmapOrder" type="button" hidden
           title="reorder; the send controls come back after"
           >Reorder</button>
       </div>
+      <div class="roadmapadd" id="roadmapForm" hidden>
+        <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
+               placeholder="something for the roadmap"></textarea>
+        <button id="roadmapCancel" type="button" class="stop">Cancel</button>
+        <button id="roadmapAdd" class="primary" type="button">Add</button>
+      </div>
+    </div>
+    <div class="field" id="roadmapEmpty" hidden>
+      <div class="hint nbempty">What goes here is read at the start of every Claude session in this project.</div>
     </div>
     <!-- Somebody else wrote this item while it was being edited here. Above
          the list rather than in a toast: the typing it is about is still on

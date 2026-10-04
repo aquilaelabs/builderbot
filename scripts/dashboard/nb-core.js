@@ -201,6 +201,7 @@ function makeNotebook(project){
     $("histFind").value = "";
     cancelSend();
     $("roadmapText").value = "";
+    $("roadmapForm").hidden = true; $("roadmapAddBar").hidden = false; $("roadmapShow").hidden = false;
     $("roadmapList").innerHTML = `<div class="loading">loading…</div>`;
     // Opening it is a re-read: both halves come off disk again, and the card
     // gets the same treatment so the number on the row you just pressed is not
@@ -719,11 +720,13 @@ function makeNotebook(project){
     $("dkHint").textContent = n
       ? `${n} container${n === 1 ? "" : "s"} of ${project}'s on ${where}${
           blind ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`
-      : `nothing belongs to ${project} on ${where} yet: send it from the Artifacts tab, or pick ${project} on a container's row on the Docker tab`;
+      : `0 containers on ${where}`;
     const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length]);
     if (key === dkSeen) return;
     dkSeen = key;
-    $("dkList").innerHTML = dmRowsHtml(mine, job, blind) + dmOtherRowsHtml(others);
+    // What the view is for, as its empty state (R119 step 4).
+    $("dkList").innerHTML = (dmRowsHtml(mine, job, blind) + dmOtherRowsHtml(others))
+      || `<div class="field"><div class="hint nbempty">Send ${esc(project)} from the Artifacts tab, or pick it on a container's row on the Docker tab.</div></div>`;
     tipify($("dkList"));
     dmWireRows($("dkList"), got);
   }
