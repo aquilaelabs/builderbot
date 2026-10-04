@@ -51,7 +51,13 @@ CARDS_FILE = None            # <state>/cards.json, set by configure()
 # the next read rather than needing anything done to it.
 # Tools between Doctor and Runner: the reach-for-it card next to the
 # health line, ahead of the two that are read rather than pressed.
-CARD_KEYS = ["doctor", "tools", "admin", "runner", "projects"]
+# Projects first since 4 Oct (R119): they are what a person comes for, and
+# fifth they were under the fold on a laptop.
+CARD_KEYS = ["projects", "doctor", "tools", "admin", "runner"]
+# The default before that. A stored order that is exactly it was never
+# arranged by anybody, only written by a fold or a reset, so it reads as the
+# new default rather than holding every existing sidebar where it was.
+_OLD_DEFAULT = ["doctor", "tools", "admin", "runner", "projects"]
 
 
 def configure(*, state, write_json, lock):
@@ -70,6 +76,8 @@ def load_cards():
     # can hold, where hashing it for dict.fromkeys would not.
     order = v.get("order") if isinstance(v.get("order"), list) else []
     order = list(dict.fromkeys(k for k in order if k in CARD_KEYS))
+    if order == _OLD_DEFAULT:
+        order = list(CARD_KEYS)
     # A card this image knows about that the stored file predates still has to
     # land somewhere, and "its default position" means exactly that: inserted
     # where CARD_KEYS puts it, not appended. Appending is how a new card

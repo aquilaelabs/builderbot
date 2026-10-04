@@ -134,6 +134,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Pull to refresh draws a browser's spinning arrow; the header's bug icon is drawn like the others; a wiki's first push to GitHub can replace the page GitHub made you create (5a2ff38)
 - bb lint names a workflow job on a moving hosted label (ubuntu-latest, windows-latest, macos-latest) with the pinned image to use instead, and fails on one in BuilderBot itself, whose image build now runs on ubuntu-24.04. (cb9d96b)
 - The CI watch says what it found in plain sentences (which check failed, on which branch and when, with a link to the run on GitHub), and a look kept by an older BuilderBot is looked at again after an update rather than shown for up to a day. (8d02e45)
+- Projects is the first card in the sidebar, and a new layout opens on the Projects tab with the controller's shell beside it. A sidebar nobody rearranged moves Projects to the top by itself; one somebody dragged stays as it was. (1cd2595)
 
 ### Removed
 

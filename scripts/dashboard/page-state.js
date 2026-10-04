@@ -20,13 +20,17 @@
 // the pane renders a placeholder and "+" starts over. Tabs are separate from
 // panes on purpose: a pane is a viewport, and closing one should not destroy
 // what it was showing.
-let tabs = [{id:"ws", kind:"term", arg:"shell", label:"sh: workspace"}];
+// A new layout opens on the projects, with the controller's shell beside
+// them: the shell first was a raw prompt for a newcomer, and on a setup
+// whose work runs on nodes, one that could not even start (R119, 4 Oct).
+let tabs = [{id:"pj", kind:"projects", arg:"__projects", label:"Projects"},
+            {id:"ws", kind:"term", arg:"shell", label:"sh: workspace"}];
 // The windows terminals were popped out into (R8), by tab id: this browser's
 // own handles, which is the only way a page can know a popped window still
 // lives. A reload loses them, and a tab popped from a page since reloaded
 // comes back into the strip: the edge R8 named, decided this way.
 const popWins = new Map();
-let panes = ["ws", null];
+let panes = ["pj", null];
 // What a session's container ask is asking for, from its own command line:
 // "new" makes a container, "remove" removes one, "env set" writes its env,
 // start, stop and restart are themselves, and only the rest is a rebuild.

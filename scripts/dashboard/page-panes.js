@@ -234,6 +234,13 @@ function drawPanes(){
     if (t.kind !== "term"){
       [...st.children].forEach(c => { if (c !== el && c.id) c.removeAttribute("id"); });
       el.id = "doc" + i;
+      // ...and a document no tab is showing goes: documents are not kept,
+      // only a notebook parks (it holds what is being typed). The Projects
+      // tab a page now opens on was left in the stack behind the next
+      // document, a second .doc nobody could see (R119, panes.mjs).
+      [...st.children].forEach(c => {
+        if (c !== el && c.classList.contains("doc") && !c.querySelector(".nb")) c.remove();
+      });
     }
     // The console bar rides with its pane, so it is wired with it: the row is
     // replaced whenever the slot is, and a handler bound once would be bound

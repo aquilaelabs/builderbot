@@ -221,7 +221,8 @@ const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
 ok(hs.length === 5 && hs.every(h => h.buttons === 0 && h.chev),
    `headers are title + chevron only (${hs.length} cards)`);
-ok((await order())[0] === 'doctor', 'doctor is first by default');
+// Projects first (R119, 4 Oct): what a person comes here for.
+ok((await order())[0] === 'projects', 'projects is first by default');
 ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
 
 // collapse animates, persists across reload
@@ -775,7 +776,14 @@ ok(all.includes('vendored-junk'),
 // above this one may leave the sidebar scrolled, and a drag aimed at y=-282
 // grabs nothing and the test reads as the FEATURE failing.
 await page.$eval('.side', e => e.scrollTo(0, 0));
-await new Promise(r => setTimeout(r, 150));
+// Projects is first and long (R119): folded for the drag, so the runner card
+// is on screen to be grabbed, and opened again after.
+const projOpen = await page.$eval('.card[data-card="projects"]', el => !el.classList.contains('closed'));
+if (projOpen){
+  await page.click('.card[data-card="projects"] h2');
+  await page.waitForFunction(() => document.querySelector('.card[data-card="projects"]').classList.contains('closed'));
+}
+await new Promise(r => setTimeout(r, 300));
 const hb = await (await page.$('.card[data-card="runner"] h2')).boundingBox();
 const top = await (await page.$('.side .card[data-card]')).boundingBox();
 // Recorded, not sampled. The FLIP tween is 140ms, and asking for it in a
@@ -798,13 +806,17 @@ await page.mouse.move(hb.x + 40, top.y + 2, { steps: 10 });
 await page.mouse.up();
 const sliding = await page.evaluate(() => {
   Element.prototype.animate = window.__realAnimate;
-  return window.__flipped.includes("doctor");
+  return window.__flipped.includes("projects");
 });
 ok(sliding, 'displaced cards slide during a drag');
 ok((await order())[0] === 'runner', `runner dragged to the top (${(await order()).join(',')})`);
 ok(!(await page.$eval('.card[data-card="runner"]', el => el.classList.contains('closed'))), 'the drop did not toggle the card');
 await page.reload(); await ready(page);
 ok((await order())[0] === 'runner', 'order survives a reload');
+if (projOpen){
+  await page.click('.card[data-card="projects"] h2');
+  await page.waitForFunction(() => !document.querySelector('.card[data-card="projects"]').classList.contains('closed'));
+}
 
 // ▤ reset, now an item in the menu the gear opens rather than theom's
 // own action. The menu is the other half: twelve color schemes, each swatch
@@ -873,7 +885,7 @@ ok(true, 'Escape closes the menu');
 await page.click('#bCards');
 await page.waitForSelector('#uiMenu:not([hidden])');
 await page.click('#uiReset');
-await page.waitForFunction(() => document.querySelector('.side .card[data-card]').dataset.card === 'doctor'
+await page.waitForFunction(() => document.querySelector('.side .card[data-card]').dataset.card === 'projects'
   && !document.querySelector('.side .card.closed'));
 ok(true, 'reset restores default order and expands everything');
 

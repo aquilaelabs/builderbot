@@ -1434,6 +1434,14 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
   .side .row [data-tip]::after,.projtab .row [data-tip]::after{left:10px;right:10px;
     transform:none;width:auto;max-width:none;
     bottom:auto;top:var(--tipy,calc(100% + 6px))}
+  /* ...and the bar above them: New project sits at the tab's right edge, and
+     its tip, centered and up to 280px, hung past it at phone width once the
+     Projects tab was the one a page opens on (R119, 4 Oct). Anchored to the
+     bar's right, under it, and no wider than the bar. */
+  .projtab > .actbar{position:relative}
+  .projtab > .actbar [data-tip]{position:static}
+  .projtab > .actbar [data-tip]::after{left:auto;right:10px;transform:none;
+    max-width:calc(100% - 20px);bottom:auto;top:calc(100% + 6px)}
   /* A DEAD button's tip is the one on this page somebody actually has to
      read (it is the sentence saying why the button is dead) and it was the
      one that could not be. The fade on a disabled control is `opacity:.5`,
@@ -4756,6 +4764,14 @@ body.booting .pane>.loading{margin:auto}
        keep up there lives in its body now: a button inside a drag handle is
        a fight over what a press means. -->
   <div class="col side">
+    <!-- Projects first: they are what a person comes here for, and below
+         Doctor, Tools, Administration and Runner they were under the fold
+         on a laptop (R119, 4 Oct). An arrangement somebody dragged is kept;
+         this is the order a new one, or Reset cards, starts from. -->
+    <div class="card" data-card="projects">
+      <h2>Projects</h2>
+      <div id="projects"><div class="loading">loading…</div></div>
+    </div>
     <div class="card doctor" data-card="doctor">
       <h2>Doctor</h2>
       <div id="docBar" class="docbar">
@@ -4795,10 +4811,6 @@ body.booting .pane>.loading{margin:auto}
     <div class="card" data-card="runner">
       <h2>Runner</h2>
       <div id="runner"><div class="loading">loading…</div></div>
-    </div>
-    <div class="card" data-card="projects">
-      <h2>Projects</h2>
-      <div id="projects"><div class="loading">loading…</div></div>
     </div>
   </div>
 

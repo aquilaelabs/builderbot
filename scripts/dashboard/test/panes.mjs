@@ -24,7 +24,9 @@ await page.waitForFunction(() => tabs.filter(t => t.kind === 'term').length >= 3
 const ids = await page.evaluate(() => tabs.filter(t => t.kind === 'term').map(t => t.id));
 
 const show = id => page.evaluate(id => { panes[0] = id; render(); }, id);
-const seen = () => page.evaluate(() => [...document.querySelectorAll('#pane0 .stack > *')]
+// The terminals the pane keeps: its slots. A page opens on the Projects tab
+// now (R119), whose document is in the same stack and is not a terminal.
+const seen = () => page.evaluate(() => [...document.querySelectorAll('#pane0 .stack > .slot')]
   .map(c => ({ key: c.dataset.key, on: c.classList.contains('on') })));
 
 await show(ids[0]);
@@ -74,7 +76,8 @@ await page.evaluate(() => openTab({kind: 'toolchains', arg: '__toolchains', labe
 await page.waitForSelector('#pane0 .doc.on');
 ok(await page.$$eval('#pane0 .stack > .doc', d => d.length === 1
      && d[0].id === 'doc0'),
-   'a document tab is one per pane, and keeps the id that renders into it');
+   `a document tab is one per pane, and keeps the id that renders into it (${
+     await page.$$eval('#pane0 .stack > .doc', d => d.map(x => x.id + ':' + x.className).join(' '))})`);
 ok(await page.$$eval('#pane0 .stack > .slot', s => s.length === 3),
    `...and opening it did not disturb the terminals behind it (${
      await page.$$eval('#pane0 .stack > *', c => c.map(x => x.dataset.key).join(' '))})`);
