@@ -65,7 +65,11 @@ function jobTitle(j){
   if (j.type === "self-update") return "agent self-update";
   if (j.type === "system") return `apply ${esc(s.apply || "config")} on the node`;
   if (j.type === "toolchain") return `${esc(s.action || "install")} ${esc((s.names || []).join(", "))}`;
-  if (j.type === "image") return `${esc(s.action || "add")} image ${esc(s.image || "")}`;
+  if (j.type === "image") return (s.images || []).length > 1
+    ? `${esc(s.action || "add")} ${s.images.length} images` : `${esc(s.action || "add")} image ${esc(s.image || "")}`;
+  // A job its caller named in words (nodes.run_wait's title): a shell line
+  // is not what a person reads a job list for (the design pass, 4 Oct).
+  if (s.title) return esc(s.title);
   if (j.type === "cache-clear") return `clear ${s.project ? esc(s.project) + "'s caches" : "every cache"}`;
   // Run on another node of the project's set because its primary was not
   // up (R82 step 6): said on the row, since the row is where it is looked for.

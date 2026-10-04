@@ -150,6 +150,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On a phone the tab strip is a picker: the tab on show and how many are open, and a list of them all with their close buttons, instead of a strip to swipe and two arrows. The bell is boxed like the header's other buttons, and Docker's New container is at the top (047e1f1)
 - A bell row about a node's agent or its Claude Code opens the Nodes tab on that node, at its Update, rather than on whichever node the tab was showing (5b7b862)
 - Every notebook view's head reads the same way, a count or a short state (3 open of 5, 0 in dist/, nothing yet), and what an empty view is for is one line where its list would be. The Roadmap adds with an Add to roadmap button like the other views (22dc814)
+- A design pass over every page at both widths: the phone bar keeps only what works on the tab in front, numeric limits say what 0 means, the Wiki adds first, Toolchains reads plainly, the Jobs tab names a phone's screenshot and install, and quiet lines are the quiet size everywhere (d08051e)
 
 ### Removed
 

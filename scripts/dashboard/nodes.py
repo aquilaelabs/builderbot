@@ -2521,7 +2521,7 @@ def job_add(principal, placement, type, spec, project="", source=None):
 
 
 def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
-             sizes=None, project="", forget=False, outputs=None):
+             sizes=None, project="", forget=False, outputs=None, title=""):
     """One command on a node, waited for: queued as an exec job, picked up
     by the agent's next poll (which is held open, so at once), and its log
     and exit code handed back: the Nodes tab's Test, generalised. For the
@@ -2538,6 +2538,8 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     into the project's dist/ when the command succeeds: a file that would
     otherwise ride the log as text (a phone's screenshot, report #53)."""
     spec = {"argv": [str(a) for a in argv], "timeout": int(timeout)}
+    if title:
+        spec["title"] = str(title)[:120]      # what the Jobs tab calls it
     if outputs:
         spec["outputs"] = [str(o) for o in outputs][:4]
         spec["project"] = project

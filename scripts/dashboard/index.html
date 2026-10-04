@@ -2681,6 +2681,8 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    tab's own rule, so the same line on the Toolchains tab sat flush against
    the edge with every band beside it indented. */
 .doctab .hint{padding:var(--row-y) var(--row-x)}
+/* The node-scoped tools' foot line (R121) is a quiet note, not body text. */
+.toolfoot .hint{font:var(--f-note);color:var(--dim);padding:0}
 .fxtab .fxproj{display:flex;gap:8px;align-items:baseline;
   padding:var(--row-y) var(--row-x) 3px;
   border-top:1px solid var(--line);font-weight:600}
@@ -2819,6 +2821,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>summary .sst.note,.actbar .state.note{color:var(--note)}
 .sect>.body{padding:0 var(--row-x) var(--row-y);display:flex;flex-direction:column;gap:8px}
 .sect>.body>.sub:first-child{margin-top:0}
+/* A section's own explainer line, straight in its body, is the quiet note
+   it is everywhere else: the Git view's Branches line read at body size
+   (the design pass, 4 Oct). */
+.sect>.body>.sub{font:var(--f-note)}
 /* A band inside a section's body does not inset again: the body already did.
    The design language says it of a field inside a field, and it was never
    applied here because nothing measured a notebook view other than the

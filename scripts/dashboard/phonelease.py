@@ -184,7 +184,7 @@ def _shot(project, nid, serial):
               'adb -s "$1" exec-out screencap -p > "$2" && [ -s "$2" ]')
     r = phone.nodes.run_wait(f"session:{project}", nid, ["sh", "-c", script, "_", serial, name],
                              env={"ANDROID_ADB_SERVER_PORT": phone.ADB_PORT}, timeout=90,
-                             project=project, outputs=[name])
+                             project=project, outputs=[name], title=f"screenshot of the phone lent to {project}")
     if r.get("error"):
         return {"error": "the phone gave no screenshot: " + r["error"]}, 502
     got = WORKSPACE / project / "dist" / name
@@ -386,7 +386,8 @@ def _install(project, nid, serial, rel):
               '[ -x "$bt/aapt2" ] && echo "bb-package: $("$bt/aapt2" dump packagename "$1")"')
     r = phone.nodes.run_wait(f"session:{project}", nid, ["sh", "-c", script, "_", dest, serial],
                              env={"ANDROID_ADB_SERVER_PORT": phone.ADB_PORT}, timeout=600,
-                             files=[rel], sizes={rel: f.stat().st_size}, project=project)
+                             files=[rel], sizes={rel: f.stat().st_size}, project=project,
+                             title=f"install {rel} on the phone lent to {project}")
     if r.get("error"):
         return {"error": r["error"]}, 502
     out = r.get("out") or ""
