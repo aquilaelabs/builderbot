@@ -308,16 +308,53 @@ def _touch(a):
     return {"error": "touch is tap, hold, glide, text or key"}
 
 
+def _dist_apk(project, rel):
+    """(path, rel) of one of the project's own builds, or a refusal: an .apk
+    under its dist/, named relative to the project or absolutely inside it
+    (a session gave the whole path once and was refused after its owner
+    had already been asked, report #52)."""
+    root = WORKSPACE / project
+    if rel.startswith("/"):
+        try:
+            rel = str(Path(rel).relative_to(root))
+        except ValueError:
+            return {"error": "install an .apk from this project's dist/"}, 400
+    rel = rel.removeprefix("./")
+    if not rel.startswith("dist/") or ".." in rel.split("/") or not rel.endswith(".apk"):
+        return {"error": "install an .apk from this project's dist/"}, 400
+    f = root / rel
+    if not f.is_file():
+        return {"error": f"no {rel} in {project}"}, 404
+    return f, rel
+
+
+def check(project, op, args):
+    """The refusal a verb would meet, said before its owner is asked (report
+    #52: a path the install refuses had already put an Allow in their bell):
+    (payload, status), or None when it is worth asking about."""
+    args = args if isinstance(args, dict) else {}
+    nid, got = leased_to(project)
+    if not got:
+        return use(project, op, args)                  # the refusal, in its words
+    if op == "install":
+        r = _dist_apk(project, str(args.get("file") or ""))
+        return r if isinstance(r[0], dict) else None
+    pkgs = list(got.get("pkgs") or [])
+    pkg = str(args.get("pkg") or (pkgs[0] if pkgs else ""))
+    if op in ("start", "stop", "ime", "log") and pkg not in pkgs:
+        return {"error": f"{pkg or 'that'} is not one of this lease's apps: install the build "
+                         "with bb phone install first" + (f" (it has {', '.join(pkgs)})" if pkgs else "")}, 403
+    return None
+
+
 def _install(project, nid, serial, rel):
     """One of the project's own builds from its dist/, installed, and the
     package it carries added to the lease (aapt2 from the node's
     android-tools reads it, as bb sign does)."""
-    rel = rel.lstrip("./")
-    if not rel.startswith("dist/") or ".." in rel.split("/") or not rel.endswith(".apk"):
-        return {"error": "install an .apk from this project's dist/"}, 400
-    f = WORKSPACE / project / rel
-    if not f.is_file():
-        return {"error": f"no {rel} in {project}"}, 404
+    r = _dist_apk(project, rel)
+    if isinstance(r[0], dict):
+        return r
+    f, rel = r
     node = phone.nodes.node(nid) if phone.nodes is not None else None
     dest = phone.install_dest(node or {}, project, rel)
     script = ('adb -s "$2" install -r "$1" || exit $?; '

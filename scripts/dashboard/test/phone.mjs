@@ -350,9 +350,11 @@ ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPho
      `allowed by its owner, a screenshot lands in dist/phone/ (${shot.body.path || shot.body.error})`);
   await page.waitForSelector('.phonetab .phlease img.phshot', { timeout: 15000 });
   ok(true, '...and the owner\'s tab shows it on the next poll');
-  const other_app = await allowed('start', { pkg: 'com.android.settings' });
-  ok(other_app.status === 400 && /not one of this lease's apps/.test(other_app.body.error),
-     `another app on the phone is refused, even allowed (${other_app.body.error})`);
+  // Refused before its owner is asked (report #52): an Allow spent on a
+  // command that cannot run is a question nobody needed.
+  const other_app = await use('start', { pkg: 'com.android.settings' });
+  ok(other_app.status === 403 && !other_app.body.asked && /not one of this lease's apps/.test(other_app.body.error),
+     `another app on the phone is refused, before its owner is asked (${other_app.body.error})`);
   const sneaky = await allowed('touch', { kind: 'tap', x: '1;reboot', y: '2' });
   ok(sneaky.status === 400, 'a touch takes numbers only');
   ok((await use('status')).body.project === 'alpha', 'reading the lease is the one thing that asks nobody');

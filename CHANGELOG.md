@@ -232,6 +232,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session sees the phone on its node again: bb phone status listed nothing for every session (it said no node carries adb), and now says what is missing: no phone connected, connected but not lent to this project, or lent elsewhere. (3ec42b6)
 - Wiki pages show their ## sections again (the notebook's own heading rule hid them), and a Contents link scrolls the pane to its section. (cba8a7b)
 - The Static analysis tab leaves out a finding the code suppressed in place (Semgrep's # nosemgrep), which a scanner's SARIF keeps marked as suppressed. (2985e3b)
+- bb phone install works on a lent phone: adb was pointed at /tmp while the build was fetched into the node's artifacts store, and an install the lease refuses (a file outside dist/) is now refused before the phone's owner is asked, not after (cd8289e)
 
 ### Security
 

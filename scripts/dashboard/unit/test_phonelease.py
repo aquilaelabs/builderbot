@@ -116,6 +116,34 @@ class Lease(unittest.TestCase):
             self.assertEqual(pl.use("app", "install", {"file": bad})[1], 400, bad)
         self.assertEqual(pl.use("app", "install", {"file": "dist/missing.apk"})[1], 404)
 
+    def test_an_install_names_the_file_where_the_agent_fetched_it(self):
+        # Report #52: a node's record keeps its stores under `reported`, the
+        # agent fetched the build into the artifacts store, and adb was
+        # pointed at /tmp, which only the top-level read fell back to.
+        node = {"reported": {"stores": {"artifacts": {"path": "/var/lib/builderbot/artifacts"}}}}
+        self.assertEqual(phone.install_dest(node, "Shebang-DevBoard", "dist/a.apk"),
+                         "/var/lib/builderbot/artifacts/Shebang-DevBoard/a.apk")
+        self.assertEqual(phone.install_dest({"stores": {"data": {"path": "/d"}}}, "p", "dist/a.apk"), "/d/a.apk")
+
+    def test_a_refusal_is_said_before_its_owner_is_asked(self):
+        pl.lend("n1", OWNER, "app", 1)
+        (self.tmp / "app" / "dist").mkdir(parents=True)
+        (self.tmp / "app" / "dist" / "a.apk").write_bytes(b"apk")
+        self.assertIsNone(pl.check("app", "install", {"file": "dist/a.apk"}))
+        # The whole path inside the project is the same file.
+        self.assertIsNone(pl.check("app", "install", {"file": str(self.tmp / "app" / "dist" / "a.apk")}))
+        self.assertEqual(pl.check("app", "install", {"file": "/etc/passwd.apk"})[1], 400)
+        self.assertEqual(pl.check("app", "install", {"file": "dist/none.apk"})[1], 404)
+        self.assertEqual(pl.check("app", "start", {"pkg": "com.other"})[1], 403)
+        self.assertEqual(pl.check("far", "shot", {})[1], 403)          # no lease there
+        saved = (phone.leasing, phone.nodes)
+        self.addCleanup(lambda: (setattr(phone, "leasing", saved[0]), setattr(phone, "nodes", saved[1])))
+        phone.leasing, phone.nodes = pl, None
+        session = {"name": "Owner", "uid": "u1", "session": "app"}
+        r, st = phone.verb("use", {"op": "install", "args": {"file": "src/a.apk"}}, session, False)
+        self.assertEqual(st, 400)
+        self.assertNotIn("asked", r)
+
 
 
 class Owner(Lease):

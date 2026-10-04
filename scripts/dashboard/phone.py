@@ -1202,8 +1202,11 @@ def _install_worker(nid, serial, rel, size, project, dest, by):
 
 def install_dest(node, project, rel):
     """Where the agent fetches a dist/ file for an install on this node: its
-    artifacts store for the project, or its data store without one."""
-    stores = node.get("stores") or {}
+    artifacts store for the project, or its data store without one. A node's
+    record keeps its stores under `reported`; a caller may hand them at the
+    top instead. Reading only the top sent a lease's install (which hands
+    the record) to /tmp while the agent fetched into the store (report #52)."""
+    stores = node.get("stores") or (node.get("reported") or {}).get("stores") or {}
     root = (stores.get("artifacts") or {}).get("path") or (stores.get("data") or {}).get("path") or "/tmp"
     if (stores.get("artifacts") or {}).get("path"):
         root = f"{root}/{re.sub(r'[^A-Za-z0-9._-]', '_', str(project or '')) or '_'}"
@@ -1421,8 +1424,12 @@ def verb(action, req, who, fresh):
         if op == "status" or not who.get("session"):
             return leasing.use(proj, op, req.get("args"))
         lnid, got = leasing.leased_to(proj)
-        if not got:
-            return leasing.use(proj, op, req.get("args"))      # its refusal, in its words
+        # What would be refused anyway is refused now, not after its owner
+        # was asked (report #52): no lease, a file outside dist/, an app
+        # that is not the lease's.
+        no = leasing.check(proj, op, req.get("args"))
+        if no:
+            return no
         rec = _rec(lnid) or {}
         args = req.get("args") if isinstance(req.get("args"), dict) else {}
         shown = ["bb", "phone", str(op)[:20]] + [f"{k}={str(v)[:120]}" for k, v in sorted(args.items())][:8]
