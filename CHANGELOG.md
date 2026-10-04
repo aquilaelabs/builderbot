@@ -244,6 +244,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Docker tab reads each container's Start on boot once instead of on every refresh: on a node that was a second job per listing, which slowed the tab (dc8c4a0)
 - A Claude session on a node builds with its project's own Gradle cache, as the briefing says: an isolated session got the account's shared one, where another project's idle Gradle daemon could hold the lock (3032df4)
 - bb phone shot on a lent phone no longer times out on a big screen: the screenshot comes back as a file the node uploads, not as text in the job's log (255e3b0)
+- Start on boot on the Docker tab works: the switch's read and its Apply were refused by the manager's own command guard, and on a node would have gone the wrong way; they run through the node's agent now (104317e)
 
 ### Security
 

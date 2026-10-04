@@ -1107,6 +1107,18 @@ def _guard(argv):
         if len(argv) == 3 and _CTR_NAME.match(argv[2]):
             return ""
         return f"a `docker {verb}` this module did not build"
+    # Start on boot (R122): the restart policies read for a list, and one set
+    # on named containers, each in the one shape this module builds. Refused
+    # by this guard until B476, so the switch never read or set anything.
+    if verb == "inspect":
+        if argv[2:4] == ["--format", BOOT_FORMAT] and argv[4:] and all(_CTR_NAME.match(a) for a in argv[4:]):
+            return ""
+        return "a `docker inspect` this module did not build"
+    if verb == "update":
+        if (argv[2:3] == ["--restart"] and len(argv) > 4 and argv[3] in ("unless-stopped", "no")
+                and all(_CTR_NAME.match(a) for a in argv[4:])):
+            return ""
+        return "a `docker update` this module did not build"
     if verb == "logs":
         if (len(argv) == 6 and argv[2] == "--tail" and argv[3].isdigit()
                 and argv[4] == "--timestamps" and _CTR_NAME.match(argv[5])):
@@ -1180,7 +1192,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     # failed on every fresh deploy (B134). Streamed calls are builds and
     # never reach here on an agent node; _submit ships those whole.
     if sink is None and hold is None and argv[:1] == [DOCKER] \
-            and len(argv) > 1 and argv[1] in _BARE_OK:
+            and len(argv) > 1 and (argv[1] in _BARE_OK or argv[1] == "inspect"):
         n = _agent_here()
         if n:
             return _agent_read(n, argv, timeout)
@@ -1191,7 +1203,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     # for, so a session's bb devapp log on the dev pair met "Host key
     # verification failed" from the VM (B312).
     if sink is None and hold is None and argv[:1] == [DOCKER] \
-            and len(argv) > 1 and argv[1] in _CTL_OK | {"logs"}:
+            and len(argv) > 1 and argv[1] in _CTL_OK | {"logs", "update"}:
         n = _agent_here()
         if n:
             return _agent_exec(n, argv, timeout)
@@ -1367,12 +1379,16 @@ def containers():
 # record, because a rebuild recreates its containers with the compose file's
 # policy, and the listing that finds one drifted puts the choice back.
 BOOT_ON = ("always", "unless-stopped")
+BOOT_FORMAT = "{{.Id}} {{.HostConfig.RestartPolicy.Name}}"
 # Each container's policy by its id, so a listing inspects only containers it
 # has not seen. On a node the listing is an agent job, and a second job for
 # the inspect on every listing doubled what the Docker tab waits on: devapp.mjs
 # timed out around Up in every gate that ran it beside another suite (B470).
 # A rebuild makes new ids, read once; Start on boot writes what it set here.
 _policies = {}
+_asked_at = {}          # id -> when an inspect last went unanswered for it
+_boot_thread = None     # the last read, for a test to wait on
+UNKNOWN_S = 300
 
 
 def boot_known(ids, policy):
@@ -1387,18 +1403,36 @@ def _boot_read(out):
     ids = [c["id"] for c in out if c.get("id")]
     if not ids:
         return
-    new = [i for i in ids if i not in _policies]
+    new = [i for i in ids if i not in _policies or
+           (_policies[i] == "" and time.time() - _asked_at.get(i, 0) > UNKNOWN_S)]
     if new:
-        r = _run([DOCKER, "inspect", "--format", "{{.Id}} {{.HostConfig.RestartPolicy.Name}}", *new], timeout=30)
-        for ln in (r.get("out") or "").splitlines():
-            bits = ln.split()
-            if len(bits) == 2:
-                _policies[bits[0][:12]] = bits[1]
+        # Read off the listing's path: the listing draws what is known, and
+        # the next one (seconds later) has the rest. On a node the inspect is
+        # a job of its own, and a listing that waited on it was what kept
+        # the Docker tab's waits running out (B470, B476). An id the daemon
+        # did not describe is remembered as unknown for a while, then asked
+        # again.
+        for i in new:
+            _policies[i] = ""
+            _asked_at[i] = time.time()
+        n = _agent_here()
+        argv = [DOCKER, "inspect", "--format", BOOT_FORMAT, *new]
+
+        def read():
+            r = _agent_read(n, argv, 30) if n else _run(argv, timeout=30)
+            for ln in (r.get("out") or "").splitlines():
+                bits = ln.split()
+                if len(bits) == 2 and bits[0][:12] in _policies:
+                    _policies[bits[0][:12]] = bits[1]
+        global _boot_thread
+        _boot_thread = threading.Thread(target=read, name="docker-boot", daemon=True)
+        _boot_thread.start()
     # Bounded: past a few hundred ids, keep only the ones this list has. A
     # node switched away from is read again once, which costs one inspect.
     if len(_policies) > 500:
         for i in [i for i in _policies if i not in ids]:
             _policies.pop(i, None)
+            _asked_at.pop(i, None)
     pol = {i: _policies.get(i, "") for i in ids}
     for c in out:
         c["restart"] = pol.get(c.get("id"), "")
