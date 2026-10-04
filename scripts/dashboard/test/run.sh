@@ -505,15 +505,24 @@ run_workers() {
     # Once more, alone, for each suite that failed, the way a single run
     # does it below: a worker of its own, one at a time, on a port of its
     # own choosing, with the whole box to itself.
+    local again_failed=()
     for t in "${failed[@]}"; do
         if BB_TEST_WORKER=again BB_TEST_AGAIN=1 bash "$0" "$t"; then
             flaky+=("$(basename "${t%.mjs}").mjs")
         else
+            again_failed+=("$(basename "${t%.mjs}").mjs")
             rc=1
         fi
     done
     if [ "${#flaky[@]}" -gt 0 ]; then
         warn "flaky: ${flaky[*]} failed in the whole run and passed again alone"
+    fi
+    # ...and named, the ones that failed again: a suite that ends before its
+    # first check (an uncaught timeout in its set-up) prints no FAIL line and
+    # adds nothing to the count, so "0 failed" sat above two suites that had
+    # run nothing, and they read as flakes (B464).
+    if [ "${#again_failed[@]}" -gt 0 ]; then
+        warn "failed again alone: ${again_failed[*]} (a suite that ends before its checks finish counts no FAIL: read its output above)"
     fi
     load_line
     [ "$rc" = 0 ] && log "dashboard tests: all passed" || warn "dashboard tests: FAILURES above"
