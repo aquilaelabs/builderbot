@@ -1330,7 +1330,10 @@ def _chat_summary(who, ps):
             "unread": chat.unread(uid, others, [p["name"] for p in ps], seen),
             # Everybody, not only who is here: a message waiting for somebody
             # who is away is most of what a history is for.
-            "people": sorted(n for n in store if n != mine)}
+            "people": sorted(n for n in store if n != mine),
+            # ...and when each was last here, for the name's "(3h ago)": the
+            # newer of this run's polls and the time kept on the record.
+            "seen": {n: int(max(_polls.get(n, 0), u.get("seen") or 0)) for n, u in store.items() if n != mine}}
 
 
 def account_names():
@@ -2995,6 +2998,12 @@ def revisions(who=None, projects=None):
 
 # Who has polled lately, in memory: presence, not a record. See chat.online.
 _polls = {}
+# ...and when each account's last-seen was last written to its record: at
+# most every ten minutes while it polls, so chat can say when somebody was
+# last here across a restart, without rewriting the file that holds the
+# password hashes four times a minute per open browser.
+_seen_written = {}
+SEEN_WRITE_S = 600
 
 def _findings_counts(who, ps):
     """Per-project finding counts for the poll, scoped the way the tab is.
@@ -3013,6 +3022,9 @@ def _findings_counts(who, ps):
 def snapshot(who):
     if who and who.get("name") and users.uid_of(who):
         _polls[who["name"]] = time.time()
+        if _polls[who["name"]] - _seen_written.get(who["name"], 0) > SEEN_WRITE_S:
+            _seen_written[who["name"]] = _polls[who["name"]]
+            users.touch(who["name"])
     ps = project_list(who)
     # Sessions this account has any business seeing: its own shells, and
     # anything on a project it was given. Filtered here for the same reason

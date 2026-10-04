@@ -650,6 +650,16 @@ print(u.remove("second"))`], { encoding: 'utf8' });
        `the poll says what is unread (${JSON.stringify(st.chat?.unread)})`);
     ok((st.chat.people || []).includes('test') && !(st.chat.people || []).includes('sharer'),
        '...and who there is to talk to, without listing yourself');
+    // When each was last here (the operator, 4 Oct): a time for everybody,
+    // and the list says it beside the name.
+    ok(st.chat.seen && st.chat.seen.test > 0, `...and when each was last here (${JSON.stringify(st.chat.seen)})`);
+    const chatWas = await page.evaluate(() => showChat);
+    await page.evaluate(() => { if (!showChat) mobPanel('chat'); chatWith = null; refresh(); });
+    await page.waitForFunction(() => /\((here now|.*ago|never signed in)\)/.test(
+      document.querySelector('#chat .chatrow[data-who] .chatseen')?.textContent || ''), null, { timeout: 15000 });
+    ok(true, 'the chat list says beside each name when they were last here');
+    // ...and the panel left as it was found: the next check opens it itself.
+    if (!chatWas) await page.evaluate(() => { if (showChat) mobPanel('chat'); });
     // Reading it clears it, which is the only thing "seen" has to mean.
     await chat(other, { action: 'read', who: 'test' });
     const after = await (await bare('/api/status', { headers: other })).json();
@@ -669,7 +679,7 @@ print(u.remove("second"))`], { encoding: 'utf8' });
       await page.evaluate(() => loadChat());
       await sleep(800);
       const kept = await page.evaluate(() => document.getElementById('chatlog').scrollTop);
-      ok(up.tall && up.top === 0 && kept === 0, `a reader scrolled up stays where they were across a poll (${kept})`);
+      ok(up.tall && up.top === 0 && kept === 0, `a reader scrolled up stays where they were across a poll (${kept} ${JSON.stringify(up)})`);
       await page.evaluate(() => { const l = document.getElementById('chatlog'); l.scrollTop = l.scrollHeight; });
       await chat(other, { action: 'send', who: 'test', text: 'the newest line' });
       await page.evaluate(() => loadChat());

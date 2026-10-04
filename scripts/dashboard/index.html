@@ -3310,6 +3310,8 @@ body.booting .pane>.loading{margin:auto}
 .chatrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   background:none;border:0;border-bottom:1px solid var(--line);padding:8px 10px}
 .chatrow:hover{background:var(--panel)}
+/* When somebody was last here, beside their name: the quiet note voice. */
+.chatrow .chatseen{font:var(--f-note);color:var(--dim)}
 /* Taken on, or merely visible. A channel that is yours reads as ordinary text;
    one an admin can see and has not taken on is dimmer and italic, which says
    "somebody else's" without competing with the ones that are theirs. They

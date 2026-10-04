@@ -62,6 +62,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The controller watches every project's CI once a day and when a project is linked: a moving runner label, an action a major version behind, a red main branch and GitHub's own deprecation notices, on the Git view's CI section, in bb catchup and in the bell. (63811c4)
 - The Toolchains tab offers the newest Android SDK platform (android-37.0 now) and build-tools as rows of their own, and the NDK, CMake, platform and build-tools rows say when a newer one is out and install it beside the old. A platform used to arrive only with an emulator image. (dbe386f)
 - Who may move a project's version is a Claude may dial in its settings (Move the version), shown by bb settings show, and bb version set X.Y.Z moves to a later version in one commit under that policy, rather than one bump per step. (67a66f6)
+- Chat shows when each person was last here beside their name, in the list and a conversation's title: (here now), (3h ago) or (never signed in), kept across a controller restart. (fe52ab1)
 
 ### Changed
 
