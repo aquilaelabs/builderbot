@@ -69,7 +69,10 @@ function nbGitView({$, nb, project}){
     const tree = treeOf();
     hint.textContent = `${tree.notMine ? `${tree.owner}'s working tree, ` : ""}on ${st.branch || "no branch"} · ${files.length
       ? `${files.length} change${files.length === 1 ? "" : "s"} not committed` : "nothing uncommitted"} · ${
-      local.length} branch${local.length === 1 ? "" : "es"}${
+      // A branch with no commit is not listed by git, so "0 branches" sat
+      // beside "on master" (B456): the honest word is that nothing is
+      // committed yet.
+      !commits.length ? "no commits yet" : `${local.length} branch${local.length === 1 ? "" : "es"}`}${
       st.upstream ? (st.ahead || st.behind
         ? ` · ${st.ahead ? st.ahead + " to push" : ""}${st.ahead && st.behind ? ", " : ""}${st.behind ? st.behind + " to pull" : ""} (${git.host?.name || "the remote"})`
         : ` · in step with ${git.host?.name || "the remote"}`) : ""}`;

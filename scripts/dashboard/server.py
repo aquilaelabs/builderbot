@@ -2242,8 +2242,11 @@ def no_node_advice(name):
     """What a project with no node can still do, said the same way
     everywhere: a session reads and edits regardless (that is what this
     box is for), and building happens on a node or on GitHub."""
-    return ("Pick one in the project's settings dialog"
-            + (", or commit and let CI build it; this project can push."
+    # Settings is the notebook's view now, and "can push" read as news
+    # about a remote beside a repository with no upstream (B456): it is the
+    # project's push rights, so it says what to do with them.
+    return ("Pick one on the project's notebook Settings"
+            + (", or push a commit and let CI build it."
                if projects.may_push(name)
                else ". This project has no push rights either, so CI is not a "
                     "fallback until it does.")

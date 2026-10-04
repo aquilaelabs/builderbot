@@ -154,7 +154,7 @@ def admit(me, req):
             and users.uid_of(me) and not users.git_ready(me, project):
         return None, ({"error": "no name and email for commits yet: set them on your "
                                 "Profile (the gear in the dashboard's header), or for "
-                                "this project alone in its settings dialog"}, 403)
+                                "this project alone on its notebook's Settings"}, 403)
     if not project or (WORKSPACE / project).name != project \
             or not (WORKSPACE / project).is_dir():
         return None, ({"error": "not a project"}, 400)

@@ -870,8 +870,8 @@ def available():
         have = [n for n in (queue.docker_nodes() if queue else []) if n.get("kind") != "local"]
         if have:
             return {"on": False,
-                    "why": "this project has no node, so it has no daemon: pick one in its "
-                           "settings dialog (" + ", ".join(n["name"] for n in have[:3]) + ")"} | source()
+                    "why": "this project has no node, so it has no daemon: pick one on its "
+                           "notebook's Settings (" + ", ".join(n["name"] for n in have[:3]) + ")"} | source()
         return {"on": False,
                 "why": "no node with a daemon; enroll the sandbox VM on the "
                        "Nodes tab (Enroll node mints a token, then provision-linux.sh "

@@ -1929,7 +1929,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     const nonode = await api('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['true'] });
     // A project with no node is a normal state: the refusal says what is
     // missing and names the fallback, and never suggests building here.
-    ok(/has no node/.test(nonode.error || '') && /settings dialog/.test(nonode.error || '')
+    ok(/has no node/.test(nonode.error || '') && /notebook Settings/.test(nonode.error || '')
        && /Reading and editing the code needs no node/.test(nonode.error || ''),
        `a project with no node set is refused, and told where to set one (${JSON.stringify(nonode).slice(0, 160)})`);
     const onlocal = await api('/api/v1/jobs', { action: 'run', project: 'alpha', node: 'local', argv: ['true'] });

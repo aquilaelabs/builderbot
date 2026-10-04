@@ -282,6 +282,15 @@ def _relspec(project, where):
         return None
 
 
+def no_history(project):
+    """Why HEAD has no commit, in the one sentence that is true: the
+    Artifacts view said "not a git repository, or no commits yet" beside a
+    Git view showing the repository (B456)."""
+    if _git(project, "rev-parse", "--git-dir") is not None:
+        return "no commits yet: the version is counted from the first commit"
+    return "not a git repository: Init on the Git view makes one"
+
+
 def _repo(project):
     """The repo-wide facts, gathered once. None where there is no repo.
 
@@ -307,7 +316,7 @@ def parts(project, comp="", repo=None):
     tgt, err = target(project, comp)
     repo = _repo(project) if repo is None else repo
     if repo is None:
-        return {"target": tgt, "error": err or "not a git repository (Init on the Git view makes one), or no commits yet",
+        return {"target": tgt, "error": err or no_history(project),
                 "ordinal": None, "sha": None, "tag": "", "dirty": False,
                 "describe": None, "released": False}
     where = _sub(project, comp)
@@ -614,7 +623,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
         return {"error": f"no such component here: {comp}"}
     sha = _git(project, "rev-parse", "--short=7", "HEAD")
     if sha is None:
-        return {"error": "not a git repository (Init on the Git view makes one), or no commits yet"}
+        return {"error": no_history(project)}
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
         # Which commit it is on, because "it already exists" and "it is on
@@ -858,8 +867,7 @@ def init(project, value, by="claude", comp="", env=None):
         return {"error": f"{comp + '/' if comp else ''}{VERSION_FILE} already "
                          f"exists; use a bump to change it"}
     if _git(project, "rev-parse", "--short=7", "HEAD") is None:
-        return {"error": "not a git repository, or no commits yet: a version "
-                         "needs history to count"}
+        return {"error": no_history(project)}
     why = _cl_guard(project, where)
     if why:
         return {"error": why}

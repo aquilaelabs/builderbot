@@ -742,8 +742,8 @@ def test(project, instance=devapp.MAIN, cmd="", args=()):
     cmd = str(cmd or "").strip()
     if not cmd:
         return {"error": f"no test command is set for {project}: bb settings set test "
-                         "'...' fills it in, or the operator does in the project's "
-                         "settings dialog (Build and test)"}
+                         "'...' fills it in, or the operator does on the project's "
+                         "notebook Settings (Build and test)"}
     bad = [a for a in args if not _ARG.fullmatch(str(a))]
     if bad:
         return {"error": f"an argument the test command cannot take: {bad[0]!r}"}
