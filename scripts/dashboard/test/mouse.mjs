@@ -6,8 +6,16 @@ const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
 await page.waitForFunction(() => document.querySelectorAll('#commands [data-m]').length > 0, { timeout: 40000 });
+// The drag is among three shells: the Projects tab a page opens on since R119
+// is closed first, leaving the workspace shell, and two more are opened.
+await page.evaluate(() => { const t = tabs.find(x => x.kind === 'projects'); if (t) dropTab(t.id); });
 await page.evaluate(() => { newShell(''); newShell(''); });
 await page.waitForFunction(() => document.querySelectorAll('.tab[data-id]').length === 3);
+// ...and the strip at rest: the closed tab's exit and the new ones' entrance
+// move the others, and boxes measured mid-tween aim the drag at nothing.
+await page.waitForFunction(() => !document.querySelector('.tab.leaving, .tab.entering')
+  && document.getAnimations().every(a => a.playState !== 'running'), null, { timeout: 5000 }).catch(() => {});
+await page.waitForTimeout(300);
 const ids0 = await page.$$eval('.tab[data-id]', ts => ts.map(t => t.dataset.id));
 const activeBefore = await page.evaluate(() => panes[0]);
 const lb = await (await page.$(`.tab[data-id="${ids0[2]}"] .lbl`)).boundingBox();
