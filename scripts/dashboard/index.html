@@ -1295,6 +1295,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
   flex-wrap:wrap}
 .modal .foot .sp,.nb .foot .sp{flex:1}
+/* A note in a dialog is the quiet explainer, as it is on a row: with no rule
+   here it drew at body size in full ink, larger than the label it explains
+   (project settings' People, the bug report's conversation line, B452). */
+.modal .sub{font:var(--f-note);color:var(--dim)}
+.modal .sub.bad{color:var(--bad)}
+.modal .sub.warn{color:var(--warn)}
+.modal .sub.ok{color:var(--ok)}
 .nb .foot[hidden]{display:none}
 /* A verb that cannot be undone, once and everywhere. It was scoped to the
    modals and the notebook, so the same decision: Remove a container, Revoke
