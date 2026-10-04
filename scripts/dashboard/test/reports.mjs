@@ -4,7 +4,7 @@
 // the report waits on the controller, is read in the diagnostics behind their
 // gate, and is filed into a tracker or closed from there; the session that
 // made it reads what became of it. No browser: it is an API and a verb.
-import { launch, newPage, ready, ok, done, saveDialog, URL, DIR } from './lib.mjs';
+import { launch, newPage, ready, ok, done, saveDialog, URL, DIR, unfold } from './lib.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
@@ -186,8 +186,9 @@ ok(page.dialogs.length === 0, '...and with none kept, it says so rather than ask
 // from the dashboard, whatever the project's Claude dial says.
 {
   await page.evaluate(() => openProjectsTab?.());
-  await page.waitForSelector('[data-bug="alpha"]', { timeout: 15000 });
-  await page.click('[data-bug="alpha"]');
+  await page.waitForSelector('[data-bug="alpha"]', { timeout: 15000, state: 'attached' });
+  await unfold(page, 'alpha');
+  await page.click('#projects [data-bug="alpha"]');
   await page.waitForSelector('#reportModal:not([hidden]) #reportCat', { timeout: 10000 });
   ok(/alpha/.test(await page.$eval('#reportTitle', e => e.textContent))
      && (await page.$$eval('#reportCat option', os => os.length)) >= 8,
@@ -219,7 +220,8 @@ ok(page.dialogs.length === 0, '...and with none kept, it says so rather than ask
     { type: 'user', message: { role: 'user', content: 'make the wiki keep my edit' }, timestamp: '2026-10-02T10:00:00Z' },
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Saving it now. token=ghp_abcdefghijklmnopqrstuvwxyz0123456789' }] }, timestamp: '2026-10-02T10:00:05Z' },
   ].map(x => JSON.stringify(x)).join('\n') + '\n');
-  await page.click('[data-bug="alpha"]');
+  await unfold(page, 'alpha');
+  await page.click('#projects [data-bug="alpha"]');
   await page.waitForSelector('#reportConvField:not([hidden])', { timeout: 10000 });
   ok(/make the wiki keep my edit/.test(await page.$eval('#reportConvWhich', e => e.textContent))
      && !(await page.$eval('#reportConv', e => e.checked)),
