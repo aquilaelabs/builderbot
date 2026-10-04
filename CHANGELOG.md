@@ -246,6 +246,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A Claude session on a node builds with its project's own Gradle cache, as the briefing says: an isolated session got the account's shared one, where another project's idle Gradle daemon could hold the lock (3032df4)
 - bb phone shot on a lent phone no longer times out on a big screen: the screenshot comes back as a file the node uploads, not as text in the job's log (255e3b0)
 - Start on boot on the Docker tab works: the switch's read and its Apply were refused by the manager's own command guard, and on a node would have gone the wrong way; they run through the node's agent now (104317e)
+- A node no longer stops taking signing, builds and rebuilds when one job's end never comes back: a job running far past its own time limit is failed as lost and the node's slot freed (ea8a928)
 
 ### Security
 

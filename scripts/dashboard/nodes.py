@@ -2834,6 +2834,36 @@ def _requeue_unclaimed(node_id):
             _jstate_bump()
 
 
+# ...and how long past its own timeout a job may stay `running` with no
+# result before it is failed: a job whose end never came back held the
+# node's one slot for good. A lent phone's base64 screenshot did (B475's
+# job), unseen because probes are not listed, and every sign and rebuild on
+# bb-sandbox queued behind it for hours while short execs went on the light
+# lane (report #55). A job with no timeout gets the longest the agent gives
+# any kind, a build's.
+RUN_LOST_S = 300
+RUN_DEFAULT_S = 6 * 3600
+
+
+def _fail_overdue(node_id):
+    now = int(time.time())
+    for r in _rows("SELECT id, spec, started FROM jobs WHERE node = ? AND state = 'running'", (node_id,)):
+        try:
+            spec = json.loads(r["spec"] or "{}")
+        except (ValueError, TypeError):
+            spec = {}
+        try:
+            limit = int(spec.get("timeout") or RUN_DEFAULT_S) + RUN_LOST_S
+        except (ValueError, TypeError):
+            limit = RUN_DEFAULT_S + RUN_LOST_S
+        if r["started"] and r["started"] < now - limit:
+            _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error = ? "
+                  "WHERE id = ? AND state = 'running'",
+                  (now, "lost: ran past its time limit and the node never sent its end", r["id"]))
+            if not _quiet(r["id"]):
+                _jstate_bump()
+
+
 def job_next(node_id, wait, runner="node", alive=None):
     """The oldest queued job this node may take, for this runner, else wait
     up to `wait` seconds for one, or for a cancel request, which comes back
@@ -2860,6 +2890,7 @@ def job_next(node_id, wait, runner="node", alive=None):
             n = node(node_id)
             if n and n["state"] == "online":
                 _requeue_unclaimed(node_id)
+                _fail_overdue(node_id)
                 # A slot free, or not: with none, a LIGHT job may still go
                 # (see _light). Everything else waits for the slot as before.
                 free = job_running(node_id) < n["concurrency"]

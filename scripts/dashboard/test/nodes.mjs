@@ -127,6 +127,18 @@ out['requeue'] = {'took': bool(took2 and took2.get('id') == j2.get('job')),
                   'again': bool(again and again.get('id') == j2.get('job')),
                   'why': m._no_answer('j_nothing', older, 25)}
 m.job_result(older, j2.get('job'), 'succeeded', 0)
+# A job running long past its own timeout whose end never came back held
+# the node's one slot for good (report #55): failed as lost, and the next
+# job is handed out.
+j3 = m.job_add('user:test', {'node': older}, 'exec', {'argv': ['true'], 'timeout': 90})
+m.job_next(older, 0)
+m._exec("UPDATE jobs SET state = 'running', started = started - 1000 WHERE id = ?", (j3.get('job'),))
+j4 = m.job_add('user:test', {'node': older}, 'exec', {'argv': ['true']})
+after = m.job_next(older, 0)
+lost = m.job(j3.get('job'))
+out['overdue'] = {'failed': lost['state'] == 'failed' and lost['error'].startswith('lost:'),
+                  'next': bool(after and after.get('id') == j4.get('job'))}
+m.job_result(older, j4.get('job'), 'succeeded', 0)
 out['revs'] = {'queued': r1 > r0, 'taken': r2 > r1, 'chunk': r2b == r2, 'ended': r3 > r2,
                'job': bool(took and took.get('id') == j.get('job')), 'err': j.get('error')}
 print(json.dumps(out))
@@ -139,6 +151,8 @@ print(json.dumps(out))
      && /was handed exec .* ago and has not started it/.test(got.requeue.why || '') && /last dialed in/.test(got.requeue.why || ''),
      `a job handed to a poll that never started it goes back to the queue, and a wait behind it says so (${
         JSON.stringify(got.requeue)})`);
+  ok(got.overdue.failed && got.overdue.next,
+     `a job running far past its own timeout with no end from the node is failed as lost, and the slot goes to the next (${JSON.stringify(got.overdue)})`);
   ok(got.revs.job && got.revs.queued && got.revs.taken && got.revs.ended && got.revs.chunk,
      `a job being queued, taken and finished moves the nodes rev, and a log chunk does not, so an open Nodes tab follows a job without a reload (${JSON.stringify(got.revs)})`);
 }
