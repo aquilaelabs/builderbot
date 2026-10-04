@@ -54,6 +54,18 @@ ok(art.title === 'Home' && art.h1s === 2 && art.toc.join('|') === 'Welcome|Insta
    `an article: its title once, its sections in a Contents box, Read on, set in the serif (${JSON.stringify(art)})`);
 ok(await page.$eval(`${NB} .wknav`, n => /Home/.test(n.textContent) && getComputedStyle(n).display !== 'none'),
    'the pages are listed beside it on a desktop');
+// Its sections are drawn, and Contents goes to one (the operator, 4 Oct): a
+// rule hiding every h3 in the notebook hid each ## section, and the links
+// pointed at headings nobody could see.
+ok(await page.$$eval(`${NB} .wkpage h3`, hs => hs.length === 2 && hs.every(h => h.checkVisibility() && h.getBoundingClientRect().height > 0)),
+   'a page\'s ## sections are drawn, not hidden by the notebook\'s own heading rule');
+await page.click(`${NB} .wktoc a[data-anchor="wk-install"]`);
+await page.waitForFunction(sel => { const h = document.querySelector(sel); const sc = h?.closest('.doc');
+  return h && sc && (h.getBoundingClientRect().top >= sc.getBoundingClientRect().top - 2 && h.getBoundingClientRect().bottom <= sc.getBoundingClientRect().bottom); },
+  `${NB} #wk-install`, { timeout: 5000 }).catch(() => {});
+ok(await page.$eval(`${NB} #wk-install`, h => { const sc = h.closest('.doc');
+  return (h.getBoundingClientRect().top >= sc.getBoundingClientRect().top - 2 && h.getBoundingClientRect().bottom <= sc.getBoundingClientRect().bottom); }),
+   '...and after a Contents link its section is in view in the pane');
 
 // ---- Edit, and a stale save refused --------------------------------------------
 const home = await api(`/api/wiki?project=${P}&page=Home`);

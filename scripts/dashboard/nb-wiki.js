@@ -273,9 +273,19 @@ function nbWikiView({$, nb, project}){
     const name = nb.wkCur;
     // A [[link]], the nav's and the sidebar's: that page, in place.
     box.querySelectorAll(".wklink").forEach(a => a.onclick = ev => { ev.preventDefault(); go(a.dataset.page); });
+    // The pane is what scrolls, so the pane is scrolled: scrollIntoView
+    // moved the PAGE instead, the heading went up under the header and the
+    // article sat where it was, which read as the contents doing nothing
+    // (the operator, 4 Oct).
     box.querySelectorAll("[data-anchor]").forEach(a => a.onclick = ev => {
       ev.preventDefault();
-      box.querySelector("#" + CSS.escape(a.dataset.anchor))?.scrollIntoView({block: "start"});
+      const h = box.querySelector("#" + CSS.escape(a.dataset.anchor));
+      if (!h) return;
+      let sc = h.parentElement;
+      while (sc && !(/(auto|scroll)/.test(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight)) sc = sc.parentElement;
+      if (!sc) return;
+      sc.scrollTo({top: sc.scrollTop + h.getBoundingClientRect().top - sc.getBoundingClientRect().top - 8,
+                   behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
     });
     const pick = box.querySelector("#wkPick");
     if (pick) pick.onchange = () => go(pick.value);

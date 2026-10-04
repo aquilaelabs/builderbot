@@ -2379,6 +2379,10 @@ pre.diff .d-ctx{color:var(--dim)}
    once. Both of those are the same rule reaching one child too far. */
 .nb > .nbsheet{max-width:none}
 .nb h3{display:none}
+/* ...except a wiki article's: a page's ## is an h3 there, and this rule hid
+   every one of them, so the sections were missing and the contents box
+   linked to headings that were not drawn (the operator, 4 Oct). */
+.nb .wkpage h3,.nb .wkfooter h3{display:block}
 .nb #roadmapList,.nb #memList{max-height:none;overflow:visible;
   overscroll-behavior:auto}
 /* No inset and no ceiling: a document is the pane's whole content, not a box
