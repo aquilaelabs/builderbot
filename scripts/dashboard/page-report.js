@@ -38,7 +38,10 @@ function openReport(project){
     .then(r => r.json()).then(j => {
       const c = (j.rows || [])[0];
       if (!c || reportProject !== project) return;
-      $("reportConvWhich").textContent = `${ago(c.at)}: "${String(c.first || "").slice(0, 90)}". `
+      // Its first words when it has any; a conversation that opened with
+      // nothing typed printed `just now: "".` (B453).
+      const first = String(c.first || "").trim().slice(0, 90);
+      $("reportConvWhich").textContent = `${ago(c.at)}${first ? `: "${first}"` : ""}. `
         + "Its last part goes with the report, with secrets taken out, to whoever reads the diagnostics.";
       $("reportConvField").hidden = false;
     }).catch(() => {});
