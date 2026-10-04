@@ -198,6 +198,13 @@ cmd_tests_preflight() {
         case "$c" in design) case " ${suites[*]:-} " in *" uniform "*|*" ALL "*) continue ;; esac ;; esac
         if bash "$0" rules check "$c" 2>&1 | tee -a "$rl"; then :; else rc=1; fi
     done
+    # A run refused for another one holding the lock ran no suite at all,
+    # which "something above failed" did not say: a gate cut for a new ask
+    # can leave a worker holding it for a minute (B471).
+    if [ "$rc" != 0 ] && grep -q "another dashboard test run is going" "$rl" 2>/dev/null; then
+        warn "preflight: no suite ran: $(grep -m1 -o 'another dashboard test run is going ([^)]*)' "$rl"). Wait for it to end, then run this again"
+        return 1
+    fi
     [ "$rc" = 0 ] && log "preflight: clean" || warn "preflight: something above failed"
     return "$rc"
 }
