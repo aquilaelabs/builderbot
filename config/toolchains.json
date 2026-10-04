@@ -187,7 +187,7 @@
       "requires": [
         "jdk"
       ],
-      "about": "sdkmanager and avdmanager: the bootstrap every other android:* toolchain installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
+      "about": "sdkmanager and avdmanager: every other Android toolchain installs through them. Installed into this node's store, which becomes its ANDROID_HOME.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -264,7 +264,7 @@
         "android-tools",
         "android:platform-tools"
       ],
-      "about": "The emulator binary. System images are per API level and come from the image picker above, or from bb emu create on the node. Google ships it for x86_64 Linux only, and the image abi is x86_64 (B278).",
+      "about": "The Android emulator. Its system images, one per API level, are added on the Emulator tab. Google ships it for x86_64 Linux only.",
       "system": {
         "apt": [
           "libpulse0",
@@ -336,7 +336,7 @@
       "requires": [
         "android-tools"
       ],
-      "about": "adb, and the rest of the tools that talk to a device or an emulator. Every `bb emu` verb goes through adb, so the emulator is unusable without it. Google ships it for x86_64 Linux only, and the image abi is x86_64 (B278).",
+      "about": "adb and the other tools that talk to a phone or an emulator; the emulator and the Phone tab need it. Google ships it for x86_64 Linux only.",
       "source": {
         "kind": "sdkmanager",
         "package": "platform-tools",
@@ -1359,7 +1359,7 @@
       "platforms": [
         "linux/amd64"
       ],
-      "about": "A C and C++ cross-compiler as much as a language: `zig cc -target x86_64-windows-gnu` turns this box into a Windows toolchain, and it links for Rust too.",
+      "about": "A C and C++ cross-compiler as much as a language: zig cc builds for Windows, macOS or Linux from here, and it links for Rust too.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -1390,7 +1390,7 @@
       "platforms": [
         "darwin/*"
       ],
-      "about": "The tool that installs and switches Xcode versions on a Mac, from Apple's own downloads: `xcodes install --latest` in a shell on the node, with an Apple ID the first time. Xcode itself is 15GB and Apple's to serve, so it is not a recipe.",
+      "about": "Installs and switches Xcode versions on a Mac from Apple's own downloads: run xcodes install --latest in a shell on the node, with an Apple ID the first time. Xcode itself is 15 GB and Apple's to serve, so it is not a recipe here.",
       "source": {
         "kind": "script",
         "fresh_only": true,
