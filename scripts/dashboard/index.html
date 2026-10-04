@@ -1998,7 +1998,9 @@ pre.diff .d-ctx{color:var(--dim)}
    The notebook). */
 @media(max-width:600px){
   .nbtabs{flex-wrap:wrap;overflow:visible;padding:4px 8px 0;gap:2px}
-  .nbtabs button{flex:1 1 30%;text-align:center;padding:9px 6px}
+  /* Four to a row: eleven views in three rows rather than four, and no
+     lone tab stretched across the last (R119, 4 Oct). */
+  .nbtabs button{flex:1 1 22%;text-align:center;padding:9px 4px}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}

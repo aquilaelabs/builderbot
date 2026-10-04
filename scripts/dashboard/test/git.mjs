@@ -927,7 +927,7 @@ const strip = await page.$eval('.nb .nbtabs', el => {
            inside: bs.every(b => b.left >= box.left - 1 && b.right <= box.right + 1),
            over: el.scrollWidth - el.clientWidth };
 });
-ok(strip.n === 10 && strip.rows >= 2 && strip.inside && strip.over <= 0,
+ok(strip.n === 11 && strip.rows >= 2 && strip.rows <= 3 && strip.inside && strip.over <= 0,
    `on a phone the strip wraps into rows and every tab is on screen (${JSON.stringify(strip)})`);
 
 // bb projects lists what the dashboard lists: a directory carrying .bbignore
