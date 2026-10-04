@@ -1057,6 +1057,10 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    tab at desktop width, where the row turns back into a line and this has to
    wrap onto its own beneath it. */
 .row.stack2 .sessline{width:100%;flex-basis:100%;min-width:0;overflow-wrap:anywhere;color:var(--accent)}
+/* ...but a refusal is a refusal: the accent beat .sub.bad on specificity and
+   'no node to run a Claude session on' read as a healthy state (B451). */
+.row.stack2 .sessline.bad{color:var(--bad)}
+.row.stack2 .sessline.warn{color:var(--warn)}
 /* Who has a session here: a line per name with a dot in front, bright while
    that session is working and dim while it waits. */
 .row.stack2 .sesslist{width:100%;flex-basis:100%;min-width:0;color:var(--accent)}
