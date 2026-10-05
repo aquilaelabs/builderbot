@@ -629,7 +629,10 @@ await closePage(phone);
 const land = await newPage(browser, { viewport: { width: 844, height: 390 } });
 await land.goto(URL);
 await land.waitForFunction(() => state !== null, { timeout: 30000 });
-await land.evaluate(() => { setView('terminal'); mobPanel('macros'); });
+// A terminal in front first: Commands opens only over a shell, and since
+// R131 a fresh browser starts on the front tab as of the strip's last
+// change, which may be a document (B494).
+await land.evaluate(() => { setView('terminal'); const t = tabs.find(x => x.kind === 'term'); if (t) focusTab(t.id); mobPanel('macros'); });
 await land.waitForFunction(() => document.getElementById('macpanel').classList.contains('show') && !document.getElementById('macpanel').classList.contains('sliding'));
 const fit = await land.evaluate(() => ({ bar: document.getElementById('mobar').getBoundingClientRect().bottom, panes: document.getElementById('panes').offsetHeight }));
 ok(fit.bar <= 390 && fit.panes >= 90, `landscape: the bar stays on screen with a flyout open (bar bottom ${Math.round(fit.bar)}px, terminal ${fit.panes}px)`);
