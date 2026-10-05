@@ -2423,12 +2423,6 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
                 # scope "mine" means (R137 step 3).
                 nodes_of=lambda u: {n for p in (u.get("projects") or [])
                                     for n in prefs._nodes_of(prefs.get(p) or {})})
-# The owner takes projects on like everybody (R135): a record that carried
-# "*" gets the projects that exist now, so nothing they were on is lost.
-try:
-    users.migrate_star([p["name"] for p in project_list(users.ALL)])
-except Exception as e:  # noqa: BLE001 (a migration never keeps the dashboard from starting)
-    sys.stderr.write(f"[dashboard] R135: the owner's project list was not migrated: {e}\n")
 
 # ---- the dev instance ------------------------------------------------------
 # A project's compose app, built and run on the sandbox VM's daemon. The
@@ -6618,6 +6612,17 @@ def main():
               "you to make the owner. Do it now: until you do, whoever "
               "reaches this port can.", flush=True)
     layout.prune_claude_tabs()
+    # The owner takes projects on like everybody (R135): a record that
+    # carried "*" gets the projects that exist now, so nothing they were on
+    # is lost. Here, once every module is configured: at import it ran
+    # before project_list could answer, failed, and the dev instance's
+    # owner kept "*" (B496).
+    try:
+        moved = users.migrate_star([p["name"] for p in project_list(users.ALL)])
+        if moved:
+            print(f"dashboard: {moved} account(s) moved from every project to the ones that exist (R135)", flush=True)
+    except Exception as e:  # noqa: BLE001 (a migration never keeps the dashboard from starting)
+        print(f"dashboard: the owner's project list was not migrated (R135): {e}", flush=True)
     # Daemons: these loops must die with the server, not hold it open.
     doctor.start()
     idle.start()
