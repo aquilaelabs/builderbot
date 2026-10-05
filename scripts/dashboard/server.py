@@ -832,9 +832,15 @@ def _project_columns(who, facts):
     node_gaps = {}
     # ...and its name, for the row to wear beside the project's.
     node_names = {}
+    # ...and which of them were un-enrolled: a project left on one keeps it,
+    # named, so the person can see where it used to run (the operator, 5 Oct).
+    removed_nodes = set()
     if not NODES_OK:
-        for n in nodes.node_list():
+        for n in nodes.node_list(all=True):
             node_names[n["id"]] = n["name"]
+            if n["state"] == "retired":
+                removed_nodes.add(n["id"])
+                continue
             if n["kind"] == "agent" and n.get("live"):
                 why = nodes.agent_stale(n)
                 if why:
@@ -967,6 +973,9 @@ def _project_columns(who, facts):
                     # Which node this project's work runs on, by name, or ""
                     # for none: the row says "(node: X)" beside the name.
                     "node_name": node_names.get(project_prefs.get(d.name, {}).get("node") or "", ""),
+                    # The project's node was un-enrolled: the settings picker
+                    # keeps it, marked, and the row says why Claude is off.
+                    "node_removed": (project_prefs.get(d.name, {}).get("node") or "") in removed_nodes,
                     # The phone on its node: whose, whether it is this
                     # account's, and whom it is lent to (R120).
                     "phone": phones.get(project_prefs.get(d.name, {}).get("node") or ""),
@@ -1238,7 +1247,12 @@ def session_target(project, claude=False, node=""):
     rep = n.get("reported") or {}
     se = rep.get("session")
     passing = False
-    if n.get("state") != "online":
+    if n.get("state") == "retired":
+        # Un-enrolled (the operator, 5 Oct): the fact first, for the row, and
+        # what to do after it, for the tooltip.
+        why = (f"{name} was removed from the Nodes tab. Pick another node in {project}'s settings, "
+               "or enroll it again")
+    elif n.get("state") != "online":
         why = f"{project}'s sessions run on {name}, which is {n.get('state') or 'not online'}"
     elif n.get("live") is False:
         # The agent has stopped dialing in: a reboot, an update, a machine

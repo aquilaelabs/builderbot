@@ -569,6 +569,20 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    .col stacks the row; the field takes the row's width, which the cap on
    .setrow already limits. */
 .setrow.col{flex-direction:column;align-items:stretch;gap:var(--label-gap)}
+/* A role's grant on the Roles tab (R137): the capability at the field
+   label's size and its sentence at the note size, the same voices a
+   built-in role's summary above it speaks in. A .sub is sized only inside
+   a .row, and these are field rows, so the sentence fell back to body
+   text and the tab spoke in two sizes (5 Oct). */
+.rgrant label.pick{font:var(--f-ui);color:var(--ink)}
+.rgrant>.sub,.rolestab .rgroup{font:var(--f-note);color:var(--dim)}
+.rolestab .rgroup{text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
+/* A node that was un-enrolled, kept on the one project still set to it
+   (page-projsettings.js): italic in the list and in the closed picker. */
+/* One class over the field skin's .nb select and .modal select, whose font
+   shorthand sets the style back to normal. */
+.nb select.removed,.modal select.removed,.doctab select.removed,option.removed{font-style:italic}
+.nb select.removed,.modal select.removed,.doctab select.removed{color:var(--dim)}
 /* Outranks the row rule's flex-basis, which is a WIDTH in a row and would
    be a height here: a stacked field is as wide as its row and as tall as a
    field. */
@@ -5538,7 +5552,11 @@ $("cYml").oninput = () => { cYmlTouched = true; };
 $("cTabEnv").onclick = () => cSwitch("env");
 $("cUnder").onchange = cUnderPicked;
 $("dnUnder").onchange = dnNodeSay;
-$("rnNode").onchange = rnFillNodesMore;
+$("rnNode").onchange = () => {
+  // Italic only while the removed node is the one shown (page-projsettings.js).
+  $("rnNode").classList.toggle("removed", !!$("rnNode").selectedOptions[0]?.classList.contains("removed"));
+  rnFillNodesMore();
+};
 $("cGo").onclick = cSubmit;
 $("cCancel").onclick = () => { $("cmodal").hidden = true; };
 $("cmodal").onclick = e => { if (e.target === $("cmodal")) $("cmodal").hidden = true; };

@@ -2721,4 +2721,43 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
      `a probe's result leaves the job revisions still even when its waiter forgets it first (${JSON.stringify(got)})`);
 }
 
+// A node un-enrolled under a project (the operator, 5 Oct): the project's
+// Claude button goes dead with the reason on its row, its settings keep
+// the node selected as "name (removed)" in italics, and another project's
+// picker does not offer it at all.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  const napi = async (path, body) => (await fetch(base + path, { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+  const gone = await napi('/api/v1/nodes', { action: 'enroll', name: 'oldbox' });
+  const was = (await (await fetch(`${base}/api/status`, { headers: H })).json()).projects.find(p => p.name === 'delta')?.prefs?.node || '';
+  await napi('/api/prefs', { project: 'delta', node: gone.id });
+  await napi('/api/v1/nodes', { action: 'retire', id: gone.id });
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => (state?.projects || []).find(p => p.name === 'delta')?.node_removed, null, { timeout: 15000 });
+  const row = await page.evaluate(() => {
+    const p = state.projects.find(x => x.name === 'delta');
+    const r = document.querySelector('#projects .row[data-name="delta"], #projects [data-p="delta"]')?.closest('.row');
+    return { why: p.session_why, line: r?.querySelector('.sessline')?.textContent || '', name: p.node_name };
+  });
+  ok(row.name === 'oldbox' && /oldbox was removed from the Nodes tab/.test(row.why || ''),
+     `a project on an un-enrolled node keeps its name and says why Claude is off (${(row.why || '').slice(0, 70)}; row: ${row.line})`);
+  const pick = async name => page.evaluate(async n => {
+    openProjectSettings(n);
+    for (let i = 0; i < 60 && !document.querySelector('#rnNode option'); i++) await new Promise(r => setTimeout(r, 100));
+    await new Promise(r => setTimeout(r, 400));
+    const s = document.getElementById('rnNode');
+    return { value: s.value, cls: s.className, italic: getComputedStyle(s).fontStyle,
+             opts: [...s.options].map(o => o.textContent.trim().slice(0, 40)) };
+  }, name);
+  const mine = await pick('delta');
+  ok(mine.value === gone.id && mine.opts.includes('oldbox (removed)') && mine.italic === 'italic',
+     `its settings keep the node selected, as "oldbox (removed)" in italics (${JSON.stringify(mine)})`);
+  await page.keyboard.press('Escape');
+  const theirs = await pick('alpha');
+  ok(!theirs.opts.some(o => /oldbox/.test(o)), `another project's picker does not offer it (${JSON.stringify(theirs.opts)})`);
+  await page.keyboard.press('Escape');
+  await napi('/api/prefs', { project: 'delta', node: was });
+}
+
 await done(browser);

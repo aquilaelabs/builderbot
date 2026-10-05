@@ -153,7 +153,11 @@ function rnFillPrefs(p){
 // container restart, then the first press of Settings.
 function rnFillNode(){
     const sel = $("rnNode"), wrap = $("rnNodeField");
-    const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
+    // A node un-enrolled is out of every picker, by the node list's word or,
+    // where that list is from before the removal, by the project rows' (the
+    // server marks a row whose node was removed).
+    const removed = new Set((state?.projects || []).filter(p => p.node_removed).map(p => p.prefs?.node).filter(Boolean));
+    const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && !removed.has(n.id));
     if (nodesList === null){
       const opened = rnFor;
       loadNodes().then(() => { if (opened !== null && rnFor === opened) rnFillNode(); });
@@ -170,11 +174,23 @@ function rnFillNode(){
     // What each node carries, on its own option: the node does everything
     // for this project, so the only question left is what is installed on it.
     const tools = n => Object.keys(n.reported?.toolchains || {});
+    // The node this project was on, when it has since been un-enrolled: kept,
+    // selected and marked "(removed)" in italics, so the person sees where it
+    // used to run (the operator, 5 Oct). Offered on this project's picker
+    // only, never on another's.
+    const row = (state?.projects || []).find(p => p.name === rnFor);
+    const gone = row?.node_removed && rnPrefWas.node && !pick.some(n => n.id === rnPrefWas.node)
+      ? `<option value="${esc(rnPrefWas.node)}" class="removed" selected>${esc(row.node_name || rnPrefWas.node)} (removed)</option>` : "";
     sel.innerHTML = `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`
+      + gone
       + pick.map(n => `<option value="${esc(n.id)}"${n.id === rnPrefWas.node ? " selected" : ""}>${
           esc(n.name)} (${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
           tools(n).length ? " · " + esc(tools(n).slice(0, 4).join(", ")) : ""})</option>`).join("");
-    sel.value = pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
+    sel.value = gone ? rnPrefWas.node : pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
+    // The closed picker is italic while the removed node is the one shown.
+    sel.classList.toggle("removed", !!gone && sel.value === rnPrefWas.node);
+    // ...and the field shows for it even when no other node is enrolled.
+    if (gone) wrap.hidden = $("rnSeesField").hidden = rnMode === "git";
     rnFillNodesMore();
 }
 
