@@ -301,9 +301,9 @@ function projectRow(p, live, cls, inTab){
       ${p.mine === false ? "" : `<button class="eye" data-bug="${esc(p.name)}" aria-label="report a bug"
         title="report a bug in BuilderBot, from this project: it goes to the diagnostics">${BUG}</button>`}
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
-        data-on="${p.locked ? "0" : "1"}"${state?.admin === false ? " disabled" : ""}
+        data-on="${p.locked ? "0" : "1"}"${state?.can?.lock === false ? " disabled" : ""}
         aria-label="${p.locked ? "unlock" : "lock"}"
-        title="${state?.admin === false ? "locking a project is an administrator's"
+        title="${state?.can?.lock === false ? "locking a project is not one of your roles' grants"
           : p.locked
           ? "unlock: let Claude start sessions here and write its notebook again"
           : "lock: run this project yourself. No Claude session starts here "
@@ -312,8 +312,7 @@ function projectRow(p, live, cls, inTab){
       <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
-        title="${state?.admin === false ? "the pins are one set for everybody, so moving them is an administrator's"
-          : p.pinned
+        title="${p.pinned
           ? "unpin: take it off the sidebar; it stays on the Projects tab"
           : "pin: show it on the sidebar's Projects card"}"
         >${TACK}</button>

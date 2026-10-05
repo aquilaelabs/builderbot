@@ -274,8 +274,8 @@ function rnFillPrefsRest(p){
       el.dataset.built = "1";
     }
     el.value = devClaudeMode(rnFor);
-    // An administrator's to change (docker-write), so not offered otherwise.
-    el.closest("label").hidden = !state?.admin;
+    // docker-write's to change (the grant, R137 step 4), so not offered otherwise.
+    el.closest("label").hidden = state?.can?.["docker-write"] === false;
   }
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
                                   ["rnEffort", EFFORTS, rnPrefWas.effort]]){

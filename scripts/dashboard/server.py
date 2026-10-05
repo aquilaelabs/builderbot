@@ -3203,7 +3203,10 @@ def snapshot(who):
                 ("terminal", "docker-write", "toolchains-write", "git-auth", "admin",
                  # The CI runner tab, a job run and a project's node, by
                  # grant (R137 step 3): the Tools card hides CI runner on it.
-                 "runner", "jobs", "node")},
+                 "runner", "jobs", "node",
+                 # ...and what the sidebar and the dialogs offer (step 4):
+                 # drawn from the same grants the server refuses on.
+                 "lock", "rename", "trash", "version", "create", "command-pin")},
         # Projects whose Claude session belongs to somebody else, by NAME:
         # "alice has a session on this" is the whole value of the record, and
         # a bare refusal would tell you nothing you could act on. Only for
