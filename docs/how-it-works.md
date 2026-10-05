@@ -3467,6 +3467,15 @@ own dial, and on ask every edit is its own ask: the project's owner reads
 the notes whole and each file by its name and size before Allow. Nothing
 deletes a release or moves its tag (R139).
 
+A file comes off a release with `bb version release --remove NAME --why
+"..."` (once for each name), and only that way: its own ask under the same
+dial, never part of an edit, since it is the one change that takes
+something away from the people downloading. The names are checked against
+the forge's own list of the release's files before anybody is asked, so
+the ask names files that are there, with their sizes, and the bell shows it
+in the destructive color. On GitLab the release's link to the file goes;
+the file itself stays in the package registry.
+
 **What is signed says so.** The node reports what `apksigner verify` (or
 `jarsigner -verify` for a bundle) found: the certificate's SHA-256 and the
 signature schemes that verified. The controller keeps that in the file's

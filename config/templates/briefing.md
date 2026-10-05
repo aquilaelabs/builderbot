@@ -298,6 +298,8 @@ FILE] [--attach FILE]...`, under the same setting and every edit its own
 ask: the notes replaced whole, a build from dist/ or a committed file
 (a screenshot) attached, and `(asset:NAME)` in the notes the address of
 the file of that name, so `![The keyboard](asset:shot.png)` shows it.
+A file comes off a release only with `bb version release --remove NAME
+--why "..."`, which is always its own ask, never part of an edit.
 Shippable build output goes in this
 project's dist/, named with `bb version --file` and gitignored (`bb
 build` names it so), and the Artifacts tab lists it; nothing else goes

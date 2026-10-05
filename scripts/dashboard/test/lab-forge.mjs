@@ -167,6 +167,16 @@ const made = [];   // owner/repo pairs to delete at the end
   ok(ed2.status === 200 && ed2.body.edited?.replaced?.includes('shot.png')
      && (after2.body?.assets || []).filter(a => a.name === 'shot.png').length === 1,
      `...and a second attach of the same name replaces it (${(after2.body?.assets || []).map(a => a.name).join(', ')})`);
+  // A file comes off only by its own removal, named as the forge lists it
+  // (the operator, 5 Oct); a name the release does not have is refused
+  // before anything is asked of it, and the build stays.
+  const none = await api('/api/version', { project: 'beta', action: 'release-remove', remove: ['nope.png'] });
+  const rm = await api('/api/version', { project: 'beta', action: 'release-remove', remove: ['shot.png'] });
+  const after3 = await forge('GET', `/repos/${repo}/releases/tags/v0.1.0`);
+  const left = (after3.body?.assets || []).map(a => a.name);
+  ok(none.status === 400 && /has no nope\.png; it has/.test(none.body.error || '') && rm.status === 200
+     && !left.includes('shot.png') && left.includes(apk),
+     `a removal takes the named file off the release and nothing else, and a name it does not have is refused first (${none.body.error}; left ${left.join(', ')})`);
   const twice = await api('/api/version', { project: 'beta', action: 'release' });
   ok(twice.status === 400 && /already exists/.test(twice.body.error || ''),
      'a second Release is refused at the tag, so nothing is made twice');

@@ -1,4 +1,5 @@
-"""Behind `bb version release --edit` (R139): the published release's notes
+"""Behind `bb version release --edit` (R139), and --remove, which takes files
+off the release as its own ask: the published release's notes
 replaced and files attached, made by the controller with the project's own
 token under Claude may: Tag and publish a release, every edit its own ask.
 
@@ -36,18 +37,20 @@ if "--for" in rest:
 for word in ("release", "--edit"):
     if word in rest:
         rest.remove(word)
-why, tag, notes, attach = "", "", None, []
+why, tag, notes, attach, remove = "", "", None, [], []
 root = os.path.realpath(os.path.join(os.environ.get("BB_WORKSPACE", "/workspace"), proj))
 while rest:
     flag = rest.pop(0)
-    if flag not in ("--why", "--tag", "--notes", "--attach") or not rest:
-        fail(f"bb version release --edit takes --why, --tag, --notes FILE and --attach FILE, "
-             f"each with its value, not {flag}" + ("" if rest else " alone"))
+    if flag not in ("--why", "--tag", "--notes", "--attach", "--remove") or not rest:
+        fail(f"bb version release --edit takes --why, --tag, --notes FILE and --attach FILE, and --remove "
+             f"takes --why, --tag and NAME, each with its value, not {flag}" + ("" if rest else " alone"))
     val = rest.pop(0)
     if flag == "--why":
         why = val
     elif flag == "--tag":
         tag = val
+    elif flag == "--remove":
+        remove.append(val)
     elif flag == "--notes":
         try:
             notes = sys.stdin.read() if val == "-" else open(val, encoding="utf-8").read()
@@ -61,16 +64,25 @@ while rest:
             fail(f"--attach {val}: a file in {proj}, a build in dist/ or a committed one")
         attach.append(os.path.relpath(p, root))
 auth = os.environ.get("BB_VERSION_AUTH", "")
-r = bbapi.call("/api/version", {"action": "release-edit", "project": proj, "component": comp, "why": why,
-                                "tag": tag, "notes": notes, "attach": attach}, auth=auth, timeout=600)
+# Taking files off is its own ask and never part of an edit (the operator,
+# 5 Oct): the person reading it sees a removal and nothing else.
+if remove and (notes is not None or attach):
+    fail("a removal is its own ask: run --remove without --notes and --attach, and the edit after it")
+if remove:
+    body = {"action": "release-remove", "project": proj, "component": comp, "why": why, "tag": tag, "remove": remove}
+else:
+    body = {"action": "release-edit", "project": proj, "component": comp, "why": why,
+            "tag": tag, "notes": notes, "attach": attach}
+r = bbapi.call("/api/version", body, auth=auth, timeout=600)
 if r.get("error"):
     fail(f"[builderbot] ERROR: {r['error']}")
-if r.get("id") and not r.get("edited"):
-    print(f"[builderbot] asked {r.get('to') or 'the project owner'} (#{r['id']}) to edit the release, "
+what = "take files off the release" if remove else "edit the release"
+if r.get("id") and not (r.get("edited") or r.get("removed")):
+    print(f"[builderbot] asked {r.get('to') or 'the project owner'} (#{r['id']}) to {what}, "
           "waiting up to 15 minutes for Approve in their bell", file=sys.stderr)
-    o = waits.outcome(auth, r["id"], "the edit was not allowed")
+    o = waits.outcome(auth, r["id"], f"it was not allowed to {what}")
     if o.get("code"):
-        fail(f"[builderbot] ERROR: {o.get('out') or 'the release was not edited'}")
-    print(o.get("out") or "edited")
+        fail(f"[builderbot] ERROR: {o.get('out') or 'nothing changed'}")
+    print(o.get("out") or "done")
     raise SystemExit(0)
-print(r.get("said") or "edited")
+print(r.get("said") or "done")

@@ -106,7 +106,9 @@ function drawBell(){
     // Above everything the page merely said: somebody is blocked on these.
     // A root ask (roadmap R38) is the same row with the stakes said: which
     // machine, and that it is root there. `#` is the prompt root gets.
-    ...asks.map(a => `<div class="bnote ask${a.kind === "root" ? " bad" : ""}">
+    // A removal from a release takes something away from the people
+    // downloading, so it wears the destructive color, as root does.
+    ...asks.map(a => `<div class="bnote ask${a.kind === "root" || a.kind === "release-remove" ? " bad" : ""}">
         <div class="btag">${
           a.kind === "root" ? `root on ${esc(a.node_name)}: needs your answer`
           : a.kind === "rebuild" ? `${esc(askVerb(a))} in ${esc(a.project || "a project")}: needs your answer`
@@ -115,10 +117,11 @@ function drawBell(){
           : a.kind === "sign-key" ? `a signing key change in ${esc(a.project || "a project")}: needs your answer`
           : a.kind === "release" ? `release ${esc(a.project || "a project")} ${esc(a.tag || "")}: needs your answer`
           : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project || "a project")}: needs your answer`
+          : a.kind === "release-remove" ? `remove files from the ${esc(a.tag || "")} release of ${esc(a.project || "a project")}: needs your answer`
           : a.kind === "phone-use" ? `your phone, from ${esc(a.project || "a project")}: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">${a.kind === "root" ? "# " : a.kind === "phone-use" ? "" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" || a.kind === "release" || a.kind === "release-edit" ? "bb " : "adb "}${esc(a.cmd.join(" "))}</div>${
+        <div class="bcmd">${a.kind === "root" ? "# " : a.kind === "phone-use" ? "" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" || a.kind === "release" || a.kind === "release-edit" || a.kind === "release-remove" ? "bb " : "adb "}${esc(a.cmd.join(" "))}</div>${
         // A container is approved by reading its compose file, the way root
         // is approved by reading its argv (R71): the file is the request, so
         // it is here whole, folded, with the env file's keys and never its

@@ -141,6 +141,10 @@ bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]
                    a build in dist/ or a committed file attached (one of the
                    same name replaced), (asset:NAME) in the notes the address
                    of that file on the release, for a screenshot
+bb version release --remove NAME [--remove NAME]... --why "..." [--tag TAG]
+                   take files off the published release, named as the forge
+                   lists them: its own ask under the same setting, never part
+                   of an edit, the names checked against the release first
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
 bb version policy  what a session may move here, and who decides. A

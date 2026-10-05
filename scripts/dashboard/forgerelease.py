@@ -19,7 +19,8 @@ A release that exists already is changed only by edit() (R139, the
 operator 5 Oct): its notes replaced, files attached to it (one of the same
 name replaced), never the release deleted or its tag moved, and only with
 files from the project's dist/ or its committed tree, which edit_plan()
-checks before anybody is asked.
+checks before anybody is asked. A file comes off a release only by
+remove(), its own ask and never part of an edit (the operator, 5 Oct).
 
 A release that exists already for the tag is left as it is and pointed at:
 a second press makes nothing twice. What was made, or why nothing was, is
@@ -610,4 +611,120 @@ def edit_said(r):
         [f"attached {', '.join(r['attached'])}"] if r.get("attached") else []) + (
         [f"replacing {', '.join(r['replaced'])}"] if r.get("replaced") else [])
     return (f"edited on {r.get('forge')}: {'; '.join(parts) or 'nothing changed'}"
+            + (f"; not done: {'; '.join(r['skipped'])}" if r.get("skipped") else "") + f"; {r.get('url')}")
+
+
+# ---- taking a file off a published release ---------------------------------------
+# Its own ask, never part of an edit: a removal is the one change here that
+# takes something away from the people downloading, so it is asked as itself
+# (the operator, 5 Oct). The release is read first, so the ask names files
+# that are really there, with their sizes.
+
+def _handle(project):
+    """(kind, name, ctx) for the project's forge, or raises Refused: what
+    the listing and the deletion below need, by forge."""
+    if cilogs.repo_of(project):
+        token = cilogs._token(project)
+        if not token:
+            raise Refused("the controller has no GitHub token for this project")
+        return "github", "GitHub", (cilogs.repo_of(project), token)
+    at = _remote(project)
+    entry = forges.forge_of(at["host"]) if at else None
+    if not at or not entry or entry["kind"] not in ("gitea", "gitlab"):
+        raise Refused(f"{project} is not on GitHub, Gitea or GitLab, so it has no release page")
+    token, scheme = _own_token(project, at["host"])
+    if not token:
+        raise Refused(f"the controller has no {entry['name']} token for this project")
+    f = _Forge(forges.api_base(entry, at["host"], scheme or ("https" if at["scheme"] == "ssh" else at["scheme"])),
+               entry, token)
+    return entry["kind"], entry["name"], (f, at)
+
+
+def _files_on(kind, name, ctx, tag):
+    """(release url, {file name: (id, size)}) of the release for `tag`."""
+    t = urllib.parse.quote(tag)
+    if kind == "github":
+        repo, token = ctx
+        rel = _req("GET", f"{API}/repos/{repo}/releases/tags/{t}", token)
+        if not rel:
+            raise Refused(f"there is no release for {tag} on GitHub")
+        return rel.get("html_url") or "", {a.get("name"): (int(a["id"]), int(a.get("size") or 0), int(rel["id"]))
+                                           for a in rel.get("assets") or []}
+    f, at = ctx
+    if kind == "gitlab":
+        pid = urllib.parse.quote(at["path"], safe="")
+        rel = f.ask("GET", f"/projects/{pid}/releases/{t}")
+        if not rel:
+            raise Refused(f"there is no release for {tag} on GitLab")
+        return ((rel.get("_links") or {}).get("self") or "",
+                {x.get("name"): (int(x["id"]), 0, 0) for x in ((rel.get("assets") or {}).get("links") or [])})
+    owner, _, repo = at["path"].partition("/")
+    rel = f.ask("GET", f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}/releases/tags/{t}")
+    if not rel:
+        raise Refused(f"there is no release for {tag} on {name}")
+    return rel.get("html_url") or "", {a.get("name"): (int(a["id"]), int(a.get("size") or 0), int(rel["id"]))
+                                       for a in rel.get("assets") or []}
+
+
+def remove_plan(project, tag, names):
+    """The files a removal would take off the release for `tag`, read from
+    the forge before anybody is asked: {tag, forge, files: [{name, size}]}
+    or {error}."""
+    if not tag or not TAG.fullmatch(tag) or ".." in tag:
+        return {"error": f"not a tag: {tag or '(none)'}"}
+    names = [str(n) for n in names or []]
+    if not names:
+        return {"error": "say which files come off: --remove NAME, once for each"}
+    if len(names) > ATTACH_MAX or len(set(names)) != len(names):
+        return {"error": f"name each file once, {ATTACH_MAX} at most"}
+    try:
+        kind, name, ctx = _handle(project)
+        _url, have = _files_on(kind, name, ctx, tag)
+    except Refused as e:
+        return {"error": str(e)}
+    missing = [n for n in names if n not in have]
+    if missing:
+        return {"error": f"the {tag} release on {name} has no {', '.join(missing)}; it has "
+                         + (", ".join(sorted(have)) or "no files")}
+    return {"tag": tag, "forge": name, "files": [{"name": n, "size": have[n][1]} for n in names]}
+
+
+def remove(project, plan):
+    """Take the planned files off the release, each looked up again by name
+    (an id read at the ask may be stale by the Allow): {url, removed,
+    skipped, forge} or {error, forge}."""
+    try:
+        kind, name, ctx = _handle(project)
+        url, have = _files_on(kind, name, ctx, plan["tag"])
+    except Refused as e:
+        return {"error": str(e), "forge": ""}
+    removed, skipped = [], []
+    for x in plan.get("files") or []:
+        got = have.get(x["name"])
+        if not got:
+            skipped.append(f"{x['name']} was already gone")
+            continue
+        try:
+            if kind == "github":
+                repo, token = ctx
+                _req("DELETE", f"{API}/repos/{repo}/releases/assets/{got[0]}", token)
+            elif kind == "gitlab":
+                f, at = ctx
+                pid = urllib.parse.quote(at["path"], safe="")
+                f.ask("DELETE", f"/projects/{pid}/releases/{urllib.parse.quote(plan['tag'])}/assets/links/{got[0]}")
+            else:
+                f, at = ctx
+                owner, _, repo = at["path"].partition("/")
+                f.ask("DELETE", f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}/releases/"
+                                f"{got[2]}/assets/{got[0]}")
+            removed.append(x["name"])
+        except Refused as e:
+            skipped.append(f"{x['name']}: {e}")
+    return {"url": url, "removed": removed, "skipped": skipped, "forge": name}
+
+
+def remove_said(r):
+    if r.get("error"):
+        return f"nothing removed: {r['error']}"
+    return (f"removed from the release on {r.get('forge')}: {', '.join(r.get('removed') or []) or 'nothing'}"
             + (f"; not done: {'; '.join(r['skipped'])}" if r.get("skipped") else "") + f"; {r.get('url')}")

@@ -173,6 +173,40 @@ class Edit(Base):
         self.assertIn("edited on GitHub: the notes replaced; attached shot.png; replacing shot.png", fr.edit_said(r))
 
 
+class Remove(Edit):
+    """A file off the release: its own ask, the name checked against the
+    forge's own list before anybody is asked, and the forge's delete made at
+    the Allow, on each forge (the operator, 5 Oct)."""
+
+    def removes(self, path):
+        plan = fr.remove_plan("app", "v0.5.4", ["shot.png"])
+        self.assertEqual(plan.get("files"), [{"name": "shot.png", "size": plan["files"][0]["size"]}], plan)
+        self.assertIn("has no nope.apk; it has shot.png", fr.remove_plan("app", "v0.5.4", ["nope.apk"])["error"])
+        self.assertIn("say which files", fr.remove_plan("app", "v0.5.4", [])["error"])
+        self.assertFalse([1 for m, _, _ in SEEN if m == "DELETE"], "a plan deletes nothing")
+        r = fr.remove("app", plan)
+        self.assertEqual(r.get("removed"), ["shot.png"], r)
+        self.assertEqual([p for m, p, _ in SEEN if m == "DELETE"], [path])
+        self.assertIn("removed from the release on", fr.remove_said(r))
+
+    def test_github(self):
+        self.removes(f"{GH}/assets/3")
+
+
+class RemoveGitea(Remove):
+    KIND = "gitea"
+
+    def test_github(self):
+        self.removes(f"{GT}/9/assets/3")
+
+
+class RemoveGitLab(Remove):
+    KIND, REPO = "gitlab", "grp/sub/app"
+
+    def test_github(self):
+        self.removes(f"{GL}/releases/v0.5.4/assets/links/3")
+
+
 class EditGitea(Edit):
     KIND = "gitea"
 
@@ -229,6 +263,19 @@ class Ask(unittest.TestCase):
         self.assertTrue(phone.decide(r["id"], True, "u_00000002", name="ada", admin=False).get("ok"))
         self.assertEqual(self.ran, [("app", "v0.5.4", ["a-signed.apk"], "session:app")])
         self.assertIn("the notes replaced", phone.outcome(r["id"])["out"])
+
+    def test_a_removal_is_its_own_ask_naming_each_file(self):
+        ran = []
+        self.addCleanup(setattr, phone, "release_remover", phone.release_remover)
+        phone.release_remover = lambda project, plan, asker, principal: (
+            ran.append([x["name"] for x in plan["files"]]) or ({"removed": {}, "said": "removed from the release"}, 200))
+        r = phone.ask_release_remove("a broken build", "app", {"tag": "v0.5.4", "files": [
+            {"name": "a-signed.apk", "size": 22_681_006}]}, "u_00000002", "ada", principal="session:app")
+        mine = [x for x in phone.requests_open("u_00000002", False) if x["id"] == r["id"]][0]
+        self.assertEqual((mine["kind"], mine["cmd"]), ("release-remove",
+                         ["version", "release", "--remove", "v0.5.4", "a-signed.apk (22.7 MB)"]))
+        self.assertTrue(phone.decide(r["id"], True, "u_00000002", name="ada", admin=False).get("ok"))
+        self.assertEqual(ran, [["a-signed.apk"]])
 
     def test_deny_makes_nothing_and_a_reason_is_needed(self):
         r = phone.ask_release_edit("x", "app", self.plan, "u_00000002", "ada")

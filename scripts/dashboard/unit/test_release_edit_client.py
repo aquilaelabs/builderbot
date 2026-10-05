@@ -68,6 +68,15 @@ class Client(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(GOT[0][1]["notes"], "## 0.5.4\n\nFrom stdin.\n")
 
+    def test_a_removal_is_sent_alone_and_never_with_an_edit(self):
+        r = self.run_edit("--why", "broken", "--remove", "a.apk", "--remove", "b.apk")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((GOT[0][1]["action"], GOT[0][1]["remove"]), ("release-remove", ["a.apk", "b.apk"]))
+        mixed = self.run_edit("--why", "x", "--remove", "a.apk", "--attach", "docs/shot.png")
+        self.assertNotEqual(mixed.returncode, 0)
+        self.assertIn("a removal is its own ask", mixed.stderr)
+        self.assertEqual(len(GOT), 1)
+
     def test_a_file_outside_the_project_is_refused_here(self):
         r = self.run_edit("--why", "x", "--attach", os.path.join(self.scratch, "notes.md"))
         self.assertNotEqual(r.returncode, 0)

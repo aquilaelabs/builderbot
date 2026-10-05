@@ -2671,6 +2671,21 @@ def _release_editor(project, plan, asker_name="", principal=""):
 phone.release_editor = _release_editor
 
 
+def _release_remover(project, plan, asker_name="", principal=""):
+    """Files taken off a published release, its own ask (the operator,
+    5 Oct), with the project's own token."""
+    r = forgerelease.remove(project, plan)
+    if not NODES_OK:
+        db.audit(principal, "version-release-remove", project,
+                 {"tag": plan.get("tag"), "files": [x["name"] for x in plan.get("files") or []],
+                  "removed": r.get("removed") or [], "error": r.get("error") or ""})
+    said = forgerelease.remove_said(r)
+    return ({"error": said}, 400) if r.get("error") else ({"removed": r, "said": said}, 200)
+
+
+phone.release_remover = _release_remover
+
+
 def _keymaker(action, project, args, by=""):
     """A new generated key or a package's key, for a session's auto dial and
     for Allow on its ask (R106 step 6)."""
@@ -5579,6 +5594,35 @@ class Handler(BaseHTTPRequestHandler):
             r = phone.ask_release(field(req, "why"), name, comp, plan, membership.owner_of(name),
                                   membership.owner_name(name) or "the project's owner",
                                   asker_name=str(acct.get("name") or ""), principal=self._principal())
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "release-remove":
+            # Files off a published release: its own ask, never part of an
+            # edit, under the release's dial (the operator, 5 Oct).
+            if who.get("session") and name != who["session"]:
+                return self._json({"error": "a session changes its own project's release and no other"}, 403)
+            if not who.get("session") and self._refused("version", name):
+                return None
+            comp = field(req, "component") or ""
+            tag = field(req, "tag")
+            if not tag:
+                tag, why = version.current_tag(name, comp)
+                if why:
+                    return self._json({"error": why}, 400)
+            mode = (prefs.get(name) or {}).get("release") or "ask" if who.get("session") else "auto"
+            if mode == "deny":
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
+                                            "Tag and publish a release), which taking a file off its release is "
+                                            "part of; a person removes it on the forge"}, 403)
+            names = req.get("remove") if isinstance(req.get("remove"), list) else []
+            plan = forgerelease.remove_plan(name, tag, names)
+            if plan.get("error"):
+                return self._json(plan, 400)
+            acct = users.account_of(who) or {}
+            if mode == "auto":
+                return self._json(*_release_remover(name, plan, str(acct.get("name") or ""), self._principal()))
+            r = phone.ask_release_remove(field(req, "why"), name, plan, membership.owner_of(name),
+                                         membership.owner_name(name) or "the project's owner",
+                                         asker_name=str(acct.get("name") or ""), principal=self._principal())
             return self._json(r, 400 if r.get("error") else 200)
         if act == "release-edit":
             # bb version release --edit (R139): the published release's
