@@ -3598,7 +3598,12 @@ from somebody who administers the box only sends them looking for it, with
 the ones they have not taken on marked read-only, and they can add any of them
 to their own list themselves. A user is shown only what you give them, and
 cannot grant themselves anything. So for an admin the list is a seatbelt
-against working on the wrong project; for a user it is the boundary.
+against working on the wrong project; for a user it is the boundary. The
+owner wears the same seatbelt (R135): they see every project by role and
+work on the ones on their own list, which an owner record from before
+carried as `*` and now carries by name; the one difference from an
+administrator is that the owner may add themselves to an invite-only
+project without an invitation.
 
 **Every project has an owner, and an owner can close it to administrators.**
 Whoever made a project owns it; one from before there were owners belongs to

@@ -2415,6 +2415,12 @@ prefs.configure(write_json=write_json, state=STATE)
 # override of the commit author, and that override lives in prefs, which is
 # configured after users because the login path must not depend on it.
 users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user)
+# The owner takes projects on like everybody (R135): a record that carried
+# "*" gets the projects that exist now, so nothing they were on is lost.
+try:
+    users.migrate_star([p["name"] for p in project_list(users.ALL)])
+except Exception:  # noqa: BLE001 (a migration never keeps the dashboard from starting)
+    pass
 
 # ---- the dev instance ------------------------------------------------------
 # A project's compose app, built and run on the sandbox VM's daemon. The
@@ -6030,7 +6036,8 @@ class Handler(BaseHTTPRequestHandler):
             return None
         me = self._who() or {}
         return self._result(users.verb(act, req, lambda: {p["name"] for p in project_list(me)},
-                                       may_change=lambda p: membership.member_refusal(me, p)))
+                                       may_change=lambda p: membership.member_refusal(
+                                           me, p, joining=field(req, "name") == me.get("name"))))
 
     def _toolchains(self, req):
         """Queue installs or removals of the toolchains the Tools card

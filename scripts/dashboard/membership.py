@@ -124,9 +124,14 @@ def may_change_members(me, project):
     return users.is_admin(me) and not invite_only(project)
 
 
-def member_refusal(me, project):
-    """"" when `me` may change who is on `project`, else why not."""
+def member_refusal(me, project, joining=False):
+    """"" when `me` may change who is on `project`, else why not. `joining`
+    is `me` adding themselves: BuilderBot's owner may join an invite-only
+    project that way (R135), the one difference from an administrator,
+    who waits for an invitation."""
     if may_change_members(me, project):
+        return ""
+    if joining and (me or {}).get("role") == "owner":
         return ""
     who = _name_of(owner_of(project)) or "its owner"
     return (f"{project} is invite only: {who} invites people to it, "

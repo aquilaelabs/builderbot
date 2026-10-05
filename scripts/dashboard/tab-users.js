@@ -122,6 +122,12 @@ function renderUsersInto(i){
             <input id="uNewName" autocomplete="off"></div>
           <div class="setrow col">${lbl("uNewPw", "Password", "at least 8 characters. They can change it on their Profile")}
             <input id="uNewPw" type="password" autocomplete="new-password"></div>
+          <div class="setrow col">${lbl("uNewPw2", "The password again")}
+            <input id="uNewPw2" type="password" autocomplete="new-password"></div>
+          <div class="setrow col">${lbl("uNewFull", "Name", "optional: how they are addressed; their git identity is theirs to set on their Profile")}
+            <input id="uNewFull" autocomplete="off"></div>
+          <div class="setrow col">${lbl("uNewEmail", "Email", "optional")}
+            <input id="uNewEmail" type="email" autocomplete="off"></div>
           <div class="setrow col">${lbl("uNewRole", "Role")}
           <select id="uNewRole">${
             usersMeta.roles.filter(r => r !== "owner").map(r =>
@@ -148,7 +154,8 @@ function wireUsers(el){
   // and the button is the answer (docs/design-language.md, Settings).
   el.querySelectorAll("[data-uedit]").forEach(b => b.onclick = () => usersEditOpen(b.dataset.uedit));
   const add = el.querySelector("#uAdd");
-  for (const [id, key] of [["#uNewName", "name"], ["#uNewPw", "pw"], ["#uNewRole", "role"]]){
+  for (const [id, key] of [["#uNewName", "name"], ["#uNewPw", "pw"], ["#uNewPw2", "pw2"],
+                           ["#uNewFull", "full"], ["#uNewEmail", "email"], ["#uNewRole", "role"]]){
     const f = el.querySelector(id);
     if (!f) continue;
     if (key !== "role") f.value = usersAddDraft[key] || "";
@@ -158,8 +165,13 @@ function wireUsers(el){
     const name = el.querySelector("#uNewName").value.trim();
     const pw = el.querySelector("#uNewPw").value;
     if (!name || !pw) return notify("a name and a password", true);
+    // Typed twice (R134): a password nobody can read back is one a slip
+    // locks somebody out with.
+    if (pw !== el.querySelector("#uNewPw2").value) return notify("the two passwords differ", true);
+    const full = el.querySelector("#uNewFull").value.trim(), email = el.querySelector("#uNewEmail").value.trim();
     usersAct({action: "add", name, password: pw,
-              role: el.querySelector("#uNewRole").value});
+              role: el.querySelector("#uNewRole").value,
+              profile: {...(full ? {full_name: full} : {}), ...(email ? {email} : {})}});
   };
 }
 

@@ -465,8 +465,10 @@ def may_work(u, name):
     # there to be seen and never changed.
     if u.get("session"):
         return name == u["session"]
-    have = u.get("projects") or []
-    return "*" in have or name in have
+    # "*" lists every project (sees_all) and takes none on (R135): the
+    # owner works on what they added to their own list, like everybody,
+    # as a safeguard against working on the wrong one by accident.
+    return name in (u.get("projects") or [])
 
 
 def visible(u, names):
@@ -729,7 +731,9 @@ def claim(name, password):
         if d["users"]:
             return {"error": "this container already has an account"}
         d["users"][name] = {"uid": mint_uid(), "role": "owner",
-                            "projects": ["*"],
+                            # Sees every project by role; takes each on
+                            # like everybody (R135).
+                            "projects": [],
                             "password": hash_password(password),
                             "created": int(time.time()), "seen": 0,
                             "prefs": {}}
@@ -802,6 +806,27 @@ def set_projects(name, projects):
     return {"ok": True, "name": name, "projects": u["projects"]}
 
 
+def migrate_star(names):
+    """An owner record that carried "*" (every project, taken on by
+    construction, until R135) gets the projects that exist now by name, so
+    nobody is locked out of what they were on; from then on a new project
+    is taken on like an administrator's. Run once at start, with the
+    projects on disk. Returns how many records moved."""
+    moved = 0
+    with _lock:
+        d = load()
+        for u in d["users"].values():
+            have = list(u.get("projects") or [])
+            if "*" not in have:
+                continue
+            kept = [p for p in have if p != "*"]
+            u["projects"] = (kept + [n for n in sorted(names) if n not in kept])[:200]
+            moved += 1
+        if moved:
+            _save(d)
+    return moved
+
+
 def take_on(name, project):
     """Put one project on this account's own list, the way the Users tab
     does; nothing to do for an account that has it or has every project.
@@ -814,7 +839,7 @@ def take_on(name, project):
         if not u:
             return {"error": f"no account called {name}"}
         have = list(u.get("projects") or [])
-        if "*" in have or project in have:
+        if project in have:
             return {"ok": True, "name": name, "projects": have}
         u["projects"] = (have + [str(project)[:120]])[:200]
         _save(d)
@@ -910,6 +935,14 @@ def verb(act, req, seen, may_change=None):
                 return {"error": why}
         r = add(name, pw, role=field(req, "role") or "user",
                 projects=req.get("projects") or [])
+        # A name and an email with it (R134), the Profile's own two fields
+        # and nothing of the git identity, which is theirs to set.
+        pr = req.get("profile") if isinstance(req.get("profile"), dict) else {}
+        pr = {k: pr[k] for k in ("full_name", "email") if pr.get(k)}
+        if not r.get("error") and pr:
+            r2 = profile_set(name, pr)
+            if r2.get("error"):
+                r = r2
     elif act == "passwd":
         r = set_password(name, pw)
     elif act == "role":

@@ -232,9 +232,9 @@ ${code}`], { encoding: 'utf8' });
   const made = run('print(json.dumps(u.claim("boss", "longenough1")))');
   ok(JSON.parse(made).ok, `claiming it makes the owner (${made.trim()})`);
   const rec = JSON.parse(readFileSync(`${fresh}/users.json`, 'utf8')).users.boss;
-  ok(rec.role === 'owner' && rec.projects.includes('*')
+  ok(rec.role === 'owner' && !rec.projects.length
      && /^pbkdf2_sha256\$/.test(rec.password) && /^u_[0-9a-f]{8}$/.test(rec.uid),
-     '...as an owner, hashed, with every project and an id of its own');
+     '...as an owner, hashed, with an id of its own and no project taken on yet (R135: the role sees them all)');
   ok(!JSON.parse(run('print(json.dumps(u.claim("second", "longenough1")))')).ok,
      '...and the second claim is refused, because there is now an account');
   ok(!JSON.parse(run('print(json.dumps(u.claim("x", "short")))')).ok
@@ -541,6 +541,21 @@ ${code}`], { encoding: 'utf8' });
        '...nor file a bug on it');
     ok((await post(adm, '/api/prefs', { project: 'alpha', build: 'make' })).status === 403,
        '...nor change its settings');
+    // The owner too (R135): the seeded "*" became the projects that existed
+    // at start, and a project taken off the owner's own list is read-only
+    // to the owner until it is put back, exactly as for an administrator.
+    {
+      const mine = () => (projects(owner)).then(ps => ps.find(p => p.name === 'alpha')?.mine);
+      const list = (await (await bare('/api/users', { headers: owner })).json()).users.find(u => u.name === 'test').projects;
+      ok(!list.includes('*') && list.includes('alpha') && await mine() === true,
+         `the owner's "*" became the projects that exist, alpha among them (${list.join(', ')})`);
+      await post(owner, '/api/users', { action: 'projects', name: 'test', projects: list.filter(p => p !== 'alpha') });
+      const off = await post(owner, '/api/roadmap', { project: 'alpha', action: 'add', text: 'x' });
+      ok(await mine() === false && off.status === 403,
+         `...and off their own list, alpha is read-only to the owner too (${off.status})`);
+      await post(owner, '/api/users', { action: 'projects', name: 'test', projects: list });
+      ok(await mine() === true, '...until it is put back');
+    }
     // The resume offer is the asking account's own (B489): a transcript the
     // owner's sessions wrote is offered to the owner, and not to an account
     // that never had a conversation there, whose bb-tty could not find it.
@@ -884,7 +899,16 @@ ${code}`], { encoding: 'utf8' }).trim();
   // Adding somebody, from the tab rather than from a shell.
   await page.fill('#uNewName', 'tabmade');
   await page.fill('#uNewPw', 'tabmadepw1');
+  await page.fill('#uNewPw2', 'tabmadepw2');
+  await page.fill('#uNewFull', 'Tab Made');
+  await page.fill('#uNewEmail', 'tab@example.invalid');
   await page.selectOption('#uNewRole', 'user');
+  // Typed twice (R134): two that differ add nobody.
+  await page.click('#uAdd');
+  await sleep(600);
+  ok(!(await page.$('.userstab .urow[data-user="tabmade"]')),
+     'two passwords that differ add nobody');
+  await page.fill('#uNewPw2', 'tabmadepw1');
   // A reload landing between typing and Add repaints the tab; what was
   // typed survives it (B422: it emptied the form, and Add sent nothing).
   await page.evaluate(async () => { await loadUsers(); });
@@ -894,6 +918,11 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.waitForFunction(() => !!document.querySelector(
     '.userstab .urow[data-user="tabmade"]'), null, { timeout: 15000 });
   ok(true, 'Add makes an account from the tab');
+  {
+    const made = await page.evaluate(async () => (await (await fetch('/api/users')).json()).users.find(u => u.name === 'tabmade'));
+    ok(made?.profile?.full_name === 'Tab Made' && made?.profile?.email === 'tab@example.invalid' && !made?.profile?.git_name,
+       `...with the name and email given, and no git identity (${JSON.stringify(made?.profile)})`);
+  }
 
   // Which Anthropic account each BuilderBot account is signed in as, taken
   // from the record a node reported, since no login lives here (R47), and two
@@ -1448,6 +1477,16 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
       ok(view.status === 200 && view.body.owner === 'test' && set.body.invite_only === true
          && /invite only/.test(self.body.error || '') && notOwner.status === 403,
          `gamma belongs to the owner, who makes it invite only, and an administrator then cannot add themselves to it or lift that (${view.body.owner}; ${(self.body.error || '').slice(0, 60)})`);
+      // BuilderBot's owner may add THEMSELVES to an invite-only project
+      // (R135), the one difference from an administrator.
+      {
+        const list = (await (await bare('/api/users', { headers: ownerAuth })).json()).users.find(u => u.name === 'test').projects;
+        const without = list.filter(p => p !== 'gamma');
+        await post(ownerAuth, '/api/users', { action: 'projects', name: 'test', projects: without });
+        const back = await post(ownerAuth, '/api/users', { action: 'projects', name: 'test', projects: [...without, 'gamma'] });
+        ok(back.status === 200 && (back.body.projects || []).includes('gamma'),
+           `...while the owner adds themselves to it without an invitation (${back.status})`);
+      }
       const inv = await post(ownerAuth, '/api/members', { action: 'invite', project: 'gamma', name: 'adminone' });
       const st = await (await bare('/api/status', { headers: adminAuth })).json();
       const mine = (st.invites || []).find(i => i.project === 'gamma');

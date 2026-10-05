@@ -157,6 +157,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb phone touch glide sends one held stroke on a real phone, through a small injector the node builds and runs as the phone's shell user; a node without a JDK and Android build-tools sends the points as before (1379cfa)
 - A glide on the emulator or a lent phone moves like a finger: curved, eased, overshooting and wobbling, as a steady, normal or shaky hand (ruler for the straight stroke), with dials and a seed to repeat it. bb emu touch glide and bb phone touch glide --hand, --seed. (1fe3a72)
 - Switching tabs on the phone no longer switches the desk: which tabs are open is still shared between a person's browsers, but which one is in front, and the pane split, are each browser's own. (dc18aea)
+- Adding somebody on the Users tab asks for the password twice and takes an optional name and email; their git identity stays theirs to set on their Profile. (5172350)
+- The owner takes projects on like everybody, as a safeguard against working on the wrong one: an owner record that carried every project gets the ones that exist by name, and the owner alone may add themselves to an invite-only project. (5172350)
 
 ### Removed
 

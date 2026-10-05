@@ -1379,13 +1379,18 @@ start_server
 # about. So it claims the store directly, which is the same call the form
 # makes. The form's own path is covered in auth.mjs, against a store of its
 # own.
-python3 - "$DASH/users.py" "$S/state" <<'PY'
-import importlib.util, json, sys
+python3 - "$DASH/users.py" "$S/state" "$S/ws" <<'PY'
+import importlib.util, json, os, sys
 spec = importlib.util.spec_from_file_location("users", sys.argv[1])
 u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
 u.configure(state=sys.argv[2], write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
 d = u.load()
-d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
+# The fixture projects by name (R135): "*" lists every project and takes
+# none on, and this seed lands after the server started, past the start-time
+# migration that turns an existing owner's "*" into names.
+fixtures = sorted(n for n in os.listdir(sys.argv[3])
+                  if os.path.isdir(os.path.join(sys.argv[3], n)) and not n.startswith("."))
+d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": fixtures,
                       # An author, or no Claude session starts for it (users.git_ready).
                       # ...and the welcome panel read, or it would open over
                       # every page load in the suite (cards.mjs opens it on purpose).
