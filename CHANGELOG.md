@@ -153,6 +153,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every notebook view's head reads the same way, a count or a short state (3 open of 5, 0 in dist/, nothing yet), and what an empty view is for is one line where its list would be. The Roadmap adds with an Add to roadmap button like the other views (22dc814)
 - A design pass over every page at both widths: the phone bar keeps only what works on the tab in front, numeric limits say what 0 means, the Wiki adds first, Toolchains reads plainly, the Jobs tab names a phone's screenshot and install, and quiet lines are the quiet size everywhere (d08051e)
 - bb phone touch glide sends one held stroke on a real phone, through a small injector the node builds and runs as the phone's shell user; a node without a JDK and Android build-tools sends the points as before (1379cfa)
+- A glide on the emulator or a lent phone moves like a finger: curved, eased, overshooting and wobbling, as a steady, normal or shaky hand (ruler for the straight stroke), with dials and a seed to repeat it. bb emu touch glide and bb phone touch glide --hand, --seed. (1fe3a72)
 
 ### Removed
 

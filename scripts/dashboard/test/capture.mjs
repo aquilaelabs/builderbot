@@ -180,11 +180,21 @@ exit 0
   const hold = touch('hold', '100', '100', '--ms', '700');
   ok(hold.r.status === 0 && hold.sent.includes('sleep 0.7') && hold.sent.indexOf('sleep 0.7') < hold.sent.indexOf('sendevent /dev/input/event2 3 57 -1'),
      'a hold keeps the finger down for its time before lifting');
-  const glide = touch('glide', '100', '1000', '600', '1000', '--pre', '150', '--hold', '300');
-  const moves = glide.sent.filter(l => l === 'sleep 0.012').length;
-  ok(glide.r.status === 0 && moves === 20 && glide.sent[8] === 'sleep 0.15' && glide.sent.at(-4) === 'sleep 0.3'
-     && /about 690 ms/.test(glide.r.stdout),
-     `a glide moves in 25px steps 12 ms apart, holding first and last where asked (${moves} moves; ${glide.r.stdout.trim()})`);
+  // The path is a hand's (R127): a sample every 10 ms. A ruler hand is the
+  // straight even stroke, 500 px at 2000 px/s, 25 samples.
+  const glide = touch('glide', '100', '1000', '600', '1000', '--hand', 'ruler', '--pre', '150', '--hold', '300');
+  const moves = glide.sent.filter(l => l === 'sleep 0.01').length;
+  ok(glide.r.status === 0 && moves === 25 && glide.sent[8] === 'sleep 0.15' && glide.sent.at(-4) === 'sleep 0.3'
+     && /about 700 ms/.test(glide.r.stdout) && /ruler hand/.test(glide.r.stdout),
+     `a ruler glide moves in samples 10 ms apart, holding first and last where asked (${moves} moves; ${glide.r.stdout.trim()})`);
+  // The default hand bows, wobbles and overshoots, and says its seed, so the
+  // same stroke can be sent again.
+  const handed = touch('glide', '100', '1000', '600', '1000');
+  const seed = (handed.r.stdout.match(/seed (\d+)/) || [])[1];
+  const ys = new Set(handed.sent.filter(l => /^sendevent \S+ 3 54 /.test(l)));
+  const again = touch('glide', '100', '1000', '600', '1000', '--seed', seed || '0');
+  ok(handed.r.status === 0 && seed && ys.size > 3 && again.sent.join('\n') === handed.sent.join('\n'),
+     `a normal hand's glide wanders off the line (${ys.size} distinct y) and repeats exactly by its seed (${seed})`);
   // A fresh cold boot's adbd runs as shell; sendevent needs root, which a
   // debuggable image grants on adb root, so touch asks for it first
   // (reports 44 and 45: a quick boot had been restoring a root adbd).

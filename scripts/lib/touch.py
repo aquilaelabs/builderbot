@@ -4,7 +4,7 @@ inside a capture's --drive script.
 
     touch.py tap X Y
     touch.py hold X Y --ms N
-    touch.py glide X Y X Y [X Y...] [--pre MS] [--hold MS] [--step-ms MS]
+    touch.py glide X Y X Y [X Y...] [--hand NAME] [--seed N] [--pre MS] [--hold MS]
 
 Screen pixels, as a screenshot shows them, whichever way the screen is
 turned. `adb shell input tap` costs about 300 ms a call and `input swipe`
@@ -14,8 +14,10 @@ own sendevent script (Shebang-DevBoard, 30 Sep). This one writes the whole
 gesture as one `adb shell` of sendevent lines with sleeps between them, so
 the device sees the timing the script asked for. --pre holds the finger
 still before it starts moving (a long-press that then slides), --hold keeps
-it down at the end before lifting, --step-ms is the time between moves of
-25 px (12 by default, about 2 px a millisecond).
+it down at the end before lifting. The path between the points is a
+hand's (hand.py, R127): curved, eased, overshooting and wobbling the way a
+finger moves, `--hand ruler` for the straight even stroke, and hand.py's
+dials (--speed, --curve, --shake, --overshoot, --dwell, --ms) to set one.
 
 The touch panel is found with `getevent -p` (the device that reports
 ABS_MT_POSITION_X, and its range), the screen's size with `wm size` and its
@@ -31,10 +33,11 @@ import sys
 import time
 from typing import NoReturn
 
+import hand
+
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 ABS_MT_SLOT, ABS_MT_TOUCH_MAJOR, ABS_MT_POSITION_X, ABS_MT_POSITION_Y = 0x2F, 0x30, 0x35, 0x36
 ABS_MT_TOOL_TYPE, ABS_MT_TRACKING_ID, ABS_MT_PRESSURE = 0x37, 0x39, 0x3A
-STEP_PX = 25
 
 
 def die(msg) -> NoReturn:
@@ -141,7 +144,13 @@ def main(argv):
     if not args or args[0] in ("-h", "--help"):
         sys.stderr.write(__doc__ or "")
         return 0 if args else 1
-    opts = {"pre": 0, "hold": 0, "ms": 0, "step-ms": 12}
+    try:
+        args, hopts = hand.parse(args)
+    except ValueError as e:
+        die(str(e))
+    # --ms is the hand's for a glide (the time each leg takes) and hold's
+    # for a hold (how long the finger stays down).
+    opts = {"pre": 0, "hold": 0, "ms": int(hopts.pop("ms", 0) or 0)}
     for k in list(opts):
         flag = f"--{k}"
         if flag in args:
@@ -158,8 +167,12 @@ def main(argv):
         die("coordinates come in X Y pairs, in screen pixels")
     if verb not in ("tap", "hold", "glide") or not pts:
         die("touch.py tap X Y | hold X Y --ms N | glide X Y X Y... [--pre MS] [--hold MS]")
-    if verb == "glide" and len(pts) < 2:
-        die("a glide needs at least two points")
+    stroke = None
+    if verb == "glide":
+        try:
+            stroke = hand.path(pts, ms=opts["ms"] or None, **hopts)
+        except ValueError as e:
+            die(str(e))
     if verb == "hold" and not opts["ms"]:
         die("hold takes --ms N: how long the finger stays down")
     a = adb()
@@ -179,24 +192,22 @@ def main(argv):
     if verb == "glide":
         if opts["pre"]:
             lines.append(f"sleep {opts['pre'] / 1000}")
-        sx, sy = pts[0]
-        for x, y in pts[1:]:
-            steps = max(2, int(((x - sx) ** 2 + (y - sy) ** 2) ** 0.5 / STEP_PX))
-            for s in range(1, steps + 1):
-                mx, my = to_panel(sx + (x - sx) * s // steps, sy + (y - sy) * s // steps, w, h, rot, xmax, ymax)
-                lines += [ev(EV_ABS, ABS_MT_POSITION_X, mx), ev(EV_ABS, ABS_MT_POSITION_Y, my), ev(EV_SYN, 0, 0),
-                          f"sleep {opts['step-ms'] / 1000}"]
-                moved += 1
-            sx, sy = x, y
+        # The hand's samples, DT ms apart, as the finger's positions.
+        for _, x, y in stroke["samples"][1:]:
+            mx, my = to_panel(x, y, w, h, rot, xmax, ymax)
+            lines += [f"sleep {hand.DT / 1000}", ev(EV_ABS, ABS_MT_POSITION_X, mx),
+                      ev(EV_ABS, ABS_MT_POSITION_Y, my), ev(EV_SYN, 0, 0)]
+            moved += 1
         if opts["hold"]:
             lines.append(f"sleep {opts['hold'] / 1000}")
     lines += [ev(EV_ABS, ABS_MT_PRESSURE, 0), ev(EV_ABS, ABS_MT_TRACKING_ID, -1), ev(EV_SYN, 0, 0)]
     r = subprocess.run([a, "shell", ";".join(lines)], capture_output=True, text=True, timeout=120, check=False)
     if r.returncode:
         die(f"sendevent on {dev} failed: {(r.stderr or r.stdout).strip()[-200:]}")
-    took = opts["ms"] if verb == "hold" else opts["pre"] + opts["hold"] + moved * opts["step-ms"]
+    took = opts["ms"] if verb == "hold" else opts["pre"] + opts["hold"] + moved * hand.DT
     where = " ".join(f"{x},{y}" for x, y in pts)
-    print(f"{verb} {where}: {len(lines)} events on {dev}, about {took} ms" + (f" (rotation {rot})" if rot else ""))
+    print(f"{verb} {where}: {len(lines)} events on {dev}, about {took} ms" + (f" (rotation {rot})" if rot else "")
+          + (f"; {hand.summary(stroke)}" if stroke else ""))
     return 0
 
 

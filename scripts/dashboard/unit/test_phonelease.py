@@ -114,10 +114,17 @@ class Lease(unittest.TestCase):
         saved = phone.nodes
         phone.nodes = Nodes
         try:
-            fell = pl.use("app", "touch", {"kind": "glide", "points": [1, 2, 3, 4, 5, 6], "ms": 30})[0]
+            fell = pl.use("app", "touch", {"kind": "glide", "points": [1, 2, 3, 4, 5, 6], "ms": 30,
+                                           "hand": {"hand": "ruler"}})[0]
         finally:
             phone.nodes = saved
-        self.assertIn("app_process / BbGlide 30 1 2 3 4 5 6", seen["argv"][5])
+        # R127: the injector is handed a hand's path, a sample every 10 ms,
+        # from the first point to the last exactly.
+        sent = seen["argv"][5].split("BbGlide ")[1].split()
+        self.assertEqual(sent[0], "10")
+        self.assertEqual(sent[1:3], ["1", "2"])
+        self.assertEqual(sent[-2:], ["5", "6"])
+        self.assertEqual(len(sent), 1 + 2 * 7, "two 30 ms legs: 1 + 3 + 3 samples")
         self.assertIn("*dev.app/*", seen["argv"][5])              # the same guard a tap has
         self.assertIn("class BbGlide", seen["argv"][7])
         g = self.sent[-1][-1]

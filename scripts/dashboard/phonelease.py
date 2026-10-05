@@ -26,6 +26,7 @@ when the phone is disconnected, and when the owner takes it back.
 """
 import base64
 import hashlib
+import importlib.util
 import os
 import re
 import secrets
@@ -397,6 +398,19 @@ def use(project, op, args):
 
 
 GLIDE_SRC = Path(__file__).with_name("BbGlide.java")
+HAND = Path(__file__).resolve().parent.parent / "lib" / "hand.py"
+
+
+def _hand():
+    """scripts/lib/hand.py, the finger's path a glide plays (R127), loaded
+    by path the way artifacts.py loads capture.py: the one copy bb emu
+    touch uses too, so both glides move the same way."""
+    if "_hand_mod" not in globals():
+        spec = importlib.util.spec_from_file_location("bb_hand", HAND)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        globals()["_hand_mod"] = mod
+    return globals()["_hand_mod"]
 
 # Built once per source on the node (cached in /tmp by the source's hash),
 # pushed, and run as the shell user. Exit 90: the node has no javac or
@@ -425,18 +439,25 @@ def _glide(project, nid, serial, guard, args):
     nums = [_num(v) for v in pts]
     if len(nums) < 4 or len(nums) % 2 or None in nums or len(nums) > 200:
         return {"error": "glide X Y X Y..., at least two points"}, 400
-    step = _num(a.get("ms") or 40)
-    if step is None or step > 2000:
-        return {"error": "--ms is the time between points, at most 2000"}, 400
+    # The path between the points is a hand's (R127): the injector plays
+    # one sample every hand.DT ms, which is what its first argument says.
+    hand = _hand()
+    hopts = a.get("hand") if isinstance(a.get("hand"), dict) else {}
+    try:
+        stroke = hand.path(list(zip(nums[0::2], nums[1::2], strict=True)), ms=a.get("ms") or None,
+                           **{k: v for k, v in hopts.items() if k in hand.FLAGS and k != "ms"})
+    except ValueError as e:
+        return {"error": str(e)}, 400
     try:
         src = GLIDE_SRC.read_text()
     except OSError:
         return None
     h = hashlib.sha256(src.encode()).hexdigest()[:12]
     # Numbers only on the phone's command line, behind the same guard a tap has.
+    flat = [n for _, x, y in stroke["samples"] for n in (x, y)]
     on_phone = guard + "CLASSPATH=/data/local/tmp/bb-glide.dex app_process / BbGlide " + \
-        " ".join(str(n) for n in [step, *nums])
-    secs = 60 + (len(nums) // 2) * step // 1000
+        " ".join(str(n) for n in [hand.DT, *flat])
+    secs = 60 + stroke["took_ms"] // 1000
     r = phone.nodes.run_wait(f"session:{project}", nid, ["sh", "-c", _GLIDE_SH, "_", serial, on_phone, h, src],
                              env={"ANDROID_ADB_SERVER_PORT": phone.ADB_PORT}, timeout=secs + 120,
                              project=project, title=f"glide on the phone lent to {project}", cwd="/tmp")
@@ -448,7 +469,9 @@ def _glide(project, nid, serial, guard, args):
     if "bb-not-yours" in out:
         return {"error": "none of this lease's apps is in front or is the keyboard, so the phone is "
                          "not touched: bb phone start PKG first (" + out.strip()[-160:] + ")"}, 409
-    return {"code": r.get("code") or 0, "out": out}, 200
+    # Said, with the seed, so the same stroke can be sent again.
+    return {"code": r.get("code") or 0, "out": out + "glide: " + hand.summary(stroke) + "\n",
+            "seed": stroke["seed"]}, 200
 
 
 def _num(v):

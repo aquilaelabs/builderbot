@@ -121,8 +121,10 @@ bb git policy      what a session may push here (its own branches, main) from
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
-bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--pre MS] [--hold MS]
-                   a timed touch on the running emulator, in screen pixels
+bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS]
+                   a timed touch on the running emulator, in screen pixels;
+                   a glide moves like a hand (steady, normal, shaky, or
+                   ruler for the straight even stroke), repeatable by seed
 bb gpu             this node's NVIDIA card: how much of its memory is free, who is
                    computing on it, and whether this session may
 bb gpu run [--mem MB] -- CMD
@@ -356,7 +358,7 @@ bb phone record [SECONDS] | record start [SECONDS] | record stop
                    frames that changed, with their times, in one picture);
                    start leaves it running while touches work the phone,
                    stop collects it
-bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--ms N] |
+bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--seed N] |
                    text "..." | key back|enter|del|tab|space|up|down|left|right
                    only while a lease app is in front or is the keyboard;
                    bb phone ui prints the screen's layout under the same rule

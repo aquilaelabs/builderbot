@@ -10,6 +10,7 @@ import os
 import sys
 
 import bbapi
+import hand
 import waits
 
 
@@ -152,7 +153,8 @@ def lent():
         use("ui")
     elif op == "touch":
         if not rest:
-            sys.exit("usage: bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--ms N] | text \"...\" | key NAME")
+            sys.exit("usage: bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--seed N] "
+                     "| text \"...\" | key NAME")
         kind = rest[0]
         ms = flag(rest, "--ms")
         a = {"kind": kind}
@@ -161,7 +163,15 @@ def lent():
             if ms:
                 a["ms"] = ms
         elif kind == "glide":
-            a.update(points=rest[1:], ms=ms or 40)
+            # The path is a hand's (R127): its flags ride along, checked here
+            # and again on the controller.
+            try:
+                pts, hopts = hand.parse(rest[1:])
+            except ValueError as e:
+                sys.exit(f"[builderbot] ERROR: {e}")
+            a.update(points=pts, hand=hopts)
+            if ms:
+                a["ms"] = ms
         elif kind == "text":
             a["text"] = " ".join(rest[1:])
         elif kind == "key":
