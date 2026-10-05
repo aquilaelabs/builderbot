@@ -25,6 +25,7 @@ Play Protect exactly as it did. A lease ends by itself when its time is up,
 when the phone is disconnected, and when the owner takes it back.
 """
 import base64
+import hashlib
 import re
 import secrets
 import shlex
@@ -281,6 +282,10 @@ def use(project, op, args):
         return {"code": r["code"], "out": r["out"]}, 200
     if op in ("touch", "ui"):
         guard = _ours_in_front(pkgs)
+        if op == "touch" and str((args or {}).get("kind")) == "glide":
+            g = _glide(project, nid, serial, guard, args)
+            if g is not None:
+                return g
         if op == "ui":
             r = _shell(nid, serial, guard + "uiautomator dump /data/local/tmp/bb-ui.xml >/dev/null "
                                     "&& cat /data/local/tmp/bb-ui.xml", project, timeout=90)
@@ -294,6 +299,61 @@ def use(project, op, args):
                              "not touched: bb phone start PKG first (" + r["out"].strip()[-160:] + ")"}, 409
         return {"code": r["code"], "out": r["out"]}, 200
     return {"error": f"unknown: {op}"}, 400
+
+
+GLIDE_SRC = Path(__file__).with_name("BbGlide.java")
+
+# Built once per source on the node (cached in /tmp by the source's hash),
+# pushed, and run as the shell user. Exit 90: the node has no javac or
+# Android build-tools to build it with, and the caller falls back to points.
+_GLIDE_SH = r"""
+d=/tmp/bb-glide-$3
+if [ ! -s "$d/classes.dex" ]; then
+  mkdir -p "$d/cls" && printf %s "$4" > "$d/BbGlide.java" &&
+  aj=$(ls "$ANDROID_HOME"/platforms/android-*/android.jar 2>/dev/null | sort -V | tail -1) &&
+  bt=$(ls -d "$ANDROID_HOME"/build-tools/*/ 2>/dev/null | sort -V | tail -1) &&
+  [ -n "$aj" ] && [ -n "$bt" ] && command -v javac >/dev/null &&
+  javac --release 11 -cp "$aj" -d "$d/cls" "$d/BbGlide.java" >/dev/null 2>&1 &&
+  "${bt}d8" --min-api 26 --lib "$aj" --output "$d" "$d/cls/BbGlide.class" >/dev/null 2>&1 ||
+  { echo "bb-glide-unbuilt"; exit 90; }
+fi
+adb -s "$1" push "$d/classes.dex" /data/local/tmp/bb-glide.dex >/dev/null && adb -s "$1" shell "$2"
+"""
+
+
+def _glide(project, nid, serial, guard, args):
+    """A glide as one held stroke (R126), or None when the node cannot build
+    the injector, for the caller's points instead; a bad argument is its
+    refusal."""
+    a = args if isinstance(args, dict) else {}
+    pts = a.get("points") if isinstance(a.get("points"), list) else []
+    nums = [_num(v) for v in pts]
+    if len(nums) < 4 or len(nums) % 2 or None in nums or len(nums) > 200:
+        return {"error": "glide X Y X Y..., at least two points"}, 400
+    step = _num(a.get("ms") or 40)
+    if step is None or step > 2000:
+        return {"error": "--ms is the time between points, at most 2000"}, 400
+    try:
+        src = GLIDE_SRC.read_text()
+    except OSError:
+        return None
+    h = hashlib.sha256(src.encode()).hexdigest()[:12]
+    # Numbers only on the phone's command line, behind the same guard a tap has.
+    on_phone = guard + "CLASSPATH=/data/local/tmp/bb-glide.dex app_process / BbGlide " + \
+        " ".join(str(n) for n in [step, *nums])
+    secs = 60 + (len(nums) // 2) * step // 1000
+    r = phone.nodes.run_wait(f"session:{project}", nid, ["sh", "-c", _GLIDE_SH, "_", serial, on_phone, h, src],
+                             env={"ANDROID_ADB_SERVER_PORT": phone.ADB_PORT}, timeout=secs + 120,
+                             project=project, title=f"glide on the phone lent to {project}", cwd="/tmp")
+    if r.get("error"):
+        return {"error": "the glide did not run: " + r["error"]}, 502
+    out = r.get("out") or ""
+    if r.get("code") == 90 and "bb-glide-unbuilt" in out:
+        return None
+    if "bb-not-yours" in out:
+        return {"error": "none of this lease's apps is in front or is the keyboard, so the phone is "
+                         "not touched: bb phone start PKG first (" + out.strip()[-160:] + ")"}, 409
+    return {"code": r.get("code") or 0, "out": out}, 200
 
 
 def _num(v):

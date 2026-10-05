@@ -100,7 +100,25 @@ class Lease(unittest.TestCase):
         # Spaces become input's %s, and the whole is one quoted word for the
         # phone's shell, so nothing typed can end the command.
         self.assertTrue(self.sent[-1][-1].endswith("input text 'a%sb'\"'\"';%sreboot'"))
-        pl.use("app", "touch", {"kind": "glide", "points": [1, 2, 3, 4, 5, 6], "ms": 30})
+        # R126: a glide is one held stroke from the injector built on the
+        # node; where the node cannot build it (exit 90), the points as
+        # before. Here the node answers 90, so the points are sent.
+        seen = {}
+
+        class Nodes:
+            @staticmethod
+            def run_wait(by, nid, argv, env=None, timeout=30, project="", **kw):
+                seen["argv"] = argv
+                return {"code": 90, "out": "bb-glide-unbuilt\n"}
+        saved = phone.nodes
+        phone.nodes = Nodes
+        try:
+            pl.use("app", "touch", {"kind": "glide", "points": [1, 2, 3, 4, 5, 6], "ms": 30})
+        finally:
+            phone.nodes = saved
+        self.assertIn("app_process / BbGlide 30 1 2 3 4 5 6", seen["argv"][5])
+        self.assertIn("*dev.app/*", seen["argv"][5])              # the same guard a tap has
+        self.assertIn("class BbGlide", seen["argv"][7])
         g = self.sent[-1][-1]
         self.assertIn("input motionevent DOWN 1 2", g)
         self.assertIn("sleep 0.030", g)
