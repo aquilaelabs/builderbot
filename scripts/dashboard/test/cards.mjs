@@ -850,6 +850,17 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === 'nostro
 ok(await page.evaluate(() => { try { return localStorage.getItem('bb.theme'); }
                                catch (e) { return null; } }) === 'nostromo',
    '...and remembers it here rather than on the server: it is about the room, not the work');
+// ...for the account that picked it (B491): a browser whose choice was
+// another account's takes this account's own scheme on the next poll,
+// rather than carrying the first account's colors over.
+const switched = await page.evaluate(async () => {
+  localStorage.setItem('bb.theme', 'abyss'); localStorage.setItem('bb.theme.who', 'somebody-else');
+  document.documentElement.dataset.theme = 'abyss';
+  await refresh();
+  return { theme: document.documentElement.dataset.theme || 'default', who: localStorage.getItem('bb.theme.who') };
+});
+ok(switched.theme === 'nostromo' && switched.who === 'test',
+   `another account's choice in this browser gives way to this account's own scheme (${JSON.stringify(switched)})`);
 // Nostromo's flare is drawn, not fetched: no image files in a repo whose
 // image is rebuilt weekly. The header's decal is the visible half.
 ok(await page.evaluate(() => {
