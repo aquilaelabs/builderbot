@@ -34,6 +34,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/phone` | prefix | `_get_phone` | GET /api/phone. |  |
 | GET | `/api/toolchains` | prefix | `_get_toolchains` | GET /api/toolchains. |  |
 | GET | `/api/emulator` | prefix | `_get_emulator` | GET /api/emulator?node=ID: that node's system images, what could be added, and the image job there. |  |
+| GET | `/api/roles` | prefix | `_get_roles` | GET /api/roles: every role with its grants, the capabilities and their groups, and the projects a grant may name (the Roles tab, R137). | refused: admin |
 | GET | `/api/users` | prefix | `_get_users` | GET /api/users. | refused: admin |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
@@ -90,6 +91,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/link` | prefix | `_link` | Link an existing local repo to an empty repo on a host. | refused: create |
 | POST | `/api/project-job` | prefix | `_project_job` | Stop the running project job, or clear the last one's outcome. | refused: create |
 | POST | `/api/roadmap` | prefix | `_roadmap` | Add, send, edit or drop one item on a project's list: roadmap.verb says what each action means. | refused: admin |
+| POST | `/api/roles` | prefix | `_roles` | POST /api/roles: set (make or change a role of your own, with its grants and note) or remove one; the built-in roles refuse both (roles.py). | refused: admin |
 | POST | `/api/users` | prefix | `_users` | The Users tab's verbs. | refused: admin |
 | POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. | refused: admin |
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: admin |

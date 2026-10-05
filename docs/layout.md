@@ -103,6 +103,7 @@ scripts/
     bb-work-note                 what a session is changing, for the overlap warning
     bb-keep-login                a hook that does nothing, for sessions an earlier build of this window started with it
     users.py                     who may sign in, and what they are allowed to see (docs/users.md)
+    roles.py                     roles and permissions (R137): a grant is a capability on a scope, a role a named set of them, in roles.json; the gate (users.may) reads them
     prefs.py                     which model and effort a project's Claude session runs on
     settings.py                  controller settings, the things that used to be environment variables
     statefile.py                 writing a state file, and holding it while you read-modify-write one

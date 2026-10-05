@@ -218,6 +218,9 @@ rename_project_data = None
 # settings dialog writes them (prefs.set_prefs).
 lock = None
 take_on = None
+# roles.rename_project (R137): a project renamed is renamed in every
+# role's named scope. Set by the server.
+roles_rename = None
 # users.rename_project: a project renamed is renamed on every account's
 # list, so it stays taken on. Set by the server.
 users_rename = None
@@ -515,6 +518,11 @@ def rename(req):
             moved.append("claude-prefs.json reads")
     except OSError as e:
         failed.append(f"reads: {e}")
+    try:
+        if roles_rename is not None and roles_rename(old, new):
+            moved.append("roles.json scopes")
+    except OSError as e:
+        failed.append(f"roles: {e}")
     try:
         if users_rename is not None and users_rename(old, new):
             moved.append("users.json lists")

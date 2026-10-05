@@ -14,7 +14,7 @@
 let usersList = null;            // last answer, or null before the first
 let usersRev = 0;                // bumped when it changes, so panes repaint
 let usersErr = "";
-let usersMeta = {owner: "", me: "", roles: [], projects: []};
+let usersMeta = {owner: "", me: "", roles: [], role_names: [], projects: []};
 // What is typed into Add somebody, kept across the repaints a reload brings:
 // the form is drawn afresh each time, and a reload landing between typing
 // and Add emptied it, so Add said only "a name and a password" and sent
@@ -32,7 +32,7 @@ async function loadUsers(){
     usersErr = j.error || "";
     usersList = j.users || [];
     usersMeta = {owner: j.owner || "", me: j.me || "",
-                 roles: j.roles || [], projects: j.projects || []};
+                 roles: j.roles || [], role_names: j.role_names || [], projects: j.projects || []};
   }catch(e){
     usersErr = String(e);
     usersList = usersList || [];
@@ -207,6 +207,12 @@ function usersEditOpen(name){
           usersMeta.roles.filter(r => r !== "owner").map(r =>
             `<option value="${esc(r)}"${r === u.role ? " selected" : ""}>${esc(r)}</option>`).join("")}
         </select></div>`}
+    ${!isOwner && (usersMeta.role_names || []).length ? `<div class="field">
+      ${lbl("", "Roles of your own", "beside the role above; their grants add up (the Roles tab makes them)")}
+      <div class="upick">${usersMeta.role_names.map(r => `<label class="tc"><input type="checkbox"
+          data-uerole="${esc(r)}"${(u.roles || []).includes(r) ? " checked" : ""}>
+          <span class="grow"><span class="nm">${esc(r)}</span></span></label>`).join("")}</div>
+    </div>` : ""}
     ${f("ueFull", "Their name", pf.full_name)}
     ${f("ueEmail", "Their email", pf.email, "email")}
     ${f("ueGitName", "Git name", pf.git_name, "text", "", "on their commits. Blank means their name")}
@@ -256,6 +262,8 @@ async function usersEditSave(name, m){
                 password: v("uePw")};
   if ((m.querySelector("#ueRole")?.value || "user") !== "owner" && !m.querySelector("#ueProjField").hidden)
     body.projects = [...m.querySelectorAll("[data-ueproj]")].filter(c => c.checked).map(c => c.dataset.ueproj);
+  if (m.querySelector("[data-uerole]"))
+    body.roles = [...m.querySelectorAll("[data-uerole]")].filter(c => c.checked).map(c => c.dataset.uerole);
   // An email that is not one is caught here, before a request: the field
   // knows (type=email), and the server checks the same shape again.
   for (const id of ["ueEmail", "ueGitEmail"]){

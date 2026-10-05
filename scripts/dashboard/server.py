@@ -2234,8 +2234,11 @@ def _apksigner():
 
 signing.apksigner_path = _apksigner
 import membership                                                # noqa: E402
+import roles                                                     # noqa: E402
 import busy                                                      # noqa: E402
 membership.configure(state=STATE, write_json=write_json)
+roles.configure(state=STATE, write_json=write_json)
+projects.roles_rename = roles.rename_project
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -3269,6 +3272,7 @@ GET_ROUTES = (
     ("prefix", "/api/phone", "_get_phone"),
     ("prefix", "/api/toolchains", "_get_toolchains"),
     ("prefix", "/api/emulator", "_get_emulator"),
+    ("prefix", "/api/roles", "_get_roles"),
     ("prefix", "/api/users", "_get_users"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
@@ -3338,6 +3342,7 @@ POST_ROUTES = (
     ("prefix", "/api/link", "_link"),
     ("prefix", "/api/project-job", "_project_job"),
     ("prefix", "/api/roadmap", "_roadmap"),
+    ("prefix", "/api/roles", "_roles"),
     ("prefix", "/api/users", "_users"),
     ("prefix", "/api/toolchains", "_toolchains"),
     ("prefix", "/api/emulator", "_emulator"),
@@ -4362,6 +4367,15 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return self._json(users.tab_view(self._who(), [p["name"] for p in project_list(self._who())],
                                          claudegrant.logins_of))
+
+    def _get_roles(self):
+        """GET /api/roles: every role with its grants, the capabilities and
+        their groups, and the projects a grant may name (the Roles tab,
+        R137). An administrator's, like the Users tab it sits beside."""
+        if self._refused("admin"):
+            return None
+        return self._json({"roles": roles.all_roles(), "caps": roles.CAPS, "groups": roles.GROUPS,
+                           "projects": [p["name"] for p in project_list(self._who())]})
 
     def _get_nodes(self):
         """GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to
@@ -6039,6 +6053,19 @@ class Handler(BaseHTTPRequestHandler):
         return self._result(users.verb(act, req, lambda: {p["name"] for p in project_list(me)},
                                        may_change=lambda p: membership.member_refusal(
                                            me, p, joining=field(req, "name") == me.get("name"))))
+
+    def _roles(self, req):
+        """POST /api/roles: set (make or change a role of your own, with its
+        grants and note) or remove one; the built-in roles refuse both
+        (roles.py). An administrator's."""
+        if self._refused("admin"):
+            return None
+        act = field(req, "action")
+        if act == "set":
+            return self._result(roles.set_role(field(req, "name"), req.get("grants"), field(req, "note")))
+        if act == "remove":
+            return self._result(roles.remove(field(req, "name")))
+        return self._json({"error": "unknown action"}, 400)
 
     def _toolchains(self, req):
         """Queue installs or removals of the toolchains the Tools card

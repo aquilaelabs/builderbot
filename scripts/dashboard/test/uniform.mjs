@@ -89,6 +89,11 @@ const DRIVERS = {
     open: () => page.evaluate(() => openUsersTab()),
     readyWhen: '.userstab .urow',
   },
+  roles: {
+    // The built-in roles are always there, each a fold.
+    open: () => page.evaluate(() => openRolesTab()),
+    readyWhen: '.rolestab .sect',
+  },
   profile: {
     open: () => page.evaluate(() => openProfileTab()),
     readyWhen: '.profiletab .setrow',
@@ -770,12 +775,15 @@ ok(seenReds.size <= 1,
   await page.waitForFunction(() => /renderer failed/.test(
     document.querySelector('.doc.on')?.textContent || ''), null, { timeout: 8000 });
   ok(true, 'a throwing renderer becomes an error band in its own tab');
-  const alive = await page.evaluate(() => {
-    // The page is still a page: another kind renders, the strip answers.
+  // The page is still a page: another kind renders, the strip answers. The
+  // Docker tab opened early in this file may have left the strip by now
+  // (one more document kind, the Roles tab, pushed it out, 5 Oct), so it is
+  // opened again where it is gone, and its picker waited for.
+  await page.evaluate(() => {
     const t = tabs.find(x => x.kind === 'docker');
-    if (t) focusTab(t.id);
-    return !!document.querySelector('.dmtab .dmpick');
+    if (t) focusTab(t.id); else openDocker();
   });
+  const alive = await page.waitForSelector('.dmtab .dmpick', { timeout: 15000 }).then(() => true, () => false);
   ok(alive, '...and the rest of the dashboard keeps working around it');
   ok(page.errors.length > errsBefore
      && /boom \(deliberate\)/.test(page.errors[page.errors.length - 1]),

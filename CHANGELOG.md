@@ -70,6 +70,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb phone record start and stop leave a recording running on a lent phone while touches work it, so a glide is seen moving; each recording comes with its reel, the frames that changed with their times, which the Phone tab shows beside the screenshot. (eb3aa16)
 - The companion app pairs with more than one BuilderBot: Add another under More, a name for each, a switcher on Home, every one watched with its name on each notification, and Forget takes one off. (d9ae047)
 - The companion app can lock itself: Lock the app when it opens, under More, asks for the phone's own fingerprint, face or PIN every time it comes to the front. (d9ae047)
+- Roles and permissions: a Roles tab under the Administration card makes named roles out of grants (what may be read and changed, on every project, the projects an account is on, or named ones); an account carries its role and any of your own, ticked in the Users tab's dialog, and their grants add up. (5ae20d8)
 
 ### Changed
 

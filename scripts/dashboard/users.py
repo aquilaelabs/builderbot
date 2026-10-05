@@ -36,6 +36,7 @@ from pathlib import Path
 # path, where a plain sibling import finds nothing.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fields import field  # noqa: E402
+import roles  # noqa: E402
 
 STATE = Path("/config")
 write_json = None
@@ -138,6 +139,8 @@ def all_users():
         out.append({"name": name, "uid": u.get("uid", ""),
                     "role": u.get("role", "user"),
                     "projects": list(u.get("projects") or []),
+                    # The roles it carries (R137): its role, and any of your own.
+                    "roles": roles.roles_of(u),
                     "created": u.get("created", 0), "seen": u.get("seen", 0),
                     # The Profile fields, for the Users tab's edit dialog:
                     # never a credential, never the theme.
@@ -538,7 +541,10 @@ def may(u, action, project=None):
     if action == "pending" and (u or {}).get("session"):
         return ("what a session has waiting is the operator's to approve or "
                 "deny, on the notebook; a session cannot answer for itself")
-    if is_admin(u):
+    # The grants (R137): what the account's roles allow, on this project
+    # where one is named. The built-in roles reproduce the answers from
+    # before roles existed; a role of your own says exactly what it grants.
+    if roles.granted(u, action, project, may_work):
         return ""
     if action in USER_DENIES:
         return {"rename": "renaming a project is an administrator's",
@@ -795,6 +801,22 @@ def set_role(name, role):
     return {"ok": True, "name": name, "role": role}
 
 
+def set_roles(name, want):
+    """The roles of your own an account carries, beside its built-in role
+    (R137): names the roles store knows; the built-in one stays what
+    set_role made it, so is_admin keeps meaning what it meant."""
+    known = roles.all_roles()
+    want = [str(r) for r in (want if isinstance(want, list) else []) if str(r) in known and str(r) not in roles.BUILTIN]
+    with _lock:
+        d = load()
+        u = d["users"].get(name)
+        if not u:
+            return {"error": f"no account called {name}"}
+        u["roles"] = [str(u.get("role") or "user")] + sorted(set(want))[:50]
+        _save(d)
+    return {"ok": True, "name": name, "roles": u["roles"]}
+
+
 def set_projects(name, projects):
     with _lock:
         d = load()
@@ -983,6 +1005,8 @@ def verb(act, req, seen, may_change=None):
             r = profile_set(name, req["profile"])
         if not r.get("error") and field(req, "role"):
             r = set_role(name, field(req, "role")) if (get(name) or {}).get("role") != field(req, "role") else r
+        if not r.get("error") and isinstance(req.get("roles"), list):
+            r = set_roles(name, req["roles"])
         if not r.get("error") and isinstance(req.get("projects"), list):
             mine = seen()
             want = [p for p in req["projects"] if p in mine]
@@ -1006,4 +1030,6 @@ def tab_view(me, projects, logins_of):
     out."""
     return {"users": logins_of(all_users()), "owner": owner_name(),
             "me": (me or {}).get("name", ""), "roles": list(ROLES),
+            # The roles of your own, for the edit dialog's picker (R137).
+            "role_names": [n for n in roles.all_roles() if n not in roles.BUILTIN],
             "projects": projects}

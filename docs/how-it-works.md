@@ -3605,6 +3605,18 @@ carried as `*` and now carries by name; the one difference from an
 administrator is that the owner may add themselves to an invite-only
 project without an invitation.
 
+**Roles and permissions.** Under the Administration card, **Roles** (R137)
+makes named roles out of grants: a grant is a capability (what may be done:
+work on a project, move its version, set its node, run a job, install a
+toolchain, and so on) on a scope (every project, the projects the account
+is on, or named ones). An account carries its built-in role and any of your
+own, ticked in the Users tab's edit dialog, and their grants add up: a role
+never takes anything away. owner, admin and user are built in and reproduce
+what each could do before roles existed, so nothing changes until a role is
+made or given; Copy starts one of your own from a built-in. Every gate on
+the server reads the same grants (`users.may`), which is what keeps the
+tabs and the refusals consistent.
+
 **Every project has an owner, and an owner can close it to administrators.**
 Whoever made a project owns it; one from before there were owners belongs to
 BuilderBot's owner. Under **People** in the project's settings (the gear)
