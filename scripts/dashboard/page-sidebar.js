@@ -471,7 +471,9 @@ function pJobWire(){
   // and a button that earns an error is worse than one that waits.
   const busy = !!state?.project_job?.running;
   const nb = $("bNewProj"); if (nb) nb.disabled = busy;
-  document.querySelectorAll("#projects [data-l]").forEach(b => b.disabled = busy);
+  // ...and never re-enabled past the grant (R137 step 4): the busy pass
+  // undid the row's disabled for an account without git-auth.
+  document.querySelectorAll("#projects [data-l]").forEach(b => b.disabled = busy || state?.can?.["git-auth"] === false);
 }
 
 // ---- a project's job: the clone or the first push -----------------------

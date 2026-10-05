@@ -96,6 +96,9 @@ function emuAddRows(d, why){
   const about = flavors.find(f => f.kind === chosen)?.about || "";
   const job = d.job || {};
   const writing = job.running && job.action === "add" ? new Set(job.images || [job.image]) : new Set();
+  // Adding images is an administrator's (the server's gate on /api/emulator):
+  // not offered without the grant (R137 step 4), the list above is everybody's.
+  if (state?.can?.admin === false) return "";
   return `<div class="imgadd emadd"><label for="imgFlavor">Images to add</label>
       <select id="imgFlavor">${
         flavors.map(f => `<option value="${esc(f.kind)}"${f.kind === chosen ? " selected" : ""}
