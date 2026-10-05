@@ -118,7 +118,7 @@ class MainActivity : FragmentActivity() {
         if (!prompting) locked.value = true
     }
 
-    /** Ask for the phone's lock. Cancelled or failed, the app stays veiled
+    /** Ask for the phone's lock. Canceled or failed, the app stays veiled
      *  with an Unlock button, and nothing of it is shown. */
     fun unlock() {
         if (prompting) return
