@@ -201,10 +201,13 @@ fun BuilderBotApp(openOn: String, activity: MainActivity) {
     // answer survives a rotation (B275): a user saw the Nodes tab until
     // Home reloaded.
     var isAdmin by rememberSaveable { mutableStateOf(false) }
+    // What the account may install (R137): toolchains-write, from the same
+    // can the page reads; an administrator until Home has said.
+    var mayTools by rememberSaveable { mutableStateOf(false) }
     var waiting by rememberSaveable { mutableStateOf(0) }
     BuilderBotTheme {
         if (!signedIn) {
-            LoginScreen(store) { admin -> isAdmin = admin; signedIn = true; current = store.pairing?.id ?: ""
+            LoginScreen(store) { admin -> isAdmin = admin; mayTools = admin; signedIn = true; current = store.pairing?.id ?: ""
                                  Watch.startIfWanted(context); Live.startIfWanted(context) }
             return@BuilderBotTheme
         }
@@ -263,7 +266,7 @@ fun BuilderBotApp(openOn: String, activity: MainActivity) {
             NavHost(nav, startDestination = if (openOn in setOf("approvals", "nodes", "phone")) openOn else "home",
                     modifier = Modifier.padding(pad)) {
                 composable("home") { HomeScreen(store, onAdmin = { isAdmin = it }, onWaiting = { waiting = it }, openProject = { nav.navigate("project/$it") },
-                                                 onSwitch = { store.current = it; current = it }) }
+                                                 onSwitch = { store.current = it; current = it }, onTools = { mayTools = it }) }
                 composable("project/{name}") { e -> ProjectScreen(store, e.arguments?.getString("name") ?: "") }
                 composable("approvals") { ApprovalsScreen(store) }
                 composable("nodes") { NodesScreen(store) }
@@ -274,7 +277,7 @@ fun BuilderBotApp(openOn: String, activity: MainActivity) {
                 composable("add") { LoginScreen(store, adding = true) { _ -> current = store.pairing?.id ?: ""
                                                                          Live.startIfWanted(context); nav.popBackStack() } }
                 composable("users") { UsersScreen(store) }
-                composable("tools") { ToolsScreen(store, isAdmin) }
+                composable("tools") { ToolsScreen(store, mayTools) }
                 composable("profile") { ProfileScreen(store) }
                 composable("jobs") { JobsScreen(store) }
                 composable("whatsnew") { WhatsNewScreen(store) }

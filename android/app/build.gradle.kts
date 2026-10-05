@@ -118,5 +118,9 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0")
     // The app's lock (R133): the phone's own fingerprint, face or PIN.
     implementation("androidx.biometric:biometric:1.1.0")
+    // ...whose FragmentActivity must be a current one: the fragment library
+    // biometric 1.1.0 carries rejects the request codes activity 1.13's
+    // result registry hands out ("Can only use lower 16 bits", B493).
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 }

@@ -186,6 +186,7 @@ fun LoginScreen(store: Store, adding: Boolean = false, onDone: (admin: Boolean) 
 
 @Composable
 fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Unit = {}, openProject: (String) -> Unit,
+               onTools: (Boolean) -> Unit = {},
                onSwitch: (String) -> Unit = {}) {
     val api = store.api() ?: return
     val pairings = store.pairings
@@ -193,7 +194,11 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
     var pick by remember { mutableStateOf(false) }
     val (st, reload) = load("status") { api.status() }
     val s = st.value
-    if (s != null){ onAdmin(s.obj("can").optBoolean("admin", false)); onWaiting(s.int("phone_asks")) }
+    if (s != null){
+        onAdmin(s.obj("can").optBoolean("admin", false)); onWaiting(s.int("phone_asks"))
+        // The grants the page reads (R137): installing on a node is toolchains-write's.
+        onTools(s.obj("can").optBoolean("toolchains-write", s.obj("can").optBoolean("admin", false)))
+    }
     var find by rememberSaveable { mutableStateOf("") }
     // The account's own Claude sessions, by project: the name the server
     // gives one is the prefix, then claude- and the project as tmux spells it.
@@ -945,7 +950,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
 // worse than choosing it on the tab that has room for it.
 
 @Composable
-fun ToolsScreen(store: Store, isAdmin: Boolean) {
+fun ToolsScreen(store: Store, mayTools: Boolean) {
     val api = store.api() ?: return
     val scope = rememberCoroutineScope()
     var node by remember { mutableStateOf("") }
@@ -1057,7 +1062,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
                                                style = MaterialTheme.typography.bodySmall)
                     p.bool("unknown") -> Text("this node has not reported its store yet",
                                               color = Warn, style = MaterialTheme.typography.bodySmall)
-                    !isAdmin -> {}
+                    !mayTools -> {}
                     else -> Row(Modifier.padding(top = 6.dp)) {
                         OutlinedButton(enabled = !busy,
                                        onClick = { ask = (if (installed) "remove" else "install") to p }) {
@@ -1068,7 +1073,7 @@ fun ToolsScreen(store: Store, isAdmin: Boolean) {
             }
             Hairline()
         }
-        item { if (!isAdmin) Dim("Installing and removing is an administrator's: these are gigabytes on somebody else's disk.") }
+        item { if (!mayTools) Dim("Installing and removing is not one of your roles' grants: these are gigabytes on somebody else's disk.") }
     }
     }
 }

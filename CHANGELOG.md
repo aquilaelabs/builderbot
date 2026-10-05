@@ -259,6 +259,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Start on boot on the Docker tab works: the switch's read and its Apply were refused by the manager's own command guard, and on a node would have gone the wrong way; they run through the node's agent now (104317e)
 - A node no longer stops taking signing, builds and rebuilds when one job's end never comes back: a job running far past its own time limit is failed as lost and the node's slot freed (ea8a928)
 - On a lent phone, bb phone shot and bb phone record work: both come back as files the node uploads (the shot no longer fails on a permission, the video is whole), and bb phone ui prints the whole layout rather than an error (369509b)
+- The companion app opens again on a fresh install (it crashed at launch since the lock), and its Tools screen offers Install and Remove by the account's grants, as the dashboard does. (ed603e1)
 
 ### Security
 
