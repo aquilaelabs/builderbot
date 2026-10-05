@@ -3426,11 +3426,22 @@ that carries a rotation says so, and which key older devices still see.
 `.aab` row offers **Sign** for each key the project has. A session runs
 `bb sign FILE [--for play|sideload] [--why "..."]` (Play for an `.aab` and
 sideload for an `.apk` unless it says), under the project's dial **Claude
-may: Sign a release**: auto signs, **ask** (the default) puts the build, the
+may: Sign a build**: auto signs, **ask** (the default) puts the build, the
 key and the reason in front of the project's owner in their bell, and deny
 refuses naming the setting. Either way it is the same job, and the session
 follows it to the signed file's name. A signing that could not happen (no
 such key, no such build, no node) is refused before anybody is asked.
+
+**A release from a session.** `bb version release --why "..."` tags the
+commit and publishes the release the way **Release** on the Artifacts tab
+does, on the controller and with the project's own credentials, which the
+session never holds (R138). It is its own dial, **Claude may: Tag and
+publish a release**, named apart from signing, which makes a build rather
+than a release: auto releases at once, **ask** (the default) puts the tag
+and the commit it would mark in front of the project's owner in their bell
+and the app, and deny refuses naming the setting. A release that could not
+happen (no version, a tag already there, uncommitted changes) is refused
+before anybody is asked.
 
 **What is signed says so.** The node reports what `apksigner verify` (or
 `jarsigner -verify` for a bundle) found: the certificate's SHA-256 and the

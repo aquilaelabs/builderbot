@@ -4239,8 +4239,14 @@ body.booting .pane>.loading{margin:auto}
         <!-- bb sign (R106): a build signed with one of the project's keys,
              which the session never receives. Ask by default; Ask waits for
              the project's owner. -->
-        <label class="pick">Sign a release <select id="rnGateSign"
-          aria-label="signing a build with this project's keys, from a session"></select></label>
+        <label class="pick">Sign a build <select id="rnGateSign"
+          aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
+        <!-- bb version release (R138): the tag on this commit and the
+             forge's release, made on the controller with the project's
+             credentials. Ask by default; Ask waits for the project's owner.
+             Named apart from signing, which is a build, not a release. -->
+        <label class="pick">Tag and publish a release <select id="rnGateRelease"
+          aria-label="tagging this commit and publishing the release, from a session"></select></label>
         <!-- A new generated key, or an app's package mapped to a key, from a
              session (R106 step 6). Ask by default: a new sideload key is an
              app's identity for good. -->
@@ -4682,8 +4688,10 @@ body.booting .pane>.loading{margin:auto}
           aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
         <!-- The rest of the project settings' Claude may, so a project is
              born with every one of them chosen rather than found later. -->
-        <label class="pick">Sign a release <select id="pGateSign"
-          aria-label="signing a build with this project's keys, from a session"></select></label>
+        <label class="pick">Sign a build <select id="pGateSign"
+          aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
+        <label class="pick">Tag and publish a release <select id="pGateRelease"
+          aria-label="tagging a commit and publishing the release, from a session"></select></label>
         <label class="pick">Manage signing keys <select id="pGateKeys"
           aria-label="making a signing key or mapping an app to one, from a session"></select></label>
         <label class="pick">Report BuilderBot bugs <select id="pGateReport"

@@ -118,8 +118,10 @@ def show():
     for label, key, dflt in (("Run its container", "devbuild", "deny"),
                              ("Report BuilderBot bugs", "report", "auto"),
                              # R106: signing a build, and its keys and mapping.
-                             ("Sign a release", "sign", "ask"),
-                             ("Manage signing keys", "keys", "ask")):
+                             ("Sign a build", "sign", "ask"),
+                             ("Manage signing keys", "keys", "ask"),
+                             # R138: the tag and the forge's release.
+                             ("Tag and publish a release", "release", "ask")):
         print(f"    Claude may: {label:<28} {rec.get(key) or dflt}")
     # Who may move the version is version.py's policy rather than a prefs
     # dial, and an owner who set every dial above to auto still found it

@@ -2641,6 +2641,20 @@ signing.file_path = workspace.file_path
 phone.signer = signing.start
 
 
+def _releaser(project, comp, asker_name, principal):
+    """A session's release, run as the Artifacts tab's Release runs it
+    (version.verb's release), under the asking account's commit identity
+    and with the project's own credentials (R138)."""
+    # The asker's commit identity, else the project's owner's: a relayed bb
+    # carries a token minted for the project and no account.
+    who = (users.get(asker_name) if asker_name else None) or users.get(membership.owner_name(project) or "") \
+        or {"name": asker_name or "claude"}
+    return version.verb(project, "release", {"component": comp}, who, principal)
+
+
+phone.releaser = _releaser
+
+
 def _keymaker(action, project, args, by=""):
     """A new generated key or a package's key, for a session's auto dial and
     for Allow on its ask (R106 step 6)."""
@@ -5527,9 +5541,32 @@ class Handler(BaseHTTPRequestHandler):
         # bump, under the project's policy, and never here, where it could
         # also have loosened that policy; a plain account may ask a session
         # to bump and no more.
-        if (self._who() or {}).get("session"):
+        who = self._who() or {}
+        if who.get("session") and act == "release":
+            # bb version release (R138): its own project only, under its
+            # dial. The tag and the forge's release are made here, with the
+            # project's own credentials, which the session never holds.
+            if name != who["session"]:
+                return self._json({"error": "a session releases its own project and no other"}, 403)
+            mode = (prefs.get(name) or {}).get("release") or "ask"
+            if mode == "deny":
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
+                                            "Tag and publish a release); a person cuts it with Release on "
+                                            "the Artifacts tab"}, 403)
+            comp = field(req, "component") or ""
+            plan = version.release_plan(name, comp)
+            if plan.get("error"):
+                return self._json(plan, 400)
+            acct = users.account_of(who) or {}
+            if mode == "auto":
+                return self._json(*_releaser(name, comp, str(acct.get("name") or ""), self._principal()))
+            r = phone.ask_release(field(req, "why"), name, comp, plan, membership.owner_of(name),
+                                  membership.owner_name(name) or "the project's owner",
+                                  asker_name=str(acct.get("name") or ""), principal=self._principal())
+            return self._json(r, 400 if r.get("error") else 200)
+        if who.get("session"):
             return self._json({"error": "a session moves its version with bb version bump, "
-                                        "under the project's policy"}, 403)
+                                        "under the project's policy, and releases with bb version release"}, 403)
         if act != "ask" and self._refused("version", name):
             return None
         return self._json(*version.verb(name, act, req, self._who(), self._principal()))
@@ -5559,7 +5596,7 @@ class Handler(BaseHTTPRequestHandler):
         who = self._who() or {}
         if who.get("session"):
             # bb sign: its own project's build, under its dial (Claude may:
-            # Sign a release). It never receives the key, the list, or a
+            # Sign a build). It never receives the key, the list, or a
             # backup; asking to sign is all a session does here.
             act = field(req, "action")
             if act not in ("sign", "keys", "generate", "map", "rotate") or name != who["session"]:
@@ -5593,7 +5630,7 @@ class Handler(BaseHTTPRequestHandler):
             mode = (prefs.get(name) or {}).get("sign") or "ask"
             if mode == "deny":
                 return self._json({"error": f"{name}'s settings say Claude does not sign its builds "
-                                            "(Claude may: Sign a release); a person signs from the "
+                                            "(Claude may: Sign a build); a person signs from the "
                                             "Artifacts tab"}, 403)
             file, route, key = field(req, "file"), field(req, "route"), field(req, "key")
             no = signing.refusal(name, file, route, key)

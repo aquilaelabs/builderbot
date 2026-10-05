@@ -3,9 +3,9 @@
 // /term proxy that puts the terminals behind the same sign-in. The proxy's
 // upstream is dead in the harness (nothing listens on the ttyd port), which
 // pins the 502 path; the live relay is covered by using the dashboard.
-import { launch, newPage, ok, done, sleep, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, URL, DIR, takeOn } from './lib.mjs';
 import http from 'node:http';
-import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 // Plain fetches first: no credentials at all, straight from node.
@@ -1382,7 +1382,7 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
       const denied = await sign({ file: 'alpha-release.apk', route: 'sideload', why: 'for testers' });
       const other = await bare('/api/signing', { method: 'POST', headers: sessAuth,
         body: JSON.stringify({ action: 'sign', project: 'beta', file: 'x.apk', route: 'sideload', why: 'w' }) });
-      ok(denied.status === 403 && /Sign a release/.test(denied.body.error || '') && other.status === 403,
+      ok(denied.status === 403 && /Sign a build/.test(denied.body.error || '') && other.status === 403,
          `...at Deny it is refused naming the setting, and another project's build is never its to sign (${denied.status}/${other.status})`);
       // Managing keys (R106 step 6): at Ask a new key or a mapping waits on
       // the owner too, and a session reads which keys exist but no secret.
@@ -1410,6 +1410,55 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
       await bare('/api/signing', { method: 'POST', headers: ownerAuth,
         body: JSON.stringify({ action: 'backup-password', project: 'alpha', current: 'a-backup-password', new: '' }) });
       rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
+      // bb version release (R138): a session asks to tag and publish its
+      // own project's release, under its dial. What could not be released is
+      // refused before anybody is asked; Ask names the tag and the commit to
+      // the project's owner; Deny names the setting; another project is
+      // never its to release. Nothing is tagged here: the ask is denied. In
+      // a project of its own with one commit: the fixture's have no history.
+      {
+        const R = `${DIR}/ws/relproj`;
+        const gitR = (...a) => execFileSync('git', ['-C', R, ...a], { encoding: 'utf8',
+          env: { ...process.env, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@example.invalid',
+                 GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@example.invalid' } }).trim();
+        mkdirSync(R, { recursive: true });
+        writeFileSync(`${R}/README.md`, 'x\n');
+        execFileSync('git', ['init', '-q', R]);
+        gitR('add', '-A'); gitR('commit', '-qm', 'first');
+        await takeOn('relproj');
+        const btok = ef('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${new globalThis.URL('..', import.meta.url).pathname}users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim();
+        const rAuth = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + btok };
+        const rel = (body, h = rAuth) => bare('/api/version', { method: 'POST', headers: h,
+          body: JSON.stringify({ action: 'release', project: 'relproj', why: '1.2.3 for testers', ...body }) })
+          .then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+        const noVersion = await rel({});
+        writeFileSync(`${R}/VERSION`, '1.2.3\n');
+        const dirtyAsked = await rel({});
+        gitR('add', 'VERSION'); gitR('commit', '-qm', 'version 1.2.3');
+        const sha = gitR('rev-parse', '--short=7', 'HEAD');
+        const asked = await rel({});
+        const ownerAsks = await (await bare('/api/phone', { headers: ownerAuth })).json();
+        const ask = (ownerAsks.asks || []).find(a => a.id === asked.body.id);
+        ok(/has no version/.test(noVersion.body.error || '') && /uncommitted changes/.test(dirtyAsked.body.error || '')
+           && asked.status === 200 && ask && ask.kind === 'release'
+           && ask.tag === 'v1.2.3' && ask.sha === sha && !gitR('tag', '--list', 'v1.2.3'),
+           `a session's bb version release is refused before anybody is asked when it could not happen, then waits on the project's owner naming the tag and its commit, and tags nothing until then (${ask?.tag} on ${ask?.sha}; ${noVersion.body.error || ''} | ${dirtyAsked.body.error || ''} | ${asked.body.error || ''})`);
+        await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: asked.body.id }) });
+        await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'relproj', release: 'deny' }) });
+        const denied = await rel({});
+        const other = await rel({ project: 'alpha' });
+        // Another project is not one a session sees: refused as one, the
+        // answer a typo gets.
+        ok(denied.status === 403 && /Tag and publish a release/.test(denied.body.error || '') && [400, 403].includes(other.status)
+           && !gitR('tag', '--list', 'v1.2.3'),
+           `...at Deny it is refused naming the setting, another project is never its to release, and nothing was tagged (${denied.status}/${other.status})`);
+        rmSync(R, { recursive: true, force: true });
+      }
       // ...and how busy a node is (R108), for its own project only.
       const nb = await bare('/api/node-busy?project=beta', { headers: sessAuth });
       ok(nb.status === 403, `a session asks how busy only its own project's nodes are (${nb.status})`);

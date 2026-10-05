@@ -73,6 +73,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Roles and permissions: a Roles tab under the Administration card makes named roles out of grants (what may be read and changed, on every project, the projects an account is on, or named ones); an account carries its role and any of your own, ticked in the Users tab's dialog, and their grants add up. (5ae20d8)
 - A role's grants on a node (set a project's node, install a toolchain, run a job, a shell) hold on every node, the nodes of the account's projects, or named ones; the CI runner tab is a grant the user role lacks, hidden for such an account while the runner's status stays on the card. (20c9f71)
 - A project's CI findings that are one line to fix (a moving ubuntu-latest label, an action a major version behind) carry a Fix on the Git view: it writes that line into the working tree, uncommitted, and Changes shows it to commit or send to Claude. (0fd237f)
+- A session can tag and publish its project's release: bb version release --why "...", under Claude may: Tag and publish a release (ask by default, which asks the project's owner). The signing dial is now called Sign a build, so the two read apart. (123208e)
 
 ### Changed
 

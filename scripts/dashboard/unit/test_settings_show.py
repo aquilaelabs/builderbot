@@ -26,12 +26,12 @@ class Show(unittest.TestCase):
 
     def test_the_signing_dials_are_listed_at_their_defaults(self):
         out = self.run_show({})
-        self.assertRegex(out, r"Claude may: Sign a release\s+ask")
+        self.assertRegex(out, r"Claude may: Sign a build\s+ask")
         self.assertRegex(out, r"Claude may: Manage signing keys\s+ask")
 
     def test_and_as_a_project_sets_them(self):
         out = self.run_show({"sign": "auto", "keys": "deny"})
-        self.assertRegex(out, r"Claude may: Sign a release\s+auto")
+        self.assertRegex(out, r"Claude may: Sign a build\s+auto")
         self.assertRegex(out, r"Claude may: Manage signing keys\s+deny")
 
 

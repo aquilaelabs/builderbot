@@ -591,6 +591,32 @@ def lands(project, comp="", facts=None):
     return out
 
 
+def release_plan(project, comp=""):
+    """What a release here would tag, without doing it: {tag, sha, target}
+    or {error}, from the same refusals release() makes first. A session's
+    ask is made from this (bb version release, R138), so the person asked
+    reads which tag on which commit, and a release that could not happen is
+    refused before anybody is asked."""
+    tgt, err = target(project, comp)
+    if err:
+        return {"error": err}
+    if tgt is None:
+        thing = f"{project}/{comp}" if comp else project
+        return {"error": f"{thing} has no version to release yet; give it one first"}
+    if _sub(project, comp) is None:
+        return {"error": f"no such component here: {comp}"}
+    sha = _git(project, "rev-parse", "--short=7", "HEAD")
+    if sha is None:
+        return {"error": no_history(project)}
+    name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
+    if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
+        return {"error": f"{name} already exists: bump to the next number first"}
+    if (_git(project, "status", "--porcelain") or "").strip():
+        return {"error": "there are uncommitted changes in the project directory: commit or "
+                         "discard them first, so the tag marks what is actually in the commit"}
+    return {"tag": name, "sha": sha, "target": tgt}
+
+
 def release(project, comp="", env=None, may_push=True, push=True):
     """Cut the release: an annotated tag on this commit, pushed.
 
@@ -1391,9 +1417,9 @@ def verb(name, act, req, who, principal):
     if act == "release":
         # The other half of a release, and the outward-facing one: the
         # bump decided the number, this says it happened and pushes the
-        # tag. The operator's alone: a policy governs moving the
-        # number, and publishing a marker other people fetch is not
-        # the same decision.
+        # tag. A person's from here; a session asks through its own
+        # dial (Claude may: Tag and publish a release, R138), whose Allow
+        # comes back through this same branch.
         r = release(name, comp=comp, env={**CREDS_ENV(), **GIT_ENV(who, name)},
                     may_push=MAY_PUSH(name))
         if r.get("error"):

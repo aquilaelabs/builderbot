@@ -58,7 +58,7 @@ def gate_ok(kind, mode):
 # project's dev instance. One vocabulary: a person who has set a notebook
 # tab to "ask me" knows what this one does without being told twice.
 DEVBUILD_MODES = ("deny", "ask", "auto")
-# Claude may: Sign a release (R106). Ask by default: a signed build is
+# Claude may: Sign a build (R106). Ask by default: a signed build is
 # something that leaves, and a person reads which build and which key.
 SIGN_MODES = ("deny", "ask", "auto")
 # Where `bb test` runs a project's tests (roadmap R48, B241): on the node and
@@ -311,11 +311,16 @@ def _clean(rec):
             # Claude may: Report BuilderBot bugs. Off takes `bb report` and
             # the rule that points at it away from this project's sessions.
             "report": "deny" if rec.get("report") == "deny" else "auto",
-            # Claude may: Sign a release, one of SIGN_MODES (bb sign, R106).
+            # Claude may: Sign a build, one of SIGN_MODES (bb sign, R106).
             "sign": rec.get("sign") if rec.get("sign") in SIGN_MODES else "ask",
             # Claude may: Manage signing keys, one of SIGN_MODES: a new
             # generated key or a package mapped to a key (R106 step 6).
             "keys": rec.get("keys") if rec.get("keys") in SIGN_MODES else "ask",
+            # Claude may: Tag and publish a release, one of SIGN_MODES (bb
+            # version release): the tag and the forge's release, made on the
+            # controller with the project's own credentials, which no session
+            # holds. Ask by default: the operator, 5 Oct.
+            "release": rec.get("release") if rec.get("release") in SIGN_MODES else "ask",
             # How long a capture (a reel's sheet, an emulator shot) stays in
             # dist/ before the Artifacts tab's sweep removes it (R96). By
             # age and never by need: two sessions on one project may each
@@ -482,7 +487,8 @@ def _sees_of(rec):
 def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
-              test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None):
+              test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
+              release=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -554,6 +560,10 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if keys not in SIGN_MODES:
                 return {"error": f"keys is one of {', '.join(SIGN_MODES)}, not {keys}"}
             cur["keys"] = keys
+        if release is not None:
+            if release not in SIGN_MODES:
+                return {"error": f"release is one of {', '.join(SIGN_MODES)}, not {release}"}
+            cur["release"] = release
         if report is not None:
             if report not in REPORT_MODES:
                 return {"error": f"report is one of {', '.join(REPORT_MODES)}, not {report}"}
@@ -595,7 +605,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
                 or cur["test_change"] != "wait" or cur["gpu"] != "on"
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
-                or cur["sign"] != "ask" or cur["keys"] != "ask"
+                or cur["sign"] != "ask" or cur["keys"] != "ask" or cur["release"] != "ask"
                 or cur["dev_keep"] != DEV_KEEP
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
@@ -616,6 +626,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("sign", None)
             if cur["keys"] == "ask":
                 rec.pop("keys", None)
+            if cur["release"] == "ask":
+                rec.pop("release", None)
             if cur["gpu"] == "on":
                 rec.pop("gpu", None)
             if cur["capture_days"] == CAPTURE_DAYS:
@@ -716,6 +728,7 @@ def dialog_save(name, req, uid):
                   test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
                   dev_keep=req.get("dev_keep"), sign=req.get("sign"), keys=req.get("keys"),
+                  release=req.get("release"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   workspace=WORKSPACE)
     # ...and what is the ASKING ACCOUNT's rather than the project's: the

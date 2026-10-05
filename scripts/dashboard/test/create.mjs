@@ -62,17 +62,18 @@ ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
 // default found later in the settings dialog.
 // All nine, as the project settings have them (1 Oct), each at what a new
 // project starts on: auto where it lands in the notebook or the settings,
-// ask where it reaches past them (its container, a signed build, a key).
+// ask where it reaches past them (its container, a signed build, a key,
+// a published release: R138).
 {
   const g = await page.$$eval('#pGateField select', s => Object.fromEntries(s.map(x => [x.id, [x.value, x.options.length]])));
   const want = { pGateRoadmap: 'auto', pGateBugs: 'auto', pGateRules: 'auto', pGateDesign: 'auto', pGateWiki: 'auto', pGateSettings: 'auto',
-                 pGateDocker: 'ask', pGateSign: 'ask', pGateKeys: 'ask', pGateReport: 'auto' };
+                 pGateDocker: 'ask', pGateSign: 'ask', pGateRelease: 'ask', pGateKeys: 'ask', pGateReport: 'auto' };
   // The wiki's dial has a fourth choice, hidden (2 Oct).
-  ok(Object.keys(g).length === 10 && Object.entries(want).every(([id, v]) => g[id]?.[0] === v)
+  ok(Object.keys(g).length === 11 && Object.entries(want).every(([id, v]) => g[id]?.[0] === v)
      && g.pGateReport[1] === 2 && g.pGateWiki[1] === 4
      && Object.entries(g).filter(([id]) => !['pGateReport', 'pGateWiki'].includes(id)).every(([, [, n]]) => n === 3)
      && await page.$eval('#pGateField', el => !el.hidden),
-     `the ten Claude gates are offered on a new local repo, at what a new project starts on (${JSON.stringify(g)})`);
+     `the eleven Claude gates are offered on a new local repo, at what a new project starts on (${JSON.stringify(g)})`);
 }
 const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
@@ -464,11 +465,11 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
   ok(docked.status === 200, 'a project is created with Run its container set, and carries it');
   // ...and the signing and reporting dials, when one differs from the
   // default a project gets anyway.
-  const signed = await postJson({ name: 'Signed App', mode: 'init', sign: 'auto', keys: 'deny', report: 'deny' });
+  const signed = await postJson({ name: 'Signed App', mode: 'init', sign: 'auto', keys: 'deny', release: 'auto', report: 'deny' });
   await refreshUntil(page, () => state?.projects?.some(p => p.name === 'Signed-App' && p.prefs?.sign === 'auto'), { timeout: 15000 });
   const sp = await page.evaluate(() => (state?.projects || []).find(p => p.name === 'Signed-App')?.prefs || {});
-  ok(signed.status === 200 && sp.sign === 'auto' && sp.keys === 'deny' && sp.report === 'deny',
-     `Sign a release, Manage signing keys and Report BuilderBot bugs from the dialog land on the new project (${sp.sign}/${sp.keys}/${sp.report})`);
+  ok(signed.status === 200 && sp.sign === 'auto' && sp.keys === 'deny' && sp.release === 'auto' && sp.report === 'deny',
+     `Sign a build, Manage signing keys, Tag and publish a release and Report BuilderBot bugs from the dialog land on the new project (${sp.sign}/${sp.keys}/${sp.release}/${sp.report})`);
   const bad = await postJson({ name: 'Gated Bad', mode: 'init', gate: { roadmap: 'maybe' } });
   ok(bad.status === 200 && /gates not set/.test(bad.body.note || ''),
      `a gate value that is not auto, ask or deny is refused in the note, and the project still exists (${bad.body.note})`);

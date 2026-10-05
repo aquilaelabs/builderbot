@@ -52,6 +52,9 @@ USAGE = ("bb version [--for DIR] "
          "                                     before it stays)\n"
          "bb version [--for DIR] init X.Y.Z    give one its first VERSION\n"
          "bb version policy                    what a session may move here\n"
+         "bb version [--for DIR] release --why \"...\"   tag this commit and publish the release, as\n"
+         "                                     Release on the Artifacts tab does (Claude may: Tag and\n"
+         "                                     publish a release)\n"
          "A section dated under the wrong number: unbump, then set the number you meant.")
 
 
@@ -130,6 +133,43 @@ if argv and argv[0] == "init":
     print(f"{proj}{'/' + comp if comp else ''} is now {r['target']}  "
           f"(committed {r['commit']}, not pushed)")
     lands_line()
+    raise SystemExit(0)
+
+if argv and argv[0] == "release":
+    # bb version release (R138): the tag on this commit and the forge's
+    # release, made on the controller with the project's own credentials,
+    # which this session never holds. Under Claude may: Tag and publish a
+    # release: auto releases at once, ask waits for the project's owner.
+    import bbapi
+    import waits
+    rest = argv[1:]
+    why = ""
+    if "--why" in rest:
+        i = rest.index("--why")
+        if i + 1 >= len(rest):
+            fail("--why needs the sentence after it")
+        why = rest[i + 1]
+    auth = os.environ.get("BB_VERSION_AUTH", "")
+    r = bbapi.call("/api/version", {"action": "release", "project": proj, "component": comp, "why": why},
+                   auth=auth, timeout=240)
+    if r.get("error"):
+        fail(f"[builderbot] ERROR: {r['error']}")
+    if r.get("id") and not r.get("released"):
+        print(f"[builderbot] asked {r.get('to') or 'the project owner'} (#{r['id']}) to release, waiting up "
+              "to 15 minutes for Approve in their bell", file=sys.stderr)
+        o = waits.outcome(auth, r["id"], "the release was not allowed")
+        if o.get("code"):
+            fail(f"[builderbot] ERROR: {o.get('out') or 'it was not released'}")
+        print(o.get("out") or "released")
+        raise SystemExit(0)
+    rel = r.get("released") or {}
+    print(f"{rel.get('tag')} on {rel.get('sha')}" + (", pushed" if rel.get("pushed") else "")
+          + (f"; {rel['note']}" if rel.get("note") else ""))
+    forge = rel.get("forge") or {}
+    if forge.get("url"):
+        print(f"the release: {forge['url']}")
+    elif forge.get("error"):
+        print(f"no release on the forge: {forge['error']}")
     raise SystemExit(0)
 
 if argv and argv[0] == "policy":

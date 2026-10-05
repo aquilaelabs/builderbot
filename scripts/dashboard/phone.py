@@ -71,6 +71,10 @@ signer = None
 # server: keymaker(action, project, args) -> (payload, status), where
 # action is generate (args: key, route) or map (args: package, key).
 keymaker = None
+# releaser(project, comp, asker_name, principal) -> (payload, status): the
+# release a session asked for, run as Release on the Artifacts tab runs it
+# (R138). Set by the server.
+releaser = None
 container_free = None
 container_builds = None
 # ...and what verb() needs to know about the one asking, set by server.py
@@ -710,6 +714,9 @@ def _req_public(r):
     # keys are, so the reader knows what it sets.
     # ...and a rebuild that creates the container or writes its env says so,
     # with the env's keys for the same reason.
+    # A release names the tag and the commit it would mark (R138).
+    if r.get("kind") == "release":
+        out["tag"], out["sha"] = r.get("tag") or "", r.get("sha") or ""
     if r.get("kind") == "rebuild":
         out["create"] = bool(r.get("create"))
         out["ctl"] = r.get("ctl") or ""
@@ -741,7 +748,7 @@ def _for(r, uid, admin):
         return False
     # A signing, or a key change, waits on the project's owner, whatever
     # their role.
-    if r.get("kind") in ("sign", "sign-key"):
+    if r.get("kind") in ("sign", "sign-key", "release"):
         return r["to"] == uid
     if r["to"] == "admins":
         return bool(admin)
@@ -959,7 +966,7 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
 
 def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principal="", key=""):
     """A session asking to sign a build with one of its project's keys, on a
-    project whose dial is `ask` (Claude may: Sign a release, R106). It goes
+    project whose dial is `ask` (Claude may: Sign a build, R106). It goes
     to the project's owner, who reads which build and which key; Allow
     queues the signing as the session's own."""
     why = " ".join(str(why or "").split())[:300]
@@ -971,6 +978,23 @@ def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principa
     return _queue("sign", why, cmd, "", "", project, "claude",
                   to_uid, to_name, asker_name,
                   extra={"file": str(file), "route": str(route), "principal": principal, "key": str(key or "")})
+
+
+def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", principal=""):
+    """A session asking to tag and publish a release, on a project whose
+    dial is `ask` (Claude may: Tag and publish a release, R138). It goes to
+    the project's owner, who reads the tag and the commit it would mark;
+    Allow runs Release as the Artifacts tab does, with the project's own
+    credentials, which the session never holds."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\" (0.5.4 for testers, the store upload ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    cmd = ["version", "release", f"{plan['tag']} on {plan['sha']}"] + (["--for", comp] if comp else [])
+    return _queue("release", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
+                  extra={"comp": str(comp or ""), "tag": plan["tag"], "sha": plan["sha"],
+                         "principal": principal, "asker_name": str(asker_name or "")})
 
 
 def ask_keys(why, project, action, args, to_uid, to_name, asker_name=""):
@@ -1183,6 +1207,18 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
         with _lock:
             r.update(state="done", code=1 if got.get("error") else 0,
                      out=str(got.get("error") or got.get("job") or "started"))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "release":
+        res = (releaser(r["project"], r.get("comp") or "", r.get("asker_name") or "", r.get("principal") or "")
+               if releaser is not None else ({"error": "nothing here releases"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        rel = got.get("released") or {}
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or rel.get("note") or
+                             f"{rel.get('tag') or r.get('tag')} tagged on {rel.get('sha') or r.get('sha')}"
+                             + (" and pushed" if rel.get("pushed") else "")
+                             + (f"; {(rel.get('forge') or {}).get('url')}" if (rel.get("forge") or {}).get("url") else "")))
         return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "sign-key":
         res = (keymaker(r.get("action") or "", r["project"], r.get("args") or {})

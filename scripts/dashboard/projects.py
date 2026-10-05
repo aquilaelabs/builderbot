@@ -2104,7 +2104,8 @@ def create_from_dialog(req, *, env, account, may_node):
             body["note"] = f"{body.get('note') or 'ready'}; Run its container not set: {r['error']}"
     # ...and the rest of Claude may, each only where it differs from the
     # default a project gets anyway.
-    for key, dflt, label in (("sign", "ask", "Sign a release"), ("keys", "ask", "Manage signing keys"),
+    for key, dflt, label in (("sign", "ask", "Sign a build"), ("keys", "ask", "Manage signing keys"),
+                             ("release", "ask", "Tag and publish a release"),
                              ("report", "auto", "Report BuilderBot bugs")):
         v = req.get(key)
         if v and v != dflt:

@@ -382,9 +382,9 @@ const pGateNow = () => Object.fromEntries(
 // without a choice, so a session can propose a rebuild at all, having no
 // docker of its own), a signed build, which leaves, and a signing key,
 // which is an app's identity for good.
-const P_GATE_DEFAULT = {pGateDocker: "ask", pGateSign: "ask", pGateKeys: "ask", pGateReport: "auto"};
+const P_GATE_DEFAULT = {pGateDocker: "ask", pGateSign: "ask", pGateKeys: "ask", pGateRelease: "ask", pGateReport: "auto"};
 function pFillGates(){
-  for (const id of [...Object.values(P_GATE_IDS), "pGateDocker", "pGateSign", "pGateKeys", "pGateReport"]){
+  for (const id of [...Object.values(P_GATE_IDS), "pGateDocker", "pGateSign", "pGateKeys", "pGateRelease", "pGateReport"]){
     const el = $(id);
     if (el.dataset.built !== "1"){
       // A report has nothing to hold for approval: auto or deny.
@@ -594,6 +594,7 @@ async function createProject() {
                                 devbuild: $("pGateField").hidden ? null : ($("pGateDocker").value || "deny"),
                                 sign: $("pGateField").hidden ? null : ($("pGateSign").value || "ask"),
                                 keys: $("pGateField").hidden ? null : ($("pGateKeys").value || "ask"),
+                                release: $("pGateField").hidden ? null : ($("pGateRelease").value || "ask"),
                                 report: $("pGateField").hidden ? null : ($("pGateReport").value || "auto"),
                                 key: mode === "clone" ? key : "",
                                 // Only ever consulted for a host that does not

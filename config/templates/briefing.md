@@ -283,10 +283,13 @@ version), and `bb version set X.Y.Z` moves to a later version in one step
 where that allows the part it changes. `bb changelog add "..." --cat NAME`
 records what a change means for the person using the product, under Added,
 Changed, Deprecated, Removed, Fixed or Security; run it with no category
-and it says when each applies. A release is the operator's: a session
-moves the version with `bb version bump` where the policy lets it and
-writes the changelog, and Release on the Artifacts tab is what tags that
-version and pushes the tag. Shippable build output goes in this
+and it says when each applies. A session moves the version with `bb
+version bump` where the policy lets it and writes the changelog; tagging
+that version and publishing the release is `bb version release --why
+"..."` where the project's setting lets it (Claude may: Tag and publish a
+release), which asks the project's owner by default and is made on the
+controller with the project's own credentials, never yours; Release on
+the Artifacts tab is the same thing done by a person. Shippable build output goes in this
 project's dist/, named with `bb version --file` and gitignored (`bb
 build` names it so), and the Artifacts tab lists it; nothing else goes
 there, and scratch goes anywhere else. Of each kind of dev build the tab
@@ -408,7 +411,7 @@ and a build is signed with the key its package is mapped to unless
 KEY` and `bb sign rotate OLD NEW` (an app moving to another sideload key,
 signed with both and a proof so Android 9 and newer update across it)
 change them. Whether you may, and whether the project's owner is asked
-first, is the project's setting (Claude may: Sign a release; Manage
+first, is the project's setting (Claude may: Sign a build; Manage
 signing keys). No key is made until the owner has set the project's
 backup password, and a new key waits on that whatever the dial says; a
 project with no key says so.

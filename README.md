@@ -129,6 +129,12 @@ bb version unbump      take the last unreleased bump or set back; its
                    stays. Once: the bump before it is not taken back too.
                    A section dated under the wrong number is fixed with
                    unbump, then set to the number meant
+bb version release --why "..."
+                   tag this commit and publish the release, as Release on the
+                   Artifacts tab does, on the controller with the project's own
+                   credentials. The project's settings say whether Claude may
+                   (Tag and publish a release): auto releases, ask waits for
+                   the project's owner, with --why as the reason
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
 bb version policy  what a session may move here, and who decides. A
@@ -271,7 +277,7 @@ bb sign FILE [--for play|sideload] [--why "..."]
                    its password never reach the session. --for play is the Play
                    upload key (the default for an .aab), sideload the app signing
                    key (the default for an .apk). The project's settings say
-                   whether Claude may (Sign a release): auto signs, ask waits for
+                   whether Claude may (Sign a build): auto signs, ask waits for
                    the project's owner to allow it, with --why as the reason.
                    Arrives in dist/ as NAME-signed.apk or .aab. --key NAME signs
                    with that key; without it, the key the build's package is
@@ -571,7 +577,7 @@ The dashboard's Commands flyout carries this same list in this same order.
 A project keeps its Android keys on the controller, under **Signing keys** in
 its settings, and a build is signed on its node as a job no session can look
 inside: from the Artifacts tab, or by a session with `bb sign`, under the
-project's **Claude may: Sign a release**. No key is made or added until the
+project's **Claude may: Sign a build**. No key is made or added until the
 project's owner has set its **backup password**, which every download of a
 key's backup asks for, BuilderBot's owner included; a backup goes only to an
 administrator who works on the project.
