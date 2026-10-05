@@ -199,7 +199,7 @@ def known(nid):
     return [r for r in (load().get("known", {}).get(nid) or []) if isinstance(r, dict)]
 
 
-def forget(nid, ip):
+def forget(nid, ip, me=None, admin=False):
     """Drop one remembered phone by address. The pairing key on the node
     stays (this is the list's memory, not adb's), so the phone can be
     connected again by typing its address."""
@@ -210,6 +210,11 @@ def forget(nid, ip):
     keep = [r for r in rows if r.get("ip") != ip]
     if len(keep) == len(rows):
         return {"error": f"nothing remembered at {ip} on this node"}
+    # A row is its maker's to forget, or an administrator's (B490).
+    if me is not None and not admin:
+        for r in rows:
+            if r.get("ip") == ip and (r.get("by") or "") != me:
+                return {"error": f"that phone was remembered by {r.get('by') or 'somebody else'}: theirs to forget"}
     d.setdefault("known", {})[nid] = keep
     save(d)
     return {"ok": True}
@@ -482,11 +487,23 @@ def disconnect(nid, uid, name, admin=False):
 def _node_row(n, uid, probe, who=None):
     rec = _rec(n["id"])
     dev = phone_on(n["id"], force=probe) if n["live"] else None
+    mine = bool(rec and rec.get("owner") == uid)
+    admin = bool(who is not None and users.is_admin(who))
+    me = (who or {}).get("name") or ""
+    # Another account's phone (B490): that one is connected, and whose, and
+    # nothing that names it (no model, no serial, no address); the remembered
+    # rows are the account's own, every row an administrator's.
+    shown = dev
+    if dev and rec and not mine:
+        shown = {"kind": dev.get("kind", ""), "state": dev.get("state", "")}
+    rows = known(n["id"])
+    if not admin:
+        rows = [r for r in rows if r.get("by") == me]
     return {"id": n["id"], "name": n["name"], "live": n["live"],
-            "phone": dev, "ip": load().get("ips", {}).get(n["id"], ""),
-            "known": known(n["id"]),
+            "phone": shown, "ip": load().get("ips", {}).get(n["id"], "") if (mine or admin or not rec) else "",
+            "known": rows,
             "owner": owner_of(n["id"]) if rec else None,
-            "mine": bool(rec and rec.get("owner") == uid),
+            "mine": mine,
             "may_drive": may_drive(n["id"], uid),
             # R113: who the phone is lent to, and (for its owner) which
             # projects on this node it could be.
@@ -1420,7 +1437,7 @@ def verb(action, req, who, fresh):
     elif act == "disconnect":
         r = disconnect(nid, uid, me, admin=users.is_admin(who))
     elif act == "forget":
-        r = forget(nid, field(req, "ip"))
+        r = forget(nid, field(req, "ip"), me=me, admin=users.is_admin(who))
     elif act == "ask":
         # A session asking to reach the phone on its project's node,
         # or, with kind "root", for one command as root there (roadmap

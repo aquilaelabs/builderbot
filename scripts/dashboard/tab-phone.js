@@ -113,7 +113,7 @@ function phonePanel(n){
            n.owner ? ` <span class="dim">· connected by ${esc(n.owner.name)}${n.mine ? " (you)" : ""}</span>` : ""}</div>
          <div class="sub">${!n.live
            ? `${esc(n.name)} is not dialing in; nothing reaches its adb right now`
-           : dev ? esc(dev.serial)
+           : dev ? (dev.serial ? esc(dev.serial) : `connected by ${esc(n.owner?.name || "somebody")}; which phone is theirs to know`)
            : "try Connect first: a pairing outlives a restart, so it is usually already done"}</div></div>
        ${dev && (n.mine || state?.admin) && mayPhone() ? `<span class="acts"><button type="button" id="phDisconnect"${
          n.mine ? "" : ` data-other="${esc(n.owner?.name || "somebody")}"`}

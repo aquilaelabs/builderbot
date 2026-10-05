@@ -105,14 +105,21 @@ const other = asUser('visitor', 'visitorpass1');
 await api('/api/users', { action: 'projects', name: 'visitor', projects: ['alpha'] });
 const theirs = (await api('/api/phone?node=' + sandbox.id, undefined, other)).body;
 const seen = theirs.nodes.find(n => n.id === sandbox.id);
-ok(seen.phone?.model === 'Test Phone' && !seen.mine && !seen.may_drive && seen.owner?.name === 'test',
-   'another account sees the phone and who connected it, and may not drive it');
+ok(seen.phone && !seen.phone.model && !seen.phone.serial && !seen.mine && !seen.may_drive && seen.owner?.name === 'test',
+   `another account is told a phone is connected and whose, nothing that names it, and may not drive it (${JSON.stringify(seen.phone)})`);
 // A plain account for the refusals: an administrator may disconnect
 // somebody else's phone since R120 (the unit tier holds that half).
 execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'plainuser', '--role', 'user'],
   { input: 'plainpass1\nplainpass1\n', encoding: 'utf8',
     env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
 const plain = asUser('plainuser', 'plainpass1');
+// A user-role account (B490): no address either, and no remembered rows
+// but its own (an administrator keeps both: they may disconnect anyone's).
+// On the project, so the node is listed to them at all.
+await api('/api/users', { action: 'projects', name: 'plainuser', projects: ['alpha'] });
+const plainSeen = (await api('/api/phone?node=' + sandbox.id, undefined, plain)).body.nodes.find(n => n.id === sandbox.id);
+ok(plainSeen.phone && !plainSeen.phone.model && !plainSeen.ip && (plainSeen.known || []).length === 0 && plainSeen.owner?.name === 'test',
+   `a user-role account is told the same, with no address and nobody else's remembered phones (${JSON.stringify([plainSeen.ip, plainSeen.known])})`);
 await api('/api/users', { action: 'projects', name: 'plainuser', projects: ['alpha'] });
 const theirDisc = await api('/api/phone', { action: 'disconnect', node: sandbox.id }, plain);
 ok(theirDisc.status === 400 && /connected by test/.test(theirDisc.body.error) && /or an administrator/.test(theirDisc.body.error),
@@ -427,6 +434,12 @@ page.errors = [];
   const after = await known();
   ok(after.length === 1 && after[0].ip === '192.168.9.9' && after[0].model === 'Test Phone',
      'the connect above put the phone on the node\'s remembered list, by model and address');
+  // Another account's view has no such row (B490), and Forget on it is
+  // refused: a remembered phone is its maker's.
+  const theirKnown = (await api('/api/phone?node=' + sandbox.id, undefined, plain)).body.nodes.find(n => n.id === sandbox.id).known || [];
+  const theirForget = await api('/api/phone', { action: 'forget', node: sandbox.id, ip: '192.168.9.9' }, plain);
+  ok(theirKnown.length === 0 && theirForget.status !== 200 && /remembered by test/.test(theirForget.body.error || ''),
+     `...which another account is not shown and cannot forget (${theirForget.status}: ${theirForget.body.error})`);
   ok((await api('/api/phone', { action: 'forget', node: sandbox.id, ip: '192.168.9.9' })).body.ok
      && (await known()).length === 0,
      '...and Forget takes it off');
