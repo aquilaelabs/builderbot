@@ -32,8 +32,9 @@ const builtins = await page.$$eval('.rolestab .sect', ss => ss.map(s => ({
   title: s.querySelector('summary .t')?.textContent.trim(), status: s.querySelector('summary .sst')?.textContent.trim() })));
 ok(['owner', 'admin', 'user'].every(n => builtins.some(b => b.title === n && b.status === 'built in')),
    `the three built-in roles are listed as built in (${builtins.map(b => b.title).join(', ')})`);
-ok(await page.$$eval('.rolestab [data-sect="roles:r-admin"] [data-rcap]', cs => cs.length > 0 && cs.every(c => c.disabled)),
-   '...with their grants shown and not editable');
+ok(await page.$eval('.rolestab [data-sect="roles:r-admin"]', s => !s.querySelector('[data-rcap]')
+     && /everything/.test(s.textContent) && !!s.querySelector('[data-rcopy]')),
+   '...each read as what it grants, with Copy and nothing to edit');
 
 // A role of your own: made from the New role band, then its grants ticked
 // and saved in its own fold.

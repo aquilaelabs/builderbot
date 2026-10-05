@@ -66,15 +66,18 @@ function userRow(u){
         ? `<span class="sub">sees</span> ` + u.projects.map(
             p => `<span class="pill">${esc(p)}</span>`).join(" ")
         : `<span class="sub dim">sees no project yet</span>`)
-    : u.role === "admin"
-    ? `<span class="sub">sees every project${u.projects.length
+    // An administrator and the owner alike (R135): every project listed,
+    // the ones on their own list worked on.
+    : `<span class="sub">sees every project${u.projects.length
         ? `, works on</span> ` + u.projects.map(p => `<span class="pill">${esc(p)}</span>`).join(" ")
-        : `; works on none yet: Edit ticks the ones to take on</span>`}`
-    : `<span class="sub">sees every project</span>`;
+        : `; works on none yet: Edit ticks the ones to take on</span>`}`;
+  // The roles of your own it carries beside its built-in one (R137).
+  const more = (u.roles || []).filter(r => r !== u.role);
   return `<div class="row stack2 urow" data-user="${esc(u.name)}">
     <div class="grow">
       <div class="name">${esc(u.name)}
         <span class="pill">${esc(u.role)}</span>${
+        more.map(r => ` <span class="pill note" title="a role of your own, from the Roles tab">${esc(r)}</span>`).join("")}${
         isMe ? ` <span class="pill">you</span>` : ""}</div>
       <div class="uscope">${scope}</div>
       <div class="sub${u.claude_shared_with?.length ? " warn" : " dim"}">${u.claude
@@ -114,7 +117,8 @@ function renderUsersInto(i){
     ${docSection("users", "roles", "What an account gets", "", `
         <div class="sub">Each account has its own home, Claude login and memories; two people on one project each work in a worktree of their own, sharing the notebook.</div>
         <div class="sub">A <b>user</b> has no shell and sees only the projects given to them.</div>
-        <div class="sub warn">An <b>admin</b> has a shell that reaches every account's files: give that role to people you would give the server to.</div>`)}
+        <div class="sub warn">An <b>admin</b> has a shell that reaches every account's files: give that role to people you would give the server to.</div>
+        <div class="sub">Anything between the two is a role of your own: the <b>Roles</b> tab under Administration makes one out of grants, and Edit gives it to an account, beside its role. Grants only add.</div>`)}
     ${docSection("users", "add", "Add somebody", "", `
 
         <div class="uadd">

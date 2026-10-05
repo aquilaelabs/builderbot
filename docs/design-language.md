@@ -747,7 +747,7 @@ Platform: a responsive web app: the layout holds at phone and desktop widths, an
 Layout of the dashboard on a desktop frame (12 columns by 8 rows), from the App shell template, numbered in drawing order (a later block draws over an earlier one where they overlap):
   1. Header (the band at the top): the brand, the build stamp and uptime, the bell, the gear and sign out, across the top, row 1 of 8
   2. Sidebar (a side column): the cards, folding; the one arrangement stored per device, on the left, columns 1 to 3 of 12, rows 2 to 8 of 8
-  3. Card (a box holding one thing): Doctor, Tools, Administration, Runner: each a fold with its state on the title bar, on the left, columns 1 to 3 of 12, rows 7 to 8 of 8, inside block 2 (Sidebar: the cards)
+  3. Card (a box holding one thing): Doctor, Tools, Administration (Controller settings, Roles, Users), Runner; a button a grant forbids is not offered, on the left, columns 1 to 3 of 12, rows 7 to 8 of 8, inside block 2 (Sidebar: the cards)
   4. Card (a box holding one thing): Projects, first: the pinned projects, and a session's state as a dot on each, on the left, columns 1 to 3 of 12, rows 2 to 6 of 8, inside block 2 (Sidebar: the cards)
   5. List (rows of like things): a project row: name, dot, Claude, notebook, and … for shell, link, phone, report, lock, pin, on the left, columns 1 to 3 of 12, row 3 of 8, inside block 4 (Card: Projects)
   6. Tabs (a strip of tabs switching one area): the tab strip: terminals and document tabs, a + to open one, on the right, columns 4 to 12 of 12, row 2 of 8
@@ -1053,11 +1053,12 @@ Layout of a node's Phone section on a desktop frame (12 columns by 8 rows), from
   1. Header (the band at the top): the bar: which node the phone is plugged into or paired with, and Refresh, across the top, row 1 of 8
   2. Card (a box holding one thing): whether a phone is connected, as a pill, and Connect, the filled button, across the middle, rows 2 to 3 of 8
   3. Form (fields a person fills in): pairing: the code from the phone, and Pair, with the steps to get one, across the middle, rows 4 to 6 of 8
-  4. List (rows of like things): what sessions have asked of the phone, across the middle, row 7 of 8
-  5. Card (a box holding one thing): an ask: its reason, its command, Allow and Deny, across the middle, row 7 of 8, inside block 4 (List: what sessions have asked of the phone)
-  6. Footer (the band at the foot): a session reaches the phone only by asking, across the bottom, row 8 of 8
+  4. Card (a box holding one thing): lent to a project: for how long, the newest screenshot, the newest recording's reel and its video; Take back, across the middle, row 4 of 8
+  5. List (rows of like things): what sessions have asked of the phone, across the middle, row 7 of 8
+  6. Card (a box holding one thing): an ask: its reason, its command, Allow and Deny, across the middle, row 7 of 8, inside block 5 (List: what sessions have asked of the phone)
+  7. Footer (the band at the foot): a session reaches the phone only by asking, across the bottom, row 8 of 8
 Notes:
-  A fold of a node's page on the Nodes tab (the operator, 2 Oct: each node with adb holds its own phone), shown on a node whose census carries adb, shut until opened: the phone and who connected it, Connect by IP, Pair, the phones the node remembers, and the asks waiting on its owner. Live for any account whatever the node's other settings allow, since a phone is its owner's. Under the connected phone, its owner's Lend to a project row: a project picker (only projects on the phone's node), For (1 hour, 4 hours, until taken back) and Lend, with why it cannot be lent in red under it when no project fits. Once lent, a row says Lent to PROJECT with the time left as a pill, which apps its sessions drive, and the newest screenshot a session took at a phone's proportions (updated on the next poll), with Look now and Take back on the owner's action bar; the section's last band says the lease's terms beside Refresh.
+  A fold of a node's page on the Nodes tab (the operator, 2 Oct: each node with adb holds its own phone), shown on a node whose census carries adb, shut until opened: the phone and who connected it, Connect by IP, Pair, the phones the node remembers, and the asks waiting on its owner. Live for any account whatever the node's other settings allow, since a phone is its owner's. Under the connected phone, its owner's Lend to a project row: a project picker (only projects on the phone's node), For (1 hour, 4 hours, until taken back) and Lend, with why it cannot be lent in red under it when no project fits. Once lent, a row says Lent to PROJECT with the time left as a pill, which apps its sessions drive, and the newest screenshot a session took at a phone's proportions (updated on the next poll), with Look now and Take back on the owner's action bar; the section's last band says the lease's terms beside Refresh. Another account's phone is a phone, not a name and an address: connected, and whose, with no model, serial or address, and no remembered rows but the account's own (B490); an administrator keeps both, since they may disconnect anyone's.
 
 ### Controller settings (Web app)
 
@@ -1076,12 +1077,12 @@ Platform: a responsive web app: the layout holds at phone and desktop widths, an
 Layout of the Users tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
   1. Header (the band at the top): the bar: who may sign in here, and which projects they see, across the top, row 1 of 8
   2. List (rows of like things): accounts, across the middle, rows 2 to 4 of 8
-  3. Card (a box holding one thing): an account: role as a pill, what it sees, its Claude sign-in, Edit and Remove; the owner's row says why it has neither, across the middle, row 3 of 8, inside block 2 (List: accounts)
-  4. Text (a block of prose): What an account gets: a fold saying what a user and an admin each are, across the middle, row 5 of 8
-  5. Form (fields a person fills in): Add somebody: a name, a role, and Add, across the middle, rows 6 to 7 of 8
+  3. Card (a box holding one thing): an account: its role and any roles of your own as pills, what it works on, its Claude sign-in, Edit and Remove, across the middle, row 3 of 8, inside block 2 (List: accounts)
+  4. Text (a block of prose): What an account gets: a fold saying what a user and an admin each are, and that anything between is a role of your own, across the middle, row 5 of 8
+  5. Form (fields a person fills in): Add somebody: an account name, the password twice, a name and an email (optional), a role, and Add, across the middle, rows 6 to 7 of 8
   6. Footer (the band at the foot): how a password is set from a shell, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The owner's row says it cannot be deleted or given another role, under the row, where a dead button would otherwise be the first you heard of it.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The owner's row says it cannot be deleted or given another role, under the row, where a dead button would otherwise be the first you heard of it. The add form takes no git identity: that is the person's own, on their Profile (R134). Edit ticks the roles of your own an account carries beside its built-in one (R137).
 
 ### the Profile tab (Web app)
 
@@ -1187,8 +1188,9 @@ Layout of a notebook: Git on a desktop frame (12 columns by 8 rows), from the Bl
   3. Button (an action to press): the network bar: Fetch, Pull and Push, as the project's push rights allow, across the middle, row 3 of 8
   4. List (rows of like things): Changes: what is not committed, each file opening to its diff, and Commit all, across the middle, rows 4 to 5 of 8
   5. List (rows of like things): Branches, and Commits drawn as a graph in lanes, across the bottom, rows 6 to 8 of 8
+  6. List (rows of like things): CI: what the daily look found, a row each; a moving label or an action behind carries Fix, written uncommitted, across the bottom, row 8 of 8
 Notes:
-  Reads to a beginner and stays exact for a developer: the host is named (GitHub, Gitea), never 'origin'. Whose working tree it is is said to anybody else, who is offered nothing that changes it.
+  Reads to a beginner and stays exact for a developer: the host is named (GitHub, Gitea), never 'origin'. Whose working tree it is is said to anybody else, who is offered nothing that changes it. Fix commits nothing and pushes nothing (R117): the change shows in Changes, to commit or send to Claude, and a commit pin is never offered one.
 
 ### a notebook: Artifacts (Web app)
 
@@ -1249,21 +1251,14 @@ Notes:
 ### a new project (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a new project on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
-  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): New project, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
-  2. Button (an action to press): the source as one row of buttons: a new repository, a clone, an archive, in the middle, columns 4 to 9 of 12, row 3 of 8, inside block 1 (Overlay: New project)
-  3. Form (fields a person fills in): the fields under them, changing with the pick: its name, its node, what Claude may do, in the middle, columns 4 to 9 of 12, rows 4 to 6 of 8, inside block 1 (Overlay: New project)
-  4. Footer (the band at the foot): Cancel and Create, the filled button, in the middle, columns 4 to 9 of 12, row 7 of 8, inside block 1 (Overlay: New project)
+Layout of a new project on a desktop frame (12 columns by 10 rows: the frame shows 8 of them, and the page scrolls), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): New project, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 10
+  2. Button (an action to press): the source as one row of buttons: a new repository, a clone, an archive, in the middle, columns 4 to 9 of 12, row 3 of 10, inside block 1 (Overlay: New project)
+  3. Form (fields a person fills in): the fields under them, changing with the pick: its name, its node, what Claude may do, in the middle, columns 4 to 9 of 12, rows 4 to 6 of 10, inside block 1 (Overlay: New project)
+  4. Footer (the band at the foot): Cancel and Create, the filled button, in the middle, columns 4 to 9 of 12, row 7 of 10, inside block 1 (Overlay: New project)
+  5. Overlay (a dialog, sheet, drawer, popover or toast over the page): First session: the brief typed when the project was made, the model and effort, Build it or Start without it, in the middle, columns 4 to 9 of 12, rows 9 to 10 of 10
 Notes:
-  The three sources are one row of buttons and the fields under them change with the pick. A clone or a link runs as a job the Projects card reports; the dialog does not wait on the network.
-
-### a first session (Web app)
-
-Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
-Layout of a first session on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
-  1. Overlay (a dialog, sheet, drawer, popover or toast over the page): First session: the brief typed when the project was made, the model and effort, Build it or Start without it, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
-Notes:
-  Shown the first time Claude is started on a project that has a brief. Either button takes the brief out of the tree.
+  The three sources are one row of buttons and the fields under them change with the pick. A clone or a link runs as a job the Projects card reports; the dialog does not wait on the network. Then, on the first start of Claude, the brief's dialog: Shown the first time Claude is started on a project that has a brief. Either button takes the brief out of the tree.
 
 ### a new container (Web app)
 
@@ -1311,7 +1306,7 @@ Notes:
 
 Platform: an Android app: Material's shapes and elevation, 48dp touch targets, the app's sections as a bottom bar, and the system's back gesture respected.
 Layout of the app: projects on a phone frame (6 columns by 12 rows), from the Mobile app template, numbered in drawing order (a later block draws over an earlier one where they overlap):
-  1. Header (the band at the top): the mark, the account, the build and the host, and Refresh, across the top, row 1 of 12
+  1. Header (the band at the top): the mark, the account, the build and the host, and Refresh; with two BuilderBots, the title switches between them, across the top, row 1 of 12
   2. Card (a box holding one thing): the bell's row: questions waiting and nodes that need attention, a bar down its side, across the middle, rows 2 to 3 of 12
   3. Card (a box holding one thing): the doctor's problems, for an administrator, only when there are any, across the middle, row 4 of 12
   4. Search (a search box): a box to find a project in, once the list is longer than a screen, across the middle, row 5 of 12
@@ -1362,10 +1357,12 @@ Layout of the app: more on a phone frame (6 columns by 12 rows), from the Mobile
   2. Card (a box holding one thing): whether the app and the dashboard are on the same API, and Install it when the app is behind, across the middle, rows 2 to 3 of 12
   3. List (rows of like things): the other pages as rows: Profile, Tools, Jobs, Users, What's new, across the middle, rows 4 to 6 of 12
   4. Form (fields a person fills in): The watch: questions, Tell me when Claude can take a message, how often to ask; one Save, across the middle, rows 7 to 9 of 12
-  5. List (rows of like things): Colors: the thirteen schemes, each drawn in its own; About; Sign out, across the middle, rows 10 to 11 of 12
-  6. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
+  5. Form (fields a person fills in): Lock: Lock the app when it opens, refused with a sentence where the phone has no screen lock, across the middle, row 6 of 12
+  6. List (rows of like things): BuilderBots: each pairing by name, the one in front ticked; Add another, and Forget, across the middle, row 7 of 12
+  7. List (rows of like things): Colors: the thirteen schemes, each drawn in its own; About; Sign out, across the middle, rows 10 to 11 of 12
+  8. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
-  The watch's settings are a draft until Save. The note that Claude is waiting on you names the project first and follows the project's During a test run setting: at once where a new ask interrupts a run, and when the tests finish where it waits for them (30 Sep). The scheme applies on the press, as it does on the dashboard.
+  The watch's settings are a draft until Save. The note that Claude is waiting on you names the project first and follows the project's During a test run setting: at once where a new ask interrupts a run, and when the tests finish where it waits for them (30 Sep). The scheme applies on the press, as it does on the dashboard. The lock is the phone's own (fingerprint, face or PIN), asked every time the app comes to the front; nothing of the app's own is stored for it (R133).
 
 ### the app: tools (Android app)
 
@@ -1378,3 +1375,16 @@ Layout of the app: tools on a phone frame (6 columns by 12 rows), from the Mobil
   5. Navigation (the way around: tabs or a menu): the bottom bar: Projects, Approvals, Nodes (an administrator), More, across the bottom, row 12 of 12
 Notes:
   Install and Remove ask first, saying the size. Android system images are not here: choosing one wants the room the dashboard's tab has.
+
+### the Roles tab (Web app)
+
+Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
+Layout of the Roles tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
+  1. Header (the band at the top): the bar: named roles made of grants; an account carries one or more, and they add up, across the top, row 1 of 8
+  2. List (rows of like things): the roles, a fold each, the three built-in ones first, across the middle, rows 2 to 5 of 8
+  3. Card (a box holding one thing): a built-in role: what it grants, a line each, and Copy; nothing to edit, across the middle, row 2 of 8, inside block 2 (List: the roles)
+  4. Form (fields a person fills in): a role of your own: what it is for, its grants by group, each a tick and, ticked, where it holds; Save, Remove, across the middle, rows 3 to 5 of 8, inside block 2 (List: the roles)
+  5. Form (fields a person fills in): New role: a name, and Make it, across the middle, rows 6 to 7 of 8
+  6. Footer (the band at the foot): a grant only adds; the built-in roles reproduce what owner, admin and user could do before roles, across the bottom, row 8 of 8
+Notes:
+  Under the Administration card, beside Users (R137). A grant is a capability on a scope: on a project it holds on every project, the projects the account is on, or named ones; on a node, every node, the nodes of the account's projects, or named ones. The scope's names are a row of ticks under its picker, shown only for 'these'. Every surface on the page reads the same answer the server refuses on (state.can), so a button is offered exactly where it would work.

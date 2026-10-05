@@ -77,6 +77,25 @@ function roleGrantRow(role, cap, g, editable){
   </div>`;
 }
 
+// What a scope reads as, in words.
+function roleScopeWords(sc, overNodes){
+  if (sc === "all") return overNodes ? "every node" : "every project";
+  if (sc === "mine") return overNodes ? "the nodes of the account's projects" : "the projects the account is on";
+  const names = (Array.isArray(sc) ? sc : []).map(id => overNodes ? ((rolesMeta.nodes || []).find(n => n.id === id)?.name || id) : id);
+  return names.join(", ");
+}
+
+// A built-in role read as what it grants, a line each, not as an editor
+// grayed out (fifteen dead pickers for admin): it is not edited, and Copy
+// is the way to one that is.
+function roleSummary(r){
+  const lines = (r.grants || []).map(g => g.cap === "*"
+    ? `<div class="sub"><b>everything</b> on ${esc(roleScopeWords(g.scope, false))} and every node</div>`
+    : `<div class="sub"><b>${esc(g.cap)}</b> ${esc((rolesMeta.caps[g.cap] || ["", ""])[1])}: on ${
+        esc(roleScopeWords(g.scope, (rolesMeta.caps[g.cap] || [""])[0] === "nodes"))}</div>`).join("");
+  return `<div class="sub dim">${esc(r.note || "")} · built in, and not edited: Copy makes one of your own from it</div>${lines}`;
+}
+
 // A role's fold: its note, its grants by group, and Save, Copy or Remove.
 function roleSection(r){
   const editable = !r.builtin;
@@ -85,13 +104,12 @@ function roleSection(r){
     if (g.cap === "*") for (const c of Object.keys(rolesMeta.caps)) byCap[c] = {cap: c, scope: g.scope};
     else byCap[g.cap] = g;
   }
-  const body = `
-    ${editable ? `<div class="setrow col">${lbl(`rnote-${esc(r.name)}`, "What this role is for")}
-        <input data-rnote value="${esc(r.note || "")}" autocomplete="off"></div>`
-      : `<div class="sub">${esc(r.note || "")} · built in, and not edited: Copy makes one of your own from it</div>`}
+  const body = (editable ? `
+    <div class="setrow col">${lbl(`rnote-${esc(r.name)}`, "What this role is for")}
+        <input data-rnote value="${esc(r.note || "")}" autocomplete="off"></div>
     ${rolesMeta.groups.map(([key, title]) => `<div class="sub rgroup">${esc(title)}</div>${
       Object.keys(rolesMeta.caps).filter(c => rolesMeta.caps[c][0] === key)
-        .map(c => roleGrantRow(r.name, c, byCap[c], editable)).join("")}`).join("")}
+        .map(c => roleGrantRow(r.name, c, byCap[c], editable)).join("")}`).join("")}` : roleSummary(r)) + `
     <div class="actbar">${editable
       ? `<button type="button" class="primary" data-rsave="${esc(r.name)}">Save</button>
          <button type="button" class="danger" data-rremove="${esc(r.name)}">Remove</button>`
