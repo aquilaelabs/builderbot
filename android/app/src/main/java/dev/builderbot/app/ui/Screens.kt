@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import dev.builderbot.app.Api
 import dev.builderbot.app.BuildConfig
+import dev.builderbot.app.MainActivity
 import dev.builderbot.app.Store
 import dev.builderbot.app.Live
 import dev.builderbot.app.Watch
@@ -133,19 +134,25 @@ fun Pull(loading: Boolean, reload: () -> Unit, content: @Composable () -> Unit) 
 // ---- sign in -----------------------------------------------------------------
 
 @Composable
-fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
-    var server by remember { mutableStateOf(store.server.ifBlank { "https://" }) }
-    var user by remember { mutableStateOf(store.user) }
+fun LoginScreen(store: Store, adding: Boolean = false, onDone: (admin: Boolean) -> Unit) {
+    // Adding another BuilderBot (R132) starts blank; the first sign-in
+    // offers what was there before.
+    var server by remember { mutableStateOf(if (adding) "https://" else store.server.ifBlank { "https://" }) }
+    var user by remember { mutableStateOf(if (adding) "" else store.user) }
+    var name by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-        Text("BuilderBot", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Ink)
-        Dim("Sign in with your dashboard account. The address is the one you open in a browser: on your network, or over your tailnet.")
+        Text(if (adding) "Another BuilderBot" else "BuilderBot", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Ink)
+        Dim(if (adding) "Sign in to a second dashboard. The app watches every one it is paired with, and shows one at a time."
+            else "Sign in with your dashboard account. The address is the one you open in a browser: on your network, or over your tailnet.")
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(server, { server = it }, label = { Text("Dashboard address") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(name, { name = it }, label = { Text("Call it (home, work; the address when blank)") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth())
         OutlinedTextField(user, { user = it }, label = { Text("Account") }, singleLine = true, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
@@ -159,7 +166,7 @@ fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
                     val api = Api(server, user, password)
                     val st = api.status()
                     if (st.str("me").isBlank()) throw Exception("that address answers, but not as a BuilderBot")
-                    store.server = server; store.user = user; store.password = password
+                    store.add(name, server, user, password)
                     onDone(st.obj("can").optBoolean("admin", false))
                 } catch (e: Exception) {
                     error = e.message ?: e.toString()
@@ -178,8 +185,12 @@ fun LoginScreen(store: Store, onDone: (admin: Boolean) -> Unit) {
 // ---- home: the bell's items, then the projects -------------------------------
 
 @Composable
-fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Unit = {}, openProject: (String) -> Unit) {
+fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Unit = {}, openProject: (String) -> Unit,
+               onSwitch: (String) -> Unit = {}) {
     val api = store.api() ?: return
+    val pairings = store.pairings
+    val here = store.pairing
+    var pick by remember { mutableStateOf(false) }
     val (st, reload) = load("status") { api.status() }
     val s = st.value
     if (s != null){ onAdmin(s.obj("can").optBoolean("admin", false)); onWaiting(s.int("phone_asks")) }
@@ -203,7 +214,19 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
                 Mark(26.dp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("BuilderBot", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
+                    // Several BuilderBots (R132): the one in front by name,
+                    // and a tap on it lists the others.
+                    if (pairings.size > 1 && here != null) {
+                        Row(Modifier.clickable { pick = true }, verticalAlignment = Alignment.CenterVertically) {
+                            Text(here.label, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
+                            Text(" \u25be", color = Dim, style = MaterialTheme.typography.titleMedium)
+                        }
+                        androidx.compose.material3.DropdownMenu(expanded = pick, onDismissRequest = { pick = false }) {
+                            for (p in pairings) androidx.compose.material3.DropdownMenuItem(
+                                text = { Text(if (p.id == here.id) "\u2713 ${p.label}" else p.label) },
+                                onClick = { pick = false; if (p.id != here.id) onSwitch(p.id) })
+                        }
+                    } else Text("BuilderBot", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink)
                     if (s != null) Text("${s.str("me")} · ${s.obj("image").str("version").ifBlank { "unstamped" }} on ${s.str("host")}",
                         color = Dim, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
                 }
@@ -737,13 +760,15 @@ fun ProfileScreen(store: Store) {
 // ---- more: the watch, about, and whether this app is behind -----------------------
 
 @Composable
-fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut: () -> Unit) {
+fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut: () -> Unit, onSwitch: (String) -> Unit = {}) {
     val api = store.api() ?: return
     val context = androidx.compose.ui.platform.LocalContext.current
     val (meta, _) = load("meta") { api.meta() }
     var watch by remember { mutableStateOf(store.watch) }
     var turns by remember { mutableStateOf(store.turns) }
     var live by remember { mutableStateOf(store.live) }
+    var lock by remember { mutableStateOf(store.lock) }
+    var lockSaid by remember { mutableStateOf("") }
     var watchSaid by remember { mutableStateOf("") }
     var poll by remember { mutableStateOf(store.pollSeconds.toString()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -835,13 +860,26 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
         val every = poll.trim().toIntOrNull()
         val pollOk = every != null && every in 10..300
-        val changed = watch != store.watch || turns != store.turns || live != store.live || every != store.pollSeconds
+        // The lock (R133): the phone's own, so a phone with no screen lock
+        // set has nothing to ask for, and the switch says so.
+        SectionHead("Lock", inset = false)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Lock the app when it opens")
+                Dim("Your fingerprint, face or phone PIN, every time it comes to the front")
+            }
+            Switch(checked = lock, onCheckedChange = {
+                if (it && !MainActivity.canLock(context)) { lock = false; lockSaid = "This phone has no screen lock set; set one under the phone's own settings first" }
+                else { lock = it; lockSaid = "" } })
+        }
+        if (lockSaid.isNotBlank()) Text(lockSaid, color = Warn)
+        val changed = watch != store.watch || turns != store.turns || live != store.live || every != store.pollSeconds || lock != store.lock
         Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(if (!pollOk) "the poll is a number of seconds from 10 to 300" else watchSaid,
                  color = if (!pollOk) Bad else Note, style = MaterialTheme.typography.bodySmall,
                  modifier = Modifier.weight(1f))
             Button(enabled = changed && pollOk, onClick = {
-                store.watch = watch; store.turns = turns; store.live = live; store.pollSeconds = every ?: store.pollSeconds
+                store.watch = watch; store.turns = turns; store.live = live; store.pollSeconds = every ?: store.pollSeconds; store.lock = lock
                 if (watch) Watch.startIfWanted(context) else Watch.stop(context)
                 if (watch && live) Live.startIfWanted(context) else Live.stop(context)
                 watchSaid = "saved"
@@ -873,9 +911,25 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
         Text("app ${BuildConfig.VERSION_NAME} api ${BuildConfig.TARGET_API}" +
             (if (m != null) "\ndashboard ${m.str("version").ifBlank { "unstamped" }} api ${m.int("api")}" else ""),
             color = Dim, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-        Dim("Signed in to ${store.server} as ${store.user}")
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = onSignOut) { Text("Sign out") }
+        // The BuilderBots this app is paired with (R132): the one in front
+        // marked, a tap on another switches, and Forget takes one off.
+        SectionHead("BuilderBots", inset = false)
+        val here = store.pairing
+        for (p in store.pairings) {
+            Row(Modifier.fillMaxWidth().clickable { if (p.id != here?.id) onSwitch(p.id) }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text((if (p.id == here?.id) "\u2713 " else "") + p.label, color = Ink,
+                         fontWeight = if (p.id == here?.id) FontWeight.SemiBold else FontWeight.Normal)
+                    Dim("${p.server} as ${p.user}")
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { nav.navigate("add") }) { Text("Add another") }
+            OutlinedButton(onClick = onSignOut) { Text(if (store.pairings.size > 1) "Forget ${here?.label ?: "this one"}" else "Sign out") }
+        }
     }
 }
 

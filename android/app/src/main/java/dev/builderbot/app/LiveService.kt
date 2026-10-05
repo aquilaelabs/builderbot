@@ -63,28 +63,40 @@ class LiveService : Service() {
         if (Build.VERSION.SDK_INT >= 34)
             startForeground(Live.ID, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING)
         else startForeground(Live.ID, note)
-        if (job?.isActive != true) job = scope.launch { listen() }
+        // One listener per pairing (R132), started over on every start so
+        // a pairing added or forgotten is heard from, or not, at once.
+        job?.cancel()
+        job = scope.launch { listenAll() }
         return START_STICKY
     }
 
-    private suspend fun listen() {
+    private suspend fun listenAll() {
+        val store = Store(this)
+        if (!store.signedIn || !store.watch || !store.live) { stopSelf(); return }
+        val jobs = store.pairings.map { p -> scope.launch { listen(p.id) } }
+        jobs.forEach { it.join() }
+        if (!Store(this).signedIn) stopSelf()
+    }
+
+    private suspend fun listen(id: String) {
         var since = ""
         var backoff = 2_000L
         while (scope.isActive) {
             val store = Store(this)
-            val api = store.api()
-            if (api == null || !store.watch || !store.live) { stopSelf(); return }
+            val p = store.pairing(id)
+            val api = p?.let { store.api(it) }
+            if (p == null || api == null || !store.watch || !store.live) return
             try {
                 val tok = api.phoneWait(since).str("token")
                 if (tok != since) {
                     // Not on the first answer alone: a round then is what
                     // opening the app does anyway.
                     since = tok
-                    Watch.tick(this, api, store)
+                    Watch.tick(this, api, store, p)
                 }
                 backoff = 2_000L
             } catch (e: ApiError) {
-                if (e.status == 401 || e.status == 403) { Watch.signedOut(this); stopSelf(); return }
+                if (e.status == 401 || e.status == 403) { Watch.signedOut(this, p); return }
                 delay(backoff); backoff = minOf(backoff * 2, 60_000L)
             } catch (e: Exception) {
                 // The dashboard out of reach (a restart, no network): wait,

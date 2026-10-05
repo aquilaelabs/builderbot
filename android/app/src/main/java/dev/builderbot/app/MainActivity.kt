@@ -10,7 +10,17 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Button
+import androidx.compose.runtime.key
+import androidx.compose.ui.Alignment
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
@@ -73,21 +83,70 @@ import dev.builderbot.app.ui.ProjectScreen
 import dev.builderbot.app.ui.ToolsScreen
 import dev.builderbot.app.ui.UsersScreen
 
-class MainActivity : ComponentActivity() {
+// A FragmentActivity rather than a ComponentActivity: BiometricPrompt (the
+// app's lock, R133) is a fragment of the activity it is shown over.
+class MainActivity : FragmentActivity() {
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    // The lock (R133): locked every time the app leaves the screen, and the
+    // phone's own lock asked for when it comes back, while the setting is
+    // on. `prompting` keeps the credential screen (its own activity on
+    // older Android) from reading as the app leaving.
+    val locked = mutableStateOf(true)
+    private var prompting = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-        setContent { BuilderBotApp(intent.getStringExtra("screen") ?: "") }
+        setContent { BuilderBotApp(intent.getStringExtra("screen") ?: "", this) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        setContent { BuilderBotApp(intent.getStringExtra("screen") ?: "") }
+        setContent { BuilderBotApp(intent.getStringExtra("screen") ?: "", this) }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (Store(this).lock && locked.value) unlock() else locked.value = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!prompting) locked.value = true
+    }
+
+    /** Ask for the phone's lock. Cancelled or failed, the app stays veiled
+     *  with an Unlock button, and nothing of it is shown. */
+    fun unlock() {
+        if (prompting) return
+        prompting = true
+        val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    prompting = false; locked.value = false
+                }
+                override fun onAuthenticationError(code: Int, msg: CharSequence) { prompting = false }
+            })
+        prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
+            .setTitle("Unlock BuilderBot")
+            .setSubtitle("Your fingerprint, face or phone PIN")
+            .setAllowedAuthenticators(allowed())
+            .build())
+    }
+
+    companion object {
+        /** The lock kinds the phone may answer with: a strong biometric or
+         *  the device credential, which Android pairs only from 11 on; a
+         *  weaker biometric with the credential before that. */
+        fun allowed(): Int =
+            if (Build.VERSION.SDK_INT >= 30) BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            else BiometricManager.Authenticators.BIOMETRIC_WEAK or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        /** Whether this phone has a lock to ask for. */
+        fun canLock(context: android.content.Context): Boolean =
+            BiometricManager.from(context).canAuthenticate(allowed()) == BiometricManager.BIOMETRIC_SUCCESS
     }
 }
 
@@ -119,10 +178,25 @@ fun BuilderBotTheme(content: @Composable () -> Unit) {
 data class Tab(val route: String, val label: String, val icon: ImageVector)
 
 @Composable
-fun BuilderBotApp(openOn: String) {
+fun BuilderBotApp(openOn: String, activity: MainActivity) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { Store(context).also { dev.builderbot.app.ui.Schemes.pick(it.scheme) } }
     var signedIn by remember { mutableStateOf(store.signedIn) }
+    // Which pairing is in front (R132): the screens are keyed by it, so a
+    // switch redraws every one of them from the other dashboard.
+    var current by remember { mutableStateOf(store.pairing?.id ?: "") }
+    val locked by activity.locked
+    if (locked && store.lock) {
+        BuilderBotTheme {
+            Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center,
+                   horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("BuilderBot", style = MaterialTheme.typography.headlineMedium, color = Ink)
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = { activity.unlock() }) { Text("Unlock") }
+            }
+        }
+        return
+    }
     // Nobody is an administrator until the dashboard says so, and the
     // answer survives a rotation (B275): a user saw the Nodes tab until
     // Home reloaded.
@@ -130,9 +204,11 @@ fun BuilderBotApp(openOn: String) {
     var waiting by rememberSaveable { mutableStateOf(0) }
     BuilderBotTheme {
         if (!signedIn) {
-            LoginScreen(store) { admin -> isAdmin = admin; signedIn = true; Watch.startIfWanted(context); Live.startIfWanted(context) }
+            LoginScreen(store) { admin -> isAdmin = admin; signedIn = true; current = store.pairing?.id ?: ""
+                                 Watch.startIfWanted(context); Live.startIfWanted(context) }
             return@BuilderBotTheme
         }
+        key(current) {
         // The watch while the app is open: its own clock, on the interval
         // set under More, and nothing in the shade for it. The alarm takes
         // over when the app is not on screen (Watch.startIfWanted).
@@ -143,12 +219,11 @@ fun BuilderBotApp(openOn: String) {
                 // (R125): it was stopped, or its start was refused, behind.
                 Live.startIfWanted(context)
                 while (true) {
-                    val api = store.api()
-                    if (api != null && store.watch) {
-                        try { Watch.tick(context, api, store) }
-                        catch (e: ApiError) { if (e.status == 401 || e.status == 403) { Watch.signedOut(context); store.signOut(); signedIn = false; return@repeatOnLifecycle } }
-                        catch (e: Exception) { /* a missed round; the next one asks again */ }
-                    }
+                    // Every pairing (R132): one whose sign-in is refused is
+                    // forgotten by tickAll, and the rest go on.
+                    if (store.watch) Watch.tickAll(context, store)
+                    if (!store.signedIn) { signedIn = false; return@repeatOnLifecycle }
+                    if (store.pairing?.id != current) current = store.pairing?.id ?: ""
                     kotlinx.coroutines.delay(store.pollSeconds * 1000L)
                 }
             }
@@ -187,11 +262,17 @@ fun BuilderBotApp(openOn: String) {
         }) { pad ->
             NavHost(nav, startDestination = if (openOn in setOf("approvals", "nodes", "phone")) openOn else "home",
                     modifier = Modifier.padding(pad)) {
-                composable("home") { HomeScreen(store, onAdmin = { isAdmin = it }, onWaiting = { waiting = it }, openProject = { nav.navigate("project/$it") }) }
+                composable("home") { HomeScreen(store, onAdmin = { isAdmin = it }, onWaiting = { waiting = it }, openProject = { nav.navigate("project/$it") },
+                                                 onSwitch = { store.current = it; current = it }) }
                 composable("project/{name}") { e -> ProjectScreen(store, e.arguments?.getString("name") ?: "") }
                 composable("approvals") { ApprovalsScreen(store) }
                 composable("nodes") { NodesScreen(store) }
-                composable("more") { MoreScreen(store, isAdmin, nav, onSignOut = { Watch.stop(context); store.signOut(); signedIn = false }) }
+                composable("more") { MoreScreen(store, isAdmin, nav,
+                    onSignOut = { store.signOut(); if (!store.signedIn) { Watch.stop(context); Live.stop(context); signedIn = false }
+                                  else { current = store.pairing?.id ?: ""; Live.startIfWanted(context) } },
+                    onSwitch = { store.current = it; current = it }) }
+                composable("add") { LoginScreen(store, adding = true) { _ -> current = store.pairing?.id ?: ""
+                                                                         Live.startIfWanted(context); nav.popBackStack() } }
                 composable("users") { UsersScreen(store) }
                 composable("tools") { ToolsScreen(store, isAdmin) }
                 composable("profile") { ProfileScreen(store) }
@@ -200,5 +281,6 @@ fun BuilderBotApp(openOn: String) {
                 composable("phone") { PhoneScreen(store) }
             }
         }
+        }   // key(current)
     }
 }

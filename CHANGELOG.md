@@ -68,6 +68,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Phone asks can be answered Allow for this session, on the dashboard and in the companion app; the app keeps a note up while your phone is lent or a session is allowed, and tapping it takes the phone back (adb disconnected) or asks every time again (98435a1)
 - Hear asks at once, a switch in the companion app: it keeps a connection open so a phone or root question reaches you in about a second, not on Android's alarm. Also fixed: the app's notes for a lent phone and an allowed session now show (fed874b)
 - bb phone record start and stop leave a recording running on a lent phone while touches work it, so a glide is seen moving; each recording comes with its reel, the frames that changed with their times, which the Phone tab shows beside the screenshot. (eb3aa16)
+- The companion app pairs with more than one BuilderBot: Add another under More, a name for each, a switcher on Home, every one watched with its name on each notification, and Forget takes one off. (d9ae047)
+- The companion app can lock itself: Lock the app when it opens, under More, asks for the phone's own fingerprint, face or PIN every time it comes to the front. (d9ae047)
 
 ### Changed
 

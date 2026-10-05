@@ -116,5 +116,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("androidx.security:security-crypto:1.1.0")
+    // The app's lock (R133): the phone's own fingerprint, face or PIN.
+    implementation("androidx.biometric:biometric:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 }

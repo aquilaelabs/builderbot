@@ -3895,6 +3895,19 @@ shape an Android app takes, screens and a bottom bar, not the tabs a
 browser page needs. Sign in with the dashboard's address and your account;
 the credential is kept in the device's encrypted preferences.
 
+**More than one BuilderBot.** The app pairs with as many dashboards as
+you have (R132): **Add another** under More signs in to the next, with a
+name for it (home, work), and the one in front is picked from Home's title
+or the list under More. Every pairing is watched, and each note names the
+dashboard it came from once there are two, so an ask from one is never
+answered on the other; the phone is lent from the one in front. **Forget**
+takes a pairing off, with what the watch remembered about it.
+
+**Its lock.** **Lock the app when it opens**, under More, asks for the
+phone's own lock, a fingerprint, a face or its PIN, every time the app
+comes to the front (R133). Nothing of the app's own is stored for it, and
+a phone with no screen lock set is told to set one first.
+
 **Claude, from the phone.** A project opens on its Claude view. Where a
 session of your own is open on it, the view says whether it is working or
 waiting on you and carries a box to say something to it, which goes into
