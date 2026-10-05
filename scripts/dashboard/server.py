@@ -1755,7 +1755,14 @@ def app_apk():
                       key=lambda p: p.stat().st_mtime, reverse=True)
     except OSError:
         return ""
-    return apks[0].name if apks else ""
+    # A signed build first: the app on a phone was installed signed, and
+    # Android will not update it with anything signed otherwise. The newest
+    # file was offered whatever it was, and on 5 Oct that was a debug build
+    # of uncommitted changes, which the operator's phone refused (B507).
+    # Without a signed one, a build of a commit; a dirty one never.
+    pick = ([p for p in apks if "-signed" in p.name]
+            or [p for p in apks if "-dirty" not in p.name and "dirty" not in p.stem.split("-")[-1]])
+    return pick[0].name if pick else ""
 
 
 def app_apk_sha():
