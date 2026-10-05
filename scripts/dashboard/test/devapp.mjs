@@ -83,7 +83,23 @@ async function openManager(){
 }
 async function dmClick(act){
   await openManager();
-  await page.click(`${DM} [data-dm="${act}"]`);
+  // A button that stays dead is the shape of B477: say what the row showed
+  // (its state line, the button's title, the row's own record), so the
+  // next failure names whether it read running, busy or short of env.
+  const b = `${DM} [data-dm="${act}"]`;
+  const live = await page.waitForFunction(sel => { const e = document.querySelector(sel); return e && !e.disabled; },
+                                          b, { timeout: 45000 }).then(() => true, () => false);
+  if (!live){
+    const seen = await page.evaluate(([sel, row]) => {
+      const r = document.querySelector(row), e = document.querySelector(sel);
+      const list = Array.isArray(dockerList) ? dockerList : (dockerList?.instances || dockerList?.rows || []);
+      const d = list.find(x => x.project === 'ep.silon') || {};
+      return { state: r?.querySelector('.state')?.textContent.trim(), title: e?.title,
+               running: d.running, exists: d.exists, missing_env: d.missing_env, job: d.job };
+    }, [b, DM]);
+    throw new Error(`B477: ${act} stayed disabled 45s: ${JSON.stringify(seen).slice(0, 400)}`);
+  }
+  await page.click(b);
 }
 async function dmDisabled(act){
   await openManager();
