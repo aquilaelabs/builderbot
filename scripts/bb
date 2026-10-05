@@ -5007,7 +5007,23 @@ cmd_doctor() {
 # and two implementations of "what version is this" would drift the week one of
 # them was touched. This resolves which project is being asked about and prints
 # what the module returns.
+# bb version release --edit (R139): the session's notes and files read here,
+# the edit asked of the controller over its API (lib/release-edit.py).
+cmd_version_edit() {
+    local proj
+    proj="${BB_VERSION_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE}; cd into one first"
+    fi
+    export BB_VERSION_AUTH; BB_VERSION_AUTH="$(bb_auth_or_die)"
+    BB_WORKSPACE="$WORKSPACE" python3 "$BB_LIB/release-edit.py" "$proj" "$@"
+}
+
 cmd_version() {
+    case " $* " in *" release "*"--edit "*|*" --edit "*"release "*)
+        case " $* " in *" -h "*|*" --help "*) ;; *) cmd_version_edit "$@"; return $? ;; esac ;;
+    esac
     local py proj
     py="$(dirname "$(readlink -f "$0")")/dashboard/version.py"
     [ -f "$py" ] || die "version.py is missing from this image"
@@ -5095,6 +5111,13 @@ if on_node && [ -z "${BB_RELAYED:-}" ]; then
             # below ran the verb a second time HERE, against files the bundle
             # does not carry: `bb bug` printed the controller's answer and
             # then died with "bugs.py is missing from this image".
+            # `version release --edit` reads its notes and files where the
+            # session wrote them and only calls the API (report 60): relayed,
+            # a scratchpad file was not there and stdin arrived empty.
+            if [ "${1:-}" = version ]; then
+                case " $* " in *" -h "*|*" --help "*) ;;
+                    *" release "*"--edit "*|*" --edit "*"release "*) cmd_version_edit "${@:2}"; exit $? ;; esac
+            fi
             case "$BB_RELAY_VERBS" in
                 # The controller's answer IS this command's answer. It used to
                 # be `exit 0` whatever came back, so a refused roadmap edit, a

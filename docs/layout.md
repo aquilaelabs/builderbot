@@ -56,6 +56,7 @@ scripts/
   lib/build-or-test.py           the command, place and outputs `bb build` and `bb test` read from the settings
   lib/git-policy.py              `bb git policy`
   lib/relay.py                   a notebook verb relayed from a node to the controller
+  lib/release-edit.py            `bb version release --edit`: the notes and files read where it is typed, the edit asked over the API
   lib/controller-stamp.py        the controller's build, for `bb status` and `bb catchup`
   lib/dash.py                    the dashboard's modules loaded by path for the notebook verbs, and the account name and "who wrote it" they share
   lib/roadmap-verbs.py           `bb roadmap`

@@ -143,48 +143,6 @@ if argv and argv[0] == "release":
     import bbapi
     import waits
     rest = argv[1:]
-    if "--edit" in rest and not ("-h" in rest or "--help" in rest):
-        # bb version release --edit (R139): the published release's notes
-        # replaced and files attached, made by the controller with the
-        # project's token, under the same dial; every edit is its own ask.
-        rest.remove("--edit")
-        why, tag, notes, attach = "", "", None, []
-        root = os.path.realpath(os.path.join(os.environ.get("BB_WORKSPACE", "/workspace"), proj))
-        while rest:
-            flag = rest.pop(0)
-            if flag not in ("--why", "--tag", "--notes", "--attach") or not rest:
-                fail(f"bb version release --edit takes --why, --tag, --notes FILE and --attach FILE, "
-                     f"each with its value, not {flag}" + ("" if rest else " alone"))
-            val = rest.pop(0)
-            if flag == "--why":
-                why = val
-            elif flag == "--tag":
-                tag = val
-            elif flag == "--notes":
-                try:
-                    notes = sys.stdin.read() if val == "-" else open(val, encoding="utf-8").read()
-                except OSError as e:
-                    fail(f"--notes {val}: {e.strerror}")
-            else:
-                p = os.path.realpath(val)
-                if not p.startswith(root + os.sep):
-                    fail(f"--attach {val}: a file in {proj}, a build in dist/ or a committed one")
-                attach.append(os.path.relpath(p, root))
-        auth = os.environ.get("BB_VERSION_AUTH", "")
-        r = bbapi.call("/api/version", {"action": "release-edit", "project": proj, "component": comp, "why": why,
-                                        "tag": tag, "notes": notes, "attach": attach}, auth=auth, timeout=600)
-        if r.get("error"):
-            fail(f"[builderbot] ERROR: {r['error']}")
-        if r.get("id") and not r.get("edited"):
-            print(f"[builderbot] asked {r.get('to') or 'the project owner'} (#{r['id']}) to edit the release, "
-                  "waiting up to 15 minutes for Approve in their bell", file=sys.stderr)
-            o = waits.outcome(auth, r["id"], "the edit was not allowed")
-            if o.get("code"):
-                fail(f"[builderbot] ERROR: {o.get('out') or 'the release was not edited'}")
-            print(o.get("out") or "edited")
-            raise SystemExit(0)
-        print(r.get("said") or "edited")
-        raise SystemExit(0)
     # Help is help: `bb version release -h` was sent on as a release with
     # no reason (Shebang-DevBoard, 5 Oct), refused only because the tag
     # already existed. Anything but --why and its sentence is refused by name.
