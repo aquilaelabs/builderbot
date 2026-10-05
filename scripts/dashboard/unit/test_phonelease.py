@@ -3,6 +3,7 @@ only to a project on the phone's node; a lease ends by itself; a session
 drives only the lease's own apps, and touches the screen only while one of
 them is in front or is the keyboard. adb is faked: what is checked is what
 would be sent to the phone, and what is refused before anything is."""
+import json
 import os
 import shutil
 import sys
@@ -117,6 +118,7 @@ class Lease(unittest.TestCase):
             @staticmethod
             def run_wait(by, nid, argv, env=None, timeout=30, project="", outputs=None, **kw):
                 self.asked_outputs = outputs
+                self.asked_cwd = kw.get("cwd")
                 d = self.tmp / project / "dist"
                 d.mkdir(parents=True, exist_ok=True)
                 (d / outputs[0]).write_bytes(png)
@@ -128,9 +130,39 @@ class Lease(unittest.TestCase):
         self.assertEqual(st, 200, r)
         self.assertEqual((self.tmp / "app" / r["path"]).read_bytes(), png)
         self.assertRegex(self.asked_outputs[0], r"^bb-shot-[0-9a-f]{12}\.png$")
+        self.assertEqual(self.asked_cwd, "/tmp")      # writable by the job account (report #56)
         self.assertFalse((self.tmp / "app" / "dist" / self.asked_outputs[0]).exists())
         self.assertTrue(pl.view("n1")["shot"].startswith("dist/phone/shot-"))
         self.assertIn("n1:app:", pl.rev())
+
+    def test_a_recording_comes_back_whole_or_not_at_all(self):
+        # Report #57: read out of the log as base64 a recording arrived cut
+        # short, with no moov box. Now a pulled file, refused when it is not
+        # a whole MP4.
+        pl.lend("n1", OWNER, "app", 1)
+        made = {"data": b"\0\0\0\x18ftypmp42" + b"x" * 64 + b"moov"}
+
+        class Nodes:
+            @staticmethod
+            def run_wait(by, nid, argv, env=None, timeout=30, project="", outputs=None, **kw):
+                self.rec_argv, self.rec_cwd = argv, kw.get("cwd")
+                d = self.tmp / project / "dist"
+                d.mkdir(parents=True, exist_ok=True)
+                (d / outputs[0]).write_bytes(made["data"])
+                return {"code": 0, "out": ""}
+        saved = phone.nodes
+        self.addCleanup(setattr, phone, "nodes", saved)
+        phone.nodes = Nodes
+        r, st = pl.use("app", "record", {"seconds": 3})
+        self.assertEqual(st, 200, r)
+        self.assertTrue(r["path"].startswith("dist/phone/record-"))
+        self.assertIn("--time-limit 3", self.rec_argv[2])
+        self.assertIn("pull", self.rec_argv[2])
+        self.assertEqual(self.rec_cwd, "/tmp")
+        made["data"] = b"\0\0\0\x18ftypmp42" + b"x" * 64       # cut short: no moov
+        r, st = pl.use("app", "record", {"seconds": 3})
+        self.assertEqual(st, 502)
+        self.assertIn("no recording", r["error"])
 
     def test_install_takes_only_a_dist_apk(self):
         pl.lend("n1", OWNER, "app", 1)
@@ -267,6 +299,18 @@ class Session(unittest.TestCase):
         self.assertTrue(phone.trusts("n1"))
         phone.verb("take-back", {"node": "n1"}, {"name": "Owner", "uid": "u1"}, lambda: {})
         self.assertEqual(phone.trusts("n1"), [])
+
+    def test_a_long_answer_comes_back_whole(self):
+        # Report #56: the answer was cut at 8 KB as JSON, so a layout dump
+        # stopped parsing and bb phone ui printed its tail as an ERROR.
+        big = "<node/>" * 15000
+        pl.use = lambda proj, op, args: ({"code": 0, "out": big}, 200)
+        sess = {"name": "session:app", "uid": "u3", "aname": "Asker", "session": "app"}
+        rid = phone.verb("use", {"op": "ui", "args": {}, "why": "read the screen"}, sess, False)[0]["asked"]
+        phone.decide(rid, True, "u1", "Owner")
+        self.settle(rid)
+        got = json.loads(phone.outcome(rid, "app")["out"])
+        self.assertEqual(got["out"], big)
 
     def test_the_token_moves_with_what_the_app_posts(self):
         # R125: what the app's live connection waits on moves when an ask

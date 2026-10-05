@@ -176,17 +176,26 @@ def _shot(project, nid, serial):
     """The phone's screen, as a file the node uploads rather than as base64
     in the job's log (report #53): a big phone's screenshot is megabytes,
     and the log reaches the controller 40 KB at a time, so a Pixel 11 Pro
-    XL's ran out its 90 s and arrived as a timeout. Written in the node's
-    data store under a name of its own, older ones cleared first, uploaded
-    by the agent into dist/, and moved under dist/phone/ like the rest."""
-    name = f"bb-shot-{secrets.token_hex(6)}.png"
-    script = ('find . -maxdepth 1 -name "bb-shot-*.png" -mmin +10 -delete 2>/dev/null; '
-              'adb -s "$1" exec-out screencap -p > "$2" && [ -s "$2" ]')
-    r = phone.nodes.run_wait(f"session:{project}", nid, ["sh", "-c", script, "_", serial, name],
-                             env={"ANDROID_ADB_SERVER_PORT": phone.ADB_PORT}, timeout=90,
-                             project=project, outputs=[name], title=f"screenshot of the phone lent to {project}")
+    XL's ran out its 90 s and arrived as a timeout."""
+    return _pulled(project, nid, serial, "shot", "png", 'adb -s "$1" exec-out screencap -p > "$2" && [ -s "$2" ]',
+                   90, f"screenshot of the phone lent to {project}",
+                   ok=lambda b: b.startswith(b"\x89PNG"), what="screenshot")
+
+
+def _pulled(project, nid, serial, kind, ext, script, timeout, title, ok, what):
+    """A file the phone makes, written on the node by `script` (its $1 the
+    phone's serial, $2 the file), uploaded by the agent into dist/ as the
+    job's output, and moved under dist/phone/ like the rest. In /tmp, which
+    the job account may write: the data store's root is not, and the shot
+    died on "Permission denied" there (report #56); older ones of this kind
+    are cleared first, since a failed run leaves its file behind."""
+    name = f"bb-{kind}-{secrets.token_hex(6)}.{ext}"
+    sh = f'find . -maxdepth 1 -name "bb-{kind}-*.{ext}" -mmin +10 -delete 2>/dev/null; ' + script
+    r = phone.nodes.run_wait(f"session:{project}", nid, ["sh", "-c", sh, "_", serial, name],
+                             env={"ANDROID_ADB_SERVER_PORT": phone.ADB_PORT}, timeout=timeout,
+                             project=project, outputs=[name], title=title, cwd="/tmp")
     if r.get("error"):
-        return {"error": "the phone gave no screenshot: " + r["error"]}, 502
+        return {"error": f"the phone gave no {what}: " + r["error"]}, 502
     got = WORKSPACE / project / "dist" / name
     try:
         data = got.read_bytes()
@@ -194,9 +203,9 @@ def _shot(project, nid, serial):
         data = b""
     finally:
         got.unlink(missing_ok=True)
-    if r.get("code") or not data.startswith(b"\x89PNG"):
-        return {"error": "the phone gave no screenshot: " + " ".join((r.get("out") or "").split())[-200:]}, 502
-    return {"path": _capture(project, "shot", "png", data)}, 200
+    if r.get("code") or not ok(data):
+        return {"error": f"the phone gave no {what}: " + " ".join((r.get("out") or "").split())[-200:]}, 502
+    return {"path": _capture(project, kind, ext, data)}, 200
 
 
 def _capture(project, kind, ext, data):
@@ -234,13 +243,17 @@ def use(project, op, args):
             secs = max(1, min(RECORD_MAX, int(args.get("seconds") or 10)))
         except (TypeError, ValueError):
             secs = 10
-        f = "/data/local/tmp/bb-record.mp4"
-        r = _shell(nid, serial, f"screenrecord --time-limit {secs} --bit-rate 4000000 {f} && "
-                                f"base64 -w 0 {f}; rm -f {f}", project, timeout=secs + 120)
-        data = _b64(r["out"])
-        if r["code"] or len(data) < 1000:
-            return {"error": "the phone gave no recording: " + r["out"][-200:]}, 502
-        return {"path": _capture(project, "record", "mp4", data)}, 200
+        # Recorded on the phone, ended by its own --time-limit so the file is
+        # closed whole, pulled onto the node, and uploaded as a file: read
+        # out of the job's log as base64 it arrived cut short, 13 KB with no
+        # moov box, which nothing plays (report #57).
+        tmp = f"/data/local/tmp/bb-rec-{secrets.token_hex(6)}.mp4"
+        script = (f'adb -s "$1" shell screenrecord --time-limit {secs} --bit-rate 4000000 {tmp} '
+                  f'&& adb -s "$1" pull {tmp} "$2"; rc=$?; adb -s "$1" shell rm -f {tmp}; '
+                  '[ "$rc" = 0 ] && [ -s "$2" ]')
+        return _pulled(project, nid, serial, "record", "mp4", script, secs + 120,
+                       f"a {secs} s recording of the phone lent to {project}",
+                       ok=lambda b: b"moov" in b, what="recording")
     if op == "install":
         return _install(project, nid, serial, str(args.get("file") or ""))
     pkg = str(args.get("pkg") or (pkgs[0] if pkgs else ""))

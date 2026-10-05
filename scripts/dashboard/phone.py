@@ -669,6 +669,7 @@ def stop_push(uid, by="phone"):
 _reqs = []
 _req_seq = 0
 MAX_REQS = 20
+USE_OUT_MAX = 256 * 1024     # a lent phone's command's answer, kept whole up to this
 
 # How long a session will wait before giving up. Fifteen minutes: the
 # ordinary case is that the tab is behind three others and the request is
@@ -1210,8 +1211,14 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
                 res, st = leasing.use(r["project"], r.get("op") or "", r.get("args") or {})
             except Exception as e:                                     # noqa: BLE001 (said, not raised)
                 res, st = {"error": str(e)}, 500
+            # The answer's own output is what is cut, never the JSON around
+            # it: cut at 8 KB, a layout dump stopped parsing and bb phone ui
+            # printed its tail as an ERROR (report #56). 256 KB holds a
+            # screen's whole hierarchy.
+            if isinstance(res, dict) and isinstance(res.get("out"), str) and len(res["out"]) > USE_OUT_MAX:
+                res["out"] = res["out"][:USE_OUT_MAX]
             with _lock:
-                r.update(state="done", out=json.dumps(res)[-8000:], code=0 if st == 200 else 1)
+                r.update(state="done", out=json.dumps(res), code=0 if st == 200 else 1)
         threading.Thread(target=finish_use, daemon=True, name=f"phone-use-{rid}").start()
         return {"ok": True, "state": "running"}
     if r.get("kind") == "root":

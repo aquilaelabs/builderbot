@@ -10,7 +10,7 @@
 // the result a fact about the room rather than the code.
 import { launch, newPage, ok, done, ready, sleep, URL, DIR } from './lib.mjs';
 import { execSync, execFileSync } from 'node:child_process';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -364,6 +364,13 @@ ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPho
      `allowed by its owner, a screenshot lands in dist/phone/ (${shot.body.path || shot.body.error})`);
   await page.waitForSelector('.phonetab .phlease img.phshot', { timeout: 15000 });
   ok(true, '...and the owner\'s tab shows it on the next poll');
+  // A recording comes back the same way, as a pulled file the node
+  // uploads, so it is whole (report #57: read out of the log it was cut
+  // short, with no moov box).
+  const rec = await allowed('record', { seconds: 1 });
+  ok(rec.status === 200 && /^dist\/phone\/record-.*\.mp4$/.test(rec.body.path || '')
+     && readFileSync(`${DIR}/ws/alpha/${rec.body.path}`).includes(Buffer.from('moov')),
+     `...and a recording lands whole in dist/phone/ (${rec.body.path || rec.body.error})`);
   // Refused before its owner is asked (report #52): an Allow spent on a
   // command that cannot run is a question nobody needed.
   const other_app = await use('start', { pkg: 'com.android.settings' });
