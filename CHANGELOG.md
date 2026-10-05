@@ -154,6 +154,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A design pass over every page at both widths: the phone bar keeps only what works on the tab in front, numeric limits say what 0 means, the Wiki adds first, Toolchains reads plainly, the Jobs tab names a phone's screenshot and install, and quiet lines are the quiet size everywhere (d08051e)
 - bb phone touch glide sends one held stroke on a real phone, through a small injector the node builds and runs as the phone's shell user; a node without a JDK and Android build-tools sends the points as before (1379cfa)
 - A glide on the emulator or a lent phone moves like a finger: curved, eased, overshooting and wobbling, as a steady, normal or shaky hand (ruler for the straight stroke), with dials and a seed to repeat it. bb emu touch glide and bb phone touch glide --hand, --seed. (1fe3a72)
+- Switching tabs on the phone no longer switches the desk: which tabs are open is still shared between a person's browsers, but which one is in front, and the pane split, are each browser's own. (dc18aea)
 
 ### Removed
 

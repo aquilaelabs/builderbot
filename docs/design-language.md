@@ -785,6 +785,13 @@ in `TABKINDS` there and `TAB_KINDS` in `server.py`, its top-level names in
 its siblings. Renderers run inside `renderGuarded`, so a throwing renderer is
 an error band in its own tab, never a dead dashboard.
 
+**The strip is the account's; what is in front is the browser's.** Which
+tabs are open is saved on the server per account, so a phone and a desk
+have the same strip; which tab is in front, and which tab each pane
+holds, are each browser's own, kept on the device the way a phone's
+folded cards are, so switching tabs on the phone leaves the desk where it
+was (R131).
+
 ### a notebook (Web app)
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
