@@ -935,7 +935,7 @@ def _project_columns(who, facts):
                     # onto the projects share (lib/common.sh's
                     # claude_projects_link), so a conversation a node's
                     # session had is offered here and continued there.
-                    "last_claude": last_claude(d),
+                    "last_claude": last_claude(d, users.uid_of(who)),
                     # Where this project's sessions run (roadmap #24): the
                     # node's name, or "" for here, and why the button is
                     # dead when its node cannot take one. The proxy decides
@@ -1597,7 +1597,27 @@ def node_turns(n):
             "limit": nodes.turn_limit(n["id"])}
 
 
-def last_claude(project_dir):
+def newest_transcript(project_dir, uid=""):
+    """The most recent Claude transcript on a working directory, as its file,
+    or None: the asking ACCOUNT's own (its ~/.claude/projects on the share,
+    transcripts.dirs), and the container account's where nobody is asking.
+    It read the container account's for everybody until B489: a new user's
+    Claude button offered the owner's conversation from five days before,
+    which bb-tty then could not find under that user's home."""
+    if uid:
+        dirs = transcripts.dirs(uid, Path(str(project_dir)).name)
+    else:
+        dirs = [CLAUDE_PROJECTS / str(project_dir).replace("/", "-")]
+    files = []
+    for d in dirs:
+        try:
+            files += [f for f in d.glob("*.jsonl") if f.is_file()]
+        except OSError:
+            continue
+    return max(files, key=lambda f: f.stat().st_mtime) if files else None
+
+
+def last_claude(project_dir, uid=""):
     """The most recent Claude transcript for a working directory, or None.
 
     Used to offer "resume" rather than silently starting a fresh conversation
@@ -1606,21 +1626,16 @@ def last_claude(project_dir):
     is a link onto the projects share (lib/common.sh's claude_projects_link),
     so this reads what a session on a node wrote.
     """
-    d = CLAUDE_PROJECTS / str(project_dir).replace("/", "-")
-    try:
-        files = [f for f in d.glob("*.jsonl") if f.is_file()]
-    except OSError:
+    newest = newest_transcript(project_dir, uid)
+    if newest is None:
         return None
-    if not files:
-        return None
-    newest = max(files, key=lambda f: f.stat().st_mtime)
     return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
 
 
 MODEL_FAMILY = re.compile(r'"model"\s*:\s*"claude-(opus|sonnet|haiku|fable)')
 
 
-def claude_model_now(project_dir):
+def claude_model_now(project_dir, uid=""):
     """The model family the newest transcript here last answered on, or "".
 
     Read from the tail of the file when a project's settings dialog opens,
@@ -1628,10 +1643,9 @@ def claude_model_now(project_dir):
     is rather than "leave as is". The tail, because a transcript runs to
     megabytes and the answer is in its last line.
     """
-    t = last_claude(project_dir)
-    if not t:
+    f = newest_transcript(project_dir, uid)
+    if f is None:
         return ""
-    f = CLAUDE_PROJECTS / str(project_dir).replace("/", "-") / f"{t['id']}.jsonl"
     try:
         with open(f, "rb") as fh:
             fh.seek(0, 2)
@@ -4438,7 +4452,7 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        return self._json({"model": claude_model_now(WORKSPACE / name)})
+        return self._json({"model": claude_model_now(WORKSPACE / name, users.uid_of(self._who()))})
 
     def _get_todo(self):
         """GET /api/roadmap."""

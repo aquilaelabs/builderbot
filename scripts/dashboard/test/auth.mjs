@@ -541,6 +541,19 @@ ${code}`], { encoding: 'utf8' });
        '...nor file a bug on it');
     ok((await post(adm, '/api/prefs', { project: 'alpha', build: 'make' })).status === 403,
        '...nor change its settings');
+    // The resume offer is the asking account's own (B489): a transcript the
+    // owner's sessions wrote is offered to the owner, and not to an account
+    // that never had a conversation there, whose bb-tty could not find it.
+    {
+      const ownerUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+      const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
+      mkdirSync(`${DIR}/ws/.claude/${ownerUid}/projects/${slug}`, { recursive: true });
+      writeFileSync(`${DIR}/ws/.claude/${ownerUid}/projects/${slug}/b489b489-0000-4000-8000-000000000000.jsonl`, '{}\n');
+      const theirs = (await projects(owner)).find(p => p.name === 'alpha')?.last_claude?.id;
+      const notTheirs = (await projects(adm)).find(p => p.name === 'alpha')?.last_claude;
+      ok(theirs === 'b489b489-0000-4000-8000-000000000000' && !notTheirs,
+         `a conversation is offered to resume to the account that had it, and to nobody else (owner ${theirs}, admin ${JSON.stringify(notTheirs)})`);
+    }
     // What is the box's rather than a project's is an administrator's: the
     // container log, the trash, the daemon's containers, the deploy keys,
     // the command lists that run in terminals.

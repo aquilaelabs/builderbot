@@ -49,6 +49,12 @@ def _dirs(uid, project):
             base / _slug(WORKTREES / project / uid)]
 
 
+def dirs(uid, project):
+    """The same, for the server's resume offer (B489): an account is offered
+    its own newest conversation, never another account's."""
+    return _dirs(uid, project)
+
+
 def _first_prompt(path):
     """The first thing the person typed, for the row: a line, cut short."""
     try:
