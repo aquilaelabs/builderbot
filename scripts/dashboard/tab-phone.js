@@ -166,8 +166,16 @@ function phonePanel(n){
            : "its sessions may install one of its builds; then that app, and nothing else, without asking"}</div>${
          L.shot ? `<img class="phshot" alt="the phone's screen, as last seen" src="/api/artifact?project=${
            encodeURIComponent(L.project)}&path=${encodeURIComponent(L.shot)}">
-           <div class="sub">${esc(L.shot.split("/").pop())}</div>` : ""}
-         ${n.mine ? `<div class="actbar"><span class="state">the screen updates as a session takes shots</span>
+           <div class="sub">${esc(L.shot.split("/").pop())}</div>` : ""}${
+         // The newest recording as its reel: the frames that changed, each
+         // with its time, in one picture, and the video itself a link away
+         // (the operator, 5 Oct).
+         L.reel ? `<img class="phreel" alt="the newest recording, as the frames that changed with their times" src="/api/artifact?project=${
+           encodeURIComponent(L.project)}&path=${encodeURIComponent(L.reel)}">
+           <div class="sub">${esc(L.reel.split("/").pop())}${L.video ? ` · <a href="/api/artifact?project=${
+             encodeURIComponent(L.project)}&path=${encodeURIComponent(L.video)}" target="_blank" rel="noopener">the video</a>` : ""}</div>` : ""}${
+         L.recording ? `<div class="sub"><span class="pill warn">recording</span> a session is recording the screen</div>` : ""}
+         ${n.mine ? `<div class="actbar"><span class="state">the screen updates as a session takes shots and recordings</span>
            <button type="button" id="phLook">Look now</button>
            <button type="button" class="danger" id="phTakeBack">Take back</button></div>` : ""}</div>
      </div>`);

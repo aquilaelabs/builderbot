@@ -982,7 +982,8 @@ fi
 # adb -s SERIAL shell screenrecord ... FILE, then pull FILE DEST: a lent
 # phone's recording comes back as a pulled file (report #57). The stand-in
 # MP4 carries an ftyp and a moov box, which is what a whole one has.
-if [ "$3" = shell ] && case "$4" in screenrecord*) true ;; *) false ;; esac; then exit 0; fi
+# A recording left running (record start) and interrupted (record stop) too.
+if [ "$3" = shell ] && case "$4" in screenrecord*|"nohup screenrecord"*|"pkill -INT screenrecord"*) true ;; *) false ;; esac; then exit 0; fi
 if [ "$3" = pull ]; then printf '\0\0\0\x18ftypmp42\0\0\0\0mp42isom\0\0\0\x08moov' > "$5"; exit 0; fi
 # adb -s SERIAL shell pm list packages
 if [ "$4 $5 $6" = "pm list packages" ]; then

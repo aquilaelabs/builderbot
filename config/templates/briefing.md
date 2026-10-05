@@ -350,7 +350,12 @@ lease` says whether it is lent and which apps the lease covers; `bb phone
 install dist/APP.apk` installs a build and adds its package; then `bb phone
 start|stop|ime|log PKG`, `bb phone shot` and `bb phone record [SECONDS]`
 (into dist/phone/), `bb phone ui`, and `bb phone touch tap|hold|glide|text|key`,
-which acts only while a lease app is in front or is the keyboard. Anything
+which acts only while a lease app is in front or is the keyboard. To see a
+gesture move rather than where it ended, `bb phone record start`, the
+touches, then `bb phone record stop`: a recording made with a fixed length
+runs alone, so touches sent during it land after it ends. Each recording
+comes with its reel, `record-...-sheet.png`, the frames that changed with
+their times in one picture, which is what to read. Anything
 else on the phone is `bb phone run --why`, one asked command at a time.
 An API level exists here where the store holds a system image for it:
 `bb emu images` lists them and `bb emu create <api>` fetches one on demand.

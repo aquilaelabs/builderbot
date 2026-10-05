@@ -26,9 +26,14 @@ when the phone is disconnected, and when the owner takes it back.
 """
 import base64
 import hashlib
+import os
 import re
 import secrets
 import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -103,13 +108,22 @@ def lend(nid, who, project, hours):
 
 def view(nid):
     """The lease as the Phone tab shows it: who has it, for how long, its
-    apps, and the newest screenshot a session took of it."""
+    apps, the newest screenshot a session took of it, and the newest
+    recording's reel."""
     got = lease(nid)
     if not got:
         return None
-    shots = sorted((WORKSPACE / got["project"] / "dist" / "phone").glob("shot-*.png"))
+    d = WORKSPACE / got["project"] / "dist" / "phone"
+    shots = sorted(d.glob("shot-*.png"))
+    # ...and the newest recording's reel, the frames that changed with their
+    # times, beside its video (the operator, 5 Oct).
+    sheets = sorted(d.glob("record-*-sheet.png"))
+    video = sheets[-1].name.replace("-sheet.png", ".mp4") if sheets else ""
     return dict(got, left=int(got["until"] - time.time()) if got.get("until") else None,
-                shot=f"dist/phone/{shots[-1].name}" if shots else "")
+                shot=f"dist/phone/{shots[-1].name}" if shots else "",
+                reel=f"dist/phone/{sheets[-1].name}" if sheets else "",
+                video=f"dist/phone/{video}" if video and (d / video).is_file() else "",
+                recording=bool(_recording.get(nid) and time.time() < _recording[nid]["until"]))
 
 
 def rev():
@@ -130,7 +144,8 @@ def rev():
             m = int(p.stat().st_mtime)
         except OSError:
             m = 0
-        out.append(f"{nid}:{got.get('project')}:{got.get('at')}:{len(got.get('pkgs') or [])}:{m}")
+        live = 1 if nid in _recording else 0
+        out.append(f"{nid}:{got.get('project')}:{got.get('at')}:{len(got.get('pkgs') or [])}:{m}:{live}")
     return ",".join(out)
 
 
@@ -171,6 +186,75 @@ def _ours_in_front(pkgs):
     return ('f=$(dumpsys window | grep -m1 mCurrentFocus); '
             'i=$(settings get secure default_input_method); '
             f'case "$f $i" in {pats}) ;; *) echo "bb-not-yours: $f"; exit 3;; esac; ')
+
+
+# A recording started and left running on the phone while a session works it
+# (the operator, 5 Oct): one job is a recording and each touch another, and
+# a node runs one at a time, so a glide asked during `bb phone record N` ran
+# after it ended and was never in it. start leaves screenrecord running on
+# the phone and answers at once; stop interrupts it (which closes the file
+# whole), pulls it and uploads it. In memory, per node: a controller restart
+# forgets one, and screenrecord ends on its own --time-limit.
+REC_LIVE_MAX = 180          # screenrecord's own ceiling
+_recording = {}
+
+
+def _rec_start(project, nid, serial, args):
+    if nid in _recording and time.time() < _recording[nid]["until"]:
+        return {"error": "a recording is already going on this phone: bb phone record stop collects it"}, 409
+    try:
+        secs = max(1, min(REC_LIVE_MAX, int(args.get("seconds") or 60)))
+    except (TypeError, ValueError):
+        secs = 60
+    tmp = f"/data/local/tmp/bb-rec-{secrets.token_hex(6)}.mp4"
+    r = _shell(nid, serial, f"nohup screenrecord --time-limit {secs} --bit-rate 4000000 {tmp} "
+                            ">/dev/null 2>&1 &", project, timeout=30)
+    if r.get("code"):
+        return {"error": "the phone did not start recording: " + " ".join((r.get("out") or "").split())[-200:]}, 502
+    now = time.time()
+    _recording[nid] = {"file": tmp, "until": now + secs, "project": project}
+    return {"ok": True, "until": int(now + secs),
+            "out": f"recording, for up to {secs} s: work the phone, then bb phone record stop"}, 200
+
+
+def _rec_stop(project, nid, serial, args):
+    cur = _recording.pop(nid, None)
+    if not cur or cur.get("project") != project:
+        return {"error": "no recording is going on this phone: bb phone record start begins one"}, 409
+    tmp = cur["file"]
+    script = (f'adb -s "$1" shell "pkill -INT screenrecord; sleep 2"; adb -s "$1" pull {tmp} "$2"; rc=$?; '
+              f'adb -s "$1" shell rm -f {tmp}; [ "$rc" = 0 ] && [ -s "$2" ]')
+    return _reeled(project, _pulled(project, nid, serial, "record", "mp4", script, 120,
+                                    f"a recording of the phone lent to {project}",
+                                    ok=lambda b: b"moov" in b, what="recording"))
+
+
+REEL = Path(__file__).resolve().parent.parent / "lib" / "reel.py"
+
+
+def _reeled(project, answer):
+    """A recording that landed, with its reel beside it: the frames that
+    changed, each stamped with its time, tiled into one picture
+    (record-...-sheet.png), which is what the owner's tab shows and what a
+    session reads at a glance (the operator, 5 Oct). Best effort: a
+    recording is kept whether or not its sheet could be made."""
+    res, st = answer
+    if st != 200 or not res.get("path"):
+        return answer
+    mp4 = WORKSPACE / project / res["path"]
+    try:
+        with tempfile.TemporaryDirectory() as t:
+            env = dict(os.environ, BB_CAPTURE_OUT=t, BB_CAPTURE_FFMPEG=shutil.which("ffmpeg") or "ffmpeg")
+            subprocess.run([sys.executable, str(REEL), "--video", str(mp4), "--name", "r",
+                            "--threshold", "0.0002"], env=env, capture_output=True, timeout=240, check=False)
+            sheet = Path(t) / "r" / "sheet.png"
+            if sheet.is_file():
+                dest = mp4.with_name(mp4.stem + "-sheet.png")
+                shutil.copyfile(sheet, dest)
+                res = dict(res, sheet=f"dist/phone/{dest.name}")
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return res, st
 
 
 def _shot(project, nid, serial):
@@ -239,6 +323,8 @@ def use(project, op, args):
                 "by": got.get("by_name"), "left": left}, 200
     if op == "shot":
         return _shot(project, nid, serial)
+    if op == "record" and str(args.get("action") or "") in ("start", "stop"):
+        return (_rec_start if args.get("action") == "start" else _rec_stop)(project, nid, serial, args)
     if op == "record":
         try:
             secs = max(1, min(RECORD_MAX, int(args.get("seconds") or 10)))
@@ -252,9 +338,9 @@ def use(project, op, args):
         script = (f'adb -s "$1" shell screenrecord --time-limit {secs} --bit-rate 4000000 {tmp} '
                   f'&& adb -s "$1" pull {tmp} "$2"; rc=$?; adb -s "$1" shell rm -f {tmp}; '
                   '[ "$rc" = 0 ] && [ -s "$2" ]')
-        return _pulled(project, nid, serial, "record", "mp4", script, secs + 120,
-                       f"a {secs} s recording of the phone lent to {project}",
-                       ok=lambda b: b"moov" in b, what="recording")
+        return _reeled(project, _pulled(project, nid, serial, "record", "mp4", script, secs + 120,
+                                        f"a {secs} s recording of the phone lent to {project}",
+                                        ok=lambda b: b"moov" in b, what="recording"))
     if op == "install":
         return _install(project, nid, serial, str(args.get("file") or ""))
     pkg = str(args.get("pkg") or (pkgs[0] if pkgs else ""))
@@ -294,6 +380,13 @@ def use(project, op, args):
             if isinstance(cmd, dict):
                 return cmd, 400
             r = _shell(nid, serial, guard + cmd, project)
+            if str((args or {}).get("kind")) == "glide" and not r["code"]:
+                # Said, so a session reading a typed "H" for a glided word
+                # knows why (report #56): points are a tap and slides, not
+                # one held stroke.
+                r = dict(r, out=r["out"] + "[builderbot] this node cannot build the glide injector "
+                                           "(javac and Android build-tools), so the points were sent as "
+                                           "separate swipes, which a keyboard reads as taps\n")
         if "bb-not-yours" in r["out"]:
             return {"error": "none of this lease's apps is in front or is the keyboard, so the phone is "
                              "not touched: bb phone start PKG first (" + r["out"].strip()[-160:] + ")"}, 409

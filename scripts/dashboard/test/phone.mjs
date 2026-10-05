@@ -371,6 +371,26 @@ ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPho
   ok(rec.status === 200 && /^dist\/phone\/record-.*\.mp4$/.test(rec.body.path || '')
      && readFileSync(`${DIR}/ws/alpha/${rec.body.path}`).includes(Buffer.from('moov')),
      `...and a recording lands whole in dist/phone/ (${rec.body.path || rec.body.error})`);
+  // One left running while touches work the phone, then collected (the
+  // operator, 5 Oct): a fixed-length one runs alone, so a glide sent during
+  // it landed after it.
+  const started = await allowed('record', { action: 'start', seconds: 30 });
+  ok(started.status === 200 && /record stop/.test(started.body.out || ''),
+     `a recording can be started and left running (${started.body.out || started.body.error})`);
+  const again = await allowed('record', { action: 'start' });
+  ok(/already going/.test(again.body.error || ''), `...a second one is refused while it runs (${again.body.error})`);
+  const stopped = await allowed('record', { action: 'stop' });
+  ok(stopped.status === 200 && /^dist\/phone\/record-.*\.mp4$/.test(stopped.body.path || ''),
+     `...and stop collects it into dist/phone/ (${stopped.body.path || stopped.body.error})`);
+  // Its reel, the frames that changed with their times, is what the owner's
+  // tab shows beside the shot, with the video a link away. The stand-in MP4
+  // has no frames to tile, so the sheet is put beside it here.
+  const video = stopped.body.path.split('/').pop();
+  writeFileSync(`${DIR}/ws/alpha/dist/phone/${video.replace('.mp4', '-sheet.png')}`,
+    Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+  await page.waitForSelector('.phonetab .phlease img.phreel', { timeout: 15000 });
+  const vlink = await page.$eval('.phonetab .phlease img.phreel + .sub a', a => a.getAttribute('href')).catch(() => '');
+  ok(vlink.includes(encodeURIComponent(stopped.body.path)), `...and the owner's tab shows its reel, with a link to the video (${vlink})`);
   // Refused before its owner is asked (report #52): an Allow spent on a
   // command that cannot run is a question nobody needed.
   const other_app = await use('start', { pkg: 'com.android.settings' });

@@ -53,6 +53,7 @@ class Lease(unittest.TestCase):
             return dict(self.answer)
         phone._adb = adb
         phone.load = lambda: {"nodes": self.recs}
+        self.addCleanup(pl._recording.clear)
         pl.configure(workspace=self.tmp, project_node_fn=lambda p: {"app": "n1", "far": "n2"}.get(p, ""),
                      may_see_fn=lambda who, p: p in ("app", "far"))
 
@@ -113,7 +114,7 @@ class Lease(unittest.TestCase):
         saved = phone.nodes
         phone.nodes = Nodes
         try:
-            pl.use("app", "touch", {"kind": "glide", "points": [1, 2, 3, 4, 5, 6], "ms": 30})
+            fell = pl.use("app", "touch", {"kind": "glide", "points": [1, 2, 3, 4, 5, 6], "ms": 30})[0]
         finally:
             phone.nodes = saved
         self.assertIn("app_process / BbGlide 30 1 2 3 4 5 6", seen["argv"][5])
@@ -123,6 +124,7 @@ class Lease(unittest.TestCase):
         self.assertIn("input motionevent DOWN 1 2", g)
         self.assertIn("sleep 0.030", g)
         self.assertTrue(g.endswith("input motionevent UP 5 6"))
+        self.assertIn("cannot build the glide injector", fell["out"])     # and it says so
         self.answer = {"code": 3, "out": "bb-not-yours: com.android.settings"}
         self.assertEqual(pl.use("app", "touch", {"kind": "tap", "x": 1, "y": 1})[1], 409)
 
@@ -181,6 +183,39 @@ class Lease(unittest.TestCase):
         r, st = pl.use("app", "record", {"seconds": 3})
         self.assertEqual(st, 502)
         self.assertIn("no recording", r["error"])
+
+    def test_a_recording_left_running_is_collected_by_stop(self):
+        # The operator, 5 Oct: a fixed-length recording is one job and a
+        # touch another, so a glide sent during it ran after it. start
+        # answers at once with screenrecord left running; stop collects it.
+        pl.lend("n1", OWNER, "app", 1)
+        self.answer = {"code": 0, "out": ""}
+        r, st = pl.use("app", "record", {"action": "stop"})
+        self.assertEqual(st, 409, r)
+        r, st = pl.use("app", "record", {"action": "start", "seconds": 20})
+        self.assertEqual(st, 200, r)
+        self.assertIn("nohup screenrecord --time-limit 20", " ".join(map(str, self.sent[-1])))
+        r, st = pl.use("app", "record", {"action": "start"})
+        self.assertEqual(st, 409, "a second start is refused while one runs")
+        self.assertTrue(pl.view("n1")["recording"])
+        made = b"\0\0\0\x18ftypmp42" + b"x" * 64 + b"moov"
+
+        class Nodes:
+            @staticmethod
+            def run_wait(by, nid, argv, env=None, timeout=30, project="", outputs=None, **kw):
+                self.stop_argv = argv
+                d = self.tmp / project / "dist"
+                d.mkdir(parents=True, exist_ok=True)
+                (d / outputs[0]).write_bytes(made)
+                return {"code": 0, "out": ""}
+        saved = phone.nodes
+        self.addCleanup(setattr, phone, "nodes", saved)
+        phone.nodes = Nodes
+        r, st = pl.use("app", "record", {"action": "stop"})
+        self.assertEqual(st, 200, r)
+        self.assertTrue(r["path"].startswith("dist/phone/record-"))
+        self.assertIn("pkill -INT screenrecord", self.stop_argv[2])
+        self.assertFalse(pl.view("n1")["recording"])
 
     def test_install_takes_only_a_dist_apk(self):
         pl.lend("n1", OWNER, "app", 1)

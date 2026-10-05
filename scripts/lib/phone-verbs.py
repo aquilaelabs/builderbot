@@ -127,8 +127,18 @@ def lent():
         print("apps: " + (", ".join(r.get("pkgs") or []) or "none yet: bb phone install dist/APP.apk"))
     elif op == "shot":
         print(use("shot", quiet=True)["path"])
+    elif op == "record" and rest[:1] == ["start"]:
+        print(use("record", {"action": "start", "seconds": rest[1] if len(rest) > 1 else 60}, quiet=True)["out"])
+    elif op == "record" and rest[:1] == ["stop"]:
+        r = use("record", {"action": "stop"}, quiet=True)
+        print(r["path"])
+        if r.get("sheet"):
+            print(f"{r['sheet']}  (the frames that changed, with their times)")
     elif op == "record":
-        print(use("record", {"seconds": rest[0] if rest else 10}, quiet=True)["path"])
+        r = use("record", {"seconds": rest[0] if rest else 10}, quiet=True)
+        print(r["path"])
+        if r.get("sheet"):
+            print(f"{r['sheet']}  (the frames that changed, with their times)")
     elif op == "install":
         if not rest:
             sys.exit("usage: bb phone install dist/APP.apk")

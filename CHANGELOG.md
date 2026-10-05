@@ -67,6 +67,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Release makes the GitHub release too, where the token can write there: the version as its title, its changelog section as the notes, that commit's builds attached. The version row links to it or says why there is none (7e09164)
 - Phone asks can be answered Allow for this session, on the dashboard and in the companion app; the app keeps a note up while your phone is lent or a session is allowed, and tapping it takes the phone back (adb disconnected) or asks every time again (98435a1)
 - Hear asks at once, a switch in the companion app: it keeps a connection open so a phone or root question reaches you in about a second, not on Android's alarm. Also fixed: the app's notes for a lent phone and an allowed session now show (fed874b)
+- bb phone record start and stop leave a recording running on a lent phone while touches work it, so a glide is seen moving; each recording comes with its reel, the frames that changed with their times, which the Phone tab shows beside the screenshot. (eb3aa16)
 
 ### Changed
 
