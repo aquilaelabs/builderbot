@@ -6,6 +6,7 @@ twice."""
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -98,6 +99,25 @@ class Release(unittest.TestCase):
         self.assertNotIn("not yet", made["body"])
         self.assertEqual(r["assets"], ["app-0.5.0-dev.12-65298e0-release-signed.apk"])
         self.assertEqual(fr.kept("app")["v0.5.0"]["url"], "https://github.com/o/app/releases/tag/v0.5.0")
+
+    def test_a_tag_on_a_merge_carries_the_builds_of_the_same_files(self):
+        # The builds were made and signed on the branch tip; the tag went on
+        # the merge commit, another id with the same tree (Shebang-DevBoard's
+        # v0.5.4, released with nothing attached).
+        app = self.tmp / "ws" / "app"
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x", "GIT_COMMITTER_NAME": "t",
+               "GIT_COMMITTER_EMAIL": "t@x"}
+        git = lambda *a: subprocess.run(["git", "-C", str(app), *a], check=True, capture_output=True,
+                                         text=True, env=env).stdout.strip()
+        git("init", "-q"); (app / ".gitignore").write_text("dist/\n"); git("add", "-A"); git("commit", "-qm", "tip")
+        tip = git("rev-parse", "--short=7", "HEAD")
+        git("commit", "-q", "--allow-empty", "-m", "Merge pull request #11")
+        merge = git("rev-parse", "--short=7", "HEAD")
+        (app / "dist" / f"app-0.5.4-dev.174-{tip}-release-signed.apk").write_bytes(b"apk")
+        self.assertEqual([f.name for f in fr.assets("app", merge)], [f"app-0.5.4-dev.174-{tip}-release-signed.apk"])
+        (app / "x").write_text("changed"); git("add", "-A"); git("commit", "-qm", "another tree")
+        self.assertEqual(fr.assets("app", git("rev-parse", "--short=7", "HEAD")), [],
+                         "a build of different files is never attached")
 
     def test_a_second_press_makes_nothing_twice(self):
         fr.publish("app", "v0.5.0", "0.5.0", "65298e0")

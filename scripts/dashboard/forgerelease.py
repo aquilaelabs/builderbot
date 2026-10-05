@@ -22,12 +22,17 @@ reason.
 
 Builds are matched on the released commit: a file in dist/ whose name
 carries that commit's short id (every build is named so) and is not a
-dirty one. Signed ones are what a release carries when there are any; an
+dirty one, or carries the id of another commit with the same tree. Work
+lands through a pull request, so the tag goes on the merge commit while
+the builds were made, and signed, from the branch tip it merged: the same
+files under another id (Shebang-DevBoard's v0.5.4, 5 Oct, released with
+nothing attached). Signed ones are what a release carries when there are any; an
 unsigned or debug build only where nothing signed was built.
 """
 import json
 import os
 import re
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -107,8 +112,11 @@ def assets(project, sha):
     d = WORKSPACE / project / "dist"
     if not sha or not d.is_dir():
         return []
-    files = [f for f in d.iterdir()
-             if f.is_file() and sha in f.name and "-dirty" not in f.name and SHIPS.search(f.name)]
+    ships = [f for f in d.iterdir() if f.is_file() and "-dirty" not in f.name and SHIPS.search(f.name)]
+    files = [f for f in ships if sha in f.name]
+    if not files:
+        same = _same_tree(project, sha, {m.group(1) for f in ships for m in [BUILD_SHA.search(f.name)] if m})
+        files = [f for f in ships if (m := BUILD_SHA.search(f.name)) and m.group(1) in same]
     signed = [f for f in files if "-signed" in f.name]
     if signed:
         files = signed
@@ -116,6 +124,23 @@ def assets(project, sha):
         real = [f for f in files if "-debug" not in f.name]
         files = real or files
     return sorted(files, key=lambda f: f.stat().st_mtime, reverse=True)
+
+
+BUILD_SHA = re.compile(r"-([0-9a-f]{7,12})(?=[-.])")
+
+
+def _same_tree(project, sha, others):
+    """Those of `others` (short commit ids from build names) whose commit
+    holds the same tree as `sha`: the same files, built before a merge."""
+    def tree(c):
+        try:
+            r = subprocess.run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--verify", "--quiet",
+                                f"{c}^{{tree}}"], capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return r.stdout.strip() if r.returncode == 0 else ""
+    want = tree(sha)
+    return {c for c in others if want and tree(c) == want} if want else set()
 
 
 # ---- asking GitHub ------------------------------------------------------------
