@@ -15,6 +15,12 @@ for. GitLab keeps no files on a release, so a build goes into the
 project's generic package registry under the version and the release
 links to it there.
 
+A release that exists already is changed only by edit() (R139, the
+operator 5 Oct): its notes replaced, files attached to it (one of the same
+name replaced), never the release deleted or its tag moved, and only with
+files from the project's dist/ or its committed tree, which edit_plan()
+checks before anybody is asked.
+
 A release that exists already for the tag is left as it is and pointed at:
 a second press makes nothing twice. What was made, or why nothing was, is
 kept per project and tag, so the version row can link to it or say the
@@ -30,6 +36,7 @@ nothing attached). Signed ones are what a release carries when there are any; an
 unsigned or debug build only where nothing signed was built.
 """
 import json
+import mimetypes
 import os
 import re
 import subprocess
@@ -382,3 +389,213 @@ def _multipart(field, name, data):
     head = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; filename=\"{safe}\"\r\n"
             f"Content-Type: application/octet-stream\r\n\r\n").encode()
     return head + data + f"\r\n--{boundary}--\r\n".encode(), f"multipart/form-data; boundary={boundary}"
+
+
+# ---- editing a published release (R139) ----------------------------------------
+
+NOTES_MAX = 100_000
+ATTACH_MAX = 20
+ATTACHABLE = re.compile(r"\.(apk|aab|zip|xpi|tar\.gz|tgz|exe|msi|dmg|deb|rpm|AppImage|png|jpe?g|gif|webp|pdf|txt|sha256)$",
+                        re.I)
+TAG = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}")
+ASSET_REF = re.compile(r"\(asset:([^)\s]+)\)")
+
+
+def _tree_git(project, *args):
+    try:
+        return subprocess.run(["git", "-C", str(WORKSPACE / project), *args], capture_output=True,
+                               text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def edit_plan(project, tag, notes=None, attach=()):
+    """What an edit of the release for `tag` would do, checked before
+    anybody is asked: {tag, notes, files: [{path, name, size, signed}]} or
+    {error}. A file is the project's own: a build in dist/, or a file its
+    git tree tracks (a screenshot under docs/), inside the project and of a
+    kind a release carries."""
+    if not tag or not TAG.fullmatch(tag) or ".." in tag:
+        return {"error": f"not a tag: {tag or '(none)'}"}
+    r = _tree_git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}")
+    if r is None or r.returncode:
+        return {"error": f"{tag} is not a tag here, so it has no release to edit"}
+    if notes is not None:
+        notes = str(notes).rstrip()
+        if not notes.strip():
+            return {"error": "the notes are empty: a release's notes are replaced whole, so say them all"}
+        if len(notes) > NOTES_MAX:
+            return {"error": f"the notes are {len(notes)} characters; a release takes {NOTES_MAX} at most"}
+    attach = [str(a) for a in (attach or [])]
+    if notes is None and not attach:
+        return {"error": "say what changes: --notes FILE, --attach FILE, or both"}
+    if len(attach) > ATTACH_MAX:
+        return {"error": f"{len(attach)} files; one edit attaches {ATTACH_MAX} at most"}
+    root = (WORKSPACE / project).resolve()
+    files, names = [], set()
+    for rel in attach:
+        p = (root / rel).resolve()
+        if rel.startswith("/") or not p.is_relative_to(root) or not p.is_file():
+            return {"error": f"{rel} is not a file in {project}"}
+        rel = str(p.relative_to(root))
+        if not ATTACHABLE.search(p.name):
+            return {"error": f"{p.name} is not a kind of file a release carries here: a build, an image, "
+                             "a PDF, a text file or a checksum"}
+        in_dist = rel.startswith("dist/")
+        if in_dist and "-dirty" in p.name:
+            return {"error": f"{p.name} was built from uncommitted changes, so it is not what any tag names"}
+        if not in_dist:
+            t = _tree_git(project, "ls-files", "--error-unmatch", "--", rel)
+            if t is None or t.returncode:
+                return {"error": f"{rel} is not committed: a release carries a build in dist/ or a file "
+                                 "the project's history has, so what it shows can be found again"}
+        size = p.stat().st_size
+        if size > ASSET_MAX:
+            return {"error": f"{p.name} is {size // 1_000_000} MB, too big to attach"}
+        if p.name in names:
+            return {"error": f"two files are named {p.name}; a release keeps one of each name"}
+        names.add(p.name)
+        files.append({"path": rel, "name": p.name, "size": size, "signed": "-signed" in p.name})
+    return {"tag": tag, "notes": notes, "files": files}
+
+
+def _with_assets(notes, urls):
+    """`(asset:NAME)` in the notes, the address of the file of that name on
+    the release: how a screenshot attached by the same edit is shown."""
+    return ASSET_REF.sub(lambda m: f"({urls[m.group(1)]})" if urls.get(m.group(1)) else m.group(0), notes)
+
+
+def edit(project, plan):
+    """Make the edit edit_plan() checked: {url, notes, attached, replaced,
+    skipped, forge} or {error, forge}."""
+    tag, notes, files = plan["tag"], plan.get("notes"), plan.get("files") or []
+    if cilogs.repo_of(project):
+        name = "GitHub"
+        token = cilogs._token(project)
+        if not token:
+            return {"error": "the controller has no GitHub token for this project", "forge": name}
+        try:
+            return _github_edit(project, cilogs.repo_of(project), token, tag, notes, files) | {"forge": name}
+        except Refused as e:
+            return {"error": str(e), "forge": name}
+    at = _remote(project)
+    entry = forges.forge_of(at["host"]) if at else None
+    if not at or not entry or entry["kind"] not in ("gitea", "gitlab"):
+        return {"error": f"{project} is not on GitHub, Gitea or GitLab, so it has no release page to edit",
+                "forge": ""}
+    name = entry["name"]
+    token, scheme = _own_token(project, at["host"])
+    if not token:
+        return {"error": f"the controller has no {name} token for this project", "forge": name}
+    f = _Forge(forges.api_base(entry, at["host"], scheme or ("https" if at["scheme"] == "ssh" else at["scheme"])),
+               entry, token)
+    try:
+        run = _gitlab_edit if entry["kind"] == "gitlab" else _gitea_edit
+        return run(f, at, project, tag, notes, files) | {"forge": name}
+    except Refused as e:
+        return {"error": str(e), "forge": name}
+
+
+def _said(rel, notes, urls, attached, replaced, skipped):
+    if notes is not None:
+        missing = sorted({m.group(1) for m in ASSET_REF.finditer(notes)} - {n for n, u in urls.items() if u})
+        skipped += [f"the notes name asset:{n}, which is not on the release" for n in missing]
+    return {"url": rel, "notes": notes is not None, "attached": attached, "replaced": replaced, "skipped": skipped}
+
+
+def _ctype(name):
+    return mimetypes.guess_type(name)[0] or "application/octet-stream"
+
+
+def _github_edit(project, repo, token, tag, notes, files):
+    base = f"{API}/repos/{repo}/releases"
+    rel = _req("GET", f"{base}/tags/{urllib.parse.quote(tag)}", token)
+    if not rel:
+        raise Refused(f"there is no release for {tag} on GitHub to edit: bb version release makes one")
+    have = {a.get("name"): a for a in rel.get("assets") or []}
+    urls = {n: a.get("browser_download_url") or "" for n, a in have.items()}
+    attached, replaced, skipped = [], [], []
+    for x in files:
+        p = WORKSPACE / project / x["path"]
+        try:
+            if x["name"] in have:
+                _req("DELETE", f"{base}/assets/{int(have[x['name']]['id'])}", token)
+                replaced.append(x["name"])
+            got = _req("POST", f"{UPLOADS}/repos/{repo}/releases/{int(rel['id'])}/assets"
+                               f"?name={urllib.parse.quote(x['name'])}", token,
+                       data=p.read_bytes(), ctype=_ctype(x["name"]))
+            urls[x["name"]] = (got or {}).get("browser_download_url") or ""
+            attached.append(x["name"])
+        except (Refused, OSError) as e:
+            skipped.append(f"{x['name']}: {e}")
+    if notes is not None:
+        _req("PATCH", f"{base}/{int(rel['id'])}", token, {"body": _with_assets(notes, urls)})
+    return _said(rel.get("html_url") or "", notes, urls, attached, replaced, skipped)
+
+
+def _gitea_edit(f, at, project, tag, notes, files):
+    owner, _, repo = at["path"].partition("/")
+    base = f"/repos/{urllib.parse.quote(owner)}/{urllib.parse.quote(repo)}/releases"
+    rel = f.ask("GET", f"{base}/tags/{urllib.parse.quote(tag)}")
+    if not rel:
+        raise Refused(f"there is no release for {tag} on {f.entry['name']} to edit: bb version release makes one")
+    have = {a.get("name"): a for a in rel.get("assets") or []}
+    urls = {n: a.get("browser_download_url") or "" for n, a in have.items()}
+    attached, replaced, skipped = [], [], []
+    for x in files:
+        try:
+            if x["name"] in have:
+                f.ask("DELETE", f"{base}/{int(rel['id'])}/assets/{int(have[x['name']]['id'])}")
+                replaced.append(x["name"])
+            data, ctype = _multipart("attachment", x["name"], (WORKSPACE / project / x["path"]).read_bytes())
+            got = f.ask("POST", f"{base}/{int(rel['id'])}/assets?name={urllib.parse.quote(x['name'])}",
+                        data=data, ctype=ctype)
+            urls[x["name"]] = (got or {}).get("browser_download_url") or ""
+            attached.append(x["name"])
+        except (Refused, OSError) as e:
+            skipped.append(f"{x['name']}: {e}")
+    if notes is not None:
+        f.ask("PATCH", f"{base}/{int(rel['id'])}", {"body": _with_assets(notes, urls)})
+    return _said(rel.get("html_url") or "", notes, urls, attached, replaced, skipped)
+
+
+def _gitlab_edit(f, at, project, tag, notes, files):
+    pid = urllib.parse.quote(at["path"], safe="")
+    t = urllib.parse.quote(tag)
+    rel = f.ask("GET", f"/projects/{pid}/releases/{t}")
+    if not rel:
+        raise Refused(f"there is no release for {tag} on GitLab to edit: bb version release makes one")
+    links = {x.get("name"): x for x in ((rel.get("assets") or {}).get("links") or [])}
+    urls = {n: x.get("url") or "" for n, x in links.items()}
+    pkg = re.sub(r"[^A-Za-z0-9._-]", "-", project) or "builds"
+    ver = re.sub(r"[^A-Za-z0-9._+-]", "-", re.sub(r"^(?:.*-)?v(?=\d)", "", tag)) or "0"
+    attached, replaced, skipped = [], [], []
+    for x in files:
+        path = f"/projects/{pid}/packages/generic/{pkg}/{ver}/{urllib.parse.quote(x['name'])}"
+        try:
+            if x["name"] in links:
+                f.ask("DELETE", f"/projects/{pid}/releases/{t}/assets/links/{int(links[x['name']]['id'])}")
+                replaced.append(x["name"])
+            f.ask("PUT", path, data=(WORKSPACE / project / x["path"]).read_bytes(), ctype="application/octet-stream")
+            f.ask("POST", f"/projects/{pid}/releases/{t}/assets/links",
+                  {"name": x["name"], "url": f.base + path,
+                   "link_type": "image" if re.search(r"\.(png|jpe?g|gif|webp)$", x["name"], re.I) else "package"})
+            urls[x["name"]] = f.base + path
+            attached.append(x["name"])
+        except (Refused, OSError) as e:
+            skipped.append(f"{x['name']}: {e}")
+    if notes is not None:
+        f.ask("PUT", f"/projects/{pid}/releases/{t}", {"description": _with_assets(notes, urls)})
+    web = f"{f.base.split('/api/')[0]}/{at['path']}/-/releases/{t}"
+    return _said(((rel.get("_links") or {}).get("self") or web), notes, urls, attached, replaced, skipped)
+
+
+def edit_said(r):
+    """One line for what an edit did, for the session and the outcome."""
+    if r.get("error"):
+        return f"no edit on {r.get('forge') or 'the forge'}: {r['error']}"
+    parts = (["the notes replaced"] if r.get("notes") else []) + (
+        [f"attached {', '.join(r['attached'])}"] if r.get("attached") else []) + (
+        [f"replacing {', '.join(r['replaced'])}"] if r.get("replaced") else [])
+    return (f"edited on {r.get('forge')}: {'; '.join(parts) or 'nothing changed'}"
+            + (f"; not done: {'; '.join(r['skipped'])}" if r.get("skipped") else "") + f"; {r.get('url')}")

@@ -334,11 +334,12 @@ object Watch {
         "sign" -> "Sign a build of ${a.str("project").ifBlank { "a project" }}"
         "sign-key" -> "A signing key change in ${a.str("project").ifBlank { "a project" }}"
         "release" -> "Release ${a.str("project").ifBlank { "a project" }} ${a.str("tag")}"
+        "release-edit" -> "Edit the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }}"
         else -> "The phone on ${a.str("node_name")}"
     }
     fun askCommand(a: JSONObject): String = when (a.str("kind")) {
         "root" -> "# "
-        "rebuild", "container", "sign", "sign-key", "release" -> "bb "
+        "rebuild", "container", "sign", "sign-key", "release", "release-edit" -> "bb "
         else -> "adb "
     } + a.strs("cmd").joinToString(" ")
 }

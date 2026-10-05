@@ -3455,6 +3455,18 @@ since a GitLab release holds links rather than files (R124). A forge that
 says no leaves the tag as the release and the Artifacts row says why, and a
 host with no release API (Bitbucket, plain git) says that instead.
 
+**Editing a published release.** `bb version release --edit --why "..."`
+changes the release of the version this tree is on (or `--tag TAG`): the
+notes replaced whole with `--notes FILE`, and files attached with
+`--attach FILE`, each a build in dist/ or a file the project's history
+has, so what a page shows can be found again; one of the same name is
+replaced rather than doubled. `(asset:NAME)` in the notes becomes the
+address of the file of that name on the release, which is how a
+screenshot attached by the same edit is shown. It is under the release's
+own dial, and on ask every edit is its own ask: the project's owner reads
+the notes whole and each file by its name and size before Allow. Nothing
+deletes a release or moves its tag (R139).
+
 **What is signed says so.** The node reports what `apksigner verify` (or
 `jarsigner -verify` for a bundle) found: the certificate's SHA-256 and the
 signature schemes that verified. The controller keeps that in the file's

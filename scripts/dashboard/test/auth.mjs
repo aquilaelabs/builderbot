@@ -1457,6 +1457,36 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
         ok(denied.status === 403 && /Tag and publish a release/.test(denied.body.error || '') && [400, 403].includes(other.status)
            && !gitR('tag', '--list', 'v1.2.3'),
            `...at Deny it is refused naming the setting, another project is never its to release, and nothing was tagged (${denied.status}/${other.status})`);
+        // bb version release --edit (R139): the published release's notes
+        // and files, under the same dial, each edit its own ask that the
+        // owner reads whole. What may be attached is the project's own: a
+        // build in dist/ or a committed file, checked before anybody is asked.
+        {
+          await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'relproj', release: 'ask' }) });
+          mkdirSync(`${R}/docs`, { recursive: true });
+          writeFileSync(`${R}/docs/shot.png`, 'png');
+          gitR('add', 'docs'); gitR('commit', '-qm', 'a screenshot'); gitR('tag', 'v1.2.3');
+          writeFileSync(`${R}/loose.png`, 'png');
+          const edit = (body, h = rAuth) => bare('/api/version', { method: 'POST', headers: h,
+            body: JSON.stringify({ action: 'release-edit', project: 'relproj', why: 'screenshots for the page', ...body }) })
+            .then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+          const outside = await edit({ attach: ['../../state/users.json'] });
+          const loose = await edit({ attach: ['loose.png'] });
+          const asked = await edit({ notes: '# 1.2.3\n\n![Code mode](asset:shot.png)', attach: ['docs/shot.png'] });
+          const ownerAsks = await (await bare('/api/phone', { headers: ownerAuth })).json();
+          const ask = (ownerAsks.asks || []).find(a => a.id === asked.body.id);
+          ok(outside.status === 400 && /not a file in relproj/.test(outside.body.error || '')
+             && loose.status === 400 && /not committed/.test(loose.body.error || '')
+             && asked.status === 200 && ask?.kind === 'release-edit' && ask.tag === 'v1.2.3'
+             && /asset:shot\.png/.test(ask.detail || '') && ask.cmd.includes('attach shot.png (1 KB)'),
+             `a session's edit of its release names the tag, the notes whole and each file to its owner, and a file outside the project or never committed is refused first (${ask?.cmd?.join(' ')}; ${outside.body.error} | ${loose.body.error})`);
+          await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: asked.body.id }) });
+          await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'relproj', release: 'deny' }) });
+          const no = await edit({ notes: 'x' });
+          const elsewhere = await edit({ project: 'alpha', notes: 'x' });
+          ok(no.status === 403 && /Tag and publish a release/.test(no.body.error || '') && [400, 403].includes(elsewhere.status),
+             `...at Deny an edit is refused naming the same setting, and another project's release is never its to edit (${no.status}/${elsewhere.status})`);
+        }
         rmSync(R, { recursive: true, force: true });
       }
       // ...and how busy a node is (R108), for its own project only.

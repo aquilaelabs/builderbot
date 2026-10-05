@@ -75,6 +75,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's CI findings that are one line to fix (a moving ubuntu-latest label, an action a major version behind) carry a Fix on the Git view: it writes that line into the working tree, uncommitted, and Changes shows it to commit or send to Claude. (0fd237f)
 - A session can tag and publish its project's release: bb version release --why "...", under Claude may: Tag and publish a release (ask by default, which asks the project's owner). The signing dial is now called Sign a build, so the two read apart. (123208e)
 - Release makes the forge's release on Gitea, Forgejo, Codeberg and GitLab too, not only GitHub: the version as title, its changelog section as notes, the commit's builds attached, and the Artifacts row links to it or says why there is none (7bc7bba)
+- A session can change its project's published release with bb version release --edit, under the same setting: the notes replaced, builds and committed screenshots attached and shown in the notes, each edit its own ask to the owner (be2b1b5)
 
 ### Changed
 

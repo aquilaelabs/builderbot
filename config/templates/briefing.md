@@ -292,7 +292,13 @@ that version and publishing the release is `bb version release --why
 "..."` where the project's setting lets it (Claude may: Tag and publish a
 release), which asks the project's owner by default and is made on the
 controller with the project's own credentials, never yours; Release on
-the Artifacts tab is the same thing done by a person. Shippable build output goes in this
+the Artifacts tab is the same thing done by a person. A published
+release is changed with `bb version release --edit --why "..." [--notes
+FILE] [--attach FILE]...`, under the same setting and every edit its own
+ask: the notes replaced whole, a build from dist/ or a committed file
+(a screenshot) attached, and `(asset:NAME)` in the notes the address of
+the file of that name, so `![The keyboard](asset:shot.png)` shows it.
+Shippable build output goes in this
 project's dist/, named with `bb version --file` and gitignored (`bb
 build` names it so), and the Artifacts tab lists it; nothing else goes
 there, and scratch goes anywhere else. Of each kind of dev build the tab

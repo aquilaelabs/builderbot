@@ -122,6 +122,8 @@ const made = [];   // owner/repo pairs to delete at the end
   ok(v.status === 200, `beta gets its first version (${v.status}: ${v.body.error || 'ok'})`);
   writeFileSync(`${DIR}/ws/beta/CHANGELOG.md`, '# Changelog\n\n## 0.1.0: 2026-10-05\n\n### Added\n\n- The lab release\n');
   writeFileSync(`${DIR}/ws/beta/.gitignore`, 'dist/\n');
+  mkdirSync(`${DIR}/ws/beta/docs`, { recursive: true });
+  writeFileSync(`${DIR}/ws/beta/docs/shot.png`, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kAAAAABJRU5ErkJggg==', 'base64'));
   git('beta', 'add', '-A'); git('beta', 'commit', '-q', '-m', 'lab: 0.1.0');
   const short = git('beta', 'rev-parse', '--short=7', 'HEAD');
   mkdirSync(`${DIR}/ws/beta/dist`, { recursive: true });
@@ -137,6 +139,26 @@ const made = [];   // owner/repo pairs to delete at the end
   ok((on.body?.assets || []).some(a => a.name === apk && a.size === 9),
      `...and the commit's build attached (${(on.body?.assets || []).map(a => `${a.name} ${a.size}`).join(', ') || 'none'})`);
   ok(fg.url === on.body?.html_url, `the row links to that release (${fg.url})`);
+  // ...then edited (R139): the notes replaced, a committed screenshot
+  // attached and shown in them by (asset:NAME), and an edit again replaces
+  // the file of that name rather than doubling it.
+  const notes = '## 0.1.0\n\nThe lab release.\n\n![The screen](asset:shot.png)\n';
+  const ed = await api('/api/version', { project: 'beta', action: 'release-edit', notes, attach: ['docs/shot.png'] });
+  const after = await forge('GET', `/repos/${repo}/releases/tags/v0.1.0`);
+  const shot = (after.body?.assets || []).find(a => a.name === 'shot.png');
+  // The address Gitea gave the upload (its /attachments/ one, the same file
+  // its listing names under /releases/download/), asked for the picture.
+  const shown = ((after.body?.body || '').match(/!\[The screen\]\((http[^)]+)\)/) || [])[1] || '';
+  const img = shown ? await fetch(shown, { headers: { Authorization: `token ${token}` } }) : null;
+  const bytes = img?.ok ? (await img.arrayBuffer()).byteLength : 0;
+  ok(ed.status === 200 && ed.body.edited?.attached?.includes('shot.png') && shot && bytes === 70
+     && !/asset:/.test(after.body?.body || '') && (after.body?.assets || []).some(a => a.name === apk),
+     `an edit replaces the notes and attaches the screenshot they show, keeping the build (${ed.status}: ${ed.body.error || ed.body.said}; the page says ${JSON.stringify(after.body?.body)}, the file is at ${shot?.browser_download_url}, files ${(after.body?.assets || []).map(a => a.name).join(', ')})`);
+  const ed2 = await api('/api/version', { project: 'beta', action: 'release-edit', attach: ['docs/shot.png'] });
+  const after2 = await forge('GET', `/repos/${repo}/releases/tags/v0.1.0`);
+  ok(ed2.status === 200 && ed2.body.edited?.replaced?.includes('shot.png')
+     && (after2.body?.assets || []).filter(a => a.name === 'shot.png').length === 1,
+     `...and a second attach of the same name replaces it (${(after2.body?.assets || []).map(a => a.name).join(', ')})`);
   const twice = await api('/api/version', { project: 'beta', action: 'release' });
   ok(twice.status === 400 && /already exists/.test(twice.body.error || ''),
      'a second Release is refused at the tag, so nothing is made twice');

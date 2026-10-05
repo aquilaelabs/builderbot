@@ -114,17 +114,22 @@ function drawBell(){
           : a.kind === "sign" ? `sign a build of ${esc(a.project || "a project")}: needs your answer`
           : a.kind === "sign-key" ? `a signing key change in ${esc(a.project || "a project")}: needs your answer`
           : a.kind === "release" ? `release ${esc(a.project || "a project")} ${esc(a.tag || "")}: needs your answer`
+          : a.kind === "release-edit" ? `edit the ${esc(a.tag || "")} release of ${esc(a.project || "a project")}: needs your answer`
           : a.kind === "phone-use" ? `your phone, from ${esc(a.project || "a project")}: needs your answer`
           : "needs your answer"}</div>
         <div class="bwhy">${esc(a.why)}</div>
-        <div class="bcmd">${a.kind === "root" ? "# " : a.kind === "phone-use" ? "" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" || a.kind === "release" ? "bb " : "adb "}${esc(a.cmd.join(" "))}</div>${
+        <div class="bcmd">${a.kind === "root" ? "# " : a.kind === "phone-use" ? "" : a.kind === "rebuild" || a.kind === "container" || a.kind === "sign" || a.kind === "sign-key" || a.kind === "release" || a.kind === "release-edit" ? "bb " : "adb "}${esc(a.cmd.join(" "))}</div>${
         // A container is approved by reading its compose file, the way root
         // is approved by reading its argv (R71): the file is the request, so
         // it is here whole, folded, with the env file's keys and never its
         // values, which is where a token would be.
         a.kind === "container" ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the compose file${
             a.env_keys?.length ? `, and an env file setting ${a.env_keys.map(esc).join(", ")}` : ""}${
-            a.for ? `, for ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}
+            a.for ? `, for ${esc(a.for)}` : ""}</summary><pre>${esc(a.detail || "")}</pre></details>` : ""}${
+        // An edit of a release (R139) is approved by reading the notes it
+        // would put on the page, whole.
+        a.kind === "release-edit" && a.detail ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the new notes</summary><pre>${
+            esc(a.detail)}</pre></details>` : ""}
         <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
           ? `${Math.floor(a.left / 60)} min left to answer`
           : `${a.left}s left to answer`}</span>

@@ -2655,6 +2655,22 @@ def _releaser(project, comp, asker_name, principal):
 phone.releaser = _releaser
 
 
+def _release_editor(project, plan, asker_name="", principal=""):
+    """An edit of a published release (R139), made here with the project's
+    own token, which the session never holds: the notes replaced, the
+    files attached that edit_plan() checked."""
+    r = forgerelease.edit(project, plan)
+    if not NODES_OK:
+        db.audit(principal, "version-release-edit", project,
+                 {"tag": plan.get("tag"), "notes": plan.get("notes") is not None,
+                  "files": [x["name"] for x in plan.get("files") or []], "error": r.get("error") or ""})
+    said = forgerelease.edit_said(r)
+    return ({"error": said, "forge": r.get("forge") or ""}, 400) if r.get("error") else ({"edited": r, "said": said}, 200)
+
+
+phone.release_editor = _release_editor
+
+
 def _keymaker(action, project, args, by=""):
     """A new generated key or a package's key, for a session's auto dial and
     for Allow on its ask (R106 step 6)."""
@@ -5563,6 +5579,37 @@ class Handler(BaseHTTPRequestHandler):
             r = phone.ask_release(field(req, "why"), name, comp, plan, membership.owner_of(name),
                                   membership.owner_name(name) or "the project's owner",
                                   asker_name=str(acct.get("name") or ""), principal=self._principal())
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "release-edit":
+            # bb version release --edit (R139): the published release's
+            # notes and files, under the same dial as the release itself, a
+            # session's own project only, every edit its own ask.
+            if who.get("session") and name != who["session"]:
+                return self._json({"error": "a session edits its own project's release and no other"}, 403)
+            if not who.get("session") and self._refused("version", name):
+                return None
+            comp = field(req, "component") or ""
+            tag = field(req, "tag")
+            if not tag:
+                tag, why = version.current_tag(name, comp)
+                if why:
+                    return self._json({"error": why}, 400)
+            attach = req.get("attach") if isinstance(req.get("attach"), list) else []
+            notes = req.get("notes") if isinstance(req.get("notes"), str) else None
+            mode = (prefs.get(name) or {}).get("release") or "ask" if who.get("session") else "auto"
+            if mode == "deny":
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
+                                            "Tag and publish a release), which an edit of its release is part of; "
+                                            "a person edits it on the forge"}, 403)
+            plan = forgerelease.edit_plan(name, tag, notes, attach)
+            if plan.get("error"):
+                return self._json(plan, 400)
+            acct = users.account_of(who) or {}
+            if mode == "auto":
+                return self._json(*_release_editor(name, plan, str(acct.get("name") or ""), self._principal()))
+            r = phone.ask_release_edit(field(req, "why"), name, plan, membership.owner_of(name),
+                                       membership.owner_name(name) or "the project's owner",
+                                       asker_name=str(acct.get("name") or ""), principal=self._principal())
             return self._json(r, 400 if r.get("error") else 200)
         if who.get("session"):
             return self._json({"error": "a session moves its version with bb version bump, "

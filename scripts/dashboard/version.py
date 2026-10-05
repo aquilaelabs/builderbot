@@ -591,6 +591,21 @@ def lands(project, comp="", facts=None):
     return out
 
 
+def current_tag(project, comp=""):
+    """The tag of the version this tree is on, once it is released: (tag,
+    "") or ("", why). What bb version release --edit edits unless it names
+    another (R139)."""
+    tgt, err = target(project, comp)
+    if err:
+        return "", err
+    if tgt is None:
+        return "", "there is no version here yet"
+    name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
+    if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is None:
+        return "", f"{name} is not released yet: bb version release makes it, or --tag names an older one"
+    return name, ""
+
+
 def release_plan(project, comp=""):
     """What a release here would tag, without doing it: {tag, sha, target}
     or {error}, from the same refusals release() makes first. A session's

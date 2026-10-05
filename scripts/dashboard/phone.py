@@ -75,6 +75,9 @@ keymaker = None
 # release a session asked for, run as Release on the Artifacts tab runs it
 # (R138). Set by the server.
 releaser = None
+# (project, plan, asker_name, principal) -> (payload, status): an edit of a
+# published release (R139), the controller's, with the project's token.
+release_editor = None
 container_free = None
 container_builds = None
 # ...and what verb() needs to know about the one asking, set by server.py
@@ -727,6 +730,12 @@ def _req_public(r):
     # A release names the tag and the commit it would mark (R138).
     if r.get("kind") == "release":
         out["tag"], out["sha"] = r.get("tag") or "", r.get("sha") or ""
+    # ...and an edit of one (R139) is approved by reading it: the notes it
+    # would put on the page, whole, and each file with its size.
+    if r.get("kind") == "release-edit":
+        out["tag"] = r.get("tag") or ""
+        out["detail"] = r.get("notes") or ""
+        out["files"] = [{"name": x["name"], "size": x["size"], "signed": x["signed"]} for x in r.get("files") or []]
     if r.get("kind") == "rebuild":
         out["create"] = bool(r.get("create"))
         out["ctl"] = r.get("ctl") or ""
@@ -758,7 +767,7 @@ def _for(r, uid, admin):
         return False
     # A signing, or a key change, waits on the project's owner, whatever
     # their role.
-    if r.get("kind") in ("sign", "sign-key", "release"):
+    if r.get("kind") in ("sign", "sign-key", "release", "release-edit"):
         return r["to"] == uid
     if r["to"] == "admins":
         return bool(admin)
@@ -1007,6 +1016,29 @@ def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", princi
                          "principal": principal, "asker_name": str(asker_name or "")})
 
 
+def ask_release_edit(why, project, plan, to_uid, to_name, asker_name="", principal=""):
+    """A session asking to change its project's published release (R139):
+    the notes replaced, files attached. Every edit is its own ask, to the
+    project's owner, who reads the notes whole and each file by its name
+    and size before Allow."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\" (screenshots for the page, the APKs ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    files = plan.get("files") or []
+    cmd = ["version", "release", "--edit", plan["tag"]] + (
+        [f"notes ({len(plan['notes'])} characters)"] if plan.get("notes") is not None else []) + [
+        f"attach {x['name']} ({_size(x['size'])}{', signed' if x['signed'] else ''})" for x in files]
+    return _queue("release-edit", why, cmd, "", "", project, "claude", to_uid, to_name, asker_name,
+                  extra={"tag": plan["tag"], "notes": plan.get("notes"), "files": files,
+                         "principal": principal, "asker_name": str(asker_name or "")})
+
+
+def _size(n):
+    return f"{n / 1_000_000:.1f} MB" if n >= 100_000 else f"{max(1, n // 1000)} KB"
+
+
 def ask_keys(why, project, action, args, to_uid, to_name, asker_name=""):
     """A session proposing a new key or a package's key, on a project whose
     Manage signing keys dial is `ask` (R106 step 6). It goes to the project's
@@ -1229,6 +1261,15 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
                              f"{rel.get('tag') or r.get('tag')} tagged on {rel.get('sha') or r.get('sha')}"
                              + (" and pushed" if rel.get("pushed") else "")
                              + _forge_said(rel.get("forge") or {})))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "release-edit":
+        plan = {"tag": r.get("tag") or "", "notes": r.get("notes"), "files": r.get("files") or []}
+        res = (release_editor(r["project"], plan, r.get("asker_name") or "", r.get("principal") or "")
+               if release_editor is not None else ({"error": "nothing here edits a release"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or got.get("said") or "edited"))
         return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "sign-key":
         res = (keymaker(r.get("action") or "", r["project"], r.get("args") or {})

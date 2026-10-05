@@ -363,6 +363,13 @@ fun ApprovalsScreen(store: Store) {
                         if (a.strs("env_keys").isNotEmpty()) Dim("and an env file setting " + a.strs("env_keys").joinToString(", "))
                         if (a.str("for").isNotBlank()) Dim("shown under ${a.str("for")}")
                     }
+                    // An edit of a release (R139): the notes it would put on
+                    // the page are the request, read before Allow.
+                    if (kind == "release-edit" && a.str("detail").isNotBlank()) {
+                        var open by remember(a.int("id")) { mutableStateOf(false) }
+                        TextButton(onClick = { open = !open }) { Text(if (open) "Hide the new notes" else "Read the new notes") }
+                        if (open) Mono(a.str("detail"))
+                    }
                     Dim("${a.str("asker").ifBlank { "a session" }} in ${a.str("project")} · ${a.int("left") / 60} min left to answer")
                     Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                         Spacer(Modifier.weight(1f))
