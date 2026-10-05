@@ -143,12 +143,24 @@ if argv and argv[0] == "release":
     import bbapi
     import waits
     rest = argv[1:]
+    # Help is help: `bb version release -h` was sent on as a release with
+    # no reason (Shebang-DevBoard, 5 Oct), refused only because the tag
+    # already existed. Anything but --why and its sentence is refused by name.
+    if "-h" in rest or "--help" in rest:
+        print('bb version [--for DIR] release --why "..."   tag this commit, push the tag and publish the\n'
+              "    forge's release (GitHub, Gitea or GitLab), as Release on the Artifacts tab does. Under\n"
+              "    Claude may: Tag and publish a release: auto releases at once, ask waits for the\n"
+              "    project's owner, deny refuses.")
+        raise SystemExit(0)
     why = ""
     if "--why" in rest:
         i = rest.index("--why")
         if i + 1 >= len(rest):
             fail("--why needs the sentence after it")
         why = rest[i + 1]
+        rest = rest[:i] + rest[i + 2:]
+    if rest:
+        fail(f"bb version release takes --why \"...\" and nothing else, not {rest[0]}")
     auth = os.environ.get("BB_VERSION_AUTH", "")
     r = bbapi.call("/api/version", {"action": "release", "project": proj, "component": comp, "why": why},
                    auth=auth, timeout=240)
