@@ -170,8 +170,8 @@ function phonePanel(n){
          // The newest recording as its reel: the frames that changed, each
          // with its time, in one picture, and the video itself a link away
          // (the operator, 5 Oct).
-         L.reel ? `<img class="phreel" alt="the newest recording, as the frames that changed with their times" src="/api/artifact?project=${
-           encodeURIComponent(L.project)}&path=${encodeURIComponent(L.reel)}">
+         L.reel ? `<div class="phreelbox"><img class="phreel" alt="the newest recording, as the frames that changed with their times" src="/api/artifact?project=${
+           encodeURIComponent(L.project)}&path=${encodeURIComponent(L.reel)}"></div>
            <div class="sub">${esc(L.reel.split("/").pop())}${L.video ? ` · <a href="/api/artifact?project=${
              encodeURIComponent(L.project)}&path=${encodeURIComponent(L.video)}" target="_blank" rel="noopener">the video</a>` : ""}</div>` : ""}${
          L.recording ? `<div class="sub"><span class="pill warn">recording</span> a session is recording the screen</div>` : ""}

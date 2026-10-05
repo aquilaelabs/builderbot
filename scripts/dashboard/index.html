@@ -2018,9 +2018,11 @@ pre.diff .d-ctx{color:var(--dim)}
 .phshot{display:block;max-width:min(260px,60vw);height:auto;margin:8px 0 4px;
   border:1px solid var(--line);border-radius:var(--r-small)}
 /* ...and the newest recording's reel, a tiled sheet of frames, as wide as
-   the row lets it be. */
-.phreel{display:block;max-width:100%;height:auto;margin:8px 0 4px;
+   the row lets it be, in a box of its own height: a glide's reel is eighty
+   frames, six screens tall at a desktop's width (5 Oct). */
+.phreelbox{max-height:60vh;overflow:auto;margin:8px 0 4px;
   border:1px solid var(--line);border-radius:var(--r-small)}
+.phreel{display:block;max-width:100%;height:auto}
 
 /* Pull to refresh (page-pull.js), drawn as a browser draws its own: a round
    button with a circular arrow that comes down from under the header as the

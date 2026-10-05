@@ -389,8 +389,10 @@ ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPho
   writeFileSync(`${DIR}/ws/alpha/dist/phone/${video.replace('.mp4', '-sheet.png')}`,
     Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
   await page.waitForSelector('.phonetab .phlease img.phreel', { timeout: 15000 });
-  const vlink = await page.$eval('.phonetab .phlease img.phreel + .sub a', a => a.getAttribute('href')).catch(() => '');
+  const vlink = await page.$eval('.phonetab .phlease .phreelbox + .sub a', a => a.getAttribute('href')).catch(() => '');
   ok(vlink.includes(encodeURIComponent(stopped.body.path)), `...and the owner's tab shows its reel, with a link to the video (${vlink})`);
+  const box = await page.$eval('.phonetab .phreelbox', b => getComputedStyle(b).overflowY + ' ' + getComputedStyle(b).maxHeight);
+  ok(/auto/.test(box) && !/none/.test(box), `...in a box of its own height, so a long reel scrolls there rather than the page (${box})`);
   // Refused before its owner is asked (report #52): an Allow spent on a
   // command that cannot run is a question nobody needed.
   const other_app = await use('start', { pkg: 'com.android.settings' });
