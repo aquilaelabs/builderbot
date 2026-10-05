@@ -995,8 +995,8 @@ this directory">Send to Claude</button>
             <input class="vstart" value="0.1.0" size="8" maxlength="20"
               inputmode="decimal" aria-label="starting version"
               pattern="[0-9]+\.[0-9]+\.[0-9]+">
-            <button type="button" data-verinit="${esc(v.component || "")}"
-              title="write a VERSION file at this number and commit it">Set</button>
+            <button type="button" data-verinit="${esc(v.component || "")}"${state?.can?.version === false ? " disabled" : ""}
+              title="${state?.can?.version === false ? "moving a project's version is not one of your roles' grants" : "write a VERSION file at this number and commit it"}">Set</button>
           </span></div>
         <div class="actbar verbtns">
           <button type="button" data-verask="${esc(v.component || "")}"

@@ -161,6 +161,9 @@ function rnFillNode(){
     // Hidden with the rest of the project's own settings when this dialog was
     // opened by the chain, which asks about the remote and nothing else.
     wrap.hidden = rnMode === "git" || !pick.length;
+    // Shown to everybody on the project and changed by grant (R137 step 4):
+    // a node is shared, so the picker is read-only without `node`.
+    sel.disabled = state?.can?.node === false;
     // The places a session is shown are places on a node, so the field is
     // there when a node is.
     $("rnSeesField").hidden = wrap.hidden;
@@ -193,6 +196,8 @@ function rnFillNodesMore(){
   box.hidden = hint.hidden = label.hidden = rnMode === "git" || !primary || !others.length;
   box.innerHTML = others.map(n => lrow(n.id, n.name, `${n.kind}, ${n.state}${n.live === false ? ", quiet" : ""}`,
                                        first ? was.has(n.id) : checked.has(n.id))).join("");
+  // Read-only without the `node` grant, like the primary above (R137 step 4).
+  if (state?.can?.node === false) box.querySelectorAll("input").forEach(i => { i.disabled = true; });
   box.dataset.drawn = "1";
 }
 

@@ -284,9 +284,11 @@ function projectRow(p, live, cls, inTab){
                 : "shell: open another terminal here"}"
         >${TERM}</button>` : ""}
       ${p.git_ok && !isBroken(p)
-        ? `<button class="eye" data-l="${esc(p.name)}"
+        ? `<button class="eye" data-l="${esc(p.name)}"${state?.can?.["git-auth"] === false ? " disabled" : ""}
              aria-label="${p.linked ? `${p.forge_name || "remote"} settings` : "link to a git host"}"
-             title="${p.linked
+             title="${state?.can?.["git-auth"] === false
+               ? "how this project authenticates to its remote is not one of your roles' grants"
+               : p.linked
                ? `${esc(p.forge_host || p.forge_name || "its remote")}: the credential this project pushes with, and Unlink`
                : "no remote: link this repo to an empty repository on GitHub, Gitea, GitLab or another git host"}">${LINK}</button>`
         : ""}
