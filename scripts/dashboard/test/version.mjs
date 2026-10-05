@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog, takeOn } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1610,6 +1610,7 @@ ok((await page.errors).every(e => /400/.test(e)),
   g('checkout', '-q', 'claude/polish');
 
   const LNB = nb('landproj');
+  await takeOn('landproj');            // made by hand here, so the owner takes it on (R135)
   await refreshUntil(page, () => state?.projects?.some(p => p.name === 'landproj'), { timeout: 20000 });
   await page.evaluate(() => openNotebook('landproj', 'artifacts'));
   await page.waitForSelector(`${LNB} #verBox [data-verbump="minor"]`, { timeout: 20000 });

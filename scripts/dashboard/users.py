@@ -827,6 +827,23 @@ def migrate_star(names):
     return moved
 
 
+def rename_project(old, new):
+    """A project renamed is renamed on every account's own list, so whoever
+    had taken it on still has (R135 made this the owner's concern too; it
+    was an administrator's already). True when any list moved."""
+    moved = False
+    with _lock:
+        d = load()
+        for u in d["users"].values():
+            have = u.get("projects") or []
+            if old in have:
+                u["projects"] = [new if p == old else p for p in have]
+                moved = True
+        if moved:
+            _save(d)
+    return moved
+
+
 def take_on(name, project):
     """Put one project on this account's own list, the way the Users tab
     does; nothing to do for an account that has it or has every project.

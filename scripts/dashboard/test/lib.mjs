@@ -494,3 +494,25 @@ export async function unfold(page, project){
   await page.waitForFunction(name => document.querySelector(`#projects [data-more="${CSS.escape(name)}"]`)
     ?.closest('.row')?.classList.contains('moreon') ?? true, project, { timeout: 5000 }).catch(() => {});
 }
+
+// The owner takes a project on (R135): a suite that drops a project
+// directory into the workspace, or makes one outside the create dialog,
+// gives it to the owner's own list the way the Users tab does, since "*"
+// lists every project and takes none on.
+export async function takeOn(...names) {
+  const h = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  // Once the listing carries the project: the scan of the workspace is
+  // cached briefly, and the verb keeps only names it lists.
+  for (let i = 0; i < 40; i++) {
+    const listed = ((await (await fetch(`${base}/api/status`, { headers: h })).json()).projects || []).map(p => p.name);
+    if (names.every(n => listed.includes(n))) break;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  const me = (await (await fetch(`${base}/api/users`, { headers: h })).json()).users.find(u => u.name === 'test');
+  const have = me?.projects || [];
+  const want = [...have, ...names.filter(n => !have.includes(n))];
+  const r = await fetch(`${base}/api/users`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'projects', name: 'test', projects: want }) });
+  return (await r.json()).projects || [];
+}

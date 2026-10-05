@@ -10,7 +10,7 @@
 // project became unstartable, ttyd reconnecting into the same error every five
 // seconds. The command goes through a launcher file now, and this is the test
 // that says so.
-import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt } from './lib.mjs';
+import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt, takeOn } from './lib.mjs';
 import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync, symlinkSync, realpathSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
@@ -466,6 +466,7 @@ tmuxKill('claude-alpha');
       { encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't',
         GIT_AUTHOR_EMAIL: 't@e', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@e' } });
     git(['init', '-q']); git(['add', '-A']); git(['commit', '-qm', 'first']);
+    await takeOn(proj);                  // dropped in by hand, so the owner takes it on (R135)
 
     tmuxKill(`claude-${proj}`); tmuxKill(`${other}~claude-${proj}`);
     shell(`u:${ownerUid}:claude:${proj}:b:${boot}`);
@@ -801,6 +802,8 @@ print(uid)`);
       writeFileSync(helper, helperSrc(false), { mode: 0o755 });
       const vproj = 'viewproj';
       mkdirSync(join(DIR, 'ws', vproj), { recursive: true });
+      writeFileSync(join(DIR, 'ws', vproj, 'README.md'), 'x\n');   // an empty directory is not listed
+      await takeOn(vproj);               // dropped in by hand, so the owner takes it on (R135)
       const vhome = join(HOMEDIR, 'users', ownerUid);
       const viewTok = tok(vproj);
       const runView = target => { try {

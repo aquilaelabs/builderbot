@@ -2419,8 +2419,8 @@ users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user
 # "*" gets the projects that exist now, so nothing they were on is lost.
 try:
     users.migrate_star([p["name"] for p in project_list(users.ALL)])
-except Exception:  # noqa: BLE001 (a migration never keeps the dashboard from starting)
-    pass
+except Exception as e:  # noqa: BLE001 (a migration never keeps the dashboard from starting)
+    sys.stderr.write(f"[dashboard] R135: the owner's project list was not migrated: {e}\n")
 
 # ---- the dev instance ------------------------------------------------------
 # A project's compose app, built and run on the sandbox VM's daemon. The
@@ -2695,6 +2695,7 @@ devapp.reads_of = lambda p: (prefs.get(p) or {}).get("reads") or []
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
 projects.lock = _state_lock
 projects.take_on = users.take_on
+projects.users_rename = users.rename_project
 projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
 projects.live_sessions = tmux_sessions
 projects.brief_writer = brief.write
@@ -6291,6 +6292,11 @@ class Handler(BaseHTTPRequestHandler):
         """Rename a project: projects.rename, once project_busy says nothing
         holds it."""
         name = req.get("name", "")
+        # Whether it is a project first, then whether this account may: a
+        # name that is nothing answered "not taken on" to the owner once
+        # their list was explicit (R135), where it is simply not a project.
+        if self._not_project(name):
+            return
         if self._refused("rename", name):
             return
         # Only a new name moves the directory a terminal or a container

@@ -39,6 +39,12 @@ class Star(unittest.TestCase):
         self.assertTrue(users.may_work(users.get("boss"), "alpha"))
         self.assertFalse(users.may_work(users.get("boss"), "gamma"), "a project made later is taken on like any")
 
+    def test_a_rename_keeps_a_project_taken_on(self):
+        users.take_on("adm", "alpha")
+        self.assertTrue(users.rename_project("alpha", "omega"))
+        self.assertEqual(users.get("adm")["projects"], ["beta", "omega"])
+        self.assertFalse(users.rename_project("alpha", "omega"), "nothing left under the old name")
+
     def test_take_on_adds_to_any_list(self):
         self.assertEqual(users.take_on("boss", "gamma")["projects"], ["*", "gamma"])
         self.assertTrue(users.may_work(users.get("boss"), "gamma"))
