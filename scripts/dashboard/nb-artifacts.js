@@ -867,8 +867,10 @@ this directory">Send to Claude</button>
     return (ver?.forge_releases || {})[tag] || {};
   }
   function relUrl(tag){
+    // A web address and nothing else (never javascript:); plain http too,
+    // which a Gitea on a LAN serves its releases on (B505).
     const u = relOf(tag).url || "";
-    return /^https:\/\//.test(u) ? u : "";
+    return /^https?:\/\//.test(u) ? u : "";
   }
 
   function verSection(v){

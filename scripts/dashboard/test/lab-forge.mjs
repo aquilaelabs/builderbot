@@ -138,7 +138,15 @@ const made = [];   // owner/repo pairs to delete at the end
      `...titled with the version, its notes the changelog's section (${on.status}: ${JSON.stringify(on.body?.body || on.body)?.slice(0, 80)})`);
   ok((on.body?.assets || []).some(a => a.name === apk && a.size === 9),
      `...and the commit's build attached (${(on.body?.assets || []).map(a => `${a.name} ${a.size}`).join(', ') || 'none'})`);
-  ok(fg.url === on.body?.html_url, `the row links to that release (${fg.url})`);
+  ok(fg.url === on.body?.html_url, `the release's address comes back to the page (${fg.url})`);
+  // ...and the Artifacts view's version block links to it, though a Gitea
+  // on a LAN serves it over plain http (B505: only https was linked).
+  await page.evaluate(() => openNotebook('beta', 'artifacts'));
+  const link = await page.waitForFunction(() => {
+    const ln = [...document.querySelectorAll('.verln')].find(x => /^on Gitea/.test(x.textContent.trim()));
+    return ln?.querySelector('a')?.href || '';
+  }, null, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => '');
+  ok(link === fg.url, `the version block says on Gitea and links to the release (${link || 'no link'})`);
   // ...then edited (R139): the notes replaced, a committed screenshot
   // attached and shown in them by (asset:NAME), and an edit again replaces
   // the file of that name rather than doubling it.
