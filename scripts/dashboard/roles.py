@@ -42,8 +42,12 @@ CAPS = {
     "jobs": ("nodes", "run a command on a node as a job"),
     "terminal": ("nodes", "a shell on a node"),
     "create": ("controller", "make a project"),
+    "runner": ("controller", "the CI runner tab and its settings"),
     "admin": ("controller", "everything else an administrator does: nodes, toolchains, settings, accounts"),
 }
+# The capabilities whose scope is over NODES (step 3): every node, the
+# nodes of the account's projects, or named ones.
+NODE_CAPS = frozenset(c for c, (g, _) in CAPS.items() if g == "nodes")
 GROUPS = (("projects", "On a project"), ("nodes", "On a node"), ("controller", "The controller"))
 # What `work` does not cover: each needs a grant of its own.
 OWN_CAPS = frozenset(c for c in CAPS if c not in ("read", "work"))
@@ -174,14 +178,16 @@ def roles_of(u):
     return rs
 
 
-def granted(u, action, project=None, on_project=None):
+def granted(u, action, project=None, on_project=None, node=None, nodes_of=None):
     """Whether this account's roles grant `action`, on `project` where one
-    is named. `on_project(u, name)` says whether the account is on that
-    project (users.may_work), which is what the scope "mine" means. With no
-    project named, "mine" answers for the question "at all", as the gate
-    did before roles: a capability on the projects you are on is one you
-    have."""
+    is named, or on `node` for a capability scoped over nodes. `on_project(u,
+    name)` says whether the account is on that project (users.may_work),
+    which is what the scope "mine" means; `nodes_of(u)` lists the nodes of
+    the projects it is on, which is what "mine" means for a node. With
+    nothing named, "mine" answers for the question "at all", as the gate
+    did before roles: a capability on what you are on is one you have."""
     known = all_roles()
+    where = node if action in NODE_CAPS else project
     for rn in roles_of(u):
         r = known.get(rn)
         if not r:
@@ -199,13 +205,17 @@ def granted(u, action, project=None, on_project=None):
             sc = g["scope"]
             if sc == "all":
                 return True
-            if project is None:
+            if where is None:
                 if sc == "mine":
                     return True
                 continue
-            if sc == "mine" and on_project and on_project(u, project):
-                return True
-            if isinstance(sc, list) and project in sc:
+            if sc == "mine":
+                if action in NODE_CAPS:
+                    if nodes_of and where in (nodes_of(u) or ()):
+                        return True
+                elif on_project and on_project(u, where):
+                    return True
+            if isinstance(sc, list) and where in sc:
                 return True
     return False
 

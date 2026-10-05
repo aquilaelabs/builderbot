@@ -71,6 +71,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The companion app pairs with more than one BuilderBot: Add another under More, a name for each, a switcher on Home, every one watched with its name on each notification, and Forget takes one off. (d9ae047)
 - The companion app can lock itself: Lock the app when it opens, under More, asks for the phone's own fingerprint, face or PIN every time it comes to the front. (d9ae047)
 - Roles and permissions: a Roles tab under the Administration card makes named roles out of grants (what may be read and changed, on every project, the projects an account is on, or named ones); an account carries its role and any of your own, ticked in the Users tab's dialog, and their grants add up. (5ae20d8)
+- A role's grants on a node (set a project's node, install a toolchain, run a job, a shell) hold on every node, the nodes of the account's projects, or named ones; the CI runner tab is a grant the user role lacks, hidden for such an account while the runner's status stays on the card. (20c9f71)
 
 ### Changed
 

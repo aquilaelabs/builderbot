@@ -54,9 +54,16 @@ ITERATIONS = 600_000
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@+-]{0,63}$")
 
 
-def configure(*, state, write_json, project_prefs=None):
+def configure(*, state, write_json, project_prefs=None, nodes_of=None):
     globals().update(STATE=Path(state), write_json=write_json,
                      project_prefs=project_prefs)
+    if nodes_of is not None:
+        globals()["nodes_of"] = nodes_of
+
+
+# nodes_of(u): the nodes of the projects an account is on, which is what a
+# node grant's scope "mine" means (R137 step 3). Set by the server from prefs.
+nodes_of = None
 
 
 def _file():
@@ -423,7 +430,7 @@ ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
 #
 # There is no "delete" here because there is no delete: a project is removed
 # by moving it to the trash and purging it, and both are `trash`.
-USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth",
+USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth", "runner",
                "docker-write", "toolchains-write", "jobs", "lock", "command-pin", "version")
 
 
@@ -498,6 +505,19 @@ def is_admin(u):
     return u is ALL or (u or {}).get("role") in ("owner", "admin")
 
 
+def may_node(u, action, node_id=""):
+    """Whether this account may do `action` on the node `node_id`, for the
+    capabilities scoped over nodes (R137 step 3: toolchains-write, jobs,
+    node, terminal). "" when it may, else the reason, like may()."""
+    if u is ALL:
+        return ""
+    if not u:
+        return "not signed in"
+    if roles.granted(u, action, node=str(node_id or "") or None, nodes_of=nodes_of):
+        return ""
+    return may(u, action) or "that is not one of your roles' grants on that node"
+
+
 def may(u, action, project=None):
     """Whether this account may do `action`, optionally to `project`.
 
@@ -562,6 +582,10 @@ def may(u, action, project=None):
                 "node": "which node a project builds on is an administrator's: "
                         "a node is shared, so changing it reaches every project "
                         "on it",
+                # The CI runner tab (R137 step 3, the operator's R136 line):
+                # its status stays on the Tools card for everybody.
+                "runner": "the CI runner's settings are an administrator's: its "
+                          "status is on the Tools card",
                 # The one that makes the rest of the role mean something.
                 # Everything else here is enforced by this server, in Python,
                 # and a shell is the way around all of it: one uid, one tmux

@@ -69,6 +69,18 @@ class Builtin(unittest.TestCase):
         self.assertTrue(roles.remove("deployer")["ok"])
         self.assertIn("error", roles.remove("user"))
 
+    def test_a_node_capability_is_scoped_over_nodes(self):
+        nodes_of = lambda u: {"n1"} if u["name"] == "d" else set()   # noqa: E731
+        roles.set_role("installer", [{"cap": "toolchains-write", "scope": ["n2"]}, {"cap": "jobs", "scope": "mine"}])
+        dep = {"name": "d", "role": "user", "roles": ["user", "installer"], "projects": ["alpha"]}
+        self.assertTrue(roles.granted(dep, "toolchains-write", node="n2", nodes_of=nodes_of))
+        self.assertFalse(roles.granted(dep, "toolchains-write", node="n1", nodes_of=nodes_of), "not named")
+        self.assertTrue(roles.granted(dep, "jobs", node="n1", nodes_of=nodes_of), "a node of its projects")
+        self.assertFalse(roles.granted(dep, "jobs", node="n2", nodes_of=nodes_of))
+        self.assertTrue(roles.granted(dep, "jobs", nodes_of=nodes_of), "at all")
+        self.assertFalse(roles.granted(USER, "runner"), "the CI runner tab is not a user's")
+        self.assertTrue(roles.granted(ADMIN, "runner"))
+
     def test_an_unknown_role_on_an_account_grants_nothing(self):
         ghost = {"name": "g", "role": "user", "roles": ["user", "gone"], "projects": []}
         self.assertFalse(self.g(ghost, "work", "alpha"))

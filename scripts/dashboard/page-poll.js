@@ -192,6 +192,10 @@ async function refresh(){
     // with the reason as its tip and, since a tip is nothing on a phone, as
     // a red line under the card's buttons (R119 step 6).
     drawCard(null, () => {
+      // CI runner is offered by grant (R137 step 3): hidden, not ghosted,
+      // for an account without it; the runner's status stays on its card.
+      const r = $("bRunner");
+      if (r) r.hidden = state?.can?.runner === false;
       const b = $("bEmulator"), e = state?.emulator, w = $("toolsWhy");
       if (!b || !e) return;
       b.disabled = !e.ready;

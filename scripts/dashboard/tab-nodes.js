@@ -1175,6 +1175,10 @@ function nodeToolsLine(n){
 // and wireNodeConf, one draft per node), so the two cannot disagree.
 let runnerNode = "";
 function openRunnerTab(nid){
+  // The CI runner tab is a grant (R137 step 3, the operator's R136 line):
+  // the card's status stays for everybody; the tab does not open for an
+  // account without it, and the server refuses its writes regardless.
+  if (state?.can?.runner === false) return notify("the CI runner is an administrator's: its status is on the card", true);
   if (nid) runnerNode = nid;
   openTab({kind: "runner", arg: "__runner", label: "CI runner"});
 }

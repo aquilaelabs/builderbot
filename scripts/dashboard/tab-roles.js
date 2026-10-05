@@ -11,7 +11,7 @@
 let rolesList = null;            // {name: role}, or null before the first load
 let rolesRev = 0;
 let rolesErr = "";
-let rolesMeta = {caps: {}, groups: [], projects: []};
+let rolesMeta = {caps: {}, groups: [], projects: [], nodes: []};
 let rolesOpen = new Set();       // the roles whose fold is open
 let rolesDraft = null;           // a new role being written: {name, note, grants}
 
@@ -24,7 +24,7 @@ async function loadRoles(){
     const j = await (await fetch("/api/roles")).json();
     rolesErr = j.error || "";
     rolesList = j.roles || {};
-    rolesMeta = {caps: j.caps || {}, groups: j.groups || [], projects: j.projects || []};
+    rolesMeta = {caps: j.caps || {}, groups: j.groups || [], projects: j.projects || [], nodes: j.nodes || []};
   }catch(e){
     rolesErr = String(e);
     rolesList = rolesList || {};
@@ -49,9 +49,13 @@ async function rolesAct(body){
 // holds. A scope is "mine" (the projects the account is on), "all", or a
 // list of named projects, which the picker under the row holds.
 function roleGrantRow(role, cap, g, editable){
-  const [, sentence] = rolesMeta.caps[cap] || ["", cap];
+  const [group, sentence] = rolesMeta.caps[cap] || ["", cap];
   const sc = g ? g.scope : null;
   const named = Array.isArray(sc) ? sc : [];
+  // A capability on a node is scoped over nodes (step 3): the nodes of the
+  // account's projects, every node, or these nodes by name.
+  const overNodes = group === "nodes";
+  const things = overNodes ? (rolesMeta.nodes || []).map(n => [n.id, n.name]) : rolesMeta.projects.map(p => [p, p]);
   const id = `rg-${role}-${cap}`.replace(/[^A-Za-z0-9_-]/g, "_");
   // A field in the fold, like Add somebody's (the design's bands): the
   // tick and the capability, its sentence under it where it wraps, and the
@@ -61,14 +65,14 @@ function roleGrantRow(role, cap, g, editable){
     <div class="sub">${esc(sentence)}</div>
     <div class="rscope"${g ? "" : " hidden"}>
       <label class="pick">Where <select data-rscope="${esc(cap)}" aria-label="where ${esc(cap)} holds"${editable ? "" : " disabled"}>
-        <option value="mine"${sc === "mine" ? " selected" : ""}>the projects the account is on</option>
-        <option value="all"${sc === "all" ? " selected" : ""}>every project</option>
-        <option value="named"${Array.isArray(sc) ? " selected" : ""}>these projects</option>
+        <option value="mine"${sc === "mine" ? " selected" : ""}>${overNodes ? "the nodes of the account's projects" : "the projects the account is on"}</option>
+        <option value="all"${sc === "all" ? " selected" : ""}>${overNodes ? "every node" : "every project"}</option>
+        <option value="named"${Array.isArray(sc) ? " selected" : ""}>${overNodes ? "these nodes" : "these projects"}</option>
       </select></label>
-      <div class="upick rnamed"${Array.isArray(sc) ? "" : " hidden"}>${rolesMeta.projects.length
-        ? rolesMeta.projects.map(p => `<label class="pick"><input type="checkbox" data-rproj="${esc(p)}"${
-            named.includes(p) ? " checked" : ""}${editable ? "" : " disabled"}> ${esc(p)}</label>`).join(" ")
-        : `<div class="sub">no projects to name</div>`}</div>
+      <div class="upick rnamed"${Array.isArray(sc) ? "" : " hidden"}>${things.length
+        ? things.map(([id, label]) => `<label class="pick"><input type="checkbox" data-rproj="${esc(id)}"${
+            named.includes(id) ? " checked" : ""}${editable ? "" : " disabled"}> ${esc(label)}</label>`).join(" ")
+        : `<div class="sub">${overNodes ? "no nodes to name" : "no projects to name"}</div>`}</div>
     </div>
   </div>`;
 }

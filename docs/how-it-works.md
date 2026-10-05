@@ -3615,7 +3615,11 @@ never takes anything away. owner, admin and user are built in and reproduce
 what each could do before roles existed, so nothing changes until a role is
 made or given; Copy starts one of your own from a built-in. Every gate on
 the server reads the same grants (`users.may`), which is what keeps the
-tabs and the refusals consistent.
+tabs and the refusals consistent. A capability on a node (set a project's
+node, install a toolchain, run a job, a shell) is scoped over nodes: every
+node, the nodes of the account's projects, or named ones; and the CI runner
+tab is a grant the user role lacks, so its button is not offered to such an
+account while the runner's status stays on the Tools card.
 
 **Every project has an owner, and an owner can close it to administrators.**
 Whoever made a project owns it; one from before there were owners belongs to

@@ -2417,7 +2417,11 @@ prefs.configure(write_json=write_json, state=STATE)
 # Said again, now that prefs exists: users.git_identity resolves a per-project
 # override of the commit author, and that override lives in prefs, which is
 # configured after users because the login path must not depend on it.
-users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user)
+users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user,
+                # The nodes of an account's projects: what a node grant's
+                # scope "mine" means (R137 step 3).
+                nodes_of=lambda u: {n for p in (u.get("projects") or [])
+                                    for n in prefs._nodes_of(prefs.get(p) or {})})
 # The owner takes projects on like everybody (R135): a record that carried
 # "*" gets the projects that exist now, so nothing they were on is lost.
 try:
@@ -3196,7 +3200,10 @@ def snapshot(who):
         "emulator": {"ready": False, "why": "the node store did not open"} if NODES_OK
                     else emulator.ready(),
         "can": {name: not users.may(who, name) for name in
-                ("terminal", "docker-write", "toolchains-write", "git-auth", "admin")},
+                ("terminal", "docker-write", "toolchains-write", "git-auth", "admin",
+                 # The CI runner tab, a job run and a project's node, by
+                 # grant (R137 step 3): the Tools card hides CI runner on it.
+                 "runner", "jobs", "node")},
         # Projects whose Claude session belongs to somebody else, by NAME:
         # "alice has a session on this" is the whole value of the record, and
         # a bare refusal would tell you nothing you could act on. Only for
@@ -4375,7 +4382,9 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("admin"):
             return None
         return self._json({"roles": roles.all_roles(), "caps": roles.CAPS, "groups": roles.GROUPS,
-                           "projects": [p["name"] for p in project_list(self._who())]})
+                           "projects": [p["name"] for p in project_list(self._who())],
+                           # ...and the nodes a grant may name (step 3).
+                           "nodes": [] if NODES_OK else [{"id": n["id"], "name": n["name"]} for n in nodes.node_list()]})
 
     def _get_nodes(self):
         """GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to
@@ -4922,6 +4931,13 @@ class Handler(BaseHTTPRequestHandler):
             name = field(req, "project")
             if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
+            # ...and by grant on the node the job would run on (R137 step
+            # 3): the one named, else the project's primary, as run_job
+            # picks it.
+            pf = prefs.get(name) or {}
+            on = field(req, "node") or pf.get("node") or (pf.get("nodes") or [""])[0]
+            if (why := users.may_node(self._who(), "jobs", on)):
+                return self._json({"error": why}, 403)
             return self._json(*nodes.run_job(name, req, self._principal()))
         if act != "cancel":
             return self._json({"error": "unknown action"}, 400)
@@ -6071,8 +6087,10 @@ class Handler(BaseHTTPRequestHandler):
         """Queue installs or removals of the toolchains the Tools card
         offers: an administrator's, and toolchains.verb says what each
         action does with which names."""
-        if self._refused("admin"):
-            return
+        # By grant, on the node named (R137 step 3): an administrator's
+        # everywhere, a role of your own where it says.
+        if (why := users.may_node(self._who(), "toolchains-write", field(req, "node"))):
+            return self._json({"error": why}, 403)
         return self._json(*toolchains.verb(req.get("action"), req, self._principal()))
 
     def _emulator(self, req):

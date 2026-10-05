@@ -93,7 +93,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/roadmap` | prefix | `_roadmap` | Add, send, edit or drop one item on a project's list: roadmap.verb says what each action means. | refused: admin |
 | POST | `/api/roles` | prefix | `_roles` | POST /api/roles: set (make or change a role of your own, with its grants and note) or remove one; the built-in roles refuse both (roles.py). | refused: admin |
 | POST | `/api/users` | prefix | `_users` | The Users tab's verbs. | refused: admin |
-| POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. | refused: admin |
+| POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. |  |
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: admin |
 | POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: admin |
 | POST | `/api/idle` | prefix | `_idle` | The idle rule for Claude sessions (idle.py): minutes, 0 for never. | refused: admin |

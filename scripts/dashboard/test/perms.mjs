@@ -79,6 +79,24 @@ ok(onAlpha.status !== 403 && onBeta.status === 403,
 const stillUser = await api('/api/rename', { name: 'alpha', to: 'alpha2' }, depAuth);
 ok(stillUser.status === 403, `...and nothing the role did not say (rename ${stillUser.status})`);
 
+// A capability on a node is scoped over nodes (step 3): installing a
+// toolchain where the role names the node, and nowhere else; and the CI
+// runner tab is a grant the user role lacks, which the page reads from can.
+{
+  const sandbox = (await api('/api/v1/nodes')).body.nodes.find(n => n.name === 'sandbox') || (await api('/api/v1/nodes')).body.nodes[0];
+  await api('/api/roles', { action: 'set', name: 'installer', grants: [{ cap: 'toolchains-write', scope: [sandbox.id] }] });
+  await api('/api/users', { action: 'edit', name: 'dep', roles: ['installer'] });
+  const here = await api('/api/toolchains', { action: 'install', node: sandbox.id, names: ['nothing:such'] }, depAuth);
+  const there = await api('/api/toolchains', { action: 'install', node: 'n_nowhere', names: ['nothing:such'] }, depAuth);
+  ok(here.status !== 403 && there.status === 403,
+     `a toolchain install is allowed on the node the role names and refused elsewhere (${here.status}, ${there.status})`);
+  const can = (await api('/api/status', undefined, depAuth)).body.can || {};
+  const ownerCan = (await api('/api/status')).body.can || {};
+  ok(can.runner === false && ownerCan.runner === true && can.jobs === false,
+     `the page is told what the account may: no CI runner and no job runs for a user, both for the owner (${JSON.stringify(can)})`);
+  await api('/api/roles', { action: 'remove', name: 'installer' });
+}
+
 // Removed, the grant goes with it.
 await api('/api/roles', { action: 'remove', name: 'deployer' });
 const gone = await api('/api/version', { project: 'alpha', action: 'nothing-much' }, depAuth);
