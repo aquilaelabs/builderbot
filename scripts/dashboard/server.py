@@ -2251,7 +2251,8 @@ gitview.configure(workspace=WORKSPACE,
                                             if k != "DASHBOARD_AUTH"},
                   may_push=projects.may_push, exclude=mapping.exclude,
                   audit=lambda *row: None if NODES_OK else db.audit(*row),
-                  host_of=forges.host_label, ci_of=lambda n: ciwatch.read(n))
+                  host_of=forges.host_label, ci_of=lambda n: ciwatch.read(n),
+                  ci_fix=lambda n, where: ciwatch.fix(n, where))
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 

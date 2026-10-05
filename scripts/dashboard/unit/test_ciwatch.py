@@ -118,6 +118,28 @@ class Look(unittest.TestCase):
         self.assertEqual([r["project"] for r in ciwatch.red(["app"])], ["app"])
         self.assertFalse(ciwatch.due("app"))
 
+    def test_a_finding_carries_its_fix_and_a_press_writes_only_that_line(self):
+        # R117 step 4: the label and an action a major behind are one press.
+        rec = ciwatch.look("app")
+        fixes = {f["where"]: f["fix"] for f in rec["findings"] if f.get("fix")}
+        self.assertEqual(fixes, {"android.yml:5": {"from": "ubuntu-latest", "to": "ubuntu-24.04"},
+                                 "android.yml:7": {"from": "actions/checkout@v4", "to": "actions/checkout@v7"},
+                                 "android.yml:8": {"from": "android-actions/setup-android@v3",
+                                                   "to": "android-actions/setup-android@v4"}})
+        path = self.tmp / "ws" / "app" / ".github" / "workflows" / "android.yml"
+        r = ciwatch.fix("app", "android.yml:5")
+        self.assertTrue(r["ok"], r)
+        after = path.read_text().split("\n")
+        self.assertEqual(after[4], "    runs-on: ubuntu-24.04")
+        self.assertEqual([l for i, l in enumerate(after) if i != 4], [l for i, l in enumerate(FLOW.split("\n")) if i != 4],
+                         "nothing else on the file moves")
+        self.assertIn("no longer says", ciwatch.fix("app", "android.yml:5")["error"], "pressed twice: the line moved")
+        self.assertTrue(ciwatch.fix("app", "android.yml:8")["ok"])
+        self.assertIn("setup-android@v4", path.read_text())
+        # A finding with no fix, and a name that is not a workflow, are refused.
+        self.assertIn("error", ciwatch.fix("app", "run 11"))
+        self.assertIn("error", ciwatch.fix("app", "../../etc/passwd:1"))
+
     def test_a_release_is_asked_once_a_day_across_looks(self):
         ciwatch.look("app")
         n = sum(1 for p in ASKED if p.endswith("/releases/latest"))

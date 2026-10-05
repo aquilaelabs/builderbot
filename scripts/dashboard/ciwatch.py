@@ -17,7 +17,11 @@ then once a day:
 
 What it finds is kept per project (STATE/ciwatch/PROJECT.json) and read
 by the Git view, bb catchup and, for a red main branch, the bell. It only
-reads: a fix is a change somebody makes on a branch.
+reads, with one exception a person presses for (R117 step 4): a moving
+label and an action a major behind each carry their fix, the one line
+that changes, and fix() writes that line into the project's working tree,
+uncommitted, for the Git view's Changes to show. It never commits and
+never pushes: that stays somebody's, on their branch.
 """
 import json
 import os
@@ -74,7 +78,8 @@ USES = re.compile(r"^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:/[^@\s]
 
 def workflows(project):
     """[(file:line, kind, value)] for every runs-on and uses: in the tree's
-    workflows, read as text: nothing in them is run."""
+    workflows, read as text: nothing in them is run. A commit pin's value
+    carries its comment's version, and is not offered a fix (see look)."""
     out = []
     for f in sorted((WORKSPACE / project / ".github" / "workflows").glob("*.y*ml")):
         try:
@@ -120,6 +125,43 @@ def _newest_major(action, token):
     return major
 
 
+# ---- a fix, pressed ----------------------------------------------------------------
+
+WORKFLOW_FILE = re.compile(r"[A-Za-z0-9._-]+\.ya?ml")
+
+
+def fix(project, where):
+    """Write the fix the last look found at `where` (FILE:LINE) into the
+    project's working tree: that one line, `from` replaced by `to`, and
+    nothing else. Read from the kept look, never from the request, so a
+    caller names a finding and cannot hand in text; refused when the line
+    no longer says what the look saw (the tree moved since), which a Look
+    now answers. {ok, file, line, from, to} or {error}."""
+    rec = read(project)
+    hit = next((f for f in rec.get("findings") or [] if f.get("where") == where and f.get("fix")), None)
+    if not hit:
+        return {"error": "no fix for that line in the last look: Look now looks again"}
+    name, _, num = str(where).rpartition(":")
+    if not WORKFLOW_FILE.fullmatch(name) or not num.isdigit():
+        return {"error": f"not a workflow line: {where}"}
+    path = WORKSPACE / project / ".github" / "workflows" / name
+    try:
+        lines = path.read_text().split("\n")
+    except OSError as e:
+        return {"error": f"cannot read {name}: {e.strerror or e}"}
+    i = int(num) - 1
+    old, new = hit["fix"]["from"], hit["fix"]["to"]
+    if not 0 <= i < len(lines) or old not in lines[i]:
+        return {"error": f"{name}:{num} no longer says {old}: Look now looks again"}
+    lines[i] = lines[i].replace(old, new, 1)
+    try:
+        path.write_text("\n".join(lines))
+    except OSError as e:
+        return {"error": f"cannot write {name}: {e.strerror or e}"}
+    return {"ok": True, "file": f".github/workflows/{name}", "line": i + 1, "from": old, "to": new,
+            "out": f"{name}:{num} now names {new}: commit it, or send it to Claude, from Changes"}
+
+
 # ---- one look --------------------------------------------------------------------
 
 NOTICE = re.compile(r"deprecat|will (?:be )?(?:migrat|remov|retir|stop)|no longer (?:be )?support|end of life",
@@ -135,6 +177,7 @@ def look(project):
         if kind == "runs-on":
             for os_ in re.findall(r"\b(ubuntu|windows|macos)-latest\b", val):
                 found.append({"kind": "label", "sev": "warn", "where": where,
+                              "fix": {"from": f"{os_}-latest", "to": PINNED[os_]},
                               "text": f"Asks GitHub for {os_}-latest, which GitHub switches to a newer "
                                       f"{os_.capitalize() if os_ != 'macos' else 'macOS'} on its own schedule, so the "
                                       f"build can break with no change of yours. Naming {PINNED[os_]} "
@@ -144,7 +187,12 @@ def look(project):
             have = _major(ref)
             new = _newest_major(action, token) if have is not None else None
             if have is not None and new is not None and new > have:
+                # Offered as a fix only where the line names a tag (v3, v3.1):
+                # a commit pin is somebody's deliberate choice, and its new
+                # commit is not a thing to guess.
+                pinned = not re.fullmatch(r"v?\d+(?:\.\d+)*", ref or "")
                 found.append({"kind": "action", "sev": "note", "where": where,
+                              **({} if pinned else {"fix": {"from": f"{action}@{ref}", "to": f"{action}@v{new}"}}),
                               "text": f"Uses {action} {ref}, and v{new} is out. Old versions stop working "
                                       "when GitHub retires what they run on, which is how a build that "
                                       "passed for months suddenly fails."})

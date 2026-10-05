@@ -139,8 +139,15 @@ function nbGitView({$, nb, project}){
     const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : "nothing drifting";
     const cls = red ? "bad" : fs.length ? "note" : ci.at ? "ok" : "";
     const word = {run: "Check", label: "Runner", action: "Action", notice: "GitHub says"};
+    // A moving label and an action a major behind carry their fix (R117
+    // step 4): Fix writes that one line into the working tree, uncommitted,
+    // for Changes to show; nothing is committed or pushed by the press.
+    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const mayFix = !locked && !treeOf().barred;
     const rows = fs.map(f => `<div class="actbar"><span class="state ${f.sev === "bad" ? "bad" : f.sev === "warn" ? "warn" : ""}">${
-        esc(word[f.kind] || f.kind)}: ${esc(f.text)} <code>${esc(f.where || "")}</code></span></div>`).join("");
+        esc(word[f.kind] || f.kind)}: ${esc(f.text)} <code>${esc(f.where || "")}</code></span>${
+        f.fix && mayFix ? `<button type="button" data-cifix="${esc(f.where)}"
+          title="write ${esc(f.fix.to)} on that line, in the working tree; you commit it">Fix</button>` : ""}</div>`).join("");
     const run = ci.run?.id ? ` The newest run on ${esc(ci.run.branch)} ${esc(ci.run.ended || "ended " + ci.run.conclusion)}.` : "";
     const body = `<div class="sub dim">${ci.at ? `Looked ${esc(ago(ci.at))}${ci.repo ? ` at ${esc(ci.repo)} on GitHub` : ""}.${run}` :
         "Not looked at yet."} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
@@ -311,6 +318,7 @@ function nbGitView({$, nb, project}){
       + ciSection()
       + (policy ? docSection("git", "policy", "Claude may", `${pol.push || "allow"} · ${pol.main || "deny"}`, policy, {open: false}) : "");
     wireSections(body);
+    body.querySelectorAll("[data-cifix]").forEach(b => b.onclick = () => gitAct("ci-fix", {where: b.dataset.cifix}, b, "Fixing"));
     const cl = $("gitCiLook");
     if (cl) cl.onclick = async () => {
       busy(cl, "Looking");

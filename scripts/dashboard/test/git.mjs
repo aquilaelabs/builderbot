@@ -1163,7 +1163,8 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
     findings: [
       { kind: 'run', sev: 'bad', where: 'run 11', url: 'https://github.com/o/beta/actions/runs/11',
         text: 'The Android CI check failed on main (3 Oct, 00:44 UTC). A Claude session can read why with bb ci-log 11.' },
-      { kind: 'label', sev: 'warn', where: 'android.yml:10', text: 'runs on ubuntu-latest, which GitHub moves to a new release on its own date' },
+      { kind: 'label', sev: 'warn', where: 'android.yml:10', text: 'runs on ubuntu-latest, which GitHub moves to a new release on its own date',
+        fix: { from: 'ubuntu-latest', to: 'ubuntu-24.04' } },
       { kind: 'action', sev: 'note', where: 'android.yml:14', text: 'android-actions/setup-android@v3: v4 is out' }],
     error: '' }));
   const ci = await api('what=all').then(j => j.ci || {});
@@ -1190,6 +1191,31 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
      && link === 'https://github.com/o/beta/actions/runs/11',
      `the bell carries a row while main is red, with the way to the Git view (${bell.slice(0, 80)})`);
   await page.evaluate(() => toggleBell(false));
+  // R117 step 4: the runner row carries Fix, which writes that one line into
+  // the working tree, uncommitted, and Changes shows it; nothing is pushed.
+  {
+    const GITENV = { ...process.env, GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 't@example.invalid',
+                     GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 't@example.invalid' };
+    const wf = `${DIR}/ws/beta/.github/workflows`;
+    mkdirSync(wf, { recursive: true });
+    writeFileSync(`${wf}/android.yml`, Array.from({ length: 12 }, (_, i) => i === 9 ? '    runs-on: ubuntu-latest' : `# line ${i + 1}`).join('\n') + '\n');
+    execFileSync('git', ['-C', `${DIR}/ws/beta`, 'add', '.github'], { env: GITENV });
+    execFileSync('git', ['-C', `${DIR}/ws/beta`, 'commit', '-qm', 'a workflow'], { env: GITENV });
+    await page.evaluate(() => openNotebook('beta', 'git'));
+    await page.waitForSelector(`${NB} [data-cifix="android.yml:10"]`, { timeout: 15000 });
+    ok(await page.$$eval(`${NB} [data-cifix]`, bs => bs.length) === 1, 'only the finding that carries a fix offers Fix');
+    await page.click(`${NB} [data-cifix="android.yml:10"]`);
+    await page.waitForFunction(sel => [...document.querySelectorAll(sel)].some(e => /android\.yml/.test(e.textContent)),
+                               `${NB} details.gfile summary`, { timeout: 15000 });
+    const line = readFileSync(`${wf}/android.yml`, 'utf8').split('\n')[9];
+    const head = execFileSync('git', ['-C', `${DIR}/ws/beta`, 'log', '-1', '--format=%s'], { encoding: 'utf8' }).trim();
+    ok(line === '    runs-on: ubuntu-24.04' && head === 'a workflow',
+       `Fix writes the pinned label on that line and commits nothing; Changes lists the file (${line.trim()}; HEAD ${head})`);
+    // Put back as it was: the commit and the file go, so the look below
+    // still finds a beta with no workflows.
+    execFileSync('git', ['-C', `${DIR}/ws/beta`, 'reset', '-q', '--hard', 'HEAD~1'], { env: GITENV });
+    rmSync(`${DIR}/ws/beta/.github`, { recursive: true, force: true });
+  }
   await page.click(`${NB} #gitCiLook`);
   await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'nothing drifting',
                              `${NB} details.sect[data-sect="git:ci"] .sst`, { timeout: 20000 });
