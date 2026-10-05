@@ -411,6 +411,12 @@ header{display:flex;align-items:center;gap:10px;padding:8px 12px;
   background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;
   position:relative}   /* the bell's panel hangs from it */
 header h1{font-size:15px;margin:0;font-weight:600}
+/* Every header button one box, at every width: the bell carried the tap
+   size on its own and the bug, gear and sign-out got it only on a narrow
+   screen, so on a desk the bell stood taller and wider than its row (the
+   operator, 5 Oct). The version button is the same height, as wide as its
+   text. */
+header>button{min-height:var(--tap);min-width:var(--tap)}
 .logo{width:22px;height:22px;flex:0 0 auto;color:var(--accent);display:block;
   transition:color .2s ease}
 .logo.off{color:var(--bad)}
@@ -481,7 +487,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    times out, both of which empty the list on their own. */
 /* Boxed like the header's other buttons (R119 step 5): bare, it read as a
    glyph beside four buttons rather than one of them. */
-#bBell{position:relative;color:var(--dim);min-height:var(--tap);min-width:var(--tap);padding:0 6px}
+#bBell{position:relative;color:var(--dim);padding:0 6px}
 #bBell.has{color:var(--ink)}
 @media(hover:hover){ #bBell:hover{color:var(--ink)} }
 #bBell svg{width:17px;height:17px;display:block;margin:auto;fill:none;

@@ -757,6 +757,17 @@ for (const kind of kinds){
 }
 ok(seenSects.size <= 1,
    `a section heading wears one skin everywhere (${JSON.stringify([...seenSects])})`);
+{
+  // The header's buttons are one box (the operator, 5 Oct): the bell stood
+  // taller and wider than the bug, gear and sign-out beside it on a desk.
+  const hb = await page.$$eval('header > button', bs => bs.filter(b => b.offsetParent).map(b => {
+    const r = b.getBoundingClientRect();
+    return { id: b.id, h: Math.round(r.height), w: Math.round(r.width) };
+  }));
+  const icons = hb.filter(b => b.id !== 'bAbout');
+  ok(new Set(hb.map(b => b.h)).size === 1 && new Set(icons.map(b => b.w)).size === 1,
+     `the header's buttons share one height, and its icon buttons one width (${JSON.stringify(hb)})`);
+}
 ok(seenReds.size <= 1,
    `a verb that cannot be undone is the same color everywhere (${JSON.stringify([...seenReds])})`);
 
