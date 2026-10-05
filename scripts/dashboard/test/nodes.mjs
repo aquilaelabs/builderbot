@@ -2738,9 +2738,11 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
   const row = await page.evaluate(() => {
     const p = state.projects.find(x => x.name === 'delta');
     const r = document.querySelector('#projects .row[data-name="delta"], #projects [data-p="delta"]')?.closest('.row');
-    return { why: p.session_why, line: r?.querySelector('.sessline')?.textContent || '', name: p.node_name };
+    return { why: p.session_why, line: r?.querySelector('.sessline')?.textContent || '', name: p.node_name,
+             off: !!document.querySelector('#projects [data-c="delta"]')?.disabled };
   });
-  ok(row.name === 'oldbox' && /oldbox was removed from the Nodes tab/.test(row.why || ''),
+  ok(row.name === 'oldbox' && /oldbox was removed from the Nodes tab/.test(row.why || '') && row.off
+     && !/coming back/.test(row.why || ''),
      `a project on an un-enrolled node keeps its name and says why Claude is off (${(row.why || '').slice(0, 70)}; row: ${row.line})`);
   const pick = async name => page.evaluate(async n => {
     openProjectSettings(n);

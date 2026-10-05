@@ -1252,6 +1252,7 @@ def session_target(project, claude=False, node=""):
         # what to do after it, for the tooltip.
         why = (f"{name} was removed from the Nodes tab. Pick another node in {project}'s settings, "
                "or enroll it again")
+        passing = True          # its own sentence says the way on
     elif n.get("state") != "online":
         why = f"{project}'s sessions run on {name}, which is {n.get('state') or 'not online'}"
     elif n.get("live") is False:

@@ -254,6 +254,9 @@ function projectRow(p, live, cls, inTab){
           // Claude session runs on a node and this container carries no
           // Claude Code, so there is nothing for a press to do.
           || (!p.session_at && !!p.session_why && !live.has(myClaude(p.name)))
+          // ...and none on a node that was un-enrolled (the operator, 5 Oct):
+          // it still names a place, which is gone.
+          || (p.node_removed && !live.has(myClaude(p.name)))
           // Not signed in on its node ghosts nothing: the press opens the
           // chooser, which offers that node's sign-in, the way in.
           || heldWhy(p))
