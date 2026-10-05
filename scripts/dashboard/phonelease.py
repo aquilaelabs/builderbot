@@ -399,18 +399,20 @@ def use(project, op, args):
 
 GLIDE_SRC = Path(__file__).with_name("BbGlide.java")
 HAND = Path(__file__).resolve().parent.parent / "lib" / "hand.py"
+_hand_mod = None            # hand.py once loaded (declared here: injected.mjs)
 
 
 def _hand():
     """scripts/lib/hand.py, the finger's path a glide plays (R127), loaded
     by path the way artifacts.py loads capture.py: the one copy bb emu
     touch uses too, so both glides move the same way."""
-    if "_hand_mod" not in globals():
+    global _hand_mod
+    if _hand_mod is None:
         spec = importlib.util.spec_from_file_location("bb_hand", HAND)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        globals()["_hand_mod"] = mod
-    return globals()["_hand_mod"]
+        _hand_mod = mod
+    return _hand_mod
 
 # Built once per source on the node (cached in /tmp by the source's hash),
 # pushed, and run as the shell user. Exit 90: the node has no javac or
