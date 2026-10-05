@@ -659,6 +659,27 @@ await page.waitForFunction(() => {
 }, { timeout: 20000 });
 ok(true, '...and Up is manual after the gate, exactly as asked');
 
+// Start on boot on an instance's row reads the instance's own containers
+// (R122): the listing's top-level containers are the ones that belong to no
+// instance, and the switch read those, so it said off whatever docker said
+// (found walking the dev instance, 5 Oct).
+{
+  await page.evaluate(() => openDocker());
+  await page.waitForSelector(`${DM} [data-dmboot]`, { timeout: 20000 }).catch(() => {});
+  const drawn = await page.evaluate(sel => {
+    const d = (dockerList?.instances || []).find(x => x.exists);
+    if (!d) return null;
+    d.boot = true; dockerRev++; drawPanes();
+    const on = document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`)?.checked;
+    d.boot = false; dockerRev++; drawPanes();
+    const off = document.querySelector(`.dmtab [data-dmboot="${CSS.escape(d.name)}"]`)?.checked;
+    return { on, off, server: 'boot' in d };
+  }, DM);
+  ok(drawn && drawn.on === true && drawn.off === false && drawn.server,
+     `an instance's Start on boot reads its own row's boot, which the listing carries (${JSON.stringify(drawn)})`);
+}
+
+
 // Down, from the row.
 await dmClick('down');
 await pillIs('down');

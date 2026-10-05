@@ -1039,7 +1039,7 @@ function dmRowsHtml(ins, job, blind){
           esc(d.astray)}: its sessions cannot reach it here. Remove it and Send to Docker again to build it there.</div>` : ""}
         <div class="dmsettings">${dmOwnerLine(d, `inst:${d.project}|${d.instance}`)}${
           dmRefLine(d)}${dmGrantLine(d)}${dmTestLine(d)}${d.exists
-          ? dmBootLine(d.name, (dockerList?.containers || []).filter(c => c.project === d.name).some(c => c.boot)) : ""}</div>
+          ? dmBootLine(d.name, !!d.boot) : ""}</div>
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>` : ""}
         </details>
       </div>

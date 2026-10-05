@@ -2463,6 +2463,12 @@ def _overview_here(picked):
                 "running": any(c["state"] == "running" for c in mine),
                 "exists": bool(mine),
                 "containers": len(mine),
+                # Start on boot, as the daemon says for this instance's own
+                # containers (R122). The listing's top-level containers are
+                # the ones that belong to no instance, so the row's switch
+                # read a list that never held its containers and always said
+                # off (found walking the dev instance, 5 Oct).
+                "boot": any(c.get("boot") for c in mine),
                 # Ports from the containers themselves rather than from the
                 # compose file: what is published is what the daemon says it
                 # published, and a stopped instance publishes nothing.
