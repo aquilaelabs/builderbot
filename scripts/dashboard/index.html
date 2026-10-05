@@ -681,7 +681,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   color:var(--dim);font:var(--f-note)}
 .bnote .bfoot .acts{margin-left:auto;display:flex;gap:12px}
 .bnote .bfoot a{color:var(--dim)}
-.bnote.ask .bfoot a[data-ballow]{color:var(--accent)}
+/* Approve is a filled control, its text the page's dark on the amber: an
+   older rule painted it the accent, which won by coming later and put
+   green on amber, hard to read in every theme (the operator, 5 Oct). */
 /* Pinned like a question, red like a fault: an agent from another window
    is not waiting on an answer, it is stopping work until it is updated. */
 .bnote.ask.bad{border-left-color:var(--bad);border-bottom-color:var(--bad);

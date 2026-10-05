@@ -86,6 +86,33 @@ ok(/container sonarr-for-alpha on sandbox/.test(bell.text) && /a sonarr to test/
    && bell.file === COMPOSE && /PUID, SECRET/.test(bell.sum) && !/hunter2/.test(bell.text),
    `the bell row names the container and the node, and folds the compose file under the reason (${
      bell.sum})`);
+// Approve is read at a glance: its text against its own fill at the
+// contrast body text needs (WCAG's 4.5), in every theme (the operator, 5 Oct:
+// green on amber).
+{
+  const low = await page.evaluate(async () => {
+    const lum = c => { const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map(v => v / 255)
+      .map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    const out = [];
+    const was = document.documentElement.dataset.theme;
+    const themes = new Set(['default']);
+    for (const sh of document.styleSheets){
+      let rules = [];
+      try { rules = [...sh.cssRules]; } catch { rules = []; }
+      for (const r of rules) for (const m of (r.selectorText || '').matchAll(/html\[data-theme="([a-z]+)"\]/g)) themes.add(m[1]);
+    }
+    for (const t of themes){
+      document.documentElement.dataset.theme = t;
+      const a = document.querySelector('#bellPanel .bnote.ask a[data-ballow]');
+      const s = getComputedStyle(a), f = lum(s.color), b = lum(s.backgroundColor);
+      const ratio = (Math.max(f, b) + 0.05) / (Math.min(f, b) + 0.05);
+      if (ratio < 4.5) out.push(`${t} ${ratio.toFixed(2)}`);
+    }
+    document.documentElement.dataset.theme = was || '';
+    return { out, n: themes.size };
+  });
+  ok(low.n > 1 && low.out.length === 0, `Approve's text stands out from its fill in each of the ${low.n} themes (${low.out.join(', ') || 'all at 4.5 or more'})`);
+}
 
 // ---- Allow: registered through the Docker tab's own path, then built -------
 const allowed = await api('/api/phone', { action: 'allow', id: asked.body.id });
