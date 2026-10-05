@@ -707,7 +707,7 @@ def release(project, comp="", env=None, may_push=True, push=True):
         # gets its marker, and the sentence says what is missing rather than
         # undoing the half that worked.
         out["note"] = (f"{name} is on this commit here. This project has no push "
-                       f"rights, so nothing was sent to GitHub.")
+                       f"rights, so nothing was pushed.")
         return out
     r = _git(project, "push", "origin", f"refs/tags/{name}", timeout=120, env=env)
     if r is None:

@@ -3443,6 +3443,18 @@ and the app, and deny refuses naming the setting. A release that could not
 happen (no version, a tag already there, uncommitted changes) is refused
 before anybody is asked.
 
+**The forge's release.** Once the tag is pushed, Release makes the forge's
+own release beside it: titled with the version, the changelog's section for
+it as the notes, and the released commit's builds attached (the signed ones
+when there are any). On GitHub with the project's token or the shared PAT;
+on Gitea, Forgejo and Codeberg with the token the project's link stored,
+asked at the address that token was stored for, plain http on a port for a
+Gitea on a LAN; on GitLab the same, with each build put in the project's
+generic package registry under the version and linked from the release,
+since a GitLab release holds links rather than files (R124). A forge that
+says no leaves the tag as the release and the Artifacts row says why, and a
+host with no release API (Bitbucket, plain git) says that instead.
+
 **What is signed says so.** The node reports what `apksigner verify` (or
 `jarsigner -verify` for a bundle) found: the certificate's SHA-256 and the
 signature schemes that verified. The controller keeps that in the file's

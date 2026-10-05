@@ -699,6 +699,16 @@ USE_OUT_MAX = 256 * 1024     # a lent phone's command's answer, kept whole up to
 WAIT_SECONDS = 900
 
 
+def _forge_said(fg):
+    """The forge's half of a release, for the session that asked: the
+    release's address, or why there is none (the tag is pushed either way)."""
+    if fg.get("url"):
+        return f"; {fg['url']}"
+    if fg.get("error"):
+        return f"; no release on {fg.get('forge') or 'the forge'}: {fg['error']}"
+    return ""
+
+
 def _req_public(r):
     # `left` so the tab can count down: an approval that quietly stops being
     # possible, with the button still sitting there, is a worse failure than
@@ -1218,7 +1228,7 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
                      out=str(got.get("error") or rel.get("note") or
                              f"{rel.get('tag') or r.get('tag')} tagged on {rel.get('sha') or r.get('sha')}"
                              + (" and pushed" if rel.get("pushed") else "")
-                             + (f"; {(rel.get('forge') or {}).get('url')}" if (rel.get("forge") or {}).get("url") else "")))
+                             + _forge_said(rel.get("forge") or {})))
         return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "sign-key":
         res = (keymaker(r.get("action") or "", r["project"], r.get("args") or {})

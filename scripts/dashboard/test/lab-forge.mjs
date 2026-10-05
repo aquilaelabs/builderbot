@@ -16,7 +16,7 @@
 // beta (no remote, one commit made here); delta is the second, for the
 // refusals.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const GITEA = (process.env.BB_LAB_GITEA || '').replace(/\/$/, '');
@@ -114,6 +114,32 @@ const made = [];   // owner/repo pairs to delete at the end
   const cfg = readFileSync(`${DIR}/ws/beta/.git/config`, 'utf8');
   ok(cfg.includes(`url = ${GITEA}/${repo}.git`) && /credential\]\s*\n\s*helper = \n\s*helper = store --file=/.test(cfg),
      'the remote is spelled as asked and the repository is scoped to its own token and nothing else');
+  // Release on the real forge (R124): a version, a changelog section and a
+  // build of the commit, then the Artifacts tab's Release. The tag is pushed
+  // and Gitea's release is made beside it with the section as its notes and
+  // the build attached, all over the token the link stored.
+  const v = await api('/api/version', { project: 'beta', action: 'init', value: '0.1.0' });
+  ok(v.status === 200, `beta gets its first version (${v.status}: ${v.body.error || 'ok'})`);
+  writeFileSync(`${DIR}/ws/beta/CHANGELOG.md`, '# Changelog\n\n## 0.1.0: 2026-10-05\n\n### Added\n\n- The lab release\n');
+  writeFileSync(`${DIR}/ws/beta/.gitignore`, 'dist/\n');
+  git('beta', 'add', '-A'); git('beta', 'commit', '-q', '-m', 'lab: 0.1.0');
+  const short = git('beta', 'rev-parse', '--short=7', 'HEAD');
+  mkdirSync(`${DIR}/ws/beta/dist`, { recursive: true });
+  const apk = `beta-0.1.0-${short}-release.apk`;
+  writeFileSync(`${DIR}/ws/beta/dist/${apk}`, 'lab build');
+  const rel = await api('/api/version', { project: 'beta', action: 'release' });
+  const fg = rel.body.released?.forge || {};
+  ok(rel.status === 200 && rel.body.released?.pushed && fg.made && fg.forge === 'Gitea',
+     `Release pushes v0.1.0 and makes Gitea's release beside it (${rel.status}: ${rel.body.error || fg.error || fg.url})`);
+  const on = await forge('GET', `/repos/${repo}/releases/tags/v0.1.0`);
+  ok(on.status === 200 && on.body?.name === '0.1.0' && /- The lab release/.test(on.body?.body || ''),
+     `...titled with the version, its notes the changelog's section (${on.status}: ${JSON.stringify(on.body?.body || on.body)?.slice(0, 80)})`);
+  ok((on.body?.assets || []).some(a => a.name === apk && a.size === 9),
+     `...and the commit's build attached (${(on.body?.assets || []).map(a => `${a.name} ${a.size}`).join(', ') || 'none'})`);
+  ok(fg.url === on.body?.html_url, `the row links to that release (${fg.url})`);
+  const twice = await api('/api/version', { project: 'beta', action: 'release' });
+  ok(twice.status === 400 && /already exists/.test(twice.body.error || ''),
+     'a second Release is refused at the tag, so nothing is made twice');
   // A second link to the same repository is refused: it is not empty now.
   git('delta', 'add', '-A'); git('delta', 'commit', '-q', '-m', 'lab: delta');
   const again = await api('/api/link', { name: 'delta', url: `${GITEA}/${repo}`, forge: 'gitea', token });
