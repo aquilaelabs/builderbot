@@ -217,8 +217,10 @@ function drawTabs(){
     // button on the Tools card carries.
     const pc = colorAttrs(projectColor(tabProject(t)));
     const icon = TABKINDS[t.kind]?.icon || "";
-    return `<span class="tab ${t.id===cur?"on":""}${held}${pc.cls}" data-id="${esc(t.id)}"${pc.style}>
-      <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${icon}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
+    // A tab to a screen reader, and which one is showing (R88); the pin
+    // and the close beside it stay buttons.
+    return `<span class="tab ${t.id===cur?"on":""}${held}${pc.cls}" data-id="${esc(t.id)}"${pc.style} role="presentation">
+      <button class="lbl" data-show="${esc(t.id)}" role="tab" aria-selected="${t.id === cur}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${icon}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
       <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
       ${t.kind === "term"
         // Its own window on a desktop (R8): the tab stays here, blank, with

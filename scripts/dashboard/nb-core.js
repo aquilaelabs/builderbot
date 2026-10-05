@@ -163,11 +163,9 @@ function makeNotebook(project){
   // The backdrop, and not the box on it: a click landing inside is aimed at
   // something in there.
   sheet.onclick = e => { if (e.target === sheet) closeSheet(); };
-  root.addEventListener("keydown", e => {
-    // A filter field holding a search clears the field on Escape and stops
-    // the event, so this never sees that one.
-    if (e.key === "Escape" && !sheet.hidden){ e.preventDefault(); closeSheet(); }
-  });
+  // Escape is modalKeys' (page-motion.js), which reaches the backdrop's
+  // closeSheet above. A filter field holding a search clears the field on
+  // Escape and stops the event, so the sheet stays open for that one.
 
   nb.memProj = null;  // set by openMemory; always this project
   nb.memGen  = 0;  // bumped on close, so a slow load cannot repaint it

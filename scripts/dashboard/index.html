@@ -1154,6 +1154,9 @@ html:has(.modal:not([hidden]):not(.inline)){overflow:hidden}
 .modal.inline .box{width:auto;max-width:var(--doc-w);max-height:none;overflow:visible;
   border:0;border-radius:0;box-shadow:none;background:none}
 .modal.inline .box > h3{display:none}
+/* A dialog's box takes the focus as it opens (modalKeys), for a screen
+   reader and for Tab to start from; it is not a control, so no ring. */
+.modal>.box:focus{outline:none}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-surface);
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
@@ -4967,7 +4970,7 @@ body.booting .pane>.loading{margin:auto}
            list under it (R119 step 5). Drawn by drawTabPick. -->
       <button class="tabpick" id="tabPick" type="button" aria-haspopup="true" aria-expanded="false"></button>
       <button class="tscroll" id="tabL" title="scroll the tab bar">‹</button>
-      <div class="tabbar" id="tabbar"></div>
+      <div class="tabbar" id="tabbar" role="tablist" aria-label="Open tabs"></div>
       <button class="tscroll" id="tabR" title="scroll the tab bar">›</button>
     </div>
     <div class="tabpicklist" id="tabPickList" role="menu" hidden></div>
@@ -5211,6 +5214,10 @@ setInterval(() => {
 // Its functions are page-motion.js now, with every height tween on the page; what runs at load stays here.
 
 document.querySelectorAll(".modal:not(.inline)").forEach(armModal);
+// Focus in, Tab kept inside, Escape and focus back, for every dialog at
+// once (page-motion.js). Before the page's other keydown listeners, so a
+// dialog's Escape is not also a menu's or an armed arrow's.
+document.addEventListener("keydown", modalKeys);
 // Scroll hints (scrollHints): on any scroll, which does not bubble but is
 // seen on its way down, and on a slow clock for content that grows under a
 // box nobody is scrolling. Only the few hinted boxes are measured.
@@ -5285,9 +5292,7 @@ $("bAbout").onclick = () => openAbout();
 $("aboutClose").onclick = closeAbout;
 // Escape and the backdrop mean what Close means (B229): the popup opens
 // itself after an update, over whatever the person came to do, and every
-// other dialog on the page lets them out either way.
-$("aboutModal").addEventListener("click", e => { if (e.target === $("aboutModal")) closeAbout(); });
-addEventListener("keydown", e => { if (e.key === "Escape" && !$("aboutModal").hidden) closeAbout(); });
+// other dialog on the page lets them out either way. Escape is modalKeys'.
 document.querySelectorAll(".abswitch button").forEach(b => b.onclick = () => abShow(b.dataset.ab));
 $("aboutModal").onclick = e => {
   if (e.target.id === "aboutModal") closeAbout();
@@ -5507,7 +5512,6 @@ $("briefGo").onclick = () => briefGo(false);
 $("briefSkip").onclick = () => briefGo(true);
 $("briefCancel").onclick = closeBrief;
 $("briefModal").onclick = e => { if (e.target.id === "briefModal") closeBrief(); };
-addEventListener("keydown", e => { if (e.key === "Escape" && !$("briefModal").hidden) closeBrief(); });
 
 // ---- the new-project dialog ---------------------------------------------
 // Its declarations are tab-projects.js; what runs at load is below.
@@ -5821,8 +5825,8 @@ $("modal").onclick = e => { if (e.target.id === "modal") closeEditor(); };
 $("mName").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("mSave").click(); } };
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  if (!$("modal").hidden) closeEditor();
-  if (!$("pmodal").hidden) closeNewProject();
+  // A dialog's Escape is modalKeys' (page-motion.js), which stops the event
+  // before it reaches here.
   // Escape puts an armed arrow down, in whichever notebook holds one. It
   // closes nothing: the notebook is a tab, and tabs are not dismissed by a
   // keystroke.

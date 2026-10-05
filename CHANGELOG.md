@@ -166,6 +166,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The owner takes projects on like everybody, as a safeguard against working on the wrong one: an owner record that carried every project gets the ones that exist by name, and the owner alone may add themselves to an invite-only project. (5172350)
 - The project row's lock, the pinned commands' pin and the dev-build dial are offered by the account's grants rather than its role, so what the page shows and what the server allows come from one place. (2933bf3)
 - A project whose node was un-enrolled keeps it in its settings, selected and shown as the node's name with (removed) in italics, so you can see where it used to run; its Claude button is off with the reason on the row, and no other project's picker offers it. (918f618)
+- Every dialog takes the focus as it opens, keeps Tab inside itself, closes on Escape (the one on top), and gives the focus back to what opened it; dialogs and the tab strip are named and marked for screen readers (2ca2296)
 
 ### Removed
 

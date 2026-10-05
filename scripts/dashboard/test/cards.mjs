@@ -964,6 +964,50 @@ await page.waitForSelector('#aboutModal:not([hidden])');
 await page.click('#aboutModal', { position: { x: 4, y: 4 } });
 await page.waitForSelector('#aboutModal', { state: 'hidden' });
 ok(true, '...and so does a click on the page under it');
+// One place for a dialog and the keyboard (R88): focus goes in as it opens,
+// Tab and Shift+Tab go round inside it, Escape closes the one on top, and
+// the focus comes back to what opened it.
+{
+  await page.focus('#bAbout');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#aboutModal:not([hidden])');
+  await page.waitForFunction(() => document.getElementById('aboutModal').contains(document.activeElement), null, { timeout: 3000 })
+    .catch(() => {});
+  ok(await page.evaluate(() => document.getElementById('aboutModal').contains(document.activeElement)),
+     'a dialog takes the focus as it opens, so a screen reader and Tab start in it');
+  let out = 0;
+  for (let i = 0; i < 25; i++){
+    await page.keyboard.press(i % 5 === 4 ? 'Shift+Tab' : 'Tab');
+    if (!(await page.evaluate(() => document.getElementById('aboutModal').contains(document.activeElement)))) out++;
+  }
+  ok(out === 0, `Tab and Shift+Tab go round inside it, never out to the page behind (${out} of 25 presses left it)`);
+  // A second dialog over the first: Escape is the top one's alone.
+  await page.evaluate(() => openReport(''));
+  await page.waitForSelector('#reportModal:not([hidden])');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#reportModal', { state: 'hidden' });
+  ok(await page.evaluate(() => !document.getElementById('aboutModal').hidden),
+     'Escape closes the dialog on top, and the one under it stays open');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#aboutModal', { state: 'hidden' });
+  ok(await page.evaluate(() => document.activeElement?.id === 'bAbout'),
+     `...then that one, and the focus is back on the button that opened it (${await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName)})`);
+  // Every dialog is named by its title: the attribute was spelled
+  // aria-labeledby on all of them, which no screen reader reads.
+  const names = await page.evaluate(() => ({
+    wrong: document.querySelectorAll('[aria-labeledby]').length,
+    dangling: [...document.querySelectorAll('[aria-labelledby]')]
+      .filter(e => !e.getAttribute('aria-labelledby').split(/\s+/).every(id => document.getElementById(id)))
+      .map(e => e.id || e.className) }));
+  ok(names.wrong === 0 && names.dangling.length === 0,
+     `every dialog names its title by aria-labelledby, and each title is there (${JSON.stringify(names)})`);
+  const tabs = await page.evaluate(() => ({
+    list: document.getElementById('tabbar').getAttribute('role'),
+    on: [...document.querySelectorAll('#tabbar [role=tab][aria-selected=true]')].map(b => b.dataset.show),
+    cur: document.querySelector('#tabbar .tab.on')?.dataset.id }));
+  ok(tabs.list === 'tablist' && tabs.on.length === 1 && tabs.on[0] === tabs.cur,
+     `the tab strip is a tablist, with the tab showing marked selected (${JSON.stringify(tabs)})`);
+}
 // ---- the welcome panel: a guide and the changelog behind one switch -------------
 // The same popup opens itself twice in an account's life: on the guide the
 // first time the account signs in, and on the changelog once after every

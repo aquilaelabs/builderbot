@@ -195,6 +195,8 @@ function usersEditOpen(name){
     m.id = "umodal"; m.className = "modal"; m.hidden = true;
     m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
     document.body.appendChild(m);
+    armModal(m);                          // made after the page-load pass
+
   }
   const isOwner = u.role === "owner";
   const pf = u.profile || {};
@@ -239,14 +241,8 @@ function usersEditOpen(name){
     </div>
   </div>`;
   m.hidden = false;
-  // Dismissed like every other dialog: the backdrop, or Escape.
+  // Dismissed like every other dialog: the backdrop, or Escape (modalKeys).
   m.onclick = e => { if (e.target === m) m.hidden = true; };
-  if (!m.dataset.keys){
-    m.dataset.keys = "1";
-    document.addEventListener("keydown", e => {
-      if (e.key === "Escape" && !m.hidden){ e.preventDefault(); m.hidden = true; }
-    });
-  }
   const role = m.querySelector("#ueRole");
   // The list is every role's but the owner's, who has every project: an
   // admin works on the ones ticked (users.may_work), so hiding it for them
