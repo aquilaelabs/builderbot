@@ -403,6 +403,17 @@ def sees_changed(project, sees):
     return got != ((get(project) or {}).get("sees") or [])
 
 
+def node_changed(project, req):
+    """Whether the node fields the dialog sent name another node set than
+    the one stored: the dialog sends every field on every save, and a user
+    changing their commit name was refused over the node riding along
+    unchanged (B488)."""
+    cur = get(project) or {}
+    want = {"node": req.get("node") if "node" in req else cur.get("node"),
+            "nodes": req.get("nodes") if "nodes" in req else cur.get("nodes")}
+    return _nodes_of(want) != _nodes_of(cur)
+
+
 def rename_reads(old, new):
     """A project renamed is renamed in every other project's reads list, so
     a session on those keeps reading it. True when anything moved."""

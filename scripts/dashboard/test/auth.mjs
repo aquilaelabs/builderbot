@@ -554,6 +554,13 @@ ${code}`], { encoding: 'utf8' });
       ok(theirs === 'b489b489-0000-4000-8000-000000000000' && !notTheirs,
          `a conversation is offered to resume to the account that had it, and to nobody else (owner ${theirs}, admin ${JSON.stringify(notTheirs)})`);
     }
+    // A user's own settings on a project they work on save with the node
+    // riding along unchanged, as the dialog sends it (B488); naming
+    // another node is still an administrator's.
+    const kept = await post(other, '/api/prefs', { project: 'beta', node: '', nodes: [], git_name: 'Sharer S.' });
+    const moved = await post(other, '/api/prefs', { project: 'beta', node: 'elsewhere' });
+    ok(kept.status === 200 && moved.status === 403 && /which node a project builds on/.test((await moved.json()).error || ''),
+       `a user saves their commit name with the node unchanged (${kept.status}), and cannot move the project to another node (${moved.status})`);
     // What is the box's rather than a project's is an administrator's: the
     // container log, the trash, the daemon's containers, the deploy keys,
     // the command lists that run in terminals.

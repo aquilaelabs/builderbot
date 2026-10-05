@@ -4840,8 +4840,10 @@ class Handler(BaseHTTPRequestHandler):
             return None
         # Everything else in this dialog is the project's own; the node is
         # not, because a node is shared and moving a project onto one
-        # reaches every other project there.
-        if ("node" in req or "nodes" in req) and self._refused("node", name):
+        # reaches every other project there. Only a CHANGE is asked about
+        # (B488): the dialog sends every field on every save.
+        if ("node" in req or "nodes" in req) and prefs.node_changed(name, req) \
+                and self._refused("node", name):
             return
         # ...and so are the places on it a session here is shown (sees): a
         # share on a node is every project's there, so naming one is for
