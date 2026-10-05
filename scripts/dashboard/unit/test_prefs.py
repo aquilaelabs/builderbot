@@ -61,3 +61,24 @@ class Gpu(unittest.TestCase):
 
     def test_anything_else_is_refused(self):
         self.assertIn("error", prefs.set_prefs("alpha", gpu="maybe"))
+
+
+class NodeChanged(unittest.TestCase):
+    """B488: the dialog sends every field on every save, so only a change
+    to the node is a node change; and the primary counts on its own, not
+    only the set (a move onto a node already in the set is a move, seen on
+    the dev instance). The stored record is stubbed in the dev instance's
+    exact shape: no primary, one node in the set."""
+    def setUp(self):
+        saved = prefs.get
+        self.addCleanup(setattr, prefs, "get", saved)
+        prefs.get = lambda project: {"node": "", "nodes": ["n1"]}
+
+    def test_the_same_node_set_sent_back_is_not_a_change(self):
+        self.assertFalse(prefs.node_changed("p", {"node": "", "nodes": ["n1"], "git_name": "x"}))
+        self.assertFalse(prefs.node_changed("p", {"git_name": "x"}))
+
+    def test_the_primary_moving_within_the_set_is_a_change(self):
+        self.assertTrue(prefs.node_changed("p", {"node": "n1", "nodes": ["n1"]}))
+        self.assertTrue(prefs.node_changed("p", {"node": "n2"}))
+        self.assertTrue(prefs.node_changed("p", {"nodes": ["n1", "n2"]}))

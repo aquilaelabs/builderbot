@@ -411,7 +411,10 @@ def node_changed(project, req):
     cur = get(project) or {}
     want = {"node": req.get("node") if "node" in req else cur.get("node"),
             "nodes": req.get("nodes") if "nodes" in req else cur.get("nodes")}
-    return _nodes_of(want) != _nodes_of(cur)
+    # The primary on its own as well as the set: moving the primary onto a
+    # node already in the set is a move (seen on the dev instance, 5 Oct).
+    return (str(want["node"] or "")[:40] != str(cur.get("node") or "")[:40]
+            or _nodes_of(want) != _nodes_of(cur))
 
 
 def rename_reads(old, new):
