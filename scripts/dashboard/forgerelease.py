@@ -40,6 +40,7 @@ import mimetypes
 import os
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -334,8 +335,19 @@ def _gitea(f, at, project, tag, version, sha, title, body):
     have = f.ask("GET", f"{base}/tags/{urllib.parse.quote(tag)}")
     if have:
         return {"url": have.get("html_url") or "", "made": False, "assets": [], "skipped": []}
-    rel = f.ask("POST", base, {"tag_name": tag, "name": title, "body": body,
-                               "draft": False, "prerelease": False})
+    # Gitea takes a pushed tag into its database on a queue, a moment after
+    # the push: a release asked for at once is refused as "repo is empty"
+    # or its tag not found (measured on 1.24, 5 Oct), so it is asked again
+    # for a few seconds before that answer is believed.
+    for wait in (1, 2, 3, 4, 0):
+        try:
+            rel = f.ask("POST", base, {"tag_name": tag, "name": title, "body": body,
+                                       "draft": False, "prerelease": False})
+            break
+        except Refused as e:
+            if not wait or not re.search(r"answered (409|422|404)", str(e)):
+                raise
+            time.sleep(wait)
     up, skipped = [], []
     for p in assets(project, sha):
         size = p.stat().st_size
