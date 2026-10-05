@@ -333,7 +333,9 @@ reach it or start its own until you stop it or this session ends.
 `bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS]`
 is a touch with its timing kept, in screen pixels: adb's own input verbs
 cost about 300 ms a call, which cannot time a glide across letters or tell
-a long-press from a slide. Two things an emulator does to a keyboard under
+a long-press from a slide. A glide moves like a hand unless `--hand ruler`
+says otherwise, the same as on a phone (the method is under A real phone,
+below). Two things an emulator does to a keyboard under
 test: its AVD reports a hardware keyboard, so an IME shows only after
 `settings put secure show_ime_with_hard_keyboard 1`; and a force-stop of an
 IME's package deselects it, so `ime set` again after one.
@@ -345,18 +347,29 @@ only, and every command but `bb phone lease` asks its owner and runs on
 their Allow, so give each a `--why "..."` they can answer, and batch what
 you need rather than asking for one tap at a time. The owner may answer
 Allow for this session, and the rest of yours then run at once until they
-take it back. `bb phone
-lease` says whether it is lent and which apps the lease covers; `bb phone
-install dist/APP.apk` installs a build and adds its package; then `bb phone
-start|stop|ime|log PKG`, `bb phone shot` and `bb phone record [SECONDS]`
-(into dist/phone/), `bb phone ui`, and `bb phone touch tap|hold|glide|text|key`,
-which acts only while a lease app is in front or is the keyboard. To see a
-gesture move rather than where it ended, `bb phone record start`, the
-touches, then `bb phone record stop`: a recording made with a fixed length
-runs alone, so touches sent during it land after it ends. Each recording
-comes with its reel, `record-...-sheet.png`, the frames that changed with
-their times in one picture, which is what to read. Anything
-else on the phone is `bb phone run --why`, one asked command at a time.
+take it back.
+Working a phone is a method, not a list of verbs, and it is the same on
+the emulator with `bb emu` in place of `bb phone`. `bb phone lease` says
+whether it is lent and which apps the lease covers, and `bb phone install
+dist/APP.apk` adds a build's package to it. `bb phone start PKG` puts the
+app in front (`ime PKG` makes it the keyboard; `log PKG` reads its
+logcat), and `bb phone ui` reads the screen as text, which is where an
+element's position comes from, not from a guess over a picture. Then, for
+anything that moves: `bb phone record start`, the touches, `bb phone
+record stop`. A recording of a fixed length (`bb phone record 10`) runs
+alone, so a touch sent during it lands after it ends and is never in it.
+Every recording comes back with its reel, `record-...-sheet.png`, the
+frames that changed with their times in one picture: read that, not the
+video, and read it before the next touch, because a screenshot (`bb phone
+shot`) says only where things ended up. `bb phone touch tap|hold|glide|text|key`
+acts only while a lease app is in front or is the keyboard. A glide moves
+like a hand (`--hand steady|normal|shaky`, `ruler` for the straight even
+stroke, `--seed N` to send the same stroke again), and a keyboard under
+test meets a normal hand, never a ruler: a stroke nobody makes proves
+nothing. Anything else on the phone is `bb phone run --why`, one asked
+command at a time, of at most forty words, so a stroke does not fit it.
+Say in your reply what the reel showed, with its path, and never a
+success you did not see.
 An API level exists here where the store holds a system image for it:
 `bb emu images` lists them and `bb emu create <api>` fetches one on demand.
 Adding or removing one deliberately is the operator's, from the Emulator tab.
