@@ -195,7 +195,7 @@ def verb(name, auth, req, addr):
         # is mapped to, which the node read from the build (step 6), else
         # the project's default.
         package = field(req, "package")
-        key = str(spec.get("key") or "") or signing.key_for(project, package)
+        key = str(spec.get("key") or "") or signing.key_for(project, package, route)
         # A retired sideload key signs nothing alone: its builds go out with
         # the key it was rotated to and the proof (R106 step 7).
         if route == "sideload":

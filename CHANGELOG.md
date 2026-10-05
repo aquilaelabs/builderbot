@@ -273,6 +273,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb version release --edit reads its notes from wherever the session wrote them, its scratch directory or stdin, instead of only from inside the project (78f9597)
 - The bell's Approve button reads clearly: its text was the accent color on the amber fill, nearly invisible in every theme (d493aa9)
 - The app's Install it offers a signed build when there is one, so updating over the installed app works instead of being refused by Android (63a1d39)
+- Signing a build with no key named uses the project's only key when it has no key called default, and an ambiguous choice is refused before the owner is asked, rather than failing after they approved (a096086)
 
 ### Security
 

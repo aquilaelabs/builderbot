@@ -148,8 +148,19 @@ def mapping(project):
         return {}
 
 
-def key_for(project, package):
-    return mapping(project).get(package or "", DEFAULT)
+def key_for(project, package, route=""):
+    """The key a build of `package` is signed with: the one it is mapped to,
+    else `default`, else, when no key is called that, the project's only key
+    holding the route. A project whose one key had another name had every
+    unmapped build approved and then failed for want of `default`
+    (BuilderBot's own app, 5 Oct, B509)."""
+    mapped = mapping(project).get(package or "")
+    if mapped:
+        return mapped
+    if not route or _record(project, route, DEFAULT):
+        return DEFAULT
+    holders = [k for k in key_names(project) if _record(project, route, k)]
+    return holders[0] if len(holders) == 1 else DEFAULT
 
 
 def listing(project):
@@ -549,6 +560,15 @@ def refusal(project, rel, route, key=""):
     if not key and route not in routes_held(project):
         return {"error": f"{project} has no {WORDS[route]}: an administrator adds one under "
                          "Signing keys in its settings"}, 404
+    # With no key named, the build's package decides on the node; when no
+    # key is called default, several hold the route and none is mapped, no
+    # package can find one, so it is refused here rather than after a
+    # person allowed it (B509).
+    if not key and not _record(project, route, DEFAULT):
+        holders = [k for k in key_names(project) if _record(project, route, k)]
+        if len(holders) > 1 and not set(mapping(project).values()) & set(holders):
+            return {"error": f"{project} has no {WORDS[route]} named default and {len(holders)} others "
+                             f"({', '.join(holders)}): name one with --key"}, 400
     rel = str(rel or "").replace("\\", "/").strip()
     rel = rel[len("dist/"):] if rel.startswith("dist/") else rel
     if not rel.lower().endswith((".apk", ".aab")):

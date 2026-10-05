@@ -177,6 +177,40 @@ class Start(unittest.TestCase):
         self.assertEqual(self.queued, [])
 
 
+class KeyChoice(unittest.TestCase):
+    """With no key named and none called default (B509, BuilderBot's own app,
+    5 Oct): the project's only key for the route signs an unmapped build,
+    and when several could and none is mapped, the signing is refused
+    before anybody is asked to allow it."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"), keytool=lambda: None)
+        self.add("test")
+        signing.node_of = lambda p: "n_1"
+        signing.file_path = lambda p, rel: Path("/x")
+        signing.job_add = lambda pr, pl, t, spec, project="": {"ok": True, "job": "j_1"}
+
+    def add(self, name):
+        d = self.tmp / "signing" / "app" / name
+        d.mkdir(parents=True)
+        (d / "sideload.ks").write_bytes(b"k")
+        (d / "sideload.json").write_text('{"alias": "a", "store_pass": "x"}')
+
+    def test_the_only_key_signs_an_unmapped_build(self):
+        self.assertEqual(signing.key_for("app", "dev.x", "sideload"), "test")
+        self.assertIsNone(signing.refusal("app", "dist/a.apk", "sideload"))
+
+    def test_several_and_none_mapped_is_refused_before_the_ask(self):
+        self.add("other")
+        r = signing.refusal("app", "dist/a.apk", "sideload")
+        self.assertIn("name one with --key", r[0]["error"])
+        (self.tmp / "signing" / "app" / "map.json").write_text('{"dev.x": "other"}')
+        self.assertIsNone(signing.refusal("app", "dist/a.apk", "sideload"), "a mapped package finds its key")
+        self.assertEqual(signing.key_for("app", "dev.x", "sideload"), "other")
+
+
 STORE = next((d for d in glob.glob("/mnt/SDK/*") + glob.glob("/sdk/*")
               if glob.glob(os.path.join(d, "android", "build-tools", "*", "apksigner"))
               and os.access(os.path.join(d, "jdk", "bin", "java"), os.X_OK)), "")

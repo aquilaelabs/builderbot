@@ -19,7 +19,7 @@ class SigningKey(unittest.TestCase):
         channel.nodes.job = lambda jid, with_log=True: self.jobs.get(jid)
         self.asked = []
         channel.signing.secret = lambda p, r, k="default": (self.asked.append(k) or (b"KEY", {"alias": "upload", "store_pass": "pw", "sha256": "AB"}))
-        channel.signing.key_for = lambda p, pkg: "watch" if pkg == "com.example.watch" else "default"
+        channel.signing.key_for = lambda p, pkg, route="": "watch" if pkg == "com.example.watch" else "default"
         channel.db.audit = lambda *a: self.audit.append(a)
         channel._keys_given.clear()
 
