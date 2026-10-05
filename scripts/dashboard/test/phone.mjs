@@ -436,12 +436,17 @@ page.errors = [];
   ok(merged.length === 1 && merged[0].model === 'Test Phone' && merged[0].ip === '192.168.9.9',
      '...and the connect fills the model in on the same row rather than adding a second');
   await page.click('.phonetab #phRefresh');
-  await page.waitForFunction(() => document.querySelector('.phonetab .phknown[data-ip="192.168.9.9"]'),
-                             null, { timeout: 20000 });
-  ok(await page.$eval('.phonetab .phknown', r => /Test Phone/.test(r.textContent)
-       && /connected/.test(r.querySelector('.pill')?.textContent || '')
-       && r.querySelector('[data-kconnect]') && r.querySelector('[data-kforget].danger')),
-     'the tab lists it by model, marks it as the phone connected now, and offers Connect and Forget');
+  // Waited for whole (B437): the row can be drawn from a poll that left
+  // before the connect, and the one after it marks it connected, so a row
+  // read the moment it appears was read without its pill now and then.
+  const drawn = await page.waitForFunction(() => {
+    const r = document.querySelector('.phonetab .phknown[data-ip="192.168.9.9"]');
+    return !!r && /Test Phone/.test(r.textContent)
+      && /connected/.test(r.querySelector('.pill')?.textContent || '')
+      && !!r.querySelector('[data-kconnect]') && !!r.querySelector('[data-kforget].danger');
+  }, null, { timeout: 20000 }).then(() => true, () => false);
+  ok(drawn, 'the tab lists it by model, marks it as the phone connected now, and offers Connect and Forget ('
+     + await page.$eval('.phonetab .phknown', r => r.textContent.replace(/\s+/g, ' ').trim().slice(0, 120)).catch(() => 'no row') + ')');
   await page.click('.phonetab #phDisconnect');
   await page.waitForFunction(() => !document.querySelector('.phonetab #phDisconnect'), null, { timeout: 20000 });
   // The stub adb goes on listing the device after a disconnect, so the
