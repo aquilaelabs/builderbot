@@ -140,8 +140,10 @@ def rev():
         if not isinstance(got, dict):
             continue
         p = WORKSPACE / str(got.get("project") or "_") / "dist" / "phone"
+        # In nanoseconds: a recording's sheet written in the same second as
+        # the poll before it was never drawn, with whole seconds here.
         try:
-            m = int(p.stat().st_mtime)
+            m = p.stat().st_mtime_ns
         except OSError:
             m = 0
         live = 1 if nid in _recording else 0
