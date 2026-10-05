@@ -5071,8 +5071,12 @@ body.booting .pane>.loading{margin:auto}
 // for the observer's microtask.
 new MutationObserver(ms => {
   for (const m of ms)
-    for (const n of m.addedNodes) if (n.nodeType === 1) proselines(n);
+    for (const n of m.addedNodes) if (n.nodeType === 1){ proselines(n); quietFields(n); }
 }).observe(document.documentElement, {childList: true, subtree: true});
+// ...and the fields a password manager leaves alone (B495), the ones in
+// the markup already as well as the ones drawn later. Declarations in
+// page-state.js.
+quietFields(document.documentElement);
 
 // ---- what a session is called, and whose it is --------------------------
 // Its declarations are page-state.js; nothing of it runs at load.

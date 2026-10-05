@@ -262,6 +262,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On a lent phone, bb phone shot and bb phone record work: both come back as files the node uploads (the shot no longer fails on a permission, the video is whole), and bb phone ui prints the whole layout rather than an error (369509b)
 - The companion app opens again on a fresh install (it crashed at launch since the lock), and its Tools screen offers Install and Remove by the account's grants, as the dashboard does. (ed603e1)
 - The header's buttons are one box at every width: the bell no longer stands taller and wider than the bug, gear and sign-out beside it on a desktop. (3e04dbc)
+- Password managers (Bitwarden, 1Password, LastPass) no longer offer themselves on the dashboard's search boxes, notes and settings: only on its password and account fields. (0c283d9)
 
 ### Security
 

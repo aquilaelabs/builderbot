@@ -75,7 +75,7 @@ const SURFACE = [
   'signinRev', 'signinCannot', 'signinBusy', 'signinBlock', 'wireSignin', 'openNodeClaude', 'signinCancel', 'claudeSigninFirst', 'claudeNodes', 'claudeEnd', 'modalTop', 'scrollHint', 'scrollHints',
   'openToolchainsOn', 'nodeGpuSection', 'nodeSound', 'tcTickDots', 'placeCard',
   'claudeNodeFacts', 'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
-  'postTrash', 'projectRow', 'phoneWhy', 'dmBootLine', 'nodePick', 'nodeToolsLine', 'openRunnerTab', 'renderPhoneInto', 'renderRunnerInto', 'phoneButton', 'phoneRowPress', 'openPhoneLend', 'openProjectSettings', 'settingsInto', 'settingsOut', 'pushLayout', 'readLocalPanes', 'keepLocalPanes', 'reapDeadTerminals',
+  'postTrash', 'projectRow', 'phoneWhy', 'dmBootLine', 'nodePick', 'nodeToolsLine', 'openRunnerTab', 'renderPhoneInto', 'renderRunnerInto', 'phoneButton', 'phoneRowPress', 'openPhoneLend', 'openProjectSettings', 'settingsInto', 'settingsOut', 'pushLayout', 'readLocalPanes', 'keepLocalPanes', 'quietFields', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'gitLanes', 'renderDiff',
   'openPhoneTab', 'phonePanel', 'wirePhoneTab',
   // The welcome panel (the About popup grown a guide and the changelog). The
@@ -85,7 +85,7 @@ const SURFACE = [
   // The Users tab (roadmap #22 step 3). Functions only: a top-level `let`
   // is not a window property, so usersList and friends are not listed here.
   'openUsersTab', 'loadUsers', 'usersAct', 'userRow', 'usersEditOpen', 'usersEditSave',
-  'renderUsersInto', 'wireUsers', 'openRolesTab', 'loadRoles', 'rolesAct', 'roleGrantRow', 'roleSection', 'renderRolesInto', 'roleGrantsFrom', 'wireRoles', 'openProfileTab', 'loadProfile', 'renderProfileInto', 'wireProfile', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
+  'renderUsersInto', 'wireUsers', 'openRolesTab', 'loadRoles', 'rolesAct', 'roleGrantRow', 'roleScopeWords', 'roleSummary', 'roleSection', 'renderRolesInto', 'roleGrantsFrom', 'wireRoles', 'openProfileTab', 'loadProfile', 'renderProfileInto', 'wireProfile', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
   'idleSection', 'wireIdleSection', 'settingsSections', 'wireSettingsSections', 'settingsLive', 'openDebugSettings',
     'reportsSection', 'clearReports',
   'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',

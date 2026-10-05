@@ -182,3 +182,25 @@ function fmtTime(t, opts = {}){
 const humanBytes = n =>
   n >= 1048576 ? (n / 1048576).toFixed(1) + "MB"
   : n >= 1024 ? Math.round(n / 1024) + "kB" : (n || 0) + "B";
+
+// ---- fields a password manager leaves alone ------------------------------
+// Bitwarden offered itself on every text box on the page (B495): a search,
+// a note, a role's purpose. It ignores autocomplete="off" and honors only
+// its own attribute, as 1Password and LastPass honor theirs, so every field
+// that is not a password or a sign-in carries all three. A password field,
+// and one whose autocomplete names an account or a password, is left as it
+// is: those are where a manager belongs. Wired in index.html on every
+// element that appears, the way proselines are; idempotent.
+const MANAGER_FIELDS = new Set(["username", "current-password", "new-password", "one-time-code", "email"]);
+function quietFields(root){
+  const all = root.matches?.("input, textarea") ? [root] : [];
+  for (const el of [...all, ...(root.querySelectorAll?.("input, textarea") || [])]){
+    if (el.dataset.bwignore !== undefined) continue;
+    const t = (el.getAttribute("type") || "text").toLowerCase();
+    if (t === "password" || t === "hidden" || t === "checkbox" || t === "radio" || t === "file") continue;
+    if (MANAGER_FIELDS.has((el.getAttribute("autocomplete") || "").toLowerCase())) continue;
+    el.setAttribute("data-bwignore", "");
+    el.setAttribute("data-1p-ignore", "");
+    el.setAttribute("data-lpignore", "true");
+  }
+}

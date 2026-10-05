@@ -758,6 +758,18 @@ for (const kind of kinds){
 ok(seenSects.size <= 1,
    `a section heading wears one skin everywhere (${JSON.stringify([...seenSects])})`);
 {
+  // B495: a password manager offers itself only where a password or an
+  // account is asked for; every other field on the page says so, drawn
+  // late or not.
+  const loud = await page.$$eval('input, textarea', es => es.filter(e => {
+    const t = (e.getAttribute('type') || 'text').toLowerCase();
+    if (['password', 'hidden', 'checkbox', 'radio', 'file'].includes(t)) return false;
+    if (['username', 'current-password', 'new-password', 'one-time-code', 'email'].includes((e.getAttribute('autocomplete') || '').toLowerCase())) return false;
+    return e.dataset.bwignore === undefined;
+  }).map(e => e.id || e.name || e.className).slice(0, 8));
+  ok(loud.length === 0, `every field that is not a password or an account tells password managers to stay away (${JSON.stringify(loud)})`);
+}
+{
   // The header's buttons are one box (the operator, 5 Oct): the bell stood
   // taller and wider than the bug, gear and sign-out beside it on a desk.
   const hb = await page.$$eval('header > button', bs => bs.filter(b => b.offsetParent).map(b => {
