@@ -267,6 +267,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The companion app opens again on a fresh install (it crashed at launch since the lock), and its Tools screen offers Install and Remove by the account's grants, as the dashboard does. (ed603e1)
 - The header's buttons are one box at every width: the bell no longer stands taller and wider than the bug, gear and sign-out beside it on a desktop. (3e04dbc)
 - Password managers (Bitwarden, 1Password, LastPass) no longer offer themselves on the dashboard's search boxes, notes and settings: only on its password and account fields. (0c283d9)
+- bb emu touch glide keeps the pace it was asked for on an emulator, where each move used to cost more than the gap between them; it says how long the stroke really took, and --mark FILE lets a screenshot catch the finger while it is held (9bdb9e4)
 
 ### Security
 

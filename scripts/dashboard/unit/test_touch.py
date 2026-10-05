@@ -2,7 +2,11 @@
 range, at each rotation (R101). test/capture.mjs drives it through a
 stand-in adb; this pins the arithmetic."""
 import os
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
@@ -80,6 +84,51 @@ class Root(unittest.TestCase):
 
     def test_no_uid_is_left_alone(self):
         self.run_with({})
+
+
+FAKE_ADB = """#!/bin/sh
+# A device whose sendevent costs 8 ms, the shape of an emulator's: the
+# gesture's own shell is run here for real, with its sleeps and its clock.
+case "$1 $2 $3" in
+  "shell getevent -p") printf 'add device 2: /dev/input/event2\\n  0035  : value 0, min 0, max 32767\\n  0036  : value 0, min 0, max 32767\\n' ;;
+  "shell wm size") echo "Physical size: 1080x2400" ;;
+  "shell dumpsys input") echo "  SurfaceOrientation: 0" ;;
+  "shell id -u") echo 0 ;;
+  "shell "*) shift; exec sh -c "sendevent() { sleep 0.008; }; $*" ;;
+esac
+"""
+
+
+class Pace(unittest.TestCase):
+    """A glide takes the time it was asked to on a device where one move
+    costs more than the hand's 10 ms between samples, and --mark is made
+    when the finger arrives to be held (Shebang-DevBoard, 5 Oct: a 3.6 s
+    stroke ran long, and a shot timed by a sleep caught the first key)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.adb = os.path.join(self.tmp, "adb")
+        with open(self.adb, "w") as f:
+            f.write(FAKE_ADB)
+        os.chmod(self.adb, 0o755)
+
+    def run_touch(self, *args):
+        lib = os.path.join(os.path.dirname(__file__), "..", "..", "lib", "touch.py")
+        return subprocess.run([sys.executable, lib, *args], capture_output=True, text=True, timeout=60,
+                              env={**os.environ, "BB_CAPTURE_ADB": self.adb})
+
+    def test_the_stroke_keeps_its_pace_and_says_how_long_it_took(self):
+        mark = os.path.join(self.tmp, "held")
+        r = self.run_touch("glide", "100", "1000", "600", "1000", "--hand", "ruler", "--ms", "800",
+                           "--hold", "200", "--mark", mark)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        m = re.search(r"the stroke took (\d+) ms on the device, asked (\d+) \(a move every (\d+) ms", r.stdout)
+        self.assertTrue(m, r.stdout)
+        took, asked = int(m.group(1)), int(m.group(2))
+        self.assertGreater(int(m.group(3)), 10, "the moves are spaced to what one costs")
+        self.assertLess(abs(took - asked), asked * 0.35, r.stdout)
+        self.assertTrue(os.path.exists(mark), "--mark is made when the finger is held")
 
 
 if __name__ == "__main__":

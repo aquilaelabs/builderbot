@@ -24,7 +24,25 @@ ABS_MT_POSITION_X, and its range), the screen's size with `wm size` and its
 rotation with dumpsys input, so a landscape tap lands where the screenshot
 shows it. BB_CAPTURE_ADB or ADB names adb; BB_TOUCH_DEV names the panel when
 the guess is wrong.
+
+A glide keeps its pace. Each move is a sleep and three sendevent processes
+on the device, which on an emulator can cost more than the 10 ms between a
+hand's samples: a 3.6 s stroke ran far longer than it said, and a session
+catching it mid-stroke with a sleep guessed wrong twice (Shebang-DevBoard,
+5 Oct). So the cost of one move is measured first, with moves that change
+nothing, and the samples are spaced to it; the line printed says how long
+the stroke took on the device, beside how long it was asked to.
+
+--mark FILE creates FILE the moment the finger arrives where it is held
+(the end of a glide before its --hold, or a hold's press), so a capture's
+drive script waits for it rather than guessing a sleep:
+
+    $BB_TOUCH glide 162 1796 918 1796 --hold 3000 --mark "$SP/held" &
+    while [ ! -e "$SP/held" ]; do sleep 0.05; done
+
+and the shot is taken while the finger is still down.
 """
+import math
 import os
 import re
 import shutil
@@ -125,6 +143,27 @@ def screen(a):
     return w, h, int(rot)
 
 
+def move_cost(a, dev):
+    """Milliseconds one move costs on the device beyond its own sleep: a
+    sleep and three sendevent processes, timed over twenty that change
+    nothing (slot 0, which the gesture selects first anyway). 0 when the
+    device does not say, which leaves the samples as the hand made them."""
+    slot = f"sendevent {dev} {EV_ABS} {ABS_MT_SLOT} 0"
+    out = shell(a, "echo BBCAL $(date +%s%N);" + ";".join([f"sleep 0;{slot};{slot};{slot}"] * 20)
+                + ";echo BBCAL $(date +%s%N)")
+    ts = re.findall(r"BBCAL (\d{12,})", out)
+    if len(ts) != 2:
+        return 0.0
+    return max(0.0, (int(ts[1]) - int(ts[0])) / 1e6 / 20)
+
+
+def spacing(cost):
+    """(every Nth sample, the sleep before each move in seconds) so a move
+    every N*DT ms keeps the hand's pace on a device where one costs `cost`."""
+    n = max(1, math.ceil((cost + 1) / hand.DT)) if cost else 1
+    return n, round(max(0.0, n * hand.DT - cost) / 1000, 4) if cost else hand.DT / 1000
+
+
 def to_panel(x, y, w, h, rot, xmax, ymax):
     """A screen pixel to the panel's own frame and range. The panel is the
     portrait screen; a rotated screen has its x along the panel's y."""
@@ -151,6 +190,17 @@ def main(argv):
     # --ms is the hand's for a glide (the time each leg takes) and hold's
     # for a hold (how long the finger stays down).
     opts = {"pre": 0, "hold": 0, "ms": int(hopts.pop("ms", 0) or 0)}
+    mark = ""
+    if "--mark" in args:
+        i = args.index("--mark")
+        if i + 1 >= len(args):
+            die("--mark takes a file, made when the finger arrives where it is held")
+        mark = args[i + 1]
+        del args[i:i + 2]
+        try:
+            os.unlink(mark)
+        except OSError:
+            pass
     for k in list(opts):
         flag = f"--{k}"
         if flag in args:
@@ -186,28 +236,60 @@ def main(argv):
               ev(EV_ABS, ABS_MT_TOOL_TYPE, 0), ev(EV_ABS, ABS_MT_TOUCH_MAJOR, 20),
               ev(EV_ABS, ABS_MT_PRESSURE, 200), ev(EV_ABS, ABS_MT_POSITION_X, px),
               ev(EV_ABS, ABS_MT_POSITION_Y, py), ev(EV_SYN, 0, 0)]
-    moved = 0
+    moved, every, cost = 0, 1, 0.0
+    # Where the finger arrives to be held, told by the device as it happens:
+    # for --mark, and for the stroke's real length beside its asked one.
+    held = 'echo BBHELD $(date +%s%N)'
     if verb == "hold":
-        lines.append(f"sleep {opts['ms'] / 1000}")
+        lines += [held, f"sleep {opts['ms'] / 1000}"]
     if verb == "glide":
         if opts["pre"]:
             lines.append(f"sleep {opts['pre'] / 1000}")
-        # The hand's samples, DT ms apart, as the finger's positions.
-        for _, x, y in stroke["samples"][1:]:
+        cost = move_cost(a, dev)
+        every, nap = spacing(cost)
+        moves = stroke["samples"][1:]
+        moves = moves[every - 1::every] + ([moves[-1]] if (len(moves) % every) else [])
+        lines.append('echo BBGO $(date +%s%N)')
+        # The hand's samples as the finger's positions, every one of them
+        # where the device keeps up, else every Nth at N times the spacing.
+        for _, x, y in moves:
             mx, my = to_panel(x, y, w, h, rot, xmax, ymax)
-            lines += [f"sleep {hand.DT / 1000}", ev(EV_ABS, ABS_MT_POSITION_X, mx),
+            lines += [f"sleep {nap}", ev(EV_ABS, ABS_MT_POSITION_X, mx),
                       ev(EV_ABS, ABS_MT_POSITION_Y, my), ev(EV_SYN, 0, 0)]
             moved += 1
+        lines.append(held)
         if opts["hold"]:
             lines.append(f"sleep {opts['hold'] / 1000}")
     lines += [ev(EV_ABS, ABS_MT_PRESSURE, 0), ev(EV_ABS, ABS_MT_TRACKING_ID, -1), ev(EV_SYN, 0, 0)]
-    r = subprocess.run([a, "shell", ";".join(lines)], capture_output=True, text=True, timeout=120, check=False)
-    if r.returncode:
-        die(f"sendevent on {dev} failed: {(r.stderr or r.stdout).strip()[-200:]}")
-    took = opts["ms"] if verb == "hold" else opts["pre"] + opts["hold"] + moved * hand.DT
+    stamps = {}
+    with subprocess.Popen([a, "shell", ";".join(lines)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          text=True) as p:
+        for line in p.stdout:
+            m = re.match(r"BB(GO|HELD) (\d+)", line.strip())
+            if not m:
+                continue
+            stamps[m.group(1)] = int(m.group(2))
+            if m.group(1) == "HELD" and mark:
+                with open(mark, "w") as f:
+                    f.write(f"{time.time()}\n")
+        err = p.stderr.read()
+        rc = p.wait(timeout=120)
+    if rc:
+        die(f"sendevent on {dev} failed: {err.strip()[-200:]}")
+    if mark and not os.path.exists(mark):
+        # A device that said nothing still had the finger held by now.
+        open(mark, "w").close()
+    took = opts["ms"] if verb == "hold" else opts["pre"] + opts["hold"] + moved * every * hand.DT
+    real = ""
+    if "GO" in stamps and "HELD" in stamps:
+        ms = (stamps["HELD"] - stamps["GO"]) // 1_000_000
+        asked = moved * every * hand.DT
+        real = f"; the stroke took {ms} ms on the device, asked {asked}" + (
+            f" (a move every {every * hand.DT} ms, since one costs this device {cost:.0f} ms)"
+            if every > 1 else "")
     where = " ".join(f"{x},{y}" for x, y in pts)
     print(f"{verb} {where}: {len(lines)} events on {dev}, about {took} ms" + (f" (rotation {rot})" if rot else "")
-          + (f"; {hand.summary(stroke)}" if stroke else ""))
+          + (f"; {hand.summary(stroke)}" if stroke else "") + real)
     return 0
 
 

@@ -168,7 +168,9 @@ exit 0
     writeFileSync(`${A}/log`, '');
     const r = spawnSync('python3', [`${REPO}/scripts/lib/touch.py`, ...a],
                         { encoding: 'utf8', env: { ...env, BB_CAPTURE_ADB: `${A}/adb` } });
-    return { r, sent: readFileSync(`${A}/log`, 'utf8').trim().split(';') };
+    // The gesture is the last shell it is handed; a glide's first is the
+    // measure of what one move costs (B502), which this adb cannot time.
+    return { r, sent: readFileSync(`${A}/log`, 'utf8').trim().split('\n').at(-1).split(';') };
   };
   writeFileSync(`${A}/rotation.txt`, '  SurfaceOrientation: 0\n');
   const tap = touch('tap', '540', '1200');

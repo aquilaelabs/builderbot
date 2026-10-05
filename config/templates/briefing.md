@@ -177,8 +177,11 @@ Two ways to look, and which one is the question you are asking:
   a modal still arriving or a list still loading is not what you read;
   `--now` takes the one shot at once, and `--drive FILE.sh` works the
   surface first (`$ADB shell input ...`, `$BB_TOUCH tap|hold|glide` for a
-  touch whose timing matters, or `xdotool` with DISPLAY set).
-  Read the file with your image reader. Reach for it when the question is
+  touch whose timing matters, or `xdotool` with DISPLAY set). A shot with
+  the finger still down is a touch run in the background with `--hold MS
+  --mark FILE` and the script waiting for FILE (`while [ ! -e FILE ]; do
+  sleep 0.05; done`), never a guessed sleep: the touch takes a second or
+  more to start. Read the file with your image reader. Reach for it when the question is
   what a screen looks like.
 - `bb capture reel` is change over time: the frames of a recording that changed,
   each stamped with its time, tiled into `dist/reel/NAME/sheet.png`, with
@@ -333,10 +336,12 @@ UI isn't responding" dialog instead of its own app (30 Sep).
 `bb emu stop` when you are done with it, before you hand back: the
 emulator lives in this session's view, so another session of yours cannot
 reach it or start its own until you stop it or this session ends.
-`bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS]`
+`bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS] [--mark FILE]`
 is a touch with its timing kept, in screen pixels: adb's own input verbs
 cost about 300 ms a call, which cannot time a glide across letters or tell
-a long-press from a slide. A glide moves like a hand unless `--hand ruler`
+a long-press from a slide. A glide's `--ms` is each leg's, so five points
+at `--ms 300` is a 1.2 s stroke, and the line it prints says how long the
+stroke took on the device. A glide moves like a hand unless `--hand ruler`
 says otherwise, the same as on a phone (the method is under A real phone,
 below). Two things an emulator does to a keyboard under
 test: its AVD reports a hardware keyboard, so an IME shows only after

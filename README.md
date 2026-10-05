@@ -189,10 +189,12 @@ bb git policy      what a session may push here (its own branches, main) from
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
-bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS]
+bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS] [--mark FILE]
                    a timed touch on the running emulator, in screen pixels;
                    a glide moves like a hand (steady, normal, shaky, or
-                   ruler for the straight even stroke), repeatable by seed
+                   ruler for the straight even stroke), repeatable by seed,
+                   at the pace asked whatever a move costs the device;
+                   --mark FILE is made when the finger arrives to be held
 bb gpu             this node's NVIDIA card: how much of its memory is free, who is
                    computing on it, and whether this session may
 bb gpu run [--mem MB] -- CMD

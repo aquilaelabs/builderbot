@@ -21,6 +21,7 @@ named:
   --overshoot PX  how far past a point the finger goes before it comes back
   --dwell MS      how long it lingers on each point
   --ms MS         instead of --speed: each leg between two points takes this
+                  (five points are four legs: --ms 300 is a 1.2 s stroke)
   --seed N        the same seed makes the same path again; one is drawn and
                   printed when none is given, so any run can be repeated
 
@@ -129,7 +130,7 @@ def path(points, hand=DEFAULT, seed=None, ms=None, **dials):
                              "or a faster hand (--speed, or --ms per leg)")
     samples[-1] = (t, pts[-1][0], pts[-1][1])
     samples = [(int(s[0]), int(round(s[1])), int(round(s[2]))) for s in samples]
-    return {"samples": samples, "seed": int(seed), "hand": hand, "dials": d, "took_ms": t,
+    return {"samples": samples, "seed": int(seed), "hand": hand, "dials": d, "took_ms": t, "ms": ms,
             "points": len(pts)}
 
 
@@ -146,8 +147,12 @@ def _within(k, v):
 
 def summary(r):
     """One line saying what was sent."""
+    # --ms is each leg's, which a session read as the whole stroke's (report
+    # 59: five points at --ms 1200 took 4.8 s), so the line says so.
+    legs = (f" ({r['points'] - 1} legs of {r['ms']:.0f} ms each, --ms being a leg's)"
+            if r.get("ms") and r["points"] > 2 else "")
     return (f"{r['points']} points as a {r['hand']} hand, seed {r['seed']}: "
-            f"{len(r['samples'])} samples over {r['took_ms'] / 1000:.2f} s")
+            f"{len(r['samples'])} samples over {r['took_ms'] / 1000:.2f} s{legs}")
 
 
 FLAGS = ("hand", "seed", "ms", "curve", "speed", "shake", "overshoot", "dwell")
