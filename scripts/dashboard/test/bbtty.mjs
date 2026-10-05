@@ -183,13 +183,17 @@ ok(launcher().includes(tokWritten),
   const dead = 'bbs_' + Buffer.from('alpha|1000000000|u_0badf00d|deadbeef')
     .toString('base64url').replace(/=+$/, '');
   const ask = (env) => execFileSync('bash', ['-c',
-    'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
+    'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_project()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
     'sh', BBBIN],
     { encoding: 'utf8', env: { ...process.env, HOME: join(DIR, 'home'), BB_PROJECT: 'alpha', ...env } }).trim();
   ok(ask({ BB_TOKEN: dead }) === tokWritten,
      'bb reaches for that file the moment the token it started with has expired');
   ok(ask({ BB_TOKEN: tokWritten }) === tokWritten,
      '...and leaves a live one alone');
+  // B497: `bb -p NAME` repoints BB_PROJECT at the project being read; the
+  // kept copy is still found by the project the token was minted for.
+  ok(ask({ BB_TOKEN: dead, BB_PROJECT: 'beta' }) === tokWritten,
+     '...and finds it under bb -p too, by the project the token names, not the one being read');
   // ...and `bb token keep` is how a token gets INTO that file for a session
   // nobody is typing in. A session that is talking slides its own forward on
   // every answer it gets; one idle past twelve hours has nothing to slide it,
@@ -208,7 +212,7 @@ ok(launcher().includes(tokWritten),
      && (statSync(landed).mode & 0o077) === 0,
      `bb token keep stores a token where that account's sessions read it, 0600 (${fresh.slice(0, 12)}…)`);
   ok(execFileSync('bash', ['-c',
-       'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
+       'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_project()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
        'sh', BBBIN],
        { encoding: 'utf8', env: { ...process.env, HOME: keepHome, BB_PROJECT: 'alpha',
                                   BB_TOKEN: dead } }).trim() === fresh,
