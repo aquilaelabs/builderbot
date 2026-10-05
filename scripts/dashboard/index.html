@@ -3556,7 +3556,7 @@ body.booting .pane>.loading{margin:auto}
 </head>
 <body data-view="dash" class="booting">
 <div id="toast" role="status" aria-live="polite"></div>
-<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="mTitle">
+<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
   <div class="box">
     <h3 id="mTitle">New custom command</h3>
     <div class="field">
@@ -3959,7 +3959,7 @@ body.booting .pane>.loading{margin:auto}
          code that owns it. One per notebook is also simply right, two of them
          in a split being two different projects. -->
     <div class="modal nbsheet" hidden role="dialog" aria-modal="true"
-         aria-labeledby="sheetTitle">
+         aria-labelledby="sheetTitle">
       <div class="box sheet">
         <h3 id="sheetTitle"></h3>
         <div class="sheetslot" id="sheetSlot"></div>
@@ -3983,7 +3983,7 @@ body.booting .pane>.loading{margin:auto}
      to be a modal, which on a desktop meant reading a list, a plan, a log and
      a memory editor through a 760px slot. -->
 <div id="devEnvModal" class="modal" hidden role="dialog" aria-modal="true"
-     aria-labeledby="devEnvTitle">
+     aria-labelledby="devEnvTitle">
   <div class="box wide">
     <h3 id="devEnvTitle">Dev instance env</h3>
     <div class="field">
@@ -3998,7 +3998,7 @@ body.booting .pane>.loading{margin:auto}
   </div>
 </div>
 <div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true"
-     aria-labeledby="aboutTitle">
+     aria-labelledby="aboutTitle">
   <div class="box wide prose">
     <h3 id="aboutTitle">About</h3>
     <div class="field about">
@@ -4034,7 +4034,7 @@ body.booting .pane>.loading{margin:auto}
      repository that already has a token: offering to set one on a local repo
      would be offering a credential to something with nothing to authenticate
      against. -->
-<div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="rnTitle">
+<div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rnTitle">
   <div class="box">
     <h3 id="rnTitle">Project settings</h3>
     <!-- In sections, each titled and each hiding itself when none of its
@@ -4054,14 +4054,14 @@ body.booting .pane>.loading{margin:auto}
          several open notebooks tell apart without reading each label. -->
     <div class="field" id="rnColorField">
       <label id="rnColorLabel">Color<span class="help" data-tip="worn by this project's notebook tab and its row; none is the default" tabindex="0">?</span></label>
-      <div class="pcpick" id="rnColor" role="radiogroup" aria-labeledby="rnColorLabel"></div>
+      <div class="pcpick" id="rnColor" role="radiogroup" aria-labelledby="rnColorLabel"></div>
     </div>
     <!-- Who the project belongs to and who joins it (membership.py): the
          owner and Invite only are staged until Save; Invite and Withdraw are
          actions and act on the press. -->
     <div class="field" id="rnPeopleField" hidden>
       <label id="rnPeopleLabel">People<span class="help" data-tip="its owner, who is on it, and who is invited; an invite-only project's people are its owner's to change" tabindex="0">?</span></label>
-      <div id="rnPeople" role="group" aria-labeledby="rnPeopleLabel"></div>
+      <div id="rnPeople" role="group" aria-labelledby="rnPeopleLabel"></div>
     </div>
     </section>
     <section class="rngroup">
@@ -4090,7 +4090,7 @@ body.booting .pane>.loading{margin:auto}
          migration. -->
     <div class="field" id="rnAuthField" hidden>
       <label id="rnAuthLabel">Authentication</label>
-      <div class="pseg" role="group" aria-labeledby="rnAuthLabel">
+      <div class="pseg" role="group" aria-labelledby="rnAuthLabel">
         <button id="rnAuthNone" type="button">Disabled</button>
         <button id="rnAuthKey" type="button">Deploy key</button>
         <button id="rnAuthToken" type="button">Access token</button>
@@ -4119,7 +4119,7 @@ body.booting .pane>.loading{margin:auto}
       <select id="rnNode"></select>
       <div class="hint" id="rnNodeHint">Builds, tests, CI, containers and the emulator run here.</div>
       <label id="rnNodesLabel" hidden>Also works on</label>
-      <div class="lbox" id="rnNodesMore" role="group" aria-labeledby="rnNodesLabel" hidden></div>
+      <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
       <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them.</div>
       <!-- What the project may use there (R102): the card, and where its
            tests run when it has a dev instance. -->
@@ -4152,7 +4152,7 @@ body.booting .pane>.loading{margin:auto}
          name, never a session's. -->
     <div class="field" id="rnReadsField" hidden>
       <label id="rnReadsLabel">Reads<span class="help" data-tip="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
-      <div class="lbox" id="rnReads" role="group" aria-labeledby="rnReadsLabel"></div>
+      <div class="lbox" id="rnReads" role="group" aria-labelledby="rnReadsLabel"></div>
       <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
     </div>
     <!-- The places on its node a session here is shown (prefs.sees). A
@@ -4193,7 +4193,7 @@ body.booting .pane>.loading{margin:auto}
          is sent when Save is pressed. Download backup is an action. -->
     <div class="field" id="rnSignField" hidden>
       <label id="rnSignLabel">Keys<span class="help" data-tip="kept by the controller and used by bb sign on the project's node; a session never receives the key or its password" tabindex="0">?</span></label>
-      <div id="rnSignRows" role="group" aria-labeledby="rnSignLabel"></div>
+      <div id="rnSignRows" role="group" aria-labelledby="rnSignLabel"></div>
       <div class="hint" id="rnSignHint"></div>
     </div>
     </section>
@@ -4207,7 +4207,7 @@ body.booting .pane>.loading{margin:auto}
          what a change asked for does while a test run is going. -->
     <div class="field" id="rnGateField">
       <label id="rnGateLabel">While a test runs</label>
-      <div class="prefrow" role="group" aria-labeledby="rnGateLabel">
+      <div class="prefrow" role="group" aria-labelledby="rnGateLabel">
         <label class="pick wide">A change asked for <select id="rnTestChange"
           aria-label="what a change asked for during a test run does">
           <option value="wait">waits: the ask in hand is finished and tested first</option>
@@ -4215,7 +4215,7 @@ body.booting .pane>.loading{margin:auto}
         </select></label>
       </div>
       <label id="rnGateMayLabel">Permissions</label>
-      <div class="prefrow" role="group" aria-labeledby="rnGateMayLabel">
+      <div class="prefrow" role="group" aria-labelledby="rnGateMayLabel">
         <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="rnGateBugs"
@@ -4276,7 +4276,7 @@ body.booting .pane>.loading{margin:auto}
     <div class="field" id="rnMineField">
       <label id="rnMineLabel">Your sessions and commits<span class="help" data-tip="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
       <div class="hint">Yours alone; everything above is the project's.</div>
-      <div class="prefrow" role="group" aria-labeledby="rnMineLabel">
+      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Model <select id="rnModel"
           aria-label="model your sessions here start on"></select></label>
         <label class="pick">Effort <select id="rnEffort"
@@ -4295,7 +4295,7 @@ body.booting .pane>.loading{margin:auto}
         </select></label>
       </div>
       <div class="hint" id="rnPrefHint"></div>
-      <div class="prefrow" role="group" aria-labeledby="rnMineLabel">
+      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Commit name <input id="rnGitName" type="text"
           autocomplete="off" spellcheck="false" maxlength="120"
           aria-label="name your commits here carry"></label>
@@ -4355,7 +4355,7 @@ body.booting .pane>.loading{margin:auto}
      compose file and an environment, and that is what this asks for. Labels
      are not a fourth box: in compose they live in the YAML, and a separate
      field for them would be inventing a concept the format does not have. -->
-<div id="cmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="cTitle">
+<div id="cmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cTitle">
   <div class="box wide">
     <h3 id="cTitle">New container</h3>
     <div class="field">
@@ -4378,7 +4378,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
     <div class="field">
       <label id="cSegLabel">Definition</label>
-      <div class="pseg" role="group" aria-labeledby="cSegLabel">
+      <div class="pseg" role="group" aria-labelledby="cSegLabel">
         <button id="cTabForm" class="on" type="button">From an image</button>
         <button id="cTabYml" type="button">Compose</button>
         <button id="cTabEnv" type="button">Environment</button>
@@ -4427,7 +4427,7 @@ body.booting .pane>.loading{margin:auto}
   </div>
 </div>
 
-<div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="dnTitle">
+<div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dnTitle">
   <div class="box wide">
     <h3 id="dnTitle">Send to Docker manager</h3>
     <div class="field">
@@ -4478,7 +4478,7 @@ body.booting .pane>.loading{margin:auto}
      project: every held change with a checkbox, a master checkbox, and the
      two verbs at the foot. Approve replays the ticked ones in the order they
      were made; Deny drops them and whatever rode behind them. -->
-<div id="pendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="pendTitle">
+<div id="pendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pendTitle">
   <div class="box wide">
     <h3 id="pendTitle">Waiting for your approval</h3>
     <!-- Each line in a .field, which is where the band inset lives. At box
@@ -4498,7 +4498,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
   </div>
 </div>
-<div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="tTitle">
+<div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="tTitle">
   <div class="box">
     <h3 id="tTitle">Deleted projects</h3>
     <!-- In a .field like every other line in every other modal here: that is
@@ -4520,7 +4520,7 @@ body.booting .pane>.loading{margin:auto}
      then the commands that came back. The token is the answer to the form
      and is shown once, so it belongs where the question was asked rather
      than appended to the page behind it. -->
-<div id="ndmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="ndTitle">
+<div id="ndmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="ndTitle">
   <div class="box wide">
     <h3 id="ndTitle">Enroll a node</h3>
     <div id="ndBody"></div>
@@ -4534,13 +4534,13 @@ body.booting .pane>.loading{margin:auto}
 <!-- One container's log, read on demand: the thing a person opens a docker
      list to do (R68 step 2). A dialog because it is a detour you read and
      dismiss, and because a tail belongs nowhere near a row that repaints. -->
-<div id="dlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="dlTitle">
+<div id="dlmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dlTitle">
   <div class="box wide">
     <h3 id="dlTitle">Log</h3>
     <div id="dlBody"></div>
   </div>
 </div>
-<div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="setdbgTitle">
+<div id="setdbgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="setdbgTitle">
   <div class="box">
     <h3 id="setdbgTitle">Debug settings</h3>
     <div id="setdbgBody"></div>
@@ -4551,7 +4551,7 @@ body.booting .pane>.loading{margin:auto}
      diagnostics with the project and the build attached. -->
 <!-- Lending your phone to a project, from its row's Phone button (R120):
      how long, and Lend. Only the phone's owner is offered it. -->
-<div id="phoneLendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="phoneLendTitle">
+<div id="phoneLendModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="phoneLendTitle">
   <div class="box">
     <h3 id="phoneLendTitle">Lend your phone</h3>
     <div class="field"><div class="hint" id="phoneLendHint"></div></div>
@@ -4567,7 +4567,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
   </div>
 </div>
-<div id="reportModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="reportTitle">
+<div id="reportModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="reportTitle">
   <div class="box">
     <h3 id="reportTitle">Report a bug</h3>
     <div class="field">
@@ -4600,7 +4600,7 @@ body.booting .pane>.loading{margin:auto}
 <!-- A new project's first Claude session: its brief, editable, and the
      model and effort that session starts on, since nothing has started yet.
      Its declarations are page-claude.js. -->
-<div id="briefModal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="briefTitle">
+<div id="briefModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="briefTitle">
   <div class="box">
     <h3 id="briefTitle">First session</h3>
     <div class="field">
@@ -4610,7 +4610,7 @@ body.booting .pane>.loading{margin:auto}
     </div>
     <div class="field">
       <label id="briefMineLabel">Yours on this project</label>
-      <div class="prefrow" role="group" aria-labeledby="briefMineLabel">
+      <div class="prefrow" role="group" aria-labelledby="briefMineLabel">
         <label class="pick">Model <select id="briefModel"
           aria-label="model your sessions here start on"></select></label>
         <label class="pick">Effort <select id="briefEffort"
@@ -4625,12 +4625,12 @@ body.booting .pane>.loading{margin:auto}
     </div>
   </div>
 </div>
-<div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labeledby="pTitle">
+<div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
     <div class="field" id="pSrcField">
       <label id="pSrcLabel">Source</label>
-      <div class="pseg" role="group" aria-labeledby="pSrcLabel">
+      <div class="pseg" role="group" aria-labelledby="pSrcLabel">
         <button id="pLocal" class="on" type="button">New local repo</button>
         <button id="pClone" type="button">Clone a repository</button>
       </div>
@@ -4671,7 +4671,7 @@ body.booting .pane>.loading{margin:auto}
          the settings dialog changes it afterwards. -->
     <div class="field" id="pGateField" hidden>
       <label id="pGateLabel">Claude may</label>
-      <div class="prefrow" role="group" aria-labeledby="pGateLabel">
+      <div class="prefrow" role="group" aria-labelledby="pGateLabel">
         <label class="pick">Add to roadmap <select id="pGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="pGateBugs"
@@ -4765,7 +4765,7 @@ body.booting .pane>.loading{margin:auto}
          settings dialog switches between. -->
     <div class="field" id="pLinkAuthField" hidden>
       <label id="pLinkAuthLabel">Authentication</label>
-      <div class="pseg" role="group" aria-labeledby="pLinkAuthLabel">
+      <div class="pseg" role="group" aria-labelledby="pLinkAuthLabel">
         <button id="pLinkKey" type="button" class="on">Deploy key</button>
         <button id="pLinkToken" type="button">Access token</button>
       </div>
