@@ -278,6 +278,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The bell's Approve button reads clearly: its text was the accent color on the amber fill, nearly invisible in every theme (d493aa9)
 - The app's Install it offers a signed build when there is one, so updating over the installed app works instead of being refused by Android (63a1d39)
 - Signing a build with no key named uses the project's only key when it has no key called default, and an ambiguous choice is refused before the owner is asked, rather than failing after they approved (a096086)
+- Update agent works on a node that is always busy: the node takes no new work while its update waits, takes the update once its running jobs finish, and the row says how many it waits for (B516) (78923e3)
 
 ### Security
 

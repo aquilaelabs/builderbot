@@ -84,9 +84,9 @@ def node_list(all=False):
     # followed the press: pressing() grays it for the round trip, and then
     # the render put a fresh, enabled one in its place. Update agent did
     # exactly that, which is what the operator kept seeing.
-    for j in _rows("SELECT id, node, type, spec FROM jobs WHERE "
+    for j in _rows("SELECT id, node, type, spec, state FROM jobs WHERE "
                    "state IN ('queued', 'assigned', 'running')"):
-        entry = {"id": j["id"], "type": j["type"]}
+        entry = {"id": j["id"], "type": j["type"], "state": j["state"]}
         inflight.setdefault(j["node"], []).append(entry)
         if j["type"] != "system":
             continue
@@ -2922,6 +2922,21 @@ def job_next(node_id, wait, runner="node", alive=None):
                 # (see _light). Everything else waits for the slot as before.
                 free = job_running(node_id) < n["concurrency"]
                 lane = not free and _light_running(node_id) < LIGHT_SLOTS
+                # An agent update waits for the node to go quiet (B516): the
+                # agent refuses it while another job runs, and a node always
+                # doing something (a session building and testing all day)
+                # refused every press. So while one is queued the node is
+                # handed nothing new, and it is handed the update once what
+                # was running has finished; a node not quiet within
+                # UPDATE_QUIET_S fails it, saying so, and works again.
+                upd = _update_gate(node_id) if runner == "node" else None
+                if upd is not None:
+                    free = lane = False
+                    if upd:
+                        _exec("UPDATE jobs SET state = 'assigned', node = ?, started = ? WHERE id = ?",
+                              (node_id, int(time.time()), upd["id"]))
+                        _jstate_bump()
+                        return upd | {"state": "assigned", "node": node_id}
                 for j in (_rows("SELECT * FROM jobs WHERE state = 'queued' AND "
                                 "(node = ? OR node = '') ORDER BY queued, id",
                                 (node_id,)) if (free or lane) else ()):
@@ -2974,6 +2989,34 @@ def job_next(node_id, wait, runner="node", alive=None):
             if left <= 0:
                 return None
             _wake.wait(min(left, 5))
+
+
+UPDATE_QUIET_S = 600
+
+
+def _update_gate(node_id):
+    """None when no agent update is queued for this node; else the update
+    job to hand over now (the node is quiet), or {} while it waits for the
+    node's running jobs to finish. One that has waited UPDATE_QUIET_S is
+    failed with what kept the node busy, and the node works on."""
+    rows = _rows("SELECT * FROM jobs WHERE state = 'queued' AND type = 'self-update' AND node = ? "
+                 "ORDER BY queued, id LIMIT 1", (node_id,))
+    if not rows:
+        return None
+    j = _job_out(rows[0])
+    busy = _rows("SELECT type, COUNT(*) AS n FROM jobs WHERE node = ? AND state IN ('assigned', 'running') "
+                 "GROUP BY type", (node_id,))
+    if not busy:
+        return j
+    if time.time() - int(j.get("queued") or 0) > UPDATE_QUIET_S:
+        what = ", ".join(f"{b['n']} {b['type']}" for b in busy)
+        _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error = ? WHERE id = ?",
+              (int(time.time()), f"the node never went quiet for the update in {UPDATE_QUIET_S // 60} "
+                                 f"minutes: still running {what}; press Update agent again when they finish",
+               j["id"]))
+        _jstate_bump()
+        return None
+    return {}
 
 
 def _job_out(j):

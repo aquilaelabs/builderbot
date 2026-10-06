@@ -1080,6 +1080,11 @@ function renderNodesInto(i){
     // is being waited for, rather than offering the same press again.
     const updating = stale && (inflight("self-update")
       || Date.now() - (nodesUpdating[n.id] || 0) < 180000);
+    // ...and while it is queued the controller hands the node nothing new
+    // until what runs there has finished (B516), so the line says what it
+    // is waiting for rather than "Updating" for minutes.
+    const held = (n.jobs || []).some(j => j.type === "self-update" && j.state === "queued")
+      ? (n.jobs || []).filter(j => j.type !== "self-update" && j.state !== "queued").length : 0;
     const agentLine = n.kind === "agent" && n.agent?.version
       ? `agent ${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}${
           stale ? ` <span class="pill warn ndstale" title="this controller ships agent ${
@@ -1091,7 +1096,9 @@ function renderNodesInto(i){
         <div class="actbar ndagent">
           <span class="lead dim${updating ? " note"
                               : stale ? (windowGap(n) ? " bad" : " warn") : ""}">${
-            updating ? `Updating to agent ${esc(nodesAgent?.version || "")}. This row refreshes when the node reports back.`
+            updating ? (held ? `Update to agent ${esc(nodesAgent?.version || "")} waits for ${held} running job${
+                held === 1 ? "" : "s"} to finish; the node takes no new work until then (10 minutes at most).`
+              : `Updating to agent ${esc(nodesAgent?.version || "")}. This row refreshes when the node reports back.`)
             : stale ? `${windowGap(n) ? "out of window" : "behind"}: ${esc(staleWhy(n))}`
             : `Test checks that this node answers.`}</span>
           ${stale ? `<button type="button" data-nd="update-agent" ${updating ? "disabled" : ""}

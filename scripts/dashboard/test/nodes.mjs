@@ -1655,6 +1655,23 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     ROW, { timeout: 10000 });
   ok(await page.$eval(`${ROW} [data-nd="update-agent"]`, b => b.disabled),
      '...and stays grayed while the update is queued, not only for the round trip');
+  // With a job still running there the update waits for it (B516): the node
+  // takes no new work meanwhile, and the line says so rather than "Updating"
+  // for minutes. The listing is answered with one running job added, since a
+  // node behind takes nothing but its update and so cannot be made busy here.
+  const busyList = async route => {
+    const r = await route.fetch(); const j = await r.json();
+    for (const n of j.nodes || []) if (n.id === minted.id)
+      n.jobs = [...(n.jobs || []), { id: 'j_busy', type: 'exec', state: 'running' }];
+    await route.fulfill({ response: r, json: j });
+  };
+  await page.route('**/api/v1/nodes', busyList);
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => /waits for 1 running job to finish/.test(
+    document.querySelector(sel + ' .ndagent .lead')?.textContent || ''), ROW, { timeout: 10000 })
+    .then(() => ok(true, '...and while a job still runs there, the row says the update waits for it'),
+          () => ok(false, '...and while a job still runs there, the row says the update waits for it'));
+  await page.unroute('**/api/v1/nodes', busyList);
   if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
   // ---- an agent from ANOTHER window stops work, and says which projects ----
   // Inside a window being behind is routine; across one nothing sent is

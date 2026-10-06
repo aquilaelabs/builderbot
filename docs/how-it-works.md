@@ -1249,8 +1249,12 @@ enrolled node needs nothing renewed.
 available* when the node's agent is not the file this controller ships, and
 **Update agent** hands it over as a job: the agent checks the download
 against the digest, swaps itself in place and re-execs, so nothing on the
-node restarts and no running job is interrupted (it waits for its own to
-finish). Re-running `provision-linux.sh` on an enrolled node does the same thing
+node restarts and no running job is interrupted. The agent will not swap
+itself in under a running job, so while the update is queued the controller
+hands that node nothing new and hands it the update once what was running
+has finished, the row saying how many it waits for; a node that does not go
+quiet within ten minutes fails the update with what kept it busy, and works
+on. Re-running `provision-linux.sh` on an enrolled node does the same thing
 from the console, with the node's own token. Nothing updates an agent
 unasked.
 
