@@ -58,7 +58,8 @@ ok(await page.$eval('#pane0 .slot.on', el => el.dataset.mark === 'first'),
 ok(await page.$$eval('#pane0 .slot.on iframe', f => f.length === 1),
    '...and exactly one terminal is on screen');
 
-// The ceiling. A fourth terminal drops the one used longest ago.
+// No ceiling below the strip's own (the operator, 6 Oct): every terminal tab
+// on the strip stays attached, and Minimize is what detaches one.
 await show(ids[2]);
 const fourth = await page.evaluate(() => { newShell('gamma'); return null; });
 await page.waitForFunction(() => tabs.filter(t => t.kind === 'term').length >= 4,
@@ -66,9 +67,16 @@ await page.waitForFunction(() => tabs.filter(t => t.kind === 'term').length >= 4
 const id4 = await page.evaluate(() => tabs.filter(t => t.kind === 'term').at(-1).id);
 await show(id4);
 rows = await seen();
-ok(rows.length === 3, `a pane keeps three terminals, not every one ever opened (${rows.length})`);
-ok(!rows.some(r => r.key?.startsWith(ids[1] + '|')),
-   '...and the one dropped is the one used longest ago');
+const before = rows.length;
+ok([...ids, id4].every(id => rows.some(r => r.key?.startsWith(id + '|'))),
+   `a pane keeps every terminal on the strip attached, the fourth included (${rows.map(r => r.key).join(' ')})`);
+await page.evaluate(id => hideTab(id), id4);
+await page.waitForFunction(id => ![...document.querySelectorAll('#pane0 .stack > .slot')]
+  .some(c => c.dataset.key?.startsWith(id + '|')), id4, { timeout: 5000 }).catch(() => {});
+rows = await seen();
+ok(rows.length === before - 1 && !rows.some(r => r.key?.startsWith(id4 + '|')),
+   `...and Minimize detaches one: its frame goes with its tab (${rows.length})`);
+void fourth;
 
 // A document tab is not kept: it redraws from state instantly, and one #docN
 // per pane is what renders into it.
@@ -82,7 +90,8 @@ ok(await page.$$eval('#pane0 .stack > .doc', d => d.filter(x => x.id === 'doc0')
      && d.find(x => x.id === 'doc0').classList.contains('on')),
    `a document tab is one per pane, and keeps the id that renders into it (${
      await page.$$eval('#pane0 .stack > .doc', d => d.map(x => x.id + ':' + x.className).join(' '))})`);
-ok(await page.$$eval('#pane0 .stack > .slot', s => s.length === 3),
+const slotsBefore = rows.length;
+ok(await page.$$eval('#pane0 .stack > .slot', (s, n) => s.length === n, slotsBefore),
    `...and opening it did not disturb the terminals behind it (${
      await page.$$eval('#pane0 .stack > *', c => c.map(x => x.dataset.key).join(' '))})`);
 
@@ -217,27 +226,6 @@ ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
   await page.waitForFunction(id => tabOf(id).popped === false, id, { timeout: 6000 });
   ok(await page.evaluate(id => !!document.querySelector(`#pane0 .stack > [data-key^="${id}|"].on iframe`), id),
      'closing the popped window brings the tab back on its own');
-}
-
-// Claude's terminals are kept apart from the rest (6 Oct): three of any
-// other kind behind the one on screen, as before, and up to four Claude
-// ones beside them, so a few shells no longer evict a conversation and make
-// its tab reload from nothing.
-{
-  const kept = await page.evaluate(() => {
-    const st = document.createElement('div');
-    for (let i = 0; i < 12; i++){
-      const c = document.createElement('div');
-      c.className = 'slot'; c.dataset.seen = String(i);
-      if (i % 2) c.dataset.claude = '1';
-      c.dataset.n = String(i);
-      st.appendChild(c);
-    }
-    evictFrames(st);
-    return [...st.children].map(c => (c.dataset.claude ? 'c' : 's') + c.dataset.n);
-  });
-  ok(JSON.stringify(kept) === JSON.stringify(['c5', 's6', 'c7', 's8', 'c9', 's10', 'c11']),
-     `a pane keeps its four most recent Claude terminals and its three most recent others (${kept.join(' ')})`);
 }
 
 await done(browser);

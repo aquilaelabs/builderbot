@@ -50,7 +50,7 @@ const SURFACE = [
   'drawCard', 'drawPanes', 'drawProjects', 'drawRunner', 'drawSessions',
   'drawShellCard', 'drawTabs', 'drawTrash', 'drawUiMenu', 'dressFrame',
   'dropElsewhere', 'dropIndex', 'dropTab', 'edgeScroll', 'editCustom',
-  'endCardDrag', 'endDrag', 'endSession', 'evictFrames',
+  'endCardDrag', 'endDrag', 'endSession',
   'findingsRulesHtml', 'finishTabs', 'drawTabPick', 'tabPickShow', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'fillUnderSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab',
   'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',

@@ -222,7 +222,7 @@ function drawPanes(){
       // its own port and so counts as a cross-origin frame. Claude tabs are
       // left without it; they keep tmux's mouse mode, where a drag never
       // becomes a browser selection in the first place.
-      ? `<div class="slot"${isClaude(t) ? ` data-claude="1"` : ""}><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
+      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
@@ -240,7 +240,6 @@ function drawPanes(){
     // to a node nothing is looking at any more.
     wireConsole(el);
     el.querySelector("[data-reattach]")?.addEventListener("click", e => reattachTab(t.id, e));
-    evictFrames(st);
     // Shown again after being hidden: xterm sizes itself from a resize event,
     // and one that was laid out behind another frame may have missed one. One
     // marked stale slept through a disconnect instead, and needs the reload it
@@ -298,16 +297,13 @@ function nbReadOnly(root, project){
 
 // Back to its holder when no tab is showing it, so a stale copy is never left
 // inside a pane's stack for the next document to be drawn over.
-// How many terminals a pane keeps alive behind the one on screen. Each is a
-// full xterm and its own websocket, so this is a real ceiling on browser
-// memory: the same reasoning as MAX_TABS, one level down. Three covers the
-// switching anyone actually does; the fourth reloads, as all of them used to.
-const KEEP_FRAMES = 3;
-// ...and Claude's terminals are counted apart, up to this many more: a
-// conversation is what somebody comes back to, and one evicted by a few
-// shells cost a full reload (the terminal's page, its socket, the attach)
-// every time its tab was picked again (the operator, 6 Oct).
-const KEEP_CLAUDE_FRAMES = 4;
+// Every terminal tab on the strip stays attached, behind the one on screen,
+// for as long as it is on the strip; Minimize (into the Sessions menu) or
+// closing it is what detaches it, since a frame whose tab is gone is removed
+// at the top of drawPanes (the operator, 6 Oct). It used to keep the three
+// last seen, and picking a fourth reloaded it from nothing: its page, its
+// socket, its attach. The strip's own cap (MAX_TABS, twelve terminal tabs an
+// account) is the ceiling on browser memory now.
 let stackClock = 0;
 
 // A pane is a bar and a stack. The stack's children all sit on top of one
@@ -345,13 +341,6 @@ function showInStack(st, key, html){
 // costs nothing to rebuild. The visible one is counted rather than exempted:
 // when the pane is showing a document, all three terminals behind it are
 // hidden, and exempting "the visible slot" then kept one fewer than it says.
-function evictFrames(st){
-  const slots = [...st.children].filter(c => c.classList.contains("slot"))
-                                .sort((a, b) => b.dataset.seen - a.dataset.seen);
-  const claude = slots.filter(c => c.dataset.claude), rest = slots.filter(c => !c.dataset.claude);
-  [...claude.slice(KEEP_CLAUDE_FRAMES), ...rest.slice(KEEP_FRAMES)].forEach(c => c.remove());
-}
-
 function dropElsewhere(keep, key){
   for (let j = 0; j < 2; j++){
     if (j === keep) continue;
