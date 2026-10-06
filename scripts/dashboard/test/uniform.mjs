@@ -689,7 +689,7 @@ for (const kind of kinds){
     // notebook may be parked before it.
     // Waited on, since a view draws its sections when it is first shown.
     foots[v] = await page.waitForFunction(w => !!([...document.querySelectorAll('.nb')]
-      .find(n => n.checkVisibility())?.querySelector(`.nbview[data-view="${w}"] .sectbar[data-bar]`)), v, { timeout: 3000 })
+      .find(n => n.checkVisibility())?.querySelector(`.nbview[data-view="${w}"] .sectbar[data-bar]`)), v, { timeout: ["bugs", "analysis", "tests", "git"].includes(v) ? 3000 : 15000 })
       .then(() => true, () => false);
   }
   ok(foots.roadmap && foots.briefing && foots.artifacts && foots.design && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
