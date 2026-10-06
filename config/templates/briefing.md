@@ -339,16 +339,24 @@ The emulator, the system images, the GPU and adb are this machine's:
 which write into dist/. The virtual phone is this project's alone: what one
 project installs or signs into on its emulator, no other project's session
 ever boots, and a project's first `bb emu start` makes its phone, which
-takes a minute or two once. It is not started for you and runs one at a time.
-Start it with `bb emu start`, never with the emulator binary: it picks the
-GPU this node has (hardware where the card has a display, software
-otherwise), waits for the boot to finish before it returns, keeps the log
-where `bb emu log` reads it, and refuses a second one. A session that
+takes a minute or two once. It is not started for you, and a session runs
+one. Start it with `bb emu start`, never with the emulator binary: it picks
+the GPU this node has (hardware where the card has a display, software
+otherwise, and software when the card is short of memory), waits for the
+boot to finish before it returns, keeps the log where `bb emu log` reads it,
+and refuses a second one. Other projects' emulators may be running on the
+same node, so `bb emu start` first checks that the node has room for one
+more (its memory, and that its processors are not saturated); without room
+it waits up to five minutes and then refuses with the numbers, which is the
+node being full, not a fault: try again later rather than starting the
+binary yourself. A session that
 started the binary by hand slept five seconds and met a cold boot's "System
 UI isn't responding" dialog instead of its own app (30 Sep).
-`bb emu stop` when you are done with it, before you hand back: the
-emulator lives in this session's view, so another session of yours cannot
-reach it or start its own until you stop it or this session ends.
+`bb emu stop` when you are done with it, before you hand back: a running
+emulator holds memory and processors other projects' sessions may be
+waiting for, and it lives in this session's view, so another session of
+this project cannot reach it or start its own until you stop it or this
+session ends.
 `bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS] [--mark FILE]`
 is a touch with its timing kept, in screen pixels: adb's own input verbs
 cost about 300 ms a call, which cannot time a glide across letters or tell
