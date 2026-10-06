@@ -306,6 +306,20 @@ ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0]
   ok(!JSON.parse(plan().out).some(x => x[2] === `/tmp/claude-${uid}`),
      '...and a link in its place is not followed: nothing is bound, and /tmp stays as it was');
   rmSync(scratch, { force: true });
+  // Claude Code's register of running sessions is named by pid, and every
+  // view is a pid namespace of its own, so every session was pid 9 and an
+  // account's sessions on one node shared ~/.claude/sessions/9.json (B522).
+  const reg = join(myCache, 'u', me, 'project', 'alpha', 'claude-sessions');
+  const home = steps.find(x => x[0] === 'bind' && x[1] === `${STAGE}/home`)?.[2];
+  ok(!steps.some(x => /\/\.claude\/sessions$/.test(x[2] || '')),
+     'with no folder made for it, the account\'s own ~/.claude/sessions is left as it is');
+  mkdirSync(reg, { recursive: true });
+  const own = JSON.parse(plan().out);
+  const ra = own.findIndex(x => x[0] === 'bind' && x[2] === `${home}/.claude/sessions`);
+  ok(home && ra > own.findIndex(x => x[0] === 'bind' && x[1] === `${STAGE}/home`)
+     && own[ra][1].endsWith(`/u/${me}/project/alpha/claude-sessions`),
+     `the project's own sessions folder is bound over ~/.claude/sessions, after the home (${JSON.stringify(own[ra] || null)})`);
+  rmSync(reg, { recursive: true, force: true });
 }
 {
   const firstCover = steps.findIndex(x => x[0] === 'tmpfs' && x[1] === ws);

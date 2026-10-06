@@ -326,6 +326,11 @@ in_view() {
     if ( umask 077; mkdir -p "$scratch" ) 2>/dev/null; then
         find "$scratch" -mindepth 2 -maxdepth 2 -type d -mtime +14 -exec rm -rf {} + 2>/dev/null || true
     fi
+    # ...and Claude Code's register of running sessions, which it names by
+    # pid: every view is its own pid namespace, so every session was pid 9
+    # and an account's sessions on one node shared one file (B522). The view
+    # binds this over ~/.claude/sessions, so each project keeps its own.
+    ( umask 077; mkdir -p "$(cache_project_dir "$proj")/claude-sessions" ) 2>/dev/null || true
     # The projects this one reads, one --reads each: the helper binds their
     # trees read-only, and repeated words keep the launcher line respawnable.
     local reads=() r

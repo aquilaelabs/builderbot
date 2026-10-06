@@ -629,6 +629,22 @@ def plan(c, a, uid):
         if stat.S_ISDIR(st.st_mode) and st.st_uid == whose:
             steps.append(("bind", f"{STAGE}/cache{i}/{kept}", f"/tmp/claude-{whose}"))
             break
+    # ...and its register of running sessions, ~/.claude/sessions, one file
+    # per session NAMED BY ITS PID. Each view has its own pid namespace, so
+    # Claude Code is pid 9 in every one, and an account's sessions on one
+    # node all wrote 9.json and 9.<hash>.key: the file held one session's id
+    # with another project's folder and name, and Remote Control in the
+    # Claude app did not show them (B522). A folder of the project's own,
+    # made by the launcher like the scratch one, is bound over it.
+    for i, (cache, _keep) in enumerate(caches if whose is not None else []):
+        kept = f"u/{account}/project/{project}/claude-sessions"
+        try:
+            st = os.lstat(f"{cache}/{kept}")
+        except OSError:
+            continue
+        if stat.S_ISDIR(st.st_mode) and st.st_uid == whose:
+            steps.append(("bind", f"{STAGE}/cache{i}/{kept}", f"{home}/.claude/sessions"))
+            break
     # A network of its own (R79): the agent's resolver file over the node's,
     # which names a resolver on the node's loopback that the session's own
     # namespace cannot reach; then the agent's folder out of sight, since it
