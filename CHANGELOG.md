@@ -279,6 +279,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The app's Install it offers a signed build when there is one, so updating over the installed app works instead of being refused by Android (63a1d39)
 - Signing a build with no key named uses the project's only key when it has no key called default, and an ambiguous choice is refused before the owner is asked, rather than failing after they approved (a096086)
 - Update agent works on a node that is always busy: the node takes no new work while its update waits, takes the update once its running jobs finish, and the row says how many it waits for (B516) (78923e3)
+- Update agent no longer fails as busy forever on a node whose agent still counts a job the controller has dropped: that job's log is taken and the job told to stop, so it leaves the count, and a refused update names what the agent holds (B519) (c1bf023)
 
 ### Security
 

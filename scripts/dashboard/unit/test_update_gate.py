@@ -3,6 +3,7 @@ a self-update while another job runs, and a node a session builds and tests
 on all day refused every press of Update agent. So while one is queued the
 node is handed nothing new, and the update once the node is idle; one that
 waited UPDATE_QUIET_S is failed, naming what kept the node busy."""
+import importlib.util
 import os
 import shutil
 import sys
@@ -83,6 +84,79 @@ class UpdateGate(unittest.TestCase):
         row = next(r for r in nodes.node_list() if r["id"] == self.n)
         self.assertEqual(sorted((j["type"], j["state"]) for j in row["jobs"]),
                          [("build", "running"), ("self-update", "queued")])
+
+
+class HeldJobs(unittest.TestCase):
+    """The agent counts a job until the controller takes its end, and posts
+    its log before its end. A job this side dropped had every log post
+    refused, so the agent held it forever and refused every update as busy
+    (B519)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        nodes.configure(state=self.tmp)
+        self.n = nodes.LOCAL
+        nodes._exec("UPDATE nodes SET kind = 'agent' WHERE id = ?", (self.n,))
+
+    def job(self, jid, type, state="queued"):
+        nodes._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source, spec, outputs, "
+                    "state, node, queued) VALUES (?, ?, '', 'test', '{}', '{}', '{}', '[]', ?, ?, ?)",
+                    (jid, type, state, self.n, int(time.time())))
+
+    def test_a_log_for_a_job_with_no_row_is_taken_and_the_job_told_to_stop(self):
+        got = nodes.job_log(self.n, "j_gone", [{"seq": 1, "chunk": "x"}])
+        self.assertTrue(got.get("ok") and got.get("cancel"), got)
+        self.assertEqual(nodes._rows("SELECT COUNT(*) AS n FROM job_logs WHERE job_id = 'j_gone'")[0]["n"], 0)
+
+    def test_another_nodes_job_is_still_refused(self):
+        self.job("j_x", "exec", state="running")
+        nodes._exec("UPDATE jobs SET node = 'elsewhere' WHERE id = 'j_x'")
+        self.assertIn("error", nodes.job_log(self.n, "j_x", []))
+
+    def test_the_hello_keeps_what_the_agent_holds_that_this_side_finished(self):
+        self.job("j_run", "exec", state="running")
+        self.job("j_done", "exec", state="succeeded")
+        self.assertEqual(nodes.jobs_held(self.n, ["j_run", "j_done", "j_gone"]), ["j_done", "j_gone"])
+
+    def test_an_update_refused_as_busy_names_them(self):
+        self.job("u1", "self-update", state="assigned")
+        nodes._exec("UPDATE nodes SET agent = ? WHERE id = ?", ('{"held": ["j_gone"]}', self.n))
+        nodes.job_result(self.n, "u1", "failed", 75, "exit 75")
+        err = nodes._rows("SELECT error FROM jobs WHERE id = 'u1'")[0]["error"]
+        self.assertIn("j_gone", err)
+        self.assertIn("press Update agent again", err)
+
+
+_spec = importlib.util.spec_from_file_location(
+    "builderbot_agent_held", os.path.join(os.path.dirname(__file__), "..", "..", "agent", "builderbot-agent.py"))
+agent = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(agent)
+agent.log = lambda *a, **k: None
+
+
+class AgentFlush(unittest.TestCase):
+    """The agent's half: a log refused for good is dropped, so the job's end
+    is posted and the job leaves the count; one that failed on the way is
+    kept and tried again."""
+
+    def flush(self, status):
+        class Ctl:
+            def call(self, verb, body=None, timeout=30):
+                return status, {"error": "not this node's job"} if status != 200 else {"ok": True}
+        class Agent:
+            ctl = Ctl()
+        j = agent.Job(Agent(), {"id": "j_gone"})
+        j.say("a line\n")
+        return j.flush(), j.pending
+
+    def test_a_refused_log_is_dropped(self):
+        self.assertEqual(self.flush(400), (True, []))
+
+    def test_a_log_that_did_not_arrive_is_kept(self):
+        done, pending = self.flush(502)
+        self.assertFalse(done)
+        self.assertEqual(len(pending), 1)
 
 
 if __name__ == "__main__":

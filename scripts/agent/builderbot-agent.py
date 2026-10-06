@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.134"
+AGENT_VERSION = "0.7.135"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3113,6 +3113,16 @@ class Job(threading.Thread):
             if step:
                 body["step"] = step
             st, r = self.agent.ctl.call("log", body, timeout=20)
+            # Refused for good (a job the controller no longer has, or not
+            # this node's): the result loop posts only after a flush that
+            # worked, so keeping these retried the job in this agent's count
+            # forever, and every self-update failed "busy" (B519). Dropped,
+            # and the result goes on to be refused in its turn.
+            if st in (400, 401, 403, 404):
+                log(f"{self.job['id']}: log refused ({st}); dropping {len(batch)} chunk(s)")
+                with self.lock:
+                    self.pending = []
+                return True
             if st != 200:
                 with self.lock:
                     self.pending = batch + self.pending
@@ -4254,7 +4264,10 @@ class Agent:
     def self_update(self, job, spec):
         want = spec.get("digest") or self.controller_digest
         if self.running() > 1:
-            job.say("busy: other jobs are running; try again when they finish\n")
+            # Named, so a job this agent holds that the controller has as
+            # finished is seen rather than guessed at (B519).
+            others = [i for i in self.running_ids() if i != job.job["id"]]
+            job.say(f"busy: other jobs are running ({', '.join(others)}); try again when they finish\n")
             return "failed", 75
         st, body = self.ctl.call("download", None, timeout=60, method="GET", raw=True)
         if st != 200:

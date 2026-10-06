@@ -2109,9 +2109,10 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     if not n:
         return {"error": "no such node"}
     was_live = bool(n.get("live"))
+    ag = n.get("agent") or {}
     if isinstance(running, list):
         jobs_reconcile(nid, [str(j) for j in running])
-    ag = n.get("agent") or {}
+        ag["held"] = jobs_held(nid, [str(j) for j in running])
     ag.update({"version": str(version)[:40], "digest": str(digest)[:80],
                "addr": addr, "last_seen": int(time.time()),
                })
@@ -3134,7 +3135,15 @@ def job_log(node_id, job_id, chunks, step=None):
     runner posts output every half second, so this is how one that is busy
     hears it should stop."""
     got = _rows("SELECT node, state, cancel FROM jobs WHERE id = ?", (job_id,))
-    if not got or got[0]["node"] != node_id:
+    # A job with no row is one this side dropped while the agent still ran it
+    # (a probe forgotten once its row said finished). Refusing the post kept
+    # it forever: the agent posts its log before its result and retries a
+    # refused log for good, so the job never left the agent's count and every
+    # self-update on bb-sandbox failed "busy" (B519). Taken, stored nowhere,
+    # and the job told to stop; its result is then refused and dropped.
+    if not got:
+        return {"ok": True, "stored": 0, "cancel": True, "gone": True}
+    if got[0]["node"] != node_id:
         return {"error": "not this node's job"}
     now = int(time.time())
     n = 0
@@ -3220,6 +3229,14 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     # no-op the docstring promises rather than a second audit row and a
     # second run of the hooks (the review of 26 Sep).
     err = str(error or "")[:500]
+    # An update refused as busy on a node this side saw go quiet: what the
+    # agent holds is jobs this side has finished or dropped, named from its
+    # last hello, so the row says which rather than "exit 75" (B519).
+    if got[0]["type"] == "self-update" and code == 75:
+        held = ((node(node_id) or {}).get("agent") or {}).get("held") or []
+        err = ("the agent says other jobs are running" + (
+            f" ({', '.join(held)}), which this controller has as finished; "
+            "they leave when the agent next posts their end" if held else "") + "; press Update agent again")[:500]
     if late:
         err = ("reported late, after this side called the node lost" + (": " + err if err else ""))[:500]
     cur = _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
@@ -3430,6 +3447,16 @@ def jobs_reconcile(node_id, running):
         _lost_done(jid)
     if gone:
         _jstate_bump()
+
+
+def jobs_held(node_id, running):
+    """The jobs the agent says it is running that this side has as finished
+    or has no row for at all: the other half of jobs_reconcile. Each keeps
+    the agent's count up, and an agent update is refused while any is held,
+    so the refusal names them from here (B519)."""
+    live = {r["id"] for r in _rows("SELECT id FROM jobs WHERE node = ? AND state IN "
+                                   "('queued', 'assigned', 'running')", (node_id,))}
+    return [j for j in running if j not in live][:20]
 
 
 def jobs_restart_sweep():
