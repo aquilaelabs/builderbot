@@ -89,6 +89,12 @@ commits, discards, reverts, pulls or switches branches in it, an admin only
 after being asked, and merging into main stays everybody's (git.py
 `not_yours`, projsessions.py; the operator, 24 Sep).
 
+Which other projects a project's sessions may read (its settings' Reads) is
+BuilderBot's owner's alone: it hands one project's sessions another's code
+and notebook, so no administrator or user grants it on their own say,
+whatever their roles. They see the list and save the rest of the dialog;
+a change to it is refused, and the row says why (the operator, 6 Oct).
+
 ## Storage
 
 `/config/users.json`, with the load/save/lock the notebook files already use.

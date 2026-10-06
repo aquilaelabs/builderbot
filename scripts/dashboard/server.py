@@ -3268,7 +3268,10 @@ def snapshot(who):
                  "runner", "jobs", "node",
                  # ...and what the sidebar and the dialogs offer (step 4):
                  # drawn from the same grants the server refuses on.
-                 "lock", "rename", "trash", "version", "create", "command-pin")},
+                 "lock", "rename", "trash", "version", "create", "command-pin")}
+               # ...and what other projects a session may read: the owner's
+               # alone (the operator, 6 Oct), whatever the grants say.
+               | {"reads": (who or {}).get("role") == "owner"},
         # Projects whose Claude session belongs to somebody else, by NAME:
         # "alice has a session on this" is the whole value of the record, and
         # a bare refusal would tell you nothing you could act on. Only for
@@ -4940,6 +4943,14 @@ class Handler(BaseHTTPRequestHandler):
         if ("node" in req or "nodes" in req) and prefs.node_changed(name, req) \
                 and self._refused("node", name):
             return
+        # Which other projects a session here may read is BuilderBot's
+        # owner's alone (the operator, 6 Oct): it hands one project's sessions
+        # another's code and notebook, which no administrator or user grants
+        # on their own say. Only a change is asked about.
+        if req.get("reads") is not None and prefs.reads_changed(name, req.get("reads")) \
+                and (self._who() or {}).get("role") != "owner":
+            return self._json({"error": "which other projects a project's sessions may read is set by "
+                                        "BuilderBot's owner alone"}, 403)
         # ...and so are the places on it a session here is shown (sees): a
         # share on a node is every project's there, so naming one is for
         # whoever may set the node. Only a change is asked about.

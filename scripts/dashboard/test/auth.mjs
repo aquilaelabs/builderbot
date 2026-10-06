@@ -1504,6 +1504,22 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       await post(ownerAuth, '/api/users', { action: 'add', name: 'adminone', password: 'adminonepw1', role: 'admin' });
       const adminAuth = { 'Content-Type': 'application/json',
         Authorization: 'Basic ' + Buffer.from('adminone:adminonepw1').toString('base64') };
+      // Which other projects a project's sessions may read is BuilderBot's
+      // owner's alone (the operator, 6 Oct): an administrator on the project
+      // is refused a change and may still save the dialog around it.
+      {
+        await post(ownerAuth, '/api/users', { action: 'projects', name: 'adminone', projects: ['alpha'] });
+        const adminTry = await post(adminAuth, '/api/prefs', { project: 'alpha', reads: ['beta'] });
+        const ownerTry = await post(ownerAuth, '/api/prefs', { project: 'alpha', reads: ['beta'] });
+        const adminSame = await post(adminAuth, '/api/prefs', { project: 'alpha', reads: ['beta'] });
+        const adminOff = await post(adminAuth, '/api/prefs', { project: 'alpha', reads: [] });
+        const can = await bare('/api/status', { headers: adminAuth }).then(r => r.json()).then(j => j.can?.reads);
+        await post(ownerAuth, '/api/prefs', { project: 'alpha', reads: [] });
+        await post(ownerAuth, '/api/users', { action: 'projects', name: 'adminone', projects: [] });
+        ok(adminTry.status === 403 && /BuilderBot's owner alone/.test(adminTry.body.error || '') && ownerTry.status === 200
+           && adminSame.status === 200 && adminOff.status === 403 && can === false,
+           `only BuilderBot's owner changes which projects a project's sessions may read; an administrator is refused adding or taking one away, may save the rest, and the dialog is told (${adminTry.status}/${ownerTry.status}/${adminSame.status}/${adminOff.status}, can ${can})`);
+      }
       // A key's backup goes to an administrator ON the project (the
       // operator, 1 Oct): adminone sees alpha and is not on it.
       {

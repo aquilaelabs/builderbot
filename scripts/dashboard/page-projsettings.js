@@ -229,6 +229,11 @@ function rnFillReads(){
     .sort((a, b) => a.name.localeCompare(b.name));
   wrap.hidden = rnMode === "git" || !others.length;
   box.innerHTML = others.map(p => lrow(p.name, p.name, p.branch ? `git: ${p.branch}` : "", was.has(p.name))).join("");
+  // BuilderBot's owner's alone (the operator, 6 Oct): shown to everybody,
+  // changed by the owner, and why not said on the row (not a tooltip).
+  const mine = state?.can?.reads !== false;
+  box.querySelectorAll("input").forEach(i => { i.disabled = !mine; });
+  $("rnReadsWhy").hidden = mine;
 }
 
 function rnFillPrefsRest(p){

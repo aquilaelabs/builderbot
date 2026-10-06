@@ -400,6 +400,14 @@ def _reads_of(rec):
     return out[:16]
 
 
+def reads_changed(project, reads):
+    """Whether `reads`, as the dialog sends it, names other projects than the
+    ones stored: the dialog sends every field on every save."""
+    got = reads if isinstance(reads, list) else str(reads).split(",")
+    want = sorted(r for r in _reads_of({"reads": got}) if r != project)
+    return want != sorted((get(project) or {}).get("reads") or [])
+
+
 def sees_changed(project, sees):
     """Whether `sees`, as the dialog sends it, is another list than the one
     stored: the dialog sends every field on every save."""
