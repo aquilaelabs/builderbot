@@ -290,6 +290,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Each project's Claude sessions keep their own register of running sessions: every session ran as pid 9 in its own view, so an account's sessions on a node shared one file, mixing their names and folders, and Remote Control in the Claude app missed them (B522) (68ab4c1)
 - bb version --file no longer answers with git describe's name when the controller cannot read a VERSION file that is there: it reads the committed one instead, and says so when it cannot (B524) (fb5e1b5)
 - bb ci-log shows the lines above a failed job's last 400 that name a failure, so a device test Gradle named early is no longer cut off (B525) (a328c80)
+- A toolchain update or removal on a node is refused while anything runs from it (a session's build, its emulator, a Gradle daemon), naming the program and whose session it is; and every node's versions are checked weekly, as the controller's were (818d09f)
 
 ### Security
 

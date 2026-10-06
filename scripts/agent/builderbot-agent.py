@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.136"
+AGENT_VERSION = "0.7.137"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -774,6 +774,74 @@ def tc_root(state):
     directory, or "" when the node has no toolchain store."""
     store = (state.get("stores") or {}).get("toolchains") or ""
     return os.path.join(store, tc_scope()) if store else ""
+
+
+def tc_dir(store, name, entry, action):
+    """The directory a toolchain job would replace or remove, or "" when it
+    replaces nothing in place: a toolchain not installed yet, or a versioned
+    Android package, whose new version installs beside the old."""
+    src = (entry or {}).get("source") or {}
+    if name.startswith("android:"):
+        if src.get("versioned") and action == "install":
+            return ""
+        pkg = str(src.get("package") or name.split(":", 1)[1])
+        d = os.path.join(store, "android", *pkg.split(";"))
+    else:
+        d = os.path.join(store, name)
+    return d if os.path.isdir(d) else ""
+
+
+def tc_users(path, limit=8):
+    """The processes using anything under `path`: as their program, a
+    library or a jar they have open, or the directory they run in. Each as
+    {pid, what, project}, the project from the BB_PROJECT a session's
+    processes carry. Read from /proc, which an agent that is root sees
+    whole; one that is not sees its own account's, and says no more than it
+    can (the operator, 6 Oct: an update under a running build is refused,
+    naming whose it is)."""
+    root = os.path.realpath(path).rstrip("/") + "/"
+    inside = lambda p: (p or "").startswith(root) or (p or "") + "/" == root  # noqa: E731
+    out = []
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit() or int(pid) == os.getpid():
+            continue
+        base = f"/proc/{pid}"
+        try:
+            hit = inside(os.readlink(f"{base}/exe")) or inside(os.readlink(f"{base}/cwd"))
+            if not hit:
+                with open(f"{base}/maps", encoding="utf-8", errors="replace") as f:
+                    hit = any(inside(ln.split(None, 5)[-1].strip()) for ln in f if "/" in ln)
+            if not hit:
+                for fd in os.listdir(f"{base}/fd"):
+                    with contextlib.suppress(OSError):
+                        if inside(os.readlink(f"{base}/fd/{fd}")):
+                            hit = True
+                            break
+            if not hit:
+                continue
+            with open(f"{base}/comm", encoding="utf-8", errors="replace") as f:
+                what = f.read().strip()
+            project = ""
+            with contextlib.suppress(OSError), open(f"{base}/environ", "rb") as f:
+                for kv in f.read().split(b"\0"):
+                    if kv.startswith(b"BB_PROJECT="):
+                        project = kv[len(b"BB_PROJECT="):].decode("utf-8", "replace")[:80]
+                        break
+        except (OSError, ValueError):
+            continue
+        out.append({"pid": int(pid), "what": what, "project": project})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def tc_users_said(name, users):
+    """One sentence naming who is using a toolchain, for the job's log."""
+    who = ", ".join(f"{u['what']} (pid {u['pid']}{', ' + u['project'] + chr(39) + 's session' if u['project'] else ''})"
+                    for u in users)
+    return (f"refused: {name} is in use by {who}. Updating or removing it under them "
+            "replaces files they are running from; try again when they have finished, "
+            "or stop them first\n")
 
 
 def share_images(store, say=None):
@@ -5505,11 +5573,30 @@ class Agent:
                               "cwd": store, "timeout": spec.get("timeout") or 900,
                               "env": sdk_env(self.state)})
         bad = 0
+        # The catalog the bundle carries, for where each toolchain lives:
+        # what an update or a removal would pull out from under whatever is
+        # running it (the operator, 6 Oct).
+        try:
+            with open(os.path.join(into, "config", "toolchains.json"), encoding="utf-8") as f:
+                cat = json.load(f)
+            cat = cat.get("toolchains", cat) if isinstance(cat, dict) else cat
+            cat = {e.get("name"): e for e in (cat if isinstance(cat, list) else cat.values())
+                   if isinstance(e, dict)}
+        except (OSError, ValueError, AttributeError):
+            cat = {}
         for name in names:
             # Which one it is on, for the tab's "Installing …". Only compose
             # jobs set this before, so a toolchain job on a node drew the verb
             # with nothing after it.
             job.step(name)
+            # Refused while anything is running from it: a session's build,
+            # its emulator, a Gradle daemon. Named, so the operator knows whose.
+            d = tc_dir(store, name, cat.get(name), action)
+            users = tc_users(d) if d else []
+            if users:
+                job.say(tc_users_said(name, users))
+                bad += 1
+                continue
             if action == "install" and not self._system_deps(job, name, into):
                 bad += 1
                 continue

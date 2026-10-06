@@ -11,6 +11,7 @@ and remembers the answers; bb decides *how*, out of config/toolchains.json,
 which holds every URL, flag and argument any of it needs. Neither of them has
 a toolchain name written into it.
 """
+import contextlib
 import hashlib
 import json
 import os
@@ -1614,7 +1615,38 @@ def versions_loop():
         if TOOLCHAINS and time.time() >= due and not _tc_job["running"]:
             if start_job("check", [p["name"] for p in TOOLCHAINS], auto=True):
                 due = time.time() + TC_CHECK_EVERY
+        with contextlib.suppress(Exception):
+            node_checks_due()
         time.sleep(300)
+
+
+def node_checks_due(now=None):
+    """Each node's own weekly check (the operator, 6 Oct: a node's tab said
+    its versions were checked twelve days ago). The loop above checked only
+    this controller's store, and a node's answers are its last check job's,
+    so they aged until somebody pressed Check. A live node with a toolchain
+    store whose last check ended a week ago or more, and that has no
+    toolchain job waiting or running, is queued one. The node ids queued."""
+    if not nodes or not TOOLCHAINS:
+        return []
+    now = time.time() if now is None else now
+    queued = []
+    for n in nodes.node_list():
+        if n.get("kind") != "agent" or n.get("state") != "online" or n.get("live") is False:
+            continue
+        if not (((n.get("reported") or {}).get("stores") or {}).get("toolchains")):
+            continue
+        jobs = nodes.jobs_for(node_id=n["id"], type="toolchain", n=20) or []
+        if any(j.get("state") in ("queued", "assigned", "running") for j in jobs):
+            continue
+        last = max((int(j.get("ended") or 0) for j in jobs
+                    if (j.get("spec") or {}).get("action") == "check"), default=0)
+        if last and now - last < TC_CHECK_EVERY:
+            continue
+        r = node_job("system", n["id"], "check", [])
+        if r.get("ok") or r.get("job"):
+            queued.append(n["id"])
+    return queued
 
 
 # ---- the Tools card's verbs, one call from the dashboard ---------------------
