@@ -4,7 +4,7 @@
 // Nodes tab where an administrator sets the number. The node is one this file
 // enrolls, with the session half up and a heartbeat whose panes carry the
 // spinner a working Claude pane does; the per-file world takes it away after.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, openSection } from './lib.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -177,19 +177,35 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
      `...nor a person reading the memory history (${(histRead.line || 'no line').slice(0, 90)})`);
   // New diagnostics reports, for a project whose house rule asks its
   // sessions to watch them (watch-diagnostics, the operator, 6 Oct): named
-  // once, on the next prompt, and only to a project that carries the rule.
+  // once, on the next prompt, only to a project that carries the rule, and
+  // only where reading them is allowed: debug mode on, the project granted
+  // the diagnostics, an account with the debug grant (the owner here). It
+  // named report #68 to a session refused reading it, the same evening.
   const rep = text => call('/api/reports', { action: 'add', text });
+  const asOwner = body => call('/api/v1/hook', { kind: 'seen', ...body }, bearer(toks[0]));
   await rep('the first report');
-  const noRule = await sess({ node: 'nodeA' });
+  const noRule = await asOwner({ node: 'nodeA' });
   ok(!/diagnostics/.test(noRule.line || ''), `a project without the rule hears nothing of reports (${(noRule.line || 'no line').slice(0, 60)})`);
   await relay(['rules', 'add', 'watch-diagnostics', 'After each prompt, read bb diag reports for new ones.']);
-  await sess({ node: 'nodeA' });
+  await rep('a report while the project may not read them');
+  const ungranted = await asOwner({ node: 'nodeA' });
+  ok(!/diagnostics/.test(ungranted.line || ''),
+     `with the rule but no grant, the notice names nothing (${(ungranted.line || 'no line').slice(0, 60)})`);
+  await call('/api/settings', { set: { debug_mode: true } });
+  await call('/api/prefs', { project: 'alpha', diag: true });
+  await asOwner({ node: 'nodeA' });
   const r2 = await rep('the second report');
-  const told = await sess({ node: 'nodeA' });
+  const told = await asOwner({ node: 'nodeA' });
   ok(new RegExp(`report #${r2.id} from the dashboard`).test(told.line || '') && /bb diag reports/.test(told.line || ''),
-     `with the rule, a new report is named on the next prompt (${(told.line || 'no line').slice(0, 100)})`);
-  const once = await sess({ node: 'nodeA' });
+     `with the rule and the grant, a new report is named on the next prompt (${(told.line || 'no line').slice(0, 100)})`);
+  const once = await asOwner({ node: 'nodeA' });
   ok(!/diagnostics/.test(once.line || ''), `...once (${(once.line || 'no line').slice(0, 60)})`);
+  await rep('a third report');
+  const plain = await sess({ node: 'nodeA' });
+  ok(!/diagnostics/.test(plain.line || ''),
+     `...and a plain account's session on the same project is told nothing (${(plain.line || 'no line').slice(0, 60)})`);
+  await call('/api/prefs', { project: 'alpha', diag: false });
+  await call('/api/settings', { set: { debug_mode: false } });
 }
 
 {
@@ -319,6 +335,7 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   await page.waitForSelector(row, { timeout: 10000 });
   const inp = `${row} [data-k="turns"]`;
   await page.waitForSelector(inp, { state: 'attached', timeout: 10000 });
+  await openSection(page, 'nodes:sessions', row);
   const line = async () => page.$eval(`${row} [data-nd="turns"]`, b => b.parentElement.querySelector('.state').textContent.trim());
   ok(/^0 working now$/.test(await line()), `the Sessions section says what is working now (${await line()})`);
   await page.fill(inp, '3');

@@ -2013,11 +2013,19 @@ def session_mark_own(project, uid, who, since=None):
 WATCH_DIAG_RULE = "watch-diagnostics"
 
 
-def _diag_watch(project):
-    """The open reports, newest first, when this project carries the rule;
-    else None."""
+def _diag_watch(project, uid):
+    """The open reports, newest first, when this project carries the rule
+    and its session may read the diagnostics; else None. The same gate as
+    _diag_refused (debug mode on, the project granted them, an account with
+    the debug grant): the notice named report #68 and its project to a
+    session that was refused reading it (the operator, 6 Oct)."""
     try:
         if not any(r.get("name") == WATCH_DIAG_RULE for r in rules.rules(project)):
+            return None
+        if not settings.get("debug_mode") or not prefs.get(project)["diag"]:
+            return None
+        me = users.account_of({"session": project, "uid": uid})
+        if not me.get("name") or users.may(me, "debug"):
             return None
         return reports.listing("open")
     except Exception:                                                     # noqa: BLE001
@@ -2037,7 +2045,7 @@ def session_seen_note(project, uid, node, who=None, begin=False):
     key = f"{project}|{uid}|{node or ''}"
     try:
         revs_now = _seen_now(project, who) if who is not None else {}
-        watched = _diag_watch(project)
+        watched = _diag_watch(project, uid)
         top = max((int(r.get("id") or 0) for r in watched or []), default=0)
         with _seen_lock:
             d = _seen_load()

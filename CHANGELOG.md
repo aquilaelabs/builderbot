@@ -314,6 +314,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The container daemon's socket is not in a session's view on a node (d6b513f)
 - Each project has its own emulator phone, so nothing one project installs or signs into shows up on another's; bb emu start decides whether the node has room for another emulator by its memory and load, and waits or says why not (12d30da)
 - Only BuilderBot's owner can change which other projects a project's sessions may read; administrators and users see the list, and the settings dialog says why they cannot change it (3a7a58f)
+- The new-diagnostics notice is shown only where reading the diagnostics is allowed: debug mode on, the project granted them, an account with the debug grant (b31c7ad)
 
 ## 0.7.0: 2026-09-25
 
