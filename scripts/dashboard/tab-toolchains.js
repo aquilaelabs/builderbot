@@ -191,8 +191,13 @@ function tcRow(p, busy, job, managed){
   const next = !p.installed && p.latest && p.latest !== "-"
     ? ` <span class="pill" title="what Install selected would fetch">${esc(p.latest)}</span>`
     : "";
+  // A recipe that cannot update in place says what does, on the row: its box
+  // is locked as installed, and "tick it" was an instruction it could not
+  // follow (the operator, 6 Oct, on JDK 21).
   const upd = p.state === "update"
-    ? `<span class="sub upd">update available: tick it and press Install selected</span>`
+    ? `<span class="sub upd">${noUpgrade
+        ? "update available: uninstall it with the bin, then tick it and press Install selected"
+        : "update available: tick it and press Install selected"}</span>`
     : "";
   // What went wrong, on the row it went wrong on. This is what the scrolling
   // log at the foot of the tab was for, minus the ninety-nine lines of

@@ -576,6 +576,16 @@ await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
   const fl = rows.find(r => r.name === 'flutter');
   ok(fl && !/no update in place/.test(fl.title),
      'while one that CAN update in place is not marked that way');
+  // ...and when a newer version is out, its row says what updates it rather
+  // than "tick it", which its locked box cannot (the operator, 6 Oct, JDK 21).
+  const line = await page.evaluate(() => {
+    const d = document.createElement('div');
+    d.innerHTML = tcRow({ name: 'go', label: 'Go', installed: true, updatable: false, state: 'update', about: '' },
+                        false, null, true);
+    return d.querySelector('.sub.upd')?.textContent || '';
+  });
+  ok(/uninstall it with the bin, then tick it/.test(line),
+     `a locked row with an update out says how to get it, on the row (${line})`);
   // ...and the catalog is where that is decided, not a list in the server.
   const seen = await page.evaluate(() => (toolchains.items || [])
     .filter(i => i.updatable).map(i => i.name).sort());
