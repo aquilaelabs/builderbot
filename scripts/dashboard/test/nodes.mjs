@@ -503,6 +503,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // read off the status poll, and the poll is the default node's answer, so
   // it named a machine the tab was not talking to, in an address. Read
   // BEFORE the reload below, which throws the answer away on purpose.
+  await page.waitForFunction(() => (dockerList?.src?.where || '').length > 0, null, { timeout: 10000 }).catch(() => {});
   ok(await page.evaluate(() => (dockerList?.src?.where || '').length > 0),
      'the manager\'s own answer says which daemon it is about');
   ok(await page.evaluate(w => {
@@ -877,6 +878,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
      '...and says they came from the node rather than from anything saved here');
   // The new row lands after the seeded ones.
   const last = seeded.length;
+  await openSection(page, 'nodes:storage', ROW);
   await page.click(`${ROW} [data-madd]`);
   await page.waitForSelector(`${ROW} .ndmount[data-i="${last}"] [data-k="source"]`, { timeout: 5000 });
   ok(await page.evaluate(() => document.activeElement?.dataset.k === 'source'),
@@ -2273,6 +2275,7 @@ ok(page.errors.length === 0,
     await page.evaluate(() => loadNodes());
     await page.waitForFunction(id => [...document.querySelectorAll('.nodestab #ndPick option')].some(o => o.value === id), shed.id, { timeout: 15000 });
     await page.selectOption('.nodestab #ndPick', shed.id);
+    await openSection(page, 'nodes:health', `.ndrow[data-node="${shed.id}"]`);
     await page.waitForSelector(`.ndrow[data-node="${shed.id}"] .ndgpu`, { timeout: 20000 });
     const line = await page.$eval(`.ndrow[data-node="${shed.id}"] .ndgpu`, e => e.textContent.replace(/\s+/g, ' ').trim());
     ok(/RTX 3070 Ti/.test(line) && /renders in software/.test(line),
