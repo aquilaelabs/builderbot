@@ -138,12 +138,14 @@ function renderDiff(text){
 // once, at the moment it turns, and is the one open in its view; closed
 // after that, it stays closed for as long as it stays the same news.
 const sectLoud = {};
-function docSection(kind, id, title, status, body, {cls = "", open, loud = false} = {}){
+function docSection(kind, id, title, status, body, {cls = "", open, loud = false, prime = false} = {}){
   const key = `${kind}:${id}`;
   const turned = loud && !sectLoud[key];
   sectLoud[key] = loud;
   const isOpen = turned || (key in sectOpen ? sectOpen[key] : (open !== undefined ? open : !isPhone()));
-  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}>
+  // `prime`: the section a view is opened for (Artifacts' Files), the one
+  // left open when a draw finds several and nobody has chosen.
+  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}${prime ? " data-prime" : ""}>
     <summary><span class="t">${esc(title)}</span>${
       status ? `<span class="sst${cls ? " " + cls : ""}">${esc(status)}</span>` : ""}</summary>
     <div class="body">${body}</div>
@@ -203,7 +205,8 @@ function oneOpen(g){
   if (open.length < 2) return;
   const keep = open.find(o => o.hasAttribute("data-lead"))
     || open.find(o => o.dataset.sect && o.dataset.sect === sectLast.get(g))
-    || open.find(o => o.dataset.sect && sectOpen[o.dataset.sect] === true) || open[0];
+    || open.find(o => o.dataset.sect && sectOpen[o.dataset.sect] === true)
+    || open.find(o => o.hasAttribute("data-prime")) || open[0];
   if (keep.hasAttribute("data-lead")){ keep.removeAttribute("data-lead"); sectLast.set(g, keep.dataset.sect || ""); }
   open.forEach(o => { if (o !== keep){ o.open = false; if (o.dataset.sect) sectOpen[o.dataset.sect] = false; } });
 }

@@ -172,6 +172,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every dialog takes the focus as it opens, keeps Tab inside itself, closes on Escape (the one on top), and gives the focus back to what opened it; dialogs and the tab strip are named and marked for screen readers (2ca2296)
 - Every notebook section that holds unsaved changes has its own Save and Revert at its foot, which save or throw away that section alone, in place of the one pair at the bottom of the tab; and one notebook section is open at a time (7683f8c)
 - dist/ keeps the newest builds of each product, whatever they are named, and a signed build by its signed copy alone, swept every few minutes and when a build lands; a build named with no version is flagged on its row with Remove (d06b315)
+- The Artifacts view's downloads are a section of their own, Files, open when the view first shows, and the dev instance and branch builds have their own sections too (8debf1e)
 
 ### Removed
 

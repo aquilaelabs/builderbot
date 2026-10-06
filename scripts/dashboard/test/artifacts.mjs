@@ -1,7 +1,7 @@
 // The notebook's Artifacts view: what a project has built, from its dist/.
 // The convention IS the feature: the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
-import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil } from './lib.mjs';
+import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil, openFold } from './lib.mjs';
 import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync, existsSync, utimesSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -89,6 +89,16 @@ await page.click(`${row('alpha')} [data-m]`);
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('.artrow', { timeout: 15000 });
+
+// The files are a section of their own, like the rest of the view, and the
+// one open when the view first shows (the operator, 6 Oct): they were a
+// band under Version, the one part of the tab that did not fold.
+{
+  const s = await page.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]
+    .filter(d => d.checkVisibility() && !d.parentElement.closest('details.sect')).map(d => `${d.dataset.sect}:${d.open ? 'open' : 'shut'}`));
+  ok(s.includes('artifacts:files:open') && s.filter(x => x.endsWith(':open')).length === 1,
+     `the files are their own section, the one open when the view shows (${s.join(' ')})`);
+}
 
 // ---- a signed build (R106 step 4) --------------------------------------------
 {
@@ -269,6 +279,9 @@ ok(acts.every(a => a.dl), '...and everything can be downloaded');
        viewable.filter(a => a.view).map(a => a.name).join(', ')})`);
   // Read over the panel, the way a History is, with the file's own line
   // breaks. Nothing here runs it and the tab has no way to.
+  // One section open at a time (the operator, 5 Oct): Captures was opened
+  // above, so Files is opened again before a file's View is pressed.
+  await openFold(page, '.nb [data-sect="artifacts:files"]');
   await page.click('.artrow:has(b:text-is("setup-1.2.sh")) [data-artview]');
   await page.waitForFunction(
     () => /setting up/.test(document.querySelector('.nb #sheetSlot')?.textContent || ''),

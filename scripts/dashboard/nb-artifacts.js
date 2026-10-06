@@ -217,7 +217,12 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       ? `<div class="hint dim">${keep
           ? `Each product keeps its newest ${keep} builds (the project's settings say how many), a signed build by its signed copy alone; older ones are removed as new ones arrive. A release is kept, and so is anything pinned.`
           : "Every dev build is kept: this project's settings say so (Dev builds kept)."}</div>` : "";
-    list.innerHTML = devHtml + (!rows.length
+    // Sections like the rest of the view (the operator, 6 Oct): the files
+    // were a band of their own under Version, the one part of the tab that
+    // did not fold, and a long list pushed Captures off the screen. The dev
+    // instance is its own; the files are the one a person opens this view
+    // for, so the one left open when nobody has chosen.
+    const filesBody = !rows.length
       ? `<div class="hint">Nothing in <b>dist/</b> yet: a build copies what it keeps there.</div>`
       : devNote + jobHtml + instHtml + rows.map((a, i) => `
         <div class="artrow">
@@ -277,8 +282,12 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                 ? "unpin: it goes like any other build when newer ones arrive"
                 : "pin: keep it, whatever builds come after it"}">${TACK}</button>
           </span>
-        </div>`).join(""));
-    paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
+        </div>`).join("");
+    list.innerHTML = (devHtml ? docSection("artifacts", "dev", "Dev instance",
+                                            da.available === false ? "unreachable" : String(shown.length), devHtml) : "")
+      + docSection("artifacts", "files", "Files", rows.length ? `${rows.length} in dist/` : "none yet", filesBody, {prime: true});
+    wireSections(list);
+    paginate(list.querySelector('[data-sect="artifacts:files"] > .body'), ":scope > .artrow", {key: "artList", noun: "files"});
     // What a session looked with (R96): a reel's sheet, an emulator shot.
     // One fold apart from the files, since they are not what ships, each
     // row saying whose it is and when. They go by age (the project's
@@ -329,7 +338,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     if (brList){
       brList.hidden = !brRows.length;
       let at = 0;
-      brList.innerHTML = !brRows.length ? "" : `<div class="hint">Built on a branch. Merge it to main to put its build in dist/.</div>`
+      brList.innerHTML = !brRows.length ? "" : docSection("artifacts", "branches", "Branch builds", String(brRows.length),
+        `<div class="hint">Built on a branch. Merge it to main to put its build in dist/.</div>`
         + groups.map(g => `<div class="sub dim ggroup">${esc(g.who === state?.me ? "your" : `${g.who}'s`)} branch builds${
             g.branch ? `, on ${esc(g.branch)}` : ""}</div>` + g.artifacts.map(a => { const i = at++; return `
           <div class="artrow">
@@ -342,8 +352,11 @@ function nbArtifactsView({$, nb, project, root, sheet}){
               <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
                 }&path=${encodeURIComponent(a.path)}&tree=${encodeURIComponent(g.uid)}" download>Download</a>
             </span>
-          </div>`; }).join("")).join("");
-      paginate(brList, ":scope > .artrow", {key: "artBranches", noun: "files"});
+          </div>`; }).join("")).join(""));
+      if (brRows.length){
+        wireSections(brList);
+        paginate(brList.querySelector('[data-sect="artifacts:branches"] > .body'), ":scope > .artrow", {key: "artBranches", noun: "files"});
+      }
       brList.querySelectorAll("[data-artbview]").forEach(b => b.onclick = async () => {
         const a = brRows[Number(b.dataset.artbview)];
         const pane = document.createElement("div");

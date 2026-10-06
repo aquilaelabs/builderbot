@@ -4,7 +4,7 @@
 // Everything here drives the stub docker the harness provides; the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -113,7 +113,17 @@ async function dmDisabled(act){
 // attachment instead.
 async function showRow(){
   await page.click('#projects .row:has(.name:text-is("ep.silon")) [data-m]');
+  await openDev();
   await page.waitForSelector('#devRow', { timeout: 20000 });
+}
+// The dev instance is a section of the Artifacts view now, and Files is the
+// one open when the view shows (the operator, 6 Oct): opened before its row
+// is pressed.
+async function openDev(){
+  await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });
+  const sel = await page.evaluate(() => { const d = document.getElementById('devRow')?.closest('details.sect');
+    return d ? `[data-sect="${d.dataset.sect}"]` : ''; });
+  if (sel) await openFold(page, `.nbview:not([hidden]) ${sel}`);
 }
 async function dmRefresh(){
   // Awaited: loadDocker returns when its answer has been drawn. The rows come
@@ -951,6 +961,7 @@ writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.'
           { target: 81, published: '8081', protocol: 'tcp' }] } } }));
 await nudge();
 await showRow();
+await openDev();
 await page.waitForSelector('#devOpen', { timeout: 20000 });
 ok(!await page.$('#devRow a.btn'),
    '...and two of them get a chooser instead: nothing here knows which is the web UI');
@@ -2006,6 +2017,7 @@ print(json.dumps(m.session_net_own('n1')))
 await showRow();
 ok(!await page.$('#devRow [data-devact]'),
    'the artifact row carries no docker controls any more');
+await openDev();
 await page.click('#devSend');
 await page.waitForSelector('#dnmodal:not([hidden])');
 // No cursor anywhere: a focused field brings the on-screen keyboard up over
@@ -2759,6 +2771,7 @@ ok(!existsSync(`${DIR}/state/containers/radarr`),
 
 // The same name twice is refused rather than silently reusing the first.
 await showRow();
+await openDev();
 await page.click('#devSend');
 await page.waitForSelector('#dnmodal:not([hidden])');
 await page.fill('#dnName', 'staging-two');
