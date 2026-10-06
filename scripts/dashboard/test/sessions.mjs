@@ -388,7 +388,7 @@ const deskbox = await bapi('/api/v1/nodes', { action: 'enroll', name: 'deskbox' 
 await bapi('/api/v1/agent/enroll', { user: 'bb', version: 'harness', census: {
     cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
     session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
-               workspace: true, writable: true, boot: '9.9', up_s: 5000 } } },
+               workspace: true, writable: true, boot: '9.9', up_s: 5000, claude: '1.0.0 (Claude Code)' } } },
   { Authorization: 'Bearer ' + deskbox.token });
 await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
 // ...with the tester signed in to Claude there, as that node would have
@@ -406,7 +406,7 @@ await bapi('/api/prefs', { project: 'alpha', node: deskbox.id });
 // shorter waits rather than one long wait on a liveness that lapses.
 const deskboxCensus = { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
   session: { up: true, port: 7681, ro_port: 7682, user: 'bb',
-             workspace: true, writable: true, boot: '9.9', up_s: 5000 } };
+             workspace: true, writable: true, boot: '9.9', up_s: 5000, claude: '1.0.0 (Claude Code)' } };
 for (let tries = 0; ; tries++){
   try {
     await refreshUntil(phone, () => (state?.projects || [])

@@ -343,7 +343,7 @@ ${code}`], { encoding: 'utf8' });
     const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
     const box = await napi('/api/v1/nodes', { action: 'enroll', name: 'talkbox' });
     const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb',
-                 workspace: true, writable: true, boot: '3.3', up_s: 5000 };
+                 workspace: true, writable: true, boot: '3.3', up_s: 5000, claude: '1.0.0 (Claude Code)' };
     // Enrolling with the one-time token mints the node's own, which is what
     // every call after it carries.
     const agent = await napi('/api/v1/agent/enroll',
