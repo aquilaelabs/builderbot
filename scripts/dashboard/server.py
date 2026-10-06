@@ -2643,6 +2643,7 @@ import channel                                                   # noqa: E402
 channel.configure(home_for=home_for)
 # A signing is a job on the project's node, of a build in its dist/ (R106).
 signing.node_of = lambda name: prefs.get(name)["node"]
+signing.node_refuses = lambda nid: nodes.agent_stale(nodes.node(nid)) if nid and not NODES_OK else ""
 signing.job_add = nodes.job_add
 signing.file_path = workspace.file_path
 phone.signer = signing.start

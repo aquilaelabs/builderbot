@@ -168,6 +168,15 @@ class Start(unittest.TestCase):
         self.assertEqual(spec["file"], "app-release.apk")
         self.assertNotIn("SECRET", repr(spec))
 
+    def test_a_node_whose_agent_is_behind_is_said_before_the_ask(self):
+        # B515: allowed by the owner, then refused by the node.
+        self.addCleanup(setattr, signing, "node_refuses", signing.node_refuses)
+        signing.node_refuses = lambda nid: "n_1 runs agent 0.7.133 and this controller ships 0.7.134: press Update agent on its row first"
+        r, st = signing.start("u", "app", "app-release.apk", "sideload")
+        self.assertEqual(st, 409)
+        self.assertIn("press Update agent", r["error"])
+        self.assertEqual(self.queued, [])
+
     def test_refusals(self):
         self.assertIn("no Play upload key", signing.start("u", "app", "app-release.apk", "play")[0]["error"])
         self.assertIn(".apk or an .aab", signing.start("u", "app", "notes.txt", "sideload")[0]["error"])

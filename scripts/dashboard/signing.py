@@ -48,6 +48,9 @@ keytool_path = None     # set by the server: the store's keytool, or None
 # Set by the server for start(): the project's node, nodes.job_add and
 # workspace.file_path (a dist/ file a node may fetch for a job).
 node_of = None
+# (node id) -> why that node will take no job now (its agent is behind the
+# controller's), or "": asked before anybody is asked to allow a signing.
+node_refuses = None
 job_add = None
 file_path = None
 # The store's newest apksigner, and the environment it needs (its java), set
@@ -577,6 +580,11 @@ def refusal(project, rel, route, key=""):
         return {"error": f"no {rel} in {project}'s dist/: bb build puts a build there"}, 404
     if not (node_of(project) or ""):
         return {"error": f"{project} has no node to sign on: its settings choose one"}, 400
+    # A node whose agent is behind takes nothing but its own update, so the
+    # signing would be allowed and then refused (B515): said before the ask.
+    why = node_refuses(node_of(project)) if node_refuses else ""
+    if why:
+        return {"error": why}, 409
     return None
 
 
