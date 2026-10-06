@@ -28,6 +28,13 @@ function nbGitView({$, nb, project}){
   // the controller and typed into the project's session the way a roadmap
   // step arrives; then the tab, so the answer is watched.
   async function gitAsk(kind, args, btn){
+    // Asked first (sendSure), except where the caller already asked about
+    // this very send: another session's branch to merge or rebase.
+    const what = args?.path ? `${args.path} (${kind})`
+      : args?.branch ? `the branch ${args.branch} (${kind})`
+      : args?.sha ? `the commit ${String(args.sha).slice(0, 7)} (${kind})`
+      : `the ${kind}`;
+    if (!args?.confirmed && !sendSure(project, what)) return;
     if (btn) busy(btn, "Sending");
     try{
       const r = await postJSON("/api/git", {project, action: "ask", kind, args: args || {}});

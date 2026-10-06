@@ -96,7 +96,7 @@ const SURFACE = [
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
   'setProjectPinned', 'setView', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',
   'signIn', 'signOut', 'slideBody', 'slideCard', 'fadeFoldCard', 'slideDetails',
-  'slideHidden', 'slidePanel', 'swapBox', 'startCardDrag', 'startClaude', 'launchClaude', 'startDrag',
+  'slideHidden', 'slidePanel', 'swapBox', 'startCardDrag', 'startClaude', 'sendSure', 'launchClaude', 'startDrag',
   'openBrief', 'closeBrief', 'briefGo', 'pArchivePicked',
   'tabLabel', 'tabLabels', 'tabTitle', 'tipOff', 'tipify', 'toggleBell',
   'toggleCard', 'togglePin', 'toggleUiMenu', 'unveil', 'updateArrows',

@@ -910,6 +910,21 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   const v = await look();
   ok(v.file && v.commit && v.branch >= 1 && v.pol === 2 && v.apply === true,
      `the view offers Send to Claude on a change, a commit and a branch, and the policy with its Apply asleep (${JSON.stringify(v)})`);
+  // Every Send to Claude asks first (the operator, 6 Oct): what it sends is
+  // a prompt Claude starts on at once. Answered no here, so nothing goes.
+  {
+    const asks = [];
+    const seen = req => { if (req.url().endsWith('/api/git') && /"action":"ask"/.test(req.postData() || '')) asks.push(1); };
+    page.on('request', seen);
+    await page.evaluate(() => { window.__confirm = window.confirm; window.confirm = m => { window.__asked = m; return false; }; });
+    // Pressed from the page: the change sits in a section shut by default.
+    await page.$eval('.nb .nbview[data-view="git"] [data-gitaskfile]', b => b.click());
+    await page.waitForTimeout(300);
+    const asked = await page.evaluate(() => { const m = window.__asked; window.confirm = window.__confirm; delete window.__asked; return m || ''; });
+    page.off('request', seen);
+    ok(/^Send .* to beta's Claude session\?/.test(asked) && asks.length === 0,
+       `Send to Claude asks first, naming the session, and sends nothing when the answer is no (${asked.split('\n')[0]}; ${asks.length} sent)`);
+  }
   // The policy is a section shut by default: open it to reach the pickers.
   await page.evaluate(() => { const d = document.querySelector('.nb .nbview[data-view="git"] details[data-sect="git:policy"]'); if (d && !d.open) d.open = true; });
   await page.waitForSelector('.nb .nbview[data-view="git"] [data-gitpol="push"]', { state: 'visible', timeout: 10000 });

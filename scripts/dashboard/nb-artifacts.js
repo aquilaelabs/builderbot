@@ -858,6 +858,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const comp = b.dataset.verask === "@fold"
         ? b.closest(".verinit").querySelector(".vdir").value
         : (b.dataset.verask || "");
+      if (!sendSure(project, comp ? `the version question for ${comp}` : "the version question")) return;
       busy(b, "Sending");
       try{
         const r = await postJSON("/api/version", {project, action: "ask", component: comp});

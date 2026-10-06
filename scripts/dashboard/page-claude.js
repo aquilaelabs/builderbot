@@ -120,6 +120,15 @@ function openClaude(name, ev){
   drawProjects(state.projects);
 }
 
+// A button that sends something to a project's Claude session asks first
+// (the operator, 6 Oct): what it sends arrives as a prompt and Claude starts
+// on it at once, so a stray tap is work begun. The bug and roadmap sends ask
+// in their own send box; every other Send to Claude asks here.
+function sendSure(project, what){
+  return confirm(`Send ${what} to ${project}'s Claude session?\n\n`
+                 + "It arrives as a prompt, and Claude starts on it at once.");
+}
+
 // A new project's first session goes through its brief's dialog: a new
 // conversation (no transcript picked), nothing running, and a brief still
 // waiting in the tree (brief.py). Everything else starts at once.
