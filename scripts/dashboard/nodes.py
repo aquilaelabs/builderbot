@@ -2032,6 +2032,11 @@ def reported_set(nid, key, sub, value):
 # doctor's cached lines about nodes are wrong the moment this happens, and
 # waited out a half-hour cache after a reboot (the operator, 25 Sep).
 came_back = None
+# Nodes whose toolchains are checked on the next turn of the weekly loop
+# rather than at the week (toolchains.node_checks_due): one that came back
+# from offline, or whose agent is a new file, which means it started again
+# (the operator, 6 Oct: check for updates at a node's start up).
+checks_wanted = set()
 
 
 def keep_clean(keep):
@@ -2069,6 +2074,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     if not n:
         return {"error": "no such node"}
     was_live = bool(n.get("live"))
+    if not was_live or str((n.get("agent") or {}).get("digest") or "") != str(digest or "")[:80]:
+        checks_wanted.add(nid)
     ag = n.get("agent") or {}
     if isinstance(running, list):
         jobs_reconcile(nid, [str(j) for j in running])

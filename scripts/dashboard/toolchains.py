@@ -945,16 +945,27 @@ def payload_for_node(nid):
     # the job's log the first time and kept: a check is a round trip per
     # recipe on the node, so the answer is worth holding on to until somebody
     # asks for a fresh one.
-    for j in nodes.jobs_for(node_id=nid, type="toolchain", n=6) if nodes else []:
+    recent = nodes.jobs_for(node_id=nid, type="toolchain", n=6) if nodes else []
+    for j in recent:
         if (j.get("spec") or {}).get("action") != "check":
             continue
         if j.get("state") not in ("succeeded", "failed"):
             continue
         rows = _check_rows(j["id"])
+        # What was installed since that check, by a job that succeeded: the
+        # check's "update" or "absent" for it is the answer from before, and
+        # the row kept offering an update it had just taken until somebody
+        # checked again (the operator, 6 Oct).
+        since = {str(x) for k in recent
+                 if (k.get("spec") or {}).get("action") == "install" and k.get("state") == "succeeded"
+                 and int(k.get("ended") or 0) > int(j.get("ended") or 0)
+                 for x in ((k.get("spec") or {}).get("names") or [])}
         for i in items:
             r = rows.get(i["name"])
             if not r:
                 continue
+            if i["name"] in since:
+                r = dict(r, status="current")
             i["latest"] = r["latest"]
             # Said as the check found it. The controller's own list drops an
             # answer that disagrees with its probe, because there both
@@ -1626,7 +1637,8 @@ def node_checks_due(now=None):
     this controller's store, and a node's answers are its last check job's,
     so they aged until somebody pressed Check. A live node with a toolchain
     store whose last check ended a week ago or more, and that has no
-    toolchain job waiting or running, is queued one. The node ids queued."""
+    toolchain job waiting or running, is queued one, as is one that has just
+    started, whatever its last check. The node ids queued."""
     if not nodes or not TOOLCHAINS:
         return []
     now = time.time() if now is None else now
@@ -1641,11 +1653,14 @@ def node_checks_due(now=None):
             continue
         last = max((int(j.get("ended") or 0) for j in jobs
                     if (j.get("spec") or {}).get("action") == "check"), default=0)
-        if last and now - last < TC_CHECK_EVERY:
+        # ...or sooner, for a node that has just started (nodes.checks_wanted).
+        wanted = n["id"] in getattr(nodes, "checks_wanted", ())
+        if last and now - last < TC_CHECK_EVERY and not wanted:
             continue
         r = node_job("system", n["id"], "check", [])
         if r.get("ok") or r.get("job"):
             queued.append(n["id"])
+            getattr(nodes, "checks_wanted", set()).discard(n["id"])
     return queued
 
 

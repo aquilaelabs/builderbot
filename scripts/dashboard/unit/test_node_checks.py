@@ -19,10 +19,12 @@ def node(nid, **kw):
 
 
 class NodeChecks(unittest.TestCase):
-    def run_with(self, rows, jobs):
+    def run_with(self, rows, jobs, wanted=()):
         queued = []
 
         class Nodes:
+            checks_wanted = set(wanted)
+
             @staticmethod
             def node_list():
                 return rows
@@ -36,6 +38,7 @@ class NodeChecks(unittest.TestCase):
         toolchains.node_job = lambda p, nid, action, names: queued.append((p, nid, action)) or {"ok": True, "job": "j"}
         toolchains.TOOLCHAINS = [{"name": "jdk"}]
         try:
+            self.left = Nodes.checks_wanted
             return toolchains.node_checks_due(now=NOW), queued
         finally:
             toolchains.nodes, toolchains.node_job, toolchains.TOOLCHAINS = was
@@ -50,6 +53,13 @@ class NodeChecks(unittest.TestCase):
         got, _ = self.run_with([node("n1")], {"n1": [
             {"state": "succeeded", "ended": NOW - 2 * DAY, "spec": {"action": "check"}}]})
         self.assertEqual(got, [])
+
+    def test_a_node_that_has_just_started_is_checked_whatever_its_last_check(self):
+        # The operator, 6 Oct: check for updates at a node's start up.
+        got, _ = self.run_with([node("n1")], {"n1": [
+            {"state": "succeeded", "ended": NOW - 2 * DAY, "spec": {"action": "check"}}]}, wanted={"n1"})
+        self.assertEqual(got, ["n1"])
+        self.assertEqual(self.left, set(), "and it is checked once, not on every turn")
 
     def test_never_checked_is_checked(self):
         got, _ = self.run_with([node("n1")], {})
