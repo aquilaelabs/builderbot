@@ -136,7 +136,10 @@ bb git policy      what a session may push here (its own branches, main) from
                    are the operator's whatever the two settings say
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
-bb emu start [api] | stop | status | list | log [-p]
+bb emu start [api] | stop | status | list | log [-p] | adopt
+                   the project's own emulator: its phones are this project's
+                   alone, made on the first start; adopt moves the account's
+                   phones from before that into this project, once
 bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS] [--mark FILE]
                    a timed touch on the running emulator, in screen pixels;
                    a glide moves like a hand (steady, normal, shaky, or
@@ -771,6 +774,75 @@ avd_names() {
 avd_path() { sed -n 's/^path=//p' "$(avd_home)/${1}.ini" 2>/dev/null; }
 avd_exists() { [ -f "$(avd_home)/${1}.ini" ]; }
 
+# emu_adopt: the account's AVDs from before B511, moved into this
+# project's folder whole (their installed apps and settings with them), for
+# the one project that was using them; refused while one runs.
+emu_adopt() {
+    local legacy="$HOME/.android/avd" n moved="" held
+    [ -n "${ANDROID_AVD_HOME:-}" ] && [ "$ANDROID_AVD_HOME" != "$legacy" ] \
+        || { warn "bb emu adopt moves the account's shared AVDs into a project's own folder: run it inside a project"; return 1; }
+    for n in $(for f in "$legacy"/*.ini; do [ -f "$f" ] && basename "$f" .ini; done); do
+        held="$(ANDROID_AVD_HOME="$legacy" emu_held "$n")"
+        [ -z "$held" ] || { warn "$n is running ($held): stop it first, then adopt"; return 1; }
+        [ ! -e "$ANDROID_AVD_HOME/$n.ini" ] || { warn "this project already has an AVD named $n; nothing was moved"; return 1; }
+    done
+    for n in $(for f in "$legacy"/*.ini; do [ -f "$f" ] && basename "$f" .ini; done); do
+        mv "$legacy/$n.avd" "$ANDROID_AVD_HOME/$n.avd" || { warn "could not move $n.avd"; return 1; }
+        sed "s|^path=.*|path=$ANDROID_AVD_HOME/$n.avd|" "$legacy/$n.ini" > "$ANDROID_AVD_HOME/$n.ini" \
+            && rm -f "$legacy/$n.ini"
+        moved="$moved $n"
+    done
+    [ -n "$moved" ] || { warn "no shared AVDs in $legacy to adopt"; return 1; }
+    rm -f "$legacy/.heir"
+    log "adopted${moved} into $(bb_project): they are this project's alone now, with what is installed on them"
+}
+
+# emu_scrub SERIAL AVD: packages another project left on an adopted phone,
+# named one a line in its bb-scrub.txt, uninstalled once on its first boot
+# here (B511: BuilderBot's companion app, left on the phone Shebang adopts).
+emu_scrub() {
+    local f pkg
+    f="$(avd_path "$2")/bb-scrub.txt"
+    [ -f "$f" ] || return 0
+    while IFS= read -r pkg; do
+        [ -n "$pkg" ] || continue
+        adb -s "$1" uninstall "$pkg" >/dev/null 2>&1 && log "removed ${pkg}, which another project had left on this phone"
+    done < "$f"
+    rm -f "$f"
+}
+
+# emu_room AVD: nothing when this node has the memory for one more emulator
+# of that AVD, else the sentence why not. With a phone per project (B511)
+# nothing makes two projects take turns any more, so the node's memory
+# does: what the AVD is configured with, about a GB of the emulator's own
+# beside it, and EMU_RESERVE_MB (2 GB) left for the builds and the rest, so
+# a second emulator never starves a third session's Gradle (the operator, 6
+# Oct: bb is what lends the emulator, so it should know how many fit).
+# /proc/meminfo is the node's own; a session sees only its own processes,
+# so how many emulators run here is the node's count, from bb node busy.
+# Memory alone was not enough: two phones and a build left 5 GB, room by
+# memory for a third, on a node already at load 9 on 8 cores (6 Oct). A node
+# that bb node busy calls saturated has no room for another until it eases.
+emu_room() {
+    local cfg ram need avail reserve="${EMU_RESERVE_MB:-2048}" running busy
+    busy="$("$0" node busy 2>/dev/null)"
+    running="$(printf '%s\n' "$busy" | grep -o '[0-9]* emulator' | head -1 | cut -d' ' -f1)"
+    if printf '%s\n' "$busy" | head -1 | grep -q ': saturated'; then
+        printf "this node's processors are saturated (%s); %s emulator%s running on it now" \
+            "$(printf '%s\n' "$busy" | head -1 | sed -n 's/.*saturated (\(.*\))$/\1/p')" \
+            "${running:-0}" "$([ "${running:-0}" = 1 ] && echo " is" || echo "s are")"
+        return 0
+    fi
+    cfg="$(avd_path "$1")/config.ini"
+    ram="$(sed -n 's/^hw\.ramSize *= *\([0-9]*\).*/\1/p' "$cfg" 2>/dev/null | head -1)"
+    need=$(( ${ram:-2048} + 1024 ))
+    avail="$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null)"
+    [ -n "$avail" ] || return 0
+    [ "$avail" -lt $((need + reserve)) ] || return 0
+    printf 'this node has %s MB of memory free, and another phone needs about %s MB with %s MB left for builds; %s emulator%s running on it now' \
+        "$avail" "$need" "$reserve" "${running:-0}" "$([ "${running:-0}" = 1 ] && echo " is" || echo "s are")"
+}
+
 # emu_avd [TARGET]: resolve which AVD to act on. A bare API level (37) maps to
 # that version's AVD; anything else is taken as a literal name. With no target:
 # ANDROID_AVD_NAME wins if set, then the first configured API level, then the
@@ -811,15 +883,11 @@ emu_avd() {
         printf '%s' "$have"
         return
     fi
-    # Nothing made yet: the newest API level the store holds an image for,
-    # which is what `bb emu create` would name, so the refusal names it.
-    first="$(emu_apis | tail -1)"
-    [ -n "$first" ] || first=36
-    if avd_exists "${prefix}-${first}"; then
-        printf '%s-%s' "$prefix" "$first"
-    else
-        printf '%s' "$prefix"
-    fi
+    # Nothing made yet: the newest whole API level the store holds an image
+    # for, which is what `bb emu create` names and what a project's first
+    # `bb emu start` makes (B511); a preview level (37.0) is never the guess.
+    first="$(emu_apis | grep -E '^[0-9]+$' | tail -1)"
+    printf '%s-%s' "$prefix" "${first:-36}"
 }
 
 # Whether the running emulator has finished booting: adb lists it as a
@@ -940,7 +1008,32 @@ cmd_emu() {
     if ! on_node && [ -z "${BB_EMU_LOCAL:-}" ] && [ -z "${BB_NODE_TOOLCHAINS:-}" ]; then
         die "this project has no node, and the controller runs no emulator; bind a node in the project's settings dialog, and bb emu runs there"
     fi
+    # The virtual phone is the project's, not the account's (B511). Its
+    # AVDs lived in the account's ~/.android/avd, so every project's session
+    # of one account booted the same phone with whatever another project had
+    # installed and signed into: BuilderBot's own companion app, signed in
+    # to the dev instance, turned up on Shebang-DevBoard's home screen (the
+    # operator, 6 Oct). Each project has its own folder of AVDs now, and its
+    # first start makes its phone. An ANDROID_AVD_HOME already set (the
+    # Emulator tab's jobs, an operator's own) is left as it is.
+    if [ -z "${ANDROID_AVD_HOME:-}" ]; then
+        local eproj; eproj="$(bb_project 2>/dev/null || true)"
+        if [ -n "$eproj" ]; then
+            export ANDROID_AVD_HOME="$HOME/.android/avd-projects/$eproj"
+            mkdir -p "$ANDROID_AVD_HOME" 2>/dev/null || true
+            # The phones from before this are one project's to keep, named in
+            # their .heir (the operator chose Shebang-DevBoard, 6 Oct): its
+            # first start here takes them, rather than making a blank one.
+            if [ "${1:-}" = start ] && [ "$(cat "$HOME/.android/avd/.heir" 2>/dev/null)" = "$eproj" ] \
+               && [ -z "$(ls "$ANDROID_AVD_HOME"/*.ini 2>/dev/null)" ]; then
+                emu_adopt || warn "the shared phones were not adopted; this start makes a new one"
+            fi
+        fi
+    fi
     case "${1:-status}" in
+        adopt)
+            emu_adopt || exit 1
+            ;;
         create)
             # An AVD for an API level: the system image and platform through
             # sdkmanager if they are not here, then avdmanager, on demand,
@@ -1029,10 +1122,30 @@ cmd_emu() {
                 log "an emulator is already running"; adb devices; return 0
             fi
             avd="$(emu_avd "${2:-}")"
+            # A project's first start makes its own phone (B511): the default
+            # AVD is named for its API level, so it can be made here.
+            if ! avd_exists "$avd" && [[ "$avd" =~ ^builderbot-([0-9]+)$ ]]; then
+                log "this project has no phone of its own yet: making ${avd} (a minute or two, once)"
+                ( cmd_emu create "${BASH_REMATCH[1]}" ) || die "could not make ${avd}; bb emu create ${BASH_REMATCH[1]} says why"
+            fi
             avd_exists "$avd" \
                 || die "AVD '${avd}' not found; bb emu create <api> builds one, and bb emu list shows what is here"
             local held; held="$(emu_held "$avd")"
             [ -z "$held" ] || die "$held"
+            # Room on the node for one more (emu_room): waited for a while,
+            # since another project's emulator stopping or a build finishing
+            # frees it, then refused with the numbers rather than started
+            # into a machine that would kill something to make room.
+            local room waited_room=0
+            room="$(emu_room "$avd")"
+            if [ -n "$room" ]; then
+                log "waiting for room for another emulator: ${room}"
+                while [ -n "$room" ] && [ "$waited_room" -lt "${EMU_ROOM_WAIT:-300}" ]; do
+                    sleep 10; waited_room=$((waited_room + 10)); room="$(emu_room "$avd")"
+                done
+                [ -z "$room" ] || die "no room for another emulator: ${room}. Start it again once one stops; bb node busy says what is running"
+                log "room for it now"
+            fi
             [ -w /dev/kvm ] || warn "/dev/kvm not available; this will be very slow"
             # Software rendering by default. `-gpu host` does not work here
             # even with a GPU passed through and NVIDIA_DRIVER_CAPABILITIES=all:
@@ -1054,6 +1167,16 @@ cmd_emu() {
                 gpu=host
                 export DISPLAY="${DISPLAY:-:0}"
                 log "hardware rendering: EGL answers on ${DISPLAY} (${vendor})"
+                # The card's memory is one pool for every session and job on
+                # the node; an emulator drawing on it wants a few hundred MB.
+                # Short of that, this one renders in software and says so,
+                # rather than failing on a full card or starving a job on it.
+                local vfree
+                vfree="$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -dc 0-9)"
+                if [ -n "$vfree" ] && [ "$vfree" -lt "${EMU_GPU_MIN_MB:-768}" ]; then
+                    gpu=swiftshader_indirect
+                    log "the card has ${vfree} MB free, under the ${EMU_GPU_MIN_MB:-768} MB a phone draws with: rendering in software this time"
+                fi
             else
                 gpu=swiftshader_indirect
             fi
@@ -1132,6 +1255,7 @@ cmd_emu() {
                 fi
             fi
             log "emulator is up as ${serial}, booted"
+            emu_scrub "$serial" "$avd"
             adb devices
             ;;
         stop)

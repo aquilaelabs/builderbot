@@ -1942,6 +1942,22 @@ it was. The one exception is the send arrow: it types into a live session,
 which no Save button can take back, so it flushes whatever is staged first and
 then goes.
 
+**Each project has its own emulator.** A virtual phone's AVDs lived in the
+account's home, so every project's session of one account booted the same
+phone, with whatever another project had installed and signed into on it:
+BuilderBot's own companion app, signed in to the dev instance, turned up on
+Shebang-DevBoard's home screen (B511). `bb emu` keeps each project's AVDs in
+a folder of its own (`~/.android/avd-projects/PROJECT`), and a project's
+first `bb emu start` makes its phone. With nothing making projects take
+turns, `bb emu start` decides whether the node has room for another: not
+while the node is saturated, and only with the phone's memory, the
+emulator's own and 2 GB for builds free, waiting up to five minutes for
+room and then refusing with the numbers; a card short of a few hundred MB
+free renders that phone in software. The phones from before are one
+project's to keep (`bb emu adopt`, or automatically for the project named
+in the old folder's `.heir`), and a `bb-scrub.txt` beside an adopted phone
+names packages another project left there, removed on its first boot.
+
 **Each section saves its own.** A notebook section that stages anything (the
 roadmap's list, the Memories, Your rules, each Version, the Design's Themes
 and Pages) carries its own Save and Revert at its foot, which write or throw

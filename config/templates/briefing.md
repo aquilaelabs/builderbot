@@ -336,7 +336,10 @@ or a fix on your branch before it becomes a red run.
 
 The emulator, the system images, the GPU and adb are this machine's:
 `bb emu list|start|status|stop|log|gpu`, and `bb emu shot|gfx PKG|install FILE`,
-which write into dist/. It is not started for you and runs one at a time.
+which write into dist/. The virtual phone is this project's alone: what one
+project installs or signs into on its emulator, no other project's session
+ever boots, and a project's first `bb emu start` makes its phone, which
+takes a minute or two once. It is not started for you and runs one at a time.
 Start it with `bb emu start`, never with the emulator binary: it picks the
 GPU this node has (hardware where the card has a display, software
 otherwise), waits for the boot to finish before it returns, keeps the log

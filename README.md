@@ -198,7 +198,10 @@ bb git policy      what a session may push here (its own branches, main) from
                    are the operator's whatever the two settings say
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
-bb emu start [api] | stop | status | list | log [-p]
+bb emu start [api] | stop | status | list | log [-p] | adopt
+                   the project's own emulator: its phones are this project's
+                   alone, made on the first start; adopt moves the account's
+                   phones from before that into this project, once
 bb emu touch tap X Y | hold X Y --ms N | glide X Y X Y... [--hand NAME] [--seed N] [--pre MS] [--hold MS] [--mark FILE]
                    a timed touch on the running emulator, in screen pixels;
                    a glide moves like a hand (steady, normal, shaky, or
