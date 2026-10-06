@@ -6,7 +6,7 @@
 // assertion is a round trip through the channel, which is the thing phase 3
 // exists to prove.
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
-         tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
+         tmuxNew, tmuxKill, tmuxFmt, tmuxCapture, openSection } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync, chmodSync, symlinkSync } from 'node:fs';
 
@@ -3210,6 +3210,7 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     {
       const sw = `.nodestab .ndrow[data-node="${minted.id}"] [data-k="sessnet"]`;
       const save = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd="turns"]`;
+      await openSection(page, 'nodes:sessions', `.nodestab .ndrow[data-node="${minted.id}"]`);
       await page.waitForSelector(sw, { timeout: 15000 });
       ok(!(await page.$eval(sw, e => e.checked)), 'the Sessions section offers the switch, off to begin with');
       await page.click(sw);

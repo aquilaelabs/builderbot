@@ -3,7 +3,7 @@
 // /term proxy that puts the terminals behind the same sign-in. The proxy's
 // upstream is dead in the harness (nothing listens on the ttyd port), which
 // pins the 502 path; the live relay is covered by using the dashboard.
-import { launch, newPage, ok, done, sleep, URL, DIR, takeOn } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection } from './lib.mjs';
 import http from 'node:http';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -897,6 +897,7 @@ ${code}`], { encoding: 'utf8' }).trim();
      '...and it says why rather than offering a control that would fail');
 
   // Adding somebody, from the tab rather than from a shell.
+  await openSection(page, 'users:add');
   await page.fill('#uNewName', 'tabmade');
   await page.fill('#uNewPw', 'tabmadepw1');
   await page.fill('#uNewPw2', 'tabmadepw2');

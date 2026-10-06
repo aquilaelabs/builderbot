@@ -389,6 +389,21 @@ export const freePoll = page => page.evaluate(() => {
   if (window.__heldRefresh){ refresh = window.__heldRefresh; window.__heldRefresh = null; }
 });
 
+// One section is open at a time on a tab and in a notebook view (5 and
+// 6 Oct): a check opens the one it works in first, by its key
+// (`nodes:advanced`), the way a person does, through its summary.
+// `scope` names where: the same key is on every node's row of the Nodes tab.
+export async function openSection(page, key, scope = ''){
+  const sel = `${scope ? scope + ' ' : ''}details.sect[data-sect="${key}"]`;
+  // There first: a node picked a moment ago is still being drawn.
+  await page.waitForSelector(sel, { state: 'attached', timeout: 10000 }).catch(() => {});
+  await page.evaluate(s => {
+    const d = document.querySelector(s);
+    if (d && !d.open) d.querySelector(':scope > summary').click();
+  }, sel);
+  await page.waitForFunction(s => document.querySelector(s)?.open, sel, { timeout: 5000 }).catch(() => {});
+}
+
 export async function openFold(page, sel){
   // Resolved to a handle first, and the wait done through that rather than
   // through the selector: these are often Playwright's own selector flavor

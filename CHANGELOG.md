@@ -179,6 +179,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb build and bb test run once more, saying so, when a failure reads as the projects share's (a delete or lock the network drive refused) rather than the code's; the briefing asks a session to keep Gradle's whole failure text (f175428)
 - The debug options are a grant of their own, debug, which only the owner has until a role names it: debug mode, the controller's diagnostics and nodes' logs. What a session may read for debugging is granted per project in its settings, not per node, and a page without the grant shows no debug options (880ecbe)
 - The Toolchains tab says what it is installing as the bar's state, by the toolchain's name and how far through the batch it is, rather than a green line naming its recipe id (fb40059)
+- One section is open at a time on the Nodes, Docker, Users and Roles tabs, as in a notebook: opening one shuts the others (a266f2f)
 
 ### Removed
 

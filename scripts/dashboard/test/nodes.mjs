@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold, patience, saveDialog, openSection } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -667,6 +667,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
      'the controller cannot be picked here: it runs no work and has nothing this tab configures');
   // Nothing to open: the storage and network settings are always shown now,
   // one node at a time, chosen in the bar.
+  await openSection(page, 'nodes:storage', ROW);
   await page.waitForSelector(`${ROW} .ndconf [data-madd]`, { timeout: 5000 });
   ok(await page.$eval(`${ROW} .ndconf`, e => /now 10\.0\.0\.40\/24 on ens3 via 10\.0\.0\.1/.test(e.textContent)),
      'it reports the address the node is on');
@@ -820,12 +821,27 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
+  // One section open at a time on a tab, as in a notebook (the operator,
+  // 6 Oct): opening one shuts its open siblings.
+  {
+    const sects = `${ROW} .ndconfbody > details.sect`;
+    const shut = await page.$$eval(sects, ds => ds.findIndex(d => !d.open));
+    if (shut >= 0) {
+      await page.$$eval(sects, (ds, i) => ds[i].querySelector(':scope > summary').click(), shut);
+      await page.waitForFunction(s => [...document.querySelectorAll(s)].filter(d => d.open).length === 1,
+                                 sects, { timeout: 5000 }).catch(() => {});
+    }
+    const open = await page.$$eval(sects, ds => ds.filter(d => d.open).length);
+    ok(shut >= 0 && open === 1, `opening a section on the Nodes tab shuts the others (${open} open)`);
+  }
   // Every fold on this page is driven rather than left to the browser's
   // instant snap: the memories, the bug reports, the version tab's fold, the
   // Docker manager's wiring. Sections shipped without it and were the one
   // kind that jumped.
   {
-    const sel = `${ROW} .ndconfbody > details.sect`;
+    // An open one: one section is open at a time now (6 Oct).
+    const key = await page.$eval(`${ROW} .ndconfbody > details.sect[open]`, d => d.dataset.sect);
+    const sel = `${ROW} .ndconfbody > details.sect[data-sect="${key}"]`;
     const moved = await animatedDuring(page, () => closeFold(page, sel));
     ok(moved.some(c => /\bsect\b/.test(c)),
        '...and a section folds with the same tween as every other fold here');
@@ -1819,6 +1835,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
   await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
   await pickNode(page, sb.id);
+  await openSection(page, 'nodes:advanced', `.nodestab .ndrow[data-node="${sb.id}"]`);
   await page.waitForSelector(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, { timeout: 15000 });
   ok(await page.$eval(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, e => e.value) === '/workspace:/workspace, /devdata:/mnt/user/bb-dev',
      '...and the node\'s row shows it, editable');
@@ -1836,6 +1853,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     ok(/already called shed/.test(dup.error || ''), 'a name another live node wears is refused');
     const loc = await papi({ action: 'update', id: 'local', fields: { name: 'box' } });
     ok(/not a node to rename/.test(loc.error || ''), 'the controller\'s own row is not renamed');
+    await openSection(page, 'nodes:advanced', `.nodestab .ndrow[data-node="${sb.id}"]`);
     await page.fill(`.nodestab .ndrow[data-node="${sb.id}"] .ndname [data-k="name"]`, 'sandbox-two');
     // A heartbeat repaints the tab; the name being typed survives it (B176).
     await page.evaluate(() => loadNodes());

@@ -2,7 +2,7 @@
 // of your own made on the tab and given grants there, carried by an
 // account from the Users tab's dialog, and honored by the gate: the account
 // may do what the role says where it says, and nothing it did not.
-import { launch, newPage, ok, done, ready, sleep, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, URL, DIR, openSection } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -38,6 +38,7 @@ ok(await page.$eval('.rolestab [data-sect="roles:r-admin"]', s => !s.querySelect
 
 // A role of your own: made from the New role band, then its grants ticked
 // and saved in its own fold.
+await openSection(page, 'roles:new');
 await page.fill('#rNewName', 'deployer');
 await page.click('#rNew');
 // The fold arrives with the redraw that follows the save; settled before

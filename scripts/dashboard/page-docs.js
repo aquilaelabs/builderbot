@@ -167,31 +167,40 @@ function wireSections(root){
     const sum = d.querySelector(":scope > summary");
     if (sum) sum.onclick = e => { e.preventDefault(); if (!d.open) soleOpen(d); slideDetails(d, !d.open); };
   });
-  const view = root.closest?.(".nbview");
+  const view = root.closest?.(".nbview, .doctab") || root.querySelector?.(".doctab");
   if (view){
     oneOpen(view);
     root.querySelectorAll("details.sect").forEach(oneOpen);
   }
 }
-// In a notebook one section is open at a time (the operator, 5 Oct): on a
-// phone, several open made a view a long scroll, and the section being
+// One section is open at a time, in a notebook view (the operator, 5 Oct)
+// and on a document tab (the Nodes, Docker, Users and Roles tabs, 6 Oct): on
+// a phone, several open made a surface a long scroll, and the section being
 // worked in was hard to keep hold of. Among siblings only: a section's own
 // folds (a page's rules inside Pages) take turns among themselves and never
 // close the section holding them.
 const sectLast = new WeakMap();     // a group -> the key of the section last opened in it
-function sectGroup(d){ return d.parentElement?.closest("details.sect, .nbview") || null; }
+function sectGroup(d){ return d.parentElement?.closest("details.sect, .nbview, .doctab") || null; }
+const sectRuled = g => !!g?.closest?.(".nb, .doctab");
 function soleOpen(d){
   const g = sectGroup(d);
-  if (!g || !g.closest(".nb")) return;
+  if (!sectRuled(g)) return;
   sectLast.set(g, d.dataset.sect || "");
-  g.querySelectorAll("details.sect[open]").forEach(o => { if (o !== d && sectGroup(o) === g) slideDetails(o, false); });
+  // Recorded now, not when the slide ends: a repaint landing mid-slide read
+  // the one sliding shut as still open and kept it over the one just opened.
+  if (d.dataset.sect) sectOpen[d.dataset.sect] = true;
+  g.querySelectorAll("details.sect[open]").forEach(o => {
+    if (o === d || sectGroup(o) !== g) return;
+    if (o.dataset.sect) sectOpen[o.dataset.sect] = false;
+    slideDetails(o, false);
+  });
 }
 // A section opened by a draw rather than by a hand (Memories, remembered
 // open): it is the one that stays, and the others shut at once, since a
 // slide here overlapped two sections for its length (uniform, 6 Oct).
 function keepOpen(d){
   const g = sectGroup(d);
-  if (!g || !g.closest(".nb")) return;
+  if (!sectRuled(g)) return;
   sectLast.set(g, d.dataset.sect || "");
   oneOpen(g);
 }
@@ -200,7 +209,7 @@ function keepOpen(d){
 // opened before (its fold recorded open), else the first; the rest shut at
 // once, without the slide, since nothing moved them.
 function oneOpen(g){
-  if (!g?.closest?.(".nb")) return;
+  if (!sectRuled(g)) return;
   const open = [...g.querySelectorAll("details.sect[open]")].filter(o => sectGroup(o) === g);
   if (open.length < 2) return;
   const keep = open.find(o => o.hasAttribute("data-lead"))
