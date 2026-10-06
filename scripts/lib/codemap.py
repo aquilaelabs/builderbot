@@ -1006,11 +1006,55 @@ def page_bindings(idx, root, name):
     return out
 
 
+# A name declared as a value rather than a function or a type, by each
+# language's own words: what `find` falls back to when no definition has the
+# name. A Kotlin table in a companion object (`val ACTIONS = linkedMapOf(`)
+# was "nothing defines ACTIONS" (report #66, B527), and a python module's
+# constant was the same.
+VALUE_DECL = {
+    "py": lambda n: rf"^{n}\s*(?::[^=]+)?=(?!=)",
+    "sh": lambda n: rf"^\s*(?:export\s+|readonly\s+|local\s+)?{n}=",
+    ".kt": lambda n: rf"\b(?:val|var)\s+{n}\b", ".kts": lambda n: rf"\b(?:val|var)\s+{n}\b",
+    ".scala": lambda n: rf"\b(?:val|var)\s+{n}\b", ".swift": lambda n: rf"\b(?:let|var)\s+{n}\b",
+    ".go": lambda n: rf"\b(?:const|var)\s+{n}\b|^\s+{n}\s+(?:[\w.*\[\]]+\s*)?=",
+    ".rs": lambda n: rf"\b(?:const|static)\s+(?:mut\s+)?{n}\s*:",
+    ".java": lambda n: rf"\b{n}\s*=[^=]", ".cs": lambda n: rf"\b{n}\s*=[^=]",
+    ".dart": lambda n: rf"\b(?:final|const|var)\s+(?:\w+\s+)?{n}\b",
+    ".ts": lambda n: rf"\b(?:const|let|var)\s+{n}\b", ".mjs": lambda n: rf"\b(?:const|let|var)\s+{n}\b",
+}
+
+
+def value_decls(idx, root, name, limit=20):
+    """Where `name` is declared as a value in a file of the index, by the
+    patterns above. (file, line, word) per declaration."""
+    if not root or not re.fullmatch(r"[A-Za-z_$][\w$]*", name):
+        return []
+    out = []
+    for f, e in idx["files"].items():
+        pat = VALUE_DECL.get(e.get("lang")) or VALUE_DECL.get(Path(f).suffix)
+        if not pat:
+            continue
+        rx = re.compile(pat(re.escape(name)))
+        try:
+            with open(Path(root) / f, encoding="utf-8", errors="replace") as fh:
+                for i, line in enumerate(fh, 1):
+                    if name in line and rx.search(line):
+                        out.append((f, i, "value"))
+                        if len(out) >= limit:
+                            return out
+        except OSError:
+            continue
+    return out
+
+
 def q_find(idx, name, root=None):
     rows = [d for d in idx["defs"] if d["name"] == name]
     if not rows:
         found = page_bindings(idx, root, name) if root else []
         if not found:
+            more = value_decls(idx, root, name)
+            if more:
+                return [f"{f}:{ln}  declared as a value" for f, ln, _ in more]
             return [f"nothing defines {name}"]
         out = []
         for f, ln, kind in found:
