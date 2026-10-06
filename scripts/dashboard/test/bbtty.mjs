@@ -91,6 +91,7 @@ exit 0
 `);
 writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash
 if [ "\${1:-}" = auth ]; then
+  [ -n "\${FAKE_AUTH_LOG:-}" ] && echo auth >> "\${FAKE_AUTH_LOG}"
   [ "\${2:-}" = status ] && printf '{"loggedIn":true}\\n'
   exit 0
 fi
@@ -141,6 +142,22 @@ await sleep(400);
 ok(!/command too long/.test(out),
    'a roadmap past tmux\'s 16KB command limit does not stop the session starting');
 ok(alive('claude-alpha'), '...the session is really there');
+// A tab coming back to a session already running attaches at once: the
+// sign-in checks, the briefing and the launcher are for starting one, and
+// cost every reload of a running Claude tab about two seconds (6 Oct).
+{
+  const authLog = join(DIR, 'auth.log');
+  rmSync(authLog, { force: true });
+  const before = launcher();
+  try {
+    execFileSync('bash', [BBTTY, `claude:alpha:b:${boot}`], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'),
+             HOME: join(DIR, 'home'), DASHBOARD_STATE: join(DIR, 'state'), FAKE_AUTH_LOG: authLog } });
+  } catch { /* attach needs a terminal, which this is not: it fails AT the attach */ }
+  ok(!existsSync(authLog) && alive('claude-alpha') && launcher() === before,
+     'a tab coming back to a running Claude session attaches at once: no sign-in check, no briefing, no launcher written');
+}
 // The account's commit identity rides into the session as git's environment
 // (GIT_AUTHOR_* and GIT_COMMITTER_*, which outrank any user.name a
 // repository carries) from bb settings --json, which the stub answers.

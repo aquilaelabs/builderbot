@@ -222,7 +222,7 @@ function drawPanes(){
       // its own port and so counts as a cross-origin frame. Claude tabs are
       // left without it; they keep tmux's mouse mode, where a drag never
       // becomes a browser selection in the first place.
-      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
+      ? `<div class="slot"${isClaude(t) ? ` data-claude="1"` : ""}><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
@@ -303,6 +303,11 @@ function nbReadOnly(root, project){
 // memory: the same reasoning as MAX_TABS, one level down. Three covers the
 // switching anyone actually does; the fourth reloads, as all of them used to.
 const KEEP_FRAMES = 3;
+// ...and Claude's terminals are counted apart, up to this many more: a
+// conversation is what somebody comes back to, and one evicted by a few
+// shells cost a full reload (the terminal's page, its socket, the attach)
+// every time its tab was picked again (the operator, 6 Oct).
+const KEEP_CLAUDE_FRAMES = 4;
 let stackClock = 0;
 
 // A pane is a bar and a stack. The stack's children all sit on top of one
@@ -341,11 +346,10 @@ function showInStack(st, key, html){
 // when the pane is showing a document, all three terminals behind it are
 // hidden, and exempting "the visible slot" then kept one fewer than it says.
 function evictFrames(st){
-  [...st.children]
-    .filter(c => c.classList.contains("slot"))
-    .sort((a, b) => b.dataset.seen - a.dataset.seen)
-    .slice(KEEP_FRAMES)
-    .forEach(c => c.remove());
+  const slots = [...st.children].filter(c => c.classList.contains("slot"))
+                                .sort((a, b) => b.dataset.seen - a.dataset.seen);
+  const claude = slots.filter(c => c.dataset.claude), rest = slots.filter(c => !c.dataset.claude);
+  [...claude.slice(KEEP_CLAUDE_FRAMES), ...rest.slice(KEEP_FRAMES)].forEach(c => c.remove());
 }
 
 function dropElsewhere(keep, key){

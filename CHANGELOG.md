@@ -174,6 +174,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - dist/ keeps the newest builds of each product, whatever they are named, and a signed build by its signed copy alone, swept every few minutes and when a build lands; a build named with no version is flagged on its row with Remove (d06b315)
 - The Artifacts view's downloads are a section of their own, Files, open when the view first shows, and the dev instance and branch builds have their own sections too (8debf1e)
 - Every Send to Claude asks first, naming the session, before anything is typed into it; the bug and roadmap sends ask in their own send box (101dfcf)
+- A Claude tab comes back faster: a running session is attached at once, without the sign-in checks and briefing a new one needs, and each pane keeps up to four Claude terminals loaded beside three others, so shells no longer push a conversation out (8696ecf)
 
 ### Removed
 

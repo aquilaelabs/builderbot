@@ -969,6 +969,28 @@ case "$target" in
                 "the dashboard's Projects card to pick it up again. Starting a" \
                 "session is a decision, and a reconnecting tab is not one."
         fi
+        # A tab coming back to a Claude session already running here attaches
+        # at once. What follows (the sign-in checks, the briefing assembled
+        # again, the identity, the launcher written) is all for STARTING one,
+        # and cost a tab about two seconds before it showed a conversation
+        # that was there all along (the operator, 6 Oct: the Claude tab took
+        # a long time to load though it was running). Not for a resume, which
+        # names a transcript, nor on a locked project, which says so below.
+        fast="$(sess "claude-${proj//[.:]/_}")"
+        if [ -z "$resume" ] && ! is_locked "$proj" \
+           && tmux list-panes -t "=$fast" -F '#{pane_start_command}' 2>/dev/null | grep -qi claude; then
+            # The trust flag is still put back (a few jq calls), and the
+            # running session is still told it started on the old answer.
+            # On the session's own tree, which for anybody but the owner is
+            # their worktree (session_dir, already there for a running one).
+            dir="$(session_dir "$proj" "$account")"
+            if claude_first_run "$dir" && [ "${CLAUDE_TRUST_ADDED:-0}" = 1 ]; then
+                echo "NOTE: ${dir} was not trusted in ${HOME}/.claude.json; it is now." >&2
+                echo "The session already running here started on the old answer, so it" >&2
+                echo "will keep asking about every command until it is restarted." >&2
+            fi
+            exec tmux attach-session -t "=$fast"
+        fi
         # Signed out, a session starts and dies on claude's own error, which
         # reads like the container is broken. Refused positively only: an
         # older claude with no `auth` subcommand, or one that cannot answer,

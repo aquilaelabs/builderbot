@@ -219,4 +219,25 @@ ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
      'closing the popped window brings the tab back on its own');
 }
 
+// Claude's terminals are kept apart from the rest (6 Oct): three of any
+// other kind behind the one on screen, as before, and up to four Claude
+// ones beside them, so a few shells no longer evict a conversation and make
+// its tab reload from nothing.
+{
+  const kept = await page.evaluate(() => {
+    const st = document.createElement('div');
+    for (let i = 0; i < 12; i++){
+      const c = document.createElement('div');
+      c.className = 'slot'; c.dataset.seen = String(i);
+      if (i % 2) c.dataset.claude = '1';
+      c.dataset.n = String(i);
+      st.appendChild(c);
+    }
+    evictFrames(st);
+    return [...st.children].map(c => (c.dataset.claude ? 'c' : 's') + c.dataset.n);
+  });
+  ok(JSON.stringify(kept) === JSON.stringify(['c5', 's6', 'c7', 's8', 'c9', 's10', 'c11']),
+     `a pane keeps its four most recent Claude terminals and its three most recent others (${kept.join(' ')})`);
+}
+
 await done(browser);
