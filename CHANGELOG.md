@@ -77,6 +77,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Release makes the forge's release on Gitea, Forgejo, Codeberg and GitLab too, not only GitHub: the version as title, its changelog section as notes, the commit's builds attached, and the Artifacts row links to it or says why there is none (7bc7bba)
 - A session can change its project's published release with bb version release --edit, under the same setting: the notes replaced, builds and committed screenshots attached and shown in the notes, each edit its own ask to the owner (be2b1b5)
 - A session can take files off its project's published release with bb version release --remove, always as its own ask to the owner, the names checked against the release first (d9ad329)
+- A node's row on the Nodes tab says why an idle session's token was not refreshed there, and when one last was, from what its agent reports (bdf1fe8)
 
 ### Changed
 

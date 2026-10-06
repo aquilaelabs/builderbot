@@ -733,11 +733,14 @@ a.session_account = lambda: 'whoever'
 rows = [{'project': 'alpha', 'uid': 'u_12345678', 'token': 'bbs_fresh'}]
 a.keep_session_tokens(rows)
 a.keep_session_tokens(rows)
-print(json.dumps(logged))
+print(json.dumps({"logged": logged, "report": a.keep_report()}))
 `], { encoding: 'utf8' }).trim();
-      const logged = JSON.parse(said);
+      const { logged, report } = JSON.parse(said);
       ok(logged.length === 1 && /session tokens: bb token keep failed \(exit 1\): .*not kept under \/nowhere/.test(logged[0]),
          `...and one it could not keep is said in the agent's log with bb's reason, once, not on every hello (${said.slice(0, 160)})`);
+      ok(report.said.length === 1 && report.said[0].key === 'u_12345678/alpha' && /not kept under \/nowhere/.test(report.said[0].msg)
+         && report.ok === 0,
+         `...and kept for the hello, which carries it to the controller: the journal was the only place it went (B419) (${JSON.stringify(report).slice(0, 160)})`);
     }
     // The session's view (R35): the helper travels in the bundle, and what
     // the agent writes for it is one rule for one command, the layout, and a

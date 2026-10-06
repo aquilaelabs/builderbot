@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.133"
+AGENT_VERSION = "0.7.134"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3860,6 +3860,8 @@ class Agent:
                 said = ((p.stderr or "") + (p.stdout or "")).strip().splitlines()
                 self.keep_said(f"{uid}/{project}", f"bb token keep failed (exit {p.returncode}): "
                                                     + (said[-1][-300:] if said else "it said nothing"))
+            else:
+                self.__dict__["_keep_ok"] = int(time.time())
 
     def keep_said(self, key, msg):
         """Log why an idle session's token was not refreshed, once an hour per
@@ -3871,6 +3873,19 @@ class Agent:
             return
         seen[key] = now
         log(f"session tokens: {msg}")
+        # ...and kept for the controller, which the hello carries: the log
+        # above is the node's own journal, which nothing on the dashboard or
+        # in a session reads, so in practice it was still silent (B419).
+        recent = self.__dict__.setdefault("_keep_recent", [])
+        recent.append({"at": int(time.time()), "key": str(key)[:80], "msg": str(msg)[:300]})
+        del recent[:-8]
+
+    def keep_report(self):
+        """What the hello tells the controller about the session tokens kept
+        here: the last few complaints of two days, and when one was last kept."""
+        now = int(time.time())
+        said = [x for x in self.__dict__.get("_keep_recent", []) if now - x["at"] < 48 * 3600]
+        return {"said": said, "ok": int(self.__dict__.get("_keep_ok") or 0)}
 
     # -- the channel -------------------------------------------------------
     def census_take(self):
@@ -3934,7 +3949,8 @@ class Agent:
         st, r = self.ctl.call("hello", {"census": c,
                                         "version": AGENT_VERSION,
                                         "digest": own_digest(),
-                                        "running": self.running_ids()}, timeout=30)
+                                        "running": self.running_ids(),
+                                        "keep": self.keep_report()}, timeout=30)
         if st == 200:
             self.hello_at = time.monotonic()
             self.poll = int(r.get("poll") or 25)

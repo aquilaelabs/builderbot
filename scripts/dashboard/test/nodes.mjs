@@ -334,6 +334,26 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
     if (ran.job) await post('/api/v1/jobs', { action: 'cancel', id: ran.job });
     await post('/api/prefs', { project: 'beta', node: '', nodes: [] });
     agentSeen(0);
+    // Why an idle session's token was not kept here, as the agent said it
+    // on its hello (B419): on the node's row, in the warning color, with when
+    // one was last kept; the node's journal was the only place it went.
+    execFileSync('python3', ['-c', `
+import importlib.util, json, sys, time
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+ag = m.node("${added.id}")["agent"]
+ag["keep"] = m.keep_clean({"said": [{"at": int(time.time()) - 120, "key": "u_1/alpha",
+                                     "msg": "bb token keep failed (exit 1): the session token was not kept"}],
+                           "ok": int(time.time()) - 7200})
+m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}"))`],
+      { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+    await page.evaluate(() => typeof loadNodes === 'function' && loadNodes());
+    await pickNode(page, added.id);
+    const keepRow = await page.waitForFunction(id => document.querySelector(`.nodestab .ndrow[data-node="${id}"] .ndkeep`)?.textContent || '',
+      added.id, { timeout: 15000 }).then(h => h.jsonValue()).catch(() => '');
+    ok(/session tokens: bb token keep failed \(exit 1\): the session token was not kept, .*ago; one was last kept .*ago/.test(keepRow),
+       `why a session's token was not kept is on the node's row, with when one last was (${keepRow})`);
   }
   ok(['docker-host', 'package-build', 'deploy-target'].every(c => added.capabilities.includes(c)),
      '...and it does everything, without anybody being asked which');

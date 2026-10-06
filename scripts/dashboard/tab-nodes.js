@@ -1119,6 +1119,7 @@ function renderNodesInto(i){
         <div class="name">${esc(n.name)} ${nodeStatePill(n)}
           <span class="dim">· ${esc(n.kind)}</span></div>
         <div class="sub">${[esc(where), census, esc(seen), agentLine].filter(Boolean).join(" · ")}</div>
+        ${keepLine(n)}
         ${state?.can?.admin === false ? `<div class="sub warn ndreadonly">An administrator changes a node's settings. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
         ${agentBar}
       </div>
@@ -1889,4 +1890,20 @@ function wireNodeConf(row, id){
     }
     await pressing(b, () => { busy(b, "Applying"); return nodeAct({action: "apply", id, what}); });
   });
+}
+
+// Why an idle session's token was not refreshed on this node, as its agent
+// said it on its last hello (B419): its complaints went only to the node's
+// own journal, which nothing here reads. The newest of the last day, in the
+// warning color, with when a token was last kept beside it.
+function keepLine(n){
+  const k = n.agent?.keep;
+  if (!k) return "";
+  const day = Date.now() / 1000 - 86400;
+  const said = (k.said || []).filter(x => x.at > day);
+  if (!said.length) return "";
+  const last = said[said.length - 1];
+  return `<div class="sub warn ndkeep">session tokens: ${esc(last.msg)}, ${esc(ago(last.at))}${
+    said.length > 1 ? ` (and ${said.length - 1} more today)` : ""}${
+    k.ok ? `; one was last kept ${esc(ago(k.ok))}` : "; none kept since the agent started"}</div>`;
 }

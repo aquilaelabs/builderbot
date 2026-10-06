@@ -2074,7 +2074,27 @@ def reported_set(nid, key, sub, value):
 came_back = None
 
 
-def hello(nid, census, addr, version="", digest="", running=None):
+def keep_clean(keep):
+    """The agent's report on the session tokens it keeps (B419), checked:
+    {said: [{at, key, msg}] (the last eight), ok: when one was last kept}."""
+    if not isinstance(keep, dict):
+        return None
+    said = []
+    for x in (keep.get("said") if isinstance(keep.get("said"), list) else [])[-8:]:
+        if isinstance(x, dict):
+            try:
+                said.append({"at": int(x.get("at") or 0), "key": str(x.get("key") or "")[:80],
+                             "msg": str(x.get("msg") or "")[:300]})
+            except (TypeError, ValueError):
+                continue
+    try:
+        ok = int(keep.get("ok") or 0)
+    except (TypeError, ValueError):
+        ok = 0
+    return {"said": said, "ok": ok}
+
+
+def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it: the
     transports, the poll window, the node's own capabilities (so it can
@@ -2095,6 +2115,11 @@ def hello(nid, census, addr, version="", digest="", running=None):
     ag.update({"version": str(version)[:40], "digest": str(digest)[:80],
                "addr": addr, "last_seen": int(time.time()),
                })
+    # Why an idle session's token was not refreshed here, said by the agent
+    # that tried (B419); an agent from before says nothing and keeps none.
+    kc = keep_clean(keep)
+    if kc is not None:
+        ag["keep"] = kc
     rep = n.get("reported") or {}
     # The tmux sessions ride the HEARTBEAT, not the census, so the live set is
     # what the last one recorded rather than anything hello was handed. Read
