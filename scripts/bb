@@ -1039,7 +1039,13 @@ cmd_emu() {
             # for a node whose store starts empty. The only way an image
             # arrives besides the Emulator tab, since the baseline hook went.
             local api="${2:-}" pkg name
-            [ -n "$api" ] || die "bb emu create <api>: the API level to build the AVD for"
+            # A level is digits (36, 37.0), and anything else is help or a
+            # mistake: -h was taken as a level, and sdkmanager went looking for
+            # android--h (report #69, B528).
+            case "$api" in
+                -h|--help|"") echo "usage: bb emu create <api>: an AVD for that API level (36, 37.0), its system image and platform installed first if missing"; [ -n "$api" ]; return ;;
+                *[!0-9.]*) die "bb emu create <api>: an API level is a number like 36 or 37.0, not '${api}'" ;;
+            esac
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this node's toolchain store: say so in your reply; the operator adds android-tools on the Toolchains tab with this node picked"
             # Google names a level "37.0" or "36.1" in its index some years,
             # and a person says 37: the level given is looked up against what
