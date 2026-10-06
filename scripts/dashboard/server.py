@@ -4637,7 +4637,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(design.view(name))
 
     def _design(self, req):
-        """POST /api/design: the notebook's Save of the language and the
+        """POST /api/design: a Design section's Save of the language and the
         pages, and the file written into the tree: design.verb, for an
         account that works on the project."""
         name = field(req, "project")

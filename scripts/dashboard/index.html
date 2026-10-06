@@ -2203,7 +2203,7 @@ pre.diff .d-ctx{color:var(--dim)}
    History, the Analysis tab. */
 .nb.ro .rolock{margin:0;padding:11px 14px;color:var(--warn);font:var(--f-ui);
   border-bottom:1px solid var(--line)}
-.nb.ro #roadmapSaveQuiet,.nb.ro #roadmapAdd,.nb.ro #roadmapText,
+.nb.ro .sectbar,.nb.ro #roadmapAdd,.nb.ro #roadmapText,
 .nb.ro #bugAdd,.nb.ro #memAdd,.nb.ro .addstep,.nb.ro .memadd,
 .nb.ro .bug .macts,.nb.ro .mem .macts,.nb.ro .roadmap .go,.nb.ro .roadmap .mv,
 .nb.ro .vbar .sp ~ button:not(#nbHistory){
@@ -3646,6 +3646,14 @@ body.booting .pane>.loading{margin:auto}
         title="every change to this list, by either of you, with when"
         >History</button>
     </div>
+    <!-- The list's own Save and Revert, under its head (the operator, 5 Oct):
+         each section saves its own changes, and the list's are the reorders,
+         edits and steps staged on its rows. -->
+    <div class="field"><div class="actbar sectbar" data-bar="roadmap">
+      <span class="state" id="roadmapMoved"></span><span class="sp"></span>
+      <button id="roadmapSaveQuiet" type="button" data-ssave="roadmap" disabled>Save</button>
+      <button id="roadmapRevert" class="caution" type="button" data-srevert="roadmap" disabled>Revert</button>
+    </div></div>
     <div class="field">
       <!-- The add band every view adds with (R119 step 4): a button named for
            what it adds, beside Reorder, the other thing done TO the list; it
@@ -3745,6 +3753,12 @@ body.booting .pane>.loading{margin:auto}
         <div class="field" id="memListField">
           <div id="memList"></div>
         </div>
+        <!-- The memories' own Save and Revert (the operator, 5 Oct). -->
+        <div class="field"><div class="actbar sectbar" data-bar="briefing:memories">
+          <span class="state"></span><span class="sp"></span>
+          <button type="button" data-ssave="briefing:memories" disabled>Save</button>
+          <button type="button" class="caution" data-srevert="briefing:memories" disabled>Revert</button>
+        </div></div>
       </div>
     </details>
     </div>
@@ -3931,25 +3945,6 @@ body.booting .pane>.loading{margin:auto}
     <div class="nbview" data-view="settings" hidden>
       <div class="field nbhead vbar"><span>how this project runs, and what Claude may do here</span><span class="sp"></span></div>
       <div class="modal inline nbsettings"></div>
-    </div>
-    <div class="foot" id="nbFoot">
-      <!-- One. There were two, and the second one typed the change into a
-           running session's input box, which was the ONLY way anything
-           reached a session before #27 gave the prompt hook a free channel
-           back. With the session told by itself, the second button was the
-           difference between telling somebody now and telling them when they
-           next look up, and that is not a difference worth a permanent
-           control: the session's own tab is one tap away for the rare case
-           where a minute matters. -->
-      <span class="state" id="roadmapMoved" hidden></span>
-      <button id="roadmapSaveQuiet" type="button" disabled>Save</button>
-      <span class="sp"></span>
-      <!-- Where Close used to be. The tab does not go away when something is
-           saved, so the question this button answers is no longer "am I done
-           looking at this"; it is "throw the unsaved changes away", which is
-           the other half of a Save button and dead whenever there is nothing
-           to throw. -->
-      <button id="roadmapRevert" class="caution" type="button" disabled>Revert</button>
     </div>
     <!-- The reading room. A history and the changelog are things you READ,
          and they were opening in place of whatever you were looking at: the

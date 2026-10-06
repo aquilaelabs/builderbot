@@ -84,6 +84,9 @@ function nbMemoryView({$, nb}){
     // Folded unless this page opened it (the operator, 29 Sep); the fold's
     // state is the page's one toggle listener's, keyed like every section.
     $("memSect").open = "briefing:memories" in sectOpen ? sectOpen["briefing:memories"] : false;
+    // ...one section open at a time in a notebook (page-docs.js): open here
+    // only because the person opened it, so it is the one that stays.
+    if ($("memSect").open) soleOpen($("memSect"));
     // Which were open before this redraw. Saving reloads the book, and folding
     // away the memory that was just edited is the wrong answer to "did that
     // work?": the whole point is to look at it again.
@@ -142,7 +145,7 @@ function nbMemoryView({$, nb}){
                   is said by the note above the editor, and repeating it here
                   would be the same sentence twice on one screen. -->
              <div class="actbar macts">
-               <span class="state">Save at the foot writes it</span>
+               <span class="state">the section's Save writes it</span>
                <button type="button" class="stop mCancel"
                  title="discard what was typed">Cancel</button>
                <button type="button" class="danger" data-del="${esc(m.file)}"

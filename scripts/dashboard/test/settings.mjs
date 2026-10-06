@@ -236,12 +236,12 @@ ok(elsewhere.git_name === 'T. Person',
   ok(/Never write credentials/.test(await pre('alpha')) && /Never write credentials/.test(await pre('beta')) && /\(global\)/.test(await pre('beta')),
      '...and every project\'s sessions are handed it, marked global');
 
-  // Switched off for this project alone, staged until the notebook's Save.
+  // Switched off for this project alone, staged until the rules section's Save.
   const row = '.nb #rlGlobal .grule:has(.btitle:text-is("no-secrets"))';
   await openFold(page, row);
   await page.click(`${row} .grHere`);
   ok(/Never write credentials/.test(await pre('alpha')), '...a switch is staged, not written, until Save');
-  await page.click('.nb #roadmapSaveQuiet');
+  await page.click('.nb [data-ssave="briefing:rules"]');
   // Waited on the server, not the row: the row says "off here" as soon as
   // the switch is staged.
   await page.waitForFunction(async () => ((await (await fetch('/api/rules?project=alpha')).json()).global || [])

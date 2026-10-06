@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog, takeOn } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL, refreshUntil, saveDialog, takeOn, openFold } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -969,6 +969,10 @@ await ready(page);
 await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
 await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
+// One section open at a time in a notebook (the operator, 5 Oct): Build is
+// first, so Version is opened.
+await page.waitForSelector(`${NB} [data-sect="artifacts:version"]`, { timeout: 20000 });
+await openFold(page, `${NB} [data-sect="artifacts:version"]`);
 await page.waitForSelector('#verBox .verln', { timeout: 20000 });
 
 async function waitTarget(want, ms = 20000){
@@ -1040,7 +1044,7 @@ await page.click(`${NB} #verBox [data-verbump="minor"]`);
 ok(!/staged:/.test(await page.$eval(`${NB} #verBox`, e => e.textContent)),
    '...and pressing it again unstages, no dialog needed');
 await page.click(`${NB} #verBox [data-verbump="minor"]`);
-await page.click(`${NB} #roadmapSaveQuiet`);
+await page.click(`${NB} [data-ssave="artifacts:version"]`);
 await waitTarget('0.5.0');
 ok((await rows())['building towards'] === '0.5.0',
    'Save commits the staged bump: the operator can, whatever the policy');
@@ -1052,14 +1056,14 @@ ok(!execFileSync('git', ['-C', A, 'status', '--porcelain'], { env }).toString().
 
 // The policy control is the answer to "when should this be incremented" for
 // a session: the operator decides how much of the decision to delegate.
-// Staged like a bump: the pick alone writes nothing, and the foot's Save
-// is what commits it (docs/design-language.md, Settings).
+// Staged like a bump: the pick alone writes nothing, and the Version
+// section's own Save is what commits it (docs/design-language.md, Settings).
 await page.selectOption(`${NB} #verPolicy`, 'minor');
 await page.waitForFunction(() => [...document.querySelectorAll('.nb #verBox .verpol')]
   .some(e => /staged: on Save/.test(e.textContent)), null, { timeout: 10000 });
 ok((await page.evaluate(async () => (await (await fetch('/api/version?project=alpha')).json()).policy)) !== 'minor',
    'picking a policy stages it and writes nothing yet');
-await page.click(`${NB} #roadmapSaveQuiet`);
+await page.click(`${NB} [data-ssave="artifacts:version"]`);
 await page.waitForFunction(async () => {
   const r = await fetch('/api/version?project=alpha');
   return (await r.json()).policy === 'minor';
@@ -1641,7 +1645,7 @@ ok((await page.errors).every(e => /400/.test(e)),
   });
   ok(look.warn === look.red && look.plain !== look.red && look.lefts[0] === look.lefts[1],
      `...in red beside the staged line's yellow, and in the same column (${JSON.stringify(look)})`);
-  await page.click(`${LNB} #roadmapSaveQuiet`);
+  await page.click(`${LNB} [data-ssave="artifacts:version"]`);
   await page.waitForFunction(sel => [...document.querySelectorAll(sel)]
     .some(m => /0\.8\.0 is committed on/.test(m.textContent)), `.nb #verBox .vermark`, { timeout: 20000 }).catch(() => {});
   const now = (await marks()).find(m => /is committed on/.test(m.text));

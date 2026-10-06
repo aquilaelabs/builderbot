@@ -78,7 +78,7 @@ function nbRulesView({$, nb, project}){
             (g.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc(g.words.join(", "))}</div></div>` : ""}
             <div class="bfield"><label class="ndcap"><input type="checkbox" class="grHere"${here ? " checked" : ""}${g.disabled ? " disabled" : ""}> On for this project</label>${
               g.disabled ? `<div class="sub">An administrator has turned it off for every project.</div>` : ""}</div>
-            <div class="actbar macts"><span class="state">${g.builtin ? "shipped with BuilderBot" : "an administrator's"}${here ? "" : " · Save at the foot applies the switch"}</span>${
+            <div class="actbar macts"><span class="state">${g.builtin ? "shipped with BuilderBot" : "an administrator's"}${here ? "" : " · the section's Save applies the switch"}</span>${
               may ? (g.builtin
                 ? `<button type="button" class="grEvery">${g.disabled ? "On everywhere" : "Off everywhere"}</button>`
                 : `<button type="button" class="danger grRm">Remove</button><button type="button" class="grEdit">Edit</button>`) : ""}</div>`}
@@ -193,7 +193,7 @@ function nbRulesView({$, nb, project}){
                 value="${esc(r.check || "")}" aria-label="check"></div>
             </div>
             <div class="actbar macts">
-              <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
+              <span class="state">${ruleWhen(r)} · the section's Save writes it</span>
               <button type="button" class="stop rlCancel" title="discard what was typed">Cancel</button>
               <button type="button" class="danger rlRm">Remove</button>
             </div>` : `
@@ -228,10 +228,17 @@ function nbRulesView({$, nb, project}){
         <div class="actbar"><span class="state">nothing has been written</span>
           <button type="button" id="rlKeepTheirs">Keep theirs</button>
           <button type="button" class="primary" id="rlUseMine">Use mine</button></div></div>`;
+    // The rules' own Save and Revert, at the section's foot (the operator,
+    // 5 Oct): registered before the bar is drawn, which asks it.
+    nb.stage("briefing:rules", {
+      count: () => (ruleDirty() ? 1 : 0),
+      what: () => "the edited rules",
+      save: async () => { await saveRules(); return ""; },
+      revert: () => nb.ruleClearStaged()});
     box.innerHTML = nb.codebaseSection()
       + nb.briefSection()
       + docSection("briefing", "rules", "Your rules",
-      rows.length ? `${rows.length}` : "none", clash + body,
+      rows.length ? `${rows.length}` : "none", clash + body + nb.sectBar("briefing:rules"),
       // Shut on both sizes: the rules are read once and edited rarely, and
       // open they push the code base off the first screen. The count on the
       // heading says there is something behind it.

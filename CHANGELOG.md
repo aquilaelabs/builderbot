@@ -169,6 +169,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The project row's lock, the pinned commands' pin and the dev-build dial are offered by the account's grants rather than its role, so what the page shows and what the server allows come from one place. (2933bf3)
 - A project whose node was un-enrolled keeps it in its settings, selected and shown as the node's name with (removed) in italics, so you can see where it used to run; its Claude button is off with the reason on the row, and no other project's picker offers it. (918f618)
 - Every dialog takes the focus as it opens, keeps Tab inside itself, closes on Escape (the one on top), and gives the focus back to what opened it; dialogs and the tab strip are named and marked for screen readers (2ca2296)
+- Every notebook section that holds unsaved changes has its own Save and Revert at its foot, which save or throw away that section alone, in place of the one pair at the bottom of the tab; and one notebook section is open at a time (7683f8c)
 
 ### Removed
 

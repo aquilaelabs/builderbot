@@ -100,12 +100,21 @@ await page.fill(`${two} .rlPaths`, 'scripts/agent');
 await page.fill(`${two} .rlWords`, 'agent, protocol');
 ok((await page.$eval(`${two} .rlkind`, e => e.textContent)).includes('on its triggers'),
    '...and one with a trigger says so the moment the trigger is typed');
-ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
-   'a written rule arms the panel\'s one Save, like everything else here');
+ok(!await page.$eval('[data-ssave="briefing:rules"]', b => b.disabled),
+   'a written rule arms the Your rules section\'s own Save');
 ok(read().length === 0, '...and nothing is on disk until it is pressed');
+// Each section saves its own (the operator, 5 Oct): the rules' edit wakes
+// their Save and Revert and nothing else's, and the Briefing view keeps one
+// section open at a time.
+ok(await page.$eval('[data-ssave="briefing:memories"]', b => b.disabled)
+   && await page.$eval('[data-srevert="briefing:rules"]', b => !b.disabled),
+   '...that section\'s own Save and Revert, and not the Memories section\'s');
+ok(await page.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="briefing"] details.sect[open]')]
+     .filter(d => !d.parentElement.closest('details.sect')).length) === 1,
+   'one Briefing section stands open at a time');
 
-await page.click('#roadmapSaveQuiet');
-await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
+await page.click('[data-ssave="briefing:rules"]');
+await page.waitForFunction(() => document.querySelector('[data-ssave="briefing:rules"]')
                              .getAttribute('aria-busy') !== 'true', { timeout: 15000 });
 const saved = read();
 ok(saved.length === 2 && saved[0].name === 'voice',
@@ -147,13 +156,13 @@ await page.waitForSelector('#rulesBox .rulerow[data-i="1"] .rlText', { timeout: 
 ok(await page.$('#rulesBox .rulerow[data-i="0"] .rlText') === null,
    'Edit opens that rule\'s fields and no other\'s');
 await page.fill('#rulesBox .rulerow[data-i="1"] .rlText', 'typed, then thought better of');
-ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
+ok(!await page.$eval('[data-ssave="briefing:rules"]', b => b.disabled),
    'typing into a rule arms the panel\'s Save');
 await page.click('#rulesBox .rulerow[data-i="1"] .rlCancel');
 await page.waitForFunction(() => !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
 ok(/add, do not change/.test(await page.$eval('#rulesBox .rulerow[data-i="1"] .rlBody', e => e.textContent)),
    '...and Cancel puts them away, reading what was there before Edit');
-ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
+ok(await page.$eval('[data-ssave="briefing:rules"]', b => b.disabled),
    '...with nothing left staged, so the Save goes quiet again');
 // A row Add made has nothing to go back to: canceling it is removing it.
 await page.click('#rlAdd');
@@ -164,7 +173,7 @@ await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow')
 await page.$eval('#rulesBox .rulerow[data-i="2"] .rlCancel', b => b.click());
 await page.waitForFunction(() => document.querySelectorAll('#rulesBox .rulerow').length === 2
                                  && !document.querySelector('#rulesBox .rulerow .rlText'), null, { timeout: 10000 });
-ok(await page.$eval('#roadmapSaveQuiet', b => b.disabled),
+ok(await page.$eval('[data-ssave="briefing:rules"]', b => b.disabled),
    'canceling a row that Add made takes the row away and stages nothing');
 
 // ---- what a session is handed ----------------------------------------------

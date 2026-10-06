@@ -488,11 +488,21 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // number is its status, so a shut section still answers the question the
     // tab is opened with. They used to be bands separated by a rule, with a
     // wall of bump buttons under each and nothing naming either.
+    // Each VERSION file's section saves and reverts its own staged bump, the
+    // project's also its Claude access (the operator, 5 Oct).
+    all.forEach(v => {
+      const comp = v.component || "";
+      nb.stage(`artifacts:version${comp ? ":" + comp : ""}`, {
+        count: () => (comp in verPending ? 1 : 0) + (!comp && verPolicyPending != null ? 1 : 0),
+        what: () => comp ? `the staged bump of ${comp}` : "the staged version change",
+        save: () => nb.verCommitStaged(comp),
+        revert: () => nb.verClearStaged(comp)});
+    });
     box.innerHTML = all.map(v => docSection("artifacts",
       `version${v.component ? ":" + v.component : ""}`,
       all.length > 1 ? (v.component || `${v.project} (the project)`) : "Version",
       v.target || "no VERSION file",
-      verSection(v),
+      verSection(v) + nb.sectBar(`artifacts:version${v.component ? ":" + v.component : ""}`),
       {cls: v.target ? "" : "warn"})).join("");
     wireSections(box);
     // Releasing: outward-facing, and the one thing on this tab other people
@@ -531,10 +541,16 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // closure. Rebound on every draw so they always close over this
     // notebook's own state rather than whichever one drew last.
     nb.verStagedCount = () => Object.keys(verPending).length + (verPolicyPending != null ? 1 : 0);
-    nb.verClearStaged = () => { verPending = {}; verPolicyPending = null; drawVersion(); };
-    nb.verCommitStaged = async () => {
-      const parts = Object.entries(verPending);
-      const policy = verPolicyPending;
+    // With a component, that section's alone (its bump, and for the
+    // project's own section its Claude access too); without, all of them.
+    nb.verClearStaged = only => {
+      if (only === undefined){ verPending = {}; verPolicyPending = null; }
+      else { delete verPending[only]; if (!only) verPolicyPending = null; }
+      drawVersion();
+    };
+    nb.verCommitStaged = async only => {
+      const parts = Object.entries(verPending).filter(([comp]) => only === undefined || comp === only);
+      const policy = only === undefined || only === "" ? verPolicyPending : null;
       if (!parts.length && policy == null) return "";
       // A window move is the one thing on this tab that reaches other
       // projects: it ends their sessions. Asked here as well as said on the
@@ -545,8 +561,9 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       if (moves && !confirm(
             `Bump the ${moves[1]}? This moves the compatibility window.\n\n`
             + `Sessions on ${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"} `
-            + `(${cost.projects.join(", ")}) end until each node's agent is updated on the Nodes tab.`)) return "";
-      verPending = {}; verPolicyPending = null;
+            + `(${cost.projects.join(", ")}) end until each node's agent is updated on the Nodes tab.`)) return null;
+      for (const [comp] of parts) delete verPending[comp];
+      if (policy != null) verPolicyPending = null;
       const done = [];
       if (policy != null){
         const j = await postVersion({action: "policy", policy}, true);

@@ -127,7 +127,7 @@ await page.$eval('#memList .mem[open] textarea[data-file]', t => {
 await page.click('#memList .mem[open] .mCancel');
 await page.waitForFunction(() => !document.querySelector('#memList .mem[open] textarea[data-file]'), null, { timeout: 10000 });
 ok((await page.$eval('#memList .mem[open] .mtext', e => e.textContent)).includes('asked for it twice')
-   && await page.$eval('#roadmapSaveQuiet', b => b.disabled),
+   && await page.$eval('[data-ssave="briefing:memories"]', b => b.disabled),
    '...and Cancel puts it away, reading what is on disk, with nothing left to save');
 await page.click('#memList .mem[open] .mEdit');
 await page.waitForSelector('#memList .mem[open] textarea[data-file]');
@@ -136,14 +136,13 @@ await page.$eval('#memList .mem[open] textarea[data-file]', t => {
   t.value = t.value.replace('asked for it twice', 'asked for it three times');
   t.dispatchEvent(new Event('input'));
 });
-// One Save for the panel, and one only: the list's changes and the memory
-// editor's, written together. There were two, and the second typed the change
-// into a running session, which stopped being the only way anything reached
-// one when the prompt hook got a free channel back (roadmap #27).
-ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
-   'typing in a memory arms the panel\'s one Save button');
-await page.click('#roadmapSaveQuiet');
-await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
+// The Memories section's own Save (the operator, 5 Oct): each section saves
+// its own changes. There was one Save for the whole panel at its foot, and on
+// a phone it was a long scroll from the memory being edited.
+ok(!await page.$eval('[data-ssave="briefing:memories"]', b => b.disabled),
+   'typing in a memory arms the Memories section\'s own Save');
+await page.click('[data-ssave="briefing:memories"]');
+await page.waitForFunction(() => document.querySelector('[data-ssave="briefing:memories"]')
                              .getAttribute('aria-busy') !== 'true',
                            { timeout: 15000 });
 ok(read('tabs.md').includes('asked for it three times'),
@@ -170,6 +169,10 @@ ok((await page.$eval('#memWhere', el => el.textContent)).includes('1 memory'),
 // The fold said "saving takes the line out" while Save had nothing staged and
 // could not be pressed. It offers the press itself now, and nothing else in
 // the index moves.
+// One section open at a time in a notebook (the operator, 5 Oct): the
+// Index is opened, which closes Memories.
+await page.waitForSelector('#memDrift details.sect', { state: 'attached', timeout: 10000 });
+await openFold(page, '#memDrift details.sect');
 await page.waitForSelector('#memDrift #memTidy', { timeout: 10000 });
 ok(/Take it out/.test(await page.$eval('#memDrift #memTidy', b => b.textContent))
    && !(await page.$$eval('#memDrift div', ds => ds.some(d => /saving takes/.test(d.textContent)))),
@@ -181,6 +184,7 @@ ok(!read('MEMORY.md').includes('vanished.md'), '...which takes that line out of 
 // ---- the index, written from the rows -----------------------------------
 // What is left at this point: one memory (loose, unlisted). Filling the
 // memory's fields in gives it a line.
+await openFold(page, '#memSect');
 await openFold(page, '#memList .mem:has(.mname:text-is("loose"))');
 await page.click('#memList .mem:has(.mname:text-is("loose")) .mEdit');
 await page.waitForSelector('#memList .mem:has(.mname:text-is("loose")) .ixt');
@@ -188,10 +192,10 @@ await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixt', i => {
   i.value = 'Loose ends'; i.dispatchEvent(new Event('input')); });
 await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixh', i => {
   i.value = 'only recall ever surfaced this one'; i.dispatchEvent(new Event('input')); });
-ok(!await page.$eval('#roadmapSaveQuiet', b => b.disabled),
-   'typing an index line arms the same Save as everything else');
-await page.click('#roadmapSaveQuiet');
-await page.waitForFunction(() => document.getElementById('roadmapSaveQuiet')
+ok(!await page.$eval('[data-ssave="briefing:memories"]', b => b.disabled),
+   'typing an index line arms the same section\'s Save');
+await page.click('[data-ssave="briefing:memories"]');
+await page.waitForFunction(() => document.querySelector('[data-ssave="briefing:memories"]')
                              .getAttribute('aria-busy') !== 'true',
                            { timeout: 15000 });
 ok(read('MEMORY.md').includes('- [Loose ends](loose.md) \u2014 only recall ever surfaced this one'),
@@ -395,8 +399,8 @@ writeFileSync(`${MEM}/clash.md`,
 // Save once it is live (the typing wakes it a tick later) and give the
 // refusal's band the patient wait: a flat one ran out under load with the
 // save still in flight (B332).
-await page.waitForFunction(() => !document.getElementById('roadmapSaveQuiet').disabled, null, { timeout: patience(10000) });
-await page.click('#roadmapSaveQuiet');
+await page.waitForFunction(() => !document.querySelector('[data-ssave="briefing:memories"]').disabled, null, { timeout: patience(10000) });
+await page.click('[data-ssave="briefing:memories"]');
 await page.waitForFunction(() => !document.getElementById('memClash').hidden,
                            { timeout: patience(30000) });
 const memBand = () => page.$eval('#memClash', el => el.textContent.replace(/\s+/g, ' '));

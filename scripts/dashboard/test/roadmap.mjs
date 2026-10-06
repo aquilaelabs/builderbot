@@ -1965,7 +1965,7 @@ ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb 
   ok(/changed since you loaded it/.test(said),
      `a panel with unsaved work says when the list moved under it, where the Save is (${said || 'nothing said'})`);
   await saveList();
-  ok(await page.evaluate(() => document.getElementById('roadmapMoved')?.hidden === true),
+  ok(await page.evaluate(() => !/changed since/.test(document.getElementById('roadmapMoved')?.textContent || '')),
      '...and stops saying it once there is nothing unsaved');
 }
 

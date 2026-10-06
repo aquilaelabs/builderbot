@@ -687,11 +687,13 @@ for (const kind of kinds){
                                v, { timeout: 20000 });
     // The notebook on screen, not the first in the DOM: a second project's
     // notebook may be parked before it.
-    foots[v] = await page.evaluate(() => [...document.querySelectorAll('.nb')]
-      .find(n => n.checkVisibility())?.querySelector('#nbFoot')?.checkVisibility() || false);
+    // Waited on, since a view draws its sections when it is first shown.
+    foots[v] = await page.waitForFunction(w => !!([...document.querySelectorAll('.nb')]
+      .find(n => n.checkVisibility())?.querySelector(`.nbview[data-view="${w}"] .sectbar[data-bar]`)), v, { timeout: 3000 })
+      .then(() => true, () => false);
   }
   ok(foots.roadmap && foots.briefing && foots.artifacts && foots.design && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
-     `the notebook's foot shows on the views that stage and on no other (${JSON.stringify(foots)})`);
+     `a section's own Save and Revert are on the views that stage and on no other (the operator, 5 Oct: there is no foot) (${JSON.stringify(foots)})`);
 }
 
 // ---- the notebook's head row ------------------------------------------------

@@ -512,7 +512,7 @@ Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; section, fold
 
 A long surface is sections: `docSection(kind, id, title, status, body)`, one
 fold per concern with its status on the heading, open on a desktop and
-closed on a phone. A status is a word or a number, never a sentence. A fold
+closed on a phone, and in a notebook one open at a time. A status is a word or a number, never a sentence. A fold
 keeps its state for the page's life and a reload starts it from the default:
 the sidebar's cards are the one arrangement that is stored, at a desk in the
 arrangement the server holds, and on a phone on the device itself, so a
@@ -801,7 +801,6 @@ Layout of a notebook on a desktop frame (12 columns by 8 rows), from the Blank t
   3. Header (the band at the top): the head row: its one-line summary on the left, its controls and History on the right, at one height on every view, across the middle, row 2 of 8, inside block 2 (Content: the view)
   4. Form (fields a person fills in): the add bar: the first band under the head row, a button named for what it adds, its form unrolling in its place, across the middle, row 3 of 8, inside block 2 (Content: the view)
   5. List (rows of like things): the sections: folds with their count on the title, each remembered open or shut; rows that open on a slide, across the middle, rows 4 to 7 of 8, inside block 2 (Content: the view)
-  6. Footer (the band at the foot): Save and Revert, only on the views that stage something, across the bottom, row 8 of 8
 Notes:
   One notebook per project, a clone of one template. Every view opens with the same head row at one height. A row with detail behind it is a fold that opens to be read, never as a form.
 This page's own rules:
@@ -835,10 +834,21 @@ in that band's place. Never at the foot: a phone should not scroll past the
 list to add to it. The Roadmap is no exception: Add to roadmap unrolls its
 box under the band, Reorder staying in it.
 
-Save and Revert at the notebook's foot show only on the views that stage
-something behind them (Roadmap, Briefing, Design, the version on
-Artifacts). A view that writes through or only reads (Bugs, Wiki, Tests,
-Analysis, Git) has no foot.
+Every section that stages something carries its own Save and Revert at
+its foot (`.sectbar`, an action bar: its status, then Save, then Revert),
+and they write or throw away that section's changes and no other's, each
+dead while its section holds nothing (the operator, 5 Oct): one pair at the
+notebook's foot was a long scroll on a phone from the change it saved. The
+Roadmap's list carries its bar under its head row, since its changes are on
+its rows; the Memories, Your rules, each Version and the Design's Themes
+and Pages carry theirs at their own foot. A view that writes through or
+only reads (Bugs, Wiki, Tests, Analysis, Git) has none, and the notebook
+has no foot.
+
+One section is open at a time in a notebook view (the operator, 5 Oct):
+opening one closes its siblings, a section's own folds (a page's rules
+inside Pages) taking turns among themselves without closing it, and a draw
+that finds several open keeps the one last opened.
 
 The Design view is two folds under its head row: Pages and Themes, in
 that order, both closed on a new tab so the view opens short, and each
@@ -888,7 +898,7 @@ Push is dead (no push rights) is said in red under that bar, never only in a too
 band under the head row, the first page offered as Home. Under Claude may: Write the wiki hidden the view is unchanged for a person; only a session is kept out.
 
 The Briefing's rules section lists the global rules under the project's own, each a row that
-opens to read with an On for this project switch, staged behind the notebook's Save like the
+opens to read with an On for this project switch, staged behind the section's own Save like the
 rules above it. An administrator's rows also carry Edit and Remove, or Off everywhere for a
 shipped one, each written at once for every project, and Add a global rule is the band over
 them; nowhere else on the dashboard edits a global rule.

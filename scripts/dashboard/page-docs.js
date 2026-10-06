@@ -157,8 +157,38 @@ function wireSections(root){
     // `:scope > summary` because a section can contain folds of its own, and
     // the section must not answer for theirs.
     const sum = d.querySelector(":scope > summary");
-    if (sum) sum.onclick = e => { e.preventDefault(); slideDetails(d, !d.open); };
+    if (sum) sum.onclick = e => { e.preventDefault(); if (!d.open) soleOpen(d); slideDetails(d, !d.open); };
   });
+  const view = root.closest?.(".nbview");
+  if (view){
+    oneOpen(view);
+    root.querySelectorAll("details.sect").forEach(oneOpen);
+  }
+}
+// In a notebook one section is open at a time (the operator, 5 Oct): on a
+// phone, several open made a view a long scroll, and the section being
+// worked in was hard to keep hold of. Among siblings only: a section's own
+// folds (a page's rules inside Pages) take turns among themselves and never
+// close the section holding them.
+const sectLast = new WeakMap();     // a group -> the key of the section last opened in it
+function sectGroup(d){ return d.parentElement?.closest("details.sect, .nbview") || null; }
+function soleOpen(d){
+  const g = sectGroup(d);
+  if (!g || !g.closest(".nb")) return;
+  sectLast.set(g, d.dataset.sect || "");
+  g.querySelectorAll("details.sect[open]").forEach(o => { if (o !== d && sectGroup(o) === g) slideDetails(o, false); });
+}
+// After a draw: if more than one stands open in a group (a desktop opens
+// them all by default), the one last opened stays, else one the person
+// opened before (its fold recorded open), else the first; the rest shut at
+// once, without the slide, since nothing moved them.
+function oneOpen(g){
+  if (!g?.closest?.(".nb")) return;
+  const open = [...g.querySelectorAll("details.sect[open]")].filter(o => sectGroup(o) === g);
+  if (open.length < 2) return;
+  const keep = open.find(o => o.dataset.sect && o.dataset.sect === sectLast.get(g))
+    || open.find(o => o.dataset.sect && sectOpen[o.dataset.sect] === true) || open[0];
+  open.forEach(o => { if (o !== keep){ o.open = false; if (o.dataset.sect) sectOpen[o.dataset.sect] = false; } });
 }
 // A button that is doing something says so until the repaint replaces it:
 // grayed, and wearing the verb with an animated ellipsis. Pair with

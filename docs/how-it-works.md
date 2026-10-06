@@ -1936,8 +1936,16 @@ it was. The one exception is the send arrow: it types into a live session,
 which no Save button can take back, so it flushes whatever is staged first and
 then goes.
 
-While a session has a batch open, **the panel's Saves are held**, and only
-the Saves. You can still type, edit, drop and revert; what waits is writing
+**Each section saves its own.** A notebook section that stages anything (the
+roadmap's list, the Memories, Your rules, each Version, the Design's Themes
+and Pages) carries its own Save and Revert at its foot, which write or throw
+away that section's changes and nothing else's; there is no notebook-wide
+Save, since one at the bottom was a long scroll on a phone from the change it
+saved. One section is open at a time in a view: opening one closes the
+others (the operator, 5 Oct).
+
+While a session has a batch open, **the roadmap's Save is held**, and only
+that Save. You can still type, edit, drop and revert; what waits is writing
 back, because what is on your screen was read before the session started and
 saving over a list that has moved underneath is how two writers lose each
 other's work. The block is one-way: nothing in the panel ever makes a session
@@ -3817,7 +3825,7 @@ another person's branch left alone, the project's own files) is a line of
 the briefing. The global rules are listed in every project's notebook,
 under the project's own rules on the Briefing view: anybody who works on
 the project can switch one off for that project alone, staged behind the
-notebook's Save, and an administrator also adds, edits and removes them,
+rules section's own Save, and an administrator also adds, edits and removes them,
 or turns a shipped one off, for every project from the same place.
 
 None of it is copied into the project. There is no file to render, push, or
