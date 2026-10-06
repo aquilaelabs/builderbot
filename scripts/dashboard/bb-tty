@@ -465,9 +465,13 @@ claude_scope() {
                --arg note "$hooks/bb-work-note" \
                --arg relay "$hooks/bb-prompt-relay" \
                --arg check "$hooks/bb-check-relay" \
-               --arg proj "$proj" --arg who "${account:-owner}" '
+               --arg proj "$proj" --arg who "${account:-owner}" \
+               --arg mem "$HOME/.claude/projects/${here//\//-}/memory" '
            {permissions: {
-              additionalDirectories: [],
+              # The memory of the project, which Claude Code keeps outside
+              # its tree: a session asked the person to approve reading the
+              # file it was about to update (Shebang-DevBoard, 6 Oct).
+              additionalDirectories: [$mem],
               deny: (map(select(. as $d | $reads | index($d) | not) | "Read(\(.)/**)", "Edit(\(.)/**)")
                      + map(select(. as $d | $reads | index($d)) | "Edit(\(.)/**)")
                      + ["Edit(\($here)/VERSION)",
@@ -1013,6 +1017,13 @@ case "$target" in
         # controller that is down costs a session nothing.
         if on_node; then
             bb login --check >/dev/null 2>&1 || true
+        fi
+        # Installed on purpose, from the node's Toolchains tab, never by the
+        # provisioner (R145): without it there is nothing for a session to run.
+        if ! command -v claude >/dev/null 2>&1; then
+            bad "Claude Code is not installed on ${BB_NODE:-this node}: its Toolchains tab installs it." \
+                "Open the Toolchains tab, pick ${BB_NODE:-this node}, tick Claude Code and press" \
+                "Install selected; then open this again."
         fi
         if ! logged_in; then
             if on_node; then

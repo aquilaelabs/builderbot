@@ -540,6 +540,12 @@ tmuxKill('claude-alpha');
        '...with the project directory itself denied to it, being another tree');
     ok(!deny.includes(`Edit(${wt}/**)`),
        '...and its own not denied, which a blanket rule on .worktrees would have done');
+    // ...and the memory of its own tree allowed, which Claude Code keeps
+    // outside the tree: a session asked the person to approve reading a
+    // memory it was updating (6 Oct).
+    const mem = scope.permissions.additionalDirectories || [];
+    ok(mem.length === 1 && mem[0].endsWith(`/.claude/projects/${wt.replaceAll('/', '-')}/memory`),
+       `...and the memory of its own tree is a directory it may use without asking (${mem.join(', ')})`);
     // The scope file also carries the work hook, which is how the finer half
     // of `bb work` gets anything to report.
     ok(JSON.stringify(scope.hooks?.Stop || {}).includes('bb-check-relay'),
