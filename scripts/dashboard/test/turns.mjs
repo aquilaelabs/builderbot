@@ -175,6 +175,21 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   const histRead = await sess({ node: 'nodeA' });
   ok(!/memories/.test(histRead.line || ''),
      `...nor a person reading the memory history (${(histRead.line || 'no line').slice(0, 90)})`);
+  // New diagnostics reports, for a project whose house rule asks its
+  // sessions to watch them (watch-diagnostics, the operator, 6 Oct): named
+  // once, on the next prompt, and only to a project that carries the rule.
+  const rep = text => call('/api/reports', { action: 'add', text });
+  await rep('the first report');
+  const noRule = await sess({ node: 'nodeA' });
+  ok(!/diagnostics/.test(noRule.line || ''), `a project without the rule hears nothing of reports (${(noRule.line || 'no line').slice(0, 60)})`);
+  await relay(['rules', 'add', 'watch-diagnostics', 'After each prompt, read bb diag reports for new ones.']);
+  await sess({ node: 'nodeA' });
+  const r2 = await rep('the second report');
+  const told = await sess({ node: 'nodeA' });
+  ok(new RegExp(`report #${r2.id} from the dashboard`).test(told.line || '') && /bb diag reports/.test(told.line || ''),
+     `with the rule, a new report is named on the next prompt (${(told.line || 'no line').slice(0, 100)})`);
+  const once = await sess({ node: 'nodeA' });
+  ok(!/diagnostics/.test(once.line || ''), `...once (${(once.line || 'no line').slice(0, 60)})`);
 }
 
 {

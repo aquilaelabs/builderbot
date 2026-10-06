@@ -2003,6 +2003,27 @@ def session_mark_own(project, uid, who, since=None):
         print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
 
 
+# The house rule that asks a project's sessions to watch the diagnostics
+# reports (the operator, 6 Oct: check for new ones after every prompt). A
+# rule is text read at a session's start; this is what makes it hold: a
+# project that carries the rule is told on its next prompt when a report
+# newer than any it was told of is open. Keyed by the rule rather than by
+# who may read diagnostics, since every project of an administrator's on a
+# granted node may, and only BuilderBot's own work answers them.
+WATCH_DIAG_RULE = "watch-diagnostics"
+
+
+def _diag_watch(project):
+    """The open reports, newest first, when this project carries the rule;
+    else None."""
+    try:
+        if not any(r.get("name") == WATCH_DIAG_RULE for r in rules.rules(project)):
+            return None
+        return reports.listing("open")
+    except Exception:                                                     # noqa: BLE001
+        return None
+
+
 def session_seen_note(project, uid, node, who=None, begin=False):
     """`begin`: record the build and the notebook this session starts from.
     Otherwise what has moved since, in one line, and the record moved on:
@@ -2012,11 +2033,15 @@ def session_seen_note(project, uid, node, who=None, begin=False):
     key = f"{project}|{uid}|{node or ''}"
     try:
         revs_now = _seen_now(project, who) if who is not None else {}
+        watched = _diag_watch(project)
+        top = max((int(r.get("id") or 0) for r in watched or []), default=0)
         with _seen_lock:
             d = _seen_load()
             rec = d.get(key) if isinstance(d.get(key), dict) else {}
             was_build, was_revs = str(rec.get("build") or ""), rec.get("revs") or {}
-            d[key] = {"build": build or was_build, "revs": revs_now or was_revs}
+            was_diag = int(rec.get("diag") or 0)
+            d[key] = {"build": build or was_build, "revs": revs_now or was_revs,
+                      "diag": max(top, was_diag)}
             write_json(STATE / SESSION_SEEN, d)
         if begin:
             return ""
@@ -2034,6 +2059,13 @@ def session_seen_note(project, uid, node, who=None, begin=False):
                 said.append("Since your last prompt somebody else changed this project's "
                             + ", ".join(n for n, _ in moved) + ": read "
                             + ", ".join(v for _, v in moved) + " before going on.")
+        fresh = [r for r in watched or [] if int(r.get("id") or 0) > was_diag]
+        if fresh:
+            said.append(f"New in diagnostics since your last prompt: "
+                        + ", ".join(f"report #{r['id']} from {r.get('project') or 'the dashboard'}"
+                                    for r in reversed(fresh[:5]))
+                        + (f" and {len(fresh) - 5} more" if len(fresh) > 5 else "")
+                        + f". `bb diag reports` reads them (the house rule {WATCH_DIAG_RULE}).")
         return " ".join(said)
     except Exception as e:                                                # noqa: BLE001
         print(f"[dashboard] session seen: {type(e).__name__}: {e}", flush=True)
