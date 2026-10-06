@@ -103,6 +103,14 @@ end), never a grep of it, and put that text in the bug or report: which
 file and which call failed is what says whether it was the share or the
 code, and a guess is all anybody has without it.
 
+For now, while BuilderBot's maintainers work out why (their bug B439):
+a build or test that fails on a delete, a lock or a stale file in a
+project's tree and passes when run again is worth a report every time,
+with `bb report "..." --area gradle`, naming the project, the command and
+the whole failure text. It is how they decide whether a project's build
+folders should move off the share to the node's own disk. This paragraph
+goes when B439 is closed.
+
 A project whose build or test command is not set refuses and says so:
 `bb settings set build|test|outputs "..."` fills the field in for the
 operator, and the project's gate decides whether that lands, waits for
