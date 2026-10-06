@@ -32,8 +32,15 @@ class Builtin(unittest.TestCase):
     def test_the_owner_and_an_admin_may_do_everything(self):
         for u in (OWNER, ADMIN):
             for cap in roles.CAPS:
+                if u is ADMIN and cap in roles.NAMED_ONLY:
+                    continue
                 self.assertTrue(self.g(u, cap), (u["role"], cap))
                 self.assertTrue(self.g(u, cap, "beta"), (u["role"], cap))
+
+    def test_debug_is_the_owners_until_a_role_names_it(self):
+        # The operator, 6 Oct: '*' does not reach a named-only capability.
+        self.assertTrue(self.g(OWNER, "debug"))
+        self.assertFalse(self.g(ADMIN, "debug"))
 
     def test_a_user_works_on_its_own_projects_and_touches_no_machinery(self):
         self.assertTrue(self.g(USER, "work", "alpha"))

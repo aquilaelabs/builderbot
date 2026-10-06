@@ -118,10 +118,17 @@ for (const who of CAST) {
   }
 
   // Settings that are not theirs: refused, with a reason, and nothing moved.
-  const ctl = await api(page, '/api/settings', { set: { offer_unvetted: true } });
-  if (isAdmin) {
+  // A real change: the value flipped from what it is now.
+  const was = !!(await api(page, '/api/settings')).settings?.offer_unvetted?.value;
+  const ctl = await api(page, '/api/settings', { set: { offer_unvetted: !was } });
+  if (who.role === 'owner') {
     ok(ctl.status === 200, `${tag} changes a controller setting (${ctl.status})`);
-    await api(page, '/api/settings', { set: { offer_unvetted: false } });
+    await api(page, '/api/settings', { set: { offer_unvetted: was } });
+  } else if (isAdmin) {
+    // Every controller setting is in the Debugging group, which is the
+    // debug grant's by name (the operator, 6 Oct): '*' does not reach it.
+    ok(ctl.status === 403 && /debug/.test(ctl.error || ''),
+       `${tag} is refused the debug settings, which its '*' does not reach (${ctl.status})`);
   } else {
     ok(ctl.status === 403, `${tag} is refused the controller's settings (${ctl.status})`);
     for (const [path, body] of [['/api/users', { action: 'add', name: 'x.nope', password: 'nopenope1', role: 'user' }],
