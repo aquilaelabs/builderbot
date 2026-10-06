@@ -258,13 +258,34 @@ def target(project, comp=""):
     p = d / VERSION_FILE
     try:
         raw = p.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None, None                      # simply not adopted here yet
+    except OSError as e:
+        # Every failed read was "not adopted here yet", and the answer then
+        # fell back to git describe: Shebang-DevBoard, whose VERSION says
+        # 0.5.5, got v0.5.4-13-g7766f70 from bb version --file for a minute
+        # and filed builds under it, and the next call was right again (B524;
+        # the share answered this read with an error the controller's git
+        # did not meet). The committed VERSION is asked for next; only a
+        # file that is in neither place is a project that has not opted in.
+        raw = _committed(project, p)
+        if raw is None:
+            if isinstance(e, FileNotFoundError):
+                return None, None              # simply not adopted here yet
+            return None, f"{VERSION_FILE} could not be read: {e.strerror or e}"
     line = raw.strip().splitlines()[0].strip() if raw.strip() else ""
     if not TARGET_RE.match(line):
         return None, (f"{VERSION_FILE} should hold one line of "
                       f"MAJOR.MINOR.PATCH; it holds {line[:40]!r}")
     return line, None
+
+
+def _committed(project, path):
+    """The VERSION file as HEAD has it, or None: what target() reads when the
+    file on disk cannot be (B524)."""
+    try:
+        rel = path.resolve().relative_to(root(project).resolve())
+    except (OSError, ValueError):
+        return None
+    return _git(project, "show", f"HEAD:{rel.as_posix()}")
 
 
 def _relspec(project, where):
