@@ -303,10 +303,12 @@ A file comes off a release only with `bb version release --remove NAME
 Shippable build output goes in this
 project's dist/, named with `bb version --file` and gitignored (`bb
 build` names it so), and the Artifacts tab lists it; nothing else goes
-there, and scratch goes anywhere else. Of each kind of dev build the tab
-keeps the newest few (the project's settings say how many, 3 unless
-changed) and lets the older go; a release is kept, and so is anything a
-person pinned there.
+there, and scratch goes anywhere else. Of each product dist/ keeps the
+files of its newest few builds (the project's settings say how many, 3
+unless changed), a signed build by its signed copy alone, and lets the
+older go within minutes; a release is kept, and so is anything a person
+pinned there. A build named with no version is never removed by itself,
+so name every build with `bb version --file`.
 
 ## Git
 

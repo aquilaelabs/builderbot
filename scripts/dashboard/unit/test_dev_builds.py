@@ -1,7 +1,8 @@
-"""artifacts.sweep_dev_builds (R105): of each kind of dev build in a
-project's dist/, the newest few stay and the rest go when the Artifacts tab
-draws. A kind is the name with its dev version taken out; a release and a
-file with no version are never swept."""
+"""artifacts.sweep_dev_builds (R105): of each product's dev builds in a
+project's dist/, the files of the newest few builds stay, whatever they are
+named after the version, and a signed build keeps its signed copy alone. A
+product is the name before the version; a release and a file with no
+version are never swept by count (the operator, 6 Oct)."""
 import os
 import sys
 import tempfile
@@ -30,13 +31,50 @@ class DevBuilds(unittest.TestCase):
         os.utime(p, (self.t, self.t))
         return name
 
-    def test_the_newest_three_of_each_kind_stay(self):
-        debug = [self.make(f"P-0.1.0-dev.{n}-abcdef{n}-debug.apk") for n in range(1, 8)]
-        release = [self.make(f"P-0.1.0-dev.{n}-abcdef{n}-release.apk") for n in range(1, 3)]
+    def test_the_newest_three_builds_stay_whatever_they_are_named(self):
+        # Shebang-DevBoard's dist/ on 6 Oct: its first builds were -debug,
+        # its later ones -release, and the old name was "the newest of its
+        # kind" for good. A build is its number, so the old names go.
+        debug = [self.make(f"P-0.1.0-dev.{n}-abcdef{n}-debug.apk") for n in (54, 60, 63)]
+        stray = self.make("P-0.5.2-dev.140-3710be0-app-debug.apk")
+        release = [self.make(f"P-0.5.4-dev.{n}-abcde{n}-release.apk") for n in (171, 174, 187)]
         gone = artifacts.sweep_dev_builds("proj")
-        self.assertEqual(sorted(gone), sorted(debug[:4]))
-        left = sorted(p.name for p in self.dist.iterdir())
-        self.assertEqual(left, sorted(debug[4:] + release))
+        self.assertEqual(sorted(gone), sorted(debug + [stray]))
+        self.assertEqual(sorted(p.name for p in self.dist.iterdir()), sorted(release))
+
+    def test_each_product_keeps_its_own_newest(self):
+        a = [self.make(f"App-0.5.4-dev.{n}-abcde{n}-release.apk") for n in (171, 174, 187, 190)]
+        v = [self.make(f"Voice-0.5.4-dev.{n}-abcde{n}-release.apk") for n in (171, 174)]
+        gone = artifacts.sweep_dev_builds("proj")
+        self.assertEqual(gone, [a[0]])
+        self.assertTrue(all((self.dist / x).exists() for x in v), "the add-on's own builds are its own count")
+
+    def test_a_signed_build_keeps_its_signed_copy_alone(self):
+        unsigned = self.make("P-0.5.4-dev.187-a6610d2-release.apk")
+        signed = self.make("P-0.5.4-dev.187-a6610d2-release-signed.apk")
+        rel = self.make("P-0.5.4-release.apk")
+        rel_signed = self.make("P-0.5.4-release-signed.apk")
+        lone = self.make("P-0.5.4-dev.186-b6610d2-release.apk")     # never signed: stays
+        gone = artifacts.sweep_dev_builds("proj")
+        self.assertEqual(sorted(gone), sorted([unsigned, rel]))
+        self.assertEqual(sorted(p.name for p in self.dist.iterdir()), sorted([signed, rel_signed, lone]))
+
+    def test_keep_none_means_keep_everything(self):
+        self.make("P-0.5.4-dev.1-a6610d2-release.apk")
+        self.make("P-0.5.4-dev.1-a6610d2-release-signed.apk")
+        self.assertEqual(artifacts.sweep_dev_builds("proj", 0), [])
+
+    def test_an_unnamed_build_is_flagged_and_removed_only_by_a_person(self):
+        self.assertTrue(artifacts.unversioned("app-debug.apk"))
+        self.assertFalse(artifacts.unversioned("P-0.5.4-release.apk"))
+        self.assertFalse(artifacts.unversioned("builderbot-app-53eba569.apk"))
+        self.assertFalse(artifacts.unversioned("notes.txt"))
+        self.make("app-debug.apk")
+        self.assertEqual(artifacts.sweep_dev_builds("proj"), [])
+        self.assertEqual(artifacts.forget_unnamed("proj", "dist/P-0.5.4-release.apk")[1], 400)
+        self.assertEqual(artifacts.forget_unnamed("proj", "dist/../x/app-debug.apk")[1], 400)
+        self.assertEqual(artifacts.forget_unnamed("proj", "dist/app-debug.apk")[1], 200)
+        self.assertFalse((self.dist / "app-debug.apk").exists())
 
     def test_a_release_and_an_unversioned_file_are_never_swept(self):
         keep = [self.make("P-0.1.0-debug.apk"), self.make("app-debug.apk"), self.make("notes.txt")]

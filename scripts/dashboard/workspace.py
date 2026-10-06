@@ -237,6 +237,13 @@ def artifact_put(job, name, stream, length, extra=None):
         (pdir / (rel + ".json")).write_text(json.dumps(prov, indent=1))
     except OSError:
         pass                                 # the artifact landed; the chain is best effort
+    # A build landing is when the older ones are superseded, not when the
+    # tab is next opened (the operator, 6 Oct).
+    if "/" not in rel:
+        try:
+            artifacts.sweep_dev_builds(project, artifacts.dev_keep(project) if artifacts.dev_keep else artifacts.DEV_KEEP)
+        except Exception as e:  # noqa: BLE001 (the artifact landed; the sweep is housekeeping)
+            print(f"dashboard: dist sweep of {project}: {e}", flush=True)
     return {"path": "dist/" + rel, "size": got, "sha256": h.hexdigest()}
 
 

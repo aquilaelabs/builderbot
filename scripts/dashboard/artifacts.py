@@ -165,6 +165,9 @@ def listing(project, tree=""):
                 # file IS is also the place that decides what can be done
                 # with it.
                 "view": kind == "script" and st.st_size <= MAX_VIEW,
+                # A build at dist/'s top named with no version: the sweep
+                # cannot tell when it is superseded, so the row says so.
+                **({"unversioned": True} if depth == 0 and unversioned(p.name) else {}),
                 "size": st.st_size,
                 "at": int(st.st_mtime),
             })
@@ -386,55 +389,129 @@ def pin(project, rel, on, by=""):
     return {"ok": True, "path": rel, "pinned": bool(on)}, 200
 
 
-# ---- dev builds: the newest few of each (R105) ---------------------------------
+# ---- dev builds: the newest few builds of each product (R105) ---------------------
 # A dev build carries its version in its name the way bb version --file
 # spells it (0.1.0-dev.17-9e09ad3, -dirty when the tree was), and a session
 # building all day leaves one file per build: seven debug APKs, 133 MB, in
-# one day on Shebang-DevBoard (30 Sep). Files that are one build of the same
-# thing differ only in that version, so the name with it taken out is the
-# kind; of each kind the newest few stay (the project's "dev builds kept",
-# DEV_KEEP unless it says; 0 keeps them all) and the rest go when the tab
-# draws, like captures. A release (no -dev.N) is never swept, nor a file
-# whose name carries no version: nothing here can tell those are superseded.
+# one day on Shebang-DevBoard (30 Sep). Of each product (the name before its
+# version: Shebang-DevBoard-, Shebang-Voice-) the files of its newest few
+# builds stay, whatever follows the version (the project's "dev builds
+# kept", DEV_KEEP unless it says; 0 keeps them all), and the rest go.
+#
+# It counted by the whole name with the version taken out once, which made
+# a renamed build a new kind: Shebang's first builds were -debug.apk and its
+# later -release.apk, so the three oldest debug builds were "the newest of
+# their kind" for good (85 MB, the operator, 6 Oct). A build that has been
+# signed keeps its signed copy only: the unsigned file was the signing's
+# input, and a signed one signs again (350 MB of Shebang's 811). A release
+# (no -dev.N) is never swept, nor a file whose name carries no version:
+# nothing here can tell those are superseded, so the tab says so instead.
 DEV_KEEP = 3
-DEV_VERSION = re.compile(r"(?<![0-9A-Za-z])\d+\.\d+\.\d+-dev\.\d+-[0-9a-f]{7,40}(?:-dirty)?(?![0-9A-Za-z])")
+DEV_VERSION = re.compile(r"(?<![0-9A-Za-z])\d+\.\d+\.\d+-dev\.(\d+)-[0-9a-f]{7,40}(?:-dirty)?(?![0-9A-Za-z])")
+# A file a build ships, for the unnamed check: what a release would attach.
+SHIPPED = re.compile(r"\.(apk|aab|zip|xpi|tar\.gz|tgz|exe|msi|dmg|deb|rpm|AppImage|jar|whl)$", re.I)
+VERSIONISH = re.compile(r"\d+\.\d+\.\d+|(?<![0-9A-Za-z])[0-9a-f]{7,40}(?![0-9A-Za-z])")
+SIGNED = re.compile(r"-signed(\.(?:apk|aab))$")
 
 
 def dev_kind(name):
-    """The name with its dev version taken out, or None for a file that is
-    not a dev build."""
+    """The product a dev build is of (its name before the version, with a
+    * for the rest), or None for a file that is not a dev build."""
     m = DEV_VERSION.search(name)
-    return None if m is None else name[:m.start()] + "*" + name[m.end():]
+    return None if m is None else name[:m.start()] + "*"
+
+
+def unversioned(name):
+    """A shipped file named with no version, which nothing can sweep."""
+    return bool(SHIPPED.search(name)) and not VERSIONISH.search(name)
 
 
 def sweep_dev_builds(project, keep=DEV_KEEP):
-    """The dev builds of each kind past the newest `keep`, removed from the
-    project's dist/ (its top level only, where a build lands). Returns the
-    names removed."""
+    """The project's dist/ (its top level, where a build lands) brought to
+    the newest `keep` builds of each product, each signed one by its signed
+    copy alone. Returns the names removed; `keep` 0 removes nothing."""
     root = dist_dir(WORKSPACE / project) if WORKSPACE else None
-    if root is None or not root.is_dir():
+    if not keep or root is None or not root.is_dir():
         return []
-    kinds = {}
-    for p in root.iterdir():
-        k = dev_kind(p.name) if p.is_file() and not p.name.startswith(".") else None
-        if k is None:
-            continue
-        try:
-            kinds.setdefault(k, []).append((p.stat().st_mtime, p))
-        except OSError:
-            continue
     # A pinned one is kept, and is not one of the `keep` beside it.
     held = {Path(r).name for r in pins(project) if r.count("/") == 1}
-    gone = []
-    for rows in kinds.values():
-        rows = [r for r in rows if r[1].name not in held]
-        for _, p in sorted(rows, key=lambda r: -r[0])[keep:]:
+    files = []
+    try:
+        files = [p for p in root.iterdir() if p.is_file() and not p.name.startswith(".") and p.name not in held]
+    except OSError:
+        return []
+    builds = {}
+    for p in files:
+        m = DEV_VERSION.search(p.name)
+        if m:
+            builds.setdefault(p.name[:m.start()], {}).setdefault(int(m.group(1)), []).append(p)
+    gone = set()
+    for by in builds.values():
+        for n in sorted(by, reverse=True)[keep:]:
+            gone.update(by[n])
+    names = {p.name for p in files}
+    for p in files:
+        if SIGNED.sub(r"\1", p.name) != p.name:
+            continue
+        twin = re.sub(r"(\.(?:apk|aab))$", r"-signed\1", p.name)
+        if twin != p.name and twin in names:
+            gone.add(p)
+    out = []
+    for p in gone:
+        try:
+            p.unlink()
+            out.append(p.name)
+        except OSError:
+            pass
+    return sorted(out)
+
+
+def forget_unnamed(project, rel):
+    """A shipped file named with no version, removed by the person who
+    decided: the row's Remove, which is the one way such a file goes.
+    (payload, status)."""
+    root = dist_dir(WORKSPACE / project) if WORKSPACE else None
+    name = Path(str(rel or "")).name
+    if root is None or not name or str(rel).strip("/") not in (name, f"dist/{name}") or not unversioned(name):
+        return {"error": "only a build named with no version is removed from here"}, 400
+    p = root / name
+    if not p.is_file():
+        return {"error": f"no {name} in dist/: it may have been removed already"}, 404
+    try:
+        p.unlink()
+    except OSError as e:
+        return {"error": f"could not remove {name}: {e.strerror}"}, 500
+    return {"ok": True, "removed": name}, 200
+
+
+SWEEP_EVERY = 300
+
+
+def sweep_all():
+    """Every project's dist/ swept: the builds a session copies straight
+    into dist/ go by whether anybody opened the Artifacts tab, which is all
+    the sweep used to wait for."""
+    if WORKSPACE is None or not WORKSPACE.is_dir():
+        return
+    for d in sorted(WORKSPACE.iterdir()):
+        if d.is_dir() and not d.name.startswith(".") and (d / "dist").is_dir():
             try:
-                p.unlink()
-                gone.append(p.name)
-            except OSError:
-                pass
-    return sorted(gone)
+                sweep_dev_builds(d.name, dev_keep(d.name) if dev_keep else DEV_KEEP)
+            except Exception as e:  # noqa: BLE001 (one project's trouble is not the next one's)
+                print(f"dashboard: dist sweep of {d.name}: {e}", flush=True)
+
+
+def _sweep_loop():
+    while True:
+        time.sleep(SWEEP_EVERY)
+        try:
+            sweep_all()
+        except Exception as e:      # noqa: BLE001 (a sweeper must not die)
+            print(f"dashboard: dist sweep: {e}", flush=True)
+
+
+def start():
+    threading.Thread(target=_sweep_loop, name="dist-sweep", daemon=True).start()
 
 
 def tab_view(name, uid):
@@ -443,8 +520,7 @@ def tab_view(name, uid):
     (B237) apart from dist/, which is what ships, what the project can and
     cannot do off this box, its dev instances, and the phone."""
     keep = dev_keep(name) if dev_keep else DEV_KEEP
-    if keep:
-        sweep_dev_builds(name, keep)
+    sweep_dev_builds(name, keep)
     held = pins(name)
     return ({"artifacts": [a | ({"pinned": True, "pinned_by": held[a["path"]].get("by", "")}
                                 if a.get("path") in held else {}) for a in listing_of(name)],

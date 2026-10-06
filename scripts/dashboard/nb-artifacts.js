@@ -215,7 +215,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     const keep = art.dev_keep ?? 3;
     const devNote = rows.some(a => /\d+\.\d+\.\d+-dev\.\d+-[0-9a-f]{7}/.test(a.name))
       ? `<div class="hint dim">${keep
-          ? `Dev builds keep the newest ${keep} of each (the project's settings say how many); older ones are removed as new ones arrive. A release is kept, and so is anything pinned.`
+          ? `Each product keeps its newest ${keep} builds (the project's settings say how many), a signed build by its signed copy alone; older ones are removed as new ones arrive. A release is kept, and so is anything pinned.`
           : "Every dev build is kept: this project's settings say so (Dev builds kept)."}</div>` : "";
     list.innerHTML = devHtml + (!rows.length
       ? `<div class="hint">Nothing in <b>dist/</b> yet: a build copies what it keeps there.</div>`
@@ -228,6 +228,10 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}${
               a.path !== a.name ? ` · ${esc(a.path)}` : ""}${
               a.pinned && a.pinned_by ? ` · pinned by ${esc(a.pinned_by)}` : ""}</span>${
+            // A build named with no version (the operator, 6 Oct): the
+            // sweep cannot tell when it is out of date, so it says so, in
+            // the warning color, and offers Remove.
+            a.unversioned ? `<span class="vermark">named with no version, so nothing can tell when it is out of date: name builds with bb version --file</span>` : ""}${
             // What built it, when a job did (docs/nodes.md §6): the job,
             // the node, the snapshot. A file somebody copied in says nothing.
             a.prov ? `<span class="dim">built by ${esc(a.prov.job)} on ${
@@ -264,6 +268,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                   (art.sign_routes || []).length > 1 ? (r === "play" ? " for Play" : " to sideload") : ""}</button>`).join("") : ""}
             ${a.view ? `<button type="button" data-artview="${i}"
                 title="read it here, without downloading it">View</button>` : ""}
+            ${a.unversioned ? `<button type="button" class="danger" data-artunnamed="${i}"
+                title="remove it from dist/ now, for everybody">Remove</button>` : ""}
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
               }&path=${encodeURIComponent(a.path)}" download>Download</a>
             <button type="button" class="eye pin${a.pinned ? " on" : ""}" data-artpin="${i}"
@@ -403,6 +409,17 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const fp = String(a?.prov?.signed?.cert || "").toLowerCase();
       try{ await navigator.clipboard.writeText(fp); notify(`copied ${a.name}'s signing fingerprint`); }
       catch(e){ notify(`copy it by hand: ${fp}`, "warn"); }
+    });
+    list.querySelectorAll("[data-artunnamed]").forEach(b => b.onclick = async () => {
+      const a = rows[+b.dataset.artunnamed];
+      if (!a || !confirm(`Remove ${a.name} from dist/?\n\nIt is gone for everybody.`)) return;
+      b.disabled = true;
+      try{
+        const j = await (await postJSON("/api/artifacts", {project, action: "forget-unnamed", path: a.path})).json();
+        if (j.error){ b.disabled = false; return notify(j.error, true); }
+        notify(`removed ${a.name}`);
+      }catch(e){ b.disabled = false; return notify(String(e), true); }
+      loadArtifacts();
     });
     list.querySelectorAll("[data-artpin]").forEach(b => b.onclick = async () => {
       const a = rows[+b.dataset.artpin];

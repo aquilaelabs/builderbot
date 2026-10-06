@@ -109,7 +109,7 @@ const names = await page.$$eval('.artrow b', bs => bs.map(b => b.textContent));
   ok(dev.join() === ['alpha-1.2.0-dev.3-abcdef3-debug.apk', 'alpha-1.2.0-dev.4-abcdef4-debug.apk', 'alpha-1.2.0-dev.5-abcdef5-debug.apk'].join()
      && names.includes('alpha-1.2.0-debug.apk') && !existsSync(`${DIR}/ws/alpha/dist/alpha-1.2.0-dev.1-abcdef1-debug.apk`),
      `of five dev builds of one APK the newest three are kept and the release beside them stays (${dev.join(', ')})`);
-  ok(/newest 3 of each/.test(note) && /A release is kept/.test(note) && /anything pinned/.test(note),
+  ok(/newest 3 builds/.test(note) && /signed copy alone/.test(note) && /A release is kept/.test(note) && /anything pinned/.test(note),
      `...and the tab says so (${note.replace(/\s+/g, ' ').slice(0, 120)})`);
   // A pin keeps one whatever comes after it (the operator, 30 Sep): the
   // oldest kept is pinned on its row, two newer builds arrive, and it is
@@ -427,6 +427,26 @@ ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 // Put alpha back as it was found. fresh() between files resets state and
 // removes stray projects, but it does not reach inside a fixture project, so
+// ---- a build named with no version (the operator, 6 Oct) ----------------------
+// Nothing can tell when it is out of date, so the sweep leaves it and its row
+// says so in the warning color, with a Remove that a person presses.
+{
+  writeFileSync(`${DIR}/ws/alpha/dist/app-debug.apk`, 'a build copied in by hand');
+  await page.evaluate(() => getNotebook('alpha').view('artifacts'));
+  await page.waitForFunction(() => [...document.querySelectorAll('#artList .artrow')]
+    .some(r => r.querySelector('b')?.textContent === 'app-debug.apk'), null, { timeout: 15000 });
+  const r = await page.evaluate(() => { const row = [...document.querySelectorAll('#artList .artrow')]
+    .find(x => x.querySelector('b')?.textContent === 'app-debug.apk');
+    return { said: row.querySelector('.vermark')?.textContent || '', rm: !!row.querySelector('[data-artunnamed]') }; });
+  ok(/named with no version/.test(r.said) && r.rm,
+     `a build named with no version says nothing can tell when it is out of date, and offers Remove (${r.said})`);
+  await page.evaluate(() => [...document.querySelectorAll('#artList .artrow')]
+    .find(x => x.querySelector('b')?.textContent === 'app-debug.apk')?.querySelector('[data-artunnamed]')?.click());
+  await page.waitForFunction(() => ![...document.querySelectorAll('#artList .artrow b')].some(b => b.textContent === 'app-debug.apk'),
+                             null, { timeout: 15000 });
+  ok(!existsSync(`${DIR}/ws/alpha/dist/app-debug.apk`), '...and Remove takes it out of dist/');
+}
+
 // a file that plants a dist/ tree and a symlink there has to clear them
 // itself, or every later file runs against a project this one changed.
 rmSync(`${DIR}/ws/alpha/dist`, { recursive: true, force: true });

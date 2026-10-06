@@ -5857,6 +5857,9 @@ class Handler(BaseHTTPRequestHandler):
                                         "and a pin is a person's"}, 403)
         if field(req, "action") == "forget-capture":
             return self._json(*artifacts.forget_capture(name, field(req, "name")))
+        # A build named with no version, which no sweep can judge: a person's Remove.
+        if field(req, "action") == "forget-unnamed":
+            return self._json(*artifacts.forget_unnamed(name, field(req, "path")))
         # A pin keeps an artifact from the dev builds' sweep, a person's.
         if field(req, "action") in ("pin", "unpin"):
             return self._json(*artifacts.pin(name, field(req, "path"), field(req, "action") == "pin",
@@ -6779,6 +6782,7 @@ def main():
     if not NODES_OK:
         claudecode.start()        # the first check soon after the start, then every six hours
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
+    artifacts.start()         # every project's dist/ to its newest builds, every few minutes
     ciwatch.start()           # a project's CI, once a day (R117)
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()

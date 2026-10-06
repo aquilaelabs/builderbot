@@ -155,15 +155,21 @@ The dashboard's own tab icon is this command's output, from
 `scripts/dashboard/static/favicon.svg`.
 
 **Dev builds do not pile up.** A build named with `bb version --file` carries
-its dev version (`0.1.0-dev.17-9e09ad3`), so builds of the same thing differ
-only there; of each such kind the Artifacts tab keeps the newest few in
-`dist/` (the project's settings say how many, Dev builds kept: 3 unless
-changed, and 0 keeps them all) and removes the older when it draws, as it does captures past their
-days. A release (no `-dev.N`), a file whose name carries no version, and an
-artifact somebody **pinned** (the pin on its row, kept by the controller with
-who pinned it) are never removed, and a pinned build is not one of those
-kept beside it. One day of a session building a keyboard left seven debug
-APKs, 133 MB, before this.
+its dev version (`0.1.0-dev.17-9e09ad3`). Of each product (the name before
+the version: `Shebang-DevBoard-`, `Shebang-Voice-`) `dist/` keeps every file
+of its newest few builds, whatever follows the version (the project's
+settings say how many, Dev builds kept: 3 unless changed, and 0 keeps
+everything), and a build that has been signed keeps its signed copy alone,
+since the unsigned file was only the signing's input. The rest go every few
+minutes, when a node's build lands, and when the Artifacts tab draws, not
+only on the last. A release (no `-dev.N`) and an artifact somebody
+**pinned** (the pin on its row, kept by the controller with who pinned it)
+are never removed by count, and a pinned build is not one of those kept
+beside it. A build named with no version cannot be judged, so its row says
+so and offers Remove. One day of a session building a keyboard left seven
+debug APKs, 133 MB, before the first of this; counting by name rather than
+by build left Shebang's renamed first builds for good, and unsigned twins
+were 350 MB of its 811 (6 Oct).
 
 **CI on GitHub's own runners.** A job on a hosted runner keeps no log
 anywhere BuilderBot reaches, and GitHub hands a run's log only to a token,
