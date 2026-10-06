@@ -314,10 +314,25 @@ function onRev(key, fn){
   return () => { const i = revWatch.indexOf(w); if (i >= 0) revWatch.splice(i, 1); };
 }
 
+// One out at a time, as refresh() is (R88): the timer, a tab coming back
+// into view and a menu let go all start one, and with no guard an older
+// reply landing second set revs back to the past, every watch fired again
+// and every view's fetch doubled. Asked while one is out, it is remembered
+// and asked once more when that one lands.
+let revsBusy = false, revsAgain = false;
 async function pollRevs(){
   // A notebook view draws from its own fetch, straight into its own element,
   // so the only place to hold one is here, before the watch that starts it.
   if (menuHolds(null)) return;
+  if (revsBusy){ revsAgain = true; return; }
+  revsBusy = true;
+  try{ await pollRevsOnce(); }
+  finally{
+    revsBusy = false;
+    if (revsAgain){ revsAgain = false; pollRevs(); }
+  }
+}
+async function pollRevsOnce(){
   let now;
   try{
     // Which projects this page has a notebook open on. The per-project

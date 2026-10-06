@@ -1341,6 +1341,30 @@ ok(true, 'pinning it puts it back on the sidebar');
         held - before} in ${Date.now() - t0}ms)`);
   await page.unroute('**/api/status*');
 }
+// ...and the revisions poll the same (R88): the timer, a tab coming back and
+// a menu let go each start one, and stacked an older reply landing second
+// set the page's revisions back and fired every watch again.
+{
+  let release, held = 0;
+  await page.route('**/api/revs*', async route => {
+    held++;
+    if (held === 1) await new Promise(r => { release = r; });
+    await route.continue().catch(() => {});
+  });
+  // Started, not awaited: the request it sends is the one held open.
+  await page.evaluate(() => { pollRevs(); });
+  await page.waitForFunction(() => revsBusy, null, { timeout: 10000 });
+  const before = held;
+  await page.evaluate(() => { pollRevs(); pollRevs(); pollRevs(); pollRevs(); });
+  await new Promise(r => setTimeout(r, 2000));      // past the 1.5 s timer too
+  ok(held === before,
+     `revision polls asked while one is out do not stack (${held - before + 1} in flight)`);
+  release();
+  const t0 = Date.now();
+  while (held < before + 1 && Date.now() - t0 < 15000) await new Promise(r => setTimeout(r, 50));
+  ok(held >= before + 1, `...and one more goes when it lands (${held - before} after ${Date.now() - t0}ms)`);
+  await page.unroute('**/api/revs*');
+}
 
 // ---- a row's tooltips -----------------------------------------------------
 // Two failures that were the same failure, and both were reported as "the
