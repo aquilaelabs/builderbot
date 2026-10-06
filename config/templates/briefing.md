@@ -156,6 +156,21 @@ asked for meanwhile does is this project's setting (Claude may, "While a
 test runs: a change asked for"):
 <!-- BUILDERBOT:TESTCHANGE -->
 
+## Cleaning up after a task
+
+The node is shared, and what a task leaves running holds memory, the card
+or disk that other sessions are waiting for. When a task or a batch of
+tasks is done, run `bb tidy`: it ends this session's emulator (through
+`bb emu stop`, so its state is saved), anything else of its own on the
+NVIDIA card, its Gradle and Kotlin daemons and the headless browsers a
+test left behind, and clears its own files from /tmp, which in a session
+is memory; then it says what came back. It touches only this session's
+own, never Claude Code's own folder in /tmp, and nothing a running
+process still has open. Keep something only with a reason the next task
+gives you (`bb tidy --keep emulator` when the next step tests on it,
+`--keep gradle` with a build about to run) and say the reason in your
+reply; `bb tidy --dry` shows what it would do.
+
 ## Measuring speed
 
 This machine is shared, and your view of it holds only your own processes:
@@ -477,9 +492,7 @@ halfway through. An emulator drawing on the card uses that pool too: an
 Android phone booting on it can fill the card, and `bb emu start` then
 starts it again in software by itself. `bb node busy` says what holds the
 card's memory, by kind (an emulator, Python, the display), so read that
-rather than guessing; and when you are done with the card, `bb gpu
-release` ends this session's own processes that hold it (the emulator
-through `bb emu stop`) and says how much came back.
+rather than guessing.
 
 A model is the pytorch toolchain's: `python-ml` is its Python, with
 PyTorch for CUDA, numpy and ONNX (`bb gpu run --mem 4000 -- python-ml

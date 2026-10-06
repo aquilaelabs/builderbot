@@ -213,9 +213,12 @@ bb gpu             this node's NVIDIA card: how much of its memory is free, who 
 bb gpu run [--mem MB] -- CMD
                    CMD with a turn on the card: one heavy job at a time per node, waiting
                    for its turn and for MB of free memory rather than failing on a full card
-bb gpu release     give the card back when done with it: ends this session's own
-                   processes that hold it (its emulator through bb emu stop, a Python
-                   job, a build that loaded CUDA) and says how much came back
+bb tidy [--keep emulator|gpu|gradle|browser|tmp]... [--dry]
+                   after a task or a batch of them, give back what it left holding:
+                   this session's emulator (through bb emu stop), anything else of
+                   its own on the NVIDIA card, its Gradle and Kotlin daemons, the
+                   headless browsers a test left behind, and its own files in /tmp,
+                   which in a session is memory; --keep one, with the reason in your reply
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb node busy [--json]

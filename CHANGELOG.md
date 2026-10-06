@@ -80,6 +80,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node's row on the Nodes tab says why an idle session's token was not refreshed there, and when one last was, from what its agent reports (bdf1fe8)
 - A project whose house rule is watch-diagnostics hears on its next prompt of every diagnostics report that arrived since the last one, by number and project (5a70a76)
 - bb node busy says what holds the card's memory, by kind (an emulator, Python, the display), and bb gpu release gives a session's share of the card back when it is done (B532) (b7a80e2)
+- bb tidy gives back what a task left holding: the session's emulator, its processes on the card, its Gradle and Kotlin daemons, the browsers a finished test left, and its files in /tmp; --keep one with a reason. It replaces bb gpu release (ffe2fb8)
 
 ### Changed
 
