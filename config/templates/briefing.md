@@ -94,6 +94,15 @@ companion app's notes wait on it. Narrow a run with arguments, which follow
 the command (`bb test --tests 'FooTest'`); a task the command does not run
 (installing on the emulator, a single module) is `bb run -- ./gradlew ...`.
 
+A project's tree is on the projects share, a network drive, and now and
+then it refuses a build's delete or lock where a local disk would not: the
+same command passes when run again. `bb build` and `bb test` read the
+failure and run once more when it is the share's, saying so. When you run
+Gradle yourself, keep its whole failure (from `What went wrong:` to the
+end), never a grep of it, and put that text in the bug or report: which
+file and which call failed is what says whether it was the share or the
+code, and a guess is all anybody has without it.
+
 A project whose build or test command is not set refuses and says so:
 `bb settings set build|test|outputs "..."` fills the field in for the
 operator, and the project's gate decides whether that lands, waits for

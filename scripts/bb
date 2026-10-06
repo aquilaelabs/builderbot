@@ -3127,6 +3127,18 @@ EOF
 
 # run_here ROLE [GLOB...] -- CMD...: `bb run` on the node the session is on:
 # the command in this tree, and each output glob's matches into dist/.
+# A build or test failure that reads as the projects share's (B439): the
+# first matching line, with `print`, else just whether there is one. NFS
+# keeps a deleted file that is still open as .nfsXXXX, so the directory
+# around it will not go; a handle goes stale; a lock is not granted.
+share_flake() {
+    local hit
+    hit="$(grep -m1 -E -i 'Unable to delete (directory|file)|Failed to delete|Could not delete|Directory not empty|DirectoryNotEmptyException|Stale file handle|Device or resource busy|\.nfs[0-9a-f]{8,}|Timeout waiting to lock|Could not create (parent )?directory' "$1" 2>/dev/null | head -c 200)"
+    [ -n "$hit" ] || return 1
+    [ "${2:-}" = print ] && printf '%s' "$hit"
+    return 0
+}
+
 run_here() {
     local role="$1" outs=() g f
     shift
@@ -3149,8 +3161,21 @@ run_here() {
     # that does not answer costs one note's timing, never the run.
     local rid=""
     [ "$role" = test ] && rid="$(tests_going begin "$shown")"
-    local code=0
-    "$@" || code=$?
+    # Run once more, said out loud, when a failure reads as the projects
+    # share's and not the code's (B439): a tree on NFS now and then refuses a
+    # build's delete or lock, and the same command passes at once after.
+    # The output is kept while it streams, so the reason is read from what
+    # the build said rather than guessed at; a second failure stands.
+    local code=0 said
+    said="$(mktemp)"
+    "$@" 2>&1 | tee "$said" || code=$?
+    if [ "$code" -ne 0 ] && share_flake "$said"; then
+        warn "$role failed on what reads as the projects share, not the code ($(share_flake "$said" print)): running it once more"
+        code=0
+        "$@" 2>&1 | tee "$said" || code=$?
+        [ "$code" -eq 0 ] && log "$role: passed on the second run; the first failed on the share (B439)"
+    fi
+    rm -f "$said"
     [ "$role" = test ] && tests_going end "$rid" >/dev/null
     if [ "$code" -eq 0 ] && [ "${#outs[@]}" -gt 0 ]; then
         mkdir -p dist
