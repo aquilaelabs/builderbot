@@ -328,7 +328,32 @@ def _clean(rec):
             "capture_days": _capture_days(rec.get("capture_days")),
             # How many dev builds of each kind the Artifacts tab keeps in
             # dist/ before it removes the older (R105); 0 keeps them all.
-            "dev_keep": _dev_keep(rec.get("dev_keep"))}
+            "dev_keep": _dev_keep(rec.get("dev_keep")),
+            # What this project's sessions may read for debugging, by an
+            # administrator's grant (the operator, 6 Oct): the machine logs
+            # of these nodes, and the controller's diagnostics. Per project,
+            # not per node: a node's tick reached every project on it.
+            "log_from": _log_from(rec),
+            "diag": rec.get("diag") is True}
+
+
+def _log_from(rec):
+    """The node ids this project's sessions may read machine logs from."""
+    got = rec.get("log_from") if isinstance(rec.get("log_from"), list) else []
+    out = []
+    for n in got:
+        n = str(n or "")[:40]
+        if n and n not in out:
+            out.append(n)
+    return out[:32]
+
+
+def debug_changed(project, req):
+    """Whether the dialog's debug grants differ from the stored ones: the
+    dialog sends every field on every save, and only a change is gated."""
+    cur = get(project) or {}
+    return (("log_from" in req and _log_from({"log_from": req.get("log_from")}) != cur.get("log_from"))
+            or ("diag" in req and (req.get("diag") is True) != cur.get("diag")))
 
 
 CAPTURE_DAYS = 7
@@ -496,7 +521,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
-              release=None):
+              release=None, log_from=None, diag=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -604,10 +629,14 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if not 0 <= n <= 99:
                 return {"error": f"dev builds kept is a number of builds, 0 to 99, not {dev_keep}"}
             cur["dev_keep"] = n
+        if log_from is not None:
+            cur["log_from"] = _log_from({"log_from": log_from})
+        if diag is not None:
+            cur["diag"] = diag is True
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if (cur["node"] or cur["color"] or cur["reads"] or cur["sees"]
+        if (cur["node"] or cur["color"] or cur["reads"] or cur["sees"] or cur["log_from"] or cur["diag"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
@@ -738,6 +767,7 @@ def dialog_save(name, req, uid):
                   dev_keep=req.get("dev_keep"), sign=req.get("sign"), keys=req.get("keys"),
                   release=req.get("release"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
+                  log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
                   workspace=WORKSPACE)
     # ...and what is the ASKING ACCOUNT's rather than the project's: the
     # model and effort its sessions launch on, and the author its commits

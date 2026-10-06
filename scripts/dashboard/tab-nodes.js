@@ -622,13 +622,6 @@ function nodeAdvancedSection(n, stale, inflight){
           : "keep them to the machine's own console"}">${
         n.config?.lock ? "Unlock" : "Lock system changes"}</button>
     </div>`}
-    ${state?.settings?.settings?.debug_mode?.value ? `
-    <div class="actbar nddebug">
-      <span class="state">Which machines' logs a session here may read.</span>
-      <button type="button" data-nd="debug"
-        title="which nodes' agent, runner and terminal logs a session on this node may read">Debug settings${
-        (n.config?.log_from || []).length ? ` (${(n.config.log_from || []).length})` : ""}</button>
-    </div>` : ""}
     <div class="actbar">
       <span class="state">Drain finishes what is running and takes nothing new.</span>
       <button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}"
@@ -1249,51 +1242,6 @@ function wireNodesTab(root){
   // The box narrows for the question and widens for the answer: one field
   // does not want 760px, and a shell line that wraps lies about what runs.
   const boxWidth = wide => modal.querySelector(".box").classList.toggle("wide", wide);
-  // Which nodes' MACHINE logs a session on this one may read. A tick per
-  // node, this one first and named as itself, because its own journal is as
-  // much root's as anybody else's; "it is only looking at itself" is the
-  // reasoning that makes a boundary stop meaning anything. Only reachable
-  // while the controller's debug switch is on; the switch grants nothing.
-  const debugForm = (n) => {
-    document.getElementById("ndTitle").textContent = `Debug settings: ${n.name}`;
-    boxWidth(false);
-    const rows = (nodesList || []).filter(x => x.kind === "agent" && x.state !== "retired");
-    const have = new Set(n.config?.log_from || []);
-    body.innerHTML = `<div class="field">
-        <div class="hint">Machine logs a session on ${esc(n.name)} may read, besides its own project's.</div>
-        <div class="logset">${rows.map(x => `
-          <div class="logdays setrow"><label class="ndcap">
-            <input type="checkbox" data-grant="${esc(x.id)}"${have.has(x.id) ? " checked" : ""}>
-            <span>${esc(x.name)}${x.id === n.id ? ": itself" : ""}</span></label></div>`).join("")}
-        </div>
-        ${rows.length ? "" : `<div class="hint">No other node is enrolled.</div>`}
-      </div>
-      <div class="field">
-        <div class="logdays setrow"><label class="ndcap">
-          <input type="checkbox" id="ndDiag"${n.config?.diag ? " checked" : ""}>
-          <span>The controller's diagnostics</span></label></div>
-        <div class="hint">Lets an administrator's session here run bb diag.</div>
-      </div>
-      <div class="foot">
-        <button type="button" class="primary" id="ndDbgSave">Save</button>
-        <button type="button" id="ndDbgCancel">Cancel</button>
-      </div>`;
-    body.querySelector("#ndDbgCancel").onclick = shut;
-    const go = body.querySelector("#ndDbgSave");
-    go.onclick = () => pressing(go, async () => {
-      const from = [...body.querySelectorAll("[data-grant]")]
-        .filter(c => c.checked).map(c => c.dataset.grant);
-      const diag = body.querySelector("#ndDiag").checked;
-      const j = await nodeAct({action: "log-grant", id: n.id, from, diag});
-      if (j.error){ notify(j.error, true); return; }
-      shut();
-      notify((from.length ? `${n.name} may read ${from.length} node's logs`
-                          : `${n.name} reads no machine logs`)
-             + (diag ? ", and the controller's diagnostics" : ""));
-      loadNodes();
-    });
-  };
-
   const mintForm = () => {
     document.getElementById("ndTitle").textContent = "Enroll a node";
     boxWidth(false);
@@ -1501,11 +1449,6 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
-      if (act === "debug"){
-        const n = (nodesList || []).find(x => x.id === id);
-        if (n){ modal.hidden = false; debugForm(n); }
-        return;
-      }
       if (act === "retire"
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "

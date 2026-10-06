@@ -1266,44 +1266,6 @@ LOG_STREAMS = {
 LOG_LINES_MAX = 2000
 
 
-def log_grants(node_id):
-    """The node ids whose machine logs a session on `node_id` may read."""
-    n = node(node_id)
-    return list(((n or {}).get("config") or {}).get("log_from") or [])
-
-
-def diag_granted(node_id):
-    """Whether a session on `node_id` may read the controller's diagnostics
-    (diag.py), which is a tick of its own beside the log grant."""
-    n = node(node_id)
-    return bool(((n or {}).get("config") or {}).get("diag"))
-
-
-def node_log_grant(principal, node_id, from_ids, diag=None):
-    """Set that list. The operator's, and an administrator's: a session token
-    is refused this endpoint the way it is refused the rest of the config
-    plane, or the boundary would be one a session could open for itself."""
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "only an agent node has sessions to grant anything to"}
-    have = {x["id"] for x in node_list()}
-    want = [str(x) for x in (from_ids or [])][:32]
-    bad = [x for x in want if x not in have]
-    if bad:
-        return {"error": f"no such node: {bad[0]}"}
-    conf = dict(n.get("config") or {})
-    conf["log_from"] = want
-    # The controller's diagnostics, when the form says (None leaves it).
-    if diag is not None:
-        conf["diag"] = bool(diag)
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
-    _touch(node_id, principal, "node-log-grant",
-           {"from": want, "self": node_id in want, "diag": bool(conf.get("diag"))})
-    return {"ok": True, "log_from": want, "diag": bool(conf.get("diag"))}
-
-
 def node_turn_limit(principal, node_id, limit):
     """How many Claude sessions on this node may work on a prompt at once
     (turns.py): 0 for no limit. An administrator's, like the rest of the
@@ -1427,11 +1389,12 @@ def turn_limit(node_id):
 
 
 def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
-                  debug_on=False):
+                  debug_on=False, grants=(), project=""):
     """A machine log off `target_id`, for a session running on `asking_id`.
 
     The gate, in order, each refusal saying what would change it: the
-    controller's debug switch, then this node's grant for that node. Past
+    controller's debug switch, then the project's grant for that node
+    (`grants`, its settings' Debug, per project since 6 Oct). Past
     both it is root_wait: the same job, the same log in the Jobs tab, the
     same refusal on a machine that did not enroll as a sandbox. What stands
     in for the approval is the grant, and the job's log says so.
@@ -1439,20 +1402,17 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     if not debug_on:
         return {"error": "debug mode is off, so a machine's logs are not offered "
                          "to any session. Controller settings turns it on, and "
-                         "each node is then granted the nodes it may read"}
+                         "each project is then granted the nodes it may read"}
     if not asking_id:
         return {"error": "this session is not on a node, and the grant is a "
                          "node's; a controller session reads its own log with "
                          "`bb logs`"}
-    a, tgt = node(asking_id), node(target_id)
+    tgt = node(target_id)
     if not tgt:
         return {"error": "no such node"}
-    if target_id not in log_grants(asking_id):
-        me = (a or {}).get("name") or asking_id
-        return {"error": f"{me} has not been granted {tgt['name']}'s machine logs"
-                         + (", not even its own, which is a tick of its own on "
-                            "Debug settings" if asking_id == target_id else
-                            ". Debug settings on its row grants it")}
+    if target_id not in (grants or ()):
+        return {"error": f"{project or 'this project'} has not been granted {tgt['name']}'s "
+                         "machine logs: Debug in its settings grants them"}
     spec = LOG_STREAMS.get(stream)
     if not spec:
         return {"error": "no such log: " + ", ".join(sorted(LOG_STREAMS))}
@@ -1475,8 +1435,8 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
                              f"which is where that log is kept"}
         fills["data"] = str(path).rstrip("/")
     argv = [x.format(**fills) for x in spec["argv"]]
-    why = (f"{(a or {}).get('name') or asking_id} reads {tgt['name']}'s "
-           f"{stream} log, granted on Debug settings, not asked for here")
+    why = (f"{project or asking_id} reads {tgt['name']}'s "
+           f"{stream} log, granted in its settings' Debug, not asked for here")
     return root_wait(principal, target_id, argv, why=why, timeout=120)
 
 
@@ -3652,14 +3612,6 @@ def verb(principal, req):
         # applied by the next action as a system job the agent runs.
         return node_config_set(principal, nid, req.get("config"))
 
-    def log_grant():
-        # Which nodes' machine logs a session on this node may read. An
-        # administrator's, like the rest of this handler: a session that
-        # could grant itself the journal is not a boundary.
-        return node_log_grant(principal, nid,
-                              req.get("from") if isinstance(req.get("from"), list) else [],
-                              diag=req["diag"] if isinstance(req.get("diag"), bool) else None)
-
     def turns():
         # How many Claude sessions on the node may work at once; 0 for
         # no limit. An administrator's, like the rest of this handler.
@@ -3819,7 +3771,7 @@ def verb(principal, req):
              "lock": lock, "unlock": lock, "enroll": enroll,
              "reboot": power, "poweroff": power, "gpu-display": gpu_display,
              "gpu-compute": gpu_compute,
-             "config": config, "log-grant": log_grant, "turns": turns,
+             "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net,
              "root-asks": root_asks, "apply": apply, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
@@ -3994,9 +3946,11 @@ def tab_view(rows, admin):
             "default": node_for() if admin else ""}
 
 
-def log_read_named(principal, asking_id, want, stream, lines, debug_on):
+def log_read_named(principal, asking_id, want, stream, lines, debug_on, grants=(), project=""):
     """node_log_read with the target named by id or by name, for a session
-    the server has placed on `asking_id`. {..} or {error}."""
+    the server has placed on `asking_id`, whose project may read `grants`.
+    {..} or {error}."""
     tgt = node(want) or next((n for n in node_list() if n["name"] == want), None)
     return node_log_read(principal, asking_id, (tgt or {}).get("id") or want,
-                         stream or "agent", lines or 200, debug_on=debug_on)
+                         stream or "agent", lines or 200, debug_on=debug_on,
+                         grants=grants, project=project)

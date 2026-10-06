@@ -431,7 +431,7 @@ ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
 # There is no "delete" here because there is no delete: a project is removed
 # by moving it to the trash and purging it, and both are `trash`.
 USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth", "runner",
-               "docker-write", "toolchains-write", "jobs", "lock", "command-pin", "version")
+               "docker-write", "toolchains-write", "jobs", "lock", "command-pin", "version", "debug")
 
 
 def sees_all(u):
@@ -610,7 +610,11 @@ def may(u, action, project=None):
                                 "administrator's: you can see what is "
                                 "running and open it",
                 "toolchains-write": "installing on a node is an administrator's: "
-                                  "these are gigabytes on shared disk"}[action]
+                                  "these are gigabytes on shared disk",
+                # Named only (roles.NAMED_ONLY): an administrator too is
+                # refused until a role grants it by name (the operator, 6 Oct).
+                "debug": "the debug options are BuilderBot's owner's, or a role's that "
+                         "grants debug by name on the Roles tab"}[action]
     if action == "admin":
         return "that is an administrator's"
     return ""

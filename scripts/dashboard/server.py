@@ -2024,6 +2024,10 @@ def _diag_watch(project):
         return None
 
 
+# The Settings tab's Debugging group, the debug grant's (roles.NAMED_ONLY).
+DEBUG_SETTINGS = ("debug_mode", "offer_unvetted", "claude_autoupdate")
+
+
 def session_seen_note(project, uid, node, who=None, begin=False):
     """`begin`: record the build and the notebook this session starts from.
     Otherwise what has moved since, in one line, and the record moved on:
@@ -2061,7 +2065,7 @@ def session_seen_note(project, uid, node, who=None, begin=False):
                             + ", ".join(v for _, v in moved) + " before going on.")
         fresh = [r for r in watched or [] if int(r.get("id") or 0) > was_diag]
         if fresh:
-            said.append(f"New in diagnostics since your last prompt: "
+            said.append("New in diagnostics since your last prompt: "
                         + ", ".join(f"report #{r['id']} from {r.get('project') or 'the dashboard'}"
                                     for r in reversed(fresh[:5]))
                         + (f" and {len(fresh) - 5} more" if len(fresh) > 5 else "")
@@ -3307,7 +3311,10 @@ def snapshot(who):
                  "runner", "jobs", "node",
                  # ...and what the sidebar and the dialogs offer (step 4):
                  # drawn from the same grants the server refuses on.
-                 "lock", "rename", "trash", "version", "create", "command-pin")}
+                 "lock", "rename", "trash", "version", "create", "command-pin",
+                 # ...and the debug options, which a page without the grant
+                 # does not show at all (the operator, 6 Oct).
+                 "debug")}
                # ...and what other projects a session may read: the owner's
                # alone (the operator, 6 Oct), whatever the grants say.
                | {"reads": (who or {}).get("role") == "owner"},
@@ -4408,10 +4415,12 @@ class Handler(BaseHTTPRequestHandler):
     def _get_logs_download(self):
         """GET /logs/download: the container's own log, every project's
         traffic in it, or the diagnostics whole (logs.download). An
-        administrator's."""
+        administrator's, and the diagnostics the debug grant's."""
         if self._refused("admin"):
             return None
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        if (q.get("what") or [""])[0] == "diag" and self._refused("debug"):
+            return None
         got, status = logs.download((q.get("what") or [""])[0], self._principal())
         if status != 200:
             return self._json(got, status)
@@ -4955,6 +4964,11 @@ class Handler(BaseHTTPRequestHandler):
         # and applied by the store; the answer is the tab's next drawing.
         if self._refused("admin"):
             return
+        # The Debugging group (debug mode and what it opens) is the debug
+        # grant's, named only (the operator, 6 Oct); only a change is asked.
+        want = req.get("set") if isinstance(req.get("set"), dict) else {}
+        if any(k in DEBUG_SETTINGS and want[k] != settings.get(k) for k in want) and self._refused("debug"):
+            return
         r = settings.set_many(req.get("set") or {})
         if r.get("error"):
             return self._json(r, 400)
@@ -4995,6 +5009,11 @@ class Handler(BaseHTTPRequestHandler):
         # whoever may set the node. Only a change is asked about.
         if req.get("sees") is not None and prefs.sees_changed(name, req.get("sees")) \
                 and self._refused("node", name):
+            return
+        # ...and what its sessions may read for debugging (the machine logs
+        # of named nodes, the controller's diagnostics): the debug grant's,
+        # per project rather than per node (the operator, 6 Oct).
+        if prefs.debug_changed(name, req) and self._refused("debug"):
             return
         # ...nor is the dial that hands a session this project's container:
         # it lets a session create one and set its env, which is Docker
@@ -6346,9 +6365,22 @@ class Handler(BaseHTTPRequestHandler):
         if proj and not who.get("session") and not users.may_see(who, proj):
             return self._json({"error": "not a project"}, 400)
         asking = prefs.get(proj)["node"] if proj else ""
+        # The debug grant's, named only (the operator, 6 Oct): the session's
+        # account, or the person asking, must hold it as well as the project
+        # its grant for the node.
+        if who.get("session"):
+            me = users.account_of(who)
+            if me is who or users.may(me, "debug"):
+                return self._json({"error": "a machine's logs are for an account with the debug "
+                                            "grant, and this session's account has not got it: "
+                                            "the Roles tab"}, 403)
+        elif self._refused("debug"):
+            return None
         return self._result(nodes.log_read_named(self._principal(), asking, field(req, "node"),
                                                  field(req, "stream"), req.get("lines"),
-                                                 bool(settings.get("debug_mode"))), 403)
+                                                 bool(settings.get("debug_mode")),
+                                                 grants=prefs.get(proj)["log_from"] if proj else [],
+                                                 project=proj), 403)
 
     def _diag(self, req):
         """The controller's diagnostics (diag.py). An administrator's, and a
@@ -6373,19 +6405,17 @@ class Handler(BaseHTTPRequestHandler):
                                      "are not offered to any session"}, 403)
                 return True
             me = users.account_of(who)
-            if me is who or not users.is_admin(me):
-                self._json({"error": "the controller's diagnostics are an "
-                                     "administrator's, and this session's account "
-                                     "is not one"}, 403)
+            if me is who or users.may(me, "debug"):
+                self._json({"error": "the controller's diagnostics are for an account "
+                                     "with the debug grant, and this session's account "
+                                     "has not got it: the Roles tab"}, 403)
                 return True
-            nid = prefs.get(who["session"])["node"]
-            if not nid or not nodes.diag_granted(nid):
-                name = (nodes.node(nid) or {}).get("name") or "this session's node"
-                self._json({"error": f"{name} has not been granted the controller's "
-                                     "diagnostics: Debug settings on its row"}, 403)
+            if not prefs.get(who["session"])["diag"]:
+                self._json({"error": f"{who['session']} has not been granted the controller's "
+                                     "diagnostics: Debug in its settings"}, 403)
                 return True
             return False
-        return self._refused("admin")
+        return self._refused("debug")
 
     def _reports(self, req):
         """Problems with BuilderBot itself, reported by any project's session

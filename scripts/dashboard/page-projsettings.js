@@ -63,7 +63,7 @@ function rnLoadModelNow(name){
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
                  node: "", nodes: "", reads: "", sees: "", build: "", test: "", outputs: "",
-                 capture_days: "7", dev_keep: "3", gate: "", color: ""};
+                 capture_days: "7", dev_keep: "3", gate: "", color: "", debug: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -111,6 +111,7 @@ function rnFillPrefs(p){
                nodes: (p?.prefs?.nodes || []).join(","),
                reads: (p?.prefs?.reads || []).join(","),
                sees: (p?.prefs?.sees || []).join(", "),
+               debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
@@ -139,6 +140,7 @@ function rnFillPrefs(p){
   rnFillNode();
   rnFillPrefsRest(p);
   rnFillReads();
+  rnFillDebug();
   rnLoadModelNow(rnFor);
 }
 
@@ -161,7 +163,7 @@ function rnFillNode(){
     const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && !removed.has(n.id));
     if (nodesList === null){
       const opened = rnFor;
-      loadNodes().then(() => { if (opened !== null && rnFor === opened) rnFillNode(); });
+      loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnFillDebug(); } });
     }
     // Hidden with the rest of the project's own settings when this dialog was
     // opened by the chain, which asks about the remote and nothing else.
@@ -221,6 +223,25 @@ function rnFillNodesMore(){
 // The projects a session here may read: every other project this account
 // sees, a listbox row each, ticked from the settings. Read-only there by
 // construction (users.with_reads), so the hint under it can say so plainly.
+// What a session here may read for debugging (the operator, 6 Oct): the
+// controller's diagnostics, then each node's machine logs, a listbox row
+// each. The debug grant's, and not drawn at all for an account without it.
+const rnDebugKey = (diag, from) => (diag ? "diag;" : "") + [...(from || [])].sort().join(",");
+function rnFillDebug(){
+  const box = $("rnDebug"), wrap = $("rnDebugField");
+  if (!box) return;
+  const p = (state?.projects || []).find(x => x.name === rnFor);
+  const was = new Set(p?.prefs?.log_from || []);
+  const rows = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  wrap.hidden = rnMode === "git" || state?.can?.debug === false;
+  box.innerHTML = lrow("@diag", "The controller's diagnostics", "bb diag", !!p?.prefs?.diag)
+    + rows.map(n => lrow(n.id, n.name, "machine logs", was.has(n.id))).join("");
+}
+function rnDebugNow(){
+  const on = [...$("rnDebug").querySelectorAll("input:checked")].map(i => i.value);
+  return {diag: on.includes("@diag"), log_from: on.filter(v => v !== "@diag")};
+}
+
 function rnFillReads(){
   const box = $("rnReads"), wrap = $("rnReadsField");
   if (!box) return;
@@ -981,6 +1002,9 @@ async function rnSubmit(){
   const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
   const reads = [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value);
   const sees = $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean);
+  // Sent only where it was drawn: an account without the debug grant is
+  // never shown it, so it never sends it, and the server never asks.
+  const dbg = $("rnDebugField").hidden ? null : rnDebugNow();
   const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
   const capture_days = $("rnCaptureDays").value.trim();
@@ -1000,6 +1024,7 @@ async function rnSubmit(){
   const verPol = $("rnGateVersion").value || "locked";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
+    || (dbg && rnDebugKey(dbg.diag, dbg.log_from) !== rnPrefWas.debug)
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
     || dev_keep !== rnPrefWas.dev_keep
     || gateKey(gate) !== rnPrefWas.gate || color !== rnPrefWas.color
@@ -1094,6 +1119,7 @@ async function rnSubmit(){
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
                               node, nodes, reads, sees, build, test, gate, color,
+                              ...(dbg || {}),
                               tests_in, test_change, gpu, reply, asks, devbuild, report, sign, keys, release,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(capture_days !== "" ? {capture_days: +capture_days} : {}),

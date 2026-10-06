@@ -419,13 +419,12 @@ bb logs --node NAME [--agent|--runner|--terminal] [N]
                    the terminal server's. Root's on that box: the enrolled
                    account is in neither `adm` nor `systemd-journal`, so a
                    session cannot read them at all. Offered only while **debug
-                   mode** is on in Controller settings AND the asking node has
-                   been granted that node on its **Debug settings**, its own
-                   journal included; "it is only looking at itself" is the
-                   reasoning that makes a boundary stop meaning anything.
-                   Which node is asking is the node of the session's own
-                   project, proved by its token, never the `BB_NODE` in its
-                   environment. What can be read is a table of three streams;
+                   mode** is on in Controller settings, the session's project
+                   has been granted that node's logs under **Debug** in its
+                   settings, its own node included, and the session's account
+                   has the **debug** grant, which is the owner's unless a role
+                   names it. The project is the session's own, proved by its
+                   token. What can be read is a table of three streams;
                    anything else is refused, not run
 bb diag [--json] [SECTION...]
                    the controller's diagnostics, read-only: its build and the
@@ -433,11 +432,11 @@ bb diag [--json] [SECTION...]
                    node's agent and session half, the Claude plugins each
                    account installed on each node, the last day's jobs and the
                    failures, error lines from its own logs and the audit
-                   trail, with anything shaped like a credential redacted. An
-                   administrator's. A session reads it only while **debug
-                   mode** is on, its node is ticked for **the controller's
-                   diagnostics** on its Debug settings, and its account is an
-                   administrator's, so a tester on the same node never gets it.
+                   trail, with anything shaped like a credential redacted. The
+                   **debug** grant's: the owner's, or a role's that names it.
+                   A session reads it only while **debug mode** is on, its
+                   project is granted **the controller's diagnostics** under
+                   Debug in its settings, and its account has the grant.
                    Its `reports` section is what sessions on other projects
                    reported about BuilderBot and nobody has answered yet
 bb report "..." [--area A] [--repro "..."]
@@ -1817,9 +1816,9 @@ logs_are_the_controllers() {
 }
 
 # bb diag: the controller's diagnostics (scripts/dashboard/diag.py). One
-# request, so the gate is the server's: an administrator anywhere, and a
-# session only with debug mode on, its node ticked for it on Debug settings,
-# and an administrator's account behind it. Read-only; secrets are redacted
+# request, so the gate is the server's: the debug grant anywhere, and a
+# session only with debug mode on, its project granted it in its settings,
+# and an account with the debug grant behind it. Read-only; secrets are redacted
 # there, not here.
 cmd_diag() {
     local json=0 sections=()

@@ -37,6 +37,11 @@ const look = await page.$eval('#rnReads', e => ({ overflow: getComputedStyle(e).
   row: Math.round(e.querySelector('label.lrow').getBoundingClientRect().height), display: getComputedStyle(e.querySelector('label.lrow')).display }));
 ok(look.overflow === 'auto' && look.border === '1px' && look.row >= 38 && look.display === 'flex',
    `a listbox is a bordered box that scrolls, its rows a thumb high (${JSON.stringify(look)})`);
+// ...and the Debug grants beside them (the operator, 6 Oct): drawn for an
+// account with the debug grant, the controller's diagnostics first, then
+// each node's machine logs. diag.mjs holds the refusals.
+ok(await page.$eval('#rnDebugField', f => !f.hidden && !!f.querySelector('input[value="@diag"]')),
+   'the project\'s Debug grants are offered to an account with the debug grant, the diagnostics first');
 await page.check('#rnReads input[value="beta"]');
 await saveDialog(page);
 await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reads?.join() === 'beta', { timeout: 20000 });

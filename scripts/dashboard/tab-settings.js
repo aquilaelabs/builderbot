@@ -83,6 +83,8 @@ function renderSettingsInto(i){
 // rather than on the line: they arrive from sessions at any time, so a count
 // fetched when the tab opened would be stale by the time it was read.
 function reportsSection(){
+  // The debug grant's, and not drawn without it (the operator, 6 Oct).
+  if (state?.can?.debug === false) return "";
   return `<div class="row stack2">
       <div class="grow">
         <div class="name">BuilderBot bug reports</div>
@@ -120,8 +122,8 @@ async function clearReports(btn){
 const SETTING_GROUPS = [
   {title: "Debugging", fields: [
     {key: "debug_mode", label: "Debug mode", type: "bool",
-     hint: "Shows the Debug settings buttons here and on each node. "
-         + "Turning it on grants nothing by itself."}],
+     hint: "Shows the Debug settings button here, and lets a project's settings grant its "
+         + "sessions nodes' logs and the controller's diagnostics. Turning it on grants nothing by itself."}],
    // What a developer of BuilderBot reaches for and nobody else should
    // meet: behind a Debug settings button that opens a dialog while debug
    // mode is on, the same way the node row's Debug settings does.
@@ -219,7 +221,9 @@ function settingsSections(){
   const s = state?.settings;
   if (!s) return `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`;
   const src = k => s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
-  return SETTING_GROUPS.map(g => {
+  // The Debugging group is the debug grant's (roles.NAMED_ONLY): without it
+  // the page does not show it at all (the operator, 6 Oct).
+  return SETTING_GROUPS.filter(g => !g.debug || state?.can?.debug !== false).map(g => {
     const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;

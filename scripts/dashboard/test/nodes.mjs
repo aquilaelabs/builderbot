@@ -2139,27 +2139,26 @@ await page.click('#ndBody #vmCancel');
       body: JSON.stringify({ set: { debug_mode: true } }) });
   });
 
-  // On, and still refused: the switch grants nothing. A node is not granted
-  // its own journal either; that is the tick this exists to make somebody
-  // press.
+  // On, and still refused: the switch grants nothing. The grant is the
+  // PROJECT's since 6 Oct (its settings' Debug), not the node's, so another
+  // project on the same node is not handed it.
   r = await read(n.name, { project: 'alpha' });
-  ok(r.status === 403 && /has not been granted/.test(r.error || ''),
-     `...and on, a node still reads nothing until it is granted it (${
+  ok(r.status === 403 && /alpha has not been granted/.test(r.error || ''),
+     `...and on, a project still reads nothing until it is granted it (${
        (r.error || '').slice(0, 56)})`);
 
-  const grant = from => page.evaluate(async ([id, f]) =>
-    await nodeAct({ action: 'log-grant', id, from: f }), [n.id, from]);
-  ok((await grant([n.id])).ok === true, 'a node can be granted its own machine logs');
+  const grant = from => page.evaluate(async f => (await (await fetch('/api/prefs', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'alpha', log_from: f }) })).json()), from);
+  ok(!(await grant([n.id])).error, 'a project can be granted a node\'s machine logs');
   const back = (await page.evaluate(async () =>
-    (await (await fetch('/api/v1/nodes')).json()).nodes)).find(x => x.id === n.id);
-  ok((back.config?.log_from || []).join() === n.id,
-     '...and the grant is on its record, where the row reads it');
-  ok(!!(await grant(['n_nothing'])).error,
-     '...while a node id nobody has is refused rather than stored');
-  ok((await grant([])).ok === true
+    (await (await fetch('/api/status')).json()).projects)).find(x => x.name === 'alpha');
+  ok((back?.prefs?.log_from || []).join() === n.id,
+     '...and the grant is on the project\'s settings, where its dialog reads it');
+  ok(!(await grant([])).error
      && !((await page.evaluate(async () =>
-          (await (await fetch('/api/v1/nodes')).json()).nodes))
-          .find(x => x.id === n.id).config?.log_from || []).length,
+          (await (await fetch('/api/status')).json()).projects))
+          .find(x => x.name === 'alpha')?.prefs?.log_from || []).length,
      'and the grant comes back off, which is the way out');
 
   // A stream this table does not have is not reachable however it is asked

@@ -4164,6 +4164,15 @@ body.booting .pane>.loading{margin:auto}
       <label for="rnSees">Also sees<span class="help" data-tip="a share or a disk mounted on the node that a session here works with, by its path there. A session sees no other; one started after the save sees these" tabindex="0">?</span></label>
       <input id="rnSees" autocomplete="off" spellcheck="false" placeholder="/mnt/media, /mnt/samples">
     </div>
+    <!-- What a session here may read for debugging (prefs.log_from,
+         prefs.diag): nodes' machine logs and the controller's diagnostics.
+         Per project since 6 Oct, set by an account with the debug grant,
+         and not drawn for one without it. -->
+    <div class="field" id="rnDebugField" hidden>
+      <label id="rnDebugLabel">Debug<span class="help" data-tip="what a session here may read while debug mode is on: the controller's diagnostics and these nodes' machine logs" tabindex="0">?</span></label>
+      <div class="lbox" id="rnDebug" role="group" aria-labelledby="rnDebugLabel"></div>
+      <div class="hint">Read only while Debug mode is on, and only by a session whose account has the debug grant.</div>
+    </div>
     </section>
     <section class="rngroup">
       <div class="field rnhead"><label>Build and test</label></div>

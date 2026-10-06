@@ -177,6 +177,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Every Send to Claude asks first, naming the session, before anything is typed into it; the bug and roadmap sends ask in their own send box (101dfcf)
 - A Claude tab comes back faster: a running session is attached at once, without the sign-in checks and briefing a new one needs, and every terminal tab on the strip stays attached until it is minimized or closed, so switching back to one no longer reloads it (8696ecf)
 - bb build and bb test run once more, saying so, when a failure reads as the projects share's (a delete or lock the network drive refused) rather than the code's; the briefing asks a session to keep Gradle's whole failure text (f175428)
+- The debug options are a grant of their own, debug, which only the owner has until a role names it: debug mode, the controller's diagnostics and nodes' logs. What a session may read for debugging is granted per project in its settings, not per node, and a page without the grant shows no debug options (880ecbe)
 
 ### Removed
 

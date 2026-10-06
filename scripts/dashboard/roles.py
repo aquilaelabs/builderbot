@@ -44,7 +44,12 @@ CAPS = {
     "create": ("controller", "make a project"),
     "runner": ("controller", "the CI runner tab and its settings"),
     "admin": ("controller", "everything else an administrator does: nodes, toolchains, settings, accounts"),
+    "debug": ("controller", "debug mode, the controller's diagnostics and nodes' logs, and granting them to a project's sessions"),
 }
+# Granted by name only (the operator, 6 Oct): `*` does not reach these, so
+# the built-in admin and a role that grants everything leave them out, and
+# only the owner has them until a role names them.
+NAMED_ONLY = frozenset({"debug"})
 # The capabilities whose scope is over NODES (step 3): every node, the
 # nodes of the account's projects, or named ones.
 NODE_CAPS = frozenset(c for c, (g, _) in CAPS.items() if g == "nodes")
@@ -194,6 +199,8 @@ def granted(u, action, project=None, on_project=None, node=None, nodes_of=None):
             continue
         for g in r["grants"]:
             cap = g["cap"]
+            if cap == "*" and action in NAMED_ONLY and rn != "owner":
+                continue
             if cap == "*":
                 pass
             elif cap == action:
