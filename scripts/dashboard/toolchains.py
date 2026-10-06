@@ -38,6 +38,8 @@ run = None
 write_json = None
 STATE = None
 nodes = None          # the node store, once the server has opened it (phase 6)
+claudecode = None     # claudecode.py, set by the server: Claude Code as a node's toolchain (R145)
+CLAUDE = "claude-code"
 
 
 def configure(*, run, write_json, state):
@@ -994,6 +996,11 @@ def payload_for_node(nid):
         # The agent's hello at the end of a job lands a moment before the
         # job's result does, so a census from the job's last seconds counts.
         m["settling"] = bool(ended) and int(rep.get("at") or 0) < ended - 5 and time.time() - ended < 120
+    # Claude Code, the session account's (R145), drawn with the machine's
+    # rows; its own job says where it stands, not the toolchain jobs.
+    cl = claude_row(n)
+    if cl:
+        machine.append(cl)
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # What is this machine's rather than the store's: the NVIDIA
             # driver and the container toolkit, where the node has the card
@@ -1368,6 +1375,30 @@ def container_row(n):
             "driver_loaded": drv.get("state") in ("loaded", "update")}
 
 
+def claude_row(n):
+    """Claude Code as a row of the node's Toolchains tab (R145), or None on
+    a node that runs no session account: what a Claude session there runs,
+    installed on purpose rather than by the provisioner, checked and updated
+    like the rest. The version is the census's (claude --version as the
+    session account); the latest is claudecode's check; the job behind
+    install, update and remove is claudecode's, which ends the node's Claude
+    sessions first, since the binary is swapped under nothing."""
+    se = (n.get("reported") or {}).get("session") or {}
+    if not claudecode or n.get("kind") != "agent" or not se.get("up"):
+        return None
+    inst = claudecode.installed(n)
+    cur = claudecode.latest()
+    job = next(iter(nodes.jobs_for(node_id=n["id"], type=claudecode.JOB, n=1) or []), None) if nodes else None
+    running = claudecode.updating(n["id"])
+    failed = (job or {}).get("state") == "failed" and not running
+    return {"name": CLAUDE, "label": "Claude Code", "installed": inst, "latest": cur.get("version") or "",
+            "state": ("absent" if not inst else "update" if claudecode.behind(n) else "current"),
+            "managed": bool((n.get("reported") or {}).get("sandbox")), "here": bool(inst),
+            "running": running, "action": ((job or {}).get("spec") or {}).get("action") or "install",
+            "error": str((job or {}).get("error") or "")[:200] if failed else "",
+            "checked": int(cur.get("at") or 0), "check_error": cur.get("error") or ""}
+
+
 def container_why(n):
     """Why a container on this node cannot be given its NVIDIA card, in
     words for the row that asked, or "" when it can: the card, the driver
@@ -1661,6 +1692,11 @@ def node_checks_due(now=None):
         if r.get("ok") or r.get("job"):
             queued.append(n["id"])
             getattr(nodes, "checks_wanted", set()).discard(n["id"])
+    # Claude Code on the same clock (R145): asked once for every node, since
+    # what is out is one answer, when any node was due or a week has passed.
+    if claudecode and (queued or now - int(claudecode.latest().get("at") or 0) >= TC_CHECK_EVERY):
+        with contextlib.suppress(Exception):
+            claudecode.check()
     return queued
 
 
@@ -1691,6 +1727,20 @@ def verb(action, req, principal):
         # the card (R102); node_job decides whether it may be touched.
         if (node.get("reported") or {}).get("gpu_card"):
             known = known | {DRIVER, TOOLKIT}
+        # Claude Code is its own job (claudecode.py): an install or an update
+        # runs the installer as the session account and ends the node's
+        # Claude sessions first; a removal takes the copy off (R145). Alone,
+        # never in a batch with the store's recipes.
+        want = [str(x) for x in (req.get("names") or [])]
+        if CLAUDE in want and action in ("install", "remove") and claudecode:
+            if len(want) > 1:
+                return {"error": "Claude Code installs on its own: untick the others, or press Install "
+                                 "selected again for them after"}, 400
+            r = claudecode.update(principal, nid) if action == "install" else claudecode.remove(principal, nid)
+            return r, (400 if r.get("error") else 200)
+        # A press of Check for updates asks Claude Code's latest too, in the
+        # same answer, like the store's recipes (R145).
+        claude_said = claudecode.check() if action == "check" and claudecode else None
         if action == "check":
             # Every row, or the ones named: the question a check answers
             # is "is any of this out of date", and an uninstalled row's
@@ -1707,6 +1757,8 @@ def verb(action, req, principal):
             if not names:
                 return {"error": "nothing selected"}, 400
         r = node_job(principal, nid, action, names, driver=field(req, "driver"))
+        if claude_said is not None:
+            r = r | {"claude": {"version": claude_said.get("version") or "", "error": claude_said.get("error") or ""}}
         return r, (400 if r.get("error") else 200)
     if action == "abort":
         return {"ok": abort_job()}, 200

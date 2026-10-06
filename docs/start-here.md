@@ -22,7 +22,9 @@ and a session keeps going.
 2. **Your profile** (the gear, top right): your name, your email and the git
    identity your commits will carry. No session starts until these are set,
    because a commit with no author is a mess somebody else has to clean up.
-3. **Sign in to Claude**, on each machine your projects work on. Press a
+3. **Install Claude Code, then sign in to Claude**, on each machine your
+   projects work on. A node has no Claude Code until its **Toolchains**
+   tab installs it (tick Claude Code, press Install selected). Then press a
    project's **Claude** button: where you are not signed in on its node yet,
    it offers **Sign in on** that node, which opens the node's page at its
    Claude Code section. Press Sign in there, open the link, and paste the

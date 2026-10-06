@@ -2574,6 +2574,7 @@ import jobs                                                      # noqa: E402
 if not NODES_OK:
     jobs.configure(nodes_module=nodes)
     toolchains.nodes = nodes
+    toolchains.claudecode = claudecode
     emulator.nodes = nodes
     phone.nodes = nodes            # every adb command is a job on a node
     # A compose action the AGENT ran still has records to write here; this is
@@ -2764,7 +2765,7 @@ vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, ste
 # The Nodes tab's verbs are nodes.verb's, and these are what they compose
 # with (a runner's forge and token, a daemon probe, Claude Code's update).
 nodes.configure_verbs(vmtemplate=vmtemplate, forges=forges, devapp=devapp,
-                      claudecode=claudecode, runner_store=runners, workspace=workspace,
+                      runner_store=runners, workspace=workspace,
                       project_prefs=prefs.get, may_push=projects.may_push,
                       no_node_advice=no_node_advice, turns_of=node_turns)
 

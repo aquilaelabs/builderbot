@@ -61,7 +61,10 @@ async function loadToolchains(){
     toolchains = got;
   }catch(e){ if (asked !== tcLoadSeq) return; toolchains = {error: String(e)}; }
   clearTimeout(tcSizeTimer); tcSizeTimer = null;
+  // ...and while Claude Code's own job runs (R145), which is not a toolchain
+  // job and so moves nothing the tab waits on otherwise.
   if (toolchains && toolchains.sizing) tcSizeTimer = setTimeout(loadToolchains, 1500);
+  else if ((toolchains?.machine || []).some(m => m.running)) tcSizeTimer = setTimeout(loadToolchains, 3000);
   tcRev++;
   drawPanes();
 }
@@ -377,6 +380,38 @@ function tcToolkitRow(m, busy, job){
   </div>`;
 }
 
+// Claude Code, the session account's (R145): a row like the store's, with
+// its own job behind it, which ends the node's Claude sessions before it
+// swaps the binary. A session cannot start on a node without it, so the
+// row says so where it is missing.
+const TC_CLAUDE = "claude-code";
+function tcClaudeRow(m, busy){
+  const mine = !!m.running;
+  const doing = m.action === "remove" ? "removing" : m.here ? "updating" : "installing";
+  const may = mayToolchains();
+  const upToDate = !mine && m.state === "current";
+  const line = mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>`
+    : m.here ? `<span class="sub where on">installed</span>`
+    : `<span class="sub where warn">not installed: a Claude session cannot start on this node until it is</span>`;
+  return `<div class="tc tcdrv${upToDate ? " done" : ""}">
+    <input type="checkbox" id="tcClaudeTick" value="${TC_CLAUDE}" aria-label="Claude Code"${
+      busy || mine || !may ? " disabled" : ""}${
+      upToDate ? ` checked disabled title="installed and up to date"`
+               : tcTicked.has(TC_CLAUDE) ? " checked" : ""}>
+    <span class="grow">
+      <label class="nm" for="tcClaudeTick">${esc(m.label)}${m.installed ? ` <span class="pill" title="installed">${esc(m.installed)}</span>` : ""}${
+        !m.installed && m.latest ? ` <span class="pill" title="what Install selected would fetch">${esc(m.latest)}</span>` : ""}</label>
+      <span class="sub">What a Claude session on this node runs, for the node's session account. Installing or updating it ends the Claude sessions here first; they start again from the project rows.</span>
+      ${line}
+      ${m.state === "update" && !mine ? `<span class="sub upd">update available: ${esc(m.latest)}. Tick it and press Install selected</span>` : ""}
+      ${m.error && !mine ? `<span class="sub bad">${esc(m.error)}</span>` : ""}
+    </span>
+    ${m.here && !mine && may ? `<button class="eye rm" data-tcclrm aria-label="uninstall Claude Code"${
+      busy ? ` disabled title="another toolchain operation is running"`
+           : ` title="remove Claude Code from this node"`}>${BIN}</button>` : ""}
+  </div>`;
+}
+
 function renderToolchainsInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -480,7 +515,7 @@ function renderToolchainsInto(i){
             : `This node's owner installs them: the agent does not administer the machine.`}</div>`;
     })()}
     ${onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
-      d.machine.map(m => (m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
+      d.machine.map(m => (m.name === TC_CLAUDE ? tcClaudeRow : m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : ""}
     <div class="tcs">${(d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join("")}</div>
     ${(() => {
@@ -536,6 +571,10 @@ function renderToolchainsInto(i){
   el.querySelectorAll("[data-tcdrvrm]").forEach(b => b.onclick = () => {
     if (confirm(`Remove NVIDIA's driver from ${toolchains?.name || "this node"}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))
       tcAct("remove", [TC_DRIVER]);
+  });
+  el.querySelectorAll("[data-tcclrm]").forEach(b => b.onclick = () => {
+    if (confirm(`Remove Claude Code from ${toolchains?.name || "this node"}? Its Claude sessions end, and none starts there until it is installed again.`))
+      tcAct("remove", [TC_CLAUDE]);
   });
   el.querySelectorAll("[data-tcctkrm]").forEach(b => b.onclick = () => {
     if (confirm(`Remove the NVIDIA container toolkit from ${toolchains?.name || "this node"}? A container that reserves the card no longer starts; NVIDIA's package source goes with it.`))

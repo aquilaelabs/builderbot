@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.138"
+AGENT_VERSION = "0.7.139"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -5164,6 +5164,20 @@ class Agent:
         if not who:
             env.update({"HOME": os.path.expanduser("~"), "USER": who_name, "LOGNAME": who_name})
         home = env.get("HOME") or os.path.expanduser("~")
+        # Taken off, from the node's Toolchains tab (R145): the pinned copy
+        # a session runs and the account's own install under its home.
+        if spec.get("action") == "remove":
+            gone = []
+            for path in (os.path.join(CLAUDE_DIR, "claude"), os.path.join(home, ".local", "bin", "claude"),
+                         os.path.join(home, ".local", "share", "claude")):
+                if os.path.lexists(path):
+                    with contextlib.suppress(OSError):
+                        shutil.rmtree(path) if os.path.isdir(path) and not os.path.islink(path) else os.unlink(path)
+                        gone.append(path)
+            job.say(("removed " + ", ".join(gone)) if gone else "Claude Code was not installed here")
+            job.say("\n")
+            self.hello_at = 0
+            return "succeeded", 0
         env["PATH"] = ":".join([os.path.join(home, ".local", "bin"), env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"])
         env.setdefault("LANG", "C.UTF-8")
         # A test's stand-in for the installer; the real one is the script the

@@ -3616,25 +3616,27 @@ ghosted for it, updating Claude Code and enrolling included, and a line on
 the row says so; the verbs behind those controls are an administrator's on
 the server as well.
 
-**Claude Code on a node is updated from the Nodes tab, and by nothing a
-session can do.** Each node's row has a Claude Code section: the version
-its session account runs against the latest the controller knows, which
-it asks the installer's own `latest` for after it starts and every six
-hours, or on **Check for updates**. A node behind is a row in the bell.
-**Update** ends every Claude session on that node first, then the agent
-runs the installer as the session account and, on a managed node, pins
-the binary where the account cannot write it, so `claude update` typed in
-a session changes nothing that runs (the auto-updater is off there too).
-Nothing starts again on its own: the project rows do, when you press
-them, and until the job ends those rows are held with the reason. The
-node action is an administrator's, so a session's token is refused, and
-no `bb` verb reaches it. **Update Claude Code before a session starts**,
-a switch on the Settings tab and on each node's section, is off by
-default: off, a node stays on what it has until you press Update; on,
-pressing Claude on a node that is behind updates it first, the start is
-held with the reason, and you press again when the row comes back. An
-open conversation is never ended for it. A press refused for any reason
-says so on the section, not only in a toast.
+**Claude Code is a toolchain of each node, installed on purpose, and by
+nothing a session can do.** The provisioner does not install it: a node's
+Toolchains tab has a Claude Code row, with the version its session account
+runs against the latest the controller knows, asked on the toolchains' own
+clock (weekly, when a node starts, and on **Check for updates**). Until it
+is installed no Claude session starts there: the project's Claude button
+is ghosted with the reason, and the terminal refuses with the same
+sentence. Tick it and press **Install selected** to install or update it:
+that ends every Claude session on the node first, then the agent runs the
+installer as the session account and, on a managed node, pins the binary
+where the account cannot write it, so `claude update` typed in a session
+changes nothing that runs (the auto-updater is off there too). The bin
+removes it. Nothing starts again on its own: the project rows do, when you
+press them, and until the job ends those rows are held with the reason. A
+node behind is a row in the bell. **Update Claude Code before a session
+starts**, a switch on the Settings tab, is off by default: off, a node
+stays on what it has until you install the update; on, pressing Claude on
+a node that is behind updates it first, the start is held with the
+reason, and you press again when the row comes back. An open conversation
+is never ended for it. The node's Claude Code section on the Nodes tab
+keeps each account's sign-in, and a button to the Toolchains tab.
 
 **A token lasts twelve hours, and a conversation can last longer.** One is
 minted per connection, so opening the session's tab refreshes it, but the

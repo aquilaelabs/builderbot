@@ -24,7 +24,7 @@ const me = uidOf('test');
 
 // ---- a node of this file's own ----------------------------------------------
 const box = await call('/api/v1/nodes', { action: 'enroll', name: 'signbox' });
-const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true, boot: '4.4', up_s: 5000 };
+const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true, boot: '4.4', up_s: 5000, claude: '1.0.0 (Claude Code)' };
 const agent = await call('/api/v1/agent/enroll',
   { user: 'bb', version: 'harness', census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', session: SE } },
   { Authorization: 'Bearer ' + box.token });
@@ -188,7 +188,7 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
     return { picker: [...document.querySelectorAll('#ndPick option')].map(o => o.textContent.split(':')[0]),
              live: all.filter(c => !c.disabled).map(c => c.id || c.dataset.si || c.dataset.nd || c.textContent.trim().slice(0, 20)),
              others: all.filter(c => !mine(c)).length, ghosted: all.filter(c => !mine(c) && c.disabled).length,
-             update: root.querySelector('[data-nd="claude-update"]')?.disabled, check: root.querySelector('[data-nd="claude-check"]')?.disabled,
+             toolchains: !!root.querySelector('[data-ndtc]'),
              enroll: root.querySelector('#ndEnroll')?.disabled,
              why: root.querySelector('.ndreadonly')?.textContent || '',
              open: root.querySelector('[data-sect="nodes:claude"]')?.open };
@@ -199,8 +199,8 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
   ok(seen.picker.join() === 'signbox', `its node picker lists the nodes its own projects are on, and no others (${seen.picker.join()})`);
   ok(seen.open && seen.live.includes('in') && seen.live.includes('ndPick'),
      `its chooser's sign-in lands on the same section, where its own Sign in is live (${seen.live.join()})`);
-  ok(seen.others > 5 && seen.ghosted === seen.others && seen.update === true && seen.check === true && seen.enroll === true,
-     `every other control on the tab is ghosted for it, updating Claude Code and enrolling included (${seen.ghosted} of ${seen.others})`);
+  ok(seen.others > 5 && seen.ghosted === seen.others && !seen.toolchains && seen.enroll === true,
+     `every other control on the tab is ghosted for it, enrolling included, and no way to the Toolchains tab (${seen.ghosted} of ${seen.others})`);
   ok(/An administrator changes a node's settings/.test(seen.why) && /Your Claude sign-in here/.test(seen.why),
      '...and the row says why, and what is still theirs');
   // Its sign-in works: the job is for that account, on its project's node.
@@ -220,8 +220,8 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
      'Cancel stops the flow and the row is back to where it was');
   // ...and the settings it can see are refused by the server too, not only
   // ghosted on the page.
-  const denied = await up.evaluate(async id => (await fetch('/api/v1/nodes', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'claude-update', id }) })).status, box.id);
+  const denied = await up.evaluate(async id => (await fetch('/api/toolchains', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'install', node: id, names: ['claude-code'] }) })).status, box.id);
   ok(denied === 403, `the verbs behind the ghosted controls are an administrator's on the server as well (${denied})`);
   up.errors = [];
   await up.context().close();

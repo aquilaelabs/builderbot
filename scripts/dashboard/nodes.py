@@ -3510,14 +3510,13 @@ def agent_file():
 vmtemplate = None        # what a new sandbox VM is made from
 forges = None            # the git hosts' catalog, for a runner's forge
 devapp = None            # a node's daemon, for the path check and the test
-claudecode = None        # the Claude Code check and update
 runner_store = None      # runners.py: each runner's token, root-only
 workspace = None         # a project's tree snapshotted, a file in its dist/
 project_prefs = None     # a project -> its settings (its node and node set)
 may_push = None          # a project -> whether it was cloned with push rights
 no_node_advice = None    # a project with no node -> what it can still do
 turns_of = None          # a node row -> its sessions' turns: working, waiting, the limit
-_VERB_PARTS = ("vmtemplate", "forges", "devapp", "claudecode", "runner_store",
+_VERB_PARTS = ("vmtemplate", "forges", "devapp", "runner_store",
                "workspace", "project_prefs", "may_push", "no_node_advice", "turns_of")
 
 
@@ -3717,19 +3716,6 @@ def verb(principal, req):
     def update_agent():
         return node_update_agent(principal, nid)
 
-    def claude_check():
-        # What the latest Claude Code is, asked now: the same question
-        # the controller asks on its own after a start and every six
-        # hours, with the automatic update behind it where the setting
-        # asks for one. Nothing else is changed by it.
-        return claudecode.check() | {"ok": True}
-
-    def claude_update():
-        # An administrator's, like every action here, and so never a
-        # session's: it ends the Claude sessions on the node and queues
-        # the installer as a job the agent runs (claudecode.py).
-        return claudecode.update(principal, nid)
-
     def cache_clear():
         # Drop a node's build caches, one project's or all (docs/nodes.md
         # §6): a job the agent runs, so it is logged and audited like
@@ -3789,8 +3775,7 @@ def verb(principal, req):
              "root-asks": root_asks, "apply": apply, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
              "paths": paths, "check-paths": check_paths, "funnel": funnel,
-             "update-agent": update_agent, "claude-check": claude_check,
-             "claude-update": claude_update, "cache-clear": cache_clear,
+             "update-agent": update_agent, "cache-clear": cache_clear,
              "exec": exec_, "test": test}
     if act not in verbs:
         return {"error": "unknown action"}, 400

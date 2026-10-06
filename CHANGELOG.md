@@ -182,6 +182,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The debug options are a grant of their own, debug, which only the owner has until a role names it: debug mode, the controller's diagnostics and nodes' logs. What a session may read for debugging is granted per project in its settings, not per node, and a page without the grant shows no debug options (880ecbe)
 - The Toolchains tab says what it is installing as the bar's state, by the toolchain's name and how far through the batch it is, rather than a green line naming its recipe id (fb40059)
 - One section is open at a time on the Nodes, Docker, Users and Roles tabs, as in a notebook: opening one shuts the others (a266f2f)
+- Claude Code is a toolchain of each node: installed, updated and removed from the node's Toolchains tab, checked on the toolchains' own clock, no longer installed by the provisioner, and required for a session, whose Claude button and terminal say where to install it (9f4c7bb)
 
 ### Removed
 

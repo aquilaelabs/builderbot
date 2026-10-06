@@ -1093,17 +1093,9 @@ else
             warn "ttyd did not install; fetch ttyd.${tarch:-x86_64} from https://github.com/tsl0922/ttyd/releases into /usr/local/bin"
         fi
     fi
-    # Claude Code, into the account's own home by its native installer: no
-    # node runtime to keep up, and `claude update` from inside a session
-    # keeps it current. Best effort: a node without internet at provision
-    # time is still a node; the session says so when it starts.
-    # su rather than sudo: root is already here, and a minimal Alpine or
-    # Void has no sudo to hand.
-    if ! su -s /bin/sh "$SESSION_NAME" -c 'test -x "$HOME/.local/bin/claude"'; then
-        printf '   installing Claude Code for %s\n' "$SESSION_NAME"
-        su -s /bin/bash - "$SESSION_NAME" -c 'curl -fsSL https://claude.ai/install.sh | bash' >/dev/null 2>&1 \
-            || warn "Claude Code did not install for ${SESSION_NAME}. From a shell as that account: curl -fsSL https://claude.ai/install.sh | bash"
-    fi
+    # Claude Code is not installed here: the node's Toolchains tab does it on
+    # purpose, so whoever enrolls a node sees what is put on it (R145), and a
+    # session refuses to start until it is there.
     # A login shell as this account gets what a dashboard session gets: the
     # role, the controller's address, and bb from the bundle the agent keeps
     # current under the toolchain store. That is what makes proving the node

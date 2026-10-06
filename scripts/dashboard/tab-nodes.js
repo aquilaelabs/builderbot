@@ -438,24 +438,16 @@ function nodeSessionsSection(n){
   return docSection("nodes", "sessions", "Sessions", status, body, {cls});
 }
 
-// Claude Code on this node: this account's sign-in here first (a login is
-// one account's on one node, page-signin.js), then the copy the session
-// account runs (claudecode.py) against the latest the controller knows, a
-// check on demand, and the one way it is updated. The update ends every
-// Claude session here first and starts none again: the project rows do,
-// when a person presses them. A session cannot ask for this and cannot
-// change the copy it runs.
-// What the last press here answered, when it was a refusal: on the row,
-// not only in a toast, or a press that was refused for the agent being
-// behind read as "it said updating and nothing happened" (23 Sep).
-let nodesClaudeSaid = {};
+// Claude Code on this node: this account's sign-in here (a login is one
+// account's on one node, page-signin.js), and where the copy the session
+// account runs stands, with the way to the node's Toolchains tab, which
+// installs, updates and removes it (R145).
 function nodeClaudeSection(n){
   const cc = state?.claude_code || {};
   const me = cc.nodes?.[n.id] || {};
   const se = n.reported?.session;
   const inst = me.installed || "";
   const latest = cc.latest || "";
-  const stale = nodeStale(n);
   let status, cls;
   if (!se || typeof se !== "object" || !se.up) [status, cls] = ["no session account", "warn"];
   else if (me.updating) [status, cls] = ["updating", "warn"];
@@ -465,32 +457,16 @@ function nodeClaudeSection(n){
   // ...and whether the person looking is signed in here, which a folded
   // section would otherwise keep to itself.
   if (inst && se?.up && !me.updating && !claudeOn(n.id)) [status, cls] = [`${status}, not signed in`, "warn"];
-  const checked = cc.checked ? `checked ${ago(cc.checked)}` : "not checked yet";
-  const known = latest ? `latest ${latest}, ${checked}`
-    : cc.error ? `could not check: ${cc.error}` : checked;
-  const open = (state?.sessions || []).filter(s => s.node_id === n.id && tmuxBase(s.name).startsWith("claude-")).length;
-  const auto = !!state?.settings?.settings?.claude_autoupdate?.value;
-  const dead = !se?.up || me.updating || (inst && !me.behind) || stale;
+  // Installed, updated and removed on the node's Toolchains tab like any
+  // toolchain (R145); what stays here is the account's sign-in.
   const body = `
     ${signinBlock(n)}
-    <div class="sub">${!se?.up ? "No session account here, so nothing runs Claude Code."
-      : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out.` : "."}`
-      : "No Claude Code yet: Update installs it."} Checked every six hours.</div>
-    ${stale ? `<div class="sub bad">${esc(staleWhy(n))}</div>` : ""}
-    ${nodesClaudeSaid[n.id] ? `<div class="sub bad">${esc(nodesClaudeSaid[n.id])}</div>` : ""}
     <div class="actbar">
-      <span class="state">${esc(known)}</span>
-      <button type="button" data-nd="claude-check" ${cc.checking ? "disabled" : ""}
-        title="ask now what the latest Claude Code is">Check for updates</button>
-      <button type="button" data-nd="claude-update" ${dead ? "disabled" : ""}
-        title="${me.updating ? "an update is queued or running here"
-               : stale ? "update the agent first"
-               : !se?.up ? "no session account to update it for"
-               : inst && !me.behind ? "already on the latest known"
-               : `install ${latest || "the current Claude Code"} here: ends the ${open} Claude session${open === 1 ? "" : "s"} open on this node first`}">Update</button>
-    </div>
-    <div class="sub dim">Update ends the Claude sessions here; start them again from the project rows.${
-      auto ? " Before a session starts on a node that is behind, Claude Code is updated there first (Controller settings)." : ""}</div>`;
+      <span class="state">${!se?.up ? "No session account here, so nothing runs Claude Code."
+        : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out` : ""}: the Toolchains tab updates it.`
+        : "Not installed: a Claude session cannot start here until the Toolchains tab installs it."}</span>
+      ${se?.up && mayToolchains() ? `<button type="button" data-ndtc="${esc(n.id)}" title="install, update or remove it there">Toolchains</button>` : ""}
+    </div>`;
   return docSection("nodes", "claude", "Claude Code", status, body, {cls});
 }
 
@@ -1488,13 +1464,6 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
               + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}`
               + `. Transcripts are kept; whatever they were running stops.`)) return;
       }
-      if (act === "claude-update"){
-        const here = (state?.sessions || []).filter(x => x.node_id === id && tmuxBase(x.name).startsWith("claude-"));
-        if (!confirm(`Update Claude Code on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
-              + (here.length ? `It ends the ${here.length} Claude session${here.length === 1 ? "" : "s"} open there first; `
-                             : "No Claude session is open there; ")
-              + "nothing starts again on its own: press Claude on a project's row afterwards.")) return;
-      }
       if (act === "gpu-display"
           && !confirm(`Set up the GPU display on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
                       + "This installs the NVIDIA driver and a headless X server on the card, which "
@@ -1506,27 +1475,11 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
                       + "each re-downloads what it needs.")) return;
       // The verb, said on the button for the round trip and, for the
       // actions whose effect the row cannot see at once: beyond it.
-      busy(b, {"update-agent": "Updating", "claude-check": "Checking", "claude-update": "Updating", test: "Asking", drain: "Draining",
+      busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
                retire: "Removing", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
                paths: "Saving", "check-paths": "Checking",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
-      if (act === "claude-check"){
-        const j = await nodeAct({action: "claude-check", id});
-        nodesClaudeSaid[id] = j.error || (j.version ? "" : `checked; the download service gave no version${j.error ? ": " + j.error : ""}`);
-        if (j.error) notify(j.error, true);
-        else notify(j.version ? `the latest Claude Code is ${j.version}` : "checked; the download service gave no version");
-        refresh();
-        return;
-      }
-      if (act === "claude-update"){
-        const j = await nodeAct({action: "claude-update", id});
-        nodesClaudeSaid[id] = j.error || "";
-        if (j.error) notify(j.error, true);
-        else notify(`Claude Code update queued${j.ended?.length ? `; ${j.ended.length} session${j.ended.length === 1 ? "" : "s"} ended` : ""}: the row follows the job`);
-        loadNodes(); refresh();
-        return;
-      }
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});

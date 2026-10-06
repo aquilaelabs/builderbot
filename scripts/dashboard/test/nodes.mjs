@@ -2312,7 +2312,7 @@ ok(page.errors.length === 0,
                                shed.id, { timeout: 15000 });
     ok(true, '...and Apply turns compute off for sessions started on the node from now on');
     await page.waitForFunction(s => document.querySelector(s)?.querySelector('.sst')?.textContent.trim() === 'not used', sect, { timeout: 15000 });
-    await page.evaluate(s => { const d = document.querySelector(s); if (d && !d.open) d.open = true; }, sect);
+    await openSection(page, 'nodes:gpu', `.ndrow[data-node="${shed.id}"]`);
     await page.click(`${sect} [data-k="gpucomp"]`);
     await page.click(`${sect} [data-k="gpuemu"]`);
     await page.click(`${sect} [data-nd="gpu-apply"]`);
@@ -2606,8 +2606,13 @@ ok(page.errors.length === 0,
   const me = (await napi('/api/v1/nodes')).nodes.find(n => n.id === en.id);
   ok(!!me?.live && me.reported?.session?.claude === '1.0.0 (Claude Code)',
      `the node dials in reporting its Claude Code (hello: ${JSON.stringify(hi).slice(0, 80)}; row: live=${me?.live} session=${JSON.stringify(me?.reported?.session || null).slice(0, 120)})`);
-  const chk = await napi('/api/v1/nodes', { action: 'claude-check', id: en.id });
-  ok(chk.ok && chk.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${chk.version || chk.error})`);
+  // Claude Code is a toolchain of the node (R145): the Toolchains tab's
+  // Check for updates asks its latest with the rest, in the same answer.
+  const chk = await napi('/api/toolchains', { action: 'check', node: en.id });
+  ok(chk.claude?.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${chk.claude?.version || chk.claude?.error || chk.error})`);
+  // The node's own toolchain check it queued beside is not this block's: gone,
+  // so the tab is not busy with it and the agent is handed the update next.
+  if (chk.job) await napi('/api/v1/jobs', { action: 'cancel', id: chk.job });
   const st = await napi('/api/status');
   const row = (st.attention || []).find(a => a.kind === 'claude' && a.id === en.id);
   ok(!!row && row.from === '1.0.0' && row.to === '1.2.0',
@@ -2619,8 +2624,15 @@ ok(page.errors.length === 0,
   await pickNode(page, en.id);
   const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
   await page.waitForFunction(sel => /1\.0\.0, 1\.2\.0 is out/.test(document.querySelector(sel)?.textContent || ''), ROWC, { timeout: 15000 });
-  ok(await page.$eval(`${ROWC} [data-nd="claude-update"]`, b => !b.disabled) && await page.$eval(`${ROWC} [data-nd="claude-check"]`, b => !b.disabled),
-     'the Claude Code section shows the version against the latest, with Check and Update live');
+  ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !!await page.$(`${ROWC} [data-ndtc="${en.id}"]`),
+     'the Nodes tab says the version against the latest and points at the Toolchains tab, with no update of its own');
+  await page.evaluate(id => openToolchainsOn(id), en.id);
+  await page.waitForSelector('#tcClaudeTick', { timeout: 15000 });
+  const tcRowText = await page.$eval('#tcClaudeTick', i => i.closest('.tc').textContent.replace(/\s+/g, ' '));
+  ok(/Claude Code/.test(tcRowText) && /1\.0\.0/.test(tcRowText) && /update available: 1\.2\.0/.test(tcRowText)
+     && await page.$eval('#tcClaudeTick', i => !i.disabled),
+     `the node's Toolchains tab has a Claude Code row: its version, the update out, and a tick to install it (${tcRowText.slice(0, 120)})`);
+  await page.evaluate(() => openNodesTab());
   // A session's token gets nowhere near it.
   const tok = execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys
@@ -2634,9 +2646,9 @@ def wj(path, d):
 m.configure(state=${JSON.stringify(`${DIR}/state`)}, write_json=wj)
 print(m.mint_session('alpha'))
 `], { encoding: 'utf8' }).trim();
-  const asSession = await fetch(base + '/api/v1/nodes', { method: 'POST',
+  const asSession = await fetch(base + '/api/toolchains', { method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
-    body: JSON.stringify({ action: 'claude-update', id: en.id }) });
+    body: JSON.stringify({ action: 'install', node: en.id, names: ['claude-code'] }) });
   ok(asSession.status === 403, `a session's token cannot ask for the update (${asSession.status})`);
   // The update: the node's project is bound, a Claude session is reported
   // there, and the press ends it, queues the job and holds the row.
@@ -2647,7 +2659,7 @@ print(m.mint_session('alpha'))
     // there, the owner included; an unprefixed name is nobody's and dropped.
     body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
       sessions: [{ name: `${JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid}~claude-beta` }] }, running: [], wait: 0 }) });
-  const up = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });
+  const up = await napi('/api/toolchains', { action: 'install', node: en.id, names: ['claude-code'] });
   const job = up.job ? await napi(`/api/v1/jobs?id=${up.job}`) : null;
   ok(up.ok && job?.type === 'claude-update' && job.node === en.id && job.spec?.to === '1.2.0' && (up.ended || []).length === 1,
      `Update ends the Claude session there and queues the job naming the version (${up.job || up.error}; ended ${JSON.stringify(up.ended)})`);
@@ -2680,7 +2692,7 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   }
   ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
      '...and the bell row is gone while the update is queued');
-  const again = await napi('/api/v1/nodes', { action: 'claude-update', id: en.id });
+  const again = await napi('/api/toolchains', { action: 'install', node: en.id, names: ['claude-code'] });
   ok(/already queued/.test(again.error || ''), '...and a second press is refused while one is queued');
   // The fake agent takes the job and finishes it the way the real one does,
   // naming what it installed on its last line. The row and the bell read
@@ -2709,12 +2721,6 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   }
   // Behind again, by the node's own word, for the switch below.
   await hello();
-  // A refusal is said on the section, not only in a toast (23 Sep): the
-  // press that queued nothing read as "it said updating and nothing happened".
-  await page.evaluate(id => { nodesClaudeSaid[id] = 'the press was refused for a reason worth reading'; loadNodes(); }, en.id);
-  await page.waitForFunction(sel => /refused for a reason worth reading/.test(document.querySelector(sel)?.textContent || ''), ROWC, { timeout: 10000 });
-  ok(true, 'what the last press answered stays on the section until the next one');
-  await page.evaluate(id => { delete nodesClaudeSaid[id]; }, en.id);
   // The switch is off by default: a node stays on its version until Update
   // is pressed. On, a session asked for on a node that is behind updates it
   // first: the terminal is refused with the reason, the job is queued, and
@@ -2740,6 +2746,13 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   census.session.claude = '1.2.0 (Claude Code)';
   await hello();
   ok((await napi('/api/status')).claude_code?.nodes?.[en.id]?.behind === false, 'a node on the latest is not behind');
+  // None at all: the provisioner no longer installs it, and a session needs
+  // it, so the node's projects are held saying where it is installed (R145).
+  census.session.claude = '';
+  await hello();
+  const none = (await napi('/api/status')).projects.find(p => p.name === 'beta')?.held || '';
+  ok(/Claude Code is not installed on clbox: its Toolchains tab installs it/.test(none),
+     `a node with no Claude Code holds its projects' Claude button, saying where to install it (${none.slice(0, 80)})`);
   await napi('/api/prefs', { project: 'beta', node: '' });
   await napi('/api/v1/nodes', { action: 'retire', id: en.id });
 }

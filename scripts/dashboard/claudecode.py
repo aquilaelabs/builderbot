@@ -6,11 +6,13 @@ account's home (the native installer). The agent probes `claude --version`
 there on every heartbeat, so the controller always knows what each node
 runs; what it did not know was what is out. This asks the installer's own
 answer, the `latest` file the install script reads first, once after the
-controller starts and every six hours after that, and on a press of Check
-for updates on the Nodes tab. A node behind is a row in the bell and a
-sentence on its Claude Code section.
+controller starts, then on the toolchains' clock (weekly, and when a node
+starts) and on a press of Check for updates on a node's Toolchains tab,
+where Claude Code is a row like any toolchain (R145): installed there on
+purpose, never by the provisioner, and required for a session. A node
+behind is a row in the bell and says so on that row.
 
-UPDATING IS A PERSON'S, NEVER A SESSION'S. Update on the Nodes tab is an
+UPDATING IS A PERSON'S, NEVER A SESSION'S. Install on the Toolchains tab is an
 administrator's action (the node handler refuses anybody else, a session's
 token included); it ends every Claude session on that node first, since a
 conversation mid-turn is the wrong place to swap the binary under, and
@@ -35,7 +37,6 @@ import urllib.request
 LATEST_URL = (os.environ.get("BB_CLAUDE_LATEST_URL")
               or "https://downloads.claude.ai/claude-code-releases/latest")
 CHECK_DELAY = float(os.environ.get("BB_CLAUDE_CHECK_DELAY") or 20)
-CHECK_EVERY = 6 * 3600
 JOB = "claude-update"
 VER = re.compile(r"(\d+\.\d+\.\d+)")
 
@@ -117,6 +118,11 @@ def update_done(job, state):
     if state != "succeeded" or nodes is None or not job:
         return None
     full = nodes.job(job["id"], with_log=True) or {}
+    # A removal (R145): none now, so the row and the session gate say so
+    # before the next hello does.
+    if (job.get("spec") or full.get("spec") or {}).get("action") == "remove":
+        nodes.reported_set(job["node"], "session", "claude", "")
+        return None
     m = re.search(r"Claude Code (\S+) is what a session here runs now", full.get("log") or "")
     if m:
         nodes.reported_set(job["node"], "session", "claude", m.group(1) + " (Claude Code)")
@@ -166,14 +172,49 @@ def attention(project_nodes):
 
 
 def holds():
-    """{node id: why} while a node's Claude Code is being updated: no
-    session starts there until the job ends, and the row says so."""
+    """{node id: why} while no session can start on a node's Claude Code:
+    while it is being updated (the project rows start them again after),
+    and where it is not installed at all, which the node's Toolchains tab
+    does on purpose (R145: the provisioner no longer installs it)."""
     out = {}
     for n in nodes.node_list() if nodes else []:
-        if n.get("kind") == "agent" and updating(n["id"]):
+        if n.get("kind") != "agent":
+            continue
+        if updating(n["id"]):
             out[n["id"]] = (f"Claude Code is updating on {n['name']}: its Claude sessions were ended for "
                             "it, and start again from the project rows when it is done")
+        elif missing(n):
+            out[n["id"]] = (f"Claude Code is not installed on {n['name']}: its Toolchains tab installs it")
     return out
+
+
+def missing(n):
+    """True when a node runs a session account and has measured no Claude
+    Code for it: a session there has nothing to run."""
+    se = (n.get("reported") or {}).get("session") or {}
+    return bool(se.get("up")) and "claude" in se and not installed(n)
+
+
+def remove(principal, node_id):
+    """End the Claude sessions on the node and queue the job that takes
+    Claude Code off it (R145), the update job's other action."""
+    n = nodes.node(node_id) if nodes else None
+    if not n or n.get("kind") != "agent":
+        return {"error": "only an agent node runs Claude Code"}
+    if not installed(n):
+        return {"error": f"Claude Code is not installed on {n['name']}"}
+    if updating(node_id):
+        return {"error": f"a Claude Code job is already queued on {n['name']}"}
+    ended = []
+    for s in node_sessions() if node_sessions else []:
+        if s.get("node_id") == node_id and tmux_base(s["name"]).startswith("claude-"):
+            r = nodes.session_kill(node_id, s.get("node_name") or s["name"])
+            if not r.get("error"):
+                ended.append(s["name"])
+    r = nodes.job_add(principal, {"node": node_id}, JOB, {"timeout": 300, "action": "remove", "ended": ended})
+    if r.get("ok") and audit:
+        audit(principal, "node-claude-remove", node_id, {"ended": ended})
+    return r
 
 
 def update(principal, node_id):
@@ -243,16 +284,15 @@ def start_hold(project, node_id):
 
 
 def start():
-    """The check on a schedule: once soon after the controller starts, then
-    every six hours. A daemon thread, so it dies with the server. The
-    update itself is never on this clock: a press, or a session's start
-    with the setting on (start_hold)."""
-    def loop():
+    """One check soon after the controller starts. After that it is asked on
+    the toolchains' own clock (toolchains.node_checks_due: weekly, and when
+    a node starts) and on a press of Check for updates, like every other
+    toolchain (R145). The update itself is never on a clock: a press, or a
+    session's start with the setting on (start_hold)."""
+    def once():
         time.sleep(CHECK_DELAY)
-        while True:
-            try:
-                check()
-            except Exception as e:                                  # noqa: BLE001 (a loop must not die)
-                print(f"dashboard: claude code check: {e}", flush=True)
-            time.sleep(CHECK_EVERY)
-    threading.Thread(target=loop, name="claude-code", daemon=True).start()
+        try:
+            check()
+        except Exception as e:                                      # noqa: BLE001 (a thread must not die loudly)
+            print(f"dashboard: claude code check: {e}", flush=True)
+    threading.Thread(target=once, name="claude-code", daemon=True).start()

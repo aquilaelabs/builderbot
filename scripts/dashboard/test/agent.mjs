@@ -3006,8 +3006,9 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
 echo "Installing Claude Code (stub) for $USER into $HOME"
 echo "stub-installed" >> "${DIR}/claude-installer.log"
 `, { mode: 0o755 });
-    const cu = await api('/api/v1/nodes', { action: 'claude-update', id: minted.id });
-    ok(cu.ok && /^j_/.test(cu.job), `Update queues the claude-update job on this node (${cu.job || cu.error})`);
+    // From the node's Toolchains tab, where Claude Code is a row (R145).
+    const cu = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['claude-code'] });
+    ok(cu.ok && /^j_/.test(cu.job), `Install on the Toolchains tab queues the claude-update job on this node (${cu.job || cu.error})`);
     const cfin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${cu.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
