@@ -3,7 +3,7 @@
 // detail and diff, and the branches with whose worktree sits on which.
 // Real git on the fixture repos, read by the checkout's server; nothing
 // here writes through the dashboard, because this step has no actions.
-import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR, openFold } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'node:fs';
 
@@ -116,6 +116,8 @@ await page.waitForSelector(`${NB} .gfile[data-path="a.txt"] pre.diff`, { timeout
 ok(await page.$eval(`${NB} .gfile[data-path="a.txt"] pre.diff`, e => /three/.test(e.textContent)
      && !!e.querySelector('.d-add')),
    '...and opening one shows its diff, additions marked');
+// One section open at a time (the operator, 5 Oct): History is opened.
+await openFold(page, `${NB} [data-sect="git:history"]`);
 const graph = await page.$eval(`${NB} .gitgraph`, g => ({
   rows: g.querySelectorAll('.grow[data-sha]').length, nodes: g.querySelectorAll('circle').length,
   edges: g.querySelectorAll('path').length, lanes: parseInt(getComputedStyle(g).getPropertyValue('--glanes')) }));
@@ -647,6 +649,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
        JSON.stringify(grouped.remoteDel)} of ${JSON.stringify(grouped.originRows)})`);
   // Work not yet in main is a row you open: its commits and diff against
   // main, read here rather than on a pull request page.
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:branches"]');   // one section open at a time
   await page.click('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] summary');
   await page.waitForSelector('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] pre.diff', { timeout: 10000 });
   const opened = await page.$eval('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"]', d => ({
@@ -655,10 +658,12 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     merge: !!d.querySelector('[data-gitmerge="old-work"][data-gitinto]') }));
   ok(opened.commit && opened.files && opened.add && opened.merge,
      `a branch with work not yet in main opens to its commits and the diff main would take, with Merge into main at its foot (${JSON.stringify(opened)})`);
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:changes"]');   // one section open at a time
   await page.fill('.nb .nbview[data-view="git"] #gitMsg', 'From the view');
   await page.click('.nb .nbview[data-view="git"] #gitCommit');
   await refreshUntil(page, () => /From the view/.test(document.querySelector('.nb .nbview[data-view="git"] .gitgraph')?.textContent || ''), { timeout: 20000 });
   ok(git('log', '-1', '--format=%s') === 'From the view', 'Commit from the view commits, and the graph shows it');
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:history"]');   // one section open at a time (the operator, 5 Oct)
   await page.click('.nb .nbview[data-view="git"] .grow[data-sha]');
   await page.waitForSelector('.nb .nbview[data-view="git"] #gitDetail [data-gitrevert]', { timeout: 10000 });
   ok(true, "a picked commit's detail carries Revert and Branch here");
@@ -887,6 +892,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   await refreshUntil(page, () => !!document.querySelector('.nb .nbview[data-view="git"] [data-gitaskfile]'), { timeout: 20000 });
   // A row that is not already picked: a click on the picked row puts it
   // away, and which row that is depends on what the tests above committed.
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:history"]');   // one section open at a time (the operator, 5 Oct)
   await page.click('.nb .nbview[data-view="git"] .grow[data-sha]:not(.on)');
   // Read in one look, and waited for as one: the view repaints on the poll,
   // and a wait for the commit's button followed by a second read of the
@@ -907,6 +913,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   // The policy is a section shut by default: open it to reach the pickers.
   await page.evaluate(() => { const d = document.querySelector('.nb .nbview[data-view="git"] details[data-sect="git:policy"]'); if (d && !d.open) d.open = true; });
   await page.waitForSelector('.nb .nbview[data-view="git"] [data-gitpol="push"]', { state: 'visible', timeout: 10000 });
+  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:policy"]');   // one section open at a time (the operator, 5 Oct)
   await page.selectOption('.nb .nbview[data-view="git"] [data-gitpol="push"]', 'deny');
   ok(await page.$eval('.nb .nbview[data-view="git"] #gitPolApply', b => !b.disabled),
      '...picking a policy wakes Apply and saves nothing yet');
@@ -1204,6 +1211,7 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
     await page.evaluate(() => openNotebook('beta', 'git'));
     await page.waitForSelector(`${NB} [data-cifix="android.yml:10"]`, { timeout: 15000 });
     ok(await page.$$eval(`${NB} [data-cifix]`, bs => bs.length) === 1, 'only the finding that carries a fix offers Fix');
+    await openFold(page, `${NB} [data-sect="git:ci"]`);   // one section open at a time (the operator, 5 Oct)
     await page.click(`${NB} [data-cifix="android.yml:10"]`);
     await page.waitForFunction(sel => [...document.querySelectorAll(sel)].some(e => /android\.yml/.test(e.textContent)),
                                `${NB} details.gfile summary`, { timeout: 15000 });

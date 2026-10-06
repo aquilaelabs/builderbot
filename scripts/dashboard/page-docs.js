@@ -134,10 +134,16 @@ function renderDiff(text){
     : pre(f)).join("");
 }
 
-function docSection(kind, id, title, status, body, {cls = "", open} = {}){
+// A section that has just become news (CI on main gone red) opens by itself
+// once, at the moment it turns, and is the one open in its view; closed
+// after that, it stays closed for as long as it stays the same news.
+const sectLoud = {};
+function docSection(kind, id, title, status, body, {cls = "", open, loud = false} = {}){
   const key = `${kind}:${id}`;
-  const isOpen = key in sectOpen ? sectOpen[key] : (open !== undefined ? open : !isPhone());
-  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}>
+  const turned = loud && !sectLoud[key];
+  sectLoud[key] = loud;
+  const isOpen = turned || (key in sectOpen ? sectOpen[key] : (open !== undefined ? open : !isPhone()));
+  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}>
     <summary><span class="t">${esc(title)}</span>${
       status ? `<span class="sst${cls ? " " + cls : ""}">${esc(status)}</span>` : ""}</summary>
     <div class="body">${body}</div>
@@ -178,6 +184,15 @@ function soleOpen(d){
   sectLast.set(g, d.dataset.sect || "");
   g.querySelectorAll("details.sect[open]").forEach(o => { if (o !== d && sectGroup(o) === g) slideDetails(o, false); });
 }
+// A section opened by a draw rather than by a hand (Memories, remembered
+// open): it is the one that stays, and the others shut at once, since a
+// slide here overlapped two sections for its length (uniform, 6 Oct).
+function keepOpen(d){
+  const g = sectGroup(d);
+  if (!g || !g.closest(".nb")) return;
+  sectLast.set(g, d.dataset.sect || "");
+  oneOpen(g);
+}
 // After a draw: if more than one stands open in a group (a desktop opens
 // them all by default), the one last opened stays, else one the person
 // opened before (its fold recorded open), else the first; the rest shut at
@@ -186,8 +201,10 @@ function oneOpen(g){
   if (!g?.closest?.(".nb")) return;
   const open = [...g.querySelectorAll("details.sect[open]")].filter(o => sectGroup(o) === g);
   if (open.length < 2) return;
-  const keep = open.find(o => o.dataset.sect && o.dataset.sect === sectLast.get(g))
+  const keep = open.find(o => o.hasAttribute("data-lead"))
+    || open.find(o => o.dataset.sect && o.dataset.sect === sectLast.get(g))
     || open.find(o => o.dataset.sect && sectOpen[o.dataset.sect] === true) || open[0];
+  if (keep.hasAttribute("data-lead")){ keep.removeAttribute("data-lead"); sectLast.set(g, keep.dataset.sect || ""); }
   open.forEach(o => { if (o !== keep){ o.open = false; if (o.dataset.sect) sectOpen[o.dataset.sect] = false; } });
 }
 // A button that is doing something says so until the repaint replaces it:

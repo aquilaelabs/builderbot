@@ -321,9 +321,11 @@ function makeNotebook(project){
   // absent while there is nothing to save, so it does not move under a thumb.
   function sectBar(key){
     const n = nb.stagers[key]?.count() || 0;
-    return `<div class="actbar sectbar" data-bar="${esc(key)}"><span class="state"></span><span class="sp"></span>
+    // In a field band, as every line of a section's body is (a-dialog/layout):
+    // bare, it sat beside the last row it followed rather than under it.
+    return `<div class="field"><div class="actbar sectbar" data-bar="${esc(key)}"><span class="state"></span><span class="sp"></span>
       <button type="button" data-ssave="${esc(key)}"${n ? "" : " disabled"}>Save</button>
-      <button type="button" class="caution" data-srevert="${esc(key)}"${n ? "" : " disabled"}>Revert</button></div>`;
+      <button type="button" class="caution" data-srevert="${esc(key)}"${n ? "" : " disabled"}>Revert</button></div></div>`;
   }
   // A section holding unsaved work, or a change no session has been told
   // about yet, which the roadmap's and the memories' Saves settle.

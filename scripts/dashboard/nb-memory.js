@@ -86,7 +86,7 @@ function nbMemoryView({$, nb}){
     $("memSect").open = "briefing:memories" in sectOpen ? sectOpen["briefing:memories"] : false;
     // ...one section open at a time in a notebook (page-docs.js): open here
     // only because the person opened it, so it is the one that stays.
-    if ($("memSect").open) soleOpen($("memSect"));
+    if ($("memSect").open) keepOpen($("memSect"));
     // Which were open before this redraw. Saving reloads the book, and folding
     // away the memory that was just edited is the wrong answer to "did that
     // work?": the whole point is to look at it again.

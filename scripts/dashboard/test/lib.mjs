@@ -406,6 +406,9 @@ export async function openFold(page, sel){
     const el = await page.$(sel);
     if (!el) throw new Error(`openFold: nothing matches ${sel}`);
     try{
+      // Open already is done: a click would shut it, which with one section
+      // open at a time a suite meets often (5 Oct).
+      if (await el.evaluate(d => d.open && !d.getAnimations().length)) return;
       await (await el.$("summary")).click();
       await page.waitForFunction(d => d.open && !d.getAnimations().length,
                                  el, { timeout: 10000 });

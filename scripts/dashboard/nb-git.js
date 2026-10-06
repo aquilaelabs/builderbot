@@ -153,7 +153,7 @@ function nbGitView({$, nb, project}){
         "Not looked at yet."} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
       ci.error ? `<div class="sub bad">${esc(ci.error)}</div>` : ""}${rows}
       <div class="actbar"><button type="button" id="gitCiLook">Look now</button></div>`;
-    return docSection("git", "ci", "CI", status, body, {cls, open: red});
+    return docSection("git", "ci", "CI", status, body, {cls, open: red, loud: red});
   }
 
   function drawGit(){

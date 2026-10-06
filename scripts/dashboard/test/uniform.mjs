@@ -435,6 +435,15 @@ async function lineup(){
     // under the notebook's foot inside the view's scroller still has a
     // box, and it grouped with the foot's buttons as one line (29 Sep,
     // when the Design view's board grew and pushed its rows down).
+    // ...and nothing inside a shut fold: its content keeps a box in Chrome,
+    // and the point under it is its own parent's, so a Save at the foot of
+    // a shut section read as on screen beside a shut row of another
+    // (one section open at a time, 6 Oct).
+    const folded = e => {
+      for (let d = e.parentElement?.closest('details'); d; d = d.parentElement?.closest('details'))
+        if (!d.open && !d.querySelector(':scope > summary')?.contains(e)) return true;
+      return false;
+    };
     const shown = e => {
       const r = e.getBoundingClientRect();
       const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
@@ -442,7 +451,7 @@ async function lineup(){
     };
     const ctls = [...box.querySelectorAll(CTL)]
       .filter(e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0
-                   && !e.closest('.slot, .dmlog, .pagemore') && shown(e))
+                   && !e.closest('.slot, .dmlog, .pagemore') && !folded(e) && shown(e))
       .map(e => ({ e, r: e.getBoundingClientRect() }))
       .sort((a, b) => a.r.top - b.r.top);
     // One line = boxes whose vertical spans overlap by more than half the
@@ -462,7 +471,9 @@ async function lineup(){
       const lo = Math.min(...line.map(c => c.r.bottom));
       const hi = Math.max(...line.map(c => c.r.bottom));
       if (hi - lo > 1.5)
-        off.push(`${line.map(c => `${name(c.e)}@${Math.round(c.r.bottom)}`).join(' ')}`);
+        // Where each one is, so a line that should not be one says why it is.
+        off.push(`${line.map(c => `${name(c.e)}@${Math.round(c.r.bottom)}${
+          c.e.closest('[data-sect]') ? `[${c.e.closest('[data-sect]').dataset.sect}]` : ''}`).join(' ')}`);
       // ...and one height (the operator, 29 Sep: a field, a pulldown and a
       // button on one row were three sizes). A prose box that has wrapped
       // to a second line is taller by design and left out; a swatch is a
@@ -692,7 +703,9 @@ for (const kind of kinds){
       .find(n => n.checkVisibility())?.querySelector(`.nbview[data-view="${w}"] .sectbar[data-bar]`)), v, { timeout: ["bugs", "analysis", "tests", "git"].includes(v) ? 3000 : 15000 })
       .then(() => true, () => false);
   }
-  ok(foots.roadmap && foots.briefing && foots.artifacts && foots.design && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
+  // Artifacts carries one only where a Version can stage a bump, which this
+  // fixture's alpha, with no commits, cannot (version.mjs holds that one).
+  ok(foots.roadmap && foots.briefing && foots.design && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
      `a section's own Save and Revert are on the views that stage and on no other (the operator, 5 Oct: there is no foot) (${JSON.stringify(foots)})`);
 }
 
