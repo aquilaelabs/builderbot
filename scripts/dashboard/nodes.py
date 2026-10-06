@@ -2937,7 +2937,14 @@ def job_next(node_id, wait, runner="node", alive=None):
                         _exec("UPDATE jobs SET state = 'assigned', node = ?, started = ? WHERE id = ?",
                               (node_id, int(time.time()), upd["id"]))
                         _jstate_bump()
-                        return upd | {"state": "assigned", "node": node_id}
+                        # ...naming what the agent last said it holds that
+                        # this side has finished or dropped: an agent from
+                        # 0.7.136 does not count those as busy, so a job
+                        # stuck in it can no longer block its own way out
+                        # (B520). The node is quiet by this side's rows.
+                        held = (n.get("agent") or {}).get("held") or []
+                        spec = (upd.get("spec") or {}) | {"settled": held}
+                        return upd | {"state": "assigned", "node": node_id, "spec": spec}
                 for j in (_rows("SELECT * FROM jobs WHERE state = 'queued' AND "
                                 "(node = ? OR node = '') ORDER BY queued, id",
                                 (node_id,)) if (free or lane) else ()):

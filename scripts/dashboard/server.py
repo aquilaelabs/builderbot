@@ -254,7 +254,13 @@ MAX_BODY = 64 * 1024
 # limits let run to megabytes (forty pages, sixty rules of twenty thousand
 # characters). At 64 kB a design of forty pages and thirteen themes was
 # refused as "body too large" with every part of it inside its limit.
-MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024, "/api/wiki": 1024 * 1024}
+# ...and an agent's log post: it batches chunks up to 40 kB and then adds a
+# whole chunk of up to 32 kB, characters json.dumps may spell six bytes each,
+# so a post could pass 64 kB, and one refused as too large was retried for
+# good, holding its job in the agent's count and refusing every update as
+# busy (B520: j_cdcb12b7, a phone screenshot, held from 4 to 6 Oct).
+MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024, "/api/wiki": 1024 * 1024,
+                "/api/v1/agent/log": 512 * 1024}
 
 # One field out of a request body, read the one way here and in every
 # module a handler calls into (fields.py).

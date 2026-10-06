@@ -119,6 +119,13 @@ class HeldJobs(unittest.TestCase):
         self.job("j_done", "exec", state="succeeded")
         self.assertEqual(nodes.jobs_held(self.n, ["j_run", "j_done", "j_gone"]), ["j_done", "j_gone"])
 
+    def test_the_update_handed_over_carries_what_this_side_settled(self):
+        nodes._exec("UPDATE nodes SET agent = ?, concurrency = 4 WHERE id = ?", ('{"held": ["j_gone"]}', self.n))
+        self.job("u1", "self-update")
+        nodes._exec("UPDATE jobs SET node = ? WHERE id = 'u1'", (self.n,))
+        got = nodes.job_next(self.n, 0)
+        self.assertEqual(got["spec"].get("settled"), ["j_gone"])
+
     def test_an_update_refused_as_busy_names_them(self):
         self.job("u1", "self-update", state="assigned")
         nodes._exec("UPDATE nodes SET agent = ? WHERE id = ?", ('{"held": ["j_gone"]}', self.n))
@@ -152,6 +159,50 @@ class AgentFlush(unittest.TestCase):
 
     def test_a_refused_log_is_dropped(self):
         self.assertEqual(self.flush(400), (True, []))
+
+    def test_a_post_is_kept_under_the_controllers_cap(self):
+        # B520: 40 kB of batch and then a whole 32 kB chunk went over 64 kB.
+        sent = []
+        class Ctl:
+            def call(self, verb, body=None, timeout=30):
+                sent.append(len(agent.json.dumps(body)))
+                return 200, {"ok": True}
+        class Agent:
+            ctl = Ctl()
+        j = agent.Job(Agent(), {"id": "j_big"})
+        j.say("A" * 39 * 1024)
+        j.say("B" * 32 * 1024)
+        j.say("\u00e9" * 8 * 1024)
+        self.assertTrue(j.flush())
+        self.assertLessEqual(max(sent), 64 * 1024, sent)
+        # The controller's cap, read from its source: importing server.py
+        # opens /config.
+        import ast
+        src = open(os.path.join(os.path.dirname(__file__), "..", "server.py")).read()
+        node = next(n for n in ast.parse(src).body if isinstance(n, ast.Assign)
+                    and getattr(n.targets[0], "id", "") == "MAX_BODY_FOR")
+        caps = eval(compile(ast.Expression(node.value), "server.py", "eval"))  # noqa: S307 (our own constant)
+        self.assertGreaterEqual(caps["/api/v1/agent/log"], 6 * 72 * 1024,
+                                "the controller takes the largest post the agent can make")
+
+    def test_an_update_does_not_count_what_the_controller_settled(self):
+        class Agent:
+            controller_digest = ""
+        a = agent.Agent.__new__(agent.Agent)
+        a.lock, a.jobs = agent.threading.Lock(), {"j_self": 1, "j_cdcb12b7": 1, "j_live": 1}
+        a.ctl = type("Ctl", (), {"call": lambda *x, **k: (503, b"")})()
+        a.controller_digest = ""
+        class J:
+            job = {"id": "j_self"}
+            lines = []
+            def say(self, t): self.lines.append(t)
+        j = J()
+        self.assertEqual(a.self_update(j, {"settled": ["j_cdcb12b7"]}), ("failed", 75))
+        self.assertIn("j_live", j.lines[-1])
+        self.assertNotIn("j_cdcb12b7", j.lines[-1])
+        a.jobs.pop("j_live")
+        # Past the busy check: the download is the next step, refused here.
+        self.assertEqual(a.self_update(j, {"settled": ["j_cdcb12b7"]}), ("failed", 69))
 
     def test_a_log_that_did_not_arrive_is_kept(self):
         done, pending = self.flush(502)

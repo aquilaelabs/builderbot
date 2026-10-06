@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.135"
+AGENT_VERSION = "0.7.136"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -3093,9 +3093,15 @@ class Job(threading.Thread):
         while True:
             with self.lock:
                 batch, size = [], 0
-                while self.pending and size < self.BATCH:
+                # Measured as the body will be sent, and stopped BEFORE a
+                # chunk that would carry it past the batch: a post over the
+                # controller's cap was refused forever (B520).
+                while self.pending:
+                    more = len(json.dumps(self.pending[0]["chunk"]))
+                    if batch and size + more > self.BATCH:
+                        break
                     batch.append(self.pending.pop(0))
-                    size += len(batch[-1]["chunk"])
+                    size += more
             if not batch:
                 with self.lock:
                     step, self.pending_step = self.pending_step, ""
@@ -3118,7 +3124,7 @@ class Job(threading.Thread):
             # worked, so keeping these retried the job in this agent's count
             # forever, and every self-update failed "busy" (B519). Dropped,
             # and the result goes on to be refused in its turn.
-            if st in (400, 401, 403, 404):
+            if st in (400, 401, 403, 404, 413):
                 log(f"{self.job['id']}: log refused ({st}); dropping {len(batch)} chunk(s)")
                 with self.lock:
                     self.pending = []
@@ -4263,10 +4269,13 @@ class Agent:
     # -- self-update (door 4) ------------------------------------------------
     def self_update(self, job, spec):
         want = spec.get("digest") or self.controller_digest
-        if self.running() > 1:
-            # Named, so a job this agent holds that the controller has as
-            # finished is seen rather than guessed at (B519).
-            others = [i for i in self.running_ids() if i != job.job["id"]]
+        # What the controller has as finished or dropped is not counted
+        # (spec "settled", B520): a job stuck here posting its end blocked
+        # the update that was the only way to unstick it. The rest, named,
+        # so one is seen rather than guessed at (B519).
+        settled = set(spec.get("settled") or [])
+        others = [i for i in self.running_ids() if i != job.job["id"] and i not in settled]
+        if others:
             job.say(f"busy: other jobs are running ({', '.join(others)}); try again when they finish\n")
             return "failed", 75
         st, body = self.ctl.call("download", None, timeout=60, method="GET", raw=True)
