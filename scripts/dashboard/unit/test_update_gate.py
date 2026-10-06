@@ -104,9 +104,10 @@ class HeldJobs(unittest.TestCase):
                     "state, node, queued) VALUES (?, ?, '', 'test', '{}', '{}', '{}', '[]', ?, ?, ?)",
                     (jid, type, state, self.n, int(time.time())))
 
-    def test_a_log_for_a_job_with_no_row_is_taken_and_the_job_told_to_stop(self):
+    def test_a_log_for_a_job_with_no_row_is_taken_and_the_job_left_to_finish(self):
         got = nodes.job_log(self.n, "j_gone", [{"seq": 1, "chunk": "x"}])
-        self.assertTrue(got.get("ok") and got.get("cancel"), got)
+        self.assertTrue(got.get("ok"), got)
+        self.assertFalse(got.get("cancel"), "nothing is ended unless it is stuck")
         self.assertEqual(nodes._rows("SELECT COUNT(*) AS n FROM job_logs WHERE job_id = 'j_gone'")[0]["n"], 0)
 
     def test_another_nodes_job_is_still_refused(self):
@@ -178,18 +179,23 @@ class AgentFlush(unittest.TestCase):
         # The controller's cap, read from its source: importing server.py
         # opens /config.
         import ast
-        src = open(os.path.join(os.path.dirname(__file__), "..", "server.py")).read()
+        src = (Path(__file__).parent.parent / "server.py").read_text()
         node = next(n for n in ast.parse(src).body if isinstance(n, ast.Assign)
                     and getattr(n.targets[0], "id", "") == "MAX_BODY_FOR")
         caps = eval(compile(ast.Expression(node.value), "server.py", "eval"))  # noqa: S307 (our own constant)
         self.assertGreaterEqual(caps["/api/v1/agent/log"], 6 * 72 * 1024,
                                 "the controller takes the largest post the agent can make")
 
-    def test_an_update_does_not_count_what_the_controller_settled(self):
-        class Agent:
-            controller_digest = ""
+    def test_an_update_passes_over_only_a_stuck_job(self):
+        class Held:
+            def __init__(self, reporting):
+                self.reporting = reporting
         a = agent.Agent.__new__(agent.Agent)
-        a.lock, a.jobs = agent.threading.Lock(), {"j_self": 1, "j_cdcb12b7": 1, "j_live": 1}
+        # j_cdcb12b7: work done, only its end to post, and settled by the
+        # controller: stuck. j_work: settled too, but still working: never
+        # passed over. j_live: working, and the controller knows it.
+        a.lock = agent.threading.Lock()
+        a.jobs = {"j_self": Held(False), "j_cdcb12b7": Held(True), "j_work": Held(False), "j_live": Held(False)}
         a.ctl = type("Ctl", (), {"call": lambda *x, **k: (503, b"")})()
         a.controller_digest = ""
         class J:
@@ -197,12 +203,54 @@ class AgentFlush(unittest.TestCase):
             lines = []
             def say(self, t): self.lines.append(t)
         j = J()
-        self.assertEqual(a.self_update(j, {"settled": ["j_cdcb12b7"]}), ("failed", 75))
+        self.assertEqual(a.self_update(j, {"settled": ["j_cdcb12b7", "j_work"]}), ("failed", 75))
         self.assertIn("j_live", j.lines[-1])
+        self.assertIn("j_work", j.lines[-1], "a settled job still working is waited for")
         self.assertNotIn("j_cdcb12b7", j.lines[-1])
         a.jobs.pop("j_live")
+        self.assertEqual(a.self_update(j, {"settled": ["j_cdcb12b7", "j_work"]}), ("failed", 75))
+        a.jobs.pop("j_work")
         # Past the busy check: the download is the next step, refused here.
-        self.assertEqual(a.self_update(j, {"settled": ["j_cdcb12b7"]}), ("failed", 69))
+        self.assertEqual(a.self_update(j, {"settled": ["j_cdcb12b7", "j_work"]}), ("failed", 69))
+
+    def report(self, answers, give_up=0):
+        """Run a job's report against a controller answering log and result
+        posts from `answers` ({verb: [status, ...]}, the last repeated)."""
+        calls = []
+        class Ctl:
+            def call(self, verb, body=None, timeout=30):
+                seq = answers[verb]
+                st = seq.pop(0) if len(seq) > 1 else seq[0]
+                calls.append((verb, st))
+                return st, ({"ok": True} if st == 200 else {"error": "x"})
+        class Agent:
+            ctl = Ctl()
+        j = agent.Job(Agent(), {"id": "j_end"})
+        j.REPORT_GIVE_UP_S = give_up
+        j.say("a line\n")
+        sleeps = []
+        was = agent.time.sleep
+        agent.time.sleep = lambda s: sleeps.append(s) if len(sleeps) < 200 else (_ for _ in ()).throw(
+            AssertionError("still retrying"))
+        try:
+            j.report("succeeded", 0, "")
+        finally:
+            agent.time.sleep = was
+        return calls
+
+    def test_a_refused_log_does_not_hold_back_an_end_the_controller_already_has(self):
+        calls = self.report({"log": [500], "result": [200]}, give_up=3600)
+        self.assertEqual(calls, [("log", 500), ("result", 200)])
+
+    def test_an_end_refused_while_the_controller_answers_times_out(self):
+        calls = self.report({"log": [500], "result": [500]}, give_up=0)
+        self.assertLess(len(calls), 10, calls)
+
+    def test_an_unreachable_controller_is_waited_for(self):
+        calls = self.report({"log": [0, 0, 0, 200], "result": [200]}, give_up=0)
+        self.assertEqual(calls[-1], ("result", 200))
+        self.assertEqual([c for c in calls if c[0] == "result"], [("result", 200)],
+                         "no end is posted past a log that never arrived")
 
     def test_a_log_that_did_not_arrive_is_kept(self):
         done, pending = self.flush(502)

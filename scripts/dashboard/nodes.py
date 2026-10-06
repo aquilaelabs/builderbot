@@ -2938,10 +2938,11 @@ def job_next(node_id, wait, runner="node", alive=None):
                               (node_id, int(time.time()), upd["id"]))
                         _jstate_bump()
                         # ...naming what the agent last said it holds that
-                        # this side has finished or dropped: an agent from
-                        # 0.7.136 does not count those as busy, so a job
-                        # stuck in it can no longer block its own way out
-                        # (B520). The node is quiet by this side's rows.
+                        # this side has finished or dropped. An agent from
+                        # 0.7.136 passes over only those of them whose work
+                        # has ended and that are only posting their end, so a
+                        # stuck job no longer blocks its own way out and a
+                        # job still working is never left behind (B520).
                         held = (n.get("agent") or {}).get("held") or []
                         spec = (upd.get("spec") or {}) | {"settled": held}
                         return upd | {"state": "assigned", "node": node_id, "spec": spec}
@@ -3146,10 +3147,12 @@ def job_log(node_id, job_id, chunks, step=None):
     # (a probe forgotten once its row said finished). Refusing the post kept
     # it forever: the agent posts its log before its result and retries a
     # refused log for good, so the job never left the agent's count and every
-    # self-update on bb-sandbox failed "busy" (B519). Taken, stored nowhere,
-    # and the job told to stop; its result is then refused and dropped.
+    # self-update on bb-sandbox failed "busy" (B519). Taken and stored
+    # nowhere; the job is NOT told to stop (the operator: nothing is ended
+    # unless it is stuck), so it runs to its own end, whose result is then
+    # refused and dropped.
     if not got:
-        return {"ok": True, "stored": 0, "cancel": True, "gone": True}
+        return {"ok": True, "stored": 0, "gone": True}
     if got[0]["node"] != node_id:
         return {"error": "not this node's job"}
     now = int(time.time())

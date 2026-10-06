@@ -3035,6 +3035,10 @@ class Job(threading.Thread):
         # "failed" so the row does not read as the command's own fault.
         self.canceled = False
         self.proc = None
+        # True once the work has ended and only its end is left to post: the
+        # one state in which an update may leave the job behind (B520).
+        self.reporting = False
+        self.refused = 0         # the status of the last log post not taken
         self.outputs = []        # what the job left behind, for the result
         self.pending_step = ""   # the word for the row, sent with the next log
         # The write end of this job's pty, for a job that needs one. Only a
@@ -3080,6 +3084,9 @@ class Job(threading.Thread):
                                         "the controller was unreachable and this job kept talking]\n"})
 
     BATCH = 40 * 1024      # under the controller's 64KB body cap, with headroom
+    # How long a job's end may be refused by a controller that is answering
+    # before the job is dropped: half an hour of retries at a minute apart.
+    REPORT_GIVE_UP_S = 30 * 60
 
     def flush(self, keepalive=False):
         """Post what is pending, in bodies the controller will accept. A job
@@ -3132,6 +3139,7 @@ class Job(threading.Thread):
             if st != 200:
                 with self.lock:
                     self.pending = batch + self.pending
+                self.refused = st
                 return False
             self._answered(r)
 
@@ -3214,11 +3222,31 @@ class Job(threading.Thread):
         if self.job.get("type") == "compose" \
                 or os.path.basename(str((spec.get("argv") or [""])[0] or "")) == "docker":
             self.agent.sessnet.containers_at = 0.0
+        self.report(state, code, error)
+        self.agent.finished(self)
+        if state == "succeeded" and self.job.get("type") == "self-update":
+            self.agent.reexec()
+
+    def report(self, state, code, error):
+        """Post the job's end: its log first, then the result."""
         # Door 5: keep trying. The controller may be gone for a while; the
         # answer waits here, with backoff, until it is taken.
+        #
+        # ...but not for ever while the controller is there and will not take
+        # it (the operator, 6 Oct: a stuck job should time out, the more so
+        # when the controller says it is complete). A log the controller
+        # answers and refuses no longer holds the end back: the end is posted
+        # anyway, and a controller that has the job as complete takes it as
+        # already done. Past REPORT_GIVE_UP_S of answers that are refusals
+        # the job is dropped with a line in the journal. A controller that
+        # cannot be reached is waited for as before: that is door 5.
+        self.reporting = True
         delay = 1
+        refused_since = None
         while True:
-            if self.flush():
+            flushed = self.flush()
+            st = 0
+            if flushed or self.refused:
                 st, _ = self.agent.ctl.call(
                     "result", {"job": self.job["id"], "state": state, "exit": code,
                                "error": error, "outputs": self.outputs},
@@ -3228,11 +3256,17 @@ class Job(threading.Thread):
                 if st in (400, 401, 403, 404):
                     log(f"{self.job['id']}: result refused ({st}); dropping it")
                     break
+            if st or (not flushed and self.refused):
+                refused_since = refused_since or time.time()
+                if time.time() - refused_since > self.REPORT_GIVE_UP_S:
+                    log(f"{self.job['id']}: the controller refused this job's end for "
+                        f"{self.REPORT_GIVE_UP_S // 60} minutes (last {st or self.refused}); dropping it")
+                    break
+            else:
+                refused_since = None
+            self.refused = 0
             time.sleep(delay)
             delay = min(delay * 2, 60)
-        self.agent.finished(self)
-        if state == "succeeded" and self.job.get("type") == "self-update":
-            self.agent.reexec()
 
     def claude_login(self, spec):
         """`claude auth login` on this machine, under a pty, as the SESSION
@@ -4269,12 +4303,17 @@ class Agent:
     # -- self-update (door 4) ------------------------------------------------
     def self_update(self, job, spec):
         want = spec.get("digest") or self.controller_digest
-        # What the controller has as finished or dropped is not counted
-        # (spec "settled", B520): a job stuck here posting its end blocked
-        # the update that was the only way to unstick it. The rest, named,
-        # so one is seen rather than guessed at (B519).
+        # A job is passed over only when it is stuck: its work has ended and
+        # it is only posting its end, AND the controller has it as finished
+        # or dropped (spec "settled", B520). One like that blocked the update
+        # that was the only way to unstick it. A job still working is never
+        # left behind, whatever the controller says. The rest are named, so
+        # one is seen rather than guessed at (B519).
         settled = set(spec.get("settled") or [])
-        others = [i for i in self.running_ids() if i != job.job["id"] and i not in settled]
+        with self.lock:
+            held = dict(self.jobs)
+        others = sorted(i for i, j in held.items() if i != job.job["id"]
+                        and not (i in settled and getattr(j, "reporting", False)))
         if others:
             job.say(f"busy: other jobs are running ({', '.join(others)}); try again when they finish\n")
             return "failed", 75
