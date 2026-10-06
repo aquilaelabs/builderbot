@@ -861,9 +861,11 @@ emu_apis() {
 emu_avd() {
     local target="${1:-}" prefix="${ANDROID_AVD_PREFIX:-builderbot}" first
     if [ -n "$target" ]; then
+        # A level is digits and a dot (37.0 is one): prefixed like 36, or
+        # the AVD was named a bare "37.0" (report #70, B531).
         case "$target" in
-            *[!0-9]*) printf '%s' "$target" ;;
-            *)        printf '%s-%s' "$prefix" "$target" ;;
+            *[!0-9.]*) printf '%s' "$target" ;;
+            *)         printf '%s-%s' "$prefix" "$target" ;;
         esac
         return
     fi
@@ -1087,6 +1089,15 @@ cmd_emu() {
             ini="${ini:-${ANDROID_AVD_HOME:-$HOME/.android/avd}/${name}.avd}/config.ini"
             if [ -f "$ini" ]; then
                 sed -i "s|^image.sysdir.1=.*|image.sysdir.1=system-images/android-${api}/google_apis/x86_64/|" "$ini"
+                # ...and room to install into. avdmanager's default /data is
+                # 800 MB, of which a booted 37 left 32 MB: a 27 MB debug APK
+                # did not fit, and the device tests ran none (report #70,
+                # B531). 6 GB, as the AVDs made before had.
+                if grep -q '^disk.dataPartition.size=' "$ini"; then
+                    sed -i "s|^disk.dataPartition.size=.*|disk.dataPartition.size=${EMU_DATA_SIZE:-6G}|" "$ini"
+                else
+                    printf 'disk.dataPartition.size=%s\n' "${EMU_DATA_SIZE:-6G}" >> "$ini"
+                fi
             else
                 warn "no config.ini at ${ini}; if the emulator says Broken AVD system path, that file's image.sysdir.1 is the line"
             fi
@@ -1206,39 +1217,52 @@ cmd_emu() {
             # silently under load (adb goes quiet, `bb emu stop` says there is
             # nothing to stop) and the only account of why is in the log the
             # *next* start used to overwrite before anybody could read it.
-            if [ -s "$HOME/.android/emulator.log" ]; then
-                mv -f "$HOME/.android/emulator.log" "$HOME/.android/emulator.log.1"
-            fi
-            log "starting AVD '${avd}' headless, -gpu ${gpu}${propargs:+, hwui ${hwui}} (log: bb emu log)"
-            nohup emulator -avd "$avd" -no-window -no-audio -no-boot-anim \
-                -gpu "$gpu" "${propargs[@]}" \
-                > "$HOME/.android/emulator.log" 2>&1 &
-            log "waiting for the device to come up..."
-            # Bounded: a crashed emulator otherwise leaves this waiting forever
-            # for a device that is never coming, with the reason sitting unread
-            # in the log the timeout message points at.
             #
-            # Waiting for THIS emulator, not for any device. A bare
-            # wait-for-device is satisfied the instant it is asked when a phone
-            # is attached over wireless adb, and this reported the emulator
-            # ready before it had booted: a wrong answer rather than a missing
-            # one, which is worse.
-            local waited=0 serial=""
-            while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-180}" ]; do
-                serial="$(emu_serial)"
-                [ -n "$serial" ] && break
-                sleep 1; waited=$((waited + 1))
+            # Started, then waited for while it lives: up to
+            # ANDROID_BOOT_TIMEOUT (600s) for one still booting, since a cold
+            # boot of a new level on a busy node ran past the old 180 and was
+            # called failed while it booted on (Shebang-DevBoard, 6 Oct); and
+            # at once for one that has exited, whose reason is in the log.
+            local serial="" epid="" waited=0 tries=0 why=""
+            while :; do
+                tries=$((tries + 1))
+                if [ -s "$HOME/.android/emulator.log" ]; then
+                    mv -f "$HOME/.android/emulator.log" "$HOME/.android/emulator.log.1"
+                fi
+                log "starting AVD '${avd}' headless, -gpu ${gpu}${propargs:+, hwui ${hwui}} (log: bb emu log)"
+                nohup emulator -avd "$avd" -no-window -no-audio -no-boot-anim \
+                    -gpu "$gpu" "${propargs[@]}" \
+                    > "$HOME/.android/emulator.log" 2>&1 &
+                epid=$!
+                log "waiting for the device to come up..."
+                # Waiting for THIS emulator, not for any device. A bare
+                # wait-for-device is satisfied the instant it is asked when a
+                # phone is attached over wireless adb, and this reported the
+                # emulator ready before it had booted.
+                waited=0 serial=""
+                while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-600}" ] && kill -0 "$epid" 2>/dev/null; do
+                    [ -n "$serial" ] || serial="$(emu_serial)"
+                    [ -n "$serial" ] && emu_booted "$serial" && break
+                    sleep 2; waited=$((waited + 2))
+                done
+                [ -n "$serial" ] && emu_booted "$serial" && break
+                # Hardware rendering that broke: an out-of-memory from
+                # glTexImage2D (0x505), a context preempted, a GLXBadContextTag.
+                # On bb-sandbox an Android 37 phone filled the card to 7.5 GB of
+                # 8 while it booted, past the 768 MB checked before it started,
+                # and died; the session that met it retried by hand in software
+                # (6 Oct, B530). So once, in software, by itself.
+                if [ "$gpu" = host ] && [ "$tries" -eq 1 ] && ! kill -0 "$epid" 2>/dev/null \
+                    && why="$(grep -m1 -oE 'err pre.{0,12}0x505|context was preempted|GLXBadContextTag|Failed to get EGL display' "$HOME/.android/emulator.log")"; then
+                    warn "hardware rendering failed as the phone booted (${why}); starting again in software, which leaves the card alone"
+                    gpu=swiftshader_indirect
+                    [ -z "$hwui" ] || propargs=(-prop "debug.hwui.renderer=${hwui}")
+                    continue
+                fi
+                kill -0 "$epid" 2>/dev/null \
+                    && die "the emulator${serial:+ appeared as ${serial} but} had not booted within ${ANDROID_BOOT_TIMEOUT:-600}s and is still running; bb emu log has what it says, and bb emu stop ends it"
+                die "the emulator exited before it had booted; bb emu log -p has what it said"
             done
-            [ -n "$serial" ] \
-                || die "the emulator did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s; bb emu log has what it said"
-            # ...and BOOTED, on the same clock. adb lists the device the
-            # moment the emulator's adbd answers, minutes before the system
-            # is up; an install or a launch in that gap fails saying nothing.
-            while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-180}" ] && ! emu_booted "$serial"; do
-                sleep 2; waited=$((waited + 2))
-            done
-            emu_booted "$serial" \
-                || die "the emulator appeared as ${serial} but had not booted within ${ANDROID_BOOT_TIMEOUT:-180}s; bb emu log has what it said"
             # Root, every boot, where the build allows it: bb emu touch's
             # sendevent and an am start of an unexported activity need it. A
             # quick boot restores whatever the snapshot held, so this used to
