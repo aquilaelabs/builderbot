@@ -100,7 +100,7 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -z "${BB_TEST_WORKER:-}" ] && [ -f "$KEEPF" ]
                 -u BB_TREE_OWNER -u BB_CI_LOG_DIR -u BB_NODE_TOOLCHAINS -u BB_EMU_LOCAL \
                 TMUX_TMPDIR="$KEEP_S/tmux" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL="$KEEP_S/gitconfig" \
                 DASHBOARD_TEST_URL="$KEEP_URL" DASHBOARD_TEST_CHROME="$KEEP_CHROME" \
-                DASHBOARD_TEST_DIR="$KEEP_S" node "$f" || rc=1
+                DASHBOARD_TEST_DIR="$KEEP_S" timeout --kill-after=10 "${SUITE_TIMEOUT:-1500}" node "$f" || rc=1
             case "$f" in */_probe-*) rm -f "$f" ;; esac
         done
         exit "$rc"
@@ -1576,8 +1576,14 @@ run_file() {
     fresh_world
     phase fresh
     log "== $(basename "$1")${2:+ $2} =="
+    # A time limit per file (B514): a check that awaited a request it held
+    # open itself hung cards.mjs for four hours, holding the run's lock, with
+    # nothing saying so. SUITE_TIMEOUT seconds (1500: the longest file takes
+    # about 230 on this node, doubled waits included many times over).
     DASHBOARD_TEST_URL="http://127.0.0.1:$PORT/" DASHBOARD_TEST_CHROME="$CHROME" \
-    DASHBOARD_TEST_DIR="$S" node "$1" || rc=$?
+    DASHBOARD_TEST_DIR="$S" timeout --kill-after=10 "${SUITE_TIMEOUT:-1500}" node "$1" || rc=$?
+    [ "$rc" != 124 ] && [ "$rc" != 137 ] \
+        || log "FAIL  $(basename "$1") ran out of its ${SUITE_TIMEOUT:-1500} s: something in it waited on nothing"
     # What the suite cost, world and all, for the next run's worker plan
     # (bucket_plan): a pass in a whole run only, since a failure can stop
     # early or wait out a timeout, and a rerun runs on an idle box. One
