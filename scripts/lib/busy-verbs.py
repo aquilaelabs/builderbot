@@ -61,6 +61,11 @@ def show(d):
     if d.get("gpu_mem_mb"):
         print(f"  gpu      {d.get('gpu_pct')}%, {gb(d.get('gpu_mem_used_mb'))} of {gb(d.get('gpu_mem_mb'))}"
               + (f", {d['gpu_procs']} computing" if d.get("gpu_procs") else ""))
+        # ...and what holds it, by kind (B532): an emulator that filled the
+        # card while it booted read as a mystery.
+        held = {k: v for k, v in (d.get("gpu_mem_kinds") or {}).items() if v}
+        if held:
+            print("  gpu mem  " + ", ".join(f"{k} {gb(v)}" for k, v in sorted(held.items(), key=lambda kv: -kv[1])))
     kinds = {k: v for k, v in (d.get("kinds") or {}).items() if v}
     if kinds:
         print("  running  " + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items())))

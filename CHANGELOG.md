@@ -79,6 +79,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session can take files off its project's published release with bb version release --remove, always as its own ask to the owner, the names checked against the release first (d9ad329)
 - A node's row on the Nodes tab says why an idle session's token was not refreshed there, and when one last was, from what its agent reports (bdf1fe8)
 - A project whose house rule is watch-diagnostics hears on its next prompt of every diagnostics report that arrived since the last one, by number and project (5a70a76)
+- bb node busy says what holds the card's memory, by kind (an emulator, Python, the display), and bb gpu release gives a session's share of the card back when it is done (B532) (b7a80e2)
 
 ### Changed
 

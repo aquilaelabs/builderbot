@@ -90,4 +90,5 @@ def report(node, jobs, sessions_working, project=""):
             "mem_used_mb": s.get("mem_used_mb"), "mem_mb": s.get("mem_mb"),
             "gpu_pct": s.get("gpu_pct"), "gpu_mem_used_mb": s.get("gpu_mem_used_mb"),
             "gpu_mem_mb": s.get("gpu_mem_mb"), "gpu_procs": s.get("gpu_procs"),
+            "gpu_mem_kinds": s.get("gpu_mem_kinds") or {},
             "kinds": s.get("kinds") or {}, "jobs": by, "sessions_working": sessions_working}

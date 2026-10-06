@@ -473,7 +473,13 @@ large array math) and not otherwise: a build or a test suite runs no faster
 for it. The card's memory is one pool for every session on the node, so
 start a heavy job as `bb gpu run [--mem MB] -- CMD`, which waits for its
 turn and for that much free memory instead of failing on a full card
-halfway through.
+halfway through. An emulator drawing on the card uses that pool too: an
+Android phone booting on it can fill the card, and `bb emu start` then
+starts it again in software by itself. `bb node busy` says what holds the
+card's memory, by kind (an emulator, Python, the display), so read that
+rather than guessing; and when you are done with the card, `bb gpu
+release` ends this session's own processes that hold it (the emulator
+through `bb emu stop`) and says how much came back.
 
 A model is the pytorch toolchain's: `python-ml` is its Python, with
 PyTorch for CUDA, numpy and ONNX (`bb gpu run --mem 4000 -- python-ml

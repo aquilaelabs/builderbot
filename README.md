@@ -213,14 +213,17 @@ bb gpu             this node's NVIDIA card: how much of its memory is free, who 
 bb gpu run [--mem MB] -- CMD
                    CMD with a turn on the card: one heavy job at a time per node, waiting
                    for its turn and for MB of free memory rather than failing on a full card
+bb gpu release     give the card back when done with it: ends this session's own
+                   processes that hold it (its emulator through bb emu stop, a Python
+                   job, a build that loaded CUDA) and says how much came back
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb node busy [--json]
                    whether this node is quiet enough to time anything on: its load,
-                   memory and card, what runs there by kind (emulators, Gradle,
-                   compilers, browsers, other Claude sessions working, other
-                   projects' jobs, counted and never named) and a verdict: quiet,
-                   busy, saturated
+                   memory and card (what holds the card's memory, by kind), what
+                   runs there by kind (emulators, Gradle, compilers, browsers,
+                   other Claude sessions working, other projects' jobs, counted
+                   and never named) and a verdict: quiet, busy, saturated
 bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
                    wait until it is (quiet twice, ten seconds apart), before a
                    measurement; exits 1, saying how busy, if it never was

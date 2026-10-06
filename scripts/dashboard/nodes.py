@@ -2192,6 +2192,11 @@ def heartbeat(nid, sample, addr, running=0):
     if isinstance(s.get("kinds"), dict):
         clean["kinds"] = {k: max(0, min(9999, int(v))) for k, v in list(s["kinds"].items())[:16]
                           if k in PROC_KINDS and isinstance(v, (int, float))}
+    # ...and the card's memory by what holds it, in MB, the same kinds and
+    # "other" (B532): what filled the card is a kind, never a name.
+    if isinstance(s.get("gpu_mem_kinds"), dict):
+        clean["gpu_mem_kinds"] = {k: max(0, min(10**7, int(v))) for k, v in list(s["gpu_mem_kinds"].items())[:16]
+                                  if (k in PROC_KINDS or k == "other") and isinstance(v, (int, float))}
     clean["running"] = int(running or 0)
     stores = s.get("stores") if isinstance(s.get("stores"), dict) else {}
     clean["stores"] = {str(r)[:20]: _mb((v or {}).get("free_mb"))
@@ -2336,7 +2341,8 @@ def _quiet(job_id):
     return job_id in _probe_ids
 JOB_ACTIVE = ("queued", "assigned", "running")
 # The kinds an agent counts in its heartbeat (builderbot-agent.py PROC_KINDS).
-PROC_KINDS = ("emulator", "gradle", "java", "compile", "browser", "media", "docker build", "claude")
+PROC_KINDS = ("emulator", "gradle", "java", "compile", "browser", "media", "docker build", "claude",
+              "python", "display")
 # A driver package apt may be asked for (the agent holds the same rule).
 DRIVER_PKG = re.compile(r"nvidia-driver(-\d{3})?(-open)?")
 # What a selector may name (door 9: os and arch are placement dimensions).

@@ -22,10 +22,12 @@ from the node's switch and the project's setting: "on", or "node" or
 session's view covers the device CUDA needs, so a program finds no card
 and takes its CPU path; this only says why.
 """
+import contextlib
 import fcntl
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -238,6 +240,73 @@ def run(argv):
         os.close(fd)
 
 
+def holding(proc_root="/proc"):
+    """This session's own processes that have the card open (a device under
+    /dev/nvidia), as [(pid, comm)]: its emulator, a Python job, a build that
+    loaded CUDA. A session's view holds only its own processes, and only
+    this account's are counted besides, so nothing else's is ever named."""
+    me, mine, out = os.getpid(), os.getuid(), []
+    skip = {me, os.getppid()}
+    for pid in os.listdir(proc_root):
+        if not pid.isdigit() or int(pid) in skip:
+            continue
+        base = os.path.join(proc_root, pid)
+        try:
+            if os.stat(base).st_uid != mine:
+                continue
+            fds = os.listdir(os.path.join(base, "fd"))
+        except OSError:
+            continue
+        hit = False
+        for fd in fds:
+            try:
+                if os.readlink(os.path.join(base, "fd", fd)).startswith("/dev/nvidia"):
+                    hit = True
+                    break
+            except OSError:
+                continue
+        if hit:
+            try:
+                with open(os.path.join(base, "comm"), encoding="utf-8", errors="replace") as f:
+                    out.append((int(pid), f.read().strip()))
+            except OSError:
+                continue
+    return out
+
+
+def release():
+    """Give the card back: end this session's own processes that hold it,
+    the emulator through bb emu stop so its state is saved, the rest with a
+    TERM and, ten seconds on, a KILL; then say what came back (the
+    operator, 6 Oct: a session that is done with the card clears its usage
+    off it)."""
+    before = state()
+    held = holding()
+    if not held:
+        print("nothing of this session's holds the card"
+              + (f"; {gb(before['used'])} of it is in use by other work on this node" if before["used"] >= 100 else ""))
+        return 0
+    print("ending: " + ", ".join(f"{c} ({p})" for p, c in held))
+    if any(c.startswith("qemu-system") for _, c in held):
+        subprocess.run(["bb", "emu", "stop"], check=False)
+    for p, _ in holding():
+        with contextlib.suppress(OSError):
+            os.kill(p, signal.SIGTERM)
+    for _ in range(20):
+        if not holding():
+            break
+        time.sleep(0.5)
+    for p, c in holding():
+        with contextlib.suppress(OSError):
+            os.kill(p, signal.SIGKILL)
+            print(f"{c} ({p}) did not stop when asked: killed")
+    time.sleep(2)
+    after = state()
+    print(f"the card: {gb(before['used'])} in use before, {gb(after['used'])} now, "
+          f"{gb(after['free'])} free")
+    return 0
+
+
 def main(argv):
     if not argv:
         return status()
@@ -248,10 +317,12 @@ def main(argv):
         return 0
     if argv[0] == "run":
         return run(argv[1:])
+    if argv[0] == "release":
+        return release()
     if argv[0] in ("-h", "--help"):
         sys.stderr.write(__doc__ or "")
         return 0
-    die("bb gpu [run [--mem MB] [--wait SECONDS] -- CMD...]")
+    die("bb gpu [run [--mem MB] [--wait SECONDS] -- CMD...] | bb gpu release")
 
 
 if __name__ == "__main__":

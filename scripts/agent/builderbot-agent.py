@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.137"
+AGENT_VERSION = "0.7.138"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1895,6 +1895,8 @@ PROC_KINDS = (
     ("media", lambda c, a: c in ("ffmpeg", "ffprobe")),
     ("docker build", lambda c, a: c in ("buildkitd", "buildctl") or (c == "docker" and " build" in a)),
     ("claude", lambda c, a: c == "claude"),
+    ("python", lambda c, a: c.startswith("python")),
+    ("display", lambda c, a: c in ("Xorg", "X", "Xvfb", "gnome-shell")),
 )
 
 
@@ -1932,6 +1934,35 @@ def _gpu_procs():
     except (OSError, subprocess.SubprocessError):
         return 0
     return len([ln for ln in (p.stdout or "").splitlines() if ln.strip()]) if p.returncode == 0 else 0
+
+
+def _gpu_mem_kinds(proc_root="/proc", smi=None):
+    """{kind: MB} of the card's memory in use, by what holds it, read from
+    nvidia-smi's process table, which lists a graphics user (an emulator
+    drawing on the card) as well as a computing one. By kind, like
+    _proc_kinds, never by name or project. An Android 37 phone filled the
+    card while it booted and a session could not tell what had (B532)."""
+    if smi is None:
+        if not shutil.which("nvidia-smi"):
+            return {}
+        try:
+            smi = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=3, check=False).stdout or ""
+        except (OSError, subprocess.SubprocessError):
+            return {}
+    out = {}
+    for m in re.finditer(r"\s(\d+)\s+(?:C|G|C\+G)\s+\S.*?\s(\d+)MiB\s*\|", smi):
+        pid, mb = m.group(1), int(m.group(2))
+        kind = "other"
+        try:
+            with open(os.path.join(proc_root, pid, "comm"), encoding="utf-8", errors="replace") as f:
+                comm = f.read().strip()
+            with open(os.path.join(proc_root, pid, "cmdline"), "rb") as f:
+                args = f.read(4096).replace(b"\0", b" ").decode("utf-8", "replace")
+            kind = next((k for k, test in PROC_KINDS if test(comm, args)), "other")
+        except OSError:
+            pass
+        out[kind] = out.get(kind, 0) + mb
+    return out
 
 
 def _gpu_driver(sys_root=None, modinfo=None):
@@ -3008,7 +3039,8 @@ class Sampler:
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
                 "stores": _stores(state.get("stores")), "running": running,
                 "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),
-                **_gpu_sample(), **({"gpu_procs": _gpu_procs()} if shutil.which("nvidia-smi") else {})}
+                **_gpu_sample(), **({"gpu_procs": _gpu_procs(), "gpu_mem_kinds": _gpu_mem_kinds()}
+                                     if shutil.which("nvidia-smi") else {})}
 
 
 # ---------------------------------------------------------------------------
