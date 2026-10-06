@@ -1046,11 +1046,8 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .imgadd .imgabout{flex:0 0 100%;color:var(--dim);margin:0;
   font:var(--f-ui);max-width:70ch}
 /* The one job at a time, said beside the button that started it rather than
-   written into the button: a toolchain id is longer than any button should be,
-   and as a label it turned Install into a green banner across the tab. */
-.tcworking{flex:0 0 100%;color:var(--accent);font:var(--f-ui);
-  overflow-wrap:anywhere}
-.macros .tcworking{flex:1 1 100%}
+   written into the button, in the bar's state slot like any other state. */
+.tcworking{overflow-wrap:anywhere}
 /* Bigger tap targets where a finger is doing the ticking. */
 @media(max-width:900px){ .tc input{width:20px;height:20px} }
 /* A project row's controls move as one block: four buttons that wrapped one

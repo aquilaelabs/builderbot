@@ -524,9 +524,13 @@ await page.waitForFunction(() => toolchains?.job?.running);
 ok(await page.$eval('.doc [data-tc="install"]',
      b => b.textContent.trim() === 'Install selected' && b.disabled),
    'the Install button keeps its own name and goes dead, rather than becoming a banner');
-ok(await page.$eval('.doc .macros .tcworking', e => /Installing go/.test(e.textContent))
+// ...said in the bar's state slot, by the name on the toolchain's row rather
+// than its recipe id (the operator, 6 Oct: "Installing ndk...").
+const label = await page.$eval('.doc .tc input[value="go"]', i => i.closest('.tc').querySelector('.nm').firstChild.textContent.trim());
+ok(await page.$eval('.doc .macros .state.tcworking', (e, l) => e.textContent.startsWith(`Installing ${l}`), label)
    && await page.$('.doc .macros .tcworking .dots') !== null,
-   '...with what it is doing beside it, and an ellipsis');
+   `...with what it is doing as the bar's state, by the row's name, and an ellipsis (${
+     await page.$eval('.doc .macros .tcworking', e => e.textContent).catch(() => 'none')})`);
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
                            { timeout: 60000 });
 

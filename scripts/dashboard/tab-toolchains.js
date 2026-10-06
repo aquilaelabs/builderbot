@@ -100,13 +100,20 @@ function tcPick(){
   return tcNode;
 }
 
-// What the one job is doing, said next to Install selected rather than
-// written into it. A toolchain id is longer than any button should be, and
-// using it as a label turned Install into a green banner across the tab.
-const tcWorking = job => `<span class="tcworking">${
-  {install: "Installing", remove: "Removing", update: "Updating",
-   check: "Checking"}[job.action] || "Working on"} ${
-  esc((job.current || "").replace(/^android:/, ""))}<span class="dots"></span></span>`;
+// What the one job is doing: the bar's own state, where "versions checked"
+// sits when nothing runs, by the toolchain's name on its row and how far
+// through the batch it is. It was a green line of its own between the
+// buttons, naming the recipe's id (the operator, 6 Oct: "Installing ndk...").
+const tcWorking = (job, items) => {
+  const verb = {install: "Installing", remove: "Removing", update: "Updating",
+                check: "Checking"}[job.action] || "Working on";
+  const row = (items || []).find(i => i.name === job.current);
+  const what = job.action === "check" ? "for updates"
+    : row?.label || (job.current || "").replace(/^android:/, "");
+  const done = (job.done || []).length + (job.failed || []).length, left = (job.queue || []).length;
+  const of = job.action !== "check" && done + left > 0 ? `, ${done + 1} of ${done + left + 1}` : "";
+  return `<span class="state tcworking">${esc(verb)} ${esc(what)}${of}<span class="dots"></span></span>`;
+};
 
 function tcTickDots(){
   const spans = document.querySelectorAll(".dots");
@@ -492,13 +499,12 @@ function renderToolchainsInto(i){
       <a href="https://developer.android.com/studio/terms" target="_blank" rel="noreferrer">Google's
       Android SDK terms</a>.</div>
     <div class="actbar macros">
-      ${d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
+      ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
       ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
         >Install selected</button>`}
       ${busy && mayToolchains() ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
-      ${busy ? tcWorking(job) : ""}
       <button data-tc="check"${busy || pstale || !mayToolchains() ? " disabled" : ""}
         title="ask each upstream what it has now">${
         busy && job.action === "check"
