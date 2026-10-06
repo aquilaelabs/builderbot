@@ -37,7 +37,9 @@ class Forge(BaseHTTPRequestHandler):
         p = self.path
         if p.startswith("/blob/"):
             return self.answer(200, "2026-10-02T10:00:00.0000000Z ##[group]Run ./gradlew\n"
-                               + "".join(f"2026-10-02T10:00:01.0000000Z line {i}\n" for i in range(500))
+                               + "".join(f"2026-10-02T10:00:01.0000000Z line {i}\n" if i != 50
+                                         else "2026-10-02T10:00:01.0000000Z dev.x.KeyTest > tapsALetter FAILED\n"
+                                         for i in range(500))
                                + "2026-10-02T10:00:02.0000000Z ##[error]Process completed with exit code 1.\n",
                                "text/plain")
         if self.headers.get("Authorization") != "Bearer tok-123":
@@ -96,6 +98,9 @@ class CiLogs(unittest.TestCase):
         tail = build["log"].splitlines()
         self.assertEqual(len(tail), cilogs.TAIL_LINES)
         self.assertEqual(tail[-1], "##[error]Process completed with exit code 1.")
+        # The failing test was named far above the end (report #63, B525).
+        self.assertNotIn("tapsALetter", build["log"])
+        self.assertEqual(build["earlier"], "dev.x.KeyTest > tapsALetter FAILED")
         self.assertNotIn("log", lint)                    # it passed: not fetched
         # The token went to the API and never to the host the log is kept on.
         blob = [a for p, a in SEEN if p.startswith("/blob/")]

@@ -28,6 +28,14 @@ parse_url = None        # remote url -> {"host", "path"} or None
 
 API = "https://api.github.com"
 TAIL_LINES = 400        # of each failed job's log, the end, where the failure is
+# ...but not always: Gradle names the device test that failed well before its
+# closing stack trace, and a 1949-line device-tests log kept its name outside
+# the last 400 (report #63, B525). The lines above the tail that name a
+# failure come too, up to EARLIER_LINES, in the order they were printed.
+EARLIER_LINES = 60
+FAILURE_LINE = re.compile(r"FAILED|\bFAIL\b|AssertionError|AssertError|Exception:|##\[error\]"
+                          r"|\berror:|tests? completed, \d+ failed|There were failing tests"
+                          r"|Failures?: [1-9]")
 MAX_LOG = 2_000_000     # bytes read of one job's log
 
 
@@ -161,6 +169,9 @@ def log(project, run=0):
             lines = [_strip_stamp(x) for x in text.splitlines()]
             row["lines"] = len(lines)
             row["log"] = "\n".join(lines[-TAIL_LINES:])
+            above = [x for x in lines[:-TAIL_LINES] if FAILURE_LINE.search(x)]
+            if above:
+                row["earlier"] = "\n".join(list(dict.fromkeys(above))[-EARLIER_LINES:])
         out.append(row)
     return {"repo": repo, "run": {"id": run, "name": str(meta.get("name") or "")[:80],
                                   "branch": str(meta.get("head_branch") or "")[:80],

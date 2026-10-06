@@ -56,6 +56,10 @@ if m.get("url"):
 for j in r.get("jobs") or []:
     why = f", at the step '{j['failed_step']}'" if j.get("failed_step") else ""
     print(f"\n== {j.get('name')}: {j.get('conclusion')}{why} ==")
+    if j.get("earlier"):
+        print(f"  (the lines above the end that name a failure, {j['earlier'].count(chr(10)) + 1} of them)")
+        print(j["earlier"])
+        print("  ...")
     if "log" in j:
         if j.get("lines", 0) > j["log"].count("\n") + 1:
             print(f"  (the last {j['log'].count(chr(10)) + 1} of its {j['lines']} lines)")
