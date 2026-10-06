@@ -192,10 +192,21 @@ def in_front(adb, pkg):
     if m and m.group(1) == pkg:
         return True
     for block in re.split(r"(?=\n\s*Window #\d+ )", out):
-        if "InputMethod" in block.split("\n", 1)[0] and f"package={pkg} " in block \
+        if "InputMethod" in block.split("\n", 1)[0] and re.search(rf"package={re.escape(pkg)}\b", block) \
                 and re.search(r"isVisible=true|mHasSurface=true", block):
             return True
-    return False
+    # ...and asked directly, since the window dump's wording moves between
+    # releases: an app that is also the keyboard, up over its own setup
+    # screen, read as not in front, and the launch took the keyboard down
+    # (report #68, B529). The input method service says whose keyboard is
+    # showing; the activity manager names the activity resumed on top.
+    ime = run([adb, "shell", "dumpsys", "input_method"], timeout=20).stdout or ""
+    cur = re.search(r"mCurMethodId=([\w.]+)/", ime)
+    if cur and cur.group(1) == pkg and re.search(r"mInputShown=true", ime):
+        return True
+    act = run([adb, "shell", "dumpsys", "activity", "activities"], timeout=20).stdout or ""
+    top = re.search(r"(?:topResumedActivity|mResumedActivity|ResumedActivity)[=:][^\n]*?\s([\w.]+)/", act)
+    return bool(top and top.group(1) == pkg)
 
 
 def bring_up(adb, pkg):

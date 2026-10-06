@@ -293,6 +293,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A toolchain update or removal on a node is refused while anything runs from it (a session's build, its emulator, a Gradle daemon), naming the program and whose session it is; and every node's versions are checked weekly, as the controller's were (818d09f)
 - bb map find names a value declared in a file (a Kotlin val, a python module constant, a shell variable, a Go or Rust const) when no function or type has the name, rather than saying nothing defines it (B527) (3e84ee5)
 - bb emu create -h prints its usage, and a level that is not a number is refused, rather than installing android--h (B528) (2d01293)
+- bb capture shot --emu no longer relaunches an app that is on screen as its own keyboard, so the keyboard a session brought up stays in the picture (B529) (858acfe)
 
 ### Security
 
