@@ -1403,7 +1403,9 @@ async function dialogShape(pg = page){
     if (!m) return { err: 'no dialog opened' };
     const box = m.querySelector('.box');
     const loose = [...box.querySelectorAll('*')].filter(e => {
-      if (e.offsetHeight === 0 || e.closest('h3, .field, .foot')) return false;
+      // A section's heading is a heading, as the h3 is: a long dialog's
+      // groups are sections (the project settings, 7 Oct).
+      if (e.offsetHeight === 0 || e.closest('h3, .field, .foot, details.sect > summary')) return false;
       return [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
     }).map(e => `${e.tagName.toLowerCase()} "${e.textContent.trim().slice(0, 24)}"`);
     // One scroller, not two: a box that scrolls around a part that scrolls
