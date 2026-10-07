@@ -103,7 +103,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/global-rules` | prefix | `_global_rules` | The rules that apply to EVERY project (R63): rules.global_verb. | refused: admin |
 | POST | `/api/pending` | prefix | `_pending` | Approve or deny what a session has waiting (roadmap #27): pending.verb. | refused: pending |
 | POST | `/api/memory` | prefix | `_memory` | Edit, create or delete one of this project's memories, rewrite their index, or read the history: memory.verb, behind the gates here. |  |
-| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: debug, refused: docker-write |
+| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: admin, refused: debug, refused: docker-write |
 | POST | `/api/brief` | prefix | `_brief` | POST /api/brief: the first Claude press's Build it and Start without it, and a session's take as it starts: brief.verb, behind the gates here. |  |
 | POST | `/api/design` | prefix | `_design` | POST /api/design: a Design section's Save of the language and the pages, and the file written into the tree: design.verb, for an account that works on the project. |  |
 | POST | `/api/wiki` | exact | `_wiki` | POST /api/wiki: a page saved, removed or renamed, and the wiki pushed to or pulled from the forge's (wiki.verb), for an account that works on the project. |  |
