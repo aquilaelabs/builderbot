@@ -209,18 +209,25 @@ export async function newPage(browser, opts = {}){
   // one a door opens reads the folds with $eval, which this leaves alone.
   const openRnFor = async (sel, timeout) => {
     if (typeof sel !== 'string' || !/#rn|rnmodal|rngroup/.test(sel)) return;
+    // Until the field shows: a section another press is sliding shut still
+    // reads open for a third of a second, and pressing it then does nothing
+    // before it finishes closing; so it is looked at again until it is shut
+    // (and pressed) or the field is on screen.
     const press = () => page.evaluate(s => {
       let el = null;
-      try { el = document.querySelector(s); } catch { return 'bad'; }
-      if (!el) return '';
+      try { el = document.querySelector(s); } catch { return 'done'; }
+      if (!el) return 'wait';
       const d = el.closest('details.rngroup');
-      if (d && !d.open) d.querySelector(':scope > summary').click();
-      return 'found';
-    }, sel).catch(() => 'bad');
+      if (!d) return 'done';
+      // Mid-slide either way: wait for it to land (page-motion.js's fold).
+      if (d.getAnimations().some(a => a.id === 'fold' && a.playState === 'running')) return 'wait';
+      if (!d.open){ d.querySelector(':scope > summary').click(); return 'wait'; }
+      if (getComputedStyle(d).display === 'none' || el.closest('[hidden]')) return 'done';
+      return el.checkVisibility?.() ?? el.offsetParent !== null ? 'done' : 'wait';
+    }, sel).catch(() => 'done');
     const until = Date.now() + Math.min(timeout ?? patience(30000), patience(30000));
     for (;;){
-      const r = await press();
-      if (r !== '' || Date.now() > until) return;
+      if (await press() === 'done' || Date.now() > until) return;
       await new Promise(r => setTimeout(r, 100));
     }
   };
