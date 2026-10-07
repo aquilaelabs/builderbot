@@ -189,6 +189,10 @@ RUN set -eux; \
 # link rather than a directory.
 # ---------------------------------------------------------------------------
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+# A project's own Playwright installing its browsers here (or into the store
+# the path is moved to) adds them without sweeping the ones it did not ask
+# for, which took the store's own browsers on 7 Oct (B548).
+ENV PLAYWRIGHT_SKIP_BROWSER_GC=1
 
 # DS-0017 suppressed: the apt-get update below feeds `playwright
 # install-deps`, which runs apt-get install itself in this same layer; the

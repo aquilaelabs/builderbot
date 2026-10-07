@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.141"
+AGENT_VERSION = "0.7.142"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -1733,6 +1733,12 @@ def sdk_env(state, who=None):
                 if os.path.isdir(d) and d not in front:
                     front.append(d)
             for k, v in (entry.get("env") or {}).items():
+                # `=VALUE` is the value itself, not a path: what a toolchain
+                # needs set beside where it is (B548: Playwright told not to
+                # sweep browsers another install of it did not ask for).
+                if v.startswith("="):
+                    env.setdefault(k, v[1:])
+                    continue
                 d = _lay_path(store, entry, v)
                 if os.path.exists(d):
                     env.setdefault(k, d)

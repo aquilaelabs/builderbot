@@ -145,6 +145,10 @@ for p in rows:
     lay = p.get("layout") or {}
     d = "android" if p["name"].startswith("android:") else p["name"]
     for var, rel in (lay.get("env") or {}).items():
+        # `=VALUE` is the value itself, as the agent's sdk_env reads it (B548).
+        if rel.startswith("="):
+            print(f'export {var}="{rel[1:]}"')
+            continue
         path = where(d, rel)
         if os.path.exists(path):
             print(f'export {var}="{path}"')

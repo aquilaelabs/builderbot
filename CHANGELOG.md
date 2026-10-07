@@ -329,6 +329,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's remote settings, opened from the chain, no longer show its People, Signing or Sessions when the gear's settings were opened a moment before (fff2081)
 - bb map reads C and C++: functions, structs and enums, calls by the function they are made in, prototypes as declarations, and a JNI function under its Kotlin or Java method's name. PHP and anonymous JavaScript functions no longer read a call as a definition (7310c34)
 - A session granted the controller's diagnostics opens the node's own jobs they list (bb jobs ID), their specs and logs through the same redaction (f654ac5)
+- A project's own Playwright installing browsers into the shared playwright toolchain no longer deletes the store's: every node session, job and CI runner, and the image, carry PLAYWRIGHT_SKIP_BROWSER_GC=1 (477f460)
 
 ### Security
 

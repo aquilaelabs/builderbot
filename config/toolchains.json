@@ -23,7 +23,7 @@
     "           that supplies it.",
     "  layout     where this toolchain lands, once, for everybody who needs to",
     "           know. `bin` are directories under it to put on PATH, `env` the",
-    "           variables it sets (valued as a path under it, \"\" meaning the",
+    "           variables it sets (valued as a path under it, or =VALUE for a value, \"\" meaning the",
     "           toolchain directory itself), `tool` the file whose presence",
     "           proves it is installed, and `reports` the name the census",
     "           summary calls it. Written here because it was written in four",
@@ -725,7 +725,8 @@
         ],
         "env": {
           "PLAYWRIGHT_BROWSERS_PATH": "",
-          "NODE_PATH": "node_modules"
+          "NODE_PATH": "node_modules",
+          "PLAYWRIGHT_SKIP_BROWSER_GC": "=1"
         },
         "needs": "node_modules/.bin/playwright"
       },
