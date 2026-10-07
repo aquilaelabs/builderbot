@@ -6623,6 +6623,10 @@ class Handler(BaseHTTPRequestHandler):
         # (B175): it says how the project's remote authenticates.
         if self._not_project(name) or self._refused("rename", name):
             return None
+        # Test (the operator, 7 Oct): a read and a dry-run push with what it
+        # authenticates with, or with a token typed and not saved yet.
+        if req.get("action") == "test":
+            return self._json(*projects.auth_test(name, str(req.get("token") or "")))
         return self._json(*projects.auth_answer(name))
 
     def _project_pin(self, req):

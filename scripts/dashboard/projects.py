@@ -2335,6 +2335,133 @@ def auth_answer(name):
     return auth_options(name, d), 200
 
 
+def _stored_token(project):
+    """The token this project's credential file holds, decoded, or "". Read
+    for the host's API in auth_test and never sent anywhere else."""
+    try:
+        line = (STATE / "gitcreds" / project).read_text().strip().splitlines()[0]
+    except (OSError, IndexError):
+        return ""
+    m = re.match(r"https?://[^:@/]*:([^@]*)@", line)
+    return urllib.parse.unquote(m.group(1)) if m else ""
+
+
+# What git and ssh print around every refusal, whatever it was: the line
+# that says why is the one left (the host's "Permission denied", a key
+# "marked as read only", a 403), not "and the repository exists."
+_GIT_BOILERPLATE = re.compile(
+    r"^(hint:|Warning: Permanently added|fatal: Could not read from remote repository"
+    r"|Please make sure you have the correct access rights|and the repository exists"
+    r"|To |error: failed to push some refs|Could not create directory .*\.ssh"
+    r"|Failed to add the host to the list of known hosts)", re.I)
+
+
+def _git_said(r):
+    """The line of git's that says why, for a sentence."""
+    said = [ln.strip() for ln in (r.get("err", "") + "\n" + r.get("out", "")).splitlines()
+            if ln.strip() and not _GIT_BOILERPLATE.match(ln.strip())]
+    why = [ln for ln in said if re.search(r"denied|read.only|error|not found|could not|unable|refused", ln, re.I)]
+    pick = (why or said or [""])[0]
+    return pick[:240] if pick else f"git said nothing (exit {r['code']})"
+
+
+def auth_test(name, typed=""):
+    """Can this project read and push with what it authenticates with now
+    (the operator, 7 Oct)? (payload, status).
+
+    git answers for every host and both credentials: `ls-remote` is the read
+    and `push --dry-run` the write, which the host refuses at the
+    receive-pack handshake when the key is read-only or the token cannot
+    push, and which sends nothing. The pre-push hook is skipped, since a
+    project cloned without push rights refuses there before the host is
+    asked. A token is also put to the host's API (forges.token_access) for
+    what git cannot see. `typed` is a token typed in the dialog and not
+    saved: it is tried in its place, over https, from a file of its own
+    that is gone when this returns.
+    """
+    if not PROJECT_NAME.fullmatch(name or ""):
+        return {"error": "unknown project"}, 400
+    d = WORKSPACE / name
+    if not d.is_dir():
+        return {"error": "unknown project"}, 400
+    url = origin_url(d)
+    if not url:
+        return {"error": "this project has no remote to test"}, 400
+    # As written, not as get-url rewrites it through a url.insteadOf: the
+    # host and the path are the ones a token is filed and asked under.
+    written = run(["git", "-C", str(d), "config", "--get", "remote.origin.url"], timeout=15)
+    url = written["out"].strip() if written["code"] == 0 and written["out"].strip() else url
+    host, repo = forges.host_of(url), repo_path_of(url)
+    forge = forges.forge_of(host)
+    mode = remote_auth(d, name)
+    remote, scope, tmp = "origin", [], None
+    stored = token_target(name) or {}
+    if typed:
+        typed = typed.strip()
+        bad = forges.token_ok(forge, typed)
+        if bad:
+            return {"error": bad}, 400
+        if not repo or not host:
+            return {"error": "could not read the repository from this project's remote"}, 400
+        scheme = stored.get("scheme") or "https"
+        fd, tmp = tempfile.mkstemp(prefix="bb-authtest-")
+        q = lambda x: urllib.parse.quote(x, safe="")  # noqa: E731
+        with os.fdopen(fd, "w") as fh:
+            fh.write(f"{scheme}://{q(forge['user'] or 'oauth2')}:{q(typed)}@{stored.get('host') or host}\n")
+        scope = ["-c", "credential.helper=", "-c", f"credential.helper=store --file={tmp}"]
+        remote = f"{scheme}://{stored.get('host') or host}/{repo}.git"
+        mode = "typed"
+    what = {"ssh": "its deploy key", "https": "its access token", "typed": "the token typed here",
+            "none": "no credential (Authentication is Disabled)"}.get(mode, "what its remote says")
+    missing, notes = [], []
+    env = _git_env()
+    try:
+        r = run(["git", "-C", str(d), *scope, "ls-remote", "--heads", "--", remote],
+                timeout=60, env=env, split_err=True)
+        can_read = r["code"] == 0
+        if not can_read:
+            said = _git_said(r)
+            if mode == "ssh" and re.search(r"denied|not found|not appear", said, re.I):
+                missing.append(f"read access for the deploy key: {said.rstrip('.')}. Add its public half under "
+                               f"the repository's deploy keys on {forge['name']}")
+            else:
+                missing.append(f"read access: {said}")
+        has_head = run(["git", "-C", str(d), "rev-parse", "--verify", "-q", "HEAD"], timeout=15)["code"] == 0
+        can_push = None
+        if not has_head:
+            notes.append("Nothing is committed yet, so a push could not be tried.")
+        elif can_read:
+            r = run(["git", "-C", str(d), *scope, "push", "--dry-run", "--no-verify", "--porcelain",
+                     "--", remote, "HEAD:refs/heads/builderbot-access-check"],
+                    timeout=60, env=env, split_err=True)
+            can_push = r["code"] == 0
+            if not can_push:
+                said = _git_said(r)
+                if mode == "ssh" and re.search(r"read.only|write access|denied", said, re.I):
+                    missing.append(f"write access for the deploy key: {said.rstrip('.')}. On {forge['name']}, "
+                                   "edit the key under the repository's deploy keys and allow write access")
+                else:
+                    missing.append(f"write access: {said}")
+        tok = typed or (_stored_token(name) if mode == "https" else "")
+        if tok and repo:
+            got = forges.token_access(forge, stored.get("host") or host, tok, repo,
+                                      stored.get("scheme") or "https")
+            # git's own refusal already says the same thing in its words.
+            missing += [m for m in got["missing"]
+                        if not (can_read is False and m.startswith(("a token", "access to")))
+                        and not (can_push is False and m.startswith("write access"))]
+            notes += got["notes"]
+        if not may_push(name):
+            notes.append("This project was set up without push rights, so a session's push is "
+                         "refused here whatever the credential may do.")
+    finally:
+        if tmp:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+    return {"using": what, "mode": mode, "read": can_read, "push": can_push,
+            "missing": missing, "notes": notes}, 200
+
+
 def job_verb(act):
     """Stop the running project job, or clear the last one's outcome.
     (payload, status)."""

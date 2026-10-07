@@ -1392,6 +1392,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+/* The project settings' Test (the operator, 7 Oct): what is missing in red,
+   a list when it is more than one thing, and its notes in the quiet voice. */
+.modal .hint.ok{color:var(--accent)}
+#rnTestField .setrow{align-items:center;flex-wrap:nowrap}
+#rnTestField .setrow .hint{flex:1 1 auto;min-width:0}
+#rnTestOut ul{margin:4px 0 0;padding-left:18px}
+#rnTestOut .sub{color:var(--dim);margin-top:4px}
 /* A field whose value cannot work. Only the border moves: tinting the text
    too makes what you typed hard to read at the moment you are being asked to
    look at it. */
@@ -4104,6 +4111,15 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint" id="rnAuthHint"></div>
     </div>
+    <!-- Test (the operator, 7 Oct): whether what it authenticates with can
+         read and push, and what it is missing when it cannot, said under the
+         button in red, never only in a tooltip (projects.auth_test). A token
+         typed and not saved is what is tested, so it can be checked first. -->
+    <div class="field" id="rnTestField" hidden>
+      <div class="logdays setrow"><span class="hint grow" id="rnTestHint">Test tries a read and a dry-run push with this, which sends nothing.</span>
+        <button type="button" id="rnTest">Test</button></div>
+      <div class="hint" id="rnTestOut" hidden></div>
+    </div>
     <!-- Where the remote points, for the same repository at a new address:
          an owner or an organization renamed on the host. Before this the
          way to move was Unlink, which takes the token and the push rights
@@ -5609,6 +5625,7 @@ $("rnAuthToken").onclick = () => rnAuthSet("https");
 // Typing a token can turn the disabled side on: setting one and switching to
 // it is a single intention, and the submit does them in that order.
 $("rnToken").addEventListener("input", rnDrawAuth);
+$("rnTest").onclick = rnTestAuth;
 
 $("rnUnlink").onclick = () => unlinkProject(rnFor);
 $("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n); };

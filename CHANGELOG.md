@@ -81,6 +81,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project whose house rule is watch-diagnostics hears on its next prompt of every diagnostics report that arrived since the last one, by number and project (5a70a76)
 - bb node busy says what holds the card's memory, by kind (an emulator, Python, the display), and bb gpu release gives a session's share of the card back when it is done (B532) (b7a80e2)
 - bb tidy gives back what a task left holding: the session's emulator, its processes on the card, its Gradle and Kotlin daemons, the browsers a finished test left, and its files in /tmp; --keep one with a reason. It replaces bb gpu release (ffe2fb8)
+- Test in a project's repository settings (the chain): tries a read and a dry-run push with its deploy key or access token, asks GitHub, GitLab or Gitea what a token may do, and lists what is missing (write access, a read-only deploy key, the workflow scope) in red under the button (e866504)
 
 ### Changed
 

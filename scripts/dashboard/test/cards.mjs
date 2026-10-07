@@ -1714,6 +1714,39 @@ await page.fill('#rnAddr', addrWas);
 await page.evaluate(() => { document.getElementById('rnErrWrap').hidden = true; rnAskReset();
   const g = document.getElementById('rnGo'); g.disabled = false; g.textContent = 'Save'; });
 
+// Test (the operator, 7 Oct): a press asks the server for a read and a
+// dry-run push and draws what is missing in red under the button, a list
+// when it is more than one thing; the server's half is unit/test_auth_test.py,
+// so its answer is set here and the draw is what is read.
+{
+  ok(!await page.$eval('#rnTestField', e => e.hidden), 'the chain\'s door offers Test for a project with a remote');
+  let asked = null;
+  const answer = { using: 'its deploy key', mode: 'ssh', read: true, push: false,
+                   missing: ['write access for the deploy key: ERROR: The key you are authenticating with has been marked as read only.',
+                             'the workflow scope'],
+                   notes: ['This project was set up without push rights.'] };
+  await page.route('**/api/project-auth', async route => {
+    const b = JSON.parse(route.request().postData() || '{}');
+    if (b.action !== 'test') return route.continue();
+    asked = b;
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(answer) });
+  });
+  await page.$eval('#rnTest', b => b.click());
+  await page.waitForSelector('#rnTestOut:not([hidden])', { timeout: 10000 });
+  const out = await page.$eval('#rnTestOut', e => ({ text: e.textContent, bad: e.classList.contains('bad'),
+    items: e.querySelectorAll('li').length, label: document.getElementById('rnTest').textContent }));
+  ok(asked?.name === 'alpha' && asked.token === '' && out.bad && out.items === 2
+     && /With its deploy key it is missing/.test(out.text) && /marked as read only/.test(out.text)
+     && /without push rights/.test(out.text) && out.label === 'Test',
+     `...and what it is missing is said under it in red, one line each (${out.text.slice(0, 90)})`);
+  answer.missing = []; answer.push = true; answer.notes = [];
+  await page.$eval('#rnTest', b => b.click());
+  await page.waitForFunction(() => /can read and push/.test(document.getElementById('rnTestOut').textContent), null, { timeout: 10000 });
+  ok(await page.$eval('#rnTestOut', e => !e.classList.contains('bad')),
+     '...and a credential with everything says it can read and push');
+  await page.unroute('**/api/project-auth');
+}
+
 // The remaining states need a project holding both credentials, which no
 // fixture here does, so the answer the dialog was given is set directly and
 // the real draw runs against the real DOM. What is being tested is the state

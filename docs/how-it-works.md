@@ -3285,6 +3285,19 @@ where you put it and the reason is stated, rather than sliding to another mode
 on your behalf: being corrected without being asked is how you end up on a
 credential you did not choose.
 
+**Test**, under the segment, says whether it works before a session finds
+out (the operator, 7 Oct). It runs `git ls-remote` for the read and `git push
+--dry-run` of HEAD to a branch nobody has for the write, which the host refuses
+at the handshake when a deploy key is read-only or a token cannot push, and
+which sends nothing; the project's own pre-push hook is skipped, so a clone
+without push rights is still asked about its credential. For a token it also
+asks the host's API what git cannot see: on GitHub a classic token's scopes
+(without `workflow` a push touching `.github/workflows` is refused) and the
+repository's push permission, on GitLab the role and the token's scopes, on
+Gitea the push permission. What is missing is listed in red under the button
+in the host's own words with what to change; a token typed and not saved yet
+is what is tested, from a credential file of its own that is gone after.
+
 The https address it writes is the **host the remote is actually on**, not a
 constant: a deploy-key remote names a `bb-<key>-<host>` alias, and the server
 it stands for is resolved out of `~/.ssh/config` with `ssh -G`, which reads

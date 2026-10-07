@@ -891,6 +891,8 @@ function rnLoadAuth(name){
   $("rnAuthField").hidden = true;
   $("rnAddrField").hidden = true;
   $("rnAddr").value = "";
+  $("rnTestField").hidden = true;
+  $("rnTestOut").hidden = true;
   if (rnMode !== "git") return;
   fetch("/api/project-auth", {method:"POST",
     headers:{"Content-Type":"application/json"},
@@ -904,6 +906,7 @@ function rnLoadAuth(name){
       // be renamed too, and it has nothing else here to save.
       $("rnAddr").value = j.url || "";
       $("rnAddrField").hidden = !j.url;
+      $("rnTestField").hidden = !j.url;
       if (j.url) $("rnGo").hidden = false;
       rnDrawAuth();
     })
@@ -981,6 +984,36 @@ function rnDrawAuth(){
         : !canKey
           ? "It has no deploy-key remote to go back to: it has only ever used https."
         : "Switching keeps every credential it has; nothing is removed either way.");
+}
+
+// Test (the operator, 7 Oct): a read and a dry-run push with what the
+// project authenticates with, or with the token typed above and not saved
+// yet, and what it is missing in red under the button (projects.auth_test).
+async function rnTestAuth(){
+  const btn = $("rnTest"), out = $("rnTestOut"), name = rnFor;
+  if (!name || btn.disabled) return;
+  busy(btn, "Testing");
+  out.hidden = true;
+  let j;
+  try{
+    j = await (await postJSON("/api/project-auth", {name, action: "test",
+      token: $("rnToken").disabled ? "" : $("rnToken").value.trim()})).json();
+  }catch{ j = {error: "no answer from the dashboard"}; }
+  btn.disabled = false;
+  btn.removeAttribute("aria-busy");
+  btn.textContent = "Test";
+  if (rnFor !== name) return;                   // closed, or reopened elsewhere
+  const missing = j.missing || [];
+  const good = !j.error && !missing.length;
+  out.classList.toggle("bad", !good);
+  out.classList.toggle("ok", good && j.push !== null);
+  out.innerHTML = j.error ? esc(j.error)
+    : missing.length
+      ? `With ${esc(j.using)} it is missing:<ul>${missing.map(m => `<li>${esc(m)}</li>`).join("")}</ul>`
+      : `With ${esc(j.using)} it can read${j.push ? " and push" : ""}.`;
+  if (!j.error && (j.notes || []).length)
+    out.innerHTML += `<div class="sub">${j.notes.map(esc).join(" ")}</div>`;
+  out.hidden = false;
 }
 
 const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAuth(); };
