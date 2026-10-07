@@ -192,6 +192,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Section headings are larger (14px), with the status beside them at 12px (b0fc652)
 - The sidebar's pinned projects and the Projects tab list projects by name, case aside; the tab no longer puts pinned ones first (b0fc652)
 - A new account starts with no project pinned and pins what it wants from All projects; accounts made before keep what they had (b0fc652)
+- The Toolchains tab's descriptions are shorter: what each is for and what it needs, without how it is built (87a01a0)
 
 ### Removed
 
