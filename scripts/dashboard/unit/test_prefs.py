@@ -92,3 +92,38 @@ class BuildLocal(unittest.TestCase):
         self.assertTrue(prefs._clean({})["build_local"])
         self.assertTrue(prefs._clean({"build_local": "yes"})["build_local"])
         self.assertFalse(prefs._clean({"build_local": False})["build_local"])
+
+
+class Reaches(unittest.TestCase):
+    """Also reaches (the operator, 7 Oct): the addresses a project's sessions
+    may still reach where their node filters, each on the nodes it names."""
+
+    def test_an_address_or_an_address_and_port(self):
+        for e in ("192.168.1.20", "10.0.0.5:8080", "172.16.3.4:1"):
+            self.assertEqual(prefs.reaches_problem(e), "", e)
+
+    def test_what_is_not_one_is_refused_with_why(self):
+        for e, why in [("nas.lan", "not an address"), ("192.168.1.0/24", "not an address"),
+                       ("300.1.1.1", "0 to 255"), ("127.0.0.1", "this machine"),
+                       ("224.0.0.1", "multicast"), ("10.231.0.9", "sessions themselves"),
+                       ("1.2.3.4:70000", "port is 1 to 65535")]:
+            self.assertIn(why, prefs.reaches_problem(e), e)
+
+    def test_a_bare_address_is_every_node_and_repeats_merge(self):
+        got = prefs._reaches_of({"reaches": ["192.168.1.20",
+                                             {"addr": "10.0.0.5:8080", "nodes": ["n2"]},
+                                             {"addr": "10.0.0.5:8080", "nodes": ["n1"]},
+                                             {"addr": "10.0.0.6", "nodes": ["n1"]},
+                                             {"addr": "10.0.0.6", "nodes": []},
+                                             "nope"]})
+        self.assertEqual(got, [{"addr": "192.168.1.20", "nodes": []},
+                               {"addr": "10.0.0.5:8080", "nodes": ["n1", "n2"]},
+                               {"addr": "10.0.0.6", "nodes": []}])
+
+    def test_each_node_gets_only_what_names_it(self):
+        saved = prefs.get
+        self.addCleanup(setattr, prefs, "get", saved)
+        prefs.get = lambda p: {"reaches": [{"addr": "192.168.1.20", "nodes": []},
+                                           {"addr": "10.0.0.5:8080", "nodes": ["n2"]}]}
+        self.assertEqual(prefs.reaches_on("x", "n1"), ["192.168.1.20"])
+        self.assertEqual(prefs.reaches_on("x", "n2"), ["192.168.1.20", "10.0.0.5:8080"])

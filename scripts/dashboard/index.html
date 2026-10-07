@@ -1401,6 +1401,12 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 #rnFtp .logdays{flex-wrap:nowrap}
 #rnFtp .logdays input[type=number]{width:7em;flex:0 0 auto;text-align:center}
 .rnftppeople{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+/* Also reaches: an address per row, its nodes ticked beside it, and its bin. */
+#rnReachRows{display:flex;flex-direction:column;gap:6px}
+.rnreach{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.modal .rnreach input[data-reach]{flex:1 1 12em;width:auto;min-width:0}
+.rnreach .rnreachnodes{display:flex;gap:10px;flex-wrap:wrap}
+.rnreachadd{margin-top:6px}
 .rnftprow{display:flex;align-items:center;gap:8px}
 .rnftprow .grow{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .modal .rnftprow select{width:auto;flex:0 0 12em}
@@ -4202,6 +4208,16 @@ body.booting .pane>.loading{margin:auto}
       <label for="rnSees">Also sees<span class="help" data-tip="a share or a disk mounted on the node that a session here works with, by its path there. A session sees no other; one started after the save sees these" tabindex="0">?</span></label>
       <input id="rnSees" autocomplete="off" spellcheck="false" placeholder="/mnt/media, /mnt/samples">
     </div>
+    <!-- Addresses a session here may still reach where its node keeps each
+         session to its own project's network (prefs.reaches, the operator,
+         7 Oct): a machine, or one port on it, without making the project
+         read another. Set with the node grant; applied without a restart. -->
+    <div class="field" id="rnReachField" hidden>
+      <label id="rnReachLabel">Also reaches<span class="help" data-tip="on a node that keeps each session to its own project's network, other machines a session here may still reach: an address for the whole machine, or address:port for one service, on the project's nodes you tick. Sessions already running get it at once" tabindex="0">?</span></label>
+      <div id="rnReachRows" role="group" aria-labelledby="rnReachLabel"></div>
+      <div class="rnreachadd"><button type="button" id="rnReachAdd">Add an address</button></div>
+      <div class="hint" id="rnReachHint"></div>
+    </div>
     <!-- What a session here may read for debugging (prefs.log_from,
          prefs.diag): nodes' machine logs and the controller's diagnostics.
          Per project since 6 Oct, set by an account with the debug grant,
@@ -5608,6 +5624,13 @@ $("rnNode").onchange = () => {
   // Italic only while the removed node is the one shown (page-projsettings.js).
   $("rnNode").classList.toggle("removed", !!$("rnNode").selectedOptions[0]?.classList.contains("removed"));
   rnFillNodesMore();
+};
+// Each Also reaches row ticks among the nodes picked above, so it follows them.
+$("rnNodesMore").addEventListener("change", rnDrawReach);
+$("rnReachAdd").onclick = () => {
+  rnReachSync(); rnReachDraft.push({addr: "", nodes: []});
+  $("rnReachRows").innerHTML = "";
+  rnDrawReach(true);
 };
 $("cGo").onclick = cSubmit;
 $("cCancel").onclick = () => { $("cmodal").hidden = true; };

@@ -1968,8 +1968,13 @@ print(json.dumps(m.session_net_own('n1')))
 # node is not alpha's, so gamma stays out.
 m.reads_of = lambda p: {'alpha': ['beta', 'gamma']}.get(p, [])
 print(json.dumps(m.session_net_own('n1')))
+# ...and what a project's settings let its sessions reach besides (Also
+# reaches, the operator, 7 Oct): a whole machine, or one port on one.
+m.reads_of = None
+m.reaches_of = lambda p, nid: {('beta', 'n1'): ['192.168.1.50', '192.168.1.60:8123']}.get((p, nid), [])
+print(json.dumps(m.session_net_own('n1')))
 `], { encoding: 'utf8' });
-  const [own, withReads] = sn.trim().split('\n').slice(-2).map(l => JSON.parse(l));
+  const [own, withReads, withReach] = sn.trim().split('\n').slice(-3).map(l => JSON.parse(l));
   const same = (a, b) => JSON.stringify(Object.keys(a).sort().map(k => [k, a[k]])) === JSON.stringify(Object.keys(b).sort().map(k => [k, b[k]]));
   ok(same(own.alpha, { compose: ['aux'], hosts: ['192.168.1.40'], names: [],
        peers: [['192.168.1.17', 8088], ['192.168.1.17', 8443], ['192.168.1.17', 32400]] }),
@@ -1978,6 +1983,9 @@ print(json.dumps(m.session_net_own('n1')))
        peers: [['192.168.1.17', 1234], ['192.168.1.17', 8088], ['192.168.1.17', 8443], ['192.168.1.17', 32400]] })
      && same(withReads.beta, own.beta),
      `a project that reads others reaches their containers here and on its own other nodes, never on a node it is not on, and the read project's own set is unchanged (${JSON.stringify(withReads.alpha)})`);
+  ok(same(withReach.beta, { compose: ['beta'], hosts: ['192.168.1.50'], names: [], peers: [['192.168.1.60', 8123]] })
+     && same(withReach.alpha, own.alpha),
+     `Also reaches gives a project's sessions a whole machine or one port on one, and nobody else's (${JSON.stringify(withReach.beta)})`);
   ok(same(own.beta, { compose: ['beta'], hosts: [], names: [], peers: [] }) && !own.gamma,
      `...a project on this node alone reaches nothing else, and one not on this node is not named at all (${JSON.stringify(own.beta)}; gamma ${JSON.stringify(own.gamma)})`);
 }

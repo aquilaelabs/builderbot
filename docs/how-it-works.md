@@ -3213,6 +3213,21 @@ no session starts on that node until it works or the switch is turned off.
 A container in Docker's host network mode is not reachable from an isolated
 session, since it has no address of its own to allow.
 
+**Also reaches**, under What a session sees in a project's settings, opens
+the rest by hand (the operator, 7 Oct): a machine its sessions may still
+reach, by its address, or one service on it, as `address:port`, without
+making the project read another. Each address applies on the project's
+nodes ticked beside it when the project is on more than one, on all of them
+when every one is ticked, which also covers a node added later. It is
+handed to the node with what the project owns there and lands in the same
+sets, so sessions already running reach it within a poll, without a
+restart. Setting it takes the `node` grant, like Also sees, since it is a
+hole in a shared node's firewall; a session cannot. An IPv4 address only:
+a name or a range is refused by name, as are this machine, multicast, the
+sessions' own range and a project's own node, which a session reaches only
+through its containers. On a node whose switch is off it does nothing yet,
+and the field says so.
+
 ### Push rights
 
 A clone is read-only unless you tick **I want to push to this repository**, and

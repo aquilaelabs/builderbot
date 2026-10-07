@@ -62,7 +62,7 @@ function rnLoadModelNow(name){
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {model: "", effort: "", git_name: "", git_email: "",
-                 node: "", nodes: "", reads: "", sees: "", build: "", test: "", outputs: "",
+                 node: "", nodes: "", reads: "", sees: "", reaches: "", build: "", test: "", outputs: "",
                  capture_days: "7", dev_keep: "3", gate: "", color: "", debug: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
@@ -111,6 +111,7 @@ function rnFillPrefs(p){
                nodes: (p?.prefs?.nodes || []).join(","),
                reads: (p?.prefs?.reads || []).join(","),
                sees: (p?.prefs?.sees || []).join(", "),
+               reaches: JSON.stringify(p?.prefs?.reaches || []),
                debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
@@ -137,6 +138,10 @@ function rnFillPrefs(p){
     ? "Your commits here use these instead of your Profile."
     : "Empty uses your Profile. Set these to commit here under a different name.";
   $("rnSees").value = rnPrefWas.sees;
+  // The last project's rows go before this one's draft is drawn, or the
+  // first draw would read them back into it.
+  $("rnReachRows").innerHTML = "";
+  rnReachDraft = JSON.parse(rnPrefWas.reaches || "[]");
   rnFillNode();
   rnFillPrefsRest(p);
   rnFillReads();
@@ -173,7 +178,7 @@ function rnFillNode(){
     sel.disabled = state?.can?.node === false;
     // The places a session is shown are places on a node, so the field is
     // there when a node is.
-    $("rnSeesField").hidden = wrap.hidden;
+    $("rnSeesField").hidden = $("rnReachField").hidden = wrap.hidden;
     // What each node carries, on its own option: the node does everything
     // for this project, so the only question left is what is installed on it.
     const tools = n => Object.keys(n.reported?.toolchains || {});
@@ -193,8 +198,71 @@ function rnFillNode(){
     // The closed picker is italic while the removed node is the one shown.
     sel.classList.toggle("removed", !!gone && sel.value === rnPrefWas.node);
     // ...and the field shows for it even when no other node is enrolled.
-    if (gone) wrap.hidden = $("rnSeesField").hidden = rnMode === "git";
+    if (gone) wrap.hidden = $("rnSeesField").hidden = $("rnReachField").hidden = rnMode === "git";
     rnFillNodesMore();
+}
+
+// Also reaches (the operator, 7 Oct): addresses a session here may still
+// reach where its node filters, each on the project's nodes ticked beside
+// it, every one when the project is on one node. A draft until Save; all
+// ticked is stored as none named, which also covers a node added later.
+let rnReachDraft = [];
+
+function rnReachNodes(){
+  const primary = $("rnNode").value;
+  const more = [...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value);
+  const ids = primary ? [primary, ...more.filter(x => x !== primary)] : [];
+  return ids.map(id => (nodesList || []).find(n => n.id === id) || {id, name: id});
+}
+
+// What is typed and ticked, back into the draft before a redraw or a save.
+function rnReachSync(){
+  const ns = rnReachNodes();
+  $("rnReachRows").querySelectorAll(".rnreach").forEach(row => {
+    const e = rnReachDraft[+row.dataset.i];
+    if (!e) return;
+    e.addr = row.querySelector("[data-reach]").value.trim();
+    const ticks = [...row.querySelectorAll("[data-reachnode]")];
+    if (ticks.length){
+      const on = ticks.filter(t => t.checked).map(t => t.value);
+      e.nodes = on.length === ns.length ? [] : on;
+    }
+  });
+}
+
+function rnDrawReach(focus){
+  if (rnMode === "git") return;
+  const box = $("rnReachRows");
+  if (box.childElementCount) rnReachSync();
+  const ns = rnReachNodes(), ro = state?.can?.node === false;
+  box.innerHTML = rnReachDraft.map((e, i) => `<div class="rnreach" data-i="${i}">
+      <input data-reach value="${esc(e.addr)}" autocomplete="off" spellcheck="false" placeholder="192.168.1.20 or 192.168.1.20:8080"
+        aria-label="an address a session here may reach"${ro ? " disabled" : ""}>
+      ${ns.length > 1 ? `<span class="rnreachnodes">${ns.map(n => `<label class="ndcap"><input type="checkbox" data-reachnode value="${esc(n.id)}"${
+        !e.nodes.length || e.nodes.includes(n.id) ? " checked" : ""}${ro ? " disabled" : ""}> ${esc(n.name)}</label>`).join("")}</span>` : ""}
+      ${ro ? "" : `<button type="button" class="eye rm" data-reachrm aria-label="remove this address" title="remove this address">${BIN}</button>`}
+    </div>`).join("");
+  $("rnReachAdd").hidden = ro;
+  box.querySelectorAll("[data-reachrm]").forEach(b => b.onclick = () => {
+    rnReachSync();
+    rnReachDraft.splice(+b.closest(".rnreach").dataset.i, 1);
+    // Read already: the rows on screen no longer line up with the draft.
+    $("rnReachRows").innerHTML = "";
+    rnDrawReach();
+  });
+  if (focus) box.querySelector(".rnreach:last-child [data-reach]")?.focus();
+  // Whether it does anything yet: only where a node filters (its row's switch).
+  const off = ns.filter(n => !n.config?.session_net).map(n => n.name);
+  $("rnReachHint").textContent = !ns.length ? ""
+    : off.length === ns.length ? `${off.join(", ")} lets sessions reach the whole network now, so this applies once it keeps each session to its own project's.`
+    : off.length ? `Applies on the nodes that keep sessions to their own network; ${off.join(", ")} does not yet.`
+    : "An address for the whole machine, or address:port for one service.";
+}
+
+// What Save sends: the rows with an address, in the stored shape.
+function rnReachNow(){
+  rnReachSync();
+  return rnReachDraft.filter(e => e.addr).map(e => ({addr: e.addr, nodes: [...e.nodes].sort()}));
 }
 
 // A listbox row: a checkbox, the name, and a quiet note at the right.
@@ -218,6 +286,8 @@ function rnFillNodesMore(){
   // Read-only without the `node` grant, like the primary above (R137 step 4).
   if (state?.can?.node === false) box.querySelectorAll("input").forEach(i => { i.disabled = true; });
   box.dataset.drawn = "1";
+  // Also reaches ticks among these, so it is drawn after them.
+  rnDrawReach();
 }
 
 // The projects a session here may read: every other project this account
@@ -1153,6 +1223,7 @@ async function rnSubmit(){
   const nodes = node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value)] : [];
   const reads = [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value);
   const sees = $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean);
+  const reaches = rnReachNow();
   // Sent only where it was drawn: an account without the debug grant is
   // never shown it, so it never sends it, and the server never asks.
   const dbg = $("rnDebugField").hidden ? null : rnDebugNow();
@@ -1175,6 +1246,7 @@ async function rnSubmit(){
   const verPol = $("rnGateVersion").value || "locked";
   const nodeChanged = node !== rnPrefWas.node || nodes.join(",") !== rnPrefWas.nodes || build !== rnPrefWas.build
     || reads.join(",") !== rnPrefWas.reads || sees.join(", ") !== rnPrefWas.sees
+    || JSON.stringify(reaches) !== rnPrefWas.reaches
     || (dbg && rnDebugKey(dbg.diag, dbg.log_from) !== rnPrefWas.debug)
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs || capture_days !== rnPrefWas.capture_days
     || dev_keep !== rnPrefWas.dev_keep
@@ -1269,7 +1341,7 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort, git_name, git_email,
-                              node, nodes, reads, sees, build, test, gate, color,
+                              node, nodes, reads, sees, reaches, build, test, gate, color,
                               ...(dbg || {}),
                               tests_in, test_change, gpu, reply, asks, devbuild, report, sign, keys, release,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),

@@ -191,6 +191,43 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
      '...and with none named the briefing names none');
 }
 
+// ---- what its sessions may still reach where the node filters (Also reaches, 7 Oct) ------
+// An address, or one with a port, on the project's nodes it names (every one
+// when it names none). devapp.mjs proves what the node is handed.
+{
+  const set = await api('/api/prefs', { project: 'alpha', reaches: ['192.168.1.50',
+    { addr: '192.168.1.60:8123', nodes: ['n_two'] }, { addr: '192.168.1.60:8123', nodes: ['n_one'] }] });
+  const kept = (await api('/api/status')).projects.find(p => p.name === 'alpha').prefs.reaches;
+  ok(set.status === 200 && JSON.stringify(kept) === JSON.stringify([{ addr: '192.168.1.50', nodes: [] },
+       { addr: '192.168.1.60:8123', nodes: ['n_one', 'n_two'] }]),
+     `a project's settings keep the addresses its sessions may reach, each once with its nodes (${JSON.stringify(kept)})`);
+  const bad = [['nas.lan', /not an address/], ['192.168.1.0/24', /a name or a range is not taken/],
+               ['127.0.0.1', /this machine/], ['10.231.0.4', /sessions themselves/]];
+  const got = [];
+  for (const [e, re] of bad){
+    const r = await api('/api/prefs', { project: 'alpha', reaches: ['192.168.1.50', e] });
+    if (!(r.status === 400 && re.test(r.error || ''))) got.push(`${e}: ${r.status} ${r.error || ''}`);
+  }
+  ok(got.length === 0, `a name, a range, this machine and the sessions' own range are refused by name${got.length ? ` (not: ${got.join(' | ')})` : ''}`);
+  const mine = await api('/api/prefs', { project: 'alpha', reaches: ['192.168.1.9'] }, asSession(tok));
+  ok(mine.status === 403, `a session cannot open its own network (${mine.status} ${mine.error})`);
+  // In the dialog: a row per address under Also sees, and Add an address.
+  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reaches?.length === 2, { timeout: 20000 });
+  await page.evaluate(() => renameProject('alpha'));
+  await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+  const rows = await page.$$eval('#rnReachRows .rnreach [data-reach]', es => es.map(e => e.value));
+  ok(rows.join() === '192.168.1.50,192.168.1.60:8123', `the dialog draws a row per address (${rows.join(', ')})`);
+  await page.evaluate(() => document.querySelector('details[data-sect="rn:runs"]').open = true);
+  await page.click('#rnReachAdd');
+  await page.fill('#rnReachRows .rnreach:last-child [data-reach]', '192.168.1.70');
+  await page.click('#rnReachRows .rnreach:first-child [data-reachrm]');
+  await saveDialog(page);
+  await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reaches?.length === 2, { timeout: 20000 });
+  const after = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.reaches.map(e => e.addr);
+  ok(after.join() === '192.168.1.60:8123,192.168.1.70', `...and Save keeps what the rows say, one removed and one added (${after.join(', ')})`);
+  await api('/api/prefs', { project: 'alpha', reaches: [] });
+}
+
 // ---- the briefing names them ------------------------------------------------------------
 const pre = await api('/api/preamble?project=alpha');
 ok(/This project reads beta: each is at \/workspace\/NAME, read-only, and `bb -p NAME` in front/.test(pre.text)

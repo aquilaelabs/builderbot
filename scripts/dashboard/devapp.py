@@ -111,6 +111,7 @@ project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
 project_nodes = None  # ...and the set it works on, primary first (R82)
 all_project_nodes = None  # () -> {project: [node ids]}, every project's set
 reads_of = None           # project -> [projects it reads] (prefs.reads), set by the server
+reaches_of = None         # (project, node) -> ["ADDR" or "ADDR:PORT"] its sessions there may reach (prefs.reaches_on)
 node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
 # The daemon is a sandbox VM and nothing else. The node record names the
@@ -2869,6 +2870,14 @@ def session_net_own(node_id):
         for other in nids:
             if other != node_id:
                 reach(o, project, other)
+        # ...and what its settings name besides (Also reaches, the operator,
+        # 7 Oct): a whole machine, or one port on it.
+        for e in (reaches_of(project, node_id) if reaches_of else []) or []:
+            addr, _, port = str(e).partition(":")
+            if port:
+                o["peers"].add((addr, int(port)))
+            else:
+                o["hosts"].add(addr)
         # ...and the containers of the projects this one READS (prefs.reads),
         # here and on this project's other nodes, so a session can open
         # their pages and photograph them: read-only is about the tree and

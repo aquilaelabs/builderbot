@@ -2822,6 +2822,7 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
 projects.prefs_mod = prefs
 # The session network reaches the containers of the projects a project reads.
 devapp.reads_of = lambda p: (prefs.get(p) or {}).get("reads") or []
+devapp.reaches_of = prefs.reaches_on
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
 projects.lock = _state_lock
 projects.take_on = users.take_on
@@ -5061,6 +5062,27 @@ class Handler(BaseHTTPRequestHandler):
         if req.get("sees") is not None and prefs.sees_changed(name, req.get("sees")) \
                 and self._refused("node", name):
             return
+        # ...and the addresses its sessions may still reach where the node
+        # filters their network (the operator, 7 Oct): a hole in a shared
+        # node's firewall, so whoever may set the node. The node hears it
+        # at once, since the sets it fills are rebuilt live.
+        reach = req.get("reaches") is not None and prefs.reaches_changed(name, req.get("reaches"))
+        if reach and self._refused("node", name):
+            return
+        # The node's own address is not one this opens: a session's traffic
+        # to its own node is judged on the way in, where only the controller
+        # and the resolvers pass, and its containers are reached as its own.
+        if reach and not NODES_OK:
+            ids = req.get("nodes") if isinstance(req.get("nodes"), list) else (prefs.get(name) or {}).get("nodes") or []
+            addr_of = {n: str(((nodes.node(n) or {}).get("agent") or {}).get("addr") or "") for n in ids}
+            got = req.get("reaches") if isinstance(req.get("reaches"), list) else str(req.get("reaches")).split(",")
+            for e in (prefs._reach_entry(x) for x in got):
+                on = e["nodes"] or ids
+                own = [n for n in on if addr_of.get(n) and addr_of[n] == e["addr"].split(":")[0]]
+                if own:
+                    name_of = (nodes.node(own[0]) or {}).get("name") or own[0]
+                    return self._json({"error": f"{e['addr']} is {name_of} itself: a session there reaches its "
+                                                "node's containers as its own, and nothing else on its node"}, 400)
         # ...and what its sessions may read for debugging (the machine logs
         # of named nodes, the controller's diagnostics): the debug grant's,
         # per project rather than per node (the operator, 6 Oct).
@@ -5074,7 +5096,10 @@ class Handler(BaseHTTPRequestHandler):
                 and str(req.get("devbuild")) != prefs.get(name)["devbuild"] \
                 and self._refused("docker-write"):
             return
-        return self._json(*prefs.dialog_save(name, req, users.uid_of(self._who())))
+        got = prefs.dialog_save(name, req, users.uid_of(self._who()))
+        if reach and not got[0].get("error"):
+            net_nudge()
+        return self._json(*got)
 
     def _nodes(self, req):
         """The Nodes tab's verbs. Thin on purpose: an administrator's, and

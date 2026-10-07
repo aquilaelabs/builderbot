@@ -255,6 +255,13 @@ def _clean(rec):
             # node is out of it unless it is named here, by whoever may set
             # the project's node.
             "sees": _sees_of(rec),
+            # Addresses a session here may still reach where its node keeps
+            # each session to its own project's network (R79): a machine or
+            # one port on it, named by the operator so a project need not be
+            # made to read another for its sessions to reach a service, each
+            # on the project's nodes it names, every one when it names none
+            # (the operator, 7 Oct). devapp.session_net_own hands them on.
+            "reaches": _reaches_of(rec),
             # What `bb build` / `bb test` run there, and the globs whose
             # matches come back into dist/.
             "build": str(rec.get("build") or "")[:500],
@@ -511,11 +518,74 @@ def _sees_of(rec):
     return out[:SEES_MAX]
 
 
+REACH = re.compile(r"((?:\d{1,3}\.){3}\d{1,3})(?::(\d{1,5}))?")
+REACH_MAX = 16
+
+
+def reaches_problem(entry):
+    """Why `entry` is not an address a session could be let reach, or ""."""
+    m = REACH.fullmatch(entry)
+    if not m:
+        return (f"{entry} is not an address: an IPv4 address, or one with a port "
+                "(192.168.1.20 or 192.168.1.20:8080); a name or a range is not taken")
+    parts = [int(x) for x in m.group(1).split(".")]
+    if any(x > 255 for x in parts):
+        return f"{entry} is not an address: each part is 0 to 255"
+    if parts[0] in (0, 127) or parts[0] >= 224:
+        return f"{entry} is not a machine a session can be let reach (this machine, multicast or reserved)"
+    if parts[:2] == [10, 231]:            # SESSNET_CIDR, the agent's
+        return f"{entry} is in the range sessions themselves are addressed from"
+    if m.group(2) and not 1 <= int(m.group(2)) <= 65535:
+        return f"{entry}: a port is 1 to 65535"
+    return ""
+
+
+def _reach_entry(e):
+    """{"addr", "nodes"} from what is stored or sent: a dict, or a bare
+    address, which applies on every node of the project."""
+    if isinstance(e, dict):
+        addr = str(e.get("addr") or "").strip()
+        nodes = e.get("nodes") if isinstance(e.get("nodes"), list) else []
+    else:
+        addr, nodes = str(e or "").strip(), []
+    return {"addr": addr, "nodes": sorted({str(n).strip()[:40] for n in nodes if str(n).strip()})[:16]}
+
+
+def _reaches_of(rec):
+    """The addresses this project's sessions may reach, as stored: one entry
+    per address, its nodes merged."""
+    got = rec.get("reaches") if isinstance(rec.get("reaches"), list) else []
+    out = {}
+    for e in got:
+        e = _reach_entry(e)
+        if not e["addr"] or reaches_problem(e["addr"]):
+            continue
+        if e["addr"] in out:
+            have = out[e["addr"]]["nodes"]
+            out[e["addr"]]["nodes"] = [] if not have or not e["nodes"] else sorted(set(have) | set(e["nodes"]))
+        else:
+            out[e["addr"]] = e
+    return list(out.values())[:REACH_MAX]
+
+
+def reaches_changed(project, reaches):
+    """Whether `reaches`, as the dialog sends it, is another list than the
+    one stored: the dialog sends every field on every save."""
+    got = reaches if isinstance(reaches, list) else str(reaches).split(",")
+    return _reaches_of({"reaches": got}) != ((get(project) or {}).get("reaches") or [])
+
+
+def reaches_on(project, node):
+    """The addresses this project's sessions on `node` may reach."""
+    return [e["addr"] for e in (get(project) or {}).get("reaches") or []
+            if not e["nodes"] or node in e["nodes"]]
+
+
 def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
-              release=None, log_from=None, diag=None, build_local=None):
+              release=None, log_from=None, diag=None, build_local=None, reaches=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -548,6 +618,17 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if len(set(got)) > SEES_MAX:
                 return {"error": f"a project is shown {SEES_MAX} places at most, not {len(set(got))}"}
             cur["sees"] = _sees_of({"sees": got})
+        if reaches is not None:
+            got = reaches if isinstance(reaches, list) else str(reaches).split(",")
+            got = [_reach_entry(e) for e in got]
+            got = [e for e in got if e["addr"]]
+            for e in got:
+                if reaches_problem(e["addr"]):
+                    return {"error": reaches_problem(e["addr"])}
+            if len({e["addr"] for e in got}) > REACH_MAX:
+                return {"error": f"a project's sessions may be let reach {REACH_MAX} addresses at most, "
+                                 f"not {len({e['addr'] for e in got})}"}
+            cur["reaches"] = _reaches_of({"reaches": got})
         if build is not None:
             cur["build"] = str(build)[:500].strip()
         if test is not None:
@@ -632,7 +713,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if (cur["node"] or cur["color"] or cur["reads"] or cur["sees"] or cur["log_from"] or cur["diag"]
+        if (cur["node"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
+                or cur["log_from"] or cur["diag"]
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
@@ -766,6 +848,7 @@ def dialog_save(name, req, uid):
                   dev_keep=req.get("dev_keep"), sign=req.get("sign"), keys=req.get("keys"),
                   release=req.get("release"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
+                  reaches=req.get("reaches"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
                   build_local=req.get("build_local") if isinstance(req.get("build_local"), bool) else None,
                   workspace=WORKSPACE)
