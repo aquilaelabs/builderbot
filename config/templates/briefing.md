@@ -152,9 +152,11 @@ The node is shared, and what a task leaves running holds memory, the card
 or disk that other sessions are waiting for. When a task or a batch of
 tasks is done, run `bb tidy`: it ends this session's emulator (through
 `bb emu stop`, so its state is saved), anything else of its own on the
-NVIDIA card, its Gradle and Kotlin daemons and the headless browsers a
-test left behind, and clears its own files from /tmp, which in a session
-is memory; then it says what came back. It touches only this session's
+NVIDIA card, its Gradle and Kotlin daemons, the headless browsers a test
+left behind and a server it put in the background and left listening (a
+dev server or a preview holds files on the projects share, which a later
+`npm ci` then cannot clear), and clears its own files from /tmp, which in
+a session is memory; then it says what came back. It touches only this session's
 own, never Claude Code's own folder in /tmp, and nothing a running
 process still has open. Keep something only with a reason the next task
 gives you (`bb tidy --keep emulator` when the next step tests on it,

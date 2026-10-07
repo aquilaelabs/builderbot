@@ -32,6 +32,10 @@ class Tidy(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        # Never the real /tmp: a test run going on this machine holds its lock there.
+        saved = tidy.TMP
+        self.addCleanup(setattr, tidy, "TMP", saved)
+        tidy.TMP = os.path.join(self.root, "no-tmp")
 
     def test_what_it_ends_and_what_it_spares(self):
         r = self.root
@@ -47,6 +51,40 @@ class Tidy(unittest.TestCase):
         got = sorted(tidy.processes(root=r, uid=UID, spare=set()))
         self.assertEqual(got, [(20, "qemu-system-x86", "emulator"), (30, "python3", "gpu"),
                                (40, "java", "gradle"), (50, "chrome", "browser")])
+
+    def test_a_server_left_listening_goes_and_a_running_ones_stays(self):
+        r = self.root
+        Path(r, "net").mkdir()
+        hdr = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+        Path(r, "net", "tcp").write_text(hdr + "   0: 0100007F:10E1 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000 0 5001\n"
+                                         + "   1: 0100007F:1F90 00000000:0000 01 00000000:00000000 00:00000000 00000000  1000 0 5002\n")
+        Path(r, "net", "tcp6").write_text(hdr + "   0: 00000000000000000000000000000000:1F40 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000 0 5003\n")
+        proc(r, 10, "node", "node astro.mjs preview --port 4321", ppid=1, fds=["socket:[5001]"])
+        proc(r, 11, "python3", "python3 -m http.server 8000", ppid=1, fds=["socket:[5003]"])
+        proc(r, 20, "bash", "bash run.sh")
+        proc(r, 21, "python3", "python3 server.py --port 9000", ppid=20, fds=["socket:[5003]"])
+        proc(r, 30, "node", "node client.mjs", ppid=1, fds=["socket:[5002]"])
+        proc(r, 40, "node", "node idle.mjs", ppid=1)
+        proc(r, 50, "python3", "python3 /tmp/bb-suite.x1/scripts/dashboard/server.py", ppid=1, fds=["socket:[5001]"])
+        proc(r, 9, "claude", "claude")
+        proc(r, 60, "node", "node vite.js --port 5173", ppid=9, fds=["socket:[5003]"])
+        got = sorted(tidy.processes(root=r, uid=UID, spare=set()))
+        self.assertEqual(got, [(10, "node", "server"), (11, "python3", "server"), (60, "node", "server")],
+                         "an orphan listening goes, adopted by pid 1 or by Claude Code; a running suite's server, "
+                         "the harness's own, a connection and an idle node stay")
+
+    def test_no_server_is_ended_while_a_test_run_holds_its_lock(self):
+        r, t = self.root, Path(self.root, "tmp", "dashboard-test.d")
+        t.mkdir(parents=True)
+        (t / "lock").write_text(str(os.getpid()))
+        saved = tidy.TMP, tidy.PROC
+        self.addCleanup(lambda: (setattr(tidy, "TMP", saved[0]), setattr(tidy, "PROC", saved[1])))
+        tidy.TMP, tidy.PROC = str(Path(r, "tmp")), "/proc"
+        Path(r, "net").mkdir()
+        Path(r, "net", "tcp").write_text("hdr\n   0: 0100007F:10E1 00000000:0000 0A 0 0 0 1000 0 7001\n")
+        proc(r, 10, "node", "node astro.mjs preview", ppid=1, fds=["socket:[7001]"])
+        self.assertTrue(tidy.suite_running(tidy.TMP))
+        self.assertEqual(tidy.processes(root=r, uid=UID, spare=set()), [])
 
     def test_a_crash_handler_goes_once_no_driven_browser_is_left(self):
         proc(self.root, 70, "chrome_crashpad", "chrome_crashpad_handler", ppid=1)

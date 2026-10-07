@@ -5,7 +5,9 @@ After a task or a batch of tasks, a session ends what it started and no
 longer needs and clears its scratch out of memory: its emulator (through bb
 emu stop, so its state is saved), anything else of its own holding the
 NVIDIA card, its Gradle and Kotlin daemons, the headless browsers a test
-left running, and its own files in /tmp, which in a session is memory
+left running, a server it started and left listening (a dev server put in
+the background, whose launcher has since exited), and its own files in
+/tmp, which in a session is memory
 (a tmpfs). What it keeps is named with --keep and a reason said in the
 reply: the next task uses the emulator, a daemon is warm for a build
 about to run (the operator, 6 Oct: one verb for every resource a task
@@ -17,7 +19,7 @@ the terminal server or anything this command runs under; never Claude
 Code's own folder in /tmp (the scratchpad, background commands' output);
 never a socket, and never a file a running process still has open.
 
-Kinds: emulator, gpu, gradle, browser, tmp.
+Kinds: emulator, gpu, gradle, browser, server, tmp.
 """
 import contextlib
 import os
@@ -27,7 +29,7 @@ import subprocess
 import sys
 import time
 
-KINDS = ("emulator", "gpu", "gradle", "browser", "tmp")
+KINDS = ("emulator", "gpu", "gradle", "browser", "server", "tmp")
 TMP = os.environ.get("BB_TIDY_TMP", "/tmp")
 PROC = os.environ.get("BB_TIDY_PROC", "/proc")
 # Never ended, whatever they hold: what this session runs inside of.
@@ -99,6 +101,54 @@ def kind_of(comm, args, fds, parent=""):
     return ""
 
 
+def listening(root=PROC):
+    """The inodes of every TCP socket listening in this session's network:
+    /proc/net/tcp and tcp6, state 0A."""
+    out = set()
+    for name in ("tcp", "tcp6"):
+        with contextlib.suppress(OSError):
+            with open(os.path.join(root, "net", name), encoding="utf-8") as f:
+                next(f, None)
+                for line in f:
+                    w = line.split()
+                    if len(w) > 9 and w[3] == "0A":
+                        out.add(w[9])
+    return out
+
+
+def orphaned(pid, root=PROC):
+    """Whether what started this process is gone: it was adopted by the
+    session's first process or by Claude Code, which adopts what a tool
+    call put in the background once that call's shell has ended."""
+    try:
+        with open(os.path.join(root, str(pid), "stat"), encoding="utf-8") as f:
+            ppid = int(f.read().rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError, IndexError):
+        return False
+    if ppid <= 1:
+        return True
+    info = proc_info(ppid, root)
+    return bool(info) and info[0] == "claude"
+
+
+def suite_running(tmp=None):
+    """Whether a dashboard test run holds its lock: a run's servers are
+    detached on purpose, and a tidy beside one would end them."""
+    tmp = tmp or TMP
+    for lock in (os.path.join(tmp, "dashboard-test.d", "lock"), os.path.join(tmp, "dashboard-test.lock")):
+        with contextlib.suppress(OSError, ValueError):
+            with open(lock, encoding="utf-8") as f:
+                pid = int(f.read().strip() or 0)
+            if pid and os.path.isdir(os.path.join(PROC, str(pid))):
+                return True
+    return False
+
+
+# Where the dashboard's own harness runs its servers from: never a server
+# somebody forgot.
+HARNESS = ("/bb-suite.", "/dashboard-test.")
+
+
 def fds_of(pid, root=PROC):
     out = []
     d = os.path.join(root, str(pid), "fd")
@@ -113,14 +163,29 @@ def processes(root=PROC, uid=None, spare=None):
     """[(pid, comm, kind)] of this account's processes a tidy would end."""
     uid = os.getuid() if uid is None else uid
     spare = ancestors(root=root) if spare is None else spare
+    socks = set() if suite_running() else listening(root)
     out = []
     for pid in os.listdir(root):
         if not pid.isdigit() or int(pid) in spare:
             continue
         info = proc_info(pid, root)
-        if not info or info[2] != uid or info[0] in SPARE:
+        if not info or info[2] != uid:
             continue
-        k = kind_of(info[0], info[1], fds_of(pid, root), parent_comm(pid, root))
+        fds = fds_of(pid, root)
+        # A server left listening (the operator, 7 Oct: an aquilaeLabs session's
+        # astro preview held files on the projects share until npm ci failed):
+        # listening, and its launcher gone. node is otherwise spared, since
+        # Claude Code's own helpers run as node; a node that is an orphan
+        # holding a port is a dev server somebody forgot.
+        serving = bool(socks) and not any(h in info[1] for h in HARNESS) and orphaned(pid, root) \
+            and any(f.startswith("socket:[") and f[8:-1] in socks for f in fds)
+        if info[0] in SPARE:
+            if info[0] == "node" and serving:
+                out.append((int(pid), info[0], "server"))
+            continue
+        k = kind_of(info[0], info[1], fds, parent_comm(pid, root))
+        if not k and serving:
+            k = "server"
         if k:
             out.append((int(pid), info[0], k))
     # A crash handler goes when no browser of this account's is left running
