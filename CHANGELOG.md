@@ -306,6 +306,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session may read and write its project's own memory without asking: the memory folder, which Claude Code keeps outside the project, is in each session's allowed directories (d8dc79e)
 - Gradle builds on the node's own disk, not the projects share, with a link at the usual build folder: a build no longer fails to delete a folder the daemon held open there. On by default, Build on the node's disk in a project's settings; a share failure's retry stops the Gradle daemon first (B439) (b5ce6fe)
 - On a phone the Artifacts view opens on its Files section, as on a desktop, rather than with every section shut (B523) (2b33779)
+- A dev instance rebuild is stamped with the commit it built, read on the node as the build runs, not the one current when it was queued (B479) (a58f68a)
 
 ### Security
 

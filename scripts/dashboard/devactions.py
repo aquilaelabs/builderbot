@@ -139,9 +139,16 @@ def _plan(project, instance, action, extra=None):
         # agent puts its directory in for {cdir}.
         ienv = {"BB_INSTANCE_ENV": "{cdir}/instance.env"}
     env = ienv | devapp._dev_data_env(project, instance) | devapp._build_env(project, instance)
-    up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800, "env": env}
+    # The commit and the time read where and when the build runs, not when
+    # it was queued: a rebuild that waited in the node's queue built the tree
+    # as it was then and was stamped with the commit from before (B479).
+    # The queued values stay as the fallback, for a source that is no git
+    # checkout.
+    stamped = ["sh", "-c", 'r="$(git -C "$1" rev-parse HEAD 2>/dev/null)" && export BB_BUILD_REV="$r"; '
+               'export BB_BUILD_AT="$(date -u +%Y-%m-%dT%H:%MZ)"; shift; exec "$@"', "sh", pdir]
+    up = {"name": "starting", "argv": stamped + base + ["up", "-d"], "timeout": 1800, "env": env}
     down = {"name": "stopping", "argv": base + ["down"], "timeout": 180, "env": ienv}
-    build = {"name": "building", "argv": base + ["build"], "timeout": 3600, "env": env}
+    build = {"name": "building", "argv": stamped + base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
     # would start an instance whose env does not answer the repo's new
     # settings stops after `down`, and the controller rewrites the env and
