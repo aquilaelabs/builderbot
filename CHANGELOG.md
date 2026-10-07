@@ -305,6 +305,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb emu start waits for a booting phone while it lives (up to ten minutes) rather than 180 seconds, and starts again in software once when hardware rendering fails as it boots; bb emu create names a dotted level builderbot-37.0 and gives a new phone 6 GB to install into (B530, B531) (7d05d25)
 - A session may read and write its project's own memory without asking: the memory folder, which Claude Code keeps outside the project, is in each session's allowed directories (d8dc79e)
 - Gradle builds on the node's own disk, not the projects share, with a link at the usual build folder: a build no longer fails to delete a folder the daemon held open there. On by default, Build on the node's disk in a project's settings; a share failure's retry stops the Gradle daemon first (B439) (b5ce6fe)
+- On a phone the Artifacts view opens on its Files section, as on a desktop, rather than with every section shut (B523) (2b33779)
 
 ### Security
 

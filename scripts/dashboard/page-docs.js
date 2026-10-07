@@ -211,6 +211,14 @@ function keepOpen(d){
 function oneOpen(g){
   if (!sectRuled(g)) return;
   const open = [...g.querySelectorAll("details.sect[open]")].filter(o => sectGroup(o) === g);
+  // None open, which a phone starts every view with: the section the view is
+  // opened for (`prime`, Artifacts' Files) opens, unless the person shut it
+  // themselves (B523: on a phone the view opened with everything shut).
+  if (!open.length){
+    const prime = [...g.querySelectorAll("details.sect[data-prime]")].find(o => sectGroup(o) === g);
+    if (prime && !(prime.dataset.sect && sectOpen[prime.dataset.sect] === false)) prime.open = true;
+    return;
+  }
   if (open.length < 2) return;
   const keep = open.find(o => o.hasAttribute("data-lead"))
     || open.find(o => o.dataset.sect && o.dataset.sect === sectLast.get(g))

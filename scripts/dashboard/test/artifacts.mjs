@@ -99,6 +99,22 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
   ok(s.includes('artifacts:files:open') && s.filter(x => x.endsWith(':open')).length === 1,
      `the files are their own section, the one open when the view shows (${s.join(' ')})`);
 }
+// ...and on a phone too, where every section starts shut: the view's own
+// opens rather than none (B523).
+{
+  const phone = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await phone.goto(URL);
+  await ready(phone);
+  await phone.evaluate(() => { try{ localStorage.clear(); }catch{} for (const k of Object.keys(sectOpen)) delete sectOpen[k]; });
+  await phone.evaluate(() => { setView("terminal"); openNotebook("alpha", "artifacts"); });
+  await phone.waitForSelector('.nb .nbview[data-view="artifacts"] details.sect[data-sect="artifacts:files"]', { timeout: 15000 });
+  await phone.waitForTimeout(500);
+  const p = await phone.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]
+    .filter(d => d.checkVisibility() && !d.parentElement.closest('details.sect')).map(d => `${d.dataset.sect}:${d.open ? 'open' : 'shut'}`));
+  ok(p.includes('artifacts:files:open') && p.filter(x => x.endsWith(':open')).length === 1,
+     `...on a phone as well, where every section starts shut (${p.join(' ')})`);
+  await phone.close();
+}
 
 // ---- a signed build (R106 step 4) --------------------------------------------
 {
