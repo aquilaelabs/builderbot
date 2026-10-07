@@ -440,7 +440,8 @@ ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
 # There is no "delete" here because there is no delete: a project is removed
 # by moving it to the trash and purging it, and both are `trash`.
 USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth", "runner",
-               "docker-write", "toolchains-write", "jobs", "lock", "command-pin", "version", "debug")
+               "docker-write", "toolchains-write", "jobs", "lock", "command-pin", "version", "debug",
+               "ftp")
 
 
 def sees_all(u):
@@ -565,6 +566,9 @@ def may(u, action, project=None):
     if action == "rules" and (u or {}).get("session"):
         return ("a session cannot change the rules it is being held to: they "
                 "are the operator's, written on the notebook's Briefing tab")
+    # ...nor hand out the project's files to people outside BuilderBot (R151).
+    if action == "ftp" and (u or {}).get("session"):
+        return "who may reach a project's files over FTP is a person's to set, not a session's"
     # ...and may not approve what it has waiting (roadmap #27): a session
     # signing off its own additions is the setting not existing.
     if action == "pending" and (u or {}).get("session"):
@@ -623,7 +627,9 @@ def may(u, action, project=None):
                 # Named only (roles.NAMED_ONLY): an administrator too is
                 # refused until a role grants it by name (the operator, 6 Oct).
                 "debug": "the debug options are BuilderBot's owner's, or a role's that "
-                         "grants debug by name on the Roles tab"}[action]
+                         "grants debug by name on the Roles tab",
+                "ftp": "file access over FTP is BuilderBot's owner's, or a role's that "
+                       "grants ftp by name on the Roles tab"}[action]
     if action == "admin":
         return "that is an administrator's"
     return ""

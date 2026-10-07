@@ -1186,6 +1186,45 @@
       "tool": "office"
     },
     {
+      "name": "ftp",
+      "label": "File access server (FTPS)",
+      "probe": "ftp",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/bb-ftpd"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "updatable": true,
+      "about": "What a project's File access setting runs on its node: bb-ftpd, one FTPS server per project on the port its settings choose, rooted at the project's tree. An account its settings give read or read and write signs in with its own BuilderBot name and password, which the server never sees the answer for: each login is asked of the controller. TLS is required, so the password never crosses the network as written. pyftpdlib and pyOpenSSL in uv's own Python, kept in this directory. About 60 MB.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "download": {
+          "resolver": "approximate",
+          "bytes": 60000000
+        },
+        "url": "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst/bin\" \"$dst/libexec\"; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\" \"$dst/venv\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1; \"$dst/libexec/uv\" venv -q --python 3.12 \"$dst/venv\"; \"$dst/libexec/uv\" pip install -q --python \"$dst/venv/bin/python\" pyftpdlib pyopenssl; test -f \"${BB_LIB:-}/bbftp.py\" || { echo \"bbftp.py is not beside bb: install this from bb toolchains\" >&2; exit 1; }; cp \"$BB_LIB/bbftp.py\" \"$dst/libexec/bbftp.py\"; printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"$here/../venv/bin/python\" \"$here/../libexec/bbftp.py\" \"$@\"\\n' > \"$dst/bin/bb-ftpd\"; chmod +x \"$dst/bin/bb-ftpd\"; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/venv/bin/python",
+          "-c",
+          "import pyftpdlib, OpenSSL"
+        ]
+      }
+    },
+    {
       "name": "language-servers",
       "label": "Language servers (Python, TypeScript)",
       "probe": "language-servers",

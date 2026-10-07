@@ -1807,10 +1807,45 @@ v = await seen();
 ok(v.onNone && !v.bad,
    '...and picking it settles the dialog, because nothing is missing any more');
 
+// File access over FTP (R151): the owner's section, staged until Save. alpha
+// has no node here, so turning it on is refused in the dialog by name; an
+// account's access saves on its own, and reads back on the next open.
+await page.click('#rnCancel');
+{
+  await page.evaluate(n => renameProject(n), 'alpha');
+  await page.waitForSelector('#rnmodal:not([hidden])');
+  await page.waitForSelector('#rnFtpField:not([hidden])', { timeout: 10000 });
+  await page.evaluate(() => { const d = document.querySelector('details[data-sect="rn:files"]'); d.open = true; });
+  const shut = await page.$eval('#rnFtp', e => ({ port: e.querySelector('.logdays').hidden,
+    people: e.querySelector('.rnftppeople').hidden }));
+  await page.click('#rnFtpOn');
+  const open = await page.$eval('#rnFtp', e => ({ port: e.querySelector('.logdays').hidden,
+    people: e.querySelectorAll('.rnftprow').length, noNode: /no node to run on/.test(e.textContent),
+    value: e.querySelector('#rnFtpPort').value }));
+  ok(shut.port && shut.people && !open.port && open.people >= 1 && open.noNode && open.value === '2121',
+     `the owner's File access section offers the port and each account once it is ticked, and says alpha has no node (${JSON.stringify(open)})`);
+  await page.click('#rnGo');
+  await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 10000 });
+  const err = await page.$eval('#rnErr', e => e.textContent);
+  ok(/no node to run its file access on/.test(err) && !await page.$eval('#rnmodal', e => e.hidden),
+     `...and Save refuses turning it on with no node, in the dialog (${err.slice(0, 70)})`);
+  const uid = await page.$eval('#rnFtp [data-ftpuid]', s => s.dataset.ftpuid);
+  await page.selectOption(`#rnFtp [data-ftpuid="${uid}"]`, 'rw');
+  const draft = await page.evaluate(() => rnFtpChange());
+  ok(draft?.on === true && draft.port === 2121 && draft.access?.[uid] === 'rw',
+     `...and what Save sends is the switch, the port and the access picked (${JSON.stringify(draft)})`);
+  await page.click('#rnCancel');
+  const set = await api('/api/project-ftp', { action: 'set', project: 'alpha', access: { [uid]: 'r' } });
+  const back = await api('/api/project-ftp', { project: 'alpha' });
+  ok(set.status === 200 && back.body.on === false && back.body.people.find(p => p.uid === uid)?.access === 'r',
+     `...and an account's access is kept while it is off (${JSON.stringify(back.body.people)})`);
+  await api('/api/project-ftp', { action: 'set', project: 'alpha', access: { [uid]: '' } });
+}
+
 // What Claude runs on here, back through the gear. Per project, and applied
 // when a session starts rather than typed into a running one, so the dialog's
 // job is to say which of those two you are doing.
-await page.click('#rnCancel');
+await page.evaluate(() => { if (!document.getElementById('rnmodal').hidden) closeRename(); });
 await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnTitle', e => e.textContent.trim()) === 'alpha',

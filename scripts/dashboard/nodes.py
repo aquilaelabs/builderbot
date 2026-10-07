@@ -2005,6 +2005,8 @@ idle_minutes = lambda: 0            # noqa: E731  (idle.minutes, injected by ser
 # their own project's network, and what each project owns there
 # (devapp.session_net_own, joined by server.py).
 session_net_for = lambda nid: None  # noqa: E731
+# A project's file access (ftp.for_node, R151): the servers this node runs.
+ftp_for = lambda nid: []  # noqa: E731
 # server.session_tokens_for: fresh credentials for the Claude sessions alive
 # on one node, so a session idle past its token's life is not locked out of
 # its own controller (R27). Injected, because minting is users.py's and the
@@ -2144,7 +2146,10 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             # Whether each session here is kept to its own project's network,
             # and what each project owns here (R79). The node keeps it, so it
             # holds while this controller is down.
-            "session_net": session_net_for(nid)}
+            "session_net": session_net_for(nid),
+            # The FTPS servers this node runs for its projects' file access
+            # (R151): one per project, rooted at its tree.
+            "ftp": ftp_for(nid)}
 
 
 def store_merge(census, free, totals):

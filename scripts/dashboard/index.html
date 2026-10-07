@@ -1397,6 +1397,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .modal .hint.ok{color:var(--accent)}
 #rnTestField .setrow{align-items:center;flex-wrap:nowrap}
 #rnTestField .setrow .hint{flex:1 1 auto;min-width:0}
+/* File access (R151): one row per account, its name and its access. */
+#rnFtp .logdays{flex-wrap:nowrap}
+#rnFtp .logdays input[type=number]{width:7em;flex:0 0 auto;text-align:center}
+.rnftppeople{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.rnftprow{display:flex;align-items:center;gap:8px}
+.rnftprow .grow{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.modal .rnftprow select{width:auto;flex:0 0 12em}
 #rnTestOut ul{margin:4px 0 0;padding-left:18px}
 #rnTestOut .sub{color:var(--dim);margin-top:4px}
 /* A field whose value cannot work. Only the border moves: tinting the text
@@ -4164,6 +4171,16 @@ body.booting .pane>.loading{margin:auto}
           <option value="only">only in its dev instance, never on the node</option>
         </select>
       </div>
+    </div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:files"><summary><span class="t">File access</span></summary><div class="body">
+    <!-- The project's tree over FTPS from outside BuilderBot (R151, ftp.py):
+         on, the port, and each account's access. Set by an account with the
+         ftp grant (the owner, until a role names it); anybody else sees
+         whether it is on and where. Staged until Save, like the rest. -->
+    <div class="field" id="rnFtpField" hidden>
+      <label id="rnFtpLabel">Over FTP<span class="help" data-tip="an FTPS server on the project's node, rooted at its tree; each account signs in with its own BuilderBot name and password" tabindex="0">?</span></label>
+      <div id="rnFtp" role="group" aria-labelledby="rnFtpLabel"></div>
     </div>
     </div></details>
     <details class="sect rngroup" data-sect="rn:sees"><summary><span class="t">What a session sees</span></summary><div class="body">

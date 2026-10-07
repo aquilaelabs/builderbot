@@ -37,6 +37,7 @@ CAPS = {
     "git-auth": ("projects", "change how a project authenticates to its remote"),
     "docker-write": ("projects", "start, stop and rebuild containers"),
     "command-pin": ("projects", "move the pinned commands, one set for everybody"),
+    "ftp": ("projects", "turn on a project's file access over FTP, its port, and who may sign in to it"),
     "node": ("nodes", "set which node a project builds on"),
     "toolchains-write": ("nodes", "install and remove toolchains on a node"),
     "jobs": ("nodes", "run a command on a node as a job"),
@@ -48,8 +49,9 @@ CAPS = {
 }
 # Granted by name only (the operator, 6 Oct): `*` does not reach these, so
 # the built-in admin and a role that grants everything leave them out, and
-# only the owner has them until a role names them.
-NAMED_ONLY = frozenset({"debug"})
+# only the owner has them until a role names them. ftp too (R151): who may
+# reach a project's files from outside BuilderBot is the owner's to hand on.
+NAMED_ONLY = frozenset({"debug", "ftp"})
 # The capabilities whose scope is over NODES (step 3): every node, the
 # nodes of the account's projects, or named ones.
 NODE_CAPS = frozenset(c for c, (g, _) in CAPS.items() if g == "nodes")

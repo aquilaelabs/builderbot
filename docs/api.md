@@ -68,6 +68,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/lock` | prefix | `_lock` | Lock or unlock a project: keep it, stop Claude running in it (projects.lock_verb). | refused: lock |
 | POST | `/api/project-pin` | prefix | `_project_pin` | Pin or unpin a project: whether the sidebar card shows it (projects.pin). |  |
 | POST | `/api/project-auth` | prefix | `_project_auth` | What credential this project's remote uses, and what else it could: projects.auth_answer. | refused: rename |
+| POST | `/api/project-ftp` | exact | `_project_ftp` | A project's file access over FTP (ftp.py, R151): what it is, for whoever sees the project, and a change, for an account with the ftp grant (named only: the owner, until a role names it). | refused: ftp |
 | POST | `/api/container` | prefix | `_container` | A container from a compose file written here, with no project: containers.tab_verb. | refused: docker-write |
 | POST | `/api/dockerctl` | prefix | `_docker_ctl` | Start, stop, restart or read the log of ONE container on a node. | refused: docker-write |
 | POST | `/api/rename` | prefix | `_rename` | Rename a project: projects.rename, once project_busy says nothing holds it. | refused: rename |

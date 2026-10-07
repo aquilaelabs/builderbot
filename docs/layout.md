@@ -43,6 +43,7 @@ scripts/
   lib/cilog-hosted.py            `bb ci-log` for a project on GitHub's own runners: the runs and a run's failed jobs, from the controller
   lib/docs.py                    `bb tool docs`: a document as Markdown (markitdown) or its pages as pictures (PyMuPDF), run with the documents toolchain's Python
   lib/poppler.py                 the pdftoppm and pdfinfo Claude Code's PDF reader asks for, drawn with PyMuPDF; the documents toolchain installs them
+  lib/bbftp.py                   bb-ftpd: one project's tree over FTPS, each login asked of the controller through the agent; the ftp toolchain installs it (R151)
   lib/gradle-local-build.gradle  the Gradle init script bb-tty puts in a project's Gradle home: its build folders on the node's disk, linked from app/build (B439)
   lib/gpu.py                     `bb gpu`: the node's NVIDIA card from where a session stands, and a turn on it for a heavy job
   lib/tidy.py                    `bb tidy`: what a task left holding (its emulator, the card, build daemons, browsers, /tmp) given back
@@ -125,6 +126,7 @@ scripts/
     names.py                     what things are called: a project, a tmux session, a project's Claude session
     projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
+    ftp.py                       a project's file access over FTP: on, the port, each account's access, and the login a node relays (R151)
     git.py                       the notebook's Git view: the repository read out, and its writes
     codebase.py                  the code base counted, by language, for the Briefing tab
     logs.py                      what is kept, for how long, and the downloads behind the gear menu

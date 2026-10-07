@@ -3004,6 +3004,16 @@ nodes.project_nodes = lambda: {p: (v or {}).get("node") or ""
 devapp.all_project_nodes = lambda: {p: (v or {}).get("nodes") or []
                                     for p, v in prefs.all_projects(WORKSPACE).items()}
 
+# A project's file access over FTP (R151): the store and its checks are
+# ftp.py's, the server is the node's (bb-ftpd from the ftp toolchain), and a
+# login is relayed by the agent to channel's ftp-auth.
+import ftp                                                       # noqa: E402
+ftp.configure(state=STATE, workspace=WORKSPACE, write_json=write_json, users=users,
+              audit=lambda who, act, target, params: db.audit(who, act, target, params),
+              project_node=lambda p: prefs.get(p)["node"] or "",
+              ask_hello=lambda nid: None if NODES_OK else nodes.ask_hello(nid))
+nodes.ftp_for = ftp.for_node
+
 # The controller's diagnostics: read-only, for an administrator and, behind
 # the debug switch and a node's tick, an administrator's session (diag.py).
 import diag                                                      # noqa: E402
@@ -3466,6 +3476,7 @@ POST_ROUTES = (
     # definition quietly replaced the earlier one in the class body too.
     ("prefix", "/api/project-pin", "_project_pin"),
     ("prefix", "/api/project-auth", "_project_auth"),
+    ("exact", "/api/project-ftp", "_project_ftp"),
     ("prefix", "/api/container", "_container"),
     ("prefix", "/api/dockerctl", "_docker_ctl"),
     ("prefix", "/api/rename", "_rename"),
@@ -6628,6 +6639,26 @@ class Handler(BaseHTTPRequestHandler):
         if req.get("action") == "test":
             return self._json(*projects.auth_test(name, str(req.get("token") or "")))
         return self._json(*projects.auth_answer(name))
+
+    def _project_ftp(self, req):
+        """A project's file access over FTP (ftp.py, R151): what it is, for
+        whoever sees the project, and a change, for an account with the ftp
+        grant (named only: the owner, until a role names it)."""
+        name = field(req, "project")
+        if self._not_project(name):
+            return None
+        me = self._who() or {}
+        may_set = not users.may(me, "ftp", name)
+        if req.get("action") == "set":
+            if self._refused("ftp", name):
+                return None
+            return self._json(*ftp.save(name, req, me.get("name") or "?"))
+        # Who has access, and the port, are the setter's to know: anybody
+        # else learns only whether it is on.
+        v = ftp.view(name, may_set)
+        if not may_set:
+            v = {"on": v["on"], "may_set": False, "status": v["status"], "node": v["node"], "port": v["port"]}
+        return self._json(v)
 
     def _project_pin(self, req):
         """Pin or unpin a project: whether the sidebar card shows it

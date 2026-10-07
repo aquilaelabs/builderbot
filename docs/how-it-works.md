@@ -3534,6 +3534,40 @@ from which build, and gives the whole fingerprint with **Copy for F-Droid**,
 which copies it the way F-Droid's `AllowedAPKSigningKeys` takes it (lowercase,
 no colons). A signed file is not offered Sign again.
 
+### File access over FTP
+
+A project's tree can be reached from outside BuilderBot with an FTP client
+(R151, the operator, 7 Oct): the **File access** section of its settings
+turns it on, picks the port, and gives each account that sees the project
+**Read** or **Read and write**. Who may set it is the role grant `ftp`, which
+is named only: the owner has it, and an administrator does not until a role
+on the Roles tab names it. A session never may. Anybody else on the project
+is shown only that it is on, and where.
+
+The server is the project's primary node's: the **ftp** toolchain's
+`bb-ftpd` (pyftpdlib), one per project, which the agent starts from what
+hello hands it, as the session account, rooted at `/workspace/NAME`, so a
+file written over FTP is owned as a session's would be. It listens on the
+port and uses the nine after it for passive data, which is why two projects
+on one node are kept ten ports apart; the first free block from 2121 is
+offered. TLS is required on the control and the data connection (FTPS,
+explicit), because the password is the account's own BuilderBot password and
+plain FTP would carry it as written. The certificate is made on the node the
+first time and kept in the session account's home, so a client asks to trust
+it once.
+
+`bb-ftpd` knows nobody's password. Each login goes up its stdout to the
+agent, which asks the controller's `ftp-auth`, and the answer goes back down
+its stdin: the name and password checked as the dashboard's sign-in checks
+them, then the access the project's settings give that account, and none for
+an account since taken off the project. Nothing is cached, so an access taken
+away holds from the next login. Ten failed logins from one address in five
+minutes refuse that address for the rest of the window, and every login,
+failed or not, is in the audit log. The project's `.git` is read-only over
+FTP whatever the access, and nothing outside the tree is reachable, a
+symlink pointing out of it included. A node without the toolchain says so
+in red under the section, as does a port something else holds.
+
 ### Locking a project
 
 The **padlock** on a project row is the one gate there is, and it carries the

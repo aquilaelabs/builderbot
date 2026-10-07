@@ -285,6 +285,8 @@ _KEYED = {
     # (membership.py).
     "project-owners.json": ["projects"],
     "invites.json":       ["projects"],
+    # Its file access over FTP: on, the port, who (ftp.py).
+    "ftp.json":           [None],
 }
 
 # Files holding a flat list of project names.

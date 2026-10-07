@@ -512,6 +512,7 @@ function renameProject(name, mode = "all"){
   rnLoadAuth(name);
   rnLoadSigning(name);
   rnLoadPeople(name);
+  rnLoadFtp(name);
   rnFillPrefs(p);
   // The sessions at the foot: the gear's door, and an administrator's.
   $("rnSessField").hidden = true;
@@ -630,6 +631,88 @@ async function rnSavePeople(name){
   const j = await (await postJSON("/api/members", {action: "set", project: name, owner,
                                                    ...(only !== undefined ? {invite_only: only} : {})})).json();
   if (j.offered) notify(`${name}: offered to ${j.offered}, who becomes its owner on accepting from their bell`);
+  return j.error || "";
+}
+
+// ---- file access over FTP (R151) ----
+// The project's tree over FTPS on its node, for the accounts given read or
+// read and write (ftp.py). Who may set it is the ftp grant; anybody else is
+// shown whether it is on and where. On, the port and each account's access
+// are a draft until Save.
+const RN_FTP_ACCESS = [["", "No access"], ["r", "Read"], ["rw", "Read and write"]];
+let rnFtp = null, rnFtpDraft = {};
+
+function rnLoadFtp(name){
+  rnFtp = null; rnFtpDraft = {};
+  $("rnFtpField").hidden = true;
+  if (rnMode === "git") return;
+  postJSON("/api/project-ftp", {project: name})
+    .then(r => r.json())
+    .then(j => { if (rnFor !== name || j.error) return; rnFtp = j; rnDrawFtp(); })
+    .catch(() => {});
+}
+
+function rnFtpWhere(v){
+  const st = v.status || {};
+  return st.addr && st.port ? `${st.addr}:${st.port}` : "";
+}
+
+function rnDrawFtp(){
+  if (!rnFtp || rnMode === "git") return;
+  const v = rnFtp, d = rnFtpDraft;
+  const on = d.on ?? v.on, st = v.status || {}, where = rnFtpWhere(v);
+  const box = $("rnFtp");
+  if (!v.may_set){
+    $("rnFtpField").hidden = !v.on;
+    box.innerHTML = `<div>On${where ? `, at ${esc(where)}` : ""}.</div>
+      <div class="hint">Sign in with your BuilderBot name and password over FTPS, if you were given access.
+        Who may is set by BuilderBot's owner, or a role that grants ftp.</div>`;
+    return;
+  }
+  $("rnFtpField").hidden = false;
+  const port = d.port ?? v.port;
+  const status = !v.on ? ""
+    : st.up ? `<div class="hint">Running at ${esc(where)}. Use an FTPS client (FTP over TLS, explicit) and
+        your BuilderBot name and password. The certificate is the node's own, so the client asks to trust it once.</div>`
+    : st.why ? `<div class="hint bad">Not running: ${esc(st.why)}</div>`
+    : `<div class="hint">Starting on its node.</div>`;
+  box.innerHTML = `
+    <label class="ndcap"><input type="checkbox" id="rnFtpOn"${on ? " checked" : ""}> Serve this project's files over FTPS</label>
+    ${v.node || !on ? "" : `<div class="hint bad">It has no node to run on: pick one under Where it runs.</div>`}
+    <div class="logdays setrow"${on ? "" : " hidden"}><label class="ndcap" for="rnFtpPort">Port<span class="help" data-tip="the port and the ${v.span - 1} after it, which carry the data; projects on one node are kept ${v.span} ports apart" tabindex="0">?</span></label>
+      <input id="rnFtpPort" type="number" min="1024" max="65526" step="1" inputmode="numeric" value="${esc(String(port))}" aria-label="the port its FTP server listens on">
+      <span class="dim">and the ${v.span - 1} after it</span></div>
+    ${status}
+    <div class="rnftppeople"${on ? "" : " hidden"}>${v.people.map(p => {
+      const a = d.access?.[p.uid] ?? p.access;
+      return `<div class="rnftprow"><span class="grow">${esc(p.name)}</span>
+        <select data-ftpuid="${esc(p.uid)}" aria-label="${esc(p.name)}'s file access">${RN_FTP_ACCESS.map(([k, w]) =>
+          `<option value="${k}"${k === a ? " selected" : ""}>${w}</option>`).join("")}</select></div>`;
+    }).join("")}</div>`;
+  $("rnFtpOn").onchange = e => { d.on = e.target.checked; rnDrawFtp(); };
+  const pi = $("rnFtpPort");
+  if (pi) pi.oninput = () => { d.port = pi.value.trim(); };
+  box.querySelectorAll("[data-ftpuid]").forEach(sel => sel.onchange = () => {
+    d.access = {...(d.access || {}), [sel.dataset.ftpuid]: sel.value};
+  });
+}
+
+// What the draft changes, or null when nothing.
+function rnFtpChange(){
+  if (!rnFtp?.may_set) return null;
+  const d = rnFtpDraft, v = rnFtp, out = {};
+  if (d.on !== undefined && d.on !== v.on) out.on = d.on;
+  if (d.port !== undefined && String(d.port) !== String(v.port)) out.port = d.port;
+  // A port shown for a project turned on now is its offer, and is sent.
+  if (out.on && out.port === undefined) out.port = v.port;
+  const acc = Object.fromEntries(Object.entries(d.access || {})
+    .filter(([uid, a]) => a !== (v.people.find(p => p.uid === uid)?.access ?? "")));
+  if (Object.keys(acc).length) out.access = acc;
+  return Object.keys(out).length ? out : null;
+}
+
+async function rnSaveFtp(name, change){
+  const j = await (await postJSON("/api/project-ftp", {action: "set", project: name, ...change})).json();
   return j.error || "";
 }
 
@@ -1222,6 +1305,11 @@ async function rnSubmit(){
       const j = await (await postJSON("/api/version", {project: name, action: "policy", policy: verPol})).json();
       if (j.error) return stop(j.error);
     }
+    const ftpChange = rnFtpChange();
+    if (ftpChange){
+      const why = await rnSaveFtp(name, ftpChange);
+      if (why) return stop(why);
+    }
     if (signDraft.length){
       const why = await rnSaveSigning(name);
       if (why) return stop(why);
@@ -1229,7 +1317,7 @@ async function rnSubmit(){
     }
     if (!needRename){
       closeRename();
-      if (!prefChanged && !nodeChanged && !signDraft.length && !peopleChanged
+      if (!prefChanged && !nodeChanged && !signDraft.length && !peopleChanged && !ftpChange
           && verPol === rnPrefWas.version) return;   // nothing changed
       refresh();
       return;
