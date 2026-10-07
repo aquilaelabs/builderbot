@@ -3767,8 +3767,13 @@ A role is a **scope** (**Global**, which holds everywhere and is the only one
 that reaches the machinery, or **the user's projects**) and, per area,
 **Read** and **Write**: Projects, Project settings, Releases and versions, Git
 authentication, File access (FTP), Containers and Terminal on a project;
-Nodes, Toolchains, Jobs, CI runner, Accounts and roles and Controller beside
-them. Write needs Read, and an area without Read is not shown. Terminal's
+Nodes, Toolchains, Jobs, New projects, CI runner, Accounts and roles and
+Controller beside them. A Global role may name the nodes it holds on (**On
+these nodes**, none ticked being every node) for Nodes, Toolchains, Jobs and
+New projects: a role with New projects to write on bb-sandbox alone lets an
+account make projects there and nowhere else, a project made elsewhere or on
+no node being refused by name, and the account owns what it makes, so it
+holds PROJECT_owner on it. Write needs Read, and an area without Read is not shown. Terminal's
 Read is the shielded Claude console and its Write the full tmux shell, which
 reaches every account's files on its node.
 

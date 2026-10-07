@@ -81,6 +81,24 @@ class Model(unittest.TestCase):
         self.assertFalse(self.g(o, "jobs"), "read is not write")
         self.assertEqual(roles.summary(o), {"nodes": "write", "jobs": "read"})
 
+    def test_a_global_role_may_hold_its_node_areas_on_named_nodes(self):
+        # The operator, 7 Oct: making projects on one node, and node areas
+        # scoped as they were before R152.
+        r = roles.set_role("creator", "global", {"newprojects": "write", "toolchains": "write", "controller": "read"},
+                           nodes=["n1"])
+        self.assertEqual(r["nodes"], ["n1"])
+        c = {"name": "c", "role": "user", "roles": ["creator"], "projects": []}
+        self.assertTrue(roles.granted(c, "create", node="n1"))
+        self.assertFalse(roles.granted(c, "create", node="n2"), "not a node it names")
+        self.assertTrue(roles.granted(c, "create"), "at all: somewhere")
+        self.assertTrue(roles.granted(c, "toolchains-write", node="n1"))
+        self.assertFalse(roles.granted(c, "toolchains-write", node="n2"))
+        self.assertEqual(roles.nodes_for(c, "newprojects"), ["n1"])
+        self.assertIsNone(roles.nodes_for(ADMIN, "newprojects"), "admin: every node")
+        self.assertEqual(roles.CAP_AREA["create"], ("newprojects", "write"), "its own area, not Controller's")
+        self.assertEqual(roles.set_role("p", "projects", {"projects": "read"}, nodes=["n1"])["nodes"], [],
+                         "only a Global role names nodes")
+
     def test_a_role_given_on_one_project_holds_there_alone(self):
         roles.set_role("releaser", "projects", {"projects": "read", "releases": "write"})
         u = {"name": "r", "role": "user", "roles": [], "projects": ["alpha", "beta"],

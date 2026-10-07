@@ -79,8 +79,12 @@ AREAS = (
     ("jobs", "Jobs", "global", "the Jobs tab", "run a command on a node"),
     ("runner", "CI runner", "global", "the runner tab", "install and configure runners"),
     ("accounts", "Accounts and roles", "global", "the Users and Roles tabs", "add accounts, give roles"),
-    ("controller", "Controller", "global", "settings and diagnostics", "settings, debug, pinned commands, new projects"),
+    ("newprojects", "New projects", "global", "the nodes a project may be made on", "make a project, and own it"),
+    ("controller", "Controller", "global", "settings and diagnostics", "settings, debug, pinned commands"),
 )
+# The areas a Global role may hold on named nodes alone (its `nodes`, none
+# named being every node): what reaches a machine (the operator, 7 Oct).
+NODE_AREAS = frozenset({"nodes", "toolchains", "jobs", "newprojects"})
 AREA_KEYS = tuple(a[0] for a in AREAS)
 PROJECT_AREAS = frozenset(a[0] for a in AREAS if a[2] == "project")
 LEVELS = ("read", "write")
@@ -96,16 +100,16 @@ CAP_AREA = {
     "terminal": ("terminal", "write"),
     "node": ("nodes", "write"), "toolchains-write": ("toolchains", "write"), "jobs": ("jobs", "write"),
     "runner": ("runner", "write"),
-    "command-pin": ("controller", "write"), "create": ("controller", "write"),
+    "command-pin": ("controller", "write"), "create": ("newprojects", "write"),
     "admin": ("accounts", "write"), "debug": ("controller", "write"),
     "ftp": ("settings", "write"),
 }
 
 _ALL = {a: "write" for a in AREA_KEYS}
 BUILTIN = {
-    "owner": {"scope": "global", "perms": dict(_ALL), "builtin": True,
+    "owner": {"scope": "global", "perms": dict(_ALL), "builtin": True, "nodes": [],
               "note": "the account every other rule is a guard rail around"},
-    "admin": {"scope": "global", "perms": dict(_ALL), "builtin": True,
+    "admin": {"scope": "global", "perms": dict(_ALL), "builtin": True, "nodes": [],
               "note": "everything the owner may do, except change the owner's account or roles"},
 }
 # There is no built-in user role (the operator, 7 Oct): an account on `user`
@@ -161,8 +165,11 @@ def _clean(r):
     r = r if isinstance(r, dict) else {}
     if "grants" in r and "perms" not in r:
         r = dict(r, **_from_grants(r.get("grants")))
-    return {"scope": r.get("scope") if r.get("scope") in ROLE_SCOPES else "projects",
-            "perms": _perms(r.get("perms")), "builtin": False, "note": str(r.get("note") or "")[:200]}
+    scope = r.get("scope") if r.get("scope") in ROLE_SCOPES else "projects"
+    nodes = r.get("nodes") if isinstance(r.get("nodes"), list) and scope == "global" else []
+    return {"scope": scope, "perms": _perms(r.get("perms")), "builtin": False,
+            "note": str(r.get("note") or "")[:200],
+            "nodes": sorted({str(n)[:40] for n in nodes if str(n).strip()})[:64]}
 
 
 def _load():
@@ -175,7 +182,7 @@ def _load():
 
 
 def _save(custom):
-    write_json(FILE, {"roles": {n: {k: r[k] for k in ("scope", "perms", "note")} for n, r in custom.items()}})
+    write_json(FILE, {"roles": {n: {k: r.get(k) for k in ("scope", "perms", "note", "nodes")} for n, r in custom.items()}})
 
 
 def ensure_owner_role(project):
@@ -203,16 +210,17 @@ def get(name):
     return all_roles().get(str(name or ""))
 
 
-def set_role(name, scope="projects", perms=None, note="", grants=None):
+def set_role(name, scope="projects", perms=None, note="", grants=None, nodes=None):
     """Make or change a role; owner and admin are built in and refused.
-    `grants` is the shape from before R152, converted."""
+    `grants` is the shape from before R152, converted. `nodes`, for a Global
+    role, limits its node areas to those nodes (NODE_AREAS)."""
     name = str(name or "").strip()
     if not NAME_RE.match(name):
         return {"error": "a role's name is letters, digits, spaces and . _ -, up to 40"}
     if name in BUILTIN:
         return {"error": f"{name} is built in and not changed"}
     r = _clean({"grants": grants} if grants is not None and perms is None else
-               {"scope": scope, "perms": perms or {}})
+               {"scope": scope, "perms": perms or {}, "nodes": nodes or []})
     r["note"] = str(note or "")[:200]
     if r["scope"] == "projects" and any(a not in PROJECT_AREAS for a in r["perms"]):
         bad = ", ".join(a for a in r["perms"] if a not in PROJECT_AREAS)
@@ -222,7 +230,7 @@ def set_role(name, scope="projects", perms=None, note="", grants=None):
         d = _load()
         d[name] = r
         _save(d)
-    return {"ok": True, "name": name, "scope": r["scope"], "perms": r["perms"]}
+    return {"ok": True, "name": name, "scope": r["scope"], "perms": r["perms"], "nodes": r["nodes"]}
 
 
 def remove(name):
@@ -273,7 +281,7 @@ def project_roles_of(u, project):
     return [str(r) for r in got] if isinstance(got, list) else []
 
 
-def level_of(u, area, project=None, on_project=None):
+def level_of(u, area, project=None, on_project=None, node=None):
     """The level this account holds on `area` ("", read or write), on
     `project` where one is named. A Global role holds everywhere; one on the
     user's projects on each project the account is on (`on_project`); one
@@ -292,6 +300,10 @@ def level_of(u, area, project=None, on_project=None):
         if not r:
             continue
         if r["scope"] == "global":
+            # A node area held on named nodes holds there alone; with no
+            # node asked about it answers for "anywhere".
+            if area in NODE_AREAS and r.get("nodes") and node is not None and node not in r["nodes"]:
+                continue
             take(r)
         elif area in PROJECT_AREAS and (project is None or (on_project and on_project(u, project))):
             take(r)
@@ -315,8 +327,23 @@ def granted(u, action, project=None, on_project=None, node=None, nodes_of=None):
     # An action not listed on its own (roadmap, bugs, pending, a project's
     # settings saved) is work on the project, as before R152.
     area, need = CAP_AREA.get(action, ("projects", "write"))
-    lvl = level_of(u, area, project if area in PROJECT_AREAS else None, on_project)
+    lvl = level_of(u, area, project if area in PROJECT_AREAS else None, on_project,
+                   node if area in NODE_AREAS else None)
     return lvl == "write" or (need == "read" and lvl == "read")
+
+
+def nodes_for(u, area):
+    """The nodes an account holds `area` on through its Global roles: None
+    for every node, else the ones named (an empty list: none)."""
+    known, out = all_roles(), set()
+    for rn in roles_of(u):
+        r = known.get(rn)
+        if not r or r["scope"] != "global" or not r["perms"].get(area):
+            continue
+        if not r.get("nodes") or rn in BUILTIN:
+            return None
+        out |= set(r["nodes"])
+    return sorted(out)
 
 
 def summary(u):

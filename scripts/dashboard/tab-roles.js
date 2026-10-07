@@ -102,7 +102,7 @@ function rolesPeopleDirty(){
 // ---- Roles -------------------------------------------------------------
 function rolesFrom(r){
   return r ? {name: r.name, scope: r.scope, perms: {...(r.perms || {})}, note: r.note || "", fresh: false,
-              builtin: !!r.builtin} : null;
+              builtin: !!r.builtin, nodes: [...(r.nodes || [])]} : null;
 }
 
 function rolesRoleBody(){
@@ -134,6 +134,11 @@ function rolesRoleBody(){
         <option value="projects"${r.scope !== "global" ? " selected" : ""}>The user's projects</option>
       </select></div>
     ${ro ? "" : `<div class="setrow col">${lbl("rolesNote", "What this role is for")}<input id="rolesNote" value="${esc(r.note)}" autocomplete="off"></div>`}
+    ${r.scope === "global" && !r.builtin && (d.nodes || []).length ? `<div class="setrow col">${lbl("", "On these nodes",
+        "Nodes, Toolchains, Jobs and New projects hold on the nodes ticked here; none ticked is every node")}
+      <div class="upick" id="rolesNodes">${d.nodes.map(n => `<label class="pick"><input type="checkbox" data-rnode="${esc(n.id)}"${
+        r.nodes.includes(n.id) ? " checked" : ""}${ro ? " disabled" : ""}> ${esc(n.name)}</label>`).join("")}</div>
+      <div class="sub dim">${r.nodes.length ? "those areas on the ticked nodes only" : "those areas on every node"}</div></div>` : ""}
     <div class="rareas">${areas}</div>
     ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>` : ""}
     ${ro ? "" : `<div class="actbar"><span class="state">${rolesRoleDirty() ? "unsaved" : ""}</span>
@@ -211,17 +216,23 @@ function wireRoles(el){
     const name = (nm?.value || "").trim();
     if (!name) return notify("a name for the role", true);
     if (rolesData.roles[name]) return notify(`${name} is a role already`, true);
-    rolesDraft = {name, scope: "projects", perms: {}, note: "", fresh: true, builtin: false};
+    rolesDraft = {name, scope: "projects", perms: {}, note: "", fresh: true, builtin: false, nodes: []};
     rolesRedraw();
   };
   const sc = el.querySelector("#rolesScope");
   if (sc) sc.onchange = () => {
     rolesDraft.scope = sc.value;
+    if (sc.value !== "global") rolesDraft.nodes = [];
     // A role on the user's projects holds project areas only.
     if (sc.value !== "global")
       for (const [key, , group] of rolesData.areas) if (group === "global") delete rolesDraft.perms[key];
     rolesRedraw();
   };
+  el.querySelectorAll("[data-rnode]").forEach(cb => cb.onchange = () => {
+    const n = cb.dataset.rnode;
+    rolesDraft.nodes = cb.checked ? [...new Set([...rolesDraft.nodes, n])] : rolesDraft.nodes.filter(x => x !== n);
+    rolesRedraw();
+  });
   const note = el.querySelector("#rolesNote");
   if (note) note.oninput = () => { rolesDraft.note = note.value; };
   el.querySelectorAll("[data-rread]").forEach(cb => cb.onchange = () => {
@@ -241,7 +252,8 @@ function wireRoles(el){
   if (rs) rs.onclick = async () => {
     busy(rs, "Saving");
     const r = rolesDraft;
-    if (await rolesAct({action: "set", name: r.name, scope: r.scope, perms: r.perms, note: r.note}, `${r.name} saved`)){
+    if (await rolesAct({action: "set", name: r.name, scope: r.scope, perms: r.perms, note: r.note,
+                        nodes: r.scope === "global" ? r.nodes : []}, `${r.name} saved`)){
       rolesPick = r.name; rolesDraft = null;
     }
     rolesRedraw();

@@ -37,7 +37,7 @@ const names = await page.$$eval('#rolesPick option', os => os.map(o => o.textCon
 ok(names.includes('owner (built in)') && names.includes('admin (built in)') && !names.some(n => /^user\b/.test(n)),
    `owner and admin are built in, and there is no user role (${names.join(', ')})`);
 await page.selectOption('#rolesPick', 'admin');
-ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 13
+ok(await page.$eval('.rolestab', t => !t.querySelector('#rolesSave') && t.querySelectorAll('[data-rread]:checked').length === 14
      && [...t.querySelectorAll('[data-rread]')].every(c => c.disabled)),
    '...a built-in one reads as every area, with nothing to change and no Save');
 
@@ -113,6 +113,36 @@ ok(elsewhere.status === 200 && !(elsewhere.body.project_roles || {}).beta,
 const ownerRole = (await api('/api/roles')).body.people.find(p => p.name === 'dep').project_roles.alpha || [];
 ok(ownerRole.includes('alpha_owner'), `the account that owns alpha holds alpha_owner on it (${ownerRole.join(', ')})`);
 await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
+
+// Making projects on one node (the operator, 7 Oct): New projects is its
+// own area, and a Global role may hold its node areas on named nodes.
+{
+  const sandbox = (await api('/api/v1/nodes')).body.nodes.find(n => n.kind !== 'local');
+  await page.evaluate(() => loadRoles());
+  await openSect('roles:roles');
+  await page.fill('#rolesNewName', 'creator');
+  await page.click('#rolesAdd');
+  await page.waitForSelector('#rolesScope');
+  await page.selectOption('#rolesScope', 'global');
+  await page.waitForSelector(`[data-rnode="${sandbox.id}"]`);
+  await page.check('[data-rread="newprojects"]');
+  await page.check('[data-rwrite="newprojects"]');
+  await page.check(`[data-rnode="${sandbox.id}"]`);
+  await page.click('#rolesSave');
+  await page.waitForFunction(() => rolesData?.roles?.creator, null, { timeout: 15000 });
+  const cr = (await api('/api/roles')).body.roles.creator;
+  ok(cr.scope === 'global' && cr.perms.newprojects === 'write' && JSON.stringify(cr.nodes) === JSON.stringify([sandbox.id]),
+     `a Global role saves New projects on the node ticked (${JSON.stringify(cr)})`);
+  await api('/api/roles', { action: 'assign', name: 'dep', roles: ['creator'] });
+  const elsewhere = await api('/api/create', { name: 'nowhere-made', node: 'n_nowhere' }, depAuth);
+  const nowhere = await api('/api/create', { name: 'nowhere-made' }, depAuth);
+  ok(elsewhere.status === 403 && /goes on/.test(elsewhere.body.error || '') && nowhere.status === 403,
+     `a project on another node, or on none, is refused by name (${elsewhere.status} ${elsewhere.body.error || ''})`);
+  const here = await api('/api/create', { name: '', node: sandbox.id }, depAuth);
+  ok(here.status !== 403, `...and on the node the role names it passes the gate (${here.status} ${here.body.error || ''})`);
+  await api('/api/roles', { action: 'assign', name: 'dep', roles: [] });
+  await api('/api/roles', { action: 'remove', name: 'creator' });
+}
 
 // Removed, the role goes with it.
 await api('/api/roles', { action: 'remove', name: 'deployer' });

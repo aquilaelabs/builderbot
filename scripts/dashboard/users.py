@@ -525,6 +525,11 @@ def may_node(u, action, node_id=""):
         return "not signed in"
     if roles.granted(u, action, node=str(node_id or "") or None, nodes_of=nodes_of):
         return ""
+    # A node area's answer is the node's (R152): asking again with no node
+    # would answer "anywhere" for a role held on other nodes.
+    area = roles.CAP_AREA.get(action, ("", ""))[0]
+    if area in roles.NODE_AREAS and node_id:
+        return may(u, action) or "your roles do not give that on this node"
     return may(u, action) or "that is not one of your roles' grants on that node"
 
 

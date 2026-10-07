@@ -88,6 +88,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's settings take Also reaches: addresses its sessions may still reach where the node keeps each session to its own project's network, a whole machine or one port, each on the project's nodes ticked beside it, without making the project read another (b2bf6a7)
 - A node's network settings take static routes, one a line as 10.20.0.0/24 via 192.168.1.1, in dhcp or static mode, applied through the node's own network backend with the same dial-back as an address change (ae6052b)
 - bb tidy also ends a server a session put in the background and left listening (a dev server, a preview), never a test run's own (db69e46)
+- Making projects is a role's New projects area, and a Global role may hold Nodes, Toolchains, Jobs and New projects on named nodes only, so an account can be let make projects on one node (d518855)
 
 ### Changed
 

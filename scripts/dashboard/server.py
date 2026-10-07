@@ -4578,7 +4578,10 @@ class Handler(BaseHTTPRequestHandler):
             rs = {n: r for n, r in rs.items() if r.get("scope") == "projects"}
         return self._json({"roles": rs, "areas": [list(a) for a in roles.AREAS], "people": people,
                            "projects": all_projects, "admin": can["admin"], "me": me.get("name") or "",
-                           "owner": users.owner_name() or ""})
+                           "owner": users.owner_name() or "", "node_areas": sorted(roles.NODE_AREAS),
+                           "nodes": [] if NODES_OK or not can["admin"] else
+                           [{"id": n["id"], "name": n["name"]} for n in nodes.node_list()
+                            if n.get("kind") != "local" and n.get("state") != "retired"]})
 
     def _get_nodes(self):
         """GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to
@@ -6246,10 +6249,21 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("create"):
             return None
         me = self._who()
+        # On the nodes the account's New projects role names, when it names
+        # any (R152, the operator, 7 Oct): a project made elsewhere, or on no
+        # node, is refused by name. Its node is then the account's to set at
+        # making it, though setting a node later is the Nodes area's.
+        nid = field(req, "node")
+        limited = roles.nodes_for(me, "newprojects")
+        if limited is not None and nid not in limited:
+            names = [n["name"] for n in ([] if NODES_OK else nodes.node_list()) if n["id"] in limited] or limited
+            return self._json({"error": f"a project you make goes on {', '.join(names)}: pick "
+                                        + ("that node" if len(names) == 1 else "one of those nodes")}, 403)
         return self._json(*projects.create_from_dialog(
             req, env=users.git_env(me, projects.sanitize_name(field(req, "name"))),
             account=me["name"] if me and users.uid_of(me) else "",
-            may_node=lambda name: not users.may(self._who(), "node", name)))
+            may_node=lambda name: (limited is not None and nid in limited)
+            or not users.may(self._who(), "node", name)))
 
     def _profile(self, req=None):
         """The signed-in account's own settings (the Profile tab): read on
@@ -6436,7 +6450,8 @@ class Handler(BaseHTTPRequestHandler):
             if "perms" in req:
                 return self._result(roles.set_role(field(req, "name"), field(req, "scope") or "projects",
                                                    req.get("perms") if isinstance(req.get("perms"), dict) else {},
-                                                   field(req, "note")))
+                                                   field(req, "note"),
+                                                   nodes=req.get("nodes") if isinstance(req.get("nodes"), list) else []))
             return self._result(roles.set_role(field(req, "name"), grants=req.get("grants"), note=field(req, "note")))
         if act == "remove":
             return self._result(roles.remove(field(req, "name")))
