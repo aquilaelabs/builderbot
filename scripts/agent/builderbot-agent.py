@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.139"
+AGENT_VERSION = "0.7.140"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -280,6 +280,10 @@ def dir_bytes(path):
 # `system` job is refused without it. The netplan seams exist so the tests
 # can stand in for both without a root shell.
 SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandbox")
+# Where the agent's own unit is kept through a restart it did not ask for
+# (B538): a systemd drop-in, and needrestart's configuration directory.
+UNIT_DROPIN = "/etc/systemd/system/builderbot-agent.service.d/builderbot.conf"
+NEEDRESTART_DIR = "/etc/needrestart"
 # What the GPU display's unit last said (bb-sandbox gpu-display, R20): one
 # line, read into the census so the row says it.
 GPU_DISPLAY_STATE = os.environ.get("BUILDERBOT_GPU_DISPLAY_STATE", "/run/builderbot-gpu-display")
@@ -4295,6 +4299,7 @@ class Agent:
         # starts the sessions then.
         self.refresh_session_tool()
         self.quiet_distro_ttyd()
+        self.keep_sessions_through_restart()
         self.session_try()
         self.sessnet.start()
         self.sesswatch.start()
@@ -6127,6 +6132,55 @@ class Agent:
         log("sessions: switched off the distribution's own ttyd.service (root, on lo:7681), "
             "which every session on this machine could reach")
         return True
+
+    def keep_sessions_through_restart(self, run=_run):
+        """The sessions outlive a stop of this unit, on a managed node (B538).
+
+        The provisioner writes the unit with KillMode=process (B107), but only
+        when it installs it, and it installs it only when it is not already
+        running, so a node enrolled before then kept systemd's default, which
+        takes every process in the cgroup on a stop: the tmux servers and
+        every Claude session in them. On 7 Oct an unattended upgrade of
+        librsvg had needrestart restart this unit, and every session on
+        bb-sandbox ended. So the agent puts the setting in a drop-in itself,
+        and tells needrestart to leave it alone: an upgraded library is
+        picked up at the next agent update or reboot, not mid-conversation.
+        Not on a guest, whose services are its owner's (R23)."""
+        if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN) or not shutil.which("systemctl"):
+            return []
+        did = []
+        want = "[Service]\nKillMode=process\n"
+        if run(["systemctl", "show", "-p", "KillMode", "--value", "builderbot-agent"]) != "process":
+            try:
+                os.makedirs(os.path.dirname(UNIT_DROPIN), exist_ok=True)
+                with open(UNIT_DROPIN, "w", encoding="utf-8") as f:
+                    f.write(want)
+                run(["systemctl", "daemon-reload"], timeout=30)
+                did.append("unit")
+                log("sessions: this unit now stops its own process only (KillMode=process), "
+                    "so a restart of the agent no longer ends the sessions")
+            except OSError as e:
+                log(f"sessions: could not write {UNIT_DROPIN}: {e}")
+        if os.path.isdir(NEEDRESTART_DIR):
+            conf = os.path.join(NEEDRESTART_DIR, "conf.d", "builderbot.conf")
+            body = ("# Written by the BuilderBot agent (B538): a restart of the agent after a\n"
+                    "# library upgrade ended every Claude session on the node.\n"
+                    "$nrconf{override_rc}{qr(^builderbot-agent\\.service$)} = 0;\n")
+            try:
+                with open(conf, encoding="utf-8") as f:
+                    same = f.read() == body
+            except OSError:
+                same = False
+            if not same:
+                try:
+                    os.makedirs(os.path.dirname(conf), exist_ok=True)
+                    with open(conf, "w", encoding="utf-8") as f:
+                        f.write(body)
+                    did.append("needrestart")
+                    log("sessions: needrestart leaves the agent alone after an upgrade")
+                except OSError as e:
+                    log(f"sessions: could not write {conf}: {e}")
+        return did
 
     def refresh_session_tool(self):
         """The session's view kept installed (R35): bb-session from the bundle,

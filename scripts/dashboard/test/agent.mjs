@@ -680,6 +680,42 @@ os.unlink(stamp)
       ok(r.off[0] === false && r.off[1].length === 0 && r.guest[0] === false && r.guest[1].length === 0,
          '...and leaves it alone when it is already off, and on a guest, whose services are its owner\'s');
     }
+    // B538: a unit installed before B107 kept systemd's default KillMode, and
+    // needrestart's restart of it after an upgrade ended every session. The
+    // agent writes the drop-in and needrestart's exception itself, once.
+    {
+      const said = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.log = lambda *a, **k: None
+m.os.geteuid = lambda: 0
+m.shutil.which = lambda n: '/usr/bin/' + n
+root = tempfile.mkdtemp()
+stamp = os.path.join(root, 'bb-sandbox'); open(stamp, 'w').close()
+m.UNIT_DROPIN = os.path.join(root, 'unit.d', 'builderbot.conf')
+m.NEEDRESTART_DIR = os.path.join(root, 'needrestart'); os.makedirs(m.NEEDRESTART_DIR)
+def case(mode, sandbox=True):
+    seen = []
+    def run(argv, timeout=5):
+        seen.append(argv[1])
+        return mode if argv[1] == 'show' else ''
+    m.SANDBOX_BIN = stamp if sandbox else '/nonexistent/bb-sandbox'
+    return [m.Agent.keep_sessions_through_restart(object.__new__(m.Agent), run), seen]
+first = case('control-group')
+dropin = open(m.UNIT_DROPIN).read()
+conf = open(os.path.join(m.NEEDRESTART_DIR, 'conf.d', 'builderbot.conf')).read()
+print(json.dumps({'first': first, 'again': case('process'), 'guest': case('control-group', False),
+                  'dropin': dropin, 'conf': conf}))
+`], { encoding: 'utf8' }).trim();
+      const r = JSON.parse(said);
+      ok(JSON.stringify(r.first) === JSON.stringify([['unit', 'needrestart'], ['show', 'daemon-reload']])
+         && r.dropin === '[Service]\nKillMode=process\n'
+         && r.conf.includes('$nrconf{override_rc}{qr(^builderbot-agent\\.service$)} = 0;'),
+         `a unit that would take the sessions on a stop gets KillMode=process in a drop-in, and needrestart is told to leave it alone (${said.slice(0, 120)})`);
+      ok(r.again[0].length === 0 && JSON.stringify(r.again[1]) === '["show"]' && r.guest[0].length === 0,
+         '...once: a unit that already stops only itself and a needrestart already told are left as they are, and a guest is never touched');
+    }
     // R27's refresh, run against the bundle's real layout: bb is at
     // <store>/.bb/current/scripts/bb. The agent looked for .bb/current/bb,
     // which no bundle has, and returned in silence, so no idle session's
