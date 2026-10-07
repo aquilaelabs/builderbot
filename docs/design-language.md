@@ -302,7 +302,8 @@ Three secondary voices: `--f-note` (a quiet explainer, in `var(--dim)`),
 colors agree everywhere: error and high are red, warning and medium yellow,
 note and low blue.
 
-What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
+A section's heading is `--f-sect` (600 14px system sans, 13px for a section
+inside a section), the one voice above a row's. What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
 
 ### space
 
@@ -511,8 +512,9 @@ the suite covers.
 Applies to: scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js; section, fold, action, bar, actbar, hidden
 
 A long surface is sections: `docSection(kind, id, title, status, body)`, one
-fold per concern with its status on the heading, open on a desktop and
-closed on a phone, and in a notebook one open at a time. A status is a word or a number, never a sentence. A fold
+fold per concern with its status on the heading in `--f-sect`, the first of
+a group open by default and the rest shut; on a desktop several may stand
+open, on a phone one at a time (the operator, 7 Oct). A status is a word or a number, never a sentence. A fold
 keeps its state for the page's life and a reload starts it from the default:
 the sidebar's cards are the one arrangement that is stored, at a desk in the
 arrangement the server holds, and on a phone on the device itself, so a
@@ -845,10 +847,11 @@ and Pages carry theirs at their own foot. A view that writes through or
 only reads (Bugs, Wiki, Tests, Analysis, Git) has none, and the notebook
 has no foot.
 
-One section is open at a time in a notebook view (the operator, 5 Oct):
-opening one closes its siblings, a section's own folds (a page's rules
-inside Pages) taking turns among themselves without closing it, and a draw
-that finds several open keeps the one last opened.
+A notebook view opens on its first section (the operator, 7 Oct). On a
+phone one section is open at a time: opening one closes its siblings, a
+section's own folds (a page's rules inside Pages) taking turns among
+themselves without closing it, and a draw that finds several open keeps the
+one last opened. On a desktop each stays as it was left.
 
 The Design view is two folds under its head row: Pages and Themes, in
 that order, both closed on a new tab so the view opens short, and each
@@ -969,8 +972,8 @@ small heading every dialog uses, never an `h4`; a dialog that is prose to
 read rather than fields to fill (About) says so with `.box.prose` and may use
 headings. A dialog long enough to scroll through its groups (the project
 settings) makes each group a section instead: a `details.sect` fold titled
-by its summary, the box marked `data-sects` so its sections take turns, one
-open at a time, as a tab's do, and the one a door is for open when it opens.
+by its summary, the box marked `data-sects` so its sections behave as a
+tab's do, and the first that a door shows open when it opens.
 The buttons are the `.foot`: a
 `.state` first when there is one, then `.sp`, then the verbs, the primary
 first and anything destructive last. A switch is a checkbox inside its label,

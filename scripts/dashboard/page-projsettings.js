@@ -526,23 +526,33 @@ function renameProject(name, mode = "all"){
   rnFolds();
 }
 
-// One section open (the operator, 7 Oct), and one that shows: the one this
-// person last opened here when this door shows it, else the first that has a
-// field showing (The project from the gear, the repository from the chain).
-// Every other shuts at once, since nothing moved them.
+// Sections, the first open by default (the operator, 7 Oct): on a desktop
+// each that this person opened or shut here stays so, and the first that has
+// a field showing (The project from the gear, the repository from the chain)
+// is open unless they shut it; on a phone one is open, the one this person
+// last opened when this door shows it, else that first. A door that would
+// show every section shut opens its first, since a dialog of headings alone
+// asks a press before anything can be read.
 function rnFolds(){
   const all = [...document.querySelectorAll("details.rngroup")];
   const shown = all.filter(d => getComputedStyle(d).display !== "none");
-  const keep = shown.find(d => d.open && sectOpen[d.dataset.sect] === true)
-    || shown.find(d => sectOpen[d.dataset.sect] === true)
-    || shown[0];
+  const rec = d => sectOpen[d.dataset.sect];
+  let want;
+  if (isPhone()){
+    const keep = shown.find(d => d.open && rec(d) === true) || shown.find(d => rec(d) === true) || shown[0];
+    want = d => d === keep;
+  } else {
+    const on = new Set(shown.filter((d, i) => rec(d) === undefined ? i === 0 : rec(d)));
+    if (!on.size && shown.length) on.add(shown[0]);
+    want = d => on.has(d);
+  }
   // Moved by a door, not by a hand: the press mark comes off first, so the
   // toggle this fires does not record a fold shut for the other door as
   // this person shutting it (the next press puts the mark back).
   for (const d of all){
-    if (d.open === (d === keep)) continue;
+    if (d.open === want(d)) continue;
     delete d.dataset.pressed;
-    d.open = d === keep;
+    d.open = want(d);
   }
 }
 

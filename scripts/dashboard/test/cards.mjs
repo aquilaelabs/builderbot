@@ -1527,28 +1527,42 @@ await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnName', el => el.value) === 'alpha',
    'the rename dialog opens on the current name');
 {
-  // Sections, one open at a time (the operator, 7 Oct): the gear's door
-  // opens on The project, a heading pressed opens its section and shuts the
-  // one that was open, and the chain's door shows the repository's alone,
-  // open. Read with $eval, which the harness's own fold-opening leaves be.
-  const folds = () => page.$$eval('details.rngroup', ds => ds.map(d => ({
+  // Sections, the first open by default, several at once on a desktop and
+  // one at a time on a phone (the operator, 7 Oct): the gear's door opens on
+  // The project, a heading pressed opens its section beside it, and the
+  // chain's door shows the repository's alone, open. Read with $eval, which
+  // the harness's own fold-opening leaves be.
+  const folds = (p = page) => p.$$eval('details.rngroup', ds => ds.map(d => ({
     k: d.dataset.sect, open: d.open, shown: getComputedStyle(d).display !== 'none' })));
+  const opened = fs => fs.filter(f => f.open).map(f => f.k).join();
   const gear = await folds();
-  ok(gear.filter(f => f.open).map(f => f.k).join() === 'rn:project' && gear.filter(f => f.shown).length > 3,
-     `the settings are sections, and the gear opens on The project alone (${JSON.stringify(gear.filter(f => f.open))})`);
+  ok(opened(gear) === 'rn:project' && gear.filter(f => f.shown).length > 3,
+     `the settings are sections, and the gear opens on The project alone (${opened(gear)})`);
   await page.$eval('details[data-sect="rn:claude"] > summary', s => s.click());
-  await page.waitForFunction(() => !document.querySelector('details[data-sect="rn:project"]').open, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelector('details[data-sect="rn:claude"]').open, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(300);
   const pressed = await folds();
-  ok(pressed.filter(f => f.open).map(f => f.k).join() === 'rn:claude',
-     `...a heading pressed opens its section and shuts the open one (${pressed.filter(f => f.open).map(f => f.k)})`);
+  ok(opened(pressed) === 'rn:project,rn:claude',
+     `...a heading pressed on a desktop opens its section beside the open one (${opened(pressed)})`);
   await page.evaluate(() => { closeRename(); renameProject('alpha', 'git'); });
   const chain = await folds();
-  ok(chain.filter(f => f.shown).map(f => f.k).join() === 'rn:repo' && chain.find(f => f.k === 'rn:repo')?.open
-     && chain.filter(f => f.open).length === 1,
-     `...and the chain's door shows the repository's section alone, open (${JSON.stringify(chain.filter(f => f.shown || f.open))})`);
+  ok(chain.filter(f => f.shown).map(f => f.k).join() === 'rn:repo' && chain.find(f => f.k === 'rn:repo')?.open,
+     `...and the chain's door shows the repository's section alone, open (${JSON.stringify(chain.filter(f => f.shown))})`);
   await page.evaluate(() => { closeRename(); renameProject('alpha'); });
-  ok((await folds()).filter(f => f.open).map(f => f.k).join() === 'rn:claude',
-     '...and the gear opens again on the section this person opened last');
+  ok(opened(await folds()) === 'rn:project,rn:claude',
+     `...and the gear opens again on the sections this person left open (${opened(await folds())})`);
+  // A phone: the first alone, and a heading pressed shuts the one open.
+  const phone = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await phone.goto(URL);
+  await ready(phone);
+  await phone.evaluate(() => renameProject('alpha'));
+  await phone.waitForSelector('#rnmodal:not([hidden])');
+  ok(opened(await folds(phone)) === 'rn:project', `on a phone the gear opens on The project alone (${opened(await folds(phone))})`);
+  await phone.$eval('details[data-sect="rn:claude"] > summary', s => s.click());
+  await phone.waitForFunction(() => !document.querySelector('details[data-sect="rn:project"]').open, null, { timeout: 5000 }).catch(() => {});
+  ok(opened(await folds(phone)) === 'rn:claude',
+     `...and a heading pressed there opens its section and shuts the open one (${opened(await folds(phone))})`);
+  await phone.close();
 }
 ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
    '...with the keyboard down, like every other dialog here');

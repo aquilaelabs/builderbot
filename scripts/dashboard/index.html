@@ -145,6 +145,10 @@
      iOS needs on a typed field is its own rule, further down. */
   --f-field:11px/1.5 var(--mono);
   --f-tag:600 10px/1 system-ui,sans-serif;     /* pills and badges */
+  /* A SECTION'S HEADING: the one voice above a row's, since it names what
+     the rows under it are about. It was --f-ui at 600, a step below the
+     rows it headed, and read as small (the operator, 7 Oct). */
+  --f-sect:600 14px/1.4 system-ui,sans-serif;
   /* The badge palette: who/what colors used by tags across the notebook.
      Hex was retyped at every site, and the day one shade drifts is the day
      "reference" and "na" stop looking like the same family. */
@@ -2841,11 +2845,14 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>summary::-webkit-details-marker{display:none}
 .sect>summary::before{content:"\25B8";color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
 .sect[open]>summary::before{content:"\25BE"}
-.sect>summary .t{font-weight:600;flex:0 1 auto;min-width:0}
+.sect>summary .t{font:var(--f-sect);flex:0 1 auto;min-width:0}
+/* A section inside a section (a page's rules inside Pages) heads less than
+   the one holding it: a row's size, still at the heading's weight. */
+.sect .sect>summary .t{font:var(--f-sect);font-size:13px}
 /* One line, clipped with an ellipsis when it is long: a status that wrapped
    letter by letter down the right edge was what min-width:0 alone did. */
 /* .sst, not .st; that one is the session dot beside a Claude tab's name. */
-.sect>summary .sst{margin-left:auto;font:var(--f-note);color:var(--dim);text-align:right;
+.sect>summary .sst{margin-left:auto;font:var(--f-ui);color:var(--dim);text-align:right;
   flex:0 1 auto;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sect>summary .sst.ok,.actbar .state.ok{color:var(--accent)}
 .sect>summary .sst.warn,.actbar .state.warn{color:var(--warn)}

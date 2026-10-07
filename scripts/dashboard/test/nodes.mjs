@@ -822,18 +822,20 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
-  // One section open at a time on a tab, as in a notebook (the operator,
-  // 6 Oct): opening one shuts its open siblings.
+  // The first section open by default, and on a desktop a second opened
+  // beside it rather than in its place (the operator, 7 Oct; a phone keeps
+  // one at a time, which page-docs.js's oneOpen holds).
   {
     const sects = `${ROW} .ndconfbody > details.sect`;
-    const shut = await page.$$eval(sects, ds => ds.findIndex(d => !d.open));
-    if (shut >= 0) {
-      await page.$$eval(sects, (ds, i) => ds[i].querySelector(':scope > summary').click(), shut);
-      await page.waitForFunction(s => [...document.querySelectorAll(s)].filter(d => d.open).length === 1,
-                                 sects, { timeout: 5000 }).catch(() => {});
-    }
+    const before = await page.$$eval(sects, ds => ds.map(d => d.open));
+    const shut = before.indexOf(false);
+    ok(before[0] === true && shut > 0, `the Nodes tab has its first section open (${before})`);
+    await page.$$eval(sects, (ds, i) => ds[i].querySelector(':scope > summary').click(), shut);
+    const n = before.filter(Boolean).length + 1;
+    await page.waitForFunction(([s, n]) => [...document.querySelectorAll(s)].filter(d => d.open).length === n,
+                               [sects, n], { timeout: 5000 }).catch(() => {});
     const open = await page.$$eval(sects, ds => ds.filter(d => d.open).length);
-    ok(shut >= 0 && open === 1, `opening a section on the Nodes tab shuts the others (${open} open)`);
+    ok(open === n, `...and on a desktop opening another leaves the open ones open (${open} open, ${n} wanted)`);
   }
   // Every fold on this page is driven rather than left to the browser's
   // instant snap: the memories, the bug reports, the version tab's fold, the

@@ -143,9 +143,10 @@ function docSection(kind, id, title, status, body, {cls = "", open, loud = false
   const turned = loud && !sectLoud[key];
   sectLoud[key] = loud;
   const isOpen = turned || (key in sectOpen ? sectOpen[key] : (open !== undefined ? open : !isPhone()));
-  // `prime`: the section a view is opened for (Artifacts' Files), the one
-  // left open when a draw finds several and nobody has chosen.
-  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}${prime ? " data-prime" : ""}>
+  // `prime`: the section a view is opened for (Artifacts' Files), open by
+  // default beside the first on a desktop. `data-set`: its caller said open
+  // or shut, which a default never overrules.
+  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}${prime ? " data-prime" : ""}${open !== undefined ? " data-set" : ""}>
     <summary><span class="t">${esc(title)}</span>${
       status ? `<span class="sst${cls ? " " + cls : ""}">${esc(status)}</span>` : ""}</summary>
     <div class="body">${body}</div>
@@ -173,17 +174,26 @@ function wireSections(root){
     root.querySelectorAll("details.sect").forEach(oneOpen);
   }
 }
-// One section is open at a time, in a notebook view (the operator, 5 Oct)
-// and on a document tab (the Nodes, Docker, Users and Roles tabs, 6 Oct): on
-// a phone, several open made a surface a long scroll, and the section being
-// worked in was hard to keep hold of. Among siblings only: a section's own
-// folds (a page's rules inside Pages) take turns among themselves and never
-// close the section holding them.
+// The first section of a group is open by default, and on a phone one
+// section is open at a time; on a desktop several may stand open (the
+// operator, 7 Oct). One at a time had come in on 5 and 6 Oct for every
+// width, because several open on a phone made a surface a long scroll and
+// the section being worked in was hard to keep hold of; a desktop has the
+// room, and shutting one section to read another there was a step for
+// nothing. Among siblings only: a section's own folds (a page's rules
+// inside Pages) take turns among themselves and never close the section
+// holding them.
 const sectLast = new WeakMap();     // a group -> the key of the section last opened in it
 // A group is a view, a tab, a fold holding folds, or a dialog box that says
 // it holds sections (`data-sects`: the project settings, the operator 7 Oct).
 function sectGroup(d){ return d.parentElement?.closest("details.sect, .nbview, .doctab, [data-sects]") || null; }
 const sectRuled = g => !!g?.closest?.(".nb, .doctab, [data-sects]");
+// Its sections in the order drawn, those a person can see: a settings group
+// with nothing in it is display:none and is no group's first.
+const sectsOf = g => [...g.querySelectorAll("details.sect")]
+  .filter(o => sectGroup(o) === g && getComputedStyle(o).display !== "none");
+// Nobody has opened or shut it, and its caller left it to the default.
+const sectDefault = o => !(o.dataset.sect && o.dataset.sect in sectOpen) && !o.hasAttribute("data-set");
 function soleOpen(d){
   const g = sectGroup(d);
   if (!sectRuled(g)) return;
@@ -191,6 +201,7 @@ function soleOpen(d){
   // Recorded now, not when the slide ends: a repaint landing mid-slide read
   // the one sliding shut as still open and kept it over the one just opened.
   if (d.dataset.sect) sectOpen[d.dataset.sect] = true;
+  if (!isPhone()) return;
   g.querySelectorAll("details.sect[open]").forEach(o => {
     if (o === d || sectGroup(o) !== g) return;
     if (o.dataset.sect) sectOpen[o.dataset.sect] = false;
@@ -198,34 +209,42 @@ function soleOpen(d){
   });
 }
 // A section opened by a draw rather than by a hand (Memories, remembered
-// open): it is the one that stays, and the others shut at once, since a
-// slide here overlapped two sections for its length (uniform, 6 Oct).
+// open): it is the one that stays, and on a phone the others shut at once,
+// since a slide here overlapped two sections for its length (uniform, 6 Oct).
 function keepOpen(d){
   const g = sectGroup(d);
   if (!sectRuled(g)) return;
   sectLast.set(g, d.dataset.sect || "");
   oneOpen(g);
 }
-// After a draw: if more than one stands open in a group (a desktop opens
-// them all by default), the one last opened stays, else one the person
-// opened before (its fold recorded open), else the first; the rest shut at
-// once, without the slide, since nothing moved them.
+// After a draw. Nothing anybody chose is moved: the first section stands
+// open unless somebody shut it, and on a desktop the view's own (`prime`,
+// Artifacts' Files) with it, every other default shut. On a phone, if more
+// than one is open, the one last opened stays, else one the person opened
+// before, else the first; the rest shut at once, without the slide, since
+// nothing moved them.
 function oneOpen(g){
   if (!sectRuled(g)) return;
-  const open = [...g.querySelectorAll("details.sect[open]")].filter(o => sectGroup(o) === g);
-  // None open, which a phone starts every view with: the section the view is
-  // opened for (`prime`, Artifacts' Files) opens, unless the person shut it
-  // themselves (B523: on a phone the view opened with everything shut).
+  const mine = sectsOf(g);
+  if (!mine.length) return;
+  const first = mine[0];
+  if (!isPhone()){
+    for (const o of mine){
+      if (o.hasAttribute("data-lead")){ o.removeAttribute("data-lead"); sectLast.set(g, o.dataset.sect || ""); continue; }
+      if (sectDefault(o)) o.open = o === first || o.hasAttribute("data-prime");
+    }
+    return;
+  }
+  const open = mine.filter(o => o.open);
   if (!open.length){
-    const prime = [...g.querySelectorAll("details.sect[data-prime]")].find(o => sectGroup(o) === g);
-    if (prime && !(prime.dataset.sect && sectOpen[prime.dataset.sect] === false)) prime.open = true;
+    if (sectDefault(first) || sectOpen[first.dataset.sect] === true) first.open = true;
     return;
   }
   if (open.length < 2) return;
   const keep = open.find(o => o.hasAttribute("data-lead"))
     || open.find(o => o.dataset.sect && o.dataset.sect === sectLast.get(g))
     || open.find(o => o.dataset.sect && sectOpen[o.dataset.sect] === true)
-    || open.find(o => o.hasAttribute("data-prime")) || open[0];
+    || (open.includes(first) && first) || open[0];
   if (keep.hasAttribute("data-lead")){ keep.removeAttribute("data-lead"); sectLast.set(g, keep.dataset.sect || ""); }
   open.forEach(o => { if (o !== keep){ o.open = false; if (o.dataset.sect) sectOpen[o.dataset.sect] = false; } });
 }

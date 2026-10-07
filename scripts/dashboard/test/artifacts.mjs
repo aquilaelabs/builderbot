@@ -90,17 +90,18 @@ await page.waitForSelector('#roadmapList, .nb', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('.artrow', { timeout: 15000 });
 
-// The files are a section of their own, like the rest of the view, and the
-// one open when the view first shows (the operator, 6 Oct): they were a
-// band under Version, the one part of the tab that did not fold.
+// The files are a section of their own, like the rest of the view, and open
+// when the view first shows (the operator, 6 Oct): they were a band under
+// Version, the one part of the tab that did not fold. On a desktop the
+// view's first section is open beside them (the operator, 7 Oct).
 {
   const s = await page.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]
     .filter(d => d.checkVisibility() && !d.parentElement.closest('details.sect')).map(d => `${d.dataset.sect}:${d.open ? 'open' : 'shut'}`));
-  ok(s.includes('artifacts:files:open') && s.filter(x => x.endsWith(':open')).length === 1,
-     `the files are their own section, the one open when the view shows (${s.join(' ')})`);
+  ok(s.includes('artifacts:files:open') && s[0].endsWith(':open') && s.filter(x => x.endsWith(':open')).length === (s[0] === 'artifacts:files:open' ? 1 : 2),
+     `the files are their own section, open with the first when the view shows (${s.join(' ')})`);
 }
-// ...and on a phone too, where every section starts shut: the view's own
-// opens rather than none (B523).
+// ...and on a phone, where one is open at a time, the first opens rather
+// than none (B523; the first, the operator 7 Oct).
 {
   const phone = await newPage(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await phone.goto(URL);
@@ -111,8 +112,8 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
   await phone.waitForTimeout(500);
   const p = await phone.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="artifacts"] details.sect')]
     .filter(d => d.checkVisibility() && !d.parentElement.closest('details.sect')).map(d => `${d.dataset.sect}:${d.open ? 'open' : 'shut'}`));
-  ok(p.includes('artifacts:files:open') && p.filter(x => x.endsWith(':open')).length === 1,
-     `...on a phone as well, where every section starts shut (${p.join(' ')})`);
+  ok(p[0]?.endsWith(':open') && p.filter(x => x.endsWith(':open')).length === 1,
+     `...on a phone the first alone, one open at a time (${p.join(' ')})`);
   await phone.close();
 }
 
