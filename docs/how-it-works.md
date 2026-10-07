@@ -1344,7 +1344,15 @@ puts the previous config back on its own and says so when it reconnects.
 The job names the address and never the tool: the agent detects what owns
 the node's network: netplan, NetworkManager, systemd-networkd, wicked,
 `/etc/network/interfaces` or dhcpcd, and writes it through that one, and
-refuses, saying so, on a node with none of them. **Lock system changes**,
+refuses, saying so, on a node with none of them. **Static routes** ride the
+same apply, in dhcp mode or static, one a line as `10.20.0.0/24 via
+192.168.1.1` (the operator, 7 Oct): each backend writes them its own way
+(netplan's routes, NetworkManager's ipv4.routes, a `[Route]` section,
+`up ip route add` lines, wicked's ifroute), dhcpcd, which has no setting
+for one, refuses them by name, and the node reports the routes it has so
+the row says which are still to apply. A network with no prefix, the
+default route (the gateway is that) and a router that is not an address are
+refused at Save. **Lock system changes**,
 under the node's Advanced section, keeps all of that at the machine's own
 console: while it is on, Apply storage, Apply network and a root command
 are refused here with the reason, the desired configuration stays on the

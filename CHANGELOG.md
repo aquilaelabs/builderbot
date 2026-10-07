@@ -86,6 +86,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - File access says up front when the project's node lacks the ftp toolchain, and Save refuses a port something else on the node already answers on, naming it (35ad6b7)
 - bb map languages says which files the map reads; bb map -h, bare bb map and bb map help name the same verbs (7310c34)
 - A project's settings take Also reaches: addresses its sessions may still reach where the node keeps each session to its own project's network, a whole machine or one port, each on the project's nodes ticked beside it, without making the project read another (b2bf6a7)
+- A node's network settings take static routes, one a line as 10.20.0.0/24 via 192.168.1.1, in dhcp or static mode, applied through the node's own network backend with the same dial-back as an address change (ae6052b)
 
 ### Changed
 

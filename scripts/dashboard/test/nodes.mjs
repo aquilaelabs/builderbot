@@ -981,6 +981,29 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       config: { ...rec.config.desired, network: { mode: 'static', address: '10.0.0.40/24', dns: [1] } } });
     ok(/a resolver is an address/.test(r.error || ''), `a resolver that is not text is refused in words (${r.error})`);
   }
+  // Static routes (the operator, 7 Oct), in either mode: a network with its
+  // prefix via a router, given as {to, via} or "TO via VIA", kept once each;
+  // what is not one is refused in words. The agent renders them per backend
+  // (unit/test_agent_routes.py).
+  {
+    const r = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...rec.config.desired, network: { mode: 'dhcp', routes: [{ to: '10.20.0.0/24', via: '192.168.1.1' },
+        '172.16.5.0/24 via 192.168.1.2', { to: '10.20.0.0/24', via: '192.168.1.1' }] } } });
+    const back = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).config.desired.network.routes;
+    ok(!r.error && JSON.stringify(back) === JSON.stringify([{ to: '10.20.0.0/24', via: '192.168.1.1' },
+         { to: '172.16.5.0/24', via: '192.168.1.2' }]),
+       `a node's static routes are kept with its network, in dhcp mode too, each once (${r.error || JSON.stringify(back)})`);
+    const bad = [];
+    for (const [route, re] of [[{ to: '10.20.0.0', via: '192.168.1.1' }, /written with its prefix/],
+                               [{ to: '0.0.0.0/0', via: '192.168.1.1' }, /the default route is the gateway above/],
+                               [{ to: '10.20.0.0/24', via: 'router' }, /via a router's address/]]){
+      const x = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+        config: { ...rec.config.desired, network: { mode: 'dhcp', routes: [route] } } });
+      if (!re.test(x.error || '')) bad.push(`${JSON.stringify(route)}: ${x.error}`);
+    }
+    ok(!bad.length, `a network with no prefix, the default route and a router that is not an address are refused in words${bad.length ? ` (not: ${bad.join(' | ')})` : ''}`);
+    await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: rec.config.desired });
+  }
   // json.loads takes Infinity, and int() of it raised, failing the node's
   // whole hello (B180): a non-finite number in a census is no number.
   {

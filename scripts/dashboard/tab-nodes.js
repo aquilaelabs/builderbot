@@ -259,7 +259,7 @@ function nodeDraft(n){
       mounts: (d.mounts?.length ? d.mounts : seed).map(m => ({...m})),
       fromNode: !d.mounts?.length && seed.length > 0,
       stores: {...(d.stores || {})},
-      network: {mode: "dhcp", address: "", gateway: "", dns: [], interface: "", ...(d.network || {})},
+      network: {mode: "dhcp", address: "", gateway: "", dns: [], interface: "", routes: [], ...(d.network || {})},
     };
   }
   return c;
@@ -721,6 +721,11 @@ function nodeDrift(n){
   }else if (rn.addresses?.length){
     network = "unknown";      // dhcp: the census cannot say how it was addressed
   }
+  // Static routes, in either mode, against the ones the node reports (an
+  // agent from before 0.7.143 reports none, which reads as all to apply).
+  const have = new Set((rn.routes || []).map(r => `${r.to} ${r.via}`));
+  const routes = (net.routes || []).filter(r => !have.has(`${r.to} ${r.via}`)).map(r => `route → ${r.to} via ${r.via}`);
+  if (routes.length) network = [...(Array.isArray(network) ? network : []), ...routes];
   return {storage, network};
 }
 
@@ -877,6 +882,10 @@ function nodeConfSections(n){
         <div class="setrow col">${lbl("", "Interface", "blank means the default route's")}
         <input data-k="net:interface" value="${esc(d.network.interface || "")}" spellcheck="false"
           autocomplete="off" placeholder="${esc(net.interface || "eth0")}" aria-label="interface"></div>` : ""}
+        <div class="setrow col ndroutes">${lbl("", "Static routes", "one a line: a network with its prefix, via the router that reaches it")}
+        <textarea data-k="net:routes" rows="${Math.max(2, (d.network.routes || []).length + 1)}" spellcheck="false"
+          autocomplete="off" placeholder="10.20.0.0/24 via 192.168.1.1" aria-label="static routes">${
+          esc((d.network.routes || []).map(r => `${r.to} via ${r.via}`).join("\n"))}</textarea></div>
       </div>
       <div class="sub">${esc(now)}</div>
       <div class="actbar">
@@ -1697,7 +1706,14 @@ function wireNodeConf(row, id){
         d.stores[k.slice(6)] = el.value;
       } else if (k.startsWith("net:")){
         const f = k.slice(4);
-        d.network[f] = f === "dns" ? el.value.split(",").map(x => x.trim()).filter(Boolean) : el.value;
+        d.network[f] = f === "dns" ? el.value.split(",").map(x => x.trim()).filter(Boolean)
+          // A route a line, "TO via VIA" (or "TO VIA"); what does not read as
+          // one is kept as typed for the server to refuse by name at Save.
+          : f === "routes" ? el.value.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+              const [to, via] = l.replace(/\s+via\s+/, " ").split(/\s+/);
+              return {to: to || "", via: via || ""};
+            })
+          : el.value;
       } else if (k.startsWith("runner:")){
         // The runner's fields are sent with Install, not with Save: they
         // are not part of the storage-and-network record.

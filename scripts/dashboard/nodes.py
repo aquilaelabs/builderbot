@@ -1071,7 +1071,11 @@ def _census(c):
         "interface": str(net.get("interface") or "")[:32],
         "addresses": [str(a)[:64] for a in (net.get("addresses") or [])[:8]],
         "gateway": str(net.get("gateway") or "")[:64],
-        "dns": [str(a)[:64] for a in (net.get("dns") or [])[:8]]}
+        "dns": [str(a)[:64] for a in (net.get("dns") or [])[:8]],
+        # Its static routes beside the default one (absent from an agent
+        # before 0.7.143, which reads as none reported).
+        "routes": [{"to": str(r.get("to") or "")[:64], "via": str(r.get("via") or "")[:64]}
+                   for r in (net.get("routes") or [])[:32] if isinstance(r, dict)]}
     # The machine's own tools, as the agent detected them: its package
     # manager and the service that owns its network. A system job's spec is
     # the same for every node; this says what the agent there would turn it
@@ -1199,6 +1203,27 @@ def _clean_config(cfg):
             if not _IP.match(d):
                 return None, f"a resolver is an address, not {d!r}"
         n.update(address=addr, gateway=gw, dns=dns[:4])
+    # Static routes (the operator, 7 Oct), in either mode: a network beyond
+    # this one and the router that reaches it, as {to, via} or "TO via VIA".
+    routes = []
+    for r in net.get("routes") or []:
+        if isinstance(r, dict):
+            to, via = str(r.get("to") or "").strip(), str(r.get("via") or "").strip()
+        else:
+            parts = str(r).replace(" via ", " ").split()
+            to, via = (parts + ["", ""])[:2]
+        if not to and not via:
+            continue
+        if not _CIDR.match(to) or to.split("/")[1] in ("0",) or int(to.split("/")[1]) > 32:
+            return None, (f"a route's network is written with its prefix, like 10.20.0.0/24, not {to!r}"
+                          + (" (the default route is the gateway above)" if to.endswith("/0") else ""))
+        if not _IP.match(via):
+            return None, f"a route goes via a router's address, not {via!r}"
+        if {"to": to, "via": via} not in routes:
+            routes.append({"to": to, "via": via})
+    if len(routes) > 32:
+        return None, f"a node takes 32 static routes at most, not {len(routes)}"
+    n["routes"] = routes
     out["network"] = n
     return out, ""
 

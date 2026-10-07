@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.142"
+AGENT_VERSION = "0.7.143"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -2462,7 +2462,16 @@ def network_now():
     """The address the machine is on, as facts rather than as intent: the
     interface the default route leaves by, its addresses, the gateway, and
     the resolvers. From `ip -j`, which every distro this can run on has."""
-    net = {"interface": "", "addresses": [], "gateway": "", "dns": []}
+    net = {"interface": "", "addresses": [], "gateway": "", "dns": [], "routes": []}
+    try:
+        # ...and the static routes beside the default one: what goes where
+        # through which router, which the row compares with what is saved.
+        for r in json.loads(_run(["ip", "-j", "route", "show"]) or "[]"):
+            if isinstance(r, dict) and r.get("dst") not in (None, "default") and r.get("gateway"):
+                net["routes"].append({"to": str(r["dst"])[:64], "via": str(r["gateway"])[:64]})
+        net["routes"] = net["routes"][:32]
+    except (ValueError, OSError):
+        pass
     try:
         routes = json.loads(_run(["ip", "-j", "route", "show", "default"]) or "[]")
         for r in routes:
@@ -2568,16 +2577,22 @@ class NetplanNet:
         return ""
 
     @staticmethod
-    def render(iface, mode, addr, gw, dns):
+    def render(iface, mode, addr, gw, dns, routes=()):
         lines = ["network:", "  version: 2", "  ethernets:", f"    {iface}:"]
+        rs = []
         if mode == "dhcp":
             lines.append("      dhcp4: true")
         else:
             lines += ["      dhcp4: false", f"      addresses: [{addr}]"]
             if gw:
-                lines += ["      routes:", "        - to: default", f"          via: {gw}"]
-            if dns:
-                lines += ["      nameservers:", f"        addresses: [{', '.join(dns)}]"]
+                rs.append(("default", gw))
+        rs += [(r["to"], r["via"]) for r in routes]
+        if rs:
+            lines.append("      routes:")
+            for to, via in rs:
+                lines += [f"        - to: {to}", f"          via: {via}"]
+        if mode != "dhcp" and dns:
+            lines += ["      nameservers:", f"        addresses: [{', '.join(dns)}]"]
         return "\n".join(lines) + "\n"
 
     @staticmethod
@@ -2623,7 +2638,7 @@ class NetworkManagerNet:
     the same modify with the old values."""
     name = "networkmanager"
     FIELDS = ("ipv4.method", "ipv4.addresses", "ipv4.gateway", "ipv4.dns",
-              "ipv4.ignore-auto-dns")
+              "ipv4.ignore-auto-dns", "ipv4.routes")
 
     @staticmethod
     def available():
@@ -2648,12 +2663,14 @@ class NetworkManagerNet:
         return ""
 
     @staticmethod
-    def render(iface, mode, addr, gw, dns):
+    def render(iface, mode, addr, gw, dns, routes=()):
+        rs = ", ".join(f"{r['to']} {r['via']}" for r in routes)
         if mode == "dhcp":
             return {"ipv4.method": "auto", "ipv4.addresses": "", "ipv4.gateway": "",
-                    "ipv4.dns": "", "ipv4.ignore-auto-dns": "no"}
+                    "ipv4.dns": "", "ipv4.ignore-auto-dns": "no", "ipv4.routes": rs}
         return {"ipv4.method": "manual", "ipv4.addresses": addr, "ipv4.gateway": gw,
-                "ipv4.dns": ",".join(dns), "ipv4.ignore-auto-dns": "yes" if dns else "no"}
+                "ipv4.dns": ",".join(dns), "ipv4.ignore-auto-dns": "yes" if dns else "no",
+                "ipv4.routes": rs}
 
     def snapshot(self, iface):
         con = self.conn(iface)
@@ -2753,7 +2770,7 @@ class NetworkdNet(FilesNet):
         # and the job would then report success with the old address.
         return [os.path.join(NETWORKD_DIR, f"00-builderbot-{iface}.network")]
 
-    def render(self, iface, mode, addr, gw, dns):
+    def render(self, iface, mode, addr, gw, dns, routes=()):
         lines = ["[Match]", f"Name={iface}", "", "[Network]"]
         if mode == "dhcp":
             lines.append("DHCP=yes")
@@ -2762,6 +2779,8 @@ class NetworkdNet(FilesNet):
             if gw:
                 lines.append(f"Gateway={gw}")
             lines += [f"DNS={d}" for d in dns]
+        for r in routes:
+            lines += ["", "[Route]", f"Destination={r['to']}", f"Gateway={r['via']}"]
         return {self.paths(iface)[0]: "\n".join(lines) + "\n"}
 
     def reload(self, agent, job, iface):
@@ -2809,7 +2828,7 @@ class IfupdownNet(FilesNet):
                 out.append(line)
         return "\n".join(out).rstrip("\n") + ("\n" if out else "")
 
-    def render(self, iface, mode, addr, gw, dns):
+    def render(self, iface, mode, addr, gw, dns, routes=()):
         try:
             with open(INTERFACES_FILE) as f:
                 base = self._without(f.read(), iface)
@@ -2825,6 +2844,9 @@ class IfupdownNet(FilesNet):
                 lines.append(f"    gateway {gw}")
             if dns:
                 lines.append(f"    dns-nameservers {' '.join(dns)}")
+        for r in routes:
+            lines += [f"    up ip route add {r['to']} via {r['via']} dev {iface}",
+                      f"    down ip route del {r['to']} via {r['via']} dev {iface}"]
         return {INTERFACES_FILE: base + ("\n" if base and not base.endswith("\n\n") else "")
                 + "\n".join(lines) + "\n"}
 
@@ -2850,15 +2872,17 @@ class WickedNet(FilesNet):
                 os.path.join(SYSCONFIG_NET_DIR, f"ifroute-{iface}"),
                 os.path.join(SYSCONFIG_NET_DIR, "config")]
 
-    def render(self, iface, mode, addr, gw, dns):
+    def render(self, iface, mode, addr, gw, dns, routes=()):
         ifcfg, ifroute, config = self.paths(iface)
         out = {}
+        lines = [f"{r['to']} {r['via']} - {iface}" for r in routes]
         if mode == "dhcp":
             out[ifcfg] = "STARTMODE='auto'\nBOOTPROTO='dhcp'\n"
-            out[ifroute] = None
         else:
             out[ifcfg] = f"STARTMODE='auto'\nBOOTPROTO='static'\nIPADDR='{addr}'\n"
-            out[ifroute] = f"default {gw} - {iface}\n" if gw else None
+            if gw:
+                lines.insert(0, f"default {gw} - {iface}")
+        out[ifroute] = "\n".join(lines) + "\n" if lines else None
         # netconfig's config is a shared file: only its static-DNS line moves.
         try:
             with open(config) as f:
@@ -2890,7 +2914,11 @@ class DhcpcdNet(FilesNet):
     def paths(iface):
         return [DHCPCD_CONF]
 
-    def render(self, iface, mode, addr, gw, dns):
+    # dhcpcd.conf has no static route of its own (only a hook script could
+    # add one), so routes are refused here by name rather than dropped.
+    no_routes = "dhcpcd has no setting for a static route; add it with a dhcpcd hook by hand"
+
+    def render(self, iface, mode, addr, gw, dns, routes=()):
         try:
             with open(DHCPCD_CONF) as f:
                 text = f.read()
@@ -6838,6 +6866,15 @@ class Agent:
         mode = "static" if net.get("mode") == "static" else "dhcp"
         addr, gw = str(net.get("address") or ""), str(net.get("gateway") or "")
         dns = [str(d) for d in (net.get("dns") or []) if str(d)]
+        # Static routes (the operator, 7 Oct), in either mode: a network
+        # beyond this one and the router that reaches it.
+        routes = [{"to": str(r.get("to") or ""), "via": str(r.get("via") or "")}
+                  for r in (net.get("routes") or []) if isinstance(r, dict)]
+        routes = [r for r in routes if re.fullmatch(r"[0-9.]+/\d{1,2}", r["to"])
+                  and re.fullmatch(r"[0-9.]+", r["via"])][:32]
+        if routes and getattr(backend, "no_routes", ""):
+            job.say(f"refused: {backend.no_routes}\n")
+            return "failed", 77
         if mode == "static" and not addr:
             job.say("refused: a static address needs an address\n")
             return "failed", 65
@@ -6857,7 +6894,7 @@ class Agent:
                     "on the host first (Unraid: Shares -> the share -> NFS Security Settings), "
                     "then apply again:\n  " + "\n  ".join(gaps) + "\n")
             return "failed", 77
-        desired = backend.render(iface, mode, addr, gw, dns)
+        desired = backend.render(iface, mode, addr, gw, dns, routes)
         before = backend.snapshot(iface)
         if backend.same(desired, before):
             job.say(f"already applied: {backend.name} already has this config\n")
