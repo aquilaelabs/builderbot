@@ -478,8 +478,12 @@ bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reve
 bb dashboard status  which copy of the dashboard is serving
 bb dashboard trace [SECONDS]  what the dashboard was asked over the last SECONDS, by endpoint and who asked, with how long each took
 bb drift           what this checkout changed that the container is not serving
-bb map VERB ...    the code map: find NAME, who-calls NAME, calls NAME, defs FILE,
-                   draws ID|.class, suites FILE...; a session asks it before grepping
+bb map VERB ...    the code map, which a session asks before grepping: find NAME,
+                   who-calls NAME, calls NAME, defs FILE, draws ID|.class,
+                   suites FILE..., state [FILE], sections FILE, unused [FILE],
+                   addresses [FILE...], coverage, covered NAME, uncovered [FILE],
+                   affected --base REF FILES..., languages (which files it
+                   reads), build; bb map help says what each does
 bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
                    one picture at rest: a page, the running emulator's screen,
                    or an X display (--drive F works the surface first). At rest

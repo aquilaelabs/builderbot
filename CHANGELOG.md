@@ -84,6 +84,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Test in a project's repository settings (the chain): tries a read and a dry-run push with its deploy key or access token, asks GitHub, GitLab or Gitea what a token may do, and lists what is missing (write access, a read-only deploy key, the workflow scope) in red under the button (e866504)
 - A project's files over FTPS: its settings' File access section turns it on, picks the port and gives each account read or read and write, signing in with their own BuilderBot password. Runs on the project's node from the new ftp toolchain; the owner's to set until a role grants ftp (ddd403e)
 - File access says up front when the project's node lacks the ftp toolchain, and Save refuses a port something else on the node already answers on, naming it (35ad6b7)
+- bb map languages says which files the map reads; bb map -h, bare bb map and bb map help name the same verbs (7310c34)
 
 ### Changed
 
@@ -325,6 +326,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb devapp ls on a project with no container yet points at bb devapp new when the project has a compose file, rather than at the operator's Docker tab (3bd5e4e)
 - The playwright command is on a session's PATH beside the module NODE_PATH already found, and the briefing says a script of a session's own can require it without installing anything (affa4c4)
 - A project's remote settings, opened from the chain, no longer show its People, Signing or Sessions when the gear's settings were opened a moment before (fff2081)
+- bb map reads C and C++: functions, structs and enums, calls by the function they are made in, prototypes as declarations, and a JNI function under its Kotlin or Java method's name. PHP and anonymous JavaScript functions no longer read a call as a definition (7310c34)
 
 ### Security
 

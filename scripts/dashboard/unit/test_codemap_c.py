@@ -1,0 +1,150 @@
+"""bb map's C and C++ scanner (B544, report #74 from Shebang-DevBoard): a
+function is its header at file, namespace or class level, a type is
+`struct|union|enum|class NAME {` or a typedef's name, a prototype is
+neither and is no call, calls are made inside functions, and a JNI
+implementation is indexed under the Kotlin or Java method it implements.
+And the python scanner counts a function handed on as `module.name` (B543)."""
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
+import codemap  # noqa: E402
+
+C = r'''
+#include <jni.h>
+#define LOG(...) __android_log_print(ANDROID_LOG_INFO, "x", __VA_ARGS__)
+
+struct whisper_context;                       /* a declaration, not a type */
+typedef struct { int a; } pair_t;
+
+enum ggml_log_level { LOG_NONE, LOG_WARN };
+
+WHISPER_API int whisper_full(struct whisper_context * ctx, int n);
+
+/* Says what the logger does. */
+static void log_to_logcat(enum ggml_log_level level, const char * text, void * user) {
+    if (level >= LOG_WARN) __android_log_print(level, "whisper", "%s", text);
+}
+
+JNIEXPORT jlong JNICALL
+Java_dev_shebang_devboard_voice_Whisper_nativeInit(JNIEnv *env, jclass cls, jstring path) {
+    whisper_log_set(log_to_logcat, NULL);
+    struct whisper_context * ctx = whisper_init((const char *) "a{b}c");
+    for (int i = 0; i < 3; i++) { whisper_free(ctx); }
+    return (jlong) ctx;
+}
+'''
+
+CPP = r'''
+namespace ns {
+class Model : public Base {
+public:
+    Model(int n) : n_(n), name_("m") { setup(n); }
+    int size() const override { return helper(n_); }
+private:
+    int n_;
+};
+int Model::load(const char * p) noexcept {
+    auto f = [&](int x) { return x + 1; };
+    return f(open(p));
+}
+}  // namespace ns
+extern "C" {
+int c_api(void) { return ns::Model(1).size(); }
+}
+'''
+
+
+def scan(text, name="x.c"):
+    s = codemap.Sink(name)
+    codemap.scan_c(text, s)
+    return s
+
+
+class CScanner(unittest.TestCase):
+    def test_functions_and_types_and_nothing_else(self):
+        s = scan(C)
+        got = sorted((d["kind"], d["name"]) for d in s.defs)
+        self.assertEqual(got, [("class", "ggml_log_level"), ("class", "pair_t"),
+                               ("def", "Java_dev_shebang_devboard_voice_Whisper_nativeInit"),
+                               ("def", "log_to_logcat"), ("jni", "nativeInit")])
+        log = next(d for d in s.defs if d["name"] == "log_to_logcat")
+        self.assertEqual((log["line"], log["end"]), (13, 15))
+
+    def test_calls_are_made_inside_functions_and_a_prototype_is_none(self):
+        s = scan(C)
+        calls = {(c["name"], c["caller"]) for c in s.calls}
+        self.assertIn(("__android_log_print", "log_to_logcat"), calls)
+        self.assertIn(("whisper_free", "Java_dev_shebang_devboard_voice_Whisper_nativeInit"), calls)
+        self.assertNotIn("whisper_full", {c["name"] for c in s.calls}, "a prototype is not a call")
+        self.assertNotIn("for", {c["name"] for c in s.calls})
+        self.assertNotIn("whisper_init", {c["name"] for c in s.calls if c["caller"] == "(top level)"})
+
+    def test_a_callback_handed_on_is_passed_by_name(self):
+        s = scan(C)
+        self.assertTrue(any(p["name"] == "log_to_logcat" and p["line"] == 19 for p in s.passed))
+
+    def test_the_jni_method_is_named_by_its_class(self):
+        jni = next(d for d in scan(C).defs if d["kind"] == "jni")
+        self.assertEqual((jni["name"], jni["parent"], jni["jni"]),
+                         ("nativeInit", "Whisper", "Java_dev_shebang_devboard_voice_Whisper_nativeInit"))
+        self.assertEqual(codemap._jni_method("Java_a_b_My_1Class_do_1it"), ("My_Class", "do_it"))
+        self.assertIsNone(codemap._jni_method("JavaScript_thing"))
+
+    def test_cpp_classes_methods_constructors_and_qualified_names(self):
+        s = scan(CPP, "x.cpp")
+        got = sorted((d["kind"], d["parent"], d["name"]) for d in s.defs)
+        self.assertEqual(got, [("class", "", "Model"), ("def", "", "c_api"), ("def", "Model", "Model"),
+                               ("def", "Model", "load"), ("def", "Model", "size")])
+        calls = {(c["name"], c["caller"]) for c in s.calls}
+        self.assertIn(("setup", "Model"), calls)
+        self.assertIn(("open", "load"), calls)
+        self.assertNotIn("n_", {c["name"] for c in s.calls}, "an initializer list is not a header's name")
+
+
+class AnonymousFunctions(unittest.TestCase):
+    """An anonymous `function (` handed to a call owns its body, and the
+    first name in it is a call, not the function's name (B545: a WordPress
+    functions.php read add_theme_support, $css and echo as functions)."""
+
+    def scan(self, text, name):
+        s = codemap.Sink(name)
+        codemap.scan_js(text, s)
+        return s
+
+    def test_php(self):
+        s = self.scan("<?php\nadd_action('init', function () {\n    add_theme_support('x');\n"
+                      "    $css = path('s.css');\n    echo esc_html($css);\n});\n"
+                      "function aq_setup($x) { return helper($x); }\n", "functions.php")
+        self.assertEqual([(d["name"], d["line"], d["end"]) for d in s.defs],
+                         [("(anonymous)", 2, 6), ("aq_setup", 7, 7)])
+        self.assertEqual({(c["name"], c["caller"]) for c in s.calls},
+                         {("add_action", "(top level)"), ("add_theme_support", "(anonymous)"),
+                          ("path", "(anonymous)"), ("esc_html", "(anonymous)"), ("helper", "aq_setup")})
+
+    def test_javascript(self):
+        s = self.scan("on('x', function () { doThing(); });\nconst o = { m(a) { z(); } };\n", "a.js")
+        self.assertEqual([(d["kind"], d["name"]) for d in s.defs], [("function", "(anonymous)"), ("method", "m")])
+        self.assertIn(("doThing", "(anonymous)"), {(c["name"], c["caller"]) for c in s.calls})
+
+
+class Languages(unittest.TestCase):
+    def test_it_says_what_is_read_and_what_is_not(self):
+        text = "\n".join(codemap.languages())
+        self.assertIn("C and C++: .c .cc .cpp", text)
+        self.assertIn(".php", text)
+        self.assertIn("anything else is not indexed (.css", text)
+        self.assertIn("languages", codemap.VERBS)
+
+
+class PythonPassedAsAttribute(unittest.TestCase):
+    def test_a_module_function_handed_on_is_passed(self):
+        s = codemap.Sink("x.py")
+        codemap.scan_python("import nodes\nconfigure(node_addr=nodes.ssh_addr_of)\nnodes.other(1)\n", s)
+        self.assertTrue(any(p["name"] == "ssh_addr_of" for p in s.passed))
+        self.assertFalse(any(p["name"] == "other" for p in s.passed), "a call is not a pass")
+
+
+if __name__ == "__main__":
+    unittest.main()
