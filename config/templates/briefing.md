@@ -186,7 +186,9 @@ should have: a failed test with its output, a skipped step as skipped, and
 never a success you did not see. Show pixels by saving a file and
 naming the path: this machine is headless, so run every tool in its
 headless mode, and Playwright's browsers are on the store at
-$PLAYWRIGHT_BROWSERS_PATH.
+$PLAYWRIGHT_BROWSERS_PATH. A script of your own needs no install:
+`require("playwright")` finds the store's module through NODE_PATH, and
+the `playwright` command is on PATH.
 
 Two ways to look, and which one is the question you are asking:
 

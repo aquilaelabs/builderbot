@@ -636,7 +636,9 @@
       "label": "Playwright browsers",
       "probe": "playwright",
       "layout": {
-        "bin": [],
+        "bin": [
+          "node_modules/.bin"
+        ],
         "env": {
           "PLAYWRIGHT_BROWSERS_PATH": "",
           "NODE_PATH": "node_modules"

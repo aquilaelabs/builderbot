@@ -106,9 +106,12 @@ ok(catalog.toolchains.length === list.length
 const pw = catalog.toolchains.find(p => p.name === 'playwright');
 const lt = catalog.toolchains.find(p => p.name === 'lint-tools');
 ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.source?.run?.join(' '))
+   // ...and its command on PATH (B534): which playwright found nothing, and
+   // a session hard-coded the module's path into its own scripts.
+   && pw?.layout?.bin?.includes('node_modules/.bin')
    && lt?.layout?.bin?.includes('bin')
    && ['shellcheck', 'hadolint', 'actionlint', 'ruff', 'yq', 'fd'].every(t => (lt?.source?.run?.join(' ') || '').includes(t)),
-   'the playwright recipe puts the module in the store with NODE_PATH on it, and lint-tools carries what bb lint runs');
+   'the playwright recipe puts the module in the store with NODE_PATH on it and its command on PATH, and lint-tools carries what bb lint runs');
 
 // A recipe that gives a session commands says under which name (`tool`):
 // they live under `bb tool NAME`, one name per recipe, so two toolchains may

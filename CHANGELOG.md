@@ -312,6 +312,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb capture shot fails, with no picture and exit 3, when the page does not answer, where it saved Chromium's error page and reported success; a page that answers with an error status is still shot, and the status is said (e018cad)
 - bb VERB -h prints that verb's entries from the command reference and exits 0 for every verb, where devapp and container printed their usage as an error (120b26d)
 - bb devapp ls on a project with no container yet points at bb devapp new when the project has a compose file, rather than at the operator's Docker tab (3bd5e4e)
+- The playwright command is on a session's PATH beside the module NODE_PATH already found, and the briefing says a script of a session's own can require it without installing anything (affa4c4)
 
 ### Security
 
