@@ -353,7 +353,7 @@ const pHost = () => {
 function pShowKey(){
   const k = pKeys.find(k => k.name === $("pKey").value);
   $("pPubWrap").hidden = !k;
-  if (k) $("pPub").value = k.pub;
+  if (k) $("pPub").textContent = k.pub;
 }
 
 // Each open is a generation; closing bumps it too. Everything asynchronous:

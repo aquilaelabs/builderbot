@@ -783,6 +783,22 @@ ok(seenSects.size <= 1,
     return e.dataset.bwignore === undefined;
   }).map(e => e.id || e.name || e.className).slice(0, 8));
   ok(loud.length === 0, `every field that is not a password or an account tells password managers to stay away (${JSON.stringify(loud)})`);
+  // B533: Bitwarden honors data-bwignore only when its user opts in, and
+  // reads one textarea that names a public key as an add-an-SSH-key form,
+  // then offers itself on every field labeled name, title or description.
+  // So no textarea on the page may read as one, by Bitwarden's own words.
+  const sshy = await page.$$eval('textarea', es => es.filter(e => {
+    // Each attribute is split on its own, as Bitwarden does: whole, by
+    // word, and by word with the spaces taken out ("public key" is publickey).
+    const said = [e.id, e.name, e.className, e.title, e.placeholder,
+                  e.getAttribute('aria-label'), ...[...(e.labels || [])].map(l => l.textContent)]
+      .filter(Boolean).map(v => v.toLowerCase().replace(/-/g, ''));
+    const words = new Set(said.flatMap(v => [v, ...v.split(/[^\p{L}\d]+/u),
+                                             ...v.replace(/\s/g, '').split(/[^\p{L}\d]+/u)]));
+    return ['publickey', 'sshkey'].some(w => words.has(w))
+      || said.some(v => /ssh(rsa|ed25519|dss)|ecdsasha2/.test(v));
+  }).map(e => e.id || e.className));
+  ok(sshy.length === 0, `...and no text box reads to Bitwarden as an SSH public key (${JSON.stringify(sshy)})`);
 }
 {
   // The header's buttons are one box (the operator, 5 Oct): the bell stood

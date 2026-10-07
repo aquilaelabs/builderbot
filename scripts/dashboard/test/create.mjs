@@ -840,7 +840,7 @@ await page.click('#pClone');
 await page.waitForFunction(() => !document.getElementById('pKeyField').hidden);
 ok(await page.$eval('#pPubWrap', el => el.hidden), 'no key picked, no key shown');
 await page.selectOption('#pKey', 'github_testkey');
-ok(await page.$eval('#pPub', el => el.value.startsWith('ssh-ed25519 ')),
+ok(await page.$eval('#pPub', el => el.textContent.startsWith('ssh-ed25519 ')),
    'picking the key shows its public half to copy to GitHub');
 
 await page.fill('#pUrl', 'https://github.com/owner/kproj');

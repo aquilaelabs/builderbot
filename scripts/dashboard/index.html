@@ -2604,9 +2604,14 @@ pre.diff .d-ctx{color:var(--dim)}
 /* The memory's side is a whole document, not a line: taller, and the only
    copy of what is on disk the operator can read without losing their own. */
 .clashtext.big{max-height:18em;font:var(--f-ui);font-family:var(--mono)}
-/* The public key: one unbroken base64 line nobody should read, only copy. */
-#pPub{margin-top:8px;min-height:0;white-space:pre;overflow-x:auto;resize:none;
-  font-size:11px;color:var(--dim)}
+/* The public key: one unbroken base64 line nobody should read, only copy.
+   A block of text, not a textarea: Bitwarden reads a form field labeled
+   "public key" as an add-an-SSH-key form and then offers itself on every
+   field on the page whose label says name, title, label or description
+   (B533), whatever data-bwignore says. */
+#pPub{margin-top:8px;background:var(--sunk);border:1px solid var(--line);
+  border-radius:var(--r-control);padding:6px 8px;font:11px/1.5 var(--mono);
+  color:var(--dim);white-space:pre;overflow-x:auto;user-select:all}
 #pCopy{margin-top:6px}
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
@@ -4788,7 +4793,7 @@ body.booting .pane>.loading{margin:auto}
       <select id="pKey"></select>
       <div class="hint" id="pKeyHint"></div>
       <div id="pPubWrap" hidden>
-        <textarea id="pPub" readonly rows="3" aria-label="public key"></textarea>
+        <div id="pPub" tabindex="0" aria-label="the deploy key's public half"></div>
         <button id="pCopy" type="button">Copy public key</button>
       </div>
     </div>
@@ -5533,9 +5538,9 @@ $("pForgeHost").addEventListener("input", pDrawForge);
 $("pCopy").onclick = async () => {
   // clipboard API needs a secure context; plain-http access to the dashboard
   // falls back to the selection route, which works everywhere a click does.
-  const pub = $("pPub").value;
+  const pub = $("pPub").textContent;
   try { await navigator.clipboard.writeText(pub); }
-  catch { $("pPub").select(); document.execCommand("copy"); }
+  catch { getSelection().selectAllChildren($("pPub")); document.execCommand("copy"); }
   notify("public key copied: paste it under the repo's Settings → Deploy keys");
 };
 $("pCancel").onclick = closeNewProject;
