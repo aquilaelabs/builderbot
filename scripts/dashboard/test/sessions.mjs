@@ -3,7 +3,7 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, ready, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage, unfold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled, refreshUntil, URL, DIR, closePage, unfold, member } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -263,6 +263,7 @@ ok(await page.evaluate(() => sessionOf('claude:ep.silon') === 'claude-ep_silon' 
 // runs, and the question names who is running one (the operator, 29 Sep).
 await page.evaluate(async () => (await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ action: 'add', name: 'w.lock', password: 'w.lock-pass-1', role: 'user' }) })).json());
+await member('w.lock');
 const lockUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.lock'].uid;
 // (The Sessions card lists this account's own sessions, so the other
 // account's is checked in tmux itself.)

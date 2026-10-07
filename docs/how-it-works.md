@@ -3785,6 +3785,13 @@ that were on `user` were moved to none, once. A project's owner holds
 and moved with it when it changes hands; it is an ordinary role, so cutting
 it back (taking File access off it, say) holds for whoever owns the project.
 
+A person may do what their roles give and nothing else: an account on a
+project's list with no role there works on nothing. A Claude session does no
+more than the person behind it: what its own rules (its project's Claude may
+dials, a session's limits) allow and what its account's roles give on the
+project, whichever is less, the projects it reads included, so a session of
+somebody who may only read a project can only read it.
+
 The tab is two sections, each with its own **Save** and **Revert**. **People**
 picks an account: its Global roles, the projects it is on, and the roles it
 holds on each. **Roles** picks a role or adds one: its scope, what it is for,

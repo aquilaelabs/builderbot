@@ -582,3 +582,20 @@ export async function takeOn(...names) {
     body: JSON.stringify({ action: 'projects', name: 'test', projects: want }) });
   return (await r.json()).projects || [];
 }
+
+// What a plain account could do before R152 (the operator, 7 Oct: there is
+// no user role now, and an account holds nothing until given a role), as a
+// role a suite gives the accounts it makes, the way an administrator would
+// on the Roles tab: work on the projects the account is on, and read their
+// settings, releases, credential and containers, with the shielded console.
+export const MEMBER = { projects: 'write', settings: 'read', releases: 'read', gitauth: 'read',
+                        files: 'write', containers: 'read', terminal: 'read' };
+export async function member(...names) {
+  const h = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  await fetch(`${base}/api/roles`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'set', name: 'member', scope: 'projects', perms: MEMBER, note: 'a suite\'s plain account' }) });
+  for (const name of names)
+    await fetch(`${base}/api/roles`, { method: 'POST', headers: h,
+      body: JSON.stringify({ action: 'assign', name, roles: ['member'] }) });
+}

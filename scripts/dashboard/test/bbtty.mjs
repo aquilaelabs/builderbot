@@ -10,7 +10,7 @@
 // project became unstartable, ttyd reconnecting into the same error every five
 // seconds. The command goes through a launcher file now, and this is the test
 // that says so.
-import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt, takeOn } from './lib.mjs';
+import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt, takeOn, member } from './lib.mjs';
 import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync, symlinkSync, realpathSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
@@ -675,6 +675,7 @@ d["users"]["plain.user"] = {"uid": uid, "role": "user", "projects": ["wtproj"],
                             "password": u.hash_password("plain-user-pass"), "created": 0, "seen": 0}
 u._save(d)
 print(uid)`);
+    await member('plain.user');
     const ownerTok = tok('wtproj');
     // Another account's transcripts on the share, for the walls below.
     mkdirSync(join(DIR, 'ws', '.claude', 'u_0badf00d', 'projects'), { recursive: true });

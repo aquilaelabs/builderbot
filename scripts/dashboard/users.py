@@ -556,7 +556,7 @@ def may(u, action, project=None):
     if project is not None and u.get("session") and project != u["session"] \
             and project in (u.get("reads") or []):
         if action in READ_ACTIONS:
-            return ""
+            return _session_account_why(u, "read", project)
         return (f"{project} is read-only from a session on {u['session']}: it reads "
                 f"{project}'s code and notebook, and a session on {project} is what changes them")
     if project is not None and not may_work(u, project):
@@ -645,7 +645,34 @@ def may(u, action, project=None):
                        "grants ftp by name on the Roles tab"}[action]
     if action == "admin":
         return "that is an administrator's"
-    return ""
+    # Everything else, for a person, is what their roles give and nothing
+    # more (R152, the operator, 7 Oct: no role, no permission); it used to
+    # be allowed to anybody on the project's list. A session keeps its own
+    # project's work: its token carries no roles, and the project's Claude
+    # may settings are what hold it.
+    if not (u or {}).get("session"):
+        return _roles_why(action, project)
+    return _session_account_why(u, action, project if project is not None else u.get("session"))
+
+
+def _roles_why(action, project=None, whose="your"):
+    """The refusal for an action no role gives, naming the area and level."""
+    area, need = roles.CAP_AREA.get(action, ("projects", "write"))
+    label = next((a[1] for a in roles.AREAS if a[0] == area), area)
+    where = f" on {project}" if project else ""
+    return f"{whose} roles give no {label} {'Write' if need == 'write' else 'Read'}{where}: the Roles tab gives one"
+
+
+def _session_account_why(u, action, project):
+    """A session does no more than the account behind it (R152, the
+    operator, 7 Oct): what its own rules allow, and what that account's roles
+    give on the project, whichever is less. "" when the account may."""
+    acct = account_of(u)
+    if not acct or acct is u or not acct.get("name"):
+        return ""
+    if is_admin(acct) or roles.granted(acct, action, project, may_work):
+        return ""
+    return _roles_why(action, project, f"{acct['name']}'s") + "; a session does no more than its account"
 
 
 # --- what a session gets instead of the operator's password --------------

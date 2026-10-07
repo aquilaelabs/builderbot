@@ -3,7 +3,7 @@
 // /term proxy that puts the terminals behind the same sign-in. The proxy's
 // upstream is dead in the harness (nothing listens on the ttyd port), which
 // pins the 502 path; the live relay is covered by using the dashboard.
-import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection, member } from './lib.mjs';
 import http from 'node:http';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -169,6 +169,7 @@ await ctx2.close();
        String(seeded?.password).slice(0, 24)}…)`);
 
   bb(['add', 'alt', '--role', 'user'], 'firstpass1\nfirstpass1\n');
+  await member('alt');
   ok(read().users.alt?.role === 'user', 'bb users add makes an ordinary account');
   const signin = (u, pw) => bare('/login', { method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -273,6 +274,7 @@ ${code}`], { encoding: 'utf8' });
   ok(new Set(uids).size === uids.length, '...and no two accounts share one');
 
   bb(['add', 'sharer', '--role', 'user'], 'stripspass1\nstripspass1\n');
+  await member('sharer');
   const asUser = (u, pw) => ({ Authorization: 'Basic ' + Buffer.from(`${u}:${pw}`).toString('base64'),
                                'Content-Type': 'application/json' });
   const putTabs = (h, tabs) => bare('/api/layout', { method: 'POST', headers: h,
@@ -791,6 +793,7 @@ u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(jso
 ${code}`], { encoding: 'utf8' }).trim();
 
   bb(['add', 'lim', '--role', 'user'], 'limitedpw1\nlimitedpw1\n');
+  await member('lim');
   py('print(u.set_projects("lim", ["alpha"]))');
   const as = (path, opts = {}) => bare(path, { ...opts, headers: {
     Authorization: 'Basic ' + Buffer.from('lim:limitedpw1').toString('base64'),
@@ -1155,6 +1158,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'add', name: 'profiled', password: 'tabmadepw1', role: 'user' }) })).json());
+  await member('profiled');
   const H = pw => ({ Authorization: 'Basic ' + Buffer.from(`profiled:${pw}`).toString('base64'),
                      'Content-Type': 'application/json' });
   const api = async (pw, body) => {

@@ -4,7 +4,7 @@
 // Nodes tab where an administrator sets the number. The node is one this file
 // enrolls, with the session half up and a heartbeat whose panes carry the
 // spinner a working Claude pane does; the per-file world takes it away after.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, openSection } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, openSection, member } from './lib.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -105,6 +105,7 @@ d["users"]["${name}"] = {"uid": uid, "role": "user", "projects": ["alpha"],
 m._save(d); print(uid)`);
 const owner = py('users.py', 'print(next(r["uid"] for r in m.load()["users"].values() if r.get("role") == "owner"))');
 const uids = [owner, make('tn.one'), make('tn.two'), make('tn.three')];
+await member('tn.one', 'tn.two', 'tn.three');
 const toks = uids.map(u => py('users.py', `print(m.mint_session("alpha", uid=${JSON.stringify(u)}))`));
 const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
 

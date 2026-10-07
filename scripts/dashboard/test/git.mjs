@@ -3,7 +3,7 @@
 // detail and diff, and the branches with whose worktree sits on which.
 // Real git on the fixture repos, read by the checkout's server; nothing
 // here writes through the dashboard, because this step has no actions.
-import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR, openFold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, refreshUntil, tmuxNew, tmuxKill, tmuxCapture, URL, DIR, openFold, member } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync } from 'node:fs';
 
@@ -51,6 +51,7 @@ await ready(page);
 await fetch(URL.replace(/\/$/, '') + '/api/users', { method: 'POST',
   headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
   body: JSON.stringify({ action: 'add', name: 'tabmade', password: 'tabmade-pass-1', role: 'user' }) });
+await member('tabmade');
 
 // ---- the API, first ---------------------------------------------------------
 const api = async q => (await (await fetch(URL.replace(/\/$/, '') + '/api/git?project=beta&' + q,
@@ -874,6 +875,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     for (const body of [{ action: 'add', name: 'w.asker', password: 'w.asker-pass-1', role: 'user' },
                         { action: 'projects', name: 'w.asker', projects: ['beta'] }])
       await fetch(URL.replace(/\/$/, '') + '/api/users', { method: 'POST', headers: hh, body: JSON.stringify(body) });
+    await member('w.asker');
     const auid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.asker'].uid;
     const theirs = `${auid}~claude-beta`;
     tmuxNew(theirs, B);
@@ -982,6 +984,7 @@ ok(strip.n === 11 && strip.rows >= 2 && strip.rows <= 3 && strip.inside && strip
   for (const n of ['w.dev', 'w.peer']) {
     await users({ action: 'add', name: n, password: `${n}-pass-1`, role: 'user' });
     await users({ action: 'projects', name: n, projects: ['beta'] });
+    await member(n);
   }
   const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.dev'].uid;
   const WT = `${DIR}/ws/.worktrees/beta/${uid}`;

@@ -6,7 +6,7 @@
 // may be lost or written twice, numbers must stay unique, and the files must
 // never be seen half-written. No browser: the relay and the API are what a
 // session and the panel use.
-import { ok, done, URL, DIR } from './lib.mjs';
+import { ok, done, URL, DIR, member } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
@@ -45,6 +45,8 @@ d["users"]["${name}"] = {"uid": uid, "role": "${role}", "projects": ["alpha"],
 u._save(d); print(uid)`);
 const owner = usersPy('print(next(r["uid"] for r in u.load()["users"].values() if r.get("role") == "owner"))');
 const people = { owner, admin: make('cc.admin', 'admin'), user1: make('cc.user1', 'user'), user2: make('cc.user2', 'user') };
+// What a plain account did before R152, given as a role (lib.mjs member).
+await member('cc.user1', 'cc.user2');
 const tok = uid => usersPy(`print(u.mint_session("alpha", uid=${JSON.stringify(uid)}))`);
 // Six sessions: one each, and two more conversations for two of them.
 const sessions = [

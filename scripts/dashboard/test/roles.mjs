@@ -5,7 +5,7 @@
 // and every notebook view they can, changes the settings that are theirs, is
 // refused the ones that are not, and meets the others' changes. Console
 // errors and server errors are collected per person across the whole walk.
-import { launch, newPage, ok, done, ready, sleep, refreshUntil, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, refreshUntil, URL, DIR, member } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
@@ -33,6 +33,9 @@ const CAST = [
   { name: 'w.user3', role: 'user', projects: [] },
 ];
 for (const p of CAST.filter(c => c.role !== 'owner')) { p.pw = `pw-${p.name}-1`; make(p.name, p.role, p.projects); }
+// What a plain account did before R152 is a role now, given as an
+// administrator would (lib.mjs member).
+await member('w.user1', 'w.user2', 'w.user3');
 
 const browser = await launch();
 const pageFor = async (who) => {

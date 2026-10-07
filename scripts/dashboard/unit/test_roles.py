@@ -164,3 +164,49 @@ class Migration(unittest.TestCase):
         self.assertTrue(u.rename_project("alpha", "omega"))
         roles.rename_project("alpha", "omega")
         self.assertEqual(u.get("bob")["project_roles"], {"omega": ["omega_owner"]})
+
+
+class SessionAndAccount(unittest.TestCase):
+    """A session does no more than the account behind it (the operator,
+    7 Oct): its own rules, and its account's roles on the project."""
+
+    def setUp(self):
+        import users
+        self.users = users
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        wj = lambda p, d, mode=0o644: open(p, "w").write(json.dumps(d))  # noqa: E731
+        roles.configure(state=self.tmp, write_json=wj)
+        users.configure(state=self.tmp, write_json=wj)
+        roles.set_role("reader", "projects", {"projects": "read"})
+        roles.set_role("worker", "projects", {"projects": "write"})
+        with users._lock:
+            d = users.load()
+            d["users"] = {"boss": {"uid": "u_1", "role": "owner", "projects": ["alpha"]},
+                          "ann": {"uid": "u_3", "role": "user", "projects": ["alpha", "beta"], "roles": [],
+                                  "project_roles": {"alpha": ["reader"], "beta": ["worker"]}},
+                          "nobody": {"uid": "u_4", "role": "user", "projects": ["alpha"], "roles": []}}
+            users._save(d)
+
+    def sess(self, uid, project, reads=()):
+        return {"name": f"session:{project}", "role": "user", "projects": [project, *reads],
+                "session": project, "uid": uid, "reads": list(reads)}
+
+    def test_a_session_is_held_to_its_accounts_roles(self):
+        may = self.users.may
+        self.assertEqual(may(self.sess("u_3", "beta"), "work", "beta"), "", "the account works on beta")
+        why = may(self.sess("u_3", "alpha"), "work", "alpha")
+        self.assertIn("ann's roles give no Projects Write on alpha", why)
+        self.assertIn("a session does no more than its account", why)
+        self.assertEqual(may(self.sess("u_3", "alpha"), "read", "alpha"), "", "...though it reads there")
+        self.assertEqual(may(self.sess("u_1", "alpha"), "work", "alpha"), "", "the owner's session as ever")
+
+    def test_a_project_it_reads_needs_the_account_to_read_it(self):
+        may = self.users.may
+        self.assertEqual(may(self.sess("u_3", "beta", reads=("alpha",)), "read", "alpha"), "")
+        self.assertIn("nobody's roles give no Projects Read on alpha",
+                      may(self.sess("u_4", "alpha"), "read", "alpha"))
+
+    def test_a_person_without_a_role_may_do_nothing(self):
+        self.assertIn("your roles give no Projects Write on alpha",
+                      self.users.may(self.users.get("nobody"), "work", "alpha"))
