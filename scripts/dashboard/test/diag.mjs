@@ -140,26 +140,19 @@ print(json.dumps(m.job_add('system', {'node': '${node.id}'}, 'exec', {'argv': ['
   ok(r.status === 404, `...nor the owner's session once alpha's grant is off (${r.status})`);
   await call('/api/prefs', { project: 'alpha', diag: true });
   await call('/api/v1/jobs', { action: 'cancel', id: jid });
+  // Admin is built in with everything the owner may do since R152 (the
+  // operator, 7 Oct), the debug options included; a plain account is not.
   r = await call('/api/diag', {}, asAdmin);
-  ok(r.status === 403 && /debug grant/.test(r.body.error || ''),
-     `an administrator's session is refused: debug is the owner's until a role names it (${r.body.error})`);
+  ok(r.status === 200, `an administrator's session reads it too: admin holds everything the owner does (${r.status} ${r.body.error || ''})`);
   r = await call('/api/diag', {}, asPlain);
-  ok(r.status === 403 && /debug grant/.test(r.body.error || ''), `...and so is a plain account's (${r.body.error})`);
+  ok(r.status === 403 && /debug grant/.test(r.body.error || ''), `...and a plain account's is refused (${r.body.error})`);
   r = await call('/api/diag', {}, basic('diag.admin', 'diag.admin-pw'));
-  ok(r.status === 403, `...and the administrator with a password, in the dashboard (${r.status})`);
-  r = await call('/api/prefs', { project: 'alpha', diag: false }, basic('diag.admin', 'diag.admin-pw'));
-  ok(r.status === 403, `...who may not change a project's Debug grants either (${r.status})`);
-  r = await call('/api/settings', { set: { debug_mode: false } }, basic('diag.admin', 'diag.admin-pw'));
-  ok(r.status === 403, `...nor debug mode (${r.status})`);
-  // A role that names debug hands it on, the built-in admin's * does not.
-  await call('/api/roles', { action: 'set', name: 'debugger', grants: [{ cap: 'debug', scope: 'all' }] });
-  usersPy('d = u.load(); d["users"]["diag.admin"]["roles"] = ["admin", "debugger"]; u._save(d)');
-  r = await call('/api/diag', {}, basic('diag.admin', 'diag.admin-pw'));
-  ok(r.status === 200, `...until a role grants debug by name (${r.status} ${r.body.error || ''})`);
-  // The page is told, so it can leave the debug options out.
+  ok(r.status === 200, `...as is the administrator with a password, in the dashboard (${r.status})`);
+  r = await call('/api/prefs', { project: 'alpha', diag: false }, basic('diag.plain', 'diag.plain-pw'));
+  ok(r.status === 403, `a plain account may not change a project's Debug grants (${r.status})`);
   const can = acc => call('/api/status', undefined, basic(acc, `${acc}-pw`)).then(x => x.body?.can?.debug);
-  usersPy('d = u.load(); d["users"]["diag.admin"].pop("roles", None); u._save(d)');
-  ok(await can('diag.admin') === false, 'the status says an administrator without the role has no debug options');
+  ok(await can('diag.admin') === true && await can('diag.plain') === false,
+     'the status gives an administrator the debug options and a plain account none');
 
   // Everything back as it was found.
   await call('/api/roles', { action: 'remove', name: 'debugger' });
