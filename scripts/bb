@@ -3206,6 +3206,13 @@ run_here() {
     "$@" 2>&1 | tee "$said" || code=$?
     if [ "$code" -ne 0 ] && share_flake "$said"; then
         warn "$role failed on what reads as the projects share, not the code ($(share_flake "$said" print)): running it once more"
+        # A .nfs file is one the Gradle daemon still holds open: a rerun in
+        # the same daemon fails the same way until it is stopped (B439,
+        # report #73), and this project's Gradle home is its own to stop.
+        if grep -q '\.nfs[0-9a-f]\{8,\}' "$said" && [ -x ./gradlew ]; then
+            ./gradlew --stop >/dev/null 2>&1 || true
+            log "$role: stopped this project's Gradle daemon, which held the file"
+        fi
         code=0
         "$@" 2>&1 | tee "$said" || code=$?
         [ "$code" -eq 0 ] && log "$role: passed on the second run; the first failed on the share (B439)"

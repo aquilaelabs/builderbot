@@ -82,3 +82,13 @@ class NodeChanged(unittest.TestCase):
         self.assertTrue(prefs.node_changed("p", {"node": "n1", "nodes": ["n1"]}))
         self.assertTrue(prefs.node_changed("p", {"node": "n2"}))
         self.assertTrue(prefs.node_changed("p", {"nodes": ["n1", "n2"]}))
+
+
+class BuildLocal(unittest.TestCase):
+    """Gradle builds on the node's disk unless the project says otherwise
+    (B439): on by default, and stored only when turned off."""
+
+    def test_on_unless_turned_off(self):
+        self.assertTrue(prefs._clean({})["build_local"])
+        self.assertTrue(prefs._clean({"build_local": "yes"})["build_local"])
+        self.assertFalse(prefs._clean({"build_local": False})["build_local"])

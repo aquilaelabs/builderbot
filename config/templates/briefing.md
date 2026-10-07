@@ -94,22 +94,12 @@ companion app's notes wait on it. Narrow a run with arguments, which follow
 the command (`bb test --tests 'FooTest'`); a task the command does not run
 (installing on the emulator, a single module) is `bb run -- ./gradlew ...`.
 
-A project's tree is on the projects share, a network drive, and now and
-then it refuses a build's delete or lock where a local disk would not: the
-same command passes when run again. `bb build` and `bb test` read the
-failure and run once more when it is the share's, saying so. When you run
-Gradle yourself, keep its whole failure (from `What went wrong:` to the
-end), never a grep of it, and put that text in the bug or report: which
-file and which call failed is what says whether it was the share or the
-code, and a guess is all anybody has without it.
-
-For now, while BuilderBot's maintainers work out why (their bug B439):
-a build or test that fails on a delete, a lock or a stale file in a
-project's tree and passes when run again is worth a report every time,
-with `bb report "..." --area gradle`, naming the project, the command and
-the whole failure text. It is how they decide whether a project's build
-folders should move off the share to the node's own disk. This paragraph
-goes when B439 is closed.
+Gradle builds on the node's own disk, not the projects share: BuilderBot
+points each module's build folder there and leaves a link at its usual
+place (`app/build`), so its outputs are read where they always were. That
+holds for builds that use the project's own Gradle home, the one
+`$GRADLE_USER_HOME` already names; point Gradle at another and its builds
+land on the share again.
 
 A project whose build or test command is not set refuses and says so:
 `bb settings set build|test|outputs "..."` fills the field in for the

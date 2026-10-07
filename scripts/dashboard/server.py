@@ -5190,6 +5190,8 @@ class Handler(BaseHTTPRequestHandler):
                            # (R102): "on", or who said no, the node or the
                            # project, which bb gpu then says to the session.
                            "gpu": gpu_for(project, _arg_node(arg)),
+                           # Whether its Gradle builds on the node's disk (B439).
+                           "build_local": (prefs.get(project) or {}).get("build_local", True),
                            # Which node this terminal is on, by id: what a
                            # session there names when it reports its Claude
                            # sign-in, since a project may work on several.

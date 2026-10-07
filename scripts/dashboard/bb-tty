@@ -135,6 +135,10 @@ GRANT
     # without. BB_GPU says why to bb gpu and bb status.
     BB_GPU="$(printf '%s' "$grant" | jq -r '.gpu // "on"')"
     export BB_GPU
+    # ...and whether its Gradle builds on the node's disk (B439, on unless
+    # the project's settings say otherwise): gradle_local_build reads it.
+    BB_BUILD_LOCAL="$(printf '%s' "$grant" | jq -r 'if .build_local == false then "off" else "on" end')"
+    export BB_BUILD_LOCAL
     case "$BB_GPU" in on) ;; *) export CUDA_VISIBLE_DEVICES="" ;; esac
     # Which node this is, by the controller's id for it: what bb login
     # --check names when it says who is signed in to Claude here.
@@ -312,6 +316,7 @@ in_view() {
     if [ -n "${GRADLE_USER_HOME:-}" ] && [ -n "$account" ]; then
         export GRADLE_USER_HOME="$HOME/.cache/builderbot/u/$account/project/$proj/gradle-home"
     fi
+    gradle_local_build
     envf="$(cache_project_dir "$proj")/session.env"
     ( umask 077; env -0 > "$envf.new" && mv -f "$envf.new" "$envf" ) \
         || bad "Could not write this session's environment to $envf, so its view cannot start."
@@ -792,6 +797,24 @@ boot_id() {
     [ -n "$start" ] && [ -n "$btime" ] && printf '%s.%s' "$btime" "$start"
 }
 
+# A Gradle project's build folders on the node's own disk (B439): the init
+# script lib/gradle-local-build.gradle in the project's Gradle home, and the
+# place it builds into, BB_LOCAL_BUILD, under the account's cache on this
+# machine. Off in the project's settings, both go. Only on a node, where the
+# tree is the projects share and the home is the node's own disk.
+gradle_local_build() {
+    [ -n "${GRADLE_USER_HOME:-}" ] && [ -n "${account:-}" ] && on_node || return 0
+    local init="$GRADLE_USER_HOME/init.d/builderbot-local-build.gradle"
+    local src; src="$(dirname "$(readlink -f "$0")")/../lib/gradle-local-build.gradle"
+    if [ "${BB_BUILD_LOCAL:-on}" = on ] && [ -r "$src" ]; then
+        mkdir -p "$GRADLE_USER_HOME/init.d" 2>/dev/null && cp -f "$src" "$init" 2>/dev/null || true
+        export BB_LOCAL_BUILD="$HOME/.cache/builderbot/u/$account/project/${BB_PROJECT:-$proj}/build"
+    else
+        rm -f "$init" 2>/dev/null || true
+        unset BB_LOCAL_BUILD
+    fi
+}
+
 start() {
     local s="$1" dir="$2"; shift 2
     # tmux rewrites `.` and `:` in a session name to `_` (they are its target
@@ -822,7 +845,8 @@ start() {
     if on_node && [ -n "${GRADLE_USER_HOME:-}" ] && [ -n "${BB_PROJECT:-}" ] && [ -n "$account" ]; then
         GRADLE_USER_HOME="$HOME/.cache/builderbot/u/$account/project/$BB_PROJECT/gradle-home"
     fi
-    for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE \
+    gradle_local_build
+    for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE BB_LOCAL_BUILD \
              GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME \
              GRADLE_USER_HOME ANDROID_USER_HOME XDG_DATA_HOME \
              GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_TERMINAL_PROMPT; do

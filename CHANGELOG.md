@@ -302,6 +302,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A node's toolchains are checked when it comes back online or its agent restarts on a new file, not only weekly; and a toolchain installed after a check reads as current rather than offering the update it just took (dbcb78c)
 - bb emu start waits for a booting phone while it lives (up to ten minutes) rather than 180 seconds, and starts again in software once when hardware rendering fails as it boots; bb emu create names a dotted level builderbot-37.0 and gives a new phone 6 GB to install into (B530, B531) (7d05d25)
 - A session may read and write its project's own memory without asking: the memory folder, which Claude Code keeps outside the project, is in each session's allowed directories (d8dc79e)
+- Gradle builds on the node's own disk, not the projects share, with a link at the usual build folder: a build no longer fails to delete a folder the daemon held open there. On by default, Build on the node's disk in a project's settings; a share failure's retry stops the Gradle daemon first (B439) (b5ce6fe)
 
 ### Security
 

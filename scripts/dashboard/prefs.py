@@ -334,7 +334,12 @@ def _clean(rec):
             # of these nodes, and the controller's diagnostics. Per project,
             # not per node: a node's tick reached every project on it.
             "log_from": _log_from(rec),
-            "diag": rec.get("diag") is True}
+            "diag": rec.get("diag") is True,
+            # Gradle builds on the node's own disk rather than the projects
+            # share (B439): a build folder emptied on NFS while the daemon
+            # holds a file in it keeps a .nfs file and will not go. On unless
+            # the project says otherwise.
+            "build_local": rec.get("build_local") is not False}
 
 
 def _log_from(rec):
@@ -521,7 +526,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
-              release=None, log_from=None, diag=None):
+              release=None, log_from=None, diag=None, build_local=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -633,10 +638,13 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             cur["log_from"] = _log_from({"log_from": log_from})
         if diag is not None:
             cur["diag"] = diag is True
+        if build_local is not None:
+            cur["build_local"] = build_local is not False
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["node"] or cur["color"] or cur["reads"] or cur["sees"] or cur["log_from"] or cur["diag"]
+                or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
                 or any(v != "auto" for v in cur["gate"].values())
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
@@ -671,6 +679,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("capture_days", None)
             if cur["dev_keep"] == DEV_KEEP:
                 rec.pop("dev_keep", None)
+            if cur["build_local"]:
+                rec.pop("build_local", None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)
@@ -768,6 +778,7 @@ def dialog_save(name, req, uid):
                   release=req.get("release"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
+                  build_local=req.get("build_local") if isinstance(req.get("build_local"), bool) else None,
                   workspace=WORKSPACE)
     # ...and what is the ASKING ACCOUNT's rather than the project's: the
     # model and effort its sessions launch on, and the author its commits
