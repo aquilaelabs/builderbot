@@ -523,6 +523,27 @@ function renameProject(name, mode = "all"){
   // the only honest way out of this door, but Unlink still is one.
   $("rnGo").hidden = !$("rnGitNone").hidden;
   $("rnmodal").hidden = false;
+  rnFolds();
+}
+
+// One section open (the operator, 7 Oct), and one that shows: the one this
+// person last opened here when this door shows it, else the first that has a
+// field showing (The project from the gear, the repository from the chain).
+// Every other shuts at once, since nothing moved them.
+function rnFolds(){
+  const all = [...document.querySelectorAll("details.rngroup")];
+  const shown = all.filter(d => getComputedStyle(d).display !== "none");
+  const keep = shown.find(d => d.open && sectOpen[d.dataset.sect] === true)
+    || shown.find(d => sectOpen[d.dataset.sect] === true)
+    || shown[0];
+  // Moved by a door, not by a hand: the press mark comes off first, so the
+  // toggle this fires does not record a fold shut for the other door as
+  // this person shutting it (the next press puts the mark back).
+  for (const d of all){
+    if (d.open === (d === keep)) continue;
+    delete d.dataset.pressed;
+    d.open = d === keep;
+  }
 }
 
 // What the remote uses now, and what the operator has picked instead. Both

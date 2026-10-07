@@ -3276,7 +3276,7 @@ ok(await page.$('#devSend'),
   // The Claude section holds the test-run setting too (25 Sep): what a
   // change asked for during a run does, saved with the rest of the dialog,
   // under the section's heading since the dialog was put in sections (1 Oct).
-  ok(await page.$eval('#rnGateField', e => e.closest('.rngroup').querySelector('.rnhead label').textContent) === 'Claude may'
+  ok(await page.$eval('#rnGateField', e => e.closest('.rngroup').querySelector('summary .t').textContent) === 'Claude may'
      && await page.$eval('#rnGateLabel', e => e.textContent) === 'While a test runs'
      && await page.$eval('#rnTestChange', e => e.value === 'wait' && [...e.options].map(o => o.value).join() === 'wait,restart')
      && await page.$eval('#rnReply', e => e.value === ''),

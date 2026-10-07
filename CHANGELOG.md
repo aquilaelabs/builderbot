@@ -185,6 +185,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Claude Code is a toolchain of each node: installed, updated and removed from the node's Toolchains tab, checked on the toolchains' own clock, no longer installed by the provisioner, and required for a session, whose Claude button and terminal say where to install it (9f4c7bb)
 - Right after the controller restarts, a project whose node was here a moment before says quietly that the node is reconnecting, rather than in red that it is not answering (b9c8145)
 - Any press in the notification drawer (Approve, Deny, an invitation's answer, Clear, a link) closes it (27e18a4)
+- A project's settings are sections, one open at a time, as the tabs' are: the gear opens on The project, or on the section opened there last, and the chain opens on the repository's (39ae3a4)
 
 ### Removed
 

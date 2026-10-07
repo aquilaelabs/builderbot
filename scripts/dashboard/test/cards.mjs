@@ -1526,6 +1526,30 @@ await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnName', el => el.value) === 'alpha',
    'the rename dialog opens on the current name');
+{
+  // Sections, one open at a time (the operator, 7 Oct): the gear's door
+  // opens on The project, a heading pressed opens its section and shuts the
+  // one that was open, and the chain's door shows the repository's alone,
+  // open. Read with $eval, which the harness's own fold-opening leaves be.
+  const folds = () => page.$$eval('details.rngroup', ds => ds.map(d => ({
+    k: d.dataset.sect, open: d.open, shown: getComputedStyle(d).display !== 'none' })));
+  const gear = await folds();
+  ok(gear.filter(f => f.open).map(f => f.k).join() === 'rn:project' && gear.filter(f => f.shown).length > 3,
+     `the settings are sections, and the gear opens on The project alone (${JSON.stringify(gear.filter(f => f.open))})`);
+  await page.$eval('details[data-sect="rn:claude"] > summary', s => s.click());
+  await page.waitForFunction(() => !document.querySelector('details[data-sect="rn:project"]').open, null, { timeout: 5000 }).catch(() => {});
+  const pressed = await folds();
+  ok(pressed.filter(f => f.open).map(f => f.k).join() === 'rn:claude',
+     `...a heading pressed opens its section and shuts the open one (${pressed.filter(f => f.open).map(f => f.k)})`);
+  await page.evaluate(() => { closeRename(); renameProject('alpha', 'git'); });
+  const chain = await folds();
+  ok(chain.filter(f => f.shown).map(f => f.k).join() === 'rn:repo' && chain.find(f => f.k === 'rn:repo')?.open
+     && chain.filter(f => f.open).length === 1,
+     `...and the chain's door shows the repository's section alone, open (${JSON.stringify(chain.filter(f => f.shown || f.open))})`);
+  await page.evaluate(() => { closeRename(); renameProject('alpha'); });
+  ok((await folds()).filter(f => f.open).map(f => f.k).join() === 'rn:claude',
+     '...and the gear opens again on the section this person opened last');
+}
 ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
    '...with the keyboard down, like every other dialog here');
 ok(await page.$eval('#rnTokenField', el => el.hidden)

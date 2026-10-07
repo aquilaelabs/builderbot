@@ -967,7 +967,11 @@ lives: a hint, a control, a list, never text at box level, which draws flush
 against the edge. A group of fields inside it is headed by a `label`, the dim
 small heading every dialog uses, never an `h4`; a dialog that is prose to
 read rather than fields to fill (About) says so with `.box.prose` and may use
-headings. The buttons are the `.foot`: a
+headings. A dialog long enough to scroll through its groups (the project
+settings) makes each group a section instead: a `details.sect` fold titled
+by its summary, the box marked `data-sects` so its sections take turns, one
+open at a time, as a tab's do, and the one a door is for open when it opens.
+The buttons are the `.foot`: a
 `.state` first when there is one, then `.sp`, then the verbs, the primary
 first and anything destructive last. A switch is a checkbox inside its label,
 beside the thing it names, the way the Settings tab draws them

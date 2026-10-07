@@ -180,8 +180,10 @@ function wireSections(root){
 // folds (a page's rules inside Pages) take turns among themselves and never
 // close the section holding them.
 const sectLast = new WeakMap();     // a group -> the key of the section last opened in it
-function sectGroup(d){ return d.parentElement?.closest("details.sect, .nbview, .doctab") || null; }
-const sectRuled = g => !!g?.closest?.(".nb, .doctab");
+// A group is a view, a tab, a fold holding folds, or a dialog box that says
+// it holds sections (`data-sects`: the project settings, the operator 7 Oct).
+function sectGroup(d){ return d.parentElement?.closest("details.sect, .nbview, .doctab, [data-sects]") || null; }
+const sectRuled = g => !!g?.closest?.(".nb, .doctab, [data-sects]");
 function soleOpen(d){
   const g = sectGroup(d);
   if (!sectRuled(g)) return;

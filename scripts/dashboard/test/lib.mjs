@@ -202,6 +202,37 @@ export async function newPage(browser, opts = {}){
   });
   page.on('pageerror', e => page.errors.push(String(e)));
   page.on('dialog', d => { page.dialogs.push(d.message()); d.accept(); });
+  // The project settings are sections, one open at a time (the operator,
+  // 7 Oct). A person opens the section a field is in before using it, and so
+  // does a suite: before an action on, or a wait for, a field inside a shut
+  // section, its heading is pressed. Only those sections; a check of which
+  // one a door opens reads the folds with $eval, which this leaves alone.
+  const openRnFor = async (sel, timeout) => {
+    if (typeof sel !== 'string' || !/#rn|rnmodal|rngroup/.test(sel)) return;
+    const press = () => page.evaluate(s => {
+      let el = null;
+      try { el = document.querySelector(s); } catch { return 'bad'; }
+      if (!el) return '';
+      const d = el.closest('details.rngroup');
+      if (d && !d.open) d.querySelector(':scope > summary').click();
+      return 'found';
+    }, sel).catch(() => 'bad');
+    const until = Date.now() + Math.min(timeout ?? patience(30000), patience(30000));
+    for (;;){
+      const r = await press();
+      if (r !== '' || Date.now() > until) return;
+      await new Promise(r => setTimeout(r, 100));
+    }
+  };
+  for (const m of ['fill', 'selectOption', 'click', 'check', 'uncheck', 'type', 'press', 'setChecked', 'waitForSelector']){
+    const real = page[m].bind(page);
+    page[m] = async (sel, ...rest) => {
+      const opts = rest[rest.length - 1];
+      const hidden = m === 'waitForSelector' && ['hidden', 'detached', 'attached'].includes(opts?.state);
+      if (!hidden) await openRnFor(sel, typeof opts?.timeout === 'number' ? opts.timeout : undefined);
+      return real(sel, ...rest);
+    };
+  }
   return page;
 }
 

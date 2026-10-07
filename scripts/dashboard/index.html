@@ -1361,13 +1361,12 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
 .modal .link[hidden]{display:none}
 /* A project's signing keys (R106): a row per route, its form when opened,
    and its actions in one line. */
-/* The project settings' sections: a heading over each, the heading's rule
-   the divide, and a section with no field showing gone with its heading. */
-.rngroup:not(:has(> .field:not([hidden]):not(.rnhead))){display:none}
-/* The heading is a label in a band, as a dialog heads a group of fields
-   (design: a-dialog/layout), drawn as the section's divide. */
-.rnhead > label{display:block;margin-top:10px;padding-bottom:4px;border-bottom:1px solid var(--line);
-  font:var(--f-tag);letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+/* The project settings' sections: folds, as a tab's sections are, one
+   open at a time (the operator, 7 Oct), and a section with no field showing
+   gone with its heading. Its fields are bands with their own inset, so the
+   fold's body adds none of its own. */
+.rngroup:not(:has(> .body > .field:not([hidden]))){display:none}
+.rngroup > .body{padding:0 0 var(--row-y);gap:0}
 .rnsign{padding:6px 0;border-top:1px solid var(--line)}
 /* A signed build's certificate fingerprint on its Artifacts row (R106):
    the whole of it, wrapping on a phone rather than cut off. */
@@ -4037,15 +4036,14 @@ body.booting .pane>.loading{margin:auto}
      would be offering a credential to something with nothing to authenticate
      against. -->
 <div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rnTitle">
-  <div class="box">
+  <div class="box" data-sects>
     <h3 id="rnTitle">Project settings</h3>
     <!-- In sections, each titled and each hiding itself when none of its
          fields is shown (the chain's door shows the remote alone): what
          the project is and who it belongs to, where it runs, what a
          session sees, how it builds, its signing keys, what Claude may
          do, what is yours, and who is in it now (the operator, 1 Oct). -->
-    <section class="rngroup">
-      <div class="field rnhead"><label>The project</label></div>
+    <details class="sect rngroup" data-sect="rn:project"><summary><span class="t">The project</span></summary><div class="body">
     <div class="field" id="rnNameField">
       <label for="rnName">Name</label>
       <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
@@ -4065,8 +4063,8 @@ body.booting .pane>.loading{margin:auto}
       <label id="rnPeopleLabel">People<span class="help" data-tip="its owner, who is on it, and who is invited; an invite-only project's people are its owner's to change" tabindex="0">?</span></label>
       <div id="rnPeople" role="group" aria-labelledby="rnPeopleLabel"></div>
     </div>
-    </section>
-    <section class="rngroup">
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:repo"><summary><span class="t">Its repository</span></summary><div class="body">
     <!-- What this project pushes with. Reached by the chain on its row, which
          is where the remote lives for a project that has one and for a
          project that has not: the gear is the project's own settings, and a
@@ -4108,9 +4106,8 @@ body.booting .pane>.loading{margin:auto}
       <input id="rnAddr" type="text" autocomplete="off" spellcheck="false" inputmode="url">
       <div class="hint" id="rnAddrHint">Change it after renaming your account or organization on the host. Saving checks it is this repository: another one is refused.</div>
     </div>
-    </section>
-    <section class="rngroup">
-      <div class="field rnhead"><label>Where it runs</label></div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:runs"><summary><span class="t">Where it runs</span></summary><div class="body">
     <!-- The project's node: where everything it does on a node goes:
          containers, builds, tests, CI, emulation. One setting, by decision
          (docs/nodes.md §13): per-role pickers were more control than anybody
@@ -4145,9 +4142,8 @@ body.booting .pane>.loading{margin:auto}
         </select>
       </div>
     </div>
-    </section>
-    <section class="rngroup">
-      <div class="field rnhead"><label>What a session sees</label></div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:sees"><summary><span class="t">What a session sees</span></summary><div class="body">
     <!-- The projects a session here may read (prefs.reads): their trees
          bound read-only into its view on a node, their notebooks answering
          to bb from inside them, every write refused. The operator's to
@@ -4175,9 +4171,8 @@ body.booting .pane>.loading{margin:auto}
       <div class="lbox" id="rnDebug" role="group" aria-labelledby="rnDebugLabel"></div>
       <div class="hint">Read only while Debug mode is on, and only by a session whose account has the debug grant.</div>
     </div>
-    </section>
-    <section class="rngroup">
-      <div class="field rnhead"><label>Build and test</label></div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:build"><summary><span class="t">Build and test</span></summary><div class="body">
     <div class="field" id="rnBuildField">
       <label for="rnBuildCmd">Commands<span class="help" data-tip="what bb build and bb test run, and the outputs a build leaves. A test run finds BB_TEST_WORKERS in its environment: how many workers this node lets it use" tabindex="0">?</span></label>
       <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
@@ -4196,9 +4191,8 @@ body.booting .pane>.loading{margin:auto}
       <div class="logdays setrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-tip="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
         <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each product"> <span class="dim">builds</span></div>
     </div>
-    </section>
-    <section class="rngroup">
-      <div class="field rnhead"><label>Android signing</label></div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:signing"><summary><span class="t">Android signing</span></summary><div class="body">
     <!-- A project's Android signing keys (R106), an administrator's: kept
          by the controller, never in the tree and never in a session's view.
          Staged like the rest of this dialog: a picked keystore or a removal
@@ -4208,9 +4202,8 @@ body.booting .pane>.loading{margin:auto}
       <div id="rnSignRows" role="group" aria-labelledby="rnSignLabel"></div>
       <div class="hint" id="rnSignHint"></div>
     </div>
-    </section>
-    <section class="rngroup">
-      <div class="field rnhead"><label>Claude may</label></div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:claude"><summary><span class="t">Claude may</span></summary><div class="body">
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is
          already on a list a session may still tick, note and reword. -->
@@ -4276,9 +4269,8 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
-    </section>
-    <section class="rngroup">
-      <div class="field rnhead"><label>Yours on this project</label></div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:yours"><summary><span class="t">Yours on this project</span></summary><div class="body">
     <!-- YOURS, not the project's, and last so that is legible from the
          shape of the dialog rather than only from the words. Everything
          above changes what the project does for everybody; nothing here
@@ -4317,9 +4309,8 @@ body.booting .pane>.loading{margin:auto}
       </div>
       <div class="hint" id="rnGitHint"></div>
     </div>
-    </section>
-    <section class="rngroup">
-      <div class="field rnhead"><label>Sessions on this project</label></div>
+    </div></details>
+    <details class="sect rngroup" data-sect="rn:sessions"><summary><span class="t">Sessions on this project</span></summary><div class="body">
     <!-- Every account's sessions on the project, for an administrator, each
          with End (page-projsessions.js). At the foot because the operator
          asked for it there, and apart from the settings: End acts at once. -->
@@ -4327,7 +4318,7 @@ body.booting .pane>.loading{margin:auto}
       <label>Running now</label>
       <div id="rnSessList"></div>
     </div>
-    </section>
+    </div></details>
     <!-- Save pressed with a change a running session takes only when it
          starts (its model and effort, its author, the projects it reads
          and the places it sees, its node, what its briefing says): named
@@ -5615,6 +5606,8 @@ $("rnToken").addEventListener("input", rnDrawAuth);
 $("rnUnlink").onclick = () => unlinkProject(rnFor);
 $("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n); };
 $("rnCancel").onclick = closeRename;
+// The settings' sections take turns, one open at a time, as a tab's do.
+wireSections($("rnmodal"));
 $("rnmodal").onclick = e => { if (e.target === $("rnmodal")) closeRename(); };
 
 // ---- creating a project -------------------------------------------------
