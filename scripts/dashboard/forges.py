@@ -462,8 +462,9 @@ def token_access(entry, host, token, path, scheme="https"):
             out["missing"].append(f"a token {entry['name']} accepts: it answered {why or code}, "
                                   "so the token is wrong, expired or revoked")
         elif code in (403, 404):
-            out["missing"].append(f"access to {path}: {entry['name']} will not show it to this token ({why or code}); "
-                                  "a fine-grained token has to list the repository")
+            out["missing"].append(f"access to {path}: {entry['name']} will not show it to this token ({why or code}). "
+                                  "A fine-grained token has to list the repository, and an organization "
+                                  "may have to approve the token under its Personal access tokens settings")
         else:
             out["notes"].append(f"{entry['name']} could not be asked about the token: {why}")
         return out

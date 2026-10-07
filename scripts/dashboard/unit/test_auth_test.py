@@ -96,6 +96,33 @@ class AuthTest(unittest.TestCase):
         left = {f for f in set(os.listdir(tempfile.gettempdir())) - before if f.startswith("bb-authtest-")}
         self.assertEqual(left, set())
 
+    def test_a_403_from_git_is_said_in_words(self):
+        saved = projects.run
+        def refused(cmd, **kw):
+            if "ls-remote" in cmd:
+                return {"cmd": "", "code": 128, "out": "", "err": "fatal: unable to access "
+                        "'https://github.com/o/r.git/': The requested URL returned error: 403"}
+            return saved(cmd, **kw)
+        projects.run = refused
+        try:
+            j, _ = projects.auth_test("app")
+        finally:
+            projects.run = saved
+        self.assertFalse(j["read"])
+        self.assertIn("refused it this repository (403)", j["missing"][0])
+        self.assertIn("organization may have to approve", j["missing"][0])
+
+    def test_the_hosts_reason_for_a_refused_read_takes_gits_place(self):
+        git("config", "--unset", f"url.{self.bare}.insteadOf", cwd=self.dest)
+        git("config", f"url.{self.tmp / 'nowhere.git'}.insteadOf", URL, cwd=self.dest)
+        saved = forges.token_access
+        forges.token_access = lambda *a, **k: {"missing": ["access to owner/app: no"], "notes": []}
+        try:
+            j, _ = projects.auth_test("app", "a-typed-token-123")
+        finally:
+            forges.token_access = saved
+        self.assertEqual(j["missing"], ["access to owner/app: no"])
+
     def test_no_remote_is_an_error(self):
         git("remote", "remove", "origin", cwd=self.dest)
         j, code = projects.auth_test("app")

@@ -2424,6 +2424,12 @@ def auth_test(name, typed=""):
             if mode == "ssh" and re.search(r"denied|not found|not appear", said, re.I):
                 missing.append(f"read access for the deploy key: {said.rstrip('.')}. Add its public half under "
                                f"the repository's deploy keys on {forge['name']}")
+            elif re.search(r"returned error: 403", said):
+                # git's own line says only the number; this is what it means.
+                missing.append(f"read access: {forge['name']} accepted the token and refused it this "
+                               "repository (403). A fine-grained token has to list the repository with "
+                               "Contents: Read and write, and an organization may have to approve it "
+                               "under its Personal access tokens settings")
             else:
                 missing.append(f"read access: {said}")
         has_head = run(["git", "-C", str(d), "rev-parse", "--verify", "-q", "HEAD"], timeout=15)["code"] == 0
@@ -2446,10 +2452,13 @@ def auth_test(name, typed=""):
         if tok and repo:
             got = forges.token_access(forge, stored.get("host") or host, tok, repo,
                                       stored.get("scheme") or "https")
-            # git's own refusal already says the same thing in its words.
-            missing += [m for m in got["missing"]
-                        if not (can_read is False and m.startswith(("a token", "access to")))
-                        and not (can_push is False and m.startswith("write access"))]
+            # The host's own answer says why a read was refused better than
+            # git's line, so it takes that line's place; a refused push is
+            # already said by git.
+            why = [m for m in got["missing"] if m.startswith(("a token", "access to"))]
+            if can_read is False and why:
+                missing = [m for m in missing if not m.startswith("read access")]
+            missing += [m for m in got["missing"] if not (can_push is False and m.startswith("write access"))]
             notes += got["notes"]
         if not may_push(name):
             notes.append("This project was set up without push rights, so a session's push is "
