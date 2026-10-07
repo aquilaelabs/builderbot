@@ -368,8 +368,18 @@ def ls():
         rows.append((c.get("name") or c.get("id") or "", "not ours", c.get("state") or "?",
                      " ".join(c.get("ports") or [])))
     if not rows:
-        print(f"nothing belongs to {proj} on its node: the operator puts a container under a "
-              "project on its row on the Docker tab")
+        # What the session can do next, not what the operator could (B537):
+        # with a compose file at the root, its own bb devapp new is the way
+        # in, and the Docker tab's row is for a container made elsewhere.
+        st = bbapi.call("/api/devapp", {"project": proj, "action": "state"}, auth=os.environ["BB_DEV_AUTH"])
+        st = st.get("state") if isinstance(st.get("state"), dict) else st
+        if st.get("compose"):
+            print(f"nothing belongs to {proj} on its node yet: bb devapp new builds its dev instance "
+                  "from the compose file at this project's root and starts it")
+        else:
+            print(f"nothing belongs to {proj} on its node: a compose file at its root "
+                  "(docker-compose.yml or compose.yml) and bb devapp new make its dev instance, "
+                  "and a container made elsewhere is put under it on the Docker tab by an administrator")
         raise SystemExit(0)
     w = max(len(r[0]) for r in rows)
     for name, kind, state, ports in sorted(rows):

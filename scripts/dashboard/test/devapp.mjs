@@ -4085,6 +4085,33 @@ print(json.dumps({"asked": asked, "code": code}))`], { encoding: 'utf8' });
        JSON.stringify(got).slice(0, 90)} ${(run.stderr || '').split('\n').filter(Boolean).pop() || ''})`);
 }
 
+// B537: an empty listing says what the session can do next. With a compose
+// file at the root that is its own bb devapp new, not the operator's Docker
+// tab, which is what it said to the aquilaeLabs session before its first
+// instance existed.
+{
+  const LIB = new globalThis.URL('../../lib', import.meta.url).pathname;
+  const said = compose => spawnSync('python3', ['-c', `
+import importlib.util, os, sys
+sys.path.insert(0, ${JSON.stringify(LIB)})
+spec = importlib.util.spec_from_file_location("dv", ${JSON.stringify(LIB + '/devapp-verbs.py')})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+def call(path, body=None, auth="", method="", timeout=30):
+    if path.startswith("/api/docker"):
+        return {"instances": [], "containers": []}
+    return {"state": {"compose": ${compose ? '"docker-compose.yml"' : '""'}}}
+m.bbapi.call = call
+os.environ.update(BB_DEV_PROJECT="alpha", BB_DEV_AUTH="x")
+try:
+    m.ls()
+except SystemExit:
+    pass`], { encoding: 'utf8' }).stdout || '';
+  const withFile = said(true), without = said(false);
+  ok(/bb devapp new builds its dev instance/.test(withFile) && !/Docker tab/.test(withFile)
+     && /compose file at its root/.test(without),
+     `bb devapp ls with nothing yet points at bb devapp new, and says a compose file is what it needs where there is none (${withFile.trim().slice(0, 70)})`);
+}
+
 // bb devapp rebuild follows the job its answer names (B312): a rebuild of an
 // unchanged commit that ended between two looks showed the row neither a
 // running job nor a new revision, and the verb said no build appeared over
