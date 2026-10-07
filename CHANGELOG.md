@@ -314,6 +314,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb VERB -h prints that verb's entries from the command reference and exits 0 for every verb, where devapp and container printed their usage as an error (120b26d)
 - bb devapp ls on a project with no container yet points at bb devapp new when the project has a compose file, rather than at the operator's Docker tab (3bd5e4e)
 - The playwright command is on a session's PATH beside the module NODE_PATH already found, and the briefing says a script of a session's own can require it without installing anything (affa4c4)
+- A project's remote settings, opened from the chain, no longer show its People, Signing or Sessions when the gear's settings were opened a moment before (fff2081)
 
 ### Security
 

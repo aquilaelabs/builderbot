@@ -25,6 +25,7 @@ async function rnSessionsLoad(name){
 const rnSessWho = r => r.who === state?.me ? "you" : r.who;
 
 function rnSessionsDraw(name, rows){
+  if (rnMode === "git") return;                    // the remote's door alone (B539)
   const list = $("rnSessList");
   list.innerHTML = rows.length ? rows.map((r, i) => `<div class="row rnsess">
       <div class="grow"><div class="name">${esc(rnSessWho(r))}</div>

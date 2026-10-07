@@ -567,7 +567,9 @@ function rnLoadPeople(name){
 }
 
 function rnDrawPeople(){
-  if (!rnPeople) return;
+  // The chain's door is the remote's alone, and a load the gear's door
+  // started can land after it opens (B539).
+  if (!rnPeople || rnMode === "git") return;
   const v = rnPeople, d = rnPeopleDraft;
   const owner = d.owner ?? v.owner, only = d.invite_only ?? v.invite_only;
   const invitable = v.accounts.filter(n => !v.members.includes(n) && !v.invites.some(i => i.name === n));
@@ -655,7 +657,7 @@ function rnLoadSigning(name){
 const rnFp = sha => sha ? `${sha.slice(0, 8)}…${sha.slice(-8)}` : "";
 
 function rnDrawSigning(){
-  if (!rnSignKeys) return;
+  if (!rnSignKeys || rnMode === "git") return;     // the remote's door alone (B539)
   $("rnSignField").hidden = false;
   const name = rnFor;
   const names = [...new Set([...Object.keys(rnSignKeys), ...rnSignNew])];
