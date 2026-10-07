@@ -119,6 +119,16 @@ export async function newPage(browser, opts = {}){
   for (const m of ["waitForFunction", "waitForSelector"]){
     const real = page[m].bind(page);
     page[m] = async (...args) => {
+      // waitForFunction(fn, arg, options): options passed second, where the
+      // function's argument goes (208 waits did), were the 30s default with
+      // the object handed to the page (B556). Moved to where they belong
+      // when there is nothing third, never below that default, which every
+      // one of them has run on: a 40s wait now waits 40s, and a 10s one
+      // keeps the 30s it was proven against.
+      if (m === "waitForFunction" && args.length === 2 && args[1] && typeof args[1] === "object"
+          && !Array.isArray(args[1]) && Object.keys(args[1]).every(k => k === "timeout" || k === "polling"))
+        args = [args[0], null, { ...args[1], ...(typeof args[1].timeout === "number"
+          ? { timeout: Math.max(args[1].timeout, 30000) } : {}) }];
       const last = args[args.length - 1];
       if (last && typeof last === "object" && typeof last.timeout === "number")
         args[args.length - 1] = { ...last, timeout: patience(last.timeout) };
