@@ -176,6 +176,9 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
   // A new account's first page opens the welcome panel over everything.
   await up.waitForSelector('#aboutModal:not([hidden])', { timeout: 15000 }).then(() => up.evaluate(() => closeAbout()), () => {});
   await up.waitForSelector('#aboutModal', { state: 'hidden', timeout: 15000 });
+  // A new account pins what it wants (the operator, 7 Oct): beta, here.
+  await up.evaluate(() => fetch('/api/project-pin', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'beta', pinned: true }) }));
   await refreshUntil(up, () => (state?.projects || []).some(p => p.name === 'beta' && p.session_node)
                                && document.querySelector('#projects [data-c="beta"]')?.disabled === false);
   await up.click('#projects [data-c="beta"]');

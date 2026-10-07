@@ -104,14 +104,14 @@ ok(!await page.$eval('[data-ssave="briefing:rules"]', b => b.disabled),
    'a written rule arms the Your rules section\'s own Save');
 ok(read().length === 0, '...and nothing is on disk until it is pressed');
 // Each section saves its own (the operator, 5 Oct): the rules' edit wakes
-// their Save and Revert and nothing else's, and the Briefing view keeps one
-// section open at a time.
+// their Save and Revert and nothing else's, and the Briefing view opens on
+// its first section (the operator, 7 Oct).
 ok(await page.$eval('[data-ssave="briefing:memories"]', b => b.disabled)
    && await page.$eval('[data-srevert="briefing:rules"]', b => !b.disabled),
    '...that section\'s own Save and Revert, and not the Memories section\'s');
-ok(await page.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="briefing"] details.sect[open]')]
-     .filter(d => !d.parentElement.closest('details.sect')).length) === 1,
-   'one Briefing section stands open at a time');
+ok(await page.evaluate(() => [...document.querySelectorAll('.nb .nbview[data-view="briefing"] details.sect')]
+     .filter(d => !d.parentElement.closest('details.sect') && d.checkVisibility())[0]?.open),
+   'the Briefing view has its first section open');
 
 await page.click('[data-ssave="briefing:rules"]');
 await page.waitForFunction(() => document.querySelector('[data-ssave="briefing:rules"]')
