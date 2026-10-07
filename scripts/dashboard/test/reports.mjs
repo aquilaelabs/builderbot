@@ -101,9 +101,18 @@ const colon = bb(['bug', 'add', 'bb: tests preflight runs every suite', '--sev',
                  { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(colon.status !== 0 && bugsNow() === had,
    '...however the verb is written (bb: ..., `bb`, bb-tty), and the severity is not read as words');
+// A repro that uses bb is how a project's own bug is shown, not a sign it is
+// BuilderBot's: two of MediaReducer's were stopped for one (7 Oct).
+const byRepro = bb(['bug', 'add', 'the dashboard repaints after it loads', '--repro', 'record it with bb capture reel'],
+                   { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
+ok(byRepro.status === 0 && /filed B\d+/.test(byRepro.stdout) && bugsNow() === had + 1,
+   `...and a repro that uses bb does not make it BuilderBot's (${(byRepro.stdout + byRepro.stderr).trim().slice(0, 80)})`);
+const helped = bb(['bug', 'add', '-h'], { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
+ok(helped.status === 0 && /bb bug/.test(helped.stdout) && bugsNow() === had + 1,
+   '...and bb bug add -h prints the help rather than filing a bug called -h');
 const mine2 = bb(['bug', 'add', 'bb build fails because this project pins an old compiler', '--here'],
                  { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
-ok(mine2.status === 0 && /filed B\d+/.test(mine2.stdout) && bugsNow() === had + 1,
+ok(mine2.status === 0 && /filed B\d+/.test(mine2.stdout) && bugsNow() === had + 2,
    `...while --here files one that is the project's own (${mine2.stdout.trim().slice(0, 80)})`);
 // ---- off for a project, in its settings -------------------------------------------
 // Claude may: Report BuilderBot bugs. BuilderBot's own project has it off:

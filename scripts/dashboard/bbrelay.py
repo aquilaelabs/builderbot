@@ -141,7 +141,14 @@ def admit(me, req):
                 return None, ({"error": f"{project} is read-only from a session on "
                                         f"{me['session']}: {why}"}, 403)
         else:
-            return None, ({"error": "this session's token is for another project"}, 403)
+            # Said by name (MediaReducer, 7 Oct): "this session's token is
+            # for another project" sent a session guessing at spellings, and
+            # read the same for a project that does not exist.
+            if not project or not (WORKSPACE / project).is_dir():
+                return None, ({"error": f"there is no project called {project}"}, 400)
+            return None, ({"error": f"{me['session']} does not read {project}: its owner adds it "
+                                    f"under Reads in {me['session']}'s settings, and a session "
+                                    "started after that sees it"}, 403)
     # git's network half runs under the account's author like everything
     # else it does with a repository: none set, none run. Push, fetch and
     # pull write with git, and git wants an author; a policy read and an

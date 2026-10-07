@@ -5304,6 +5304,17 @@ if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
     export BB_PROJECT="$2" BB_ROADMAP_PROJECT="$2" BB_BUG_PROJECT="$2" BB_VERSION_PROJECT="$2"
     export BB_TREE="$WORKSPACE/$2"
     shift 2
+    # Said rather than answered for this project or for nothing
+    # (MediaReducer, 7 Oct): `bb -p X status` printed this session's own
+    # status, and `bb -p X map find` said "nothing defines" a function X
+    # has, because X was added to the reads after the session started and
+    # its tree was not in view.
+    case "${1:-}" in
+        status|node|gpu|toolchains|emu|phone|tidy|doctor|lint|drift|build|test|run)
+            die "bb -p: bb ${1} answers for this machine and this project, not for $BB_PROJECT" ;;
+        map)
+            [ -d "$BB_TREE" ] || die "$BB_PROJECT's tree is not in this session's view: a project added to the reads is mounted when a session starts, so start a new one (its notebook answers already)" ;;
+    esac
 fi
 
 # `bb VERB -h`: the verb's own entries in the reference above, answered here
@@ -5314,6 +5325,12 @@ fi
 # relayed. A verb the reference does not name falls through to its own.
 case "${2:-}" in
     -h|--help) [ -n "${1:-}" ] && verb_help "$1" && exit 0 ;;
+esac
+# ...and `bb bug add -h` for a notebook verb, whose words after the
+# subcommand are a title: it filed a bug called "-h" (MediaReducer, 7 Oct).
+case "${1:-}:${3:-}" in
+    bug:-h|bug:--help|roadmap:-h|roadmap:--help|rules:-h|rules:--help|changelog:-h|changelog:--help)
+        verb_help "$1" && exit 0 ;;
 esac
 
 if on_node && [ -z "${BB_RELAYED:-}" ]; then

@@ -817,6 +817,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     git('remote', 'set-url', 'origin', origin);
     writeFileSync(`${DIR}/state/push-rights.json`, JSON.stringify({ beta: { repo: 'owner/beta', how: 'key' } }));
     ok(elsewhere.status === 400 && /credentials reach only that repository/.test(elsewhere.error || '')
+       && /a private one that is another project here is read by adding that project to beta's Reads/.test(elsewhere.error || '')
        && outside.status === 400 && /not a repository on the projects share/.test(outside.error || ''),
        `a remote pointed at another repository, or at a local path off the share, is refused before git runs (${
          (elsewhere.error || '').slice(0, 50)} | ${(outside.error || '').slice(0, 50)})`);

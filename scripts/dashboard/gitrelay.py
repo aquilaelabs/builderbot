@@ -247,7 +247,8 @@ def address(project, name, url):
                     f"remote {name} points at {got['host']}/{got['path']}, but {project}'s push rights "
                     f"were granted on {rec.get('host') or 'its host'}/{rec['repo']}, and the controller's "
                     "credentials reach only that repository. A public remote needs none: fetch it with "
-                    "plain git on the node")
+                    "plain git on the node; a private one that is another project here is read by "
+                    f"adding that project to {project}'s Reads, then from /workspace/NAME in a new session")
         return "net", url
     path = url[len("file://"):] if url.startswith("file://") else url
     if path.startswith("/"):

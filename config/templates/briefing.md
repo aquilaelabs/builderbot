@@ -108,7 +108,10 @@ their approval, or is refused. When the toolchain lacks what a build
 needs, say so; installing is the operator's, from the Toolchains tab.
 `bb toolchains` says what is installed and where:
 this node carries git, tmux, jq, python3 and curl by itself, and nothing
-else is a given.
+else is a given. That python3 has no pip and no venv: a project's own
+Python dependencies go in a venv made with the python toolchain's uv
+(`uv venv`, then `uv pip install -r requirements.txt`), never in a
+borrowed interpreter.
 
 A document someone hands you is read with `bb tool docs read FILE` (a
 PDF, a Word document, a slide deck or a spreadsheet, as Markdown), and
@@ -190,7 +193,9 @@ naming the path: this machine is headless, so run every tool in its
 headless mode, and Playwright's browsers are on the store at
 $PLAYWRIGHT_BROWSERS_PATH. A script of your own needs no install:
 `require("playwright")` finds the store's module through NODE_PATH, and
-the `playwright` command is on PATH.
+the `playwright` command is on PATH. An ES module's `import()` does not
+read NODE_PATH: import it by path, `$NODE_PATH/playwright/index.mjs`,
+and say so to a suite that skips itself when the bare import fails.
 
 Two ways to look, and which one is the question you are asking:
 

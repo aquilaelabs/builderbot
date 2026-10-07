@@ -86,6 +86,15 @@ ok(add.status === 403 && /beta is read-only from a session on alpha: bb roadmap 
 const gitp = await relay(['git', 'push'], 'beta');
 ok(gitp.status === 403 && /acts on the project's own machines/.test(gitp.error || ''),
    `...as is a verb that acts on beta's machines (${gitp.error})`);
+// A project it does not read is named, with where the reads are set, and a
+// name that is no project says that (MediaReducer, 7 Oct: "this session's
+// token is for another project" read the same for both).
+const unreadR = await relay(['roadmap'], 'gamma');
+ok(unreadR.status === 403 && /alpha does not read gamma: its owner adds it under Reads/.test(unreadR.error || ''),
+   `a project the session does not read is refused by name, saying where reads are set (${unreadR.error})`);
+const noneR = await relay(['roadmap'], 'nosuch');
+ok(noneR.status === 400 && /there is no project called nosuch/.test(noneR.error || ''),
+   `...and a name that is no project says so (${noneR.error})`);
 
 // ---- the grant carries the reads, for the view and the walls ---------------------------
 const grant = await api('/api/v1/tty-grant', { arg: 'claude:alpha' }, asSession(tok));
