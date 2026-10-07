@@ -435,7 +435,11 @@ function nodeSessionsSection(n){
       ${nodeSessNetRow(n)}
       ${nodeTurnsRow(n)}`;
   }
-  return docSection("nodes", "sessions", "Sessions", status, body, {cls});
+  // ...and the node's phone and CI runner, which are tabs of their own
+  // (R121): a line at the foot of this section opens them. It was a band
+  // between sections, which read as part of Sessions yet stayed when Sessions
+  // folded, and sat without the section's inset (the operator, 7 Oct).
+  return docSection("nodes", "sessions", "Sessions", status, body + nodeToolsLine(n), {cls});
 }
 
 // Claude Code on this node: this account's sign-in here (a login is one
@@ -1103,7 +1107,6 @@ function renderNodesInto(i){
         ${health}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
-        ${n.kind === "agent" && !pending ? nodeToolsLine(n) : ""}
         ${n.kind === "agent" && !pending ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
