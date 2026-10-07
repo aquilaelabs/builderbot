@@ -331,6 +331,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb map reads C and C++: functions, structs and enums, calls by the function they are made in, prototypes as declarations, and a JNI function under its Kotlin or Java method's name. PHP and anonymous JavaScript functions no longer read a call as a definition (7310c34)
 - A session granted the controller's diagnostics opens the node's own jobs they list (bb jobs ID), their specs and logs through the same redaction (f654ac5)
 - A project's own Playwright installing browsers into the shared playwright toolchain no longer deletes the store's: every node session, job and CI runner, and the image, carry PLAYWRIGHT_SKIP_BROWSER_GC=1 (477f460)
+- A node no longer reads as not answering while its agent takes a census after a job: it says it is still there every 20 seconds meanwhile (b97cceb)
 
 ### Security
 

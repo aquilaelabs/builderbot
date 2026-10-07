@@ -2192,6 +2192,16 @@ def store_merge(census, free, totals):
     return census
 
 
+def beat(nid):
+    """The node is there, and nothing else: last_seen stamped in place, so a
+    node whose loop is busy taking a census on the spot (a hello asked for
+    after a job changed the machine, a minute and more on bb-sandbox) is
+    not read as not answering (the operator, 7 Oct). One statement, so it
+    cannot lose a hello's census written beside it."""
+    _exec("UPDATE nodes SET agent = json_set(agent, '$.last_seen', ?) WHERE id = ? AND kind = 'agent'",
+          (int(time.time()), nid))
+
+
 def heartbeat(nid, sample, addr, running=0):
     """One sample per poll: the numbers the operator actually wants to see,
     riding the channel that exists anyway. Written to the row (current

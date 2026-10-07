@@ -239,6 +239,10 @@ def verb(name, auth, req, addr):
                 _sysdeps_said[nid] = msg
                 print(f"[dashboard] auto sysdeps on {nid} skipped: {msg}", flush=True)
         return _answer(r)
+    if name == "beat":
+        # Alive, while its loop is held by a census (nodes.beat).
+        nodes.beat(nid)
+        return {"ok": True}, 200
     if name == "ftp-auth":
         # One FTP login on this node's bb-ftpd (R151), relayed by its agent:
         # the name and password checked as a sign-in checks them, and the

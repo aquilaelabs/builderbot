@@ -98,7 +98,7 @@ import zipfile
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.143"
+AGENT_VERSION = "0.7.144"
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
@@ -135,6 +135,9 @@ SESSION_BIND = os.environ.get("BUILDERBOT_SESSION_BIND", "")
 # the census is a function of the machine, and the session's state is the
 # one part of the machine this process itself is holding.
 SESSION = {}
+# How often a node whose loop is held by a census says it is still there
+# (census_beating): well inside the controller's three missed polls.
+BEAT_S = 20
 
 # Where a store may NOT be put. The stores are directories this agent
 # creates, fills, and (for the cache) empties on request, so a store
@@ -4256,6 +4259,24 @@ class Agent:
         c, self.census_next = self.census_next, None
         return self.hello(taken=c) if c is not None else self.hello()
 
+    def census_beating(self):
+        """census_take on the loop, with the controller told every twenty
+        seconds that this node is still here: the census asks the slow
+        questions, over a minute on a busy node, and with the work poll
+        stopped for it the node read as not answering on every project row
+        (the operator, 7 Oct). A controller without the beat verb answers
+        404 and nothing else changes."""
+        done = threading.Event()
+
+        def beat():
+            while not done.wait(BEAT_S):
+                self.ctl.call("beat", {}, timeout=10)
+        threading.Thread(target=beat, name="beat", daemon=True).start()
+        try:
+            return self.census_take()
+        finally:
+            done.set()
+
     def hello(self, taken=None):
         # `running` is the list of job ids this process still holds. The
         # controller reconciles against it: a job its row says is running
@@ -4263,7 +4284,7 @@ class Agent:
         # failed there rather than left running forever (docs/nodes.md §9).
         # `taken` is a census hello_step took beside the loop; anybody else
         # takes one here, now.
-        c = taken if taken is not None else self.census_take()
+        c = taken if taken is not None else self.census_beating()
         se = c.get("session") or {}
         self.session_mount = (bool(se.get("workspace")), bool(se.get("writable"))) if se else None
         st, r = self.ctl.call("hello", {"census": c,
