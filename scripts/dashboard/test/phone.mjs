@@ -200,6 +200,10 @@ await page.evaluate(() => phFetch());
 await page.click('#bBell');
 await page.waitForSelector('#bellPanel .bnote.ask [data-bdeny]', { timeout: 10000 });
 await page.click('#bellPanel .bnote.ask [data-bdeny]');
+// Any press in the drawer closes it, Deny included (the operator, 7 Oct).
+ok(await page.waitForFunction(() => document.getElementById('bellPanel').hidden, null, { timeout: 5000 })
+     .then(() => true, () => false),
+   'pressing Deny closes the drawer');
 await page.waitForFunction(() => !document.querySelector('.phask'), null, { timeout: 20000 });
 ok((await api('/api/phone', { action: 'outcome', id: denied.body.id })).body.state === 'denied',
    'Deny stops it, and the session is told no rather than left hanging');

@@ -196,6 +196,13 @@ function drawBell(){
     ? rows.join("") + (notes.length
         ? `<div class="bfootbar"><button type="button" id="bellClear">Clear</button></div>` : "")
     : `<div class="bempty">nothing to report</div>`;
+  // Any press in the drawer closes it, after the press's own handler has
+  // run (the operator, 7 Oct): Approve, Deny, an invitation's answer, Clear,
+  // a link to where a row is about. One listener on the drawer, so a row
+  // added later is covered without remembering to.
+  panel.onclick = e => {
+    if (e.target.closest?.("button, a")) queueMicrotask(() => toggleBell(false));
+  };
   const clear = $("bellClear");
   // Only the page's own log clears: an ask is not this button's to dismiss.
   if (clear) clear.onclick = () => { notes = []; notesSeen = 0; drawBell(); };
