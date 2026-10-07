@@ -144,6 +144,34 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   await api('/api/roles', { action: 'remove', name: 'creator' });
 }
 
+// An area without Read is refused and hidden (R152 step 3): a role that
+// reads Toolchains alone sees that tab and none of the others.
+{
+  await api('/api/roles', { action: 'set', name: 'tc-viewer', scope: 'global', perms: { toolchains: 'read' } });
+  await api('/api/roles', { action: 'assign', name: 'dep', roles: ['tc-viewer'] });
+  const tc = await api('/api/toolchains', undefined, depAuth);
+  const nd = await api('/api/v1/nodes', undefined, depAuth);
+  const us = await api('/api/users', undefined, depAuth);
+  ok(tc.status === 200 && us.status === 403 && /no Accounts and roles Read/.test(us.body.error || ''),
+     `the server answers the area it may read and refuses one it may not by name (toolchains ${tc.status}, users ${us.status}: ${us.body.error || ''})`);
+  ok(nd.status === 200 && (nd.body.nodes || []).length === 0,
+     `...and without Nodes Read the nodes answer only for its own projects, here none (${(nd.body.nodes || []).length})`);
+  const st = (await api('/api/status', undefined, depAuth)).body.areas || {};
+  ok(st.toolchains === 'read' && st.nodes === '' && st.jobs === '', `the status carries each area's level (${JSON.stringify(st)})`);
+  const dp = await newPage(browser, { viewport: { width: 1280, height: 900 },
+    httpCredentials: { username: 'dep', password: 'deppass11' },
+    extraHTTPHeaders: { Authorization: 'Basic ' + Buffer.from('dep:deppass11').toString('base64') } });
+  await dp.goto(URL); await ready(dp);
+  await dp.waitForFunction(() => state?.areas, null, { timeout: 15000 });
+  const shown = await dp.evaluate(() => Object.fromEntries(['bToolchains', 'bJobs', 'bNodes', 'bSettings', 'bUsers', 'bRoles']
+    .map(id => [id, !!document.getElementById(id) && !document.getElementById(id).hidden && !document.getElementById(id).closest('[hidden]')])));
+  ok(shown.bToolchains && !shown.bJobs && !shown.bNodes && !shown.bSettings && !shown.bUsers && !shown.bRoles,
+     `its page offers Toolchains and hides the tabs it may not read (${JSON.stringify(shown)})`);
+  await dp.close();
+  await api('/api/roles', { action: 'assign', name: 'dep', roles: [] });
+  await api('/api/roles', { action: 'remove', name: 'tc-viewer' });
+}
+
 // Removed, the role goes with it.
 await api('/api/roles', { action: 'remove', name: 'deployer' });
 ok((await api('/api/version', { project: 'alpha', action: 'nothing-much' }, depAuth)).status === 403,

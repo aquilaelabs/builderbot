@@ -187,7 +187,21 @@ async function refresh(){
     drawCard("doctor", drawDoctor);
     // The Administration card is an administrator's: to anybody else it is
     // not there, rather than there with dead buttons.
-    drawCard(null, () => { const c = $("cardAdmin"); if (c) c.hidden = state?.can?.admin === false; });
+    // R152 step 3: a tab whose area this account may not read is not
+    // offered at all (state.areas, "" for no Read), and the Administration
+    // card shows whichever of its three it may read, gone when none.
+    drawCard(null, () => {
+      const a = state?.areas;
+      if (!a) return;
+      const show = {bSettings: a.controller, bUsers: a.accounts, bRoles: a.accounts,
+                    bToolchains: a.toolchains, bJobs: a.jobs, bNodes: a.nodes};
+      for (const [id, lvl] of Object.entries(show)){
+        const b = $(id);
+        if (b) b.hidden = !lvl;
+      }
+      const c = $("cardAdmin");
+      if (c) c.hidden = !a.controller && !a.accounts;
+    });
     // The Emulator button, ghosted until some node has what the tab needs,
     // with the reason as its tip and, since a tip is nothing on a phone, as
     // a red line under the card's buttons (R119 step 6).
@@ -195,7 +209,7 @@ async function refresh(){
       // CI runner is offered by grant (R137 step 3): hidden, not ghosted,
       // for an account without it; the runner's status stays on its card.
       const r = $("bRunner");
-      if (r) r.hidden = state?.can?.runner === false;
+      if (r) r.hidden = state?.can?.runner === false || state?.areas?.runner === "";
       const b = $("bEmulator"), e = state?.emulator, w = $("toolsWhy");
       if (!b || !e) return;
       b.disabled = !e.ready;

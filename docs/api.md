@@ -35,7 +35,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/toolchains` | prefix | `_get_toolchains` | GET /api/toolchains. |  |
 | GET | `/api/emulator` | prefix | `_get_emulator` | GET /api/emulator?node=ID: that node's system images, what could be added, and the image job there. |  |
 | GET | `/api/roles` | prefix | `_get_roles` | GET /api/roles: the Roles tab (R152): the areas, every role, and each account with its Global roles, the roles it holds on each project and the projects it is on. |  |
-| GET | `/api/users` | prefix | `_get_users` | GET /api/users. | refused: admin |
+| GET | `/api/users` | prefix | `_get_users` | GET /api/users. |  |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
 | GET | `/api/docker` | prefix | `_get_docker` | GET /api/docker: the manager's whole page, containers.manager_view, for the node this account may read. |  |

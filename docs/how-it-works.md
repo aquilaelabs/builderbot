@@ -3792,6 +3792,14 @@ dials, a session's limits) allow and what its account's roles give on the
 project, whichever is less, the projects it reads included, so a session of
 somebody who may only read a project can only read it.
 
+An area without Read is not offered (the status carries each area's level,
+and the page hides the tab or card), and the server holds the same line: the
+Users and Roles reads, a Claude console without Terminal Read (no terminal
+at all), the Jobs listing (a person's own projects' jobs alone) and the
+Docker listing (the projects whose Containers they may read). Without Nodes
+or Toolchains Read those reads answer only for the nodes of the person's own
+projects, which a Claude sign-in there needs, and never for another machine.
+
 The tab is two sections, each with its own **Save** and **Revert**. **People**
 picks an account: its Global roles, the projects it is on, and the roles it
 holds on each. **Roles** picks a role or adds one: its scope, what it is for,

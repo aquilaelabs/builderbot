@@ -3375,6 +3375,10 @@ def snapshot(who):
                # ...and what other projects a session may read: the owner's
                # alone (the operator, 6 Oct), whatever the grants say.
                | {"reads": (who or {}).get("role") == "owner"},
+        # Each area's level anywhere (R152 step 3), so the page hides a tab
+        # whose area this account may not read: "", read or write.
+        "areas": {a: ("write" if users.is_admin(who or {}) or (who or {}).get("session")
+                      else roles.level_of(who or {}, a)) for a in roles.AREA_KEYS},
         # Projects whose Claude session belongs to somebody else, by NAME:
         # "alice has a session on this" is the whole value of the record, and
         # a bare refusal would tell you nothing you could act on. Only for
@@ -3858,6 +3862,20 @@ class Handler(BaseHTTPRequestHandler):
         # nobody else's business to read off a row.
         return rows
 
+    def _area_read_why(self, area, project=None, me=None):
+        """Why this person may not READ `area` (R152 step 3: an area without
+        Read is not shown, and its views are refused), or "". A session sees
+        its own project's through its own routes, and the account behind it
+        is held by users.may; an administrator reads everything."""
+        me = me if me is not None else (self._who() or {})
+        if me.get("session") or users.is_admin(me):
+            return ""
+        if roles.level_of(me, area, project, users.may_work):
+            return ""
+        label = next((a[1] for a in roles.AREAS if a[0] == area), area)
+        return (f"your roles give no {label} Read" + (f" on {project}" if project else "")
+                + ": the Roles tab gives one")
+
     def _term_refused(self, rest, me=None):
         """A sentence when this account may not have the terminal it is asking
         for, and "" when it may.
@@ -3882,7 +3900,10 @@ class Handler(BaseHTTPRequestHandler):
         me = me or self._who()
         arg = _term_arg(rest)
         if arg.startswith("claude:"):
-            return users.may(me, "claude", arg[len("claude:"):].split(":")[0])
+            project = arg[len("claude:"):].split(":")[0]
+            # Terminal Read is the shielded Claude console; without it there
+            # is no terminal on the project at all (R152 (e)).
+            return users.may(me, "claude", project) or self._area_read_why("terminal", project, me)
         return users.may(me, "terminal")
 
     def _claude_held(self, rest, me=None):
@@ -4520,6 +4541,9 @@ class Handler(BaseHTTPRequestHandler):
         # ?node= asks about another node's toolchain store: what its
         # census says it has, and the toolchain job in flight there. The
         # catalog is the same; the state is the node's (docs/nodes.md §6).
+        # Without Toolchains Read the tab is not offered (R152 step 3), and
+        # this answers only for the nodes of the person's own projects,
+        # which _node_asked keeps it to: what their projects build with.
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         nid, why = self._node_asked(q.get("node", [""])[0])
         if why:
@@ -4543,9 +4567,10 @@ class Handler(BaseHTTPRequestHandler):
         """GET /api/users."""
         # The listing never carries a hash; all_users() drops it. Projects
         # come from the same filtered list everything else reads, so an
-        # admin cannot hand out what they cannot see themselves.
-        if self._refused("admin"):
-            return None
+        # admin cannot hand out what they cannot see themselves. Accounts
+        # and roles Read lets one see it (R152 step 3).
+        if (why := self._area_read_why("accounts")):
+            return self._json({"error": why}, 403)
         return self._json(users.tab_view(self._who(), [p["name"] for p in project_list(self._who())],
                                          claudegrant.logins_of))
 
@@ -4592,6 +4617,9 @@ class Handler(BaseHTTPRequestHandler):
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
+        # Without Nodes Read the tab is not offered (R152 step 3), and this
+        # answers with the nodes of the person's own projects alone, which a
+        # Claude sign-in on them needs, as below.
         # Scoped for an account that may not change a node: it sees the
         # ones its own projects build on and no others, because the list
         # is otherwise a way to learn what machines exist and what they
@@ -4609,6 +4637,10 @@ class Handler(BaseHTTPRequestHandler):
         me = self._who()
         mine = None if users.may(me, "admin") == "" \
             else {p["name"] for p in project_list(me)}
+        # Without Jobs Read a person sees their projects' jobs alone, those
+        # they may read (R152 step 3); the Jobs tab is hidden for them.
+        if mine is not None and not (me or {}).get("session") and self._area_read_why("jobs"):
+            mine = {p for p in mine if roles.level_of(me, "projects", p, users.may_work)}
         # The node's own jobs (a toolchain install, an update) for whoever may
         # read the controller's diagnostics, which list them: a job named
         # there that could not be opened was a dead end (the operator, 7 Oct).
@@ -4657,6 +4689,10 @@ class Handler(BaseHTTPRequestHandler):
         seen = None
         if sess or self._node_scope() is not None:
             seen = {name} if sess else {p["name"] for p in project_list(me)}
+        # ...and of those, the projects whose Containers this person may
+        # read (R152 step 3).
+        if seen is not None and not sess and not users.is_admin(me):
+            seen = {p for p in seen if roles.level_of(me, "containers", p, users.may_work)}
         return self._json(containers.manager_view(nid, seen))
 
     def _get_containers(self):
