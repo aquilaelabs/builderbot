@@ -655,7 +655,10 @@ def _session_at(name):
                 "session_node": t["id"],
                 "session_boot": t.get("boot") or ""}
     if t["where"] == "refused":
-        return {"session_at": t["name"], "session_why": t["why"], "session_node": "", "session_boot": ""}
+        return {"session_at": t["name"], "session_why": t["why"], "session_node": "", "session_boot": "",
+                # A wait that passes on its own (a node reconnecting after a
+                # restart, a mount landing after boot): drawn quietly.
+                "session_waiting": bool(t.get("waiting"))}
     return {"session_at": "", "session_why": "", "session_node": "", "session_boot": ""}
 
 
@@ -1252,7 +1255,7 @@ def session_target(project, claude=False, node=""):
     name = n.get("name") or nid
     rep = n.get("reported") or {}
     se = rep.get("session")
-    passing = False
+    passing = waiting = False
     if n.get("state") == "retired":
         # Un-enrolled (the operator, 5 Oct): the fact first, for the row, and
         # what to do after it, for the tooltip.
@@ -1261,6 +1264,13 @@ def session_target(project, claude=False, node=""):
         passing = True          # its own sentence says the way on
     elif n.get("state") != "online":
         why = f"{project}'s sessions run on {name}, which is {n.get('state') or 'not online'}"
+    elif n.get("live") is False and _reconnecting(n):
+        # The controller has just started and this node was here a moment
+        # before: its agent dials in again on its own schedule (two minutes,
+        # some days). Said quietly, as a wait, rather than in red as a node
+        # that is down (the operator, 7 Oct).
+        why = f"{name} is reconnecting after the controller restarted"
+        passing = waiting = True
     elif n.get("live") is False:
         # The agent has stopped dialing in: a reboot, an update, a machine
         # that is off. Its tmux sessions are still there when it comes
@@ -1300,7 +1310,7 @@ def session_target(project, claude=False, node=""):
             why = (f"{project}'s sessions run on {name}, which came up {up} seconds ago and has "
                    "not mounted the projects share at /workspace yet; a network mount lands a "
                    "moment after boot, and the button is back when it does")
-            passing = True
+            passing = waiting = True
         else:
             why = (f"{project}'s sessions run on {name}, which does not mount the projects "
                    "share at /workspace; add the mount on its row on the Nodes tab")
@@ -1324,7 +1334,7 @@ def session_target(project, claude=False, node=""):
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
                 "boot": str(se.get("boot") or "")}
-    return {"where": "refused", "name": name,
+    return {"where": "refused", "name": name, "waiting": waiting,
             "why": why + ("." if passing else
                           ". Sessions run on a node and nowhere else (this container "
                           "carries no Claude Code), so the way on is that machine "
@@ -2861,6 +2871,14 @@ BOOT_GRACE = 300
 # nodes have dialed in since.
 STARTED = time.time()
 NODE_WAIT = 300
+
+
+def _reconnecting(n):
+    """Whether a node not dialing in is one this controller saw shortly
+    before it started, and is still inside the start's wait for it: the
+    agent reconnects on its own clock, so it is coming back, not down."""
+    seen = float((n.get("agent") or {}).get("last_seen") or 0)
+    return time.time() - STARTED < NODE_WAIT and STARTED - 900 < seen < STARTED
 
 
 def wait_for_nodes(limit=NODE_WAIT):

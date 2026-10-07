@@ -349,7 +349,7 @@ function projectRow(p, live, cls, inTab){
         // (23 Sep). The same line for a node whose agent is out of window
         // (held), unless the row is already saying the map is building.
         : (p.session_why || (p.held && !state?.mapping?.[p.name]?.running)) && !p.locked
-          ? `<div class="sub sessline bad">${esc(shortWhy(p.session_why || p.held))}</div>` : ""}
+          ? `<div class="sub sessline ${p.session_waiting && !p.held ? "dim" : "bad"}">${esc(shortWhy(p.session_why || p.held))}</div>` : ""}
     </div>
 `;
 }
