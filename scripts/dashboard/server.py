@@ -3011,7 +3011,8 @@ import ftp                                                       # noqa: E402
 ftp.configure(state=STATE, workspace=WORKSPACE, write_json=write_json, users=users,
               audit=lambda who, act, target, params: db.audit(who, act, target, params),
               project_node=lambda p: prefs.get(p)["node"] or "",
-              ask_hello=lambda nid: None if NODES_OK else nodes.ask_hello(nid))
+              ask_hello=lambda nid: None if NODES_OK else nodes.ask_hello(nid),
+              node_agent=lambda nid: "" if NODES_OK else ((nodes.node(nid) or {}).get("agent") or {}).get("version") or "")
 nodes.ftp_for = ftp.for_node
 
 # The controller's diagnostics: read-only, for an administrator and, behind
