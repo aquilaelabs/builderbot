@@ -394,6 +394,7 @@ def ls():
 def ctl():
     auth, verb, name = os.environ["BB_DEV_AUTH"], os.environ["BB_DEV_VERB"], os.environ["BB_DEV_NAME"]
     r = bbapi.call("/api/dockerctl", {"action": "logs" if verb == "log" else verb, "container": name,
+                                      "project": os.environ.get("BB_DEV_PROJECT", ""),
                                       "why": os.environ.get("BB_DEV_WHY", "")}, auth=auth)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")

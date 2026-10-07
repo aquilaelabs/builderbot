@@ -333,6 +333,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session granted the controller's diagnostics opens the node's own jobs they list (bb jobs ID), their specs and logs through the same redaction (f654ac5)
 - A project's own Playwright installing browsers into the shared playwright toolchain no longer deletes the store's: every node session, job and CI runner, and the image, carry PLAYWRIGHT_SKIP_BROWSER_GC=1 (477f460)
 - A node no longer reads as not answering while its agent takes a census after a job: it says it is still there every 20 seconds meanwhile (b97cceb)
+- bb -p NAME devapp from a session on a project that reads NAME lists NAME's containers and reads its dev instance's state and log; changing them stays a session on NAME's (29609f2)
 
 ### Security
 

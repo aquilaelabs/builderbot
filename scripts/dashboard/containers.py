@@ -461,7 +461,7 @@ def _answer(r):
     return r, (400 if r.get("error") else 200)
 
 
-def session_verb(sess, me, act, name, req):
+def session_verb(sess, me, act, name, req, read_only=False):
     """A SESSION's word on one container that belongs to its project (the
     operator, 24 Sep): on its project's nodes, its log when it asks, since
     that is reading it, and start, stop or restart as the project's Run its
@@ -488,6 +488,9 @@ def session_verb(sess, me, act, name, req):
     if act == "logs":
         with devapp.on_node(nid or None):
             return container_logs(name), 200
+    if read_only:
+        return {"error": f"{sess} is read-only from here: its log is readable, and starting or "
+                         f"stopping it is a session on {sess}'s"}, 403
     if act not in ("start", "stop", "restart", *BOOT_CTL):
         return {"error": f"a session starts, stops or restarts a container, sets whether it "
                          f"starts on boot, or reads its log, not {act!r}"}, 400

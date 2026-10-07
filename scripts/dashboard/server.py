@@ -4609,7 +4609,10 @@ class Handler(BaseHTTPRequestHandler):
             # it to fall to (the operator, 25 Sep), so that is said.
             if not sess and self._not_project(proj):
                 return None
-            name = sess or proj
+            # A session reads its own project's containers, and those of a
+            # project it reads (bb -p NAME devapp, B551/B552): reading them
+            # is what reads means. Acting on them stays its own project's.
+            name = proj if sess and proj and proj != sess and self._reads(proj) else sess or proj
             nid, why = devapp.project_daemon(name), None
             if not nid:
                 return self._json({"error": f"{name} has no node, so it has no containers anywhere. "
@@ -4624,7 +4627,7 @@ class Handler(BaseHTTPRequestHandler):
         # to its projects, a session's to its own one (the operator, 24 Sep).
         seen = None
         if sess or self._node_scope() is not None:
-            seen = {sess} if sess else {p["name"] for p in project_list(me)}
+            seen = {name} if sess else {p["name"] for p in project_list(me)}
         return self._json(containers.manager_view(nid, seen))
 
     def _get_containers(self):
@@ -5492,6 +5495,13 @@ class Handler(BaseHTTPRequestHandler):
                               addr=self.client_address[0] if self.client_address else "",
                               who=self._who())
 
+    def _reads(self, project):
+        """Whether this session may read `project`: one its project reads
+        (prefs.reads), the same answer the notebook's reads get."""
+        me = self._who() or {}
+        return bool(me.get("session")) and project in (me.get("reads") or []) \
+            and not users.may(me, "read", project)
+
     def _docker_ctl(self, req):
         """Start, stop, restart or read the log of ONE container on a node.
 
@@ -5513,6 +5523,11 @@ class Handler(BaseHTTPRequestHandler):
         sess = me.get("session") or ""
         act, name = field(req, "action"), field(req, "container")
         if sess:
+            # The log of a container that belongs to a project this session
+            # reads is a read (B551); everything else is its own project's.
+            proj = field(req, "project")
+            if act == "logs" and proj and proj != sess and self._reads(proj):
+                return self._json(*containers.session_verb(proj, me, act, name, req, read_only=True))
             return self._json(*containers.session_verb(sess, me, act, name, req))
         if self._refused("docker-write"):
             return
@@ -5593,7 +5608,10 @@ class Handler(BaseHTTPRequestHandler):
             want = field(req, "instance") or (devapp.send_name(name) if act == "new"
                                               else devapp.only_instance(name))
             owner = devapp.owner_of(name, want)
-            if owner not in ({sess} if sess else {p["name"] for p in project_list(me)}):
+            # ...and a session reads what belongs to a project its own reads
+            # (B551): the state and the starter env, never a change.
+            reads = {owner} if sess and act in ("state", "starter") and owner and self._reads(owner) else set()
+            if owner not in ({sess} | reads if sess else {p["name"] for p in project_list(me)}):
                 return self._json({"error": containers.not_ours(devapp.pname(name, want), sess)}, 403)
         # Reading is everybody's; changing what is running is not (roadmap
         # #27). Named, not derived from the verb: an action that should be

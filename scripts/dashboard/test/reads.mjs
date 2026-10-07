@@ -228,6 +228,26 @@ ok(Array.isArray(grant.reads) && grant.reads.join() === 'beta',
   await api('/api/prefs', { project: 'alpha', reaches: [] });
 }
 
+// ---- a read project's containers are read from here (B551, B552) ----------------------
+// bb -p beta devapp from a session on alpha, which reads beta: its listing
+// and its dev instance's state answer for beta, and changing anything of
+// beta's is still refused. Reads are set again here, since a check above
+// may have cleared them.
+{
+  await api('/api/prefs', { project: 'alpha', reads: ['beta'] });
+  const t2 = token('alpha');
+  const ls = await api('/api/docker?project=beta', undefined, asSession(t2));
+  ok(ls.status === 200 && !/does not belong/.test(ls.error || ''),
+     `a session lists the containers of a project it reads (${ls.status} ${ls.error || 'ok'})`);
+  const st = await api('/api/devapp', { project: 'beta', action: 'state' }, asSession(t2));
+  ok(!/does not belong to alpha/.test(st.error || '') && st.status !== 403,
+     `...and reads its dev instance's state (${st.status} ${st.error || 'ok'})`);
+  const rb = await api('/api/devapp', { project: 'beta', action: 'rebuild' }, asSession(t2));
+  ok(rb.status === 403, `...while rebuilding it is refused (${rb.status} ${rb.error || ''})`);
+  const unread = await api('/api/devapp', { project: 'gamma', action: 'state' }, asSession(t2));
+  ok(unread.status >= 400, `...and a project it does not read answers as before (${unread.status})`);
+}
+
 // ---- the briefing names them ------------------------------------------------------------
 const pre = await api('/api/preamble?project=alpha');
 ok(/This project reads beta: each is at \/workspace\/NAME, read-only, and `bb -p NAME` in front/.test(pre.text)
