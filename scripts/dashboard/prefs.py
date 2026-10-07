@@ -189,17 +189,6 @@ def set_for_user(uid, project, patch):
         return cur
 
 
-def forget_user_project(project):
-    """Drop everybody's settings for a project that is gone."""
-    with _lock:
-        d = _load()
-        users = d.get("users") or {}
-        for uid in list(users):
-            users[uid].pop(str(project), None)
-            if not users[uid]:
-                users.pop(uid, None)
-        write_json(FILE, d)
-
 
 def _load():
     """The whole file, in the per-project shape, tolerating the old one.

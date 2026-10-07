@@ -687,23 +687,6 @@ def repo_path_of(url):
     return got["path"] if got else ""
 
 
-def repo_of_remotes(remotes):
-    """The repository path of the first remote in `git remote -v` output.
-
-    Lowercased, because the hosts this links to treat an owner and a repo
-    case-insensitively and two clones differing only in case are the same
-    repository, which is the whole question being asked here. Paired with the
-    host by the caller, which is what actually makes an identity.
-    """
-    for line in remotes.splitlines():
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-        path = repo_path_of(parts[1])
-        if path:
-            return path.lower()
-    return ""
-
 
 def push_holder(host, repo):
     """The project that already holds push on this repository, or "".
@@ -959,9 +942,9 @@ def set_auth(project, dest, mode):
             return "", ("this project has no deploy-key remote to go back to: "
                         "it has only ever used https")
     else:
-        # As written, NOT folded: repo_of_remotes lowercases for comparison,
-        # and building the URL with that turned Stencil-Projects/BuilderBot
-        # into stencil-projects/builderbot in the operator's own remote. The
+        # As written, NOT folded: a lowercased path once built the URL here,
+        # and that turned Stencil-Projects/BuilderBot into
+        # stencil-projects/builderbot in the operator's own remote. The
         # hosts here accept either, so nothing broke; it just no longer said
         # the name of the repository it points at.
         repo = repo_path_of(origin_url(dest))

@@ -24,7 +24,6 @@ phone's side: the companion app gains no permission for this, so it looks to
 Play Protect exactly as it did. A lease ends by itself when its time is up,
 when the phone is disconnected, and when the owner takes it back.
 """
-import base64
 import hashlib
 import importlib.util
 import os
@@ -303,10 +302,6 @@ def _capture(project, kind, ext, data):
     (out / name).write_bytes(data)
     return f"dist/phone/{name}"
 
-
-def _b64(out):
-    blob = "".join(x.strip() for x in out.splitlines() if re.fullmatch(r"[A-Za-z0-9+/=]+", x.strip()))
-    return base64.b64decode(blob) if blob else b""
 
 
 def use(project, op, args):

@@ -588,14 +588,14 @@ m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
             state=d, home=d,
             write_json=lambda p, o: open(p, 'w').write(json.dumps(o)))
 out = {}
-# The remote's identity, however it is spelled: a deploy-key alias hides the
-# host but the path is still owner/repo, and case does not distinguish repos.
-out['ssh_alias'] = m.repo_of_remotes('origin\tgit@bb-thing:Owner/Repo.git (fetch)')
-out['https'] = m.repo_of_remotes('origin\thttps://github.com/owner/repo (push)')
-# A subgroup path IS a repository (GitLab nests them), so identity keeps all
-# of it. What is not a repository is an address with no owner in it at all.
-out['nested'] = m.repo_of_remotes('origin\tgit@host:one/two/three.git (fetch)')
-out['not_a_repo'] = m.repo_of_remotes('origin\tgit@host:justone (fetch)')
+# The remote's path, however it is spelled: a deploy-key alias hides the host
+# but the path is still owner/repo, kept as written.
+out['ssh_alias'] = m.repo_path_of('git@bb-thing:Owner/Repo.git')
+out['https'] = m.repo_path_of('https://github.com/owner/repo')
+# A subgroup path IS a repository (GitLab nests them), so it keeps all of
+# itself. What is not a repository is an address with no owner in it at all.
+out['nested'] = m.repo_path_of('git@host:one/two/three.git')
+out['not_a_repo'] = m.repo_path_of('git@host:justone')
 m.grant_push('first', 'github.com', 'owner/repo', 'key')
 out['holder'] = m.push_holder('github.com', 'owner/repo')
 out['free'] = m.push_holder('github.com', 'owner/other')
@@ -608,8 +608,8 @@ out['after_drop'] = m.push_holder('github.com', 'owner/repo')
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const rj = JSON.parse(rights.trim().split('\n').pop());
-ok(rj.ssh_alias === 'owner/repo' && rj.https === 'owner/repo',
-   'a deploy-key alias and an https remote name the same repository');
+ok(rj.ssh_alias === 'Owner/Repo' && rj.https === 'owner/repo',
+   'a deploy-key alias and an https remote are read to their owner/repo, as written');
 ok(rj.nested === 'one/two/three',
    '...and a subgroup path keeps all of itself, because GitLab nests them');
 ok(rj.not_a_repo === '',

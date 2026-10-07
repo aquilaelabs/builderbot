@@ -87,7 +87,6 @@ class DevBuilds(unittest.TestCase):
     def test_a_dirty_build_is_the_same_kind(self):
         a = self.make("P-1.0.0-dev.1-1234567-dirty-app.apk")
         self.make("P-1.0.0-dev.2-2345678-app.apk")
-        self.assertEqual(artifacts.dev_kind(a), artifacts.dev_kind("P-1.0.0-dev.2-2345678-app.apk"))
         self.assertEqual(artifacts.sweep_dev_builds("proj", keep=1), [a])
 
     def test_a_pinned_build_stays_and_is_not_one_of_the_three(self):

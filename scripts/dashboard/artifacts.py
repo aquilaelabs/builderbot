@@ -414,12 +414,6 @@ VERSIONISH = re.compile(r"\d+\.\d+\.\d+|(?<![0-9A-Za-z])[0-9a-f]{7,40}(?![0-9A-Z
 SIGNED = re.compile(r"-signed(\.(?:apk|aab))$")
 
 
-def dev_kind(name):
-    """The product a dev build is of (its name before the version, with a
-    * for the rest), or None for a file that is not a dev build."""
-    m = DEV_VERSION.search(name)
-    return None if m is None else name[:m.start()] + "*"
-
 
 def unversioned(name):
     """A shipped file named with no version, which nothing can sweep."""
