@@ -73,7 +73,7 @@ SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchp
 # definition), which is what the scanner already spots for a JS method.
 # A scanner's version: a file indexed by an older one is scanned again
 # though it has not changed, so a fix to a scanner reaches every file.
-SCANNER = {"py": 2, "c": 1, "js": 2, "html": 2}
+SCANNER = {"py": 2, "c": 2, "js": 2, "html": 2}
 EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx": "js",
         ".jsx": "js", ".html": "html", ".sh": "sh", ".bash": "sh",
         ".kt": "js", ".kts": "js", ".java": "js", ".cs": "js", ".go": "js", ".rs": "js",
@@ -666,6 +666,9 @@ C_CONTROL = {"if", "for", "while", "switch", "catch", "return", "sizeof", "do", 
              "alignof", "decltype", "typeof", "defined", "case", "new", "delete", "throw",
              "static_assert", "_Static_assert", "__attribute__", "__declspec", "noexcept",
              "alignas", "_Alignof", "offsetof", "goto", "operator"}
+# Words a call can follow: `return f(x)`, `else g()`.
+C_DECL_OK = {"return", "else", "case", "do", "throw", "new", "delete", "co_return", "co_yield",
+             "co_await", "sizeof", "not", "and", "or", "goto"}
 C_TYPE_HEAD = re.compile(r"(?:^|[\s;}])(?:typedef\s+)?(?:struct|union|enum(?:\s+class|\s+struct)?|class)"
                          r"\s+(?:__attribute__\s*\(\([^)]*\)\)\s*|alignas\s*\([^)]*\)\s*|[A-Z_]+_API\s+)*"
                          r"([A-Za-z_]\w*)\s*(?:final\s*)?(?::[^{;]*)?$")
@@ -680,6 +683,13 @@ def _c_blank(text):
     to spaces, newlines kept, so what is left is the code."""
     out, i, n = list(text), 0, len(text)
     line_start = True
+    # Preprocessor conditionals (B554): only the first branch of each is
+    # read, the #else/#elif ones blanked through their #endif, since two
+    # branches that each open a brace left one unclosed and the rest of the
+    # file inside the function above it. `skip` is the depth of the #if
+    # whose later branch is being blanked, 0 for none; `depth` counts #ifs.
+    depth = skip = 0
+    cond = re.compile(r"#\s*(if|ifdef|ifndef|elif|else|endif)\b")
 
     def blank(a, b):
         for k in range(a, min(b, n)):
@@ -705,6 +715,24 @@ def _c_blank(text):
                 j = k
                 break
             # a comment opened on a directive line runs on past it
+            m = cond.match(text, i)
+            if m:
+                word = m.group(1)
+                if word in ("if", "ifdef", "ifndef"):
+                    depth += 1
+                elif word in ("elif", "else") and not skip:
+                    skip = depth
+                elif word == "endif":
+                    if skip == depth:
+                        skip = 0
+                    depth = max(0, depth - 1)
+            blank(i, j)
+            i = j
+            continue
+        if skip:
+            # a line of a branch that is not read: blank it whole
+            j = text.find("\n", i)
+            j = n if j < 0 else j
             blank(i, j)
             i = j
             continue
@@ -768,6 +796,9 @@ def _jni_method(name):
 
 def scan_c(text, sink):
     scan_sections(text, sink)
+    # #define NAME and NAME(...): what a header's API often is (B554).
+    for m in re.finditer(r"(?m)^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)", text):
+        sink.add_def(m.group(1), text.count("\n", 0, m.start()) + 1, "macro", "")
     code = _c_blank(text)
     n = len(code)
     nl = [m.start() for m in re.finditer("\n", code)]
@@ -813,8 +844,13 @@ def scan_c(text, sink):
             kind, name, d = "block", "", None
             if top[0] in ("file", "ns", "type"):
                 tm = C_TYPE_HEAD.search(flat)
-                if re.search(r"(?:^|\s)namespace(?:\s+[\w:]+)?\s*$", flat) or re.fullmatch(r"\s*extern\s*", flat):
+                nsm = re.search(r"(?:^|\s)namespace(?:\s+([\w:]+))?\s*$", flat)
+                if nsm or re.fullmatch(r"\s*extern\s*", flat):
                     kind = "ns"
+                    if nsm and nsm.group(1):
+                        nd = sink.add_def(nsm.group(1).split("::")[-1], line_at[top[3] + max(0, head.rfind(nsm.group(1)))],
+                                          "namespace", type_parent())
+                        nd["end"] = nd["line"]
                 elif tm and "(" not in flat.split(tm.group(1))[0][-1:]:
                     kind, name = "type", tm.group(1)
                     d = sink.add_def(name, line_at[top[3] + max(0, head.rfind(name))], "class", type_parent())
@@ -872,18 +908,57 @@ def scan_c(text, sink):
             continue
         if c == "}":
             if len(scopes) > 1:
-                kind, name, d, _ = scopes.pop()
+                kind, name, d, start = scopes.pop()
                 if d is not None and "file" in d:
                     d["end"] = line_at[i]
-                if kind == "type" and not name and d and d.get("typedef"):
-                    m = re.match(r"\s*([A-Za-z_]\w*)\s*[;,\[]", code[i + 1:i + 200])
-                    if m:
-                        nd = sink.add_def(m.group(1), line_at[i + 1 + m.start(1)], "class", type_parent())
+                # A typedef's name after its }: the type of an anonymous one,
+                # and an alias of a named one (typedef struct point {} point_t).
+                typedef = kind == "type" and ((d and d.get("typedef")) or
+                                              re.search(r"(?:^|[\s;}])typedef\s", code[scopes[-1][3]:start]))
+                if typedef:
+                    m = re.match(r"\s*\*?\s*([A-Za-z_]\w*)\s*[;,\[]", code[i + 1:i + 200])
+                    if m and m.group(1) != name:
+                        nd = sink.add_def(m.group(1), line_at[i + 1 + m.start(1)],
+                                          "class" if not name else "typedef", type_parent())
                         nd["end"] = nd["line"]
             scopes[-1][3] = i + 1
             i += 1
             continue
         if c == ";":
+            top = scopes[-1]
+            if top[0] in ("file", "ns", "type"):
+                stmt = " ".join(code[top[3]:i].split())
+                # typedef int (*callback_fn)(int); typedef unsigned long ulong;
+                td = re.search(r"(?:^|\s)typedef\s", stmt)
+                fp = re.search(r"\(\s*\*\s*([A-Za-z_]\w*)\s*\)\s*\(", stmt) if td else None
+                tm = fp or (re.search(r"([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?$", stmt) if td else None)
+                if tm and "{" not in stmt:
+                    nm = tm.group(1)
+                    at = top[3] + code[top[3]:i].rfind(nm)
+                    nd = sink.add_def(nm, line_at[at], "typedef", type_parent())
+                    nd["end"] = nd["line"]
+                elif "=" not in stmt and not stmt.startswith(("return", "using", "friend")):
+                    # A prototype: a declaration, findable, and never a call.
+                    end = _c_params_end(code[top[3]:i])
+                    if end >= 0:
+                        before = code[top[3]:top[3] + end]
+                        depth_, k = 0, end
+                        while k >= 0:
+                            ch = before[k] if k < len(before) else ")"
+                            if ch == ")":
+                                depth_ += 1
+                            elif ch == "(":
+                                depth_ -= 1
+                                if depth_ == 0:
+                                    break
+                            k -= 1
+                        pm = C_NAME_BEFORE_PAREN.search(before[:k]) if k > 0 else None
+                        if pm and re.search(r"[\w*&>]\s+[*&]*\s*(?:[\w:~]+)\s*$", before[:k]):
+                            nm = " ".join(pm.group(1).split()).split("::")[-1]
+                            if nm.split()[0] not in C_CONTROL:
+                                nd = sink.add_def(nm, line_at[top[3] + before.rfind(pm.group(1), 0, k)],
+                                                  "decl", type_parent())
+                                nd["end"] = nd["line"]
             scopes[-1][3] = i + 1
             i += 1
             continue
@@ -894,8 +969,12 @@ def scan_c(text, sink):
             while j < n and code[j] in " \t\n":
                 j += 1
             if in_fn():
-                if code[j:j + 1] == "(" and word not in C_CONTROL:
-                    pre = code[max(0, i - 80):i].rstrip()
+                pre = code[max(0, i - 80):i].rstrip()
+                pw = re.search(r"([A-Za-z_]\w*)$", pre)
+                # `Widget w(3);`: a name straight after a type name is the
+                # variable being made, not a function called (B554).
+                declared = bool(pw) and pw.group(1) not in C_DECL_OK
+                if code[j:j + 1] == "(" and word not in C_CONTROL and not declared:
                     qm = re.search(r"([A-Za-z_]\w*)\s*(?:\.|->|::)$", pre)
                     # `Type name(args);` is a declaration with a constructor
                     # call; still a call, which is what it is.
@@ -1160,13 +1239,20 @@ def load(root, force=False):
     if not usable(prior):
         return build(root)
     have = prior.get("files", {})
-    now = {}
-    for p, _ in sources(root):
+    now, langs = {}, {}
+    for p, lang in sources(root):
         try:
-            now[str(p.relative_to(root))] = p.stat().st_mtime
+            rel = str(p.relative_to(root))
+            now[rel] = p.stat().st_mtime
+            langs[rel] = lang
         except OSError:
             continue
-    if set(now) != set(have) or any(now[k] != have[k].get("mtime") or "defs" not in have[k] for k in now):
+    # ...and read by the scanner that would read it now (B553): a file whose
+    # language or scanner moved since it was indexed is stale though it has
+    # not changed, and build() rescans just those.
+    if set(now) != set(have) or any(now[k] != have[k].get("mtime") or "defs" not in have[k]
+                                    or have[k].get("lang") != langs[k]
+                                    or have[k].get("scan", 1) != SCANNER.get(langs[k], 1) for k in now):
         return build(root, prior)
     return flat(prior)
 
@@ -1389,6 +1475,12 @@ def q_who_calls(idx, name, root):
 
 def q_calls(idx, name):
     rows = [c for c in idx["calls"] if c["caller"] == name or c["caller"].endswith("." + name)]
+    # A Kotlin or Java `external fun` is its JNI function in C (B554).
+    if not rows:
+        for d in idx["defs"]:
+            if d["name"] == name and d.get("kind") == "jni" and d.get("jni"):
+                rows = [c for c in idx["calls"] if c["caller"] == d["jni"]]
+                break
     if not rows:
         return [f"{name} calls nothing the map knows, or is not a function it knows"]
     seen, out = set(), []

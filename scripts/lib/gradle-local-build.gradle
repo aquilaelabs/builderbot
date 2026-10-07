@@ -19,6 +19,35 @@
 import java.nio.file.Files
 import java.nio.file.Path
 
+// The link kept out of git (B555): a project's .gitignore says `build/`,
+// which matches a directory and not a link, so git status listed app/build
+// as untracked and `git add -A` would have committed it. Its exact path goes
+// into the repository's own info/exclude, never the project's .gitignore,
+// which is the project's to write; the way bb map keeps .bb-map/ out.
+def excludeLink = { File root, Path link ->
+    try {
+        def ask = { List args ->
+            def pr = (["git", "-C", root.path] + args).execute()
+            pr.waitFor()
+            pr.exitValue() == 0 ? pr.text.trim() : ""
+        }
+        def top = ask(["rev-parse", "--show-toplevel"])
+        def ex = ask(["rev-parse", "--git-path", "info/exclude"])
+        if (!top || !ex) {
+            return
+        }
+        def file = new File(ex).isAbsolute() ? new File(ex) : new File(root, ex)
+        def line = "/" + new File(top).toPath().relativize(link.toAbsolutePath()).toString()
+        def have = file.exists() ? file.readLines() : []
+        if (!have.contains(line)) {
+            file.parentFile.mkdirs()
+            file << (have && !file.text.endsWith("\n") ? "\n" : "") + line + "\n"
+        }
+    } catch (Exception e) {
+        // Keeping it out of git is a courtesy; the build goes on without it.
+    }
+}
+
 def base = System.getenv("BB_LOCAL_BUILD")
 if (base) {
     gradle.beforeProject { p ->
@@ -34,6 +63,7 @@ if (base) {
             try {
                 if (Files.isSymbolicLink(link)) {
                     if (Files.readSymbolicLink(link) == target.toPath()) {
+                        excludeLink(p.rootDir, link)
                         return
                     }
                     Files.delete(link)
@@ -45,6 +75,7 @@ if (base) {
                     }
                 }
                 Files.createSymbolicLink(link, target.toPath())
+                excludeLink(p.rootDir, link)
             } catch (Exception e) {
                 p.logger.warn("BuilderBot: could not put a link at ${link} to ${target}: ${e.message}")
             }

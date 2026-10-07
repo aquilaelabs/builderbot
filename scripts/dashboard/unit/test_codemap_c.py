@@ -66,9 +66,9 @@ class CScanner(unittest.TestCase):
     def test_functions_and_types_and_nothing_else(self):
         s = scan(C)
         got = sorted((d["kind"], d["name"]) for d in s.defs)
-        self.assertEqual(got, [("class", "ggml_log_level"), ("class", "pair_t"),
+        self.assertEqual(got, [("class", "ggml_log_level"), ("class", "pair_t"), ("decl", "whisper_full"),
                                ("def", "Java_dev_shebang_devboard_voice_Whisper_nativeInit"),
-                               ("def", "log_to_logcat"), ("jni", "nativeInit")])
+                               ("def", "log_to_logcat"), ("jni", "nativeInit"), ("macro", "LOG")])
         log = next(d for d in s.defs if d["name"] == "log_to_logcat")
         self.assertEqual((log["line"], log["end"]), (13, 15))
 
@@ -96,11 +96,38 @@ class CScanner(unittest.TestCase):
         s = scan(CPP, "x.cpp")
         got = sorted((d["kind"], d["parent"], d["name"]) for d in s.defs)
         self.assertEqual(got, [("class", "", "Model"), ("def", "", "c_api"), ("def", "Model", "Model"),
-                               ("def", "Model", "load"), ("def", "Model", "size")])
+                               ("def", "Model", "load"), ("def", "Model", "size"), ("namespace", "", "ns")])
         calls = {(c["name"], c["caller"]) for c in s.calls}
         self.assertIn(("setup", "Model"), calls)
         self.assertIn(("open", "load"), calls)
         self.assertNotIn("n_", {c["name"] for c in s.calls}, "an initializer list is not a header's name")
+
+
+class Followup(unittest.TestCase):
+    """Report #79 (B554), Shebang-DevBoard's follow-up on the C scanner."""
+
+    def test_an_ifdef_whose_branches_each_open_a_brace_loses_nothing(self):
+        s = scan("int f(int a) {\n#ifdef X\n if (a) {\n#else\n if (!a) {\n#endif\n return 1; }\n return 0; }\n"
+                 "int g(void) { return 2; }\n")
+        got = {d["name"]: (d["line"], d.get("end")) for d in s.defs}
+        self.assertEqual(got, {"f": (1, 8), "g": (9, 9)})
+
+    def test_nested_conditionals_keep_their_first_branches(self):
+        s = scan("#if A\n#if B\nint a(void) { return 1; }\n#else\nint b(void) {\n#endif\n#elif C\n"
+                 "int c(void) {\n#endif\nint d(void) { return 4; }\n")
+        self.assertEqual(sorted(d["name"] for d in s.defs), ["a", "d"])
+
+    def test_a_header_api_is_findable(self):
+        s = scan("#define SQUARE(x) ((x) * (x))\n#define MAX 4\nint proto_only(int, int);\n"
+                 "typedef struct point { int x; } point_t;\ntypedef int (*callback_fn)(int, void *);\n"
+                 "typedef unsigned long ulong;\nextern int g_count;\n", "api.h")
+        self.assertEqual(sorted((d["kind"], d["name"]) for d in s.defs),
+                         [("class", "point"), ("decl", "proto_only"), ("macro", "MAX"), ("macro", "SQUARE"),
+                          ("typedef", "callback_fn"), ("typedef", "point_t"), ("typedef", "ulong")])
+
+    def test_a_variable_made_with_arguments_is_not_a_call(self):
+        s = scan("void f(void) {\n  outer::inner::Widget w(3);\n  return g(1);\n}\n", "a.cpp")
+        self.assertEqual(sorted(c["name"] for c in s.calls), ["g"])
 
 
 class AnonymousFunctions(unittest.TestCase):

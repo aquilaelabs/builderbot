@@ -334,6 +334,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A project's own Playwright installing browsers into the shared playwright toolchain no longer deletes the store's: every node session, job and CI runner, and the image, carry PLAYWRIGHT_SKIP_BROWSER_GC=1 (477f460)
 - A node no longer reads as not answering while its agent takes a census after a job: it says it is still there every 20 seconds meanwhile (b97cceb)
 - bb -p NAME devapp from a session on a project that reads NAME lists NAME's containers and reads its dev instance's state and log; changing them stays a session on NAME's (29609f2)
+- bb map reads only the first branch of an #if in C and C++, so one whose branches each open a brace no longer loses the rest of the file; prototypes, typedef names, #define macros and namespaces are findable; and an index made by an older scanner is read again without waiting for a file to change (942bcac)
+- The build-folder links BuilderBot puts in a Gradle project are kept out of git through the repository's own exclude file (942bcac)
 
 ### Security
 
