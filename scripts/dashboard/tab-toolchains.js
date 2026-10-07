@@ -165,6 +165,16 @@ function tcNeedsLine(p){
     mayToolchains() ? gone.map(n => ` <button type="button" class="link" data-tcneed="${esc(n)}">Install ${esc(n)}</button>`).join("") : ""}</span>`;
 }
 
+// What installing a toolchain is under, on its own row (the operator, 7
+// Oct): an agreement Install accepts said as one, then the licenses.
+function tcTermsLine(p){
+  const link = t => `<a href="${esc(t.url)}" target="_blank" rel="noreferrer">${esc(t.label)}</a>`;
+  const acc = (p.terms || []).filter(t => t.accept), lic = (p.terms || []).filter(t => !t.accept);
+  if (!acc.length && !lic.length) return "";
+  return `<span class="sub tcterms">${acc.length ? `Installing it accepts ${acc.map(link).join(" and ")}.` : ""}${
+    acc.length && lic.length ? " " : ""}${lic.length ? `Licensed: ${lic.map(link).join(", ")}.` : ""}</span>`;
+}
+
 function tcRow(p, busy, job, managed){
   // The row the job is *writing*. Mid-install its directory exists and every
   // probe here calls a non-empty directory installed, so it wears none of the
@@ -241,6 +251,7 @@ function tcRow(p, busy, job, managed){
         p.tool ? ` Adds <code>bb tool ${esc(p.tool)}</code> to a session.` : ""}${
         p.needs?.length ? ` Needs ${esc(p.needs.join(", "))}, installed with it.` : ""}${
         p.needed_by?.length ? ` Needed by ${esc(p.needed_by.join(", "))}.` : ""}</span>
+      ${tcTermsLine(p)}
       ${tcSystemLine(p, managed)}
       ${tcNeedsLine(p)}
       ${mine ? prog : `<span class="sub where${p.installed ? " on" : ""}">${
@@ -530,9 +541,6 @@ function renderToolchainsInto(i){
           <span class="sst">${no.length}</span></summary>
         <div class="tcs">${no.map(i => tcRow(i, true, job)).join("")}</div></details>`;
     })()}
-    <div class="hint tcterms">Installing an Android package accepts
-      <a href="https://developer.android.com/studio/terms" target="_blank" rel="noreferrer">Google's
-      Android SDK terms</a>.</div>
     <div class="actbar macros">
       ${busy ? tcWorking(job, d.items) : d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
       ${!mayToolchains() ? "" : `<button class="primary" data-tc="install"${busy || pstale ? " disabled" : ""}

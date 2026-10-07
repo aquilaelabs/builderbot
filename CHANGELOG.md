@@ -193,6 +193,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The sidebar's pinned projects and the Projects tab list projects by name, case aside; the tab no longer puts pinned ones first (b0fc652)
 - A new account starts with no project pinned and pins what it wants from All projects; accounts made before keep what they had (b0fc652)
 - The Toolchains tab's descriptions are shorter: what each is for and what it needs, without how it is built (87a01a0)
+- Each toolchain's row names what it is under, linked: Google's Android SDK terms on the Android rows in place of one line at the foot, NVIDIA's on PyTorch, Apple's on xcodes, and the open-source licenses of the rest (60faa09)
 
 ### Removed
 

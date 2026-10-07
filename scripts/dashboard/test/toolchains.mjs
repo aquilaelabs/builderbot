@@ -143,11 +143,19 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
      'a row says which tool installing it adds');
 }
 
-// Pressing Install accepts Google's SDK terms, and the tab says so where the
-// button is: the acceptance is the operator's, not a script's.
-ok(await page.$eval('.doc .tcterms', e => /Android SDK terms/.test(e.textContent)
-                                          && e.querySelector('a[href*="developer.android.com/studio/terms"]')),
-   'the Tools tab says that Install accepts Google\'s Android SDK terms, with the terms linked');
+// Pressing Install accepts Google's SDK terms, and each Android row says so
+// with them linked: the acceptance is the operator's, not a script's. Every
+// other row names what it is licensed under (the operator, 7 Oct).
+{
+  const terms = await page.$$eval('.doc .tc', rows => rows.map(r => ({
+    name: r.querySelector('input')?.value, text: r.querySelector('.tcterms')?.textContent || '',
+    google: !!r.querySelector('.tcterms a[href*="developer.android.com/studio/terms"]') })));
+  const android = terms.filter(t => /^android/.test(t.name));
+  ok(android.length && android.every(t => t.google && /Installing it accepts Google's Android SDK terms/.test(t.text)),
+     `each Android row says Install accepts Google's Android SDK terms, linked (${android.length} rows)`);
+  const bare = terms.filter(t => !t.text);
+  ok(!bare.length, `...and every other row names its terms (${bare.map(t => t.name).join(', ') || 'none without'})`);
+}
 
 // ---- install two, watch them land --------------------------------------
 await page.check('.doc .tc input[value="flutter"]');

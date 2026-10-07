@@ -111,6 +111,14 @@ def load_toolchains():
         tool = r.get("tool")
         if isinstance(tool, str) and tool and tool.replace("-", "").isalnum():
             row["tool"] = tool
+        # What installing it is under (the operator, 7 Oct): each license or
+        # agreement with its link, drawn on the row, an agreement Install
+        # accepts (Google's, NVIDIA's, Apple's) marked so the row says so.
+        terms = [{"label": str(t["label"])[:120], "url": str(t["url"]), "accept": bool(t.get("accept"))}
+                 for t in (r.get("terms") or []) if isinstance(t, dict)
+                 and isinstance(t.get("label"), str) and str(t.get("url") or "").startswith("https://")]
+        if terms:
+            row["terms"] = terms[:8]
         lay = r.get("layout")
         if isinstance(lay, dict):
             row["layout"] = {
@@ -444,6 +452,7 @@ def payload():
         else:
             origin = ""
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      "terms": p.get("terms") or [],
                       # The tool this recipe adds under `bb tool`, one name
                       # per recipe, so a row says what installing it adds to
                       # a session and the suite holds two from claiming one.
@@ -855,6 +864,7 @@ def payload_for_node(nid):
             {"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
         kb = _tc_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      "terms": p.get("terms") or [],
                       # The tool this recipe adds under `bb tool`, one name
                       # per recipe, so a row says what installing it adds to
                       # a session and the suite holds two from claiming one.
