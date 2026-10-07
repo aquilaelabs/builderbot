@@ -147,6 +147,8 @@ def on_create(project, account):
         d = _owners()
         d["projects"].setdefault(project, {})["owner"] = u["uid"]
         _write("project-owners.json", d)
+    # ...and holds PROJECT_owner on it (R152).
+    users.give_owner_role(project, u["uid"])
 
 
 def forget_account(uid):
@@ -213,6 +215,7 @@ def set_owner(me, project, owner="", restrict=None):
         return {"error": f"only {project}'s owner, or BuilderBot's, changes who owns it "
                          "and whether it is invite only"}, 403
     offered = ""
+    moved_to = ""
     with _lock:
         d = _owners()
         rec = d["projects"].setdefault(project, {})
@@ -224,8 +227,9 @@ def set_owner(me, project, owner="", restrict=None):
                 pass
             elif _is_bb_owner(me):
                 rec["owner"] = u["uid"]
-                # The owner works on what it owns.
+                # The owner works on what it owns, and holds its owner role.
                 users.take_on(owner, project)
+                moved_to = u["uid"]
             else:
                 # The project's own owner offers it: it changes hands when
                 # the other person accepts, from their bell.
@@ -240,6 +244,8 @@ def set_owner(me, project, owner="", restrict=None):
         if restrict is not None:
             rec["invite_only"] = bool(restrict)
         _write("project-owners.json", d)
+    if moved_to:
+        users.give_owner_role(project, moved_to)
     return view(me, project) | ({"offered": offered} if offered else {}), 200
 
 
@@ -306,6 +312,7 @@ def answer(me, iid, accept):
             d = _owners()
             d["projects"].setdefault(p, {})["owner"] = users.uid_of(me)
             _write("project-owners.json", d)
+        users.give_owner_role(p, users.uid_of(me))
     if accept:
         got = users.take_on(me.get("name") or "", p)
         if got.get("error"):

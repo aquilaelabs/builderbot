@@ -313,6 +313,14 @@ def login(node, project, name, password, addr):
     # Taken off the project since: its access went with it.
     if access and not users.may_see(u, project):
         access = ""
+    # ...and no more than the account's roles give on this project (R152
+    # (f)): a role without File access refuses even the project's owner.
+    lvl = users.roles.level_of(u, "files", project, users.may_work)
+    if access and not lvl:
+        audit(u["name"], "ftp-login-refused", project, {"addr": addr, "why": "roles"})
+        return {"access": "", "why": "Your roles give no file access to this project."}
+    if access == "rw" and lvl == "read":
+        access = "r"
     if not access:
         audit(u["name"], "ftp-login-refused", project, {"addr": addr})
         return {"access": "", "why": "This account has no file access to this project."}

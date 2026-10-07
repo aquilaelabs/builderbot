@@ -35,10 +35,12 @@ class Ftp(unittest.TestCase):
             d["users"] = {
                 "boss": {"uid": "u_1", "role": "owner", "projects": ["alpha", "beta", "gamma"], "password": pw},
                 "adm": {"uid": "u_2", "role": "admin", "projects": ["alpha"], "password": pw},
-                "ann": {"uid": "u_3", "role": "user", "projects": ["alpha"], "password": pw},
+                "ann": {"uid": "u_3", "role": "user", "projects": ["alpha"], "password": pw, "roles": ["member"]},
                 "bob": {"uid": "u_4", "role": "user", "projects": ["beta"], "password": pw},
             }
             users._save(d)
+        # Since R152 an account holds what its roles give: ann's lets her in.
+        roles.set_role("member", "projects", {"projects": "write", "files": "write"})
         self.nodes = {"alpha": "n1", "beta": "n1", "gamma": "n2"}
         self.audited = []
         self.hellos = []
@@ -165,19 +167,28 @@ class Ftp(unittest.TestCase):
         ftp.report("n1", [{"project": "alpha", "up": True, "port": free, "addr": "127.0.0.1"}])
         self.assertEqual(ftp.save("alpha", {"on": True, "port": free, "access": {"u_3": "r"}}, "boss")[1], 200)
 
-    def test_the_grant_is_the_owners_alone_and_never_a_sessions(self):
-        self.assertEqual(users.may(users.get("boss"), "ftp", "alpha"), "")
-        self.assertIn("owner", users.may(users.get("adm"), "ftp", "alpha"), "named only: an admin is refused")
-        self.assertNotEqual(users.may(users.get("ann"), "ftp", "alpha"), "")
+    def test_setting_it_up_is_the_project_owners_or_an_admins_and_never_a_sessions(self):
+        self.assertEqual(users.may(users.get("boss"), "ftp", "alpha"), "", "the project's owner")
+        self.assertEqual(users.may(users.get("adm"), "ftp", "alpha"), "", "an administrator (R152)")
+        self.assertIn("project's owner or an administrator", users.may(users.get("ann"), "ftp", "alpha"))
         sess = {"name": "session:alpha", "role": "owner", "projects": ["alpha"], "session": "alpha", "uid": "u_1"}
         self.assertIn("session", users.may(sess, "ftp", "alpha"))
-        roles.set_role("files", [{"cap": "ftp", "scope": ["alpha"]}])
+
+    def test_a_login_is_no_more_than_the_accounts_roles_give(self):
+        ftp.save("alpha", {"on": True, "access": {"u_3": "rw"}}, "boss")
+        roles.set_role("viewer", "projects", {"projects": "read", "files": "read"})
+        roles.set_role("nofiles", "projects", {"projects": "write"})
         with users._lock:
             d = users.load()
-            d["users"]["adm"]["roles"] = ["admin", "files"]
+            d["users"]["ann"]["roles"] = ["viewer"]
             users._save(d)
-        self.assertEqual(users.may(users.get("adm"), "ftp", "alpha"), "", "a role that names ftp grants it")
-
+        self.assertEqual(ftp.login("n1", "alpha", "ann", "password1", "a"), {"access": "r"},
+                         "rw on the list, read on the role: read")
+        with users._lock:
+            d = users.load()
+            d["users"]["ann"]["roles"] = ["nofiles"]
+            users._save(d)
+        self.assertIn("roles give no file access", ftp.login("n1", "alpha", "ann", "password1", "a")["why"])
 
 if __name__ == "__main__":
     unittest.main()

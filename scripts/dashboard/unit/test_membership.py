@@ -30,6 +30,8 @@ class Membership(unittest.TestCase):
             "cy": {"role": "user", "uid": "u_00000004", "projects": []}}})
         users.configure(state=self.tmp, write_json=write_json)
         membership.configure(state=self.tmp, write_json=write_json)
+        import roles
+        roles.configure(state=self.tmp, write_json=write_json)
         membership.on_create("app", "ada")
 
     def me(self, name):

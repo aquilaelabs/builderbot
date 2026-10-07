@@ -578,9 +578,20 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    built-in role's summary above it speaks in. A .sub is sized only inside
    a .row, and these are field rows, so the sentence fell back to body
    text and the tab spoke in two sizes (5 Oct). */
-.rgrant label.pick{font:var(--f-ui);color:var(--ink)}
-.rgrant>.sub,.rolestab .rgroup{font:var(--f-note);color:var(--dim)}
-.rolestab .rgroup{text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
+/* The Roles tab (R152): a project per row with its roles under it; a role
+   picker with Add role beside it; an area per row, its sentence and its
+   Read and Write. */
+.rolestab label.pick{font:var(--f-ui);color:var(--ink)}
+.rprojects{display:flex;flex-direction:column;gap:8px}
+.rproj .upick{margin:4px 0 0 24px}
+.rpickrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rpickrow select{flex:1 1 12em;width:auto}
+.rolestab .rpickrow input{flex:1 1 12em;width:auto;min-width:0}
+.rareas{display:flex;flex-direction:column;gap:6px}
+.rarea{display:flex;align-items:center;gap:10px}
+.rarea .grow{flex:1 1 auto;min-width:0}
+.rarea .sub{font:var(--f-note)}
+.rarea.off{opacity:.55}
 /* A node that was un-enrolled, kept on the one project still set to it
    (page-projsettings.js): italic in the list and in the closed picker. */
 /* One class over the field skin's .nb select and .modal select, whose font

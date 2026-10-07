@@ -1094,12 +1094,12 @@ Platform: a responsive web app: the layout holds at phone and desktop widths, an
 Layout of the Users tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
   1. Header (the band at the top): the bar: who may sign in here, and which projects they see, across the top, row 1 of 8
   2. List (rows of like things): accounts, across the middle, rows 2 to 4 of 8
-  3. Card (a box holding one thing): an account: its role and any roles of your own as pills, what it works on, its Claude sign-in, Edit and Remove, across the middle, row 3 of 8, inside block 2 (List: accounts)
-  4. Text (a block of prose): What an account gets: a fold saying what a user and an admin each are, and that anything between is a role of your own, across the middle, row 5 of 8
-  5. Form (fields a person fills in): Add somebody: an account name, the password twice, a name and an email (optional), a role, and Add, across the middle, rows 6 to 7 of 8
+  3. Card (a box holding one thing): an account: admin or owner as a pill, its roles as pills, the projects it is on, its Claude sign-in, Edit and Remove, across the middle, row 3 of 8, inside block 2 (List: accounts)
+  4. Text (a block of prose): What an account gets: no role until the Roles tab gives one; admin's shell; PROJECT_owner, across the middle, row 5 of 8
+  5. Form (fields a person fills in): Add somebody: a name, the password twice, a name and an email (optional), and Add; no role, across the middle, rows 6 to 7 of 8
   6. Footer (the band at the foot): how a password is set from a shell, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The owner's row says it cannot be deleted or given another role, under the row, where a dead button would otherwise be the first you heard of it. The add form takes no git identity: that is the person's own, on their Profile (R134). Edit ticks the roles of your own an account carries beside its built-in one (R137).
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). The owner's row says it cannot be deleted, under the row, where a dead button would otherwise be the first you heard of it. The add form takes no git identity: that is the person's own, on their Profile (R134). Edit ticks the roles of your own an account carries beside its built-in one (R137). Its roles and projects are set on the Roles tab (R152): the edit dialog says what it holds, with a Roles button that opens the tab on it.
 
 ### the Profile tab (Web app)
 
@@ -1397,11 +1397,9 @@ Notes:
 
 Platform: a responsive web app: the layout holds at phone and desktop widths, and every tap target is at least 44px on a coarse pointer.
 Layout of the Roles tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
-  1. Header (the band at the top): the bar: named roles made of grants; an account carries one or more, and they add up, across the top, row 1 of 8
-  2. List (rows of like things): the roles, a fold each, the three built-in ones first, across the middle, rows 2 to 5 of 8
-  3. Card (a box holding one thing): a built-in role: what it grants, a line each, and Copy; nothing to edit, across the middle, row 2 of 8, inside block 2 (List: the roles)
-  4. Form (fields a person fills in): a role of your own: what it is for, its grants by group, each a tick and, ticked, where it holds; Save, Remove, across the middle, rows 3 to 5 of 8, inside block 2 (List: the roles)
-  5. Form (fields a person fills in): New role: a name, and Make it, across the middle, rows 6 to 7 of 8
-  6. Footer (the band at the foot): a grant only adds; the built-in roles reproduce what owner, admin and user could do before roles, across the bottom, row 8 of 8
+  1. Header (the band at the top): the bar: what each account may do: roles given to people, and what each role reads and writes, across the top, row 1 of 8
+  2. Form (fields a person fills in): People: an account, its Global roles, each project's tick and its roles there; Revert, Save, across the middle, rows 2 to 4 of 8
+  3. Form (fields a person fills in): Roles: a role picker and Add role; Scope; what it is for; Read and Write per area; Revert, Save, Remove, across the middle, rows 5 to 7 of 8
+  4. Footer (the band at the foot): roles add up; Write needs Read, and an area without Read is not shown, across the bottom, row 8 of 8
 Notes:
-  Under the Administration card, beside Users (R137). A grant is a capability on a scope: on a project it holds on every project, the projects the account is on, or named ones; on a node, every node, the nodes of the account's projects, or named ones. The scope's names are a row of ticks under its picker, shown only for 'these'. Every surface on the page reads the same answer the server refuses on (state.can), so a button is offered exactly where it would work.
+  Under the Administration card, beside Users, and from the People field of a project's settings for its owner (R152, the operator, 7 Oct). owner and admin are built in and read as every area, with nothing to change and no Save; the owner's account reads as fixed in People. A project's owner who is not an administrator sees only the projects they own and the roles on the user's projects. In Roles, Write waits for Read, and the global areas are off for a role on the user's projects; Remove comes last. In People, a project's roles show only once its tick is on, and Global roles are an administrator's to give.

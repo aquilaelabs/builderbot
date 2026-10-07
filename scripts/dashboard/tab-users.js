@@ -61,23 +61,16 @@ function userRow(u){
   const isOwner = u.role === "owner";
   const isMe = u.name === usersMeta.me;
   const seen = !u.seen ? "never signed in" : "last seen " + ago(u.seen);
-  const scope = u.role === "user"
-    ? (u.projects.length
-        ? `<span class="sub">sees</span> ` + u.projects.map(
-            p => `<span class="pill">${esc(p)}</span>`).join(" ")
-        : `<span class="sub dim">sees no project yet</span>`)
-    // An administrator and the owner alike (R135): every project listed,
-    // the ones on their own list worked on.
-    : `<span class="sub">sees every project${u.projects.length
-        ? `, works on</span> ` + u.projects.map(p => `<span class="pill">${esc(p)}</span>`).join(" ")
-        : `; works on none yet: Edit ticks the ones to take on</span>`}`;
-  // The roles of your own it carries beside its built-in one (R137).
-  const more = (u.roles || []).filter(r => r !== u.role);
+  // Its projects and roles are the Roles tab's to set (R152); shown here.
+  const scope = u.projects.length
+    ? `<span class="sub">on</span> ` + u.projects.map(p => `<span class="pill">${esc(p)}</span>`).join(" ")
+    : `<span class="sub dim">on no project yet</span>`;
+  const more = (u.roles || []).filter(r => r !== u.role && r !== "user");
   return `<div class="row stack2 urow" data-user="${esc(u.name)}">
     <div class="grow">
       <div class="name">${esc(u.name)}
-        <span class="pill">${esc(u.role)}</span>${
-        more.map(r => ` <span class="pill note" title="a role of your own, from the Roles tab">${esc(r)}</span>`).join("")}${
+        ${u.role === "owner" || u.role === "admin" ? `<span class="pill">${esc(u.role)}</span>` : ""}${
+        more.map(r => ` <span class="pill note" title="a role, from the Roles tab">${esc(r)}</span>`).join("")}${
         isMe ? ` <span class="pill">you</span>` : ""}</div>
       <div class="uscope">${scope}</div>
       <div class="sub${u.claude_shared_with?.length ? " warn" : " dim"}">${u.claude
@@ -85,7 +78,7 @@ function userRow(u){
             ? `: the same Claude account as ${u.claude_shared_with.map(esc).join(", ")}, allowed only while one person is behind both`
             : ""}`
         : "no Claude login yet: its sessions sign in on first use"}</div>
-      ${isOwner ? `<div class="sub dim">The owner cannot be deleted or given another role.</div>` : ""}
+      ${isOwner ? `<div class="sub dim">The owner cannot be deleted.</div>` : ""}
     </div>
     <div class="actbar">
       <span class="state">${esc(seen)}</span>
@@ -116,9 +109,9 @@ function renderUsersInto(i){
     ${usersList.map(userRow).join("")}
     ${docSection("users", "roles", "What an account gets", "", `
         <div class="sub">Each account has its own home, Claude login and memories; two people on one project each work in a worktree of their own, sharing the notebook.</div>
-        <div class="sub">A <b>user</b> has no shell and sees only the projects given to them.</div>
+        <div class="sub">A new account holds no role, so it may do nothing until the <b>Roles</b> tab gives it one, Global or on a project, and puts it on projects.</div>
         <div class="sub warn">An <b>admin</b> has a shell that reaches every account's files: give that role to people you would give the server to.</div>
-        <div class="sub">Anything between the two is a role of your own: the <b>Roles</b> tab under Administration makes one out of grants, and Edit gives it to an account, beside its role. Grants only add.</div>`)}
+        <div class="sub">A project's owner holds PROJECT_owner on it, which the Roles tab can cut back like any other role.</div>`)}
     ${docSection("users", "add", "Add somebody", "", `
 
         <div class="uadd">
@@ -132,15 +125,8 @@ function renderUsersInto(i){
             <input id="uNewFull" autocomplete="off"></div>
           <div class="setrow col">${lbl("uNewEmail", "Email", "optional")}
             <input id="uNewEmail" type="email" autocomplete="off"></div>
-          <div class="setrow col">${lbl("uNewRole", "Role")}
-          <select id="uNewRole">${
-            usersMeta.roles.filter(r => r !== "owner").map(r =>
-              // `user` selected, not merely first: the roles run owner, admin,
-              // user, so the browser's own default would be the MOST privileged
-              // of the two on offer. Adding somebody should start at the least.
-              `<option value="${esc(r)}"${r === (usersAddDraft.role || "user") ? " selected" : ""}
-                >${esc(r)}</option>`).join("")}</select></div>
         </div>
+        <div class="sub">A new account holds no role: give it one on the Roles tab.</div>
         <div class="actbar"><button type="button" class="primary" id="uAdd">Add</button></div>`)}`;
   wireSections(d.list);
   d.setFoot(`Locked out? Run <code>bb users passwd &lt;name&gt;</code> in the
@@ -159,10 +145,10 @@ function wireUsers(el){
   el.querySelectorAll("[data-uedit]").forEach(b => b.onclick = () => usersEditOpen(b.dataset.uedit));
   const add = el.querySelector("#uAdd");
   for (const [id, key] of [["#uNewName", "name"], ["#uNewPw", "pw"], ["#uNewPw2", "pw2"],
-                           ["#uNewFull", "full"], ["#uNewEmail", "email"], ["#uNewRole", "role"]]){
+                           ["#uNewFull", "full"], ["#uNewEmail", "email"]]){
     const f = el.querySelector(id);
     if (!f) continue;
-    if (key !== "role") f.value = usersAddDraft[key] || "";
+    f.value = usersAddDraft[key] || "";
     f.oninput = f.onchange = () => { usersAddDraft[key] = f.value; };
   }
   if (add) add.onclick = () => {
@@ -173,8 +159,7 @@ function wireUsers(el){
     // locks somebody out with.
     if (pw !== el.querySelector("#uNewPw2").value) return notify("the two passwords differ", true);
     const full = el.querySelector("#uNewFull").value.trim(), email = el.querySelector("#uNewEmail").value.trim();
-    usersAct({action: "add", name, password: pw,
-              role: el.querySelector("#uNewRole").value,
+    usersAct({action: "add", name, password: pw, role: "user",
               profile: {...(full ? {full_name: full} : {}), ...(email ? {email} : {})}});
   };
 }
@@ -208,32 +193,15 @@ function usersEditOpen(name){
     ${u.name === usersMeta.me
       ? f("ueName", "Account name", u.name, "text", "disabled", "your own account name changes on your Profile, which keeps this browser signed in")
       : f("ueName", "Account name", u.name, "text", "", "what they sign in with. Changing it signs their browsers out")}
-    ${isOwner ? `<div class="field">${lbl("", "Role", "the owner's role cannot change; its name can")}<div class="hint">owner</div></div>`
-      : `<div class="field">${lbl("ueRole", "Role")}<select id="ueRole">${
-          usersMeta.roles.filter(r => r !== "owner").map(r =>
-            `<option value="${esc(r)}"${r === u.role ? " selected" : ""}>${esc(r)}</option>`).join("")}
-        </select></div>`}
-    ${!isOwner && (usersMeta.role_names || []).length ? `<div class="field">
-      ${lbl("", "Roles of your own", "beside the role above; their grants add up (the Roles tab makes them)")}
-      <div class="upick">${usersMeta.role_names.map(r => `<label class="tc"><input type="checkbox"
-          data-uerole="${esc(r)}"${(u.roles || []).includes(r) ? " checked" : ""}>
-          <span class="grow"><span class="nm">${esc(r)}</span></span></label>`).join("")}</div>
-    </div>` : ""}
+    <div class="field">${lbl("", "Roles and projects", "what this account may do, set on the Roles tab (R152)")}
+      <div class="setrow"><span class="hint grow">${isOwner ? "BuilderBot's owner: every area, everywhere"
+        : esc([...(u.roles || []).filter(r => r !== "user"), ...(u.projects || []).map(p => `on ${p}`)].join(", ") || "no role yet")}</span>
+        <button type="button" id="ueRolesGo">Roles</button></div></div>
     ${f("ueFull", "Their name", pf.full_name)}
     ${f("ueEmail", "Their email", pf.email, "email")}
     ${f("ueGitName", "Git name", pf.git_name, "text", "", "on their commits. Blank means their name")}
     ${f("ueGitEmail", "Git email", pf.git_email, "email", "", "on their commits. Blank means their email")}
     ${f("uePw", "New password", "", "password", 'autocomplete="new-password"', "blank keeps the current one. Set without the old one, which is the way back in for somebody locked out")}
-    <div class="field" id="ueProjField"${u.role === "owner" ? " hidden" : ""}>
-      ${u.role === "admin"
-        ? lbl("", "Projects this account works on", "the rest are read-only for them")
-        : lbl("", "Projects this account sees", "the rest do not appear for them")}
-      <div class="upick">${usersMeta.projects.length
-        ? usersMeta.projects.map(p => `<label class="tc"><input type="checkbox"
-            data-ueproj="${esc(p)}"${(u.projects || []).includes(p) ? " checked" : ""}>
-            <span class="grow"><span class="nm">${esc(p)}</span></span></label>`).join("")
-        : `<div class="sub">no projects to give</div>`}</div>
-    </div>
     <div class="field" id="ueErrWrap" hidden><div class="hint bad" id="ueErr"></div></div>
     <div class="foot">
       <button id="ueSave" class="primary">Save</button>
@@ -243,11 +211,11 @@ function usersEditOpen(name){
   m.hidden = false;
   // Dismissed like every other dialog: the backdrop, or Escape (modalKeys).
   m.onclick = e => { if (e.target === m) m.hidden = true; };
-  const role = m.querySelector("#ueRole");
-  // The list is every role's but the owner's, who has every project: an
-  // admin works on the ones ticked (users.may_work), so hiding it for them
-  // left no way to take a project on from the page (B142).
-  if (role) role.onchange = () => { m.querySelector("#ueProjField").hidden = role.value === "owner"; };
+  m.querySelector("#ueRolesGo").onclick = () => {
+    m.hidden = true;
+    rolesWho = u.name; rolesPeopleDraft = null;
+    openRolesTab();
+  };
   m.querySelector("#ueCancel").onclick = () => { m.hidden = true; };
   m.querySelector("#ueSave").onclick = () => usersEditSave(u.name, m);
   m.querySelector("#ueName").focus();
@@ -256,14 +224,9 @@ function usersEditOpen(name){
 async function usersEditSave(name, m){
   const v = id => m.querySelector("#" + id)?.value ?? "";
   const body = {action: "edit", name, to: m.querySelector("#ueName")?.disabled ? "" : v("ueName").trim(),
-                role: m.querySelector("#ueRole")?.value || "",
                 profile: {full_name: v("ueFull"), email: v("ueEmail"),
                           git_name: v("ueGitName"), git_email: v("ueGitEmail")},
                 password: v("uePw")};
-  if ((m.querySelector("#ueRole")?.value || "user") !== "owner" && !m.querySelector("#ueProjField").hidden)
-    body.projects = [...m.querySelectorAll("[data-ueproj]")].filter(c => c.checked).map(c => c.dataset.ueproj);
-  if (m.querySelector("[data-uerole]"))
-    body.roles = [...m.querySelectorAll("[data-uerole]")].filter(c => c.checked).map(c => c.dataset.uerole);
   // An email that is not one is caught here, before a request: the field
   // knows (type=email), and the server checks the same shape again.
   for (const id of ["ueEmail", "ueGitEmail"]){

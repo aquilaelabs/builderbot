@@ -903,7 +903,7 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.fill('#uNewPw2', 'tabmadepw2');
   await page.fill('#uNewFull', 'Tab Made');
   await page.fill('#uNewEmail', 'tab@example.invalid');
-  await page.selectOption('#uNewRole', 'user');
+  ok(!await page.$('#uNewRole'), 'Add somebody asks for no role: the Roles tab gives one (R152)');
   // Typed twice (R134): two that differ add nobody.
   await page.click('#uAdd');
   await sleep(600);
@@ -956,12 +956,13 @@ ${code}`], { encoding: 'utf8' }).trim();
   // sign-in instead of to a session.
   writeFileSync(`${DIR}/home/.claude/.bb-grant.json`, seed);
 
-  // ...and giving it a project, which is the whole point of the row.
-  // Everything about an account is edited in one dialog and saved together:
-  // the projects it sees, its role, its name and email, a new password.
+  // ...and giving it a project. Since R152 an account's projects and roles
+  // are the Roles tab's: the edit dialog says what it holds and opens it.
   await page.click('.userstab .urow[data-user="tabmade"] [data-uedit]');
   await page.waitForSelector('#umodal:not([hidden])');
-  await page.check('#umodal [data-ueproj="alpha"]');
+  ok(!await page.$('#umodal #ueRole') && !await page.$('#umodal [data-ueproj]')
+     && /no role yet/.test(await page.$eval('#umodal', m => m.textContent)),
+     'the edit dialog sets no role and no project, and says the account holds none yet');
   await page.fill('#umodal #ueFull', 'Tab Made');
   await page.fill('#umodal #ueEmail', 'not-an-email');
   await page.click('#umodal #ueSave');
@@ -969,28 +970,19 @@ ${code}`], { encoding: 'utf8' }).trim();
   ok(/not an email/.test(await page.$eval('#ueErr', e => e.textContent)),
      'the edit dialog refuses an email that is not one, and stays open');
   await page.fill('#umodal #ueEmail', 'tab@example.invalid');
-  await page.click('#umodal #ueSave');
-  await page.waitForFunction(() => {
-    const r = document.querySelector('.userstab .urow[data-user="tabmade"]');
-    return r && /alpha/.test(r.textContent) && document.getElementById('umodal').hidden;
-  }, null, { timeout: 15000 });
-  ok(true, '...and the project picker in it gives the account one');
-  // A role change is the same dialog, the same Save.
-  await page.click('.userstab .urow[data-user="tabmade"] [data-uedit]');
-  await page.waitForSelector('#umodal:not([hidden])');
-  await page.selectOption('#umodal #ueRole', 'admin');
-  ok(await page.$eval('.userstab .urow[data-user="tabmade"] .pill', p => p.textContent.trim()) === 'user',
-     'picking a role in the dialog writes nothing until Save');
-  await page.click('#umodal #ueSave');
-  await page.waitForFunction(() => document.querySelector(
-    '.userstab .urow[data-user="tabmade"] .pill')?.textContent.trim() === 'admin', null, { timeout: 15000 });
-  ok(true, '...and Save is what writes it');
-  await page.click('.userstab .urow[data-user="tabmade"] [data-uedit]');
-  await page.waitForSelector('#umodal:not([hidden])');
-  await page.selectOption('#umodal #ueRole', 'user');
-  await page.click('#umodal #ueSave');
-  await page.waitForFunction(() => document.querySelector(
-    '.userstab .urow[data-user="tabmade"] .pill')?.textContent.trim() === 'user', null, { timeout: 15000 });
+  await page.click('#umodal #ueRolesGo');
+  await page.waitForSelector('.rolestab #rolesWho', { timeout: 15000 });
+  ok(await page.$eval('#rolesWho', s => s.value) === 'tabmade' && await page.$eval('#umodal', m => m.hidden),
+     '...and its Roles button opens the Roles tab on that account');
+  {
+    const post = (b) => page.evaluate(async (body) => (await fetch('/api/roles', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(), b);
+    await post({ action: 'set', name: 'reader', scope: 'projects', perms: { projects: 'read' } });
+    const r = await post({ action: 'assign', name: 'tabmade', projects: ['alpha'], project_roles: { alpha: ['reader'] } });
+    ok(!r.error && (r.projects || []).includes('alpha'), `the Roles tab puts it on alpha with a role there (${r.error || 'ok'})`);
+  }
+  await page.evaluate(() => openUsersTab());
+  await page.waitForSelector('.userstab .urow[data-user="tabmade"]', { state: 'visible', timeout: 15000 });
 
   // The account it made is real, and scoped.
   const as = (path) => bare(path, { headers: {

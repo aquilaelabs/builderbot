@@ -3561,9 +3561,10 @@ no colons). A signed file is not offered Sign again.
 A project's tree can be reached from outside BuilderBot with an FTP client
 (R151, the operator, 7 Oct): the **File access** section of its settings
 turns it on, picks the port, and gives each account that sees the project
-**Read** or **Read and write**. Who may set it is the role grant `ftp`, which
-is named only: the owner has it, and an administrator does not until a role
-on the Roles tab names it. A session never may. Anybody else on the project
+**Read** or **Read and write**. Setting it up is the project owner's or an
+administrator's; signing in also needs File access on the account's roles
+on that project (R152), and gets the lesser of the two, so a role without it
+refuses even the project's owner. A session never may set it. Anybody else on the project
 is shown only that it is on, and where.
 
 The server is the project's primary node's: the **ftp** toolchain's
@@ -3760,21 +3761,34 @@ carried as `*` and now carries by name; the one difference from an
 administrator is that the owner may add themselves to an invite-only
 project without an invitation.
 
-**Roles and permissions.** Under the Administration card, **Roles** (R137)
-makes named roles out of grants: a grant is a capability (what may be done:
-work on a project, move its version, set its node, run a job, install a
-toolchain, and so on) on a scope (every project, the projects the account
-is on, or named ones). An account carries its built-in role and any of your
-own, ticked in the Users tab's edit dialog, and their grants add up: a role
-never takes anything away. owner, admin and user are built in and reproduce
-what each could do before roles existed, so nothing changes until a role is
-made or given; Copy starts one of your own from a built-in. Every gate on
-the server reads the same grants (`users.may`), which is what keeps the
-tabs and the refusals consistent. A capability on a node (set a project's
-node, install a toolchain, run a job, a shell) is scoped over nodes: every
-node, the nodes of the account's projects, or named ones; and the CI runner
-tab is a grant the user role lacks, so its button is not offered to such an
-account while the runner's status stays on the Tools card.
+**Roles and permissions.** Everything an account may do comes from its
+roles, set on the **Roles** tab and nowhere else (R152, the operator, 7 Oct).
+A role is a **scope** (**Global**, which holds everywhere and is the only one
+that reaches the machinery, or **the user's projects**) and, per area,
+**Read** and **Write**: Projects, Project settings, Releases and versions, Git
+authentication, File access (FTP), Containers and Terminal on a project;
+Nodes, Toolchains, Jobs, CI runner, Accounts and roles and Controller beside
+them. Write needs Read, and an area without Read is not shown. Terminal's
+Read is the shielded Claude console and its Write the full tmux shell, which
+reaches every account's files on its node.
+
+**owner** and **admin** are built in with everything; an admin may not change
+the owner's account or roles. There is no built-in user role: an account
+added holds none and may do nothing until it is given one, and the accounts
+that were on `user` were moved to none, once. A project's owner holds
+`PROJECT_owner` on it, every project area to write, made when the project is
+and moved with it when it changes hands; it is an ordinary role, so cutting
+it back (taking File access off it, say) holds for whoever owns the project.
+
+The tab is two sections, each with its own **Save** and **Revert**. **People**
+picks an account: its Global roles, the projects it is on, and the roles it
+holds on each. **Roles** picks a role or adds one: its scope, what it is for,
+and a Read and a Write per area. A project's owner who is not an
+administrator opens the tab from the People field of their project's
+settings and sees the people and roles of the projects they own: they put
+people on those projects and give them roles there, and nothing Global. Every
+gate on the server reads the same roles (`users.may` through
+`roles.CAP_AREA`), which keeps the tabs and the refusals consistent.
 
 **Every project has an owner, and an owner can close it to administrators.**
 Whoever made a project owns it; one from before there were owners belongs to

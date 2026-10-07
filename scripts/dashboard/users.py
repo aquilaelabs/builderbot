@@ -574,6 +574,14 @@ def may(u, action, project=None):
     if action == "pending" and (u or {}).get("session"):
         return ("what a session has waiting is the operator's to approve or "
                 "deny, on the notebook; a session cannot answer for itself")
+    # Setting up a project's file access over FTP (R152 (f)): an
+    # administrator's, or the project's own owner's; who may then sign in is
+    # File access on their roles, which ftp.login reads.
+    if action == "ftp" and project is not None:
+        import membership
+        if is_admin(u) or uid_of(u) == membership.owner_of(project):
+            return ""
+        return "file access over FTP is set up by the project's owner or an administrator"
     # The grants (R137): what the account's roles allow, on this project
     # where one is named. The built-in roles reproduce the answers from
     # before roles existed; a role of your own says exactly what it grants.
@@ -803,6 +811,9 @@ def add(name, password, role="user", projects=None):
         if name in d["users"]:
             return {"error": f"{name} already has an account"}
         d["users"][name] = {"uid": mint_uid(), "role": role,
+                            # No role, so no permission, until one is given on
+                            # the Roles tab (R152; admin is its own).
+                            "roles": [],
                             "projects": list(projects or []),
                             "password": hash_password(password),
                             "created": int(time.time()), "seen": 0,
@@ -897,8 +908,10 @@ def migrate_star(names):
 def rename_project(old, new):
     """A project renamed is renamed on every account's own list, so whoever
     had taken it on still has (R135 made this the owner's concern too; it
-    was an administrator's already). True when any list moved."""
+    was an administrator's already), and so are the roles given on it and
+    its owner role's name (R152). True when anything moved."""
     moved = False
+    a, b = roles.owner_role_name(old), roles.owner_role_name(new)
     with _lock:
         d = load()
         for u in d["users"].values():
@@ -906,9 +919,58 @@ def rename_project(old, new):
             if old in have:
                 u["projects"] = [new if p == old else p for p in have]
                 moved = True
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            if old in pr:
+                pr[new] = [b if r == a else r for r in pr.pop(old)]
+                u["project_roles"] = pr
+                moved = True
         if moved:
             _save(d)
     return moved
+
+
+def give_owner_role(project, new_uid, old_uid=""):
+    """PROJECT_owner moves with the project (R152): off the account that
+    owned it, onto the one that does, on that project alone."""
+    name = roles.ensure_owner_role(project)
+    with _lock:
+        d = load()
+        for u in d["users"].values():
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            have = [r for r in pr.get(project) or [] if r != name]
+            if u.get("uid") == new_uid:
+                have.append(name)
+                u.setdefault("projects", [])
+                if project not in u["projects"]:
+                    u["projects"].append(project)
+            if have:
+                pr[project] = have
+            else:
+                pr.pop(project, None)
+            u["project_roles"] = pr
+        _save(d)
+    return name
+
+
+def migrate_r152(owned):
+    """Once (R152, the operator, 7 Oct): an account on `user` carries no role
+    and so no permission, and each project's owner (`owned`, {project: uid},
+    BuilderBot's owner's own projects left out, since it holds everything)
+    holds PROJECT_owner on it. Marked done in the store."""
+    with _lock:
+        d = load()
+        if d.get("r152"):
+            return False
+        for u in d["users"].values():
+            if u.get("role") not in ("owner", "admin"):
+                u["role"] = "user"
+                u["roles"] = [r for r in (u.get("roles") or []) if r not in ("user", "owner", "admin")]
+        d["r152"] = True
+        _save(d)
+    for project, uid in sorted((owned or {}).items()):
+        if uid and uid != owner_uid():
+            give_owner_role(project, uid)
+    return True
 
 
 def take_on(name, project):
@@ -1078,3 +1140,78 @@ def tab_view(me, projects, logins_of):
             # The roles of your own, for the edit dialog's picker (R137).
             "role_names": [n for n in roles.all_roles() if n not in roles.BUILTIN],
             "projects": projects}
+
+
+# ---- R152: an account's roles and projects, from the Roles tab -------------
+
+def assignable(me):
+    """What `me` may change on the Roles tab's top section: every project
+    and Global roles for an administrator; for a project's owner who is
+    not one, the projects they own, with roles on the user's projects only
+    (R152 (c)). {"admin": bool, "projects": [names]}."""
+    import membership
+    if not me or me.get("session"):
+        return {"admin": False, "projects": []}
+    if is_admin(me):
+        return {"admin": True, "projects": None}
+    mine = uid_of(me)
+    owned = sorted(p for p, r in membership._owners()["projects"].items()
+                   if (r or {}).get("owner") == mine)
+    return {"admin": False, "projects": owned}
+
+
+def assign(me, name, global_roles=None, project_roles=None, projects=None):
+    """Set an account's Global roles, the roles it holds on each project and
+    the projects it is on, as far as `me` may (assignable): what is outside
+    that is kept as it was, never refused silently. (payload, status)."""
+    can = assignable(me)
+    if not can["admin"] and not can["projects"]:
+        return {"error": "the Roles tab's people are an administrator's, or a project owner's for "
+                         "their own projects"}, 403
+    known = roles.all_roles()
+    with _lock:
+        d = load()
+        u = d["users"].get(str(name or ""))
+        if not u:
+            return {"error": f"no account called {name}"}, 400
+        # The owner's account is nobody's but the owner's to change (R152 (a)).
+        if u.get("role") == "owner" and (me or {}).get("role") != "owner":
+            return {"error": "the owner's roles and projects are the owner's alone"}, 403
+        if global_roles is not None:
+            if not can["admin"]:
+                return {"error": "Global roles are an administrator's to give"}, 403
+            want = [str(r) for r in global_roles if str(r) in known and str(r) != "owner"]
+            if "admin" in want:
+                u["role"] = "admin"
+            elif u.get("role") == "admin":
+                u["role"] = "user"
+            u["roles"] = sorted({r for r in want if r not in roles.BUILTIN})
+        scope = None if can["admin"] else set(can["projects"])
+        if projects is not None:
+            have = list(u.get("projects") or [])
+            want = [str(p) for p in projects]
+            keep = [p for p in have if scope is not None and p not in scope]
+            u["projects"] = sorted(set(keep + [p for p in want if scope is None or p in scope]))
+        if project_roles is not None:
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            for p, rs in (project_roles or {}).items():
+                p = str(p)
+                if scope is not None and p not in scope:
+                    continue
+                got = []
+                for r in rs if isinstance(rs, list) else []:
+                    role = known.get(str(r))
+                    if not role:
+                        continue
+                    # A project's owner gives project areas only (R152 (c)).
+                    if scope is not None and role.get("scope") != "projects":
+                        return {"error": f"{r} is a Global role, which an administrator gives"}, 403
+                    got.append(str(r))
+                if got:
+                    pr[p] = sorted(set(got))
+                else:
+                    pr.pop(p, None)
+            u["project_roles"] = pr
+        _save(d)
+        out = {k: u.get(k) for k in ("role", "roles", "projects", "project_roles")}
+    return {"ok": True, "name": name, **out}, 200

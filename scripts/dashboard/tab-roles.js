@@ -1,19 +1,23 @@
-// The Roles tab (R137): what an account may read and change, as named
-// roles made of grants, under the Administration card. A role is one job
-// (deployer, tester); an account carries one or more and their grants add
-// up. The built-in owner, admin and user are shown and not edited: Copy
-// makes a role of your own from one. Every rule about WHAT a grant allows
-// lives on the server (roles.py, users.may); this file draws and asks.
+// The Roles tab (R152, the operator, 7 Oct): everything an account may do,
+// set here and nowhere else, in two sections with a Save and a Revert each.
+// People: an account picked, its Global roles, the projects it is on and
+// the roles it holds on each. Roles: a role picked or added, its scope
+// (Global, or the user's projects) and Read and Write per area, Write
+// needing Read. Owner and admin are built in and read only. A project's
+// owner who is not an administrator sees the people of the projects they
+// own and gives those projects' roles; the server holds every rule
+// (roles.py, users.assign) and this file draws and asks.
 //
 // Chrome comes from docSurface() and the hard rules are held by
-// uniform.mjs; this file fills slots, one fold per role.
+// uniform.mjs; this file fills slots, one fold per section.
 "use strict";
-let rolesList = null;            // {name: role}, or null before the first load
+let rolesData = null;            // GET /api/roles, or null before the first load
 let rolesRev = 0;
 let rolesErr = "";
-let rolesMeta = {caps: {}, groups: [], projects: [], nodes: []};
-let rolesOpen = new Set();       // the roles whose fold is open
-let rolesDraft = null;           // a new role being written: {name, note, grants}
+let rolesWho = "";               // the account the People section is on
+let rolesPeopleDraft = null;     // {roles, projects, project_roles} being edited
+let rolesPick = "";              // the role the Roles section is on
+let rolesDraft = null;           // {name, scope, perms, note, fresh} being edited
 
 function openRolesTab(){
   openTab({kind: "roles", arg: "__roles", label: "Roles"});
@@ -21,177 +25,233 @@ function openRolesTab(){
 
 async function loadRoles(){
   try{
-    const j = await (await fetch("/api/roles")).json();
+    const r = await fetch("/api/roles");
+    const j = await r.json();
     rolesErr = j.error || "";
-    rolesList = j.roles || {};
-    rolesMeta = {caps: j.caps || {}, groups: j.groups || [], projects: j.projects || [], nodes: j.nodes || []};
+    rolesData = j.error ? {roles: {}, areas: [], people: [], projects: [], admin: false} : j;
   }catch(e){
     rolesErr = String(e);
-    rolesList = rolesList || {};
+    rolesData = rolesData || {roles: {}, areas: [], people: [], projects: [], admin: false};
   }
   rolesRev++;
   drawPanes();
 }
 
-async function rolesAct(body){
+async function rolesAct(body, said){
   try{
     const r = await fetch("/api/roles", {method: "POST",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || j.error) return notify(j.error || `failed (HTTP ${r.status})`, true);
-    notify(body.action === "remove" ? `${body.name} removed` : `${body.name} saved`);
-    if (body.action === "set") rolesDraft = null;
-  }catch(e){ return notify(String(e), true); }
+    if (!r.ok || j.error){ notify(j.error || `failed (HTTP ${r.status})`, true); return false; }
+    notify(said);
+  }catch(e){ notify(String(e), true); return false; }
   await loadRoles();
+  return true;
 }
 
-// One grant as the editor shows it: the capability's sentence, and where it
-// holds. A scope is "mine" (the projects the account is on), "all", or a
-// list of named projects, which the picker under the row holds.
-function roleGrantRow(role, cap, g, editable){
-  const [group, sentence] = rolesMeta.caps[cap] || ["", cap];
-  const sc = g ? g.scope : null;
-  const named = Array.isArray(sc) ? sc : [];
-  // A capability on a node is scoped over nodes (step 3): the nodes of the
-  // account's projects, every node, or these nodes by name.
-  const overNodes = group === "nodes";
-  const things = overNodes ? (rolesMeta.nodes || []).map(n => [n.id, n.name]) : rolesMeta.projects.map(p => [p, p]);
-  const id = `rg-${role}-${cap}`.replace(/[^A-Za-z0-9_-]/g, "_");
-  // A field in the fold, like Add somebody's (the design's bands): the
-  // tick and the capability, its sentence under it where it wraps, and the
-  // scope under that while the tick is on.
-  return `<div class="setrow col rgrant" data-cap="${esc(cap)}">
-    <label class="pick"><input type="checkbox" data-rcap="${esc(cap)}"${g ? " checked" : ""}${editable ? "" : " disabled"}> <b>${esc(cap)}</b></label>
-    <div class="sub">${esc(sentence)}</div>
-    <div class="rscope"${g ? "" : " hidden"}>
-      <label class="pick">Where <select data-rscope="${esc(cap)}" aria-label="where ${esc(cap)} holds"${editable ? "" : " disabled"}>
-        <option value="mine"${sc === "mine" ? " selected" : ""}>${overNodes ? "the nodes of the account's projects" : "the projects the account is on"}</option>
-        <option value="all"${sc === "all" ? " selected" : ""}>${overNodes ? "every node" : "every project"}</option>
-        <option value="named"${Array.isArray(sc) ? " selected" : ""}>${overNodes ? "these nodes" : "these projects"}</option>
-      </select></label>
-      <div class="upick rnamed"${Array.isArray(sc) ? "" : " hidden"}>${things.length
-        ? things.map(([id, label]) => `<label class="pick"><input type="checkbox" data-rproj="${esc(id)}"${
-            named.includes(id) ? " checked" : ""}${editable ? "" : " disabled"}> ${esc(label)}</label>`).join(" ")
-        : `<div class="sub">${overNodes ? "no nodes to name" : "no projects to name"}</div>`}</div>
-    </div>
-  </div>`;
+// ---- People ------------------------------------------------------------
+function rolesPerson(){
+  return (rolesData?.people || []).find(p => p.name === rolesWho) || null;
 }
 
-// What a scope reads as, in words.
-function roleScopeWords(sc, overNodes){
-  if (sc === "all") return overNodes ? "every node" : "every project";
-  if (sc === "mine") return overNodes ? "the nodes of the account's projects" : "the projects the account is on";
-  const names = (Array.isArray(sc) ? sc : []).map(id => overNodes ? ((rolesMeta.nodes || []).find(n => n.id === id)?.name || id) : id);
-  return names.join(", ");
+function rolesPeopleFrom(p){
+  return p ? {roles: [...(p.roles || [])], projects: [...(p.projects || [])],
+              project_roles: JSON.parse(JSON.stringify(p.project_roles || {}))} : null;
 }
 
-// A built-in role read as what it grants, a line each, not as an editor
-// grayed out (fifteen dead pickers for admin): it is not edited, and Copy
-// is the way to one that is.
-function roleSummary(r){
-  const lines = (r.grants || []).map(g => g.cap === "*"
-    ? `<div class="sub"><b>everything</b> on ${esc(roleScopeWords(g.scope, false))} and every node</div>`
-    : `<div class="sub"><b>${esc(g.cap)}</b> ${esc((rolesMeta.caps[g.cap] || ["", ""])[1])}: on ${
-        esc(roleScopeWords(g.scope, (rolesMeta.caps[g.cap] || [""])[0] === "nodes"))}</div>`).join("");
-  return `<div class="sub dim">${esc(r.note || "")} · built in, and not edited: Copy makes one of your own from it</div>${lines}`;
+function rolesPeopleBody(){
+  const d = rolesData, people = d.people || [];
+  if (!rolesWho && people.length) rolesWho = people[0].name;
+  const p = rolesPerson();
+  if (p && !rolesPeopleDraft) rolesPeopleDraft = rolesPeopleFrom(p);
+  const dr = rolesPeopleDraft;
+  const all = Object.values(d.roles || {});
+  const onProject = all.filter(r => r.scope === "projects");
+  // The owner holds everything and is nobody's to change, its own too.
+  const locked = p && p.role === "owner";
+  const pick = `<div class="setrow col">${lbl("rolesWho", "Account")}
+    <select id="rolesWho">${people.map(x => `<option value="${esc(x.name)}"${x.name === rolesWho ? " selected" : ""}>${
+      esc(x.name)}${x.role === "owner" ? " (owner)" : ""}</option>`).join("")}</select></div>`;
+  if (!p) return pick + `<div class="sub">nobody to show</div>`;
+  if (locked) return pick + `<div class="sub">${esc(p.name)} is BuilderBot's owner: every area, everywhere, and not changed here.</div>`;
+  const global = d.admin ? `<div class="setrow col">${lbl("", "Global roles", "hold on every project the account is on, or everywhere for a Global role")}
+      <div class="upick" id="rolesGlobal">${all.filter(r => r.name !== "owner").map(r => `<label class="pick"><input type="checkbox" data-rglobal="${esc(r.name)}"${
+        dr.roles.includes(r.name) ? " checked" : ""}> ${esc(r.name)} <span class="dim">${r.scope === "global" ? "global" : "its projects"}</span></label>`).join("")}</div></div>` : "";
+  const projects = (d.projects || []).map(pn => {
+    const on = dr.projects.includes(pn);
+    const have = dr.project_roles[pn] || [];
+    return `<div class="rproj" data-rproject="${esc(pn)}">
+      <label class="pick"><input type="checkbox" data-ron="${esc(pn)}"${on ? " checked" : ""}> <b>${esc(pn)}</b></label>
+      <div class="upick"${on ? "" : " hidden"}>${onProject.length ? onProject.map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
+        have.includes(r.name) ? " checked" : ""}> ${esc(r.name)}</label>`).join("") : `<span class="dim">no roles on a project yet: add one below</span>`}</div>
+    </div>`;
+  }).join("");
+  return `${pick}${global}
+    <div class="setrow col">${lbl("", d.admin ? "Projects" : "Your projects", "the projects the account is on, and the roles it holds on each")}
+      <div class="rprojects">${projects || `<span class="dim">no projects</span>`}</div></div>
+    <div class="actbar"><span class="state">${rolesPeopleDirty() ? "unsaved" : ""}</span>
+      <button type="button" id="rolesPeopleRevert">Revert</button>
+      <button type="button" class="primary" id="rolesPeopleSave">Save</button></div>`;
 }
 
-// A role's fold: its note, its grants by group, and Save, Copy or Remove.
-function roleSection(r){
-  const editable = !r.builtin;
-  const byCap = {};
-  for (const g of r.grants || []){
-    if (g.cap === "*") for (const c of Object.keys(rolesMeta.caps)) byCap[c] = {cap: c, scope: g.scope};
-    else byCap[g.cap] = g;
-  }
-  const body = (editable ? `
-    <div class="setrow col">${lbl(`rnote-${esc(r.name)}`, "What this role is for")}
-        <input data-rnote value="${esc(r.note || "")}" autocomplete="off"></div>
-    ${rolesMeta.groups.map(([key, title]) => `<div class="sub rgroup">${esc(title)}</div>${
-      Object.keys(rolesMeta.caps).filter(c => rolesMeta.caps[c][0] === key)
-        .map(c => roleGrantRow(r.name, c, byCap[c], editable)).join("")}`).join("")}` : roleSummary(r)) + `
-    <div class="actbar">${editable
-      ? `<button type="button" class="primary" data-rsave="${esc(r.name)}">Save</button>
-         <button type="button" class="danger" data-rremove="${esc(r.name)}">Remove</button>`
-      : `<button type="button" data-rcopy="${esc(r.name)}">Copy</button>`}</div>`;
-  const status = r.builtin ? "built in" : `${(r.grants || []).length} grant${(r.grants || []).length === 1 ? "" : "s"}`;
-  return docSection("roles", `r-${r.name}`, r.name, status, body);
+function rolesPeopleDirty(){
+  const p = rolesPerson();
+  return !!p && !!rolesPeopleDraft && JSON.stringify(rolesPeopleFrom(p)) !== JSON.stringify(rolesPeopleDraft);
+}
+
+// ---- Roles -------------------------------------------------------------
+function rolesFrom(r){
+  return r ? {name: r.name, scope: r.scope, perms: {...(r.perms || {})}, note: r.note || "", fresh: false,
+              builtin: !!r.builtin} : null;
+}
+
+function rolesRoleBody(){
+  const d = rolesData;
+  const names = Object.keys(d.roles || {});
+  if (!rolesPick && names.length) rolesPick = names[0];
+  if (!rolesDraft || (!rolesDraft.fresh && rolesDraft.name !== rolesPick)) rolesDraft = rolesFrom(d.roles[rolesPick]);
+  const r = rolesDraft;
+  const pick = `<div class="setrow col">${lbl("rolesPick", "Role")}
+    <div class="rpickrow"><select id="rolesPick">${names.map(n => `<option value="${esc(n)}"${n === rolesPick && !r?.fresh ? " selected" : ""}>${
+      esc(n)}${d.roles[n].builtin ? " (built in)" : ""}</option>`).join("")}${r?.fresh ? `<option selected>${esc(r.name)} (new)</option>` : ""}</select>
+      ${d.admin ? `<input id="rolesNewName" placeholder="a new role's name" autocomplete="off" aria-label="a new role's name">
+      <button type="button" id="rolesAdd">Add role</button>` : ""}</div></div>`;
+  if (!r) return pick;
+  const ro = r.builtin || !d.admin;
+  const areas = (d.areas || []).map(([key, label, group, rd, wr]) => {
+    const lvl = r.perms[key] || "";
+    const off = ro || (group === "global" && r.scope !== "global");
+    return `<div class="rarea${off && !ro ? " off" : ""}" data-rarea="${esc(key)}">
+      <div class="grow"><b>${esc(label)}</b><div class="sub dim">Read: ${esc(rd)}. Write: ${esc(wr)}.</div></div>
+      <label class="pick"><input type="checkbox" data-rread="${esc(key)}"${lvl ? " checked" : ""}${off ? " disabled" : ""}> Read</label>
+      <label class="pick"><input type="checkbox" data-rwrite="${esc(key)}"${lvl === "write" ? " checked" : ""}${off || !lvl ? " disabled" : ""}> Write</label>
+    </div>`;
+  }).join("");
+  return `${pick}
+    <div class="setrow col">${lbl("rolesScope", "Scope", "Global holds everywhere and is the only one that reaches the machinery; the user's projects holds on each project the account is on, or the one it is given on")}
+      <select id="rolesScope"${ro ? " disabled" : ""}>
+        <option value="global"${r.scope === "global" ? " selected" : ""}>Global</option>
+        <option value="projects"${r.scope !== "global" ? " selected" : ""}>The user's projects</option>
+      </select></div>
+    ${ro ? "" : `<div class="setrow col">${lbl("rolesNote", "What this role is for")}<input id="rolesNote" value="${esc(r.note)}" autocomplete="off"></div>`}
+    <div class="rareas">${areas}</div>
+    ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>` : ""}
+    ${ro ? "" : `<div class="actbar"><span class="state">${rolesRoleDirty() ? "unsaved" : ""}</span>
+      <button type="button" id="rolesRevert">Revert</button>
+      <button type="button" class="primary" id="rolesSave">Save</button>
+      ${r.fresh ? "" : `<button type="button" class="danger" id="rolesRemove">Remove</button>`}</div>`}`;
+}
+
+function rolesRoleDirty(){
+  const r = rolesDraft;
+  if (!r) return false;
+  if (r.fresh) return true;
+  return JSON.stringify(rolesFrom(rolesData.roles[r.name])) !== JSON.stringify(r);
 }
 
 function renderRolesInto(i){
   const d = docSurface(i, "roles");
   if (!d) return;
-  d.setBar(`<span class="dim">named roles made of grants; an account carries one or more, and they add up</span>`);
-  if (rolesList === null){
+  d.setBar(`<span class="dim">what each account may do: roles given to people, and what each role reads and writes</span>`);
+  if (rolesData === null){
     d.list.innerHTML = `<div class="row"><div class="sub">loading<span class="dots"></span></div></div>`;
     loadRoles();
     return;
   }
-  const names = Object.keys(rolesList);
   d.list.innerHTML = `
     ${rolesErr ? `<div class="row bad"><div class="grow">${esc(rolesErr)}</div></div>` : ""}
-    ${names.map(n => roleSection(rolesList[n])).join("")}
-    ${docSection("roles", "new", "New role", "", `
-      <div class="setrow col">${lbl("rNewName", "Name", "one job: deployer, tester, reviewer")}
-        <input id="rNewName" autocomplete="off" value="${esc(rolesDraft?.name || "")}"></div>
-      <div class="sub">A new role starts with no grants: it is made here, then its grants are ticked in its own fold above and saved there.</div>
-      <div class="actbar"><button type="button" class="primary" id="rNew">Make it</button></div>`)}`;
+    ${docSection("roles", "people", "People", String((rolesData.people || []).length), rolesPeopleBody())}
+    ${docSection("roles", "roles", "Roles", String(Object.keys(rolesData.roles || {}).length), rolesRoleBody())}`;
   wireSections(d.list);
-  d.setFoot(`A grant adds and never takes away: an account with two roles may do what either allows.
-    The built-in roles reproduce what owner, admin and user could do before roles existed.`);
+  d.setFoot(`Roles add up: an account may do what any of its roles allows, on the projects each holds on.
+    Write needs Read, and an area without Read is not shown at all.`);
   wireRoles(d.el);
 }
 
-// What the editor holds for one role, read back from its rows.
-function roleGrantsFrom(sec){
-  const out = [];
-  for (const row of sec.querySelectorAll(".rgrant")){
-    const cb = row.querySelector("[data-rcap]");
-    if (!cb || !cb.checked) continue;
-    const sel = row.querySelector("[data-rscope]");
-    let scope = sel ? sel.value : "mine";
-    if (scope === "named") scope = [...row.querySelectorAll("[data-rproj]")].filter(c => c.checked).map(c => c.dataset.rproj);
-    out.push({cap: cb.dataset.rcap, scope});
-  }
-  return out;
-}
+// Repaint the tab, keeping the drafts: the sections read them.
+function rolesRedraw(){ rolesRev++; drawPanes(); }
 
 function wireRoles(el){
-  // A grant's scope row shows with its tick, and its names with "these
-  // projects": drawn once, toggled in place, saved on Save.
-  el.querySelectorAll("[data-rcap]").forEach(cb => cb.onchange = () => {
-    const row = cb.closest(".rgrant");
-    row.querySelector(".rscope").hidden = !cb.checked;
+  const who = el.querySelector("#rolesWho");
+  if (who) who.onchange = () => { rolesWho = who.value; rolesPeopleDraft = null; rolesRedraw(); };
+  el.querySelectorAll("[data-rglobal]").forEach(cb => cb.onchange = () => {
+    const dr = rolesPeopleDraft, n = cb.dataset.rglobal;
+    dr.roles = cb.checked ? [...new Set([...dr.roles, n])] : dr.roles.filter(x => x !== n);
+    rolesRedraw();
   });
-  el.querySelectorAll("[data-rscope]").forEach(sel => sel.onchange = () => {
-    sel.closest(".rscope").querySelector(".rnamed").hidden = sel.value !== "named";
+  el.querySelectorAll("[data-ron]").forEach(cb => cb.onchange = () => {
+    const dr = rolesPeopleDraft, p = cb.dataset.ron;
+    dr.projects = cb.checked ? [...new Set([...dr.projects, p])] : dr.projects.filter(x => x !== p);
+    if (!cb.checked) delete dr.project_roles[p];
+    rolesRedraw();
   });
-  el.querySelectorAll("[data-rsave]").forEach(b => b.onclick = () => {
-    const sec = b.closest(".sect") || el;
-    const grants = roleGrantsFrom(sec);
-    if (grants.some(g => Array.isArray(g.scope) && !g.scope.length))
-      return notify("a grant on these projects needs at least one named", true);
-    rolesAct({action: "set", name: b.dataset.rsave, grants,
-              note: sec.querySelector("[data-rnote]")?.value || ""});
+  el.querySelectorAll("[data-rprole]").forEach(cb => cb.onchange = () => {
+    const dr = rolesPeopleDraft, p = cb.closest("[data-rproject]").dataset.rproject, n = cb.dataset.rprole;
+    const have = dr.project_roles[p] || [];
+    dr.project_roles[p] = cb.checked ? [...new Set([...have, n])] : have.filter(x => x !== n);
+    rolesRedraw();
   });
-  el.querySelectorAll("[data-rremove]").forEach(b => b.onclick = () => {
-    if (confirm(`Remove the role ${b.dataset.rremove}? Accounts that carry it lose its grants.`))
-      rolesAct({action: "remove", name: b.dataset.rremove});
+  const pr = el.querySelector("#rolesPeopleRevert");
+  if (pr) pr.onclick = () => { rolesPeopleDraft = null; rolesRedraw(); };
+  const ps = el.querySelector("#rolesPeopleSave");
+  if (ps) ps.onclick = async () => {
+    busy(ps, "Saving");
+    const dr = rolesPeopleDraft;
+    const body = {action: "assign", name: rolesWho, projects: dr.projects, project_roles: {}};
+    for (const p of rolesData.projects || []) body.project_roles[p] = dr.project_roles[p] || [];
+    if (rolesData.admin) body.roles = dr.roles;
+    if (await rolesAct(body, `${rolesWho} saved`)) rolesPeopleDraft = null;
+    rolesRedraw();
+  };
+
+  const rp = el.querySelector("#rolesPick");
+  if (rp) rp.onchange = () => { rolesPick = rp.value; rolesDraft = null; rolesRedraw(); };
+  const add = el.querySelector("#rolesAdd"), nm = el.querySelector("#rolesNewName");
+  if (add) add.onclick = () => {
+    const name = (nm?.value || "").trim();
+    if (!name) return notify("a name for the role", true);
+    if (rolesData.roles[name]) return notify(`${name} is a role already`, true);
+    rolesDraft = {name, scope: "projects", perms: {}, note: "", fresh: true, builtin: false};
+    rolesRedraw();
+  };
+  const sc = el.querySelector("#rolesScope");
+  if (sc) sc.onchange = () => {
+    rolesDraft.scope = sc.value;
+    // A role on the user's projects holds project areas only.
+    if (sc.value !== "global")
+      for (const [key, , group] of rolesData.areas) if (group === "global") delete rolesDraft.perms[key];
+    rolesRedraw();
+  };
+  const note = el.querySelector("#rolesNote");
+  if (note) note.oninput = () => { rolesDraft.note = note.value; };
+  el.querySelectorAll("[data-rread]").forEach(cb => cb.onchange = () => {
+    const k = cb.dataset.rread;
+    if (cb.checked) rolesDraft.perms[k] = rolesDraft.perms[k] || "read";
+    else delete rolesDraft.perms[k];      // no Read, no Write
+    rolesRedraw();
   });
-  el.querySelectorAll("[data-rcopy]").forEach(b => b.onclick = () => {
-    const src = rolesList[b.dataset.rcopy];
-    const name = prompt(`A role of your own, copied from ${src.name}. Its name:`, `${src.name} copy`);
-    if (!name) return;
-    rolesAct({action: "set", name: name.trim(), grants: src.grants, note: `copied from ${src.name}`});
+  el.querySelectorAll("[data-rwrite]").forEach(cb => cb.onchange = () => {
+    const k = cb.dataset.rwrite;
+    rolesDraft.perms[k] = cb.checked ? "write" : "read";
+    rolesRedraw();
   });
-  const nw = el.querySelector("#rNew");
-  const nameIn = el.querySelector("#rNewName");
-  if (nameIn) nameIn.oninput = () => { rolesDraft = {name: nameIn.value}; };
-  if (nw) nw.onclick = () => {
-    const name = (nameIn?.value || "").trim();
-    if (!name) return notify("a name", true);
-    // Made with the one grant everybody has, so it exists to be edited; the
-    // server refuses an empty role.
-    rolesAct({action: "set", name, grants: [{cap: "read", scope: "mine"}], note: ""});
+  const rr = el.querySelector("#rolesRevert");
+  if (rr) rr.onclick = () => { rolesDraft = null; rolesRedraw(); };
+  const rs = el.querySelector("#rolesSave");
+  if (rs) rs.onclick = async () => {
+    busy(rs, "Saving");
+    const r = rolesDraft;
+    if (await rolesAct({action: "set", name: r.name, scope: r.scope, perms: r.perms, note: r.note}, `${r.name} saved`)){
+      rolesPick = r.name; rolesDraft = null;
+    }
+    rolesRedraw();
+  };
+  const rm = el.querySelector("#rolesRemove");
+  if (rm) rm.onclick = async () => {
+    if (!confirm(`Remove the role ${rolesDraft.name}? Accounts that hold it lose what it gave.`)) return;
+    if (await rolesAct({action: "remove", name: rolesDraft.name}, `${rolesDraft.name} removed`)){
+      rolesPick = ""; rolesDraft = null;
+    }
+    rolesRedraw();
   };
 }

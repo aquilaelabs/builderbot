@@ -199,6 +199,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A new account starts with no project pinned and pins what it wants from All projects; accounts made before keep what they had (b0fc652)
 - The Toolchains tab's descriptions are shorter: what each is for and what it needs, without how it is built (87a01a0)
 - Each toolchain's row names what it is under, linked: Google's Android SDK terms on the Android rows in place of one line at the foot, NVIDIA's on PyTorch, Apple's on xcodes, and the open-source licenses of the rest (60faa09)
+- Roles are a scope and Read or Write per area, given to people per project on the Roles tab, which also puts them on projects; admin has everything but the owner's account; there is no user role, and a project's owner holds an editable PROJECT_owner (27417df)
 
 ### Removed
 

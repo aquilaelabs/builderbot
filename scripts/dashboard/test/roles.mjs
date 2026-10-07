@@ -121,14 +121,11 @@ for (const who of CAST) {
   // A real change: the value flipped from what it is now.
   const was = !!(await api(page, '/api/settings')).settings?.offer_unvetted?.value;
   const ctl = await api(page, '/api/settings', { set: { offer_unvetted: !was } });
-  if (who.role === 'owner') {
+  if (who.role === 'owner' || isAdmin) {
+    // Admin is built in with everything the owner may do since R152 (the
+    // operator, 7 Oct), the debug settings included.
     ok(ctl.status === 200, `${tag} changes a controller setting (${ctl.status})`);
     await api(page, '/api/settings', { set: { offer_unvetted: was } });
-  } else if (isAdmin) {
-    // Every controller setting is in the Debugging group, which is the
-    // debug grant's by name (the operator, 6 Oct): '*' does not reach it.
-    ok(ctl.status === 403 && /debug/.test(ctl.error || ''),
-       `${tag} is refused the debug settings, which its '*' does not reach (${ctl.status})`);
   } else {
     ok(ctl.status === 403, `${tag} is refused the controller's settings (${ctl.status})`);
     for (const [path, body] of [['/api/users', { action: 'add', name: 'x.nope', password: 'nopenope1', role: 'user' }],

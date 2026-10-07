@@ -671,7 +671,8 @@ function rnDrawPeople(){
     <div class="sub dim">${only
       ? "Administrators cannot add themselves or anybody else: people join by accepting an invitation."
       : "Any administrator can add people, themselves included."}${v.may_manage ? "" : " Its owner decides this."}</div>
-    <div class="sub">On it: ${v.members.length ? v.members.map(esc).join(", ") : "nobody yet"}</div>
+    <div class="sub">On it: ${v.members.length ? v.members.map(esc).join(", ") : "nobody yet"}${
+      v.may_manage ? ` <button type="button" class="link" id="rnRolesGo">Roles on this project</button>` : ""}</div>
     ${v.invites.map(i => `<div class="rninvite">${esc(i.name)} <span class="dim">invited by ${esc(i.by || "somebody")} ${esc(ago(i.at))}</span>
       <button type="button" class="link" data-withdraw="${i.id}">Withdraw</button></div>`).join("")}
     ${v.may_invite && invitable.length ? `<div class="rninvitebar">
@@ -679,6 +680,10 @@ function rnDrawPeople(){
       <button type="button" id="rnInviteGo">Invite</button></div>` : ""}`;
   const o = $("rnOwner");
   if (o) o.onchange = () => { d.owner = o.value; rnDrawPeople(); };
+  // What each person may do here is the Roles tab's (R152): a project's
+  // owner gives its roles there, on the projects they own.
+  const rg = $("rnRolesGo");
+  if (rg) rg.onclick = () => openRolesTab();
   const io = $("rnInviteOnly");
   if (io && v.may_manage) io.onchange = () => { d.invite_only = io.checked; rnDrawPeople(); };
   const act = async body => {

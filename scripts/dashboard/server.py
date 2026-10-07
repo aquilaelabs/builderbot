@@ -2320,6 +2320,12 @@ import roles                                                     # noqa: E402
 import busy                                                      # noqa: E402
 membership.configure(state=STATE, write_json=write_json)
 roles.configure(state=STATE, write_json=write_json)
+# Roles as areas (R152), once: an account on `user` carries no role, and each
+# project's owner holds PROJECT_owner on it. Marked done in the accounts store.
+try:
+    users.migrate_r152({p: (r or {}).get("owner") or "" for p, r in membership._owners()["projects"].items()})
+except Exception as e:                                                # noqa: BLE001
+    print(f"[dashboard] roles migration (R152) skipped: {type(e).__name__}: {e}", flush=True)
 projects.roles_rename = roles.rename_project
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
@@ -4544,15 +4550,35 @@ class Handler(BaseHTTPRequestHandler):
                                          claudegrant.logins_of))
 
     def _get_roles(self):
-        """GET /api/roles: every role with its grants, the capabilities and
-        their groups, and the projects a grant may name (the Roles tab,
-        R137). An administrator's, like the Users tab it sits beside."""
-        if self._refused("admin"):
-            return None
-        return self._json({"roles": roles.all_roles(), "caps": roles.CAPS, "groups": roles.GROUPS,
-                           "projects": [p["name"] for p in project_list(self._who())],
-                           # ...and the nodes a grant may name (step 3).
-                           "nodes": [] if NODES_OK else [{"id": n["id"], "name": n["name"]} for n in nodes.node_list()]})
+        """GET /api/roles: the Roles tab (R152): the areas, every role, and
+        each account with its Global roles, the roles it holds on each
+        project and the projects it is on. An administrator's whole; a
+        project's owner sees the people and roles of the projects they own,
+        to give those (users.assignable)."""
+        me = self._who() or {}
+        can = users.assignable(me)
+        if not can["admin"] and not can["projects"]:
+            return self._json({"error": "the Roles tab is an administrator's, or a project owner's "
+                                        "for their own projects"}, 403)
+        scope = None if can["admin"] else set(can["projects"])
+        people = []
+        for u in users.all_users():
+            full = users.get(u["name"]) or {}
+            pr = full.get("project_roles") if isinstance(full.get("project_roles"), dict) else {}
+            on = list(full.get("projects") or [])
+            if scope is not None:
+                pr = {p: r for p, r in pr.items() if p in scope}
+                on = [p for p in on if p in scope]
+            people.append({"name": u["name"], "uid": u["uid"], "role": u["role"],
+                           "roles": [r for r in roles.roles_of(full) if r not in ("user",)] if can["admin"] else [],
+                           "project_roles": pr, "projects": on})
+        all_projects = [p["name"] for p in project_list(me)] if scope is None else sorted(scope)
+        rs = roles.all_roles()
+        if scope is not None:
+            rs = {n: r for n, r in rs.items() if r.get("scope") == "projects"}
+        return self._json({"roles": rs, "areas": [list(a) for a in roles.AREAS], "people": people,
+                           "projects": all_projects, "admin": can["admin"], "me": me.get("name") or "",
+                           "owner": users.owner_name() or ""})
 
     def _get_nodes(self):
         """GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to
@@ -6393,14 +6419,25 @@ class Handler(BaseHTTPRequestHandler):
                                            me, p, joining=field(req, "name") == me.get("name"))))
 
     def _roles(self, req):
-        """POST /api/roles: set (make or change a role of your own, with its
-        grants and note) or remove one; the built-in roles refuse both
-        (roles.py). An administrator's."""
+        """POST /api/roles: assign (an account's Global roles, its roles on
+        each project and its projects, as far as the asker may, R152), set
+        (make or change a role: its scope, its areas and note) or remove
+        one; owner and admin are built in and refuse both. Roles themselves
+        are an administrator's."""
+        act = field(req, "action")
+        if act == "assign":
+            return self._json(*users.assign(self._who(), field(req, "name"),
+                                             req.get("roles") if isinstance(req.get("roles"), list) else None,
+                                             req.get("project_roles") if isinstance(req.get("project_roles"), dict) else None,
+                                             req.get("projects") if isinstance(req.get("projects"), list) else None))
         if self._refused("admin"):
             return None
-        act = field(req, "action")
         if act == "set":
-            return self._result(roles.set_role(field(req, "name"), req.get("grants"), field(req, "note")))
+            if "perms" in req:
+                return self._result(roles.set_role(field(req, "name"), field(req, "scope") or "projects",
+                                                   req.get("perms") if isinstance(req.get("perms"), dict) else {},
+                                                   field(req, "note")))
+            return self._result(roles.set_role(field(req, "name"), grants=req.get("grants"), note=field(req, "note")))
         if act == "remove":
             return self._result(roles.remove(field(req, "name")))
         return self._json({"error": "unknown action"}, 400)
