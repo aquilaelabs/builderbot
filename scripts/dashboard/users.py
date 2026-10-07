@@ -172,6 +172,15 @@ def uid_of(u):
     return "" if uid == "\u0000server" else str(uid)
 
 
+def starts_unpinned(u):
+    """Whether this account's sidebar starts with no project pinned until it
+    pins one (projects.load_project_pins). Every account made since 7 Oct
+    does (the operator: a new user starts with nothing pinned and adds what
+    they want); one made before keeps "all of them" until it pins, so an
+    update does not empty a sidebar somebody was using."""
+    return bool((u or {}).get("pins_empty"))
+
+
 def tmux_prefix(u):
     """What this account's shell sessions are named with, or "" for none.
 
@@ -770,7 +779,7 @@ def claim(name, password):
                             "projects": [],
                             "password": hash_password(password),
                             "created": int(time.time()), "seen": 0,
-                            "prefs": {}}
+                            "prefs": {}, "pins_empty": True}
         _save(d)
     return {"ok": True, "name": name}
 
@@ -791,7 +800,9 @@ def add(name, password, role="user", projects=None):
                             "projects": list(projects or []),
                             "password": hash_password(password),
                             "created": int(time.time()), "seen": 0,
-                            "prefs": {}}
+                            # Starts with nothing pinned, and pins what it
+                            # wants (the operator, 7 Oct): see starts_unpinned.
+                            "prefs": {}, "pins_empty": True}
         _save(d)
     return {"ok": True, "name": name}
 

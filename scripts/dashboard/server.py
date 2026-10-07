@@ -822,7 +822,7 @@ def _project_columns(who, facts):
     row: this runs on the fifteen-second poll.
     """
     locked = set(projects.load_locks())
-    pins = projects.load_project_pins(users.uid_of(who))
+    pins = projects.load_project_pins(users.uid_of(who), users.starts_unpinned(who))
     # One small file for the whole list, read here rather than per row: this
     # runs on the fifteen-second poll and a per-project read would be a dozen
     # opens for a dozen values that came from the same dictionary.
@@ -6634,7 +6634,8 @@ class Handler(BaseHTTPRequestHandler):
         me = self._who() or {}
         if me.get("session"):
             return self._json({"error": "a session has no sidebar: the pins are a person's own"}, 403)
-        return self._json(*projects.pin(users.uid_of(me), req.get("name", ""), bool(req.get("pinned"))))
+        return self._json(*projects.pin(users.uid_of(me), req.get("name", ""), bool(req.get("pinned")),
+                                        users.starts_unpinned(me)))
 
     def _session(self, req):
         """Kill a session. Closing a tab that owns a Claude conversation should

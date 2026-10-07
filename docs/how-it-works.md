@@ -1033,8 +1033,10 @@ lives in its body. The cards:
   and nobody else's, and nothing else: it keeps every control on the **All
   projects** tab at the foot of the card, which lists everything under
   `/workspace` with the same buttons on each row. Pins live per account in
-  `/config/pinned-projects.json`; an account with no set sees everything
-  pinned, which is what a fresh install sees
+  `/config/pinned-projects.json`. An account made since 7 Oct starts with
+  nothing pinned and pins what it wants from **All projects**; one made
+  before that with no set yet still sees everything pinned. The card and the
+  tab both list projects by name, case aside
 - a **bin**, which moves a project to `/workspace/.trash/<name>` with every
   file kept: a second delete of the same name is numbered rather than
   overwriting the first, and `/config` is not touched, so putting one back is
@@ -1967,8 +1969,9 @@ roadmap's list, the Memories, Your rules, each Version, the Design's Themes
 and Pages) carries its own Save and Revert at its foot, which write or throw
 away that section's changes and nothing else's; there is no notebook-wide
 Save, since one at the bottom was a long scroll on a phone from the change it
-saved. One section is open at a time in a view: opening one closes the
-others (the operator, 5 Oct).
+saved. A view opens on its first section; on a phone one is open at a
+time, opening one closing the others, and on a desktop several may stand
+open (the operator, 7 Oct).
 
 While a session has a batch open, **the roadmap's Save is held**, and only
 that Save. You can still type, edit, drop and revert; what waits is writing

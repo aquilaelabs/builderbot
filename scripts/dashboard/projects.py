@@ -2158,9 +2158,11 @@ def _load_pins():
             for k, names in v.items() if isinstance(k, str) and isinstance(names, list)}
 
 
-def load_project_pins(uid):
+def load_project_pins(uid, fresh=False):
     """This account's pinned set, or None when it has never pinned anything
-    and nobody's default stands.
+    and nobody's default stands. `fresh` is an account that starts with
+    nothing pinned (users.starts_unpinned): its no-entry is the empty set,
+    and the old everybody default under "*" is not its.
 
     None is not the same as empty and the difference decides what a fresh
     install looks like. No entry means this person has not had this thought
@@ -2171,6 +2173,8 @@ def load_project_pins(uid):
     looking at from the sidebar is a question each account answers.
     """
     d = _load_pins()
+    if fresh and str(uid or "") not in d:
+        return []
     v = d.get(str(uid or ""), d.get("*"))
     return None if v is None else sorted(v)
 
@@ -2205,7 +2209,7 @@ def _rename_in_pins(path, old, new):
     return moved
 
 
-def pin(uid, name, on):
+def pin(uid, name, on, fresh=False):
     """Pin or unpin a project for one account, once the server has let a
     signed-in person: the pins are theirs. Unpinning something running a
     build leaves it running, and the Projects tab still has every button.
@@ -2222,7 +2226,7 @@ def pin(uid, name, on):
     if name not in here:
         return {"error": f"unknown project: {name}"}, 400
     with lock:
-        pins = load_project_pins(uid)
+        pins = load_project_pins(uid, fresh)
         names = here.copy() if pins is None else set(pins)
         names.add(name) if on else names.discard(name)
         try:

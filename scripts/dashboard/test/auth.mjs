@@ -1329,8 +1329,16 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
     // account unpins alpha from its sidebar and the owner's card still shows
     // it; a session, which has no sidebar, pins for nobody.
     {
-      const un = await act(plainAuth, '/api/project-pin', { name: 'alpha', pinned: false });
       const rows = async h => ((await (await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: h })).json()).projects || []);
+      // A new account starts with nothing pinned and pins what it wants (the
+      // operator, 7 Oct), where the owner made before that keeps all of them.
+      const fresh = await rows(plainAuth);
+      ok(fresh.length > 0 && fresh.every(p => p.pinned === false),
+         `a new account starts with nothing pinned (${fresh.filter(p => p.pinned).map(p => p.name)})`);
+      const one = await act(plainAuth, '/api/project-pin', { name: 'alpha', pinned: true });
+      const after = (await rows(plainAuth)).filter(p => p.pinned).map(p => p.name);
+      ok(one.status === 200 && after.join() === 'alpha', `...and pinning one pins that one alone (${after})`);
+      const un = await act(plainAuth, '/api/project-pin', { name: 'alpha', pinned: false });
       const plain = (await rows(plainAuth)).find(p => p.name === 'alpha'), owner = (await rows(ownerAuth)).find(p => p.name === 'alpha');
       ok(un.status === 200 && plain && plain.pinned === false && owner && owner.pinned === true,
          `a plain account's unpin is its own: alpha off its sidebar and still on the owner's (${un.status}; ${plain?.pinned}/${owner?.pinned})`);

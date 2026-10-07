@@ -186,6 +186,10 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Right after the controller restarts, a project whose node was here a moment before says quietly that the node is reconnecting, rather than in red that it is not answering (b9c8145)
 - Any press in the notification drawer (Approve, Deny, an invitation's answer, Clear, a link) closes it (27e18a4)
 - A project's settings are sections, one open at a time, as the tabs' are: the gear opens on The project, or on the section opened there last, and the chain opens on the repository's (39ae3a4)
+- Every tab, notebook view and the project settings open on their first section; on a desktop several sections can stay open at once, and on a phone one is open at a time (b0fc652)
+- Section headings are larger (14px), with the status beside them at 12px (b0fc652)
+- The sidebar's pinned projects and the Projects tab list projects by name, case aside; the tab no longer puts pinned ones first (b0fc652)
+- A new account starts with no project pinned and pins what it wants from All projects; accounts made before keep what they had (b0fc652)
 
 ### Removed
 
