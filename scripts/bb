@@ -22,6 +22,12 @@ set -euo pipefail
 BB_LIB="$(dirname "$(readlink -f "$0")")/lib"
 export BB_LIB
 
+# The reference's entries for one verb: each line that starts `bb VERB `,
+# with the indented lines that continue it. Fails when there are none.
+verb_help() {
+    usage | awk -v v="$1" '/^bb / { on = ($2 == v) } on { print; n++ } END { exit n ? 0 : 1 }'
+}
+
 usage() {
     # The one owner of the bb reference: README.md's block is written from
     # this by tools/readme-bb-ref.sh, and bb lint fails when the two differ
@@ -5293,6 +5299,16 @@ if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
     export BB_TREE="$WORKSPACE/$2"
     shift 2
 fi
+
+# `bb VERB -h`: the verb's own entries in the reference above, answered here
+# for every verb alike (B536). Each verb had grown its own answer, and those
+# with none fell to their usage error: `bb devapp -h` printed its usage as
+# "[builderbot] ERROR:" and exited 1, so asking for help read as a failure.
+# Help is the same text on a node as on the controller, so it is never
+# relayed. A verb the reference does not name falls through to its own.
+case "${2:-}" in
+    -h|--help) [ -n "${1:-}" ] && verb_help "$1" && exit 0 ;;
+esac
 
 if on_node && [ -z "${BB_RELAYED:-}" ]; then
     # One verb is relayed except for one of its subcommands. `bb tests` reads

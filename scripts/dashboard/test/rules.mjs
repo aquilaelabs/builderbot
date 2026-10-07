@@ -270,6 +270,15 @@ ok(/nothing changed here that a rule/.test(bb('check')),
 // ---- reading them from a session -------------------------------------------
 ok(/^bb rules show NAME/m.test(execFileSync(BB, ['rules', '-h'], { env: ENV }).toString()),
    'bb rules -h is its help, as every verb\'s is (B411)');
+{
+  // B536: every verb's -h is its entries in the reference, exit 0, never
+  // its usage error: devapp's and container's said "ERROR:" and exited 1.
+  const help = v => { try { return [0, execFileSync(BB, [v, '-h'], { env: ENV, stdio: 'pipe' }).toString()]; }
+                      catch (e) { return [e.status, String(e.stdout) + String(e.stderr)]; } };
+  const said = ['devapp', 'container', 'capture', 'jobs'].map(v => [v, ...help(v)]);
+  ok(said.every(([v, st, out]) => st === 0 && new RegExp(`^bb ${v}\\b`).test(out) && !/ERROR/.test(out)),
+     `bb VERB -h prints that verb's entries from the reference and exits 0 (${said.map(([v, st]) => v + ':' + st).join(' ')})`);
+}
 ok(/No em dashes/.test(bb('list')) && /agent-compat/.test(bb('list')),
    'bb rules lists what is in effect');
 ok(/add, do not change/.test(bb('show', 'agent-compat')),

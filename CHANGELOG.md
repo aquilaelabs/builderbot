@@ -310,6 +310,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Bitwarden no longer offers itself on the dashboard's Name, title and description fields: the deploy key's public half is shown as text rather than a text box, which Bitwarden had read as an add-an-SSH-key form (3cc24bc)
 - A Claude session on a node now survives the system's automatic updates: the agent keeps its service from taking the sessions down when it is restarted, and tells needrestart to leave it alone (on 7 Oct a library upgrade on bb-sandbox ended every session there) (7d02af3)
 - bb capture shot fails, with no picture and exit 3, when the page does not answer, where it saved Chromium's error page and reported success; a page that answers with an error status is still shot, and the status is said (e018cad)
+- bb VERB -h prints that verb's entries from the command reference and exits 0 for every verb, where devapp and container printed their usage as an error (120b26d)
 
 ### Security
 
