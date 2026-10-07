@@ -44,7 +44,6 @@ nodes = None               # nodes.py: node, node_list, job_add, jobs_for, sessi
 node_sessions = None       # server.node_tmux_sessions
 tmux_base = None           # server.tmux_base
 audit = None
-auto = None                # () -> the claude_autoupdate setting
 _lock = threading.Lock()
 _latest = {"version": "", "at": 0, "error": "", "checking": False}
 # {node id: when} for an update pressed and not yet queued: ending the
@@ -56,9 +55,9 @@ _latest = {"version": "", "at": 0, "error": "", "checking": False}
 _pressed = {}
 
 
-def configure(*, nodes_module, node_sessions, tmux_base, audit=None, auto=None):
+def configure(*, nodes_module, node_sessions, tmux_base, audit=None):
     globals().update(nodes=nodes_module, node_sessions=node_sessions,
-                     tmux_base=tmux_base, audit=audit, auto=auto)
+                     tmux_base=tmux_base, audit=audit)
 
 
 def check():
@@ -254,41 +253,24 @@ def update(principal, node_id):
 
 def start_hold(project, node_id):
     """A sentence when a Claude session on this node has to wait for Claude
-    Code, or "". Two cases. An update already running there holds every
-    start until it ends. And with the setting on (claude_autoupdate), a
-    node behind what is out is updated first, right here, at the moment a
-    session is asked for: the sessions it would end are none, since this
-    one has not started and the check below refuses if any other is open,
-    and the person pressing is told to press again when the row comes
-    back. The setting is off by default, so a node stays on what it has
-    until Update is pressed."""
+    Code, or "": an update running there holds every start until it ends.
+    Nothing updates by itself: a node stays on what it has until Update is
+    pressed (the switch that updated a node behind before a session started
+    went on 7 Oct, the operator's)."""
     n = nodes.node(node_id) if nodes else None
     if not n or n.get("kind") != "agent":
         return ""
     if updating(node_id):
         return (f"Claude Code is updating on {n['name']}: press Claude on {project} again when its "
                 "row comes back")
-    if not auto or not auto() or not behind(n) or not n.get("live"):
-        return ""
-    if nodes.agent_stale(n):
-        return ""                     # the job would be refused; the row already says why
-    if any(s.get("node_id") == node_id and tmux_base(s["name"]).startswith("claude-")
-           for s in (node_sessions() if node_sessions else [])):
-        return ""                     # somebody's conversation is open there: not now
-    r = update("system", node_id)
-    if r.get("error"):
-        return ""
-    return (f"Claude Code {installed(n)} on {n['name']} is being updated to {latest()['version']} before "
-            f"this session starts (Keep Claude Code current is on): press Claude on {project} "
-            "again when its row comes back")
+    return ""
 
 
 def start():
     """One check soon after the controller starts. After that it is asked on
     the toolchains' own clock (toolchains.node_checks_due: weekly, and when
     a node starts) and on a press of Check for updates, like every other
-    toolchain (R145). The update itself is never on a clock: a press, or a
-    session's start with the setting on (start_hold)."""
+    toolchain (R145). The update itself is never on a clock: a press."""
     def once():
         time.sleep(CHECK_DELAY)
         try:

@@ -135,10 +135,7 @@ const SETTING_GROUPS = [
     // developer of BuilderBot reaches for, and a group headed by one switch
     // read as a feature of the product rather than of its testing.
     {key: "offer_unvetted", label: "Offer dev features", type: "bool",
-     hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."},
-    {key: "claude_autoupdate", label: "Update Claude Code before a session starts", type: "bool",
-     hint: "Before a session starts on a node that is behind, Claude Code is updated there first. "
-         + "An open conversation is never ended for it."}]},
+     hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."}]},
 ];
 
 // The reset's confirmation, the way a project's purge asks: the word typed

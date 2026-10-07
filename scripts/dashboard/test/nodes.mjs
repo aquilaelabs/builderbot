@@ -2721,29 +2721,12 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
     ok(!(await napi('/api/status')).attention.some(a => a.kind === 'claude' && a.id === en.id),
        '...so the bell does not keep saying an update is out');
   }
-  // Behind again, by the node's own word, for the switch below.
+  // Behind again, by the node's own word: a session asked for there starts
+  // on what it has, since nothing updates it but Update (the switch that
+  // updated it first went on 7 Oct, the operator's).
   await hello();
-  // The switch is off by default: a node stays on its version until Update
-  // is pressed. On, a session asked for on a node that is behind updates it
-  // first: the terminal is refused with the reason, the job is queued, and
-  // no open conversation is ended for it.
-  // Set on the Settings tab, behind its Apply, and nowhere on this row: a
-  // checkbox here wrote the setting on the click (B257, rule apply-not-onchange).
-  ok((await napi('/api/status')).settings?.settings?.claude_autoupdate?.value === false
-     && !await page.$(`${ROWC} [data-nd-auto]`),
-     'Update before a session starts is off by default, set on the Settings tab and not on the section');
-  await napi('/api/settings', { set: { claude_autoupdate: true } });
-  await fetch(base + '/api/v1/agent/work', { method: 'POST',
-    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [] }, running: [], wait: 0 }) });
-  const term = await fetch(base + '/term/ws?arg=' + encodeURIComponent('claude:beta'), { headers: H });
-  const termBody = await term.json().catch(() => ({}));
-  ok(term.status === 409 && /is being updated to 1\.2\.0 before this session starts/.test(termBody.error || ''),
-     `with the switch on, a session on a node behind waits for the update, and says so (${term.status}: ${(termBody.error || '').slice(0, 70)})`);
-  const started = (await napi('/api/v1/jobs?n=5&type=claude-update&active=1')).jobs?.find(j => j.node === en.id);
-  ok(!!started, '...and the update job is queued by that start');
-  if (started) await napi('/api/v1/jobs', { action: 'cancel', id: started.id });
-  await napi('/api/settings', { set: { claude_autoupdate: false } });
+  ok(!(await napi('/api/status')).settings?.settings?.claude_autoupdate,
+     'no setting updates Claude Code before a session starts');
   // Up to date reads as such.
   census.session.claude = '1.2.0 (Claude Code)';
   await hello();

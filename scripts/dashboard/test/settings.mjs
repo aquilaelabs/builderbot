@@ -97,9 +97,9 @@ ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
 // Apply in front of you saved a debug setting without a word about it.
 ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(b.title)),
    'Debug settings is ghosted while debug mode is off, saying to turn it on first');
-ok(await page.$('.settingstab [data-set="claude_autoupdate"]') === null
+ok(await page.$('.settingstab [data-set="offer_unvetted"]') === null
    && await page.$eval('#setdbgmodal', m => m.hidden),
-   '...and the Claude Code update switch is not in the group at all, nor its dialog open');
+   '...and the dev features switch is not in the group at all, nor its dialog open');
 await post('/api/settings', { set: { debug_mode: true } });
 await page.waitForFunction(() => !document.querySelector('.settingstab [data-debugshow]')?.disabled,
                            null, { timeout: 30000 });
@@ -108,9 +108,13 @@ ok(await page.$eval('#setdbgmodal', m => m.hidden),
 await page.click('.settingstab [data-debugshow]');
 await page.waitForFunction(() => document.querySelector('#setdbgmodal')?.checkVisibility(),
                            null, { timeout: 8000 });
-ok(await page.$eval('#setdbgBody [data-dbgset="claude_autoupdate"]', e => e.type === 'checkbox'
+ok(await page.$eval('#setdbgBody [data-dbgset="offer_unvetted"]', e => e.type === 'checkbox'
      && !e.checked && e.closest('label') !== null),
-   'pressing it opens the dialog, with the Claude Code update switch a checkbox in its label, off by default');
+   'pressing it opens the dialog, with the dev features switch a checkbox in its label, off by default');
+// Gone on 7 Oct (the operator): a node's Claude Code is updated when Update
+// is pressed, and never before a session starts.
+ok(await page.$('#setdbgBody [data-dbgset="claude_autoupdate"]') === null,
+   '...and no switch updates Claude Code before a session starts');
 ok(await page.$eval('#setdbgmodal .box .foot', f => !!f.querySelector('.primary')
      && f.querySelectorAll('button').length === 2),
    '...and the dialog saves or cancels on its own foot, rather than riding the group\'s Apply');
@@ -118,25 +122,26 @@ ok(await page.$eval('.settingstab [data-group="Debugging"] .actbar .state', e =>
    'the section says a change applies at once, since nothing here waits for a boot');
 
 // ---- saving ----------------------------------------------------------------
-await page.check('#setdbgBody [data-dbgset="claude_autoupdate"]');
+await page.check('#setdbgBody [data-dbgset="offer_unvetted"]');
 await page.click('#setdbgSave');
-await page.waitForFunction(() => state?.settings?.settings?.claude_autoupdate?.value === true, null, { timeout: 30000 });
-ok(read().claude_autoupdate === true,
+await page.waitForFunction(() => state?.settings?.settings?.offer_unvetted?.value === true, null, { timeout: 30000 });
+ok(read().offer_unvetted === true,
    'Save writes it under /config and the poll carries it');
 await page.waitForFunction(() => document.querySelector('#setdbgmodal')?.hidden, null, { timeout: 8000 });
 ok(true, '...and the dialog shuts on the save, the way every dialog here does');
-const bad = await post('/api/settings', { set: { claude_autoupdate: 'maybe' } });
+const bad = await post('/api/settings', { set: { offer_unvetted: 'maybe' } });
 ok(bad.status === 400, 'a value that is not the setting\'s shape is refused');
-ok((await post('/api/settings', { set: { claude_channel: 'stable' } })).status === 400,
+ok((await post('/api/settings', { set: { claude_channel: 'stable' } })).status === 400
+   && (await post('/api/settings', { set: { claude_autoupdate: true } })).status === 400,
    '...and a key that stopped being a setting is refused too');
 // Back off: the rest of this file reads the settings as they started.
-await post('/api/settings', { set: { claude_autoupdate: false, debug_mode: false } });
+await post('/api/settings', { set: { offer_unvetted: false, debug_mode: false } });
 
 // ---- what the boot script reads ------------------------------------------------
 const setting = (key, dflt) => execFileSync('bash', ['-c',
   `. ${JSON.stringify(join(HERE, '..', '..', 'lib', 'common.sh'))}; bb_setting ${key} ${JSON.stringify(dflt)}`],
   { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
-ok(setting('claude_autoupdate', 'true') === 'false',
+ok(setting('offer_unvetted', 'true') === 'false',
    'bb_setting hands a boot hook the saved value, a false as the word false so is_true reads it');
 ok(setting('nothing_saved', 'dflt') === 'dflt', '...and the default when nothing is saved; no environment variable is read any more');
 

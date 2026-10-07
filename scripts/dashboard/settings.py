@@ -69,7 +69,6 @@ KEYS = {
     # row comes back, and no open conversation is ever ended for it
     # (claudecode.start_hold). The same switch is on each node's Claude
     # Code section.
-    "claude_autoupdate": {"default": False, "kind": "bool", "applied": "now"},
 }
 
 

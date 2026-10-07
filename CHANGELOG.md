@@ -202,6 +202,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Revoke is gone from a node's row: Remove already cuts the credential as it takes the row off the lists, and Uninstall takes BuilderBot off the machine; a leaked secret is re-enrolled either way (08ec700)
 - The terse briefing is gone: it saved an eighth of the block and lost meaning in places (which of two disagreeing texts is true, which of two rules wins), and no project used it (e245008)
 - The debug switch that let two accounts share one Claude login is gone, with the refusal it stood down: the Users tab still says when two accounts are on one login. (c8bb395)
+- The debug option Update Claude Code before a session starts is gone: a node's Claude Code updates when Update is pressed on the Toolchains tab, and nothing else (457ab4b)
 
 ### Fixed
 

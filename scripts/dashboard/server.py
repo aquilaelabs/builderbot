@@ -2043,7 +2043,7 @@ def _diag_watch(project, uid):
 
 
 # The Settings tab's Debugging group, the debug grant's (roles.NAMED_ONLY).
-DEBUG_SETTINGS = ("debug_mode", "offer_unvetted", "claude_autoupdate")
+DEBUG_SETTINGS = ("debug_mode", "offer_unvetted")
 
 
 def session_seen_note(project, uid, node, who=None, begin=False):
@@ -2798,8 +2798,7 @@ version.configure_verbs(PANEL=version_payload, GIT_ENV=users.git_env, CREDS_ENV=
 # out, and the one way it is updated, which is an administrator's press.
 if not NODES_OK:
     claudecode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
-                         tmux_base=tmux_base, audit=nodes.audit,
-                         auto=lambda: settings.get("claude_autoupdate"))
+                         tmux_base=tmux_base, audit=nodes.audit)
 
 # Every account's sessions on a project, for its settings dialog, and an
 # administrator ending one (projsessions.py): the rows the Sessions card is

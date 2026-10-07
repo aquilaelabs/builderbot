@@ -1612,8 +1612,7 @@ time, the way they always were. Its **Debugging** group is
 one switch, *Debug mode*, and a *Debug settings* button beside it that is
 live only while the switch is saved on: behind the button are the settings
 a developer of BuilderBot reaches for and nobody else should meet (offering
-the untested git hosts, hypervisors and node systems; updating Claude Code
-before a session starts).
+the untested git hosts, hypervisors and node systems).
 
 Each row folds open to show what that container publishes and what it mounts,
 read only when you open it: parsing a compose file is the one thing the page
@@ -3686,12 +3685,9 @@ where the account cannot write it, so `claude update` typed in a session
 changes nothing that runs (the auto-updater is off there too). The bin
 removes it. Nothing starts again on its own: the project rows do, when you
 press them, and until the job ends those rows are held with the reason. A
-node behind is a row in the bell. **Update Claude Code before a session
-starts**, a switch on the Settings tab, is off by default: off, a node
-stays on what it has until you install the update; on, pressing Claude on
-a node that is behind updates it first, the start is held with the
-reason, and you press again when the row comes back. An open conversation
-is never ended for it. The node's Claude Code section on the Nodes tab
+node behind is a row in the bell, and stays on what it has until you
+install the update: nothing updates it before a session starts (a switch
+that did went on 7 Oct). The node's Claude Code section on the Nodes tab
 keeps each account's sign-in, and a button to the Toolchains tab.
 
 **A token lasts twelve hours, and a conversation can last longer.** One is
