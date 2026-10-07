@@ -47,7 +47,7 @@ const SURFACE = [
   'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'sectAttr', 'wireSections', 'openMenu', 'menuHolds', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawBell', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
-  'drawCard', 'drawPanes', 'drawProjects', 'drawRunner', 'drawSessions',
+  'byProjectName', 'drawCard', 'drawPanes', 'drawProjects', 'drawRunner', 'drawSessions',
   'drawShellCard', 'drawTabs', 'drawTrash', 'drawUiMenu', 'dressFrame',
   'dropElsewhere', 'dropIndex', 'dropTab', 'edgeScroll', 'editCustom',
   'endCardDrag', 'endDrag', 'endSession',

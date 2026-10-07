@@ -354,6 +354,10 @@ function projectRow(p, live, cls, inTab){
 `;
 }
 
+// Projects by name, as a person reads a list: case aside and numbers as
+// numbers (the operator, 7 Oct). The server's order is the directory's, in
+// which every capitalised name came before every lower-case one.
+function byProjectName(a, b){ return a.name.localeCompare(b.name, undefined, {sensitivity: "base", numeric: true}); }
 function drawProjects(all){
   const el = $("projects");
   // The card is the pinned view; the Projects tab is the whole list. Filtered
@@ -366,7 +370,7 @@ function drawProjects(all){
   // Excluded last: it is not a problem waiting to be fixed like the rest of
   // what is folded away here, it is a decision already made.
   const shown   = (showAllProjects ? ps : ps.filter(p => !isBroken(p)))
-                  .slice();
+                  .slice().sort(byProjectName);
 
   // Declared above the empty-list branch below, which READS it. It used to
   // sit past that branch's `return`, so a card with nothing pinned threw

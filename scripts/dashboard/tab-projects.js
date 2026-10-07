@@ -110,11 +110,11 @@ function renderProjectsInto(i){
   }
   const live = liveSessions();
   const cls = {error:"bad", warning:"warn", locked:"locked"};
-  // Pinned first, then by name: the sidebar's order, so moving between the two
-  // does not mean finding everything again. Sorted here rather than by the
-  // server, which reports the directory order every other reader wants.
-  const ordered = ps.slice().sort((a, b) =>
-    (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || a.name.localeCompare(b.name));
+  // By name, pinned or not, the sidebar's order (the operator, 7 Oct): pinned
+  // first split one list into two alphabets, and the thumbtack on each row
+  // already says which is pinned. Sorted here rather than by the server,
+  // which reports the directory order every other reader wants.
+  const ordered = ps.slice().sort(byProjectName);
   // paint() rather than innerHTML, the same as the card: this runs on every
   // render pass, and rebuilding a list of rows nobody changed throws away the
   // handlers on it for no reason.
