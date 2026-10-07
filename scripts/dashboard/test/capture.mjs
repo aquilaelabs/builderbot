@@ -295,5 +295,10 @@ ok(noVid.status !== 0 && /no such video/.test(noVid.stderr || ''), 'a video that
      && !bytes(`${S}/now.png`).equals(bytes(`${S}/one.png`)) && bytes(`${S}/one.png`).equals(bytes(`${S}/two.png`)),
      `bb capture shot --settle pictures a page after its late element lands, and --now pictures it before (${
         [now, one, two].map(r => r.status).join('/')}; ${(one.stderr || '').trim().slice(0, 60)})`);
+  // B535: the server is gone now. A page that does not answer is no
+  // picture and a failure, where it was Chromium's error page and exit 0.
+  const gone = shot('', `${S}/gone.png`, '--now');
+  ok(gone.status === 3 && !existsSync(`${S}/gone.png`) && /did not answer/.test(gone.stderr || ''),
+     `...and a page that does not answer is no picture and exit 3, saying so (${gone.status}; ${(gone.stderr || '').trim().slice(0, 80)})`);
 }
 await done();

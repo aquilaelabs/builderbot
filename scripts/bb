@@ -481,7 +481,9 @@ bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
                    match, so a modal still arriving or a list still loading is
                    not the picture: the dashboard's own pages and the two other
                    sources settle by default, --settle asks it of any page, --now
-                   takes the one shot at once. Into dist/emu/ for the emulator
+                   takes the one shot at once. Into dist/emu/ for the emulator.
+                   A page that does not answer is no picture and exit 3; one
+                   that answers 4xx or 5xx is shot, and the status said
 bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
                    eyes on change over time: the frames of a recording that changed,
                    each stamped with its time, tiled into dist/reel/NAME/sheet.png
@@ -4420,7 +4422,7 @@ URLs need their scheme (http:// or https://)"
     fi
 
     local chrome; chrome="$(find_chromium)"
-    local files
+    local files st=0
     files="$(NODE_PATH="$(pw_node_path)" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
         "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "$settle" "${urls[@]}" <<'EOF'
@@ -4512,8 +4514,22 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, ...
   };
   const p = await ctx.newPage();
   const taken = new Set();
+  let unanswered = 0;
   for (const url of urls) {
-    await p.goto(url, { waitUntil: "networkidle" }).catch(() => {});
+    // A page that never goes quiet is still a page, and is shot as it is;
+    // one that never answered is not (B535): Chromium draws its own error
+    // page, and a picture of that with exit 0 read as the site being up.
+    let failed = "";
+    const res = await p.goto(url, { waitUntil: "networkidle" }).catch(e => {
+      if (!/timeout/i.test(`${e.name} ${e.message}`)) failed = String(e.message).split("\n")[0];
+      return null;
+    });
+    if (failed) {
+      console.error(`${url}: did not answer (${failed}); no picture taken`);
+      unanswered++;
+      continue;
+    }
+    if (res && res.status() >= 400) console.error(`${url}: answered ${res.status()}; shot as it is`);
     if (+wait) await p.waitForTimeout(+wait);
     let out = dest;
     if (mode === "dir") {
@@ -4558,10 +4574,12 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, ...
     console.log(out);
   }
   await b.close();
+  if (unanswered) process.exitCode = 3;
 })().catch(e => { console.error(String(e)); process.exit(1); });
 EOF
-)"
-    printf '%s\n' "$files"
+)" || st=$?
+    [ -z "$files" ] || printf '%s\n' "$files"
+    return "$st"
 }
 
 # bb tool graphics favicon: one SVG mark in, the favicon set a web app actually needs out:

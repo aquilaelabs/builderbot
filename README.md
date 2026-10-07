@@ -543,7 +543,9 @@ bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
                    match, so a modal still arriving or a list still loading is
                    not the picture: the dashboard's own pages and the two other
                    sources settle by default, --settle asks it of any page, --now
-                   takes the one shot at once. Into dist/emu/ for the emulator
+                   takes the one shot at once. Into dist/emu/ for the emulator.
+                   A page that does not answer is no picture and exit 3; one
+                   that answers 4xx or 5xx is shot, and the status said
 bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
                    eyes on change over time: the frames of a recording that changed,
                    each stamped with its time, tiled into dist/reel/NAME/sheet.png
