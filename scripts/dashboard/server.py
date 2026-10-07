@@ -3004,6 +3004,18 @@ nodes.project_nodes = lambda: {p: (v or {}).get("node") or ""
 devapp.all_project_nodes = lambda: {p: (v or {}).get("nodes") or []
                                     for p, v in prefs.all_projects(WORKSPACE).items()}
 
+def _ftp_node(nid):
+    """What ftp.py asks of a node: its name, the address it dials in from,
+    and whether its store has the ftp toolchain (None while it has not
+    reported its store)."""
+    n = nodes.node(nid)
+    if not n:
+        return None
+    has = toolchains.node_has(n)
+    return {"name": n.get("name") or nid, "addr": (n.get("agent") or {}).get("addr") or "",
+            "has_ftp": ("ftp" in has) if has else None}
+
+
 # A project's file access over FTP (R151): the store and its checks are
 # ftp.py's, the server is the node's (bb-ftpd from the ftp toolchain), and a
 # login is relayed by the agent to channel's ftp-auth.
@@ -3012,7 +3024,8 @@ ftp.configure(state=STATE, workspace=WORKSPACE, write_json=write_json, users=use
               audit=lambda who, act, target, params: db.audit(who, act, target, params),
               project_node=lambda p: prefs.get(p)["node"] or "",
               ask_hello=lambda nid: None if NODES_OK else nodes.ask_hello(nid),
-              node_agent=lambda nid: "" if NODES_OK else ((nodes.node(nid) or {}).get("agent") or {}).get("version") or "")
+              node_agent=lambda nid: "" if NODES_OK else ((nodes.node(nid) or {}).get("agent") or {}).get("version") or "",
+              node_info=lambda nid: None if NODES_OK else _ftp_node(nid))
 nodes.ftp_for = ftp.for_node
 
 # The controller's diagnostics: read-only, for an administrator and, behind

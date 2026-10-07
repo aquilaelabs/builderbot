@@ -4,6 +4,7 @@ what a node is told to run, the login the node relays, and who may set it
 import json
 import os
 import shutil
+import socket
 import sys
 import tempfile
 import unittest
@@ -128,6 +129,41 @@ class Ftp(unittest.TestCase):
         self.assertIn("Update agent", st["why"])
         ftp.node_agent = lambda nid: "0.7.141"
         self.assertEqual(ftp.view("alpha", True)["status"], {}, "a new enough agent is waited on")
+
+    def test_a_node_without_the_toolchain_says_so_before_anything_is_tried(self):
+        ftp.node_info = lambda nid: {"name": "box", "addr": "", "has_ftp": False}
+        self.addCleanup(setattr, ftp, "node_info", None)
+        v = ftp.view("alpha", True)
+        self.assertIn("box does not have the ftp toolchain", v["missing"])
+        ftp.save("alpha", {"on": True}, "boss")
+        self.assertIn("ftp toolchain", ftp.view("alpha", True)["status"]["why"])
+        ftp.node_info = lambda nid: {"name": "box", "addr": "", "has_ftp": None}
+        self.assertEqual(ftp.view("alpha", True)["missing"], "", "a store not reported yet is not missing")
+
+    def test_a_port_something_else_holds_is_refused_at_save(self):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen()
+        self.addCleanup(srv.close)
+        held = srv.getsockname()[1]
+        if not ftp.PORT_MIN <= held - 3 <= ftp.PORT_MAX - ftp.SPAN:
+            self.skipTest("the port the system gave is out of range")
+        ftp.node_info = lambda nid: {"name": "box", "addr": "127.0.0.1", "has_ftp": True}
+        self.addCleanup(setattr, ftp, "node_info", None)
+        j, code = ftp.save("alpha", {"on": True, "port": held - 3}, "boss")
+        self.assertEqual(code, 400)
+        self.assertIn(f"port {held} is already in use on box", j["error"])
+        self.assertFalse(ftp.get("alpha")["on"], "nothing was saved")
+        # The project's own server on its port is not something else.
+        srv.close()
+        free = held - 3
+        self.assertEqual(ftp.save("alpha", {"on": True, "port": free}, "boss")[1], 200)
+        own = socket.socket()
+        own.bind(("127.0.0.1", free))
+        own.listen()
+        self.addCleanup(own.close)
+        ftp.report("n1", [{"project": "alpha", "up": True, "port": free, "addr": "127.0.0.1"}])
+        self.assertEqual(ftp.save("alpha", {"on": True, "port": free, "access": {"u_3": "r"}}, "boss")[1], 200)
 
     def test_the_grant_is_the_owners_alone_and_never_a_sessions(self):
         self.assertEqual(users.may(users.get("boss"), "ftp", "alpha"), "")

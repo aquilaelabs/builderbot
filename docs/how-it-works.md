@@ -3565,8 +3565,14 @@ away holds from the next login. Ten failed logins from one address in five
 minutes refuse that address for the rest of the window, and every login,
 failed or not, is in the audit log. The project's `.git` is read-only over
 FTP whatever the access, and nothing outside the tree is reachable, a
-symlink pointing out of it included. A node without the toolchain says so
-in red under the section, as does a port something else holds.
+symlink pointing out of it included. A node whose store has no ftp
+toolchain is said in red under the section as soon as it is ticked, from
+the node's last report, before anything is tried; the tick stays usable,
+so the port and the access can be set before the install. Save, when it
+turns the server on or moves its port, asks the node's address from the
+controller whether anything answers on the port or the nine after it and
+refuses, naming the ports, when something does; the project's own running
+server is not asked about.
 
 ### Locking a project
 

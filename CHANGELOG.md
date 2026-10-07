@@ -83,6 +83,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb tidy gives back what a task left holding: the session's emulator, its processes on the card, its Gradle and Kotlin daemons, the browsers a finished test left, and its files in /tmp; --keep one with a reason. It replaces bb gpu release (ffe2fb8)
 - Test in a project's repository settings (the chain): tries a read and a dry-run push with its deploy key or access token, asks GitHub, GitLab or Gitea what a token may do, and lists what is missing (write access, a read-only deploy key, the workflow scope) in red under the button (e866504)
 - A project's files over FTPS: its settings' File access section turns it on, picks the port and gives each account read or read and write, signing in with their own BuilderBot password. Runs on the project's node from the new ftp toolchain; the owner's to set until a role grants ftp (ddd403e)
+- File access says up front when the project's node lacks the ftp toolchain, and Save refuses a port something else on the node already answers on, naming it (35ad6b7)
 
 ### Changed
 

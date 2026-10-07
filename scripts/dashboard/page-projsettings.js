@@ -671,8 +671,10 @@ function rnDrawFtp(){
   }
   $("rnFtpField").hidden = false;
   const port = d.port ?? v.port;
-  const status = !v.on ? ""
-    : st.up ? `<div class="hint">Running at ${esc(where)}. Use an FTPS client (FTP over TLS, explicit) and
+  // Said as soon as it is ticked, before anything is tried (the operator, 7 Oct).
+  const status = on && !v.on && v.missing ? `<div class="hint bad">${esc(v.missing)}</div>`
+    : !v.on ? ""
+    : st.up ? `<div class="hint">Running at ${esc(where)}. Use FTPS (FTP over explicit TLS, not SFTP) and
         your BuilderBot name and password. The certificate is the node's own, so the client asks to trust it once.</div>`
     : st.why ? `<div class="hint bad">Not running: ${esc(st.why)}</div>`
     : `<div class="hint">Starting on its node.</div>`;

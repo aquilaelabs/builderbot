@@ -13,6 +13,7 @@ so taking an access away holds from the next login.
 Who may change any of it is the `ftp` grant, named only (roles.NAMED_ONLY),
 so the owner has it and nobody else until a role names it.
 """
+import socket
 import threading
 import time
 from pathlib import Path
@@ -25,6 +26,7 @@ audit = None
 project_node = None          # project -> its primary node id, "" for none
 ask_hello = None             # node id -> the agent is told now, not in ten minutes
 node_agent = None            # node id -> the version its agent runs, "" when unknown
+node_info = None             # node id -> {"name", "addr", "has_ftp": True|False|None}
 
 # The first agent that runs bb-ftpd (FtpServers). One older takes hello's
 # list and does nothing with it, so the section says so rather than waiting.
@@ -50,10 +52,56 @@ FAIL_WINDOW_S = 300
 FAIL_LIMIT = 10
 
 
-def configure(*, state, workspace, write_json, users, audit, project_node, ask_hello=None, node_agent=None):
+def configure(*, state, workspace, write_json, users, audit, project_node, ask_hello=None, node_agent=None,
+              node_info=None):
     globals().update(FILE=Path(state) / "ftp.json", WORKSPACE=Path(workspace), write_json=write_json,
                      users=users, audit=audit, project_node=project_node, ask_hello=ask_hello,
-                     node_agent=node_agent)
+                     node_agent=node_agent, node_info=node_info)
+
+
+def _node(node):
+    return (node_info(node) if node and node_info else None) or {}
+
+
+def missing_why(node):
+    """Why `node` cannot run file access before anything is tried, or "":
+    the ftp toolchain not in its store, as its last report says. Unknown is
+    not missing."""
+    n = _node(node)
+    if n.get("has_ftp") is False:
+        return (f"{n.get('name') or 'its node'} does not have the ftp toolchain: "
+                "install it on the Toolchains tab")
+    return ""
+
+
+def _answers(addr, port, timeout=0.8):
+    """True when something accepts a connection there, False when it is
+    refused, None when nothing was heard (a firewall that drops, a node
+    that is away)."""
+    try:
+        with socket.create_connection((addr, port), timeout=timeout):
+            return True
+    except ConnectionRefusedError:
+        return False
+    except OSError:
+        return None
+
+
+def ports_taken(node, port):
+    """Of the port and the nine after it, the ones something on `node`
+    already answers on, asked from here at once. Empty when none do, or
+    when the node's address is not known."""
+    addr = _node(node).get("addr") or ""
+    if not addr:
+        return []
+    got = {}
+    ts = [threading.Thread(target=lambda p=p: got.__setitem__(p, _answers(addr, p)), daemon=True)
+          for p in range(port, port + SPAN)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(2)
+    return sorted(p for p, v in got.items() if v)
 
 
 def _too_old(version):
@@ -143,6 +191,21 @@ def save(project, req, by):
             why = _port_why(project, rec["port"], node, d)
             if why:
                 return {"error": f"port {rec['port']}: {why}"}, 400
+            # Something else on the node already on it (the operator, 7
+            # Oct): asked when it is turned on or moved, never of the
+            # project's own server, which holds the port it already has.
+            was = _clean(d.get(project))
+            # Read without the lock, which save holds: one dict read.
+            mine = (_status.get(node) or {}).get(project) or {}
+            ours = mine.get("up") and mine.get("port") == rec["port"]
+            if (not was["on"] or was["port"] != rec["port"]) and not ours:
+                taken = ports_taken(node, rec["port"])
+                if taken:
+                    name = _node(node).get("name") or "its node"
+                    which = (f"port {taken[0]} is" if len(taken) == 1
+                             else "ports " + ", ".join(map(str, taken)) + " are")
+                    return {"error": f"{which} already in use on {name}; the server needs {rec['port']} "
+                                     f"and the {SPAN - 1} after it free, so pick another"}, 400
         if isinstance(req.get("access"), dict):
             known = {users.uid_of(u) for u in users.all_users()}
             for uid, a in req["access"].items():
@@ -204,12 +267,13 @@ def view(project, may_set):
                        "role": u.get("role") or "user"})
     with _lock:
         st = dict((_status.get(node) or {}).get(project) or {})
-    # Nothing heard yet: an agent too old to run it never will be.
-    if rec["on"] and not st and node and node_agent:
-        why = _too_old(node_agent(node) or "")
+    # Nothing heard yet: an agent too old to run it never will be, and a
+    # node without the toolchain has nothing to run.
+    if rec["on"] and not st and node:
+        why = (_too_old(node_agent(node) or "") if node_agent else "") or missing_why(node)
         if why:
             st = {"up": False, "why": why}
-    return {"on": rec["on"], "port": rec["port"] or free_port(project, node),
+    return {"missing": missing_why(node),"on": rec["on"], "port": rec["port"] or free_port(project, node),
             "node": node, "people": people, "status": st, "may_set": bool(may_set), "span": SPAN}
 
 
