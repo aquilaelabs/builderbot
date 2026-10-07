@@ -3221,8 +3221,8 @@ nodes ticked beside it when the project is on more than one, on all of them
 when every one is ticked, which also covers a node added later. It is
 handed to the node with what the project owns there and lands in the same
 sets, so sessions already running reach it within a poll, without a
-restart. Setting it takes the `node` grant, like Also sees, since it is a
-hole in a shared node's firewall; a session cannot. An IPv4 address only:
+restart. Setting it is an administrator's, since it is a hole in a shared
+node's firewall that reaches past the project; a session cannot. An IPv4 address only:
 a name or a range is refused by name, as are this machine, multicast, the
 sessions' own range and a project's own node, which a session reaches only
 through its containers. On a node whose switch is off it does nothing yet,

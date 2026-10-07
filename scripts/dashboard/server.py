@@ -5069,10 +5069,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         # ...and the addresses its sessions may still reach where the node
         # filters their network (the operator, 7 Oct): a hole in a shared
-        # node's firewall, so whoever may set the node. The node hears it
-        # at once, since the sets it fills are rebuilt live.
+        # node's firewall that reaches past the project, so an
+        # administrator's. The node hears it at once, since the sets it
+        # fills are rebuilt live.
         reach = req.get("reaches") is not None and prefs.reaches_changed(name, req.get("reaches"))
-        if reach and self._refused("node", name):
+        if reach and self._refused("admin"):
             return
         # The node's own address is not one this opens: a session's traffic
         # to its own node is judged on the way in, where only the controller

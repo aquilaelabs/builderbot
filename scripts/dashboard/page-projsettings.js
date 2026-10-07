@@ -234,7 +234,7 @@ function rnDrawReach(focus){
   if (rnMode === "git") return;
   const box = $("rnReachRows");
   if (box.childElementCount) rnReachSync();
-  const ns = rnReachNodes(), ro = state?.can?.node === false;
+  const ns = rnReachNodes(), ro = !state?.admin;
   box.innerHTML = rnReachDraft.map((e, i) => `<div class="rnreach" data-i="${i}">
       <input data-reach value="${esc(e.addr)}" autocomplete="off" spellcheck="false" placeholder="192.168.1.20 or 192.168.1.20:8080"
         aria-label="an address a session here may reach"${ro ? " disabled" : ""}>
@@ -242,6 +242,8 @@ function rnDrawReach(focus){
         !e.nodes.length || e.nodes.includes(n.id) ? " checked" : ""}${ro ? " disabled" : ""}> ${esc(n.name)}</label>`).join("")}</span>` : ""}
       ${ro ? "" : `<button type="button" class="eye rm" data-reachrm aria-label="remove this address" title="remove this address">${BIN}</button>`}
     </div>`).join("");
+  // Empty is no box at all, so the field keeps its rhythm under the label.
+  box.hidden = !rnReachDraft.length;
   $("rnReachAdd").hidden = ro;
   box.querySelectorAll("[data-reachrm]").forEach(b => b.onclick = () => {
     rnReachSync();
