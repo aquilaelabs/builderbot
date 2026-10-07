@@ -3897,22 +3897,42 @@ def _job_mine(j, mine):
     return bool(job_owner) and job_owner(j) in mine
 
 
-def jobs_view(jid, q, mine):
+def jobs_view(jid, q, mine, system=None):
     """The Jobs tab's whole read surface, and a test's: one job with its log
     so far, or the recent ones narrowed by the query's node, project, type,
     active and n. `mine` is None for an administrator, or the projects this
     account may see: a job and its log are the project's, or its project's
     container's (B321), and a job with no project (a node's own: an update,
     a store move) is an administrator's, with the same answer as a typo so
-    the listing says nothing about what else is queued on the box. n counts
+    the listing says nothing about what else is queued on the box. With
+    `system` (a redactor), the node's own jobs are seen as well, through it:
+    the caller may read the controller's diagnostics, which list them. n counts
     what this account sees, not the node's last n before the filter, which
     showed one job of twelve and read as history pruned (B321).
     (payload, status)."""
+    def seen(j):
+        return _job_mine(j, mine) or (system is not None and not j.get("project"))
+
+    def scrub(v):
+        # Every string inside, the shape kept: bb jobs and the Jobs tab read
+        # a spec's fields by name.
+        if isinstance(v, str):
+            return system(v)
+        if isinstance(v, list):
+            return [scrub(x) for x in v]
+        if isinstance(v, dict):
+            return {k: scrub(x) for k, x in v.items()}
+        return v
+
+    def shown(j):
+        if mine is None or system is None or j.get("project") or _job_mine(j, mine):
+            return j
+        return {k: scrub(v) if k in ("log", "error", "label", "spec") else v for k, v in j.items()}
     if jid:
         j = job(jid)
-        if j and mine is not None and not _job_mine(j, mine):
+        if j and mine is not None and not seen(j):
             j = None
-        return (j, 200) if j else ({"error": "no such job"}, 404)
+        return (shown(j), 200) if j else ({"error": "no such job"}, 404)
     try:
         n = min(500, max(1, int(q.get("n", ["100"])[0])))
     except ValueError:
@@ -3923,7 +3943,7 @@ def jobs_view(jid, q, mine):
         type=q.get("type", [""])[0] or None,
         active=q.get("active", [""])[0] == "1")
     if mine is not None:
-        rows = [j for j in rows if _job_mine(j, mine)][:n]
+        rows = [shown(j) for j in rows if seen(j)][:n]
     # The names of the nodes these rows run on, and for an account that
     # is not an administrator no other: the whole registry rode here
     # past the scoping the nodes listing keeps (the probe of 26 Sep).

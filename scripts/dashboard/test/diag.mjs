@@ -116,6 +116,30 @@ print(uid)`);
   r = await call('/api/diag', {}, asOwner);
   ok(r.status === 200 && Array.isArray(r.body.nodes) && r.body.nodes.some(n => n.name === node.name),
      `...then the owner's session on alpha reads the report (${r.status})`);
+  // The node's own jobs the report lists open for the same reader (B547):
+  // a system job by its id and in the listing, through the redactor, and
+  // for nobody without the grant. Queued straight into the harness's store.
+  const sysJob = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location('nodes', ${JSON.stringify(join(HERE, 'nodes.py'))})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(state=${JSON.stringify(join(DIR, 'state'))})
+print(json.dumps(m.job_add('system', {'node': '${node.id}'}, 'exec', {'argv': ['echo', 'password=hunter22']})))`],
+    { encoding: 'utf8' }).trim().split('\n').pop();
+  const jid = JSON.parse(sysJob).job;
+  r = await call(`/api/v1/jobs?id=${jid}`, undefined, asOwner);
+  ok(r.status === 200 && r.body.id === jid && !r.body.project && !/hunter22/.test(JSON.stringify(r.body))
+     && r.body.spec?.argv?.[1] === '<redacted>' && r.body.spec.argv[0] === 'echo',
+     `...and opens a node's own job by its id, its spec through the redactor (${r.status} ${JSON.stringify(r.body.spec || r.body.error).slice(0, 80)})`);
+  r = await call(`/api/v1/jobs?node=${node.id}&n=50`, undefined, asOwner);
+  ok((r.body.jobs || []).some(j => j.id === jid), '...and sees it in the listing');
+  r = await call(`/api/v1/jobs?id=${jid}`, undefined, asPlain);
+  ok(r.status === 404, `...which an account without the grant does not, as for a typo (${r.status})`);
+  await call('/api/prefs', { project: 'alpha', diag: false });
+  r = await call(`/api/v1/jobs?id=${jid}`, undefined, asOwner);
+  ok(r.status === 404, `...nor the owner's session once alpha's grant is off (${r.status})`);
+  await call('/api/prefs', { project: 'alpha', diag: true });
+  await call('/api/v1/jobs', { action: 'cancel', id: jid });
   r = await call('/api/diag', {}, asAdmin);
   ok(r.status === 403 && /debug grant/.test(r.body.error || ''),
      `an administrator's session is refused: debug is the owner's until a role names it (${r.body.error})`);

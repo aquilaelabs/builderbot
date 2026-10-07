@@ -4580,7 +4580,12 @@ class Handler(BaseHTTPRequestHandler):
         me = self._who()
         mine = None if users.may(me, "admin") == "" \
             else {p["name"] for p in project_list(me)}
-        return self._json(*nodes.jobs_view(q.get("id", [""])[0], q, mine))
+        # The node's own jobs (a toolchain install, an update) for whoever may
+        # read the controller's diagnostics, which list them: a job named
+        # there that could not be opened was a dead end (the operator, 7 Oct).
+        # Through diag's redaction, as the diagnostics themselves are.
+        system = diag.redact if mine is not None and not self._diag_why() else None
+        return self._json(*nodes.jobs_view(q.get("id", [""])[0], q, mine, system))
 
     def _get_docker(self):
         """GET /api/docker: the manager's whole page, containers.manager_view,
@@ -6472,25 +6477,32 @@ class Handler(BaseHTTPRequestHandler):
         want = req.get("sections") if isinstance(req.get("sections"), list) else None
         return self._json(diag.report([str(x) for x in want] if want else None))
 
+    def _diag_why(self):
+        """Why this caller may not read the controller's diagnostics, or "":
+        see _diag. Asked, never written: _diag_refused writes it."""
+        who = self._who() or {}
+        if who.get("session"):
+            if not settings.get("debug_mode"):
+                return "debug mode is off, so the controller's diagnostics are not offered to any session"
+            me = users.account_of(who)
+            if me is who or users.may(me, "debug"):
+                return ("the controller's diagnostics are for an account with the debug grant, "
+                        "and this session's account has not got it: the Roles tab")
+            if not prefs.get(who["session"])["diag"]:
+                return (f"{who['session']} has not been granted the controller's "
+                        "diagnostics: Debug in its settings")
+            return ""
+        return users.may(who, "debug")
+
     def _diag_refused(self):
         """True, with the refusal written, unless this caller may read the
         controller's diagnostics: see _diag. The reports sessions make about
         BuilderBot are read and acted on behind the same gate."""
         who = self._who() or {}
         if who.get("session"):
-            if not settings.get("debug_mode"):
-                self._json({"error": "debug mode is off, so the controller's diagnostics "
-                                     "are not offered to any session"}, 403)
-                return True
-            me = users.account_of(who)
-            if me is who or users.may(me, "debug"):
-                self._json({"error": "the controller's diagnostics are for an account "
-                                     "with the debug grant, and this session's account "
-                                     "has not got it: the Roles tab"}, 403)
-                return True
-            if not prefs.get(who["session"])["diag"]:
-                self._json({"error": f"{who['session']} has not been granted the controller's "
-                                     "diagnostics: Debug in its settings"}, 403)
+            why = self._diag_why()
+            if why:
+                self._json({"error": why}, 403)
                 return True
             return False
         return self._refused("debug")

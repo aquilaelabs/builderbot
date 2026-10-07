@@ -328,6 +328,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The playwright command is on a session's PATH beside the module NODE_PATH already found, and the briefing says a script of a session's own can require it without installing anything (affa4c4)
 - A project's remote settings, opened from the chain, no longer show its People, Signing or Sessions when the gear's settings were opened a moment before (fff2081)
 - bb map reads C and C++: functions, structs and enums, calls by the function they are made in, prototypes as declarations, and a JNI function under its Kotlin or Java method's name. PHP and anonymous JavaScript functions no longer read a call as a definition (7310c34)
+- A session granted the controller's diagnostics opens the node's own jobs they list (bb jobs ID), their specs and logs through the same redaction (f654ac5)
 
 ### Security
 
