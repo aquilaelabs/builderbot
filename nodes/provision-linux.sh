@@ -2150,13 +2150,27 @@ cmd_gpu_driver() {
                 die "$held is installed: remove it first, then install $want. One branch at a time, since their libraries do not mix"
             fi
             if [ -n "$ver" ] && command -v nvidia-smi >/dev/null 2>&1; then
-                # Installed already: brought up to what apt has for its branch.
+                # Installed already: brought up to what apt has for its branch,
+                # through its metapackages (the driver's, and the kernel
+                # flavour's module one Ubuntu ships), which pull the rest.
+                # Not every NVIDIA package by name with --only-upgrade: that
+                # held the running kernel's prebuilt module, pinned to the old
+                # version with no newer build for that kernel, and refused a
+                # firmware package the new version names afresh, so apt
+                # solved nothing and the row kept offering the update (bb-sandbox,
+                # 8 Oct). Apt drops that kernel's module itself; the newest
+                # kernel's is the one the restart boots.
                 say "the NVIDIA driver $ver is installed; bringing it up to date"
                 export DEBIAN_FRONTEND=noninteractive
                 apt_get update -qq
-                # shellcheck disable=SC2016,SC2046
-                apt_get install -y -qq --only-upgrade $(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
-                    | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-|libnvidia-|linux-(modules|objects|signatures)-nvidia-|xserver-xorg-video-nvidia)/ {print $1}') \
+                # shellcheck disable=SC2016
+                pkgs="$(dpkg-query -W -f='${Package} ${db:Status-Abbrev}\n' 2>/dev/null \
+                    | awk '$2 ~ /^ii/ && $1 ~ /^(nvidia-driver(-[0-9]+)?(-open)?|linux-(modules|objects|signatures)-nvidia-[0-9]+(-open)?-[a-z][a-z0-9-]*)$/ {print $1}' \
+                    | tr '\n' ' ' || true)"
+                [ -n "${pkgs// /}" ] || pkgs="$held"
+                [ -n "${pkgs// /}" ] || die "no NVIDIA driver package is installed through apt here, so there is nothing for apt to update"
+                # shellcheck disable=SC2086
+                apt_get install -y -qq $pkgs \
                     || die "apt could not update it; its output above says why"
                 say "the NVIDIA driver is $(gpu_driver_version) now"
             else

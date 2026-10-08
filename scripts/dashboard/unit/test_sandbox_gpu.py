@@ -298,6 +298,23 @@ esac""")
         self.assertIn("remove it first", said)
         self.assertNotIn("ubuntu-drivers", ran)
 
+    def test_an_update_asks_apt_for_the_metapackages_not_every_package(self):
+        # bb-sandbox, 8 Oct: --only-upgrade over every NVIDIA package held
+        # the running kernel's module at the old version and apt refused.
+        with open(self.state, "w") as f:
+            f.write("595.91.07 nvidia-driver-595-open\n")
+        self.tool("dpkg-query", '''case "$*" in
+  *nvidia-driver\\**) echo "nvidia-driver-595-open ii " ;;
+  *) for p in nvidia-driver-595-open linux-modules-nvidia-595-open-generic linux-modules-nvidia-595-open-7.0.0-34-generic \\
+              libnvidia-gl-595 nvidia-kernel-common-595 firefox; do echo "$p ii "; done ;;
+esac''')
+        rc, said, ran = self.run_helper("gpu-driver", "install")
+        self.assertEqual(rc, 0, said)
+        inst = [ln for ln in ran.splitlines() if " install " in ln][0]
+        self.assertNotIn("--only-upgrade", inst)
+        self.assertEqual(sorted(inst.split()[-2:]), ["linux-modules-nvidia-595-open-generic", "nvidia-driver-595-open"])
+        self.assertNotIn("ubuntu-drivers", ran)
+
     def test_remove_purges_the_drivers_packages_and_only_those(self):
         with open(self.state, "w") as f:
             f.write("610.57.04 nvidia-driver-610\n")
