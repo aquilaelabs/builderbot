@@ -367,6 +367,9 @@ TS_OBJ_KEY_ARROW = re.compile(r"(?:^|[{,])\s*([A-Za-z_$][\w$]*)\s*:\s*(?:async\s
                               + TS_ARROW_PARAMS + r"\s*\Z", re.M)
 METHOD_PREFIX = re.compile(r"(?:(?<![\w$])(?:static|async|get|set|public|private|protected|"
                            r"readonly|override)\s*|[#*]\s*)+$")
+# Keywords that are a method's name where a method stands (`delete(uri) {`),
+# but not the control words, since `} catch (e) {` stands there too.
+METHOD_KEYWORDS = {"delete", "new", "import", "export", "default"}
 STATEMENT_WORDS = {"const", "let", "var", "function", "return", "if", "for", "while", "class",
                    "export", "import", "throw", "try", "switch"}
 
@@ -831,6 +834,17 @@ class JSScanner:
                 self.parens += 1
                 self.last_sig = "("
                 return
+            if prev in METHOD_KEYWORDS and self.shape_methods and self.last_kw != "function" \
+                    and not getattr(self, "ident_after_dot", False):
+                # `async delete(uri) {` in a class: a keyword is a method's name
+                # where a method stands, and is never a call by itself
+                w = s[max(0, self.i - 240):self.i]
+                code = self.code_before(self.i - (len(w) - len(w.rstrip())) - len(prev))
+                self.maybe_method = (prev, self.line, self.parens) \
+                    if code.endswith(("{", ",", ";", "}")) or not code else None
+                self.parens += 1
+                self.last_sig = "("
+                return
             if self.IDENT.fullmatch(prev or "") and self.last_kw != "function" \
                     and not (prev == "of" and getattr(self, "of_kw", False)) \
                     and (prev not in self.kw or getattr(self, "ident_after_dot", False)):
@@ -864,7 +878,11 @@ class JSScanner:
                 # in the body is not read as the function's (B545).
                 # `x.animate = function(` is named for what it is assigned to,
                 # as an arrow is; one handed straight to a call stays anonymous
-                head = s[max(0, self.i - 200):self.i - len(prev)]
+                # (the text before the keyword, whatever space stands between it
+                # and its paren: `Module._load = function (req)`)
+                w = s[max(0, self.i - 240):self.i]
+                kw_at = self.i - (len(w) - len(w.rstrip())) - len(prev)
+                head = s[max(0, kw_at - 200):kw_at]
                 named = re.search(r"([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?$", head) \
                     if prev in self.fn_words else None
                 if named and named.group(1) not in self.kw:

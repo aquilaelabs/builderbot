@@ -120,7 +120,10 @@ if (!babel) {
   let files = 0;
   for (const [file, entry] of Object.entries(idx.files)) {
     if (!/\.(js|mjs)$/.test(file)) continue;
-    const t = truth(readFileSync(join(REPO, file), 'utf8'), file);
+    // (a suite running beside this one can make a file and remove it again)
+    let code;
+    try { code = readFileSync(join(REPO, file), 'utf8'); } catch { continue; }
+    const t = truth(code, file);
     if (!t) { bad[file] = [{ babel: 'could not parse' }]; continue; }
     files++;
     const b = compare(entry, t);

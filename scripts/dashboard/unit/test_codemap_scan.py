@@ -54,6 +54,13 @@ class JavaScript(unittest.TestCase):
         self.assertIn(("draw", 4, "render"), calls(s))
         self.assertIn(("load", 4, "open"), calls(s))
 
+    def test_a_keyword_method_and_a_spaced_function_expression(self):
+        s = scan("class A {\n  async delete(uri) {\n    go(uri);\n  }\n"
+                 "  m() { try { x(); } catch (e) { y(); } }\n}\nModule._load = function (req) {\n  return 1;\n};\n")
+        self.assertTrue({("delete", 2, 4), ("m", 5, 5), ("_load", 7, 9)} <= defs(s), defs(s))
+        self.assertNotIn("catch", {d["name"] for d in s.defs})
+        self.assertIn(("go", 3, "delete"), calls(s))
+
     def test_a_comment_above_a_method_does_not_hide_it(self):
         s = scan("const o = {\n  a: 1,\n  // says what shown does, at length\n  shown(){ go(); },\n};\n")
         self.assertIn(("shown", 4, 4), defs(s))
