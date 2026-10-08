@@ -1166,6 +1166,13 @@ cmd_emu() {
             fi
             avd_exists "$avd" \
                 || die "AVD '${avd}' not found; bb emu create <api> builds one, and bb emu list shows what is here"
+            # A share that went stale under this session (the store's shared
+            # half over NFS, 6 Oct) reads as a missing image, and the emulator
+            # said "Broken AVD system path", which sent a session after its AVD
+            # (B526). Said as what it is: a remount reaches a new session.
+            local imgs="${ANDROID_HOME:-/opt/android-sdk}/system-images" stale
+            stale="$(LC_ALL=C stat -L "$imgs" "$imgs"/* 2>&1 >/dev/null | grep -m1 'Stale file handle' || true)"
+            [ -z "$stale" ] || die "the toolchain store's system images answer 'Stale file handle' (${stale#stat: }): the share went stale under this session, not the AVD. A new session sees it mounted fresh; if a new one fails the same way, the node's mount needs remounting, which is the operator's (bb root run)"
             local held; held="$(emu_held "$avd")"
             [ -z "$held" ] || die "$held"
             # Room on the node for one more (emu_room): waited for a while,
